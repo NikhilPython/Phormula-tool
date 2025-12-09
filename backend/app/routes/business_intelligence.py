@@ -150,7 +150,7 @@ def print_comparison_range():
         print(f"key_column (FE): {key_column} | scan_key (backend): {scan_key}")
 
         # Dynamic column list
-        columns = ['asp', 'quantity', 'profit', 'sales_mix', 'product_name', 'net_sales', 'unit_wise_profitability']
+        columns = ['asp', 'quantity', 'profit', 'sales_mix', 'product_name', 'net_sales', 'unit_wise_profitability', 'product_sales','profit_percentage']
         if not is_global:
             columns.append('sku')
         cols_str = ', '.join(columns)
@@ -205,7 +205,8 @@ def print_comparison_range():
         growth_field_mapping = {
             'quantity': 'Unit Growth',
             'asp': 'ASP Growth',
-            'net_sales': 'Sales Growth',
+            'product_sales':'Gross Sales Growth',
+            'net_sales': 'Net Sales Growth',
             'sales_mix': 'Sales Mix Change',
             'unit_wise_profitability': 'Profit Per Unit',
             'profit': 'CM1 Profit Impact'
@@ -231,9 +232,12 @@ def print_comparison_range():
             except (ValueError, TypeError):
                 return None
 
-        def calculate_growth(data1, data2, key=scan_key, numeric_fields=None):
+        def calculate_growth(data1, data2, key=scan_key, numeric_fields=None, non_growth_fields=None):
+            if non_growth_fields is None:
+                non_growth_fields = ["profit_percentage"]  # ✅ add more raw-only fields here later if needed
+
             if numeric_fields is None:
-                numeric_fields = list(growth_field_mapping.keys())
+                numeric_fields = list(growth_field_mapping.keys())  # ✅ only fields that have growth metrics
 
             data1_dict = {}
             for row in data1:
@@ -267,27 +271,36 @@ def print_comparison_range():
                 sales_mix_val_month2 = safe_float(row2.get('sales_mix'))
                 growth_row['Sales Mix (Month2)'] = sales_mix_val_month2
 
-                # Month2 raw values
-                for field in numeric_fields:
-                    growth_row[f"{field}_month2"] = safe_float(row2.get(field))
-
                 # ✅ set month1 row (if exists)
                 row1 = data1_dict.get(item_key)
 
+                # ----------------------------
+                # RAW ONLY (no growth metric)
+                # ----------------------------
+                for f in non_growth_fields:
+                    growth_row[f"{f}_month2"] = safe_float(row2.get(f))
+                    growth_row[f"{f}_month1"] = safe_float(row1.get(f)) if row1 else None
+
+                # ----------------------------
+                # Growth fields (with metrics)
+                # ----------------------------
                 for field in numeric_fields:
                     val2 = safe_float(row2.get(field))
                     val1 = safe_float(row1.get(field)) if row1 else None
 
-                    # Month1 raw (None if missing)
+                    growth_row[f"{field}_month2"] = val2
                     growth_row[f"{field}_month1"] = val1
 
-                    # ✅ Growth calc for ALL SKUs (existing + new/reviving)
                     if val1 is None or val2 is None:
                         growth = None
-                    elif val1 == 0:
-                        growth = 0.0  # ✅ avoid infinity
                     else:
-                        growth = round(((val2 - val1) / val1) * 100, 2)
+                        if field == "sales_mix":
+                            # sales_mix already in % -> change in percentage points
+                            growth = round(val2 - val1, 2)
+                        elif val1 == 0:
+                            growth = 0.0  # avoid infinity
+                        else:
+                            growth = round(((val2 - val1) / val1) * 100, 2)
 
                     output_label = growth_field_mapping[field]
                     growth_row[output_label] = {
@@ -295,13 +308,14 @@ def print_comparison_range():
                         'value': growth
                     }
 
-                # ✅ keep this flag for new/reviving SKUs (based on Month1 presence)
                 if row1 is None:
                     growth_row['new_or_reviving'] = True
 
                 growth_results.append(growth_row)
 
             return growth_results
+
+
 
         growth_data = calculate_growth(data1, data2)
         print(f"Growth rows: {len(growth_data)}")
@@ -639,7 +653,7 @@ Observations:
   • profit_prev vs profit_curr
   • asp_prev vs asp_curr
   • unit_wise_profitability_prev vs unit_wise_profitability_curr
-  • and % fields like "Unit Growth (%)", "Sales Growth (%)", etc.
+  • and % fields like "Unit Growth (%)", "Net Sales Growth (%)", etc.
 - Use the exact causal tone wherever % values exist:
   "The increase/decrease in ASP by X% resulted in a dip/growth in units by Y%, which also resulted in sales falling/increasing by Z%."
 - In at least one observation, mention Sales Mix Change (%) direction if present (up/down).

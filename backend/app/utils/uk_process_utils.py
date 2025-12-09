@@ -418,7 +418,7 @@ def process_skuwise_data(user_id, country, month, year):
         )
 
         # ASP & growth
-        sku_grouped["asp"] = (sku_grouped["product_sales"] / sku_grouped["quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
+        sku_grouped["asp"] = (sku_grouped["Net Sales"] / sku_grouped["quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
         sku_grouped["previous_asp"] = (sku_grouped["previous_net_sales"] / sku_grouped["previous_quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
         sku_grouped["asp_percentag"] = ((sku_grouped["asp"] - sku_grouped["previous_asp"]) / sku_grouped["previous_asp"]) * 100
         sku_grouped["asp_percentag"] = sku_grouped["asp_percentag"].replace([float('inf'), -float('inf')], 0).fillna(0)
@@ -1830,7 +1830,7 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
             )
 
             sku_grouped["asp"] = sku_grouped.apply(
-                lambda row: (row["product_sales"] / row["quantity"])  if row["quantity"] != 0 else 0,
+                lambda row: (row["net_sales"] / row["quantity"])  if row["quantity"] != 0 else 0,
                 axis=1
             )
             sku_grouped["unit_wise_profitability"] = sku_grouped.apply(
@@ -2039,7 +2039,7 @@ def process_yearly_skuwise_data(user_id, country, year):
             # print(sku_grouped[["product_name", "profit_percentage"]])
 
             sku_grouped["asp"] = sku_grouped.apply(
-                lambda row: (row["product_sales"] / row["quantity"])  if row["quantity"] != 0 else 0,
+                lambda row: (row["net_sales"] / row["quantity"])  if row["quantity"] != 0 else 0,
                 axis=1
             )
             # print(sku_grouped[["product_name", "asp"]])
