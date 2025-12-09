@@ -1,0 +1,22 @@
+# Large media
+frontend/public/infinity.gif
+frontend/public/infinitysmall.mov
+*.gif
+*.mov
+*.mp4
+
+# Env & secrets
+.env
+backend/.env
+backend/.refresh_token
+
+# Python cache
+backend/__pycache__/
+backend/app/**/__pycache__/
+*.pyc
+
+# Uploaded files
+backend/uploads/
+
+# Windows junk
+desktop.ini
