@@ -20,3 +20,8 @@ backend/uploads/
 
 # Windows junk
 desktop.ini
+
+backend/env
+.env
+*.env
+.env.*
