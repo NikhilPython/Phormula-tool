@@ -1487,10 +1487,10 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
             <b className="text-green-500 capitalize">{productname}</b>
           </h3>
 
-          <p className="mt-1 text-xs sm:text-sm text-gray-500">
+          {/* <p className="mt-1 text-xs sm:text-sm text-gray-500">
             SKU Performance Analysis ({title}) – yearly performance comparison
             across regions
-          </p>
+          </p> */}
 
           <div className="my-4 flex flex-wrap items-center gap-3">
             {["global", ...nonEmptyCountriesFromApi].map((country) => {

@@ -8,7 +8,10 @@ export type UserData = {
   brand_name?: string;
   annual_sales_range?: string;
   onboarding_complete?: boolean;
+  homeCurrency?: string;
 };
+
+
 
 export type CountriesResponse = {
   countries: string[];

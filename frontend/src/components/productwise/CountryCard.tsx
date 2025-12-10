@@ -190,12 +190,12 @@
 
 
 
-
 // components/productwise/CountryCard.tsx
 "use client";
 
 import React from "react";
 import {
+  CountryKey,
   formatCurrencyByCountry,
   formatMonthYear,
   getCountryColor,
@@ -205,38 +205,30 @@ interface CountryCardProps {
   country: string;
   stats: any;
   selectedYear: number | "";
-  homeCurrency: "USD" | "GBP";
+  homeCurrency: "USD" | "GBP" | "INR" | "CAD";
 }
 
 const CountryCard: React.FC<CountryCardProps> = ({
   country,
   stats,
   selectedYear,
-  homeCurrency,
+  homeCurrency, // kept for props compatibility, not used for conversion
 }) => {
-  const countryKey = country.toLowerCase();
+  const countryKey = country.toLowerCase() as CountryKey;
 
-  // Decide which currency style to use:
-  // - Global scope (homeCurrency = USD) → ALL cards show as USD
-  // - UK scope (homeCurrency = GBP) → UK & Global cards show as GBP, others stay local
+  // Use the raw country key for formatting (this gives ₹ for global_inr, £ for uk, etc.)
   const formatAmount = (value: number) => {
-    if (homeCurrency === "USD") {
-      // show everything as USD
-      return formatCurrencyByCountry("us", value);
-    }
-
-    if (homeCurrency === "GBP") {
-      // UK mode → UK & Global in GBP
-      if (countryKey === "uk" || countryKey === "global") {
-        return formatCurrencyByCountry("uk", value);
-      }
-      // others (e.g. us) keep their own formatter
-      return formatCurrencyByCountry(country, value);
-    }
-
-    // Fallback
-    return formatCurrencyByCountry(country, value);
+    return formatCurrencyByCountry(countryKey, value);
   };
+
+  // For color + label, normalize "global_*" variants to "GLOBAL"
+  const colorKey: CountryKey = countryKey.startsWith("global")
+    ? "global"
+    : countryKey;
+
+  const displayLabel = countryKey.startsWith("global")
+    ? "GLOBAL"
+    : country.toUpperCase();
 
   return (
     <div className="rounded-lg border border-charcoal-500 bg-white p-4 sm:p-5 shadow-sm transition-shadow hover:shadow-md">
@@ -244,10 +236,10 @@ const CountryCard: React.FC<CountryCardProps> = ({
         <h4 className="m-0 font-extrabold text-green-500 text-[clamp(14px,1.2vw,20px)] flex items-center gap-2">
           <span
             className="inline-block h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-full"
-            style={{ backgroundColor: getCountryColor(country) }}
+            style={{ backgroundColor: getCountryColor(colorKey) }}
           />
           <span className="text-charcoal-500 text-[clamp(14px,1.1vw,18px)]">
-            {country.toUpperCase()}
+            {displayLabel}
           </span>
         </h4>
       </div>
@@ -296,8 +288,9 @@ const CountryCard: React.FC<CountryCardProps> = ({
               Avg. Selling Price
             </p>
             <p className="text-[clamp(12px,0.95vw,16px)] font-semibold">
-              {formatAmount(stats.avgSellingPrice)}
+              {formatAmount(Number(stats.avgSellingPrice.toFixed(2)))}
             </p>
+
           </div>
 
           <div className="rounded-lg border border-gray-300 bg-gray-200/40 p-2 sm:p-3">
@@ -320,7 +313,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
             className="rounded-lg border border-gray-300 bg-gray-200/40 p-2 sm:p-3"
             style={{
               borderTopWidth: 4,
-              borderTopColor: getCountryColor(country),
+              borderTopColor: getCountryColor(colorKey),
             }}
           >
             <p className="mb-1 text-[clamp(11px,0.85vw,13px)] font-semibold text-[#414042]">
@@ -339,7 +332,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
             className="rounded-lg border border-gray-300 bg-gray-200/40 p-2 sm:p-3"
             style={{
               borderTopWidth: 4,
-              borderTopColor: getCountryColor(country),
+              borderTopColor: getCountryColor(colorKey),
             }}
           >
             <p className="mb-1 text-[clamp(11px,0.85vw,13px)] font-semibold text-[#414042]">
@@ -358,7 +351,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
             className="rounded-lg border border-gray-300 bg-gray-200/40 p-2 sm:p-3"
             style={{
               borderTopWidth: 4,
-              borderTopColor: getCountryColor(country),
+              borderTopColor: getCountryColor(colorKey),
             }}
           >
             <p className="mb-1 text-[clamp(11px,0.85vw,13px)] font-semibold text-[#414042]">

@@ -220,7 +220,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({ productname = "
     fetchProductData();
   }, [productname, year]);
 
- const prepareChartData = () => {
+const prepareChartData = () => {
   if (!data || !data.data) return [];
 
   const monthOrder = [
@@ -230,35 +230,63 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({ productname = "
 
   const allMonths = new Set<string>();
 
-  // data.data is Record<country, MonthDatum[]>, but your typing is messy in this file
-  Object.values(data.data as any).forEach((rows: any[]) => {
-    rows?.forEach((m: any) => allMonths.add(m.month));
+  // 1) Collect months from ANY arrays under each country
+  Object.values(data.data as any).forEach((countryBlock: any) => {
+    if (!countryBlock) return;
+
+    // Normalize to: list of arrays of rows
+    const arrays: any[][] = [];
+
+    if (Array.isArray(countryBlock)) {
+      arrays.push(countryBlock);
+    } else {
+      // countryBlock is an object like { Yearly: [...], Quarterly: [...] }
+      Object.values(countryBlock).forEach((maybeArr: any) => {
+        if (Array.isArray(maybeArr)) arrays.push(maybeArr);
+      });
+    }
+
+    arrays.forEach(rows => {
+      rows.forEach((m: any) => {
+        if (m?.month) allMonths.add(String(m.month));
+      });
+    });
   });
 
   const labels = Array.from(allMonths).sort(
     (a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b)
   );
 
+  if (!labels.length) return [];
+
   const getMetric = (country: string, month: string) => {
-    const arr = (data.data as any)?.[country];
-    if (!arr) return 0;
-    const found = arr.find((m: any) => m.month === month);
+    const countryBlock: any = (data.data as any)[country];
+    if (!countryBlock) return 0;
+
+    let rows: any[] = [];
+
+    if (Array.isArray(countryBlock)) {
+      rows = countryBlock;
+    } else {
+      // pick first array inside the object
+      const firstArr = Object.values(countryBlock).find((v: any) => Array.isArray(v)) as any[] | undefined;
+      if (firstArr) rows = firstArr;
+    }
+
+    const found = rows.find((m: any) => m.month === month);
     return found ? Number(found.net_sales || 0) : 0;
   };
 
   return labels.map((month) => {
-    const ukRaw = getMetric("uk", month);
-    const usRaw = getMetric("us", month);
-    const globalRaw = getMetric("global", month);
+    const ukRaw = getMetric('uk', month);
+    const usRaw = getMetric('us', month);
+    const globalRaw = getMetric('global', month);
 
-    // Match ProductwisePerformance:
-    // UK shown in USD, GLOBAL = (UK in USD) + US, fallback to backend global
     const ukUSD = ukRaw * GBP_TO_USD_RATE;
     const globalUSD = (ukUSD + usRaw) !== 0 ? (ukUSD + usRaw) : globalRaw;
 
     const point: Record<string, any> = { month };
 
-    // only put values for selected countries
     if (selectedCountries.uk) point.uk = ukUSD;
     if (selectedCountries.us) point.us = usRaw;
     if (selectedCountries.global) point.global = globalUSD;
@@ -266,6 +294,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({ productname = "
     return point;
   });
 };
+
 
 
   const getCountryColor = (country: string) => {
