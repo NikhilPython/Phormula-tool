@@ -11,7 +11,8 @@ import IconButton from '@mui/material/IconButton';
 import { IoDownload } from "react-icons/io5";
 import { BsStars } from "react-icons/bs";
 import { FaArrowUp, FaArrowDown } from 'react-icons/fa';
-import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
+import * as echarts from 'echarts';
+
 
 
 // =========================
@@ -45,8 +46,12 @@ interface SkuItem {
   asp_month2?: number;
   net_sales_month1?: number;
   net_sales_month2?: number;
+  product_sales_month1?: number;
+  product_sales_month2?: number;
   sales_mix_month1?: number;
   sales_mix_month2?: number;
+   profit_percentage_month1?: number;
+  profit_percentage_month2?: number;
   unit_wise_profitability_month1?: number;
   unit_wise_profitability_month2?: number;
   profit_month1?: number;
@@ -107,6 +112,16 @@ const MonthsforBI: React.FC = () => {
   const params = useParams();
   const countryName = params?.countryName as string | undefined;
 
+  const hexToRgba = (hex: string, a: number) => {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
+  const n = parseInt(full, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+};
+
   // Month/year form
   const [month1, setMonth1] = useState<string>('');
   const [year1, setYear1] = useState<string>('');
@@ -141,9 +156,390 @@ const [activeTab, setActiveTab] = useState<TabKey>('top_80_skus');
   const [fbText, setFbText] = useState<string>('');
   const [fbSubmitting, setFbSubmitting] = useState<boolean>(false);
   const [fbSuccess, setFbSuccess] = useState<boolean>(false);
+  const [autoCompared, setAutoCompared] = useState(false);
+  const [expandAllSkusOthers, setExpandAllSkusOthers] = useState(false);
 
   // ✅ NEW: available periods from backend (['YYYY-MM'])
   const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
+
+  const chartRef = React.useRef<HTMLDivElement | null>(null);
+const chartInstanceRef = React.useRef<echarts.EChartsType | null>(null);
+
+const profitChartRef = React.useRef<HTMLDivElement | null>(null);
+const profitChartInstanceRef = React.useRef<echarts.EChartsType | null>(null);
+
+const periodToDate = (p: string) => {
+  // p = "YYYY-MM"
+  const [yy, mm] = p.split('-').map(Number);
+  return new Date(yy, (mm || 1) - 1, 1).getTime();
+};
+
+const pickDefaultComparePeriods = (periods: string[]) => {
+  if (!periods?.length) return null;
+
+  const now = new Date();
+  const cy = now.getFullYear();
+  const cm = pad2(now.getMonth() + 1);
+  const currentKey = `${cy}-${cm}`;
+
+  // exclude current month (even if available)
+  const filtered = periods.filter((p) => p !== currentKey);
+
+  // sort descending (latest first)
+  const sorted = [...filtered].sort((a, b) => periodToDate(b) - periodToDate(a));
+
+  if (sorted.length < 2) return null;
+
+  return { newer: sorted[0], older: sorted[1] }; // month2=newer, month1=older
+};
+
+const sumField = (rows: any[], key: string) =>
+  (rows || []).reduce((a, r) => a + Number(r?.[key] ?? 0), 0);
+
+const buildCompareSeries = (metricKeyBase: 'net_sales' | 'profit') => {
+  const m1Label = `${getAbbr(month1)}'${String(year1).slice(2)}`;
+  const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
+const x = [`${m1Label}`, '', `${m2Label}`];
+
+  const top80Rows = categorizedGrowth.top_80_skus || [];
+  const newRevRows = categorizedGrowth.new_or_reviving_skus || [];
+  const otherRows = categorizedGrowth.other_skus || [];
+  const allRows = categorizedGrowth.all_skus || [...top80Rows, ...newRevRows, ...otherRows];
+
+  const m1Key = `${metricKeyBase}_month1`;
+  const m2Key = `${metricKeyBase}_month2`;
+
+  const top80_m1 = sumField(top80Rows, m1Key);
+  const top80_m2 = sumField(top80Rows, m2Key);
+
+  const newRev_m1 = sumField(newRevRows, m1Key);
+  const newRev_m2 = sumField(newRevRows, m2Key);
+
+  const other_m1 = sumField(otherRows, m1Key);
+  const other_m2 = sumField(otherRows, m2Key);
+
+ 
+
+  return { x, values: { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2,  } };
+};
+
+
+
+useEffect(() => {
+  const el = chartRef.current;
+  if (!el) return;
+
+  const raf = requestAnimationFrame(() => {
+    if (chartInstanceRef.current && chartInstanceRef.current.getDom() !== el) {
+      chartInstanceRef.current.dispose();
+      chartInstanceRef.current = null;
+    }
+    if (!chartInstanceRef.current) {
+      chartInstanceRef.current = echarts.init(el);
+    }
+
+    const { x, values } = buildCompareSeries('net_sales');
+    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+
+    const hasAny =
+      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2 
+
+    if (!hasAny) {
+      chartInstanceRef.current?.clear();
+      chartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+      chartInstanceRef.current?.resize();
+      return;
+    }
+
+    const option: echarts.EChartsOption = {
+tooltip: {
+  trigger: 'axis',
+  valueFormatter: (v: any) => Math.round(Number(v)).toLocaleString(),
+},
+
+      legend: { top: 0 },
+      grid: { left: 50, right: 20, top: 40, bottom: 35 },
+        color: ['#87AD12', '#AB64B5', '#F47A00',], // Net Sales palette
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: x,
+axisLabel: {
+  interval: 0,
+  margin: 20,
+  align: 'center',
+  formatter: (v: string, idx: number) => {
+    if (v === '') return '';
+    if (idx === 0) return `{m1|${v}}`; // Month1
+    if (idx === 2) return `{m2|${v}}`; // Month2
+    return v;
+  },
+  rich: {
+    // Month1 ko center-left lane ke liye RIGHT align + left padding
+    m1: {
+      align: 'right',
+      padding: [0, 0, 0, 80], // <-- increase/decrease (60-120)
+    },
+    // Month2 ko center-right lane ke liye LEFT align + right padding
+    m2: {
+      align: 'left',
+      padding: [0, 80, 0, 0], // <-- increase/decrease (60-120)
+    },
+  },
+},
+
+
+        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
+      },
+      yAxis: {
+        type: 'value',
+ axisLabel: {
+    formatter: (v: any) => Math.round(Number(v)).toLocaleString(),
+  },
+      },
+      
+    series: [
+  {
+    name: 'New/Reviving',
+    type: 'line',
+    stack: 'Total',
+    symbol: 'none',
+   areaStyle: {
+  color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+    { offset: 0.0, color: hexToRgba("#87AD12", 0.12) },
+    { offset: 0.49, color: hexToRgba("#87AD12", 0.12) },
+    { offset: 0.51, color: hexToRgba("#87AD12", 0.28) },
+    { offset: 1.0, color: hexToRgba("#87AD12", 0.28) },
+  ]),
+},
+    data: [newRev_m1, newRev_m1, newRev_m2],
+  },
+  {
+    name: 'Other SKUs',
+    type: 'line',
+    stack: 'Total',
+    symbol: 'none',
+    areaStyle: {
+  color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+    { offset: 0.0, color: hexToRgba("#AB64B5", 0.12) },
+    { offset: 0.49, color: hexToRgba("#AB64B5", 0.12) },
+    { offset: 0.51, color: hexToRgba("#AB64B5", 0.28) },
+    { offset: 1.0, color: hexToRgba("#AB64B5", 0.28) },
+  ]),
+},
+    data: [other_m1, other_m1, other_m2],
+  },
+  {
+    name: 'Top 80%',
+    type: 'line',
+    stack: 'Total',
+    symbol: 'none',
+    areaStyle: {
+  color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+    { offset: 0.0, color: hexToRgba("#F47A00", 0.12) },
+    { offset: 0.49, color: hexToRgba("#F47A00", 0.12) },
+    { offset: 0.51, color: hexToRgba("#F47A00", 0.28) },
+    { offset: 1.0, color: hexToRgba("#F47A00", 0.28) },
+  ]),
+},
+    data: [top80_m1, top80_m1, top80_m2],
+     markLine: {
+      symbol: "none",
+      silent: true,
+      data: [{ xAxis: "" }], // center category
+      lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+      label: { show: false },
+    },
+  },
+ 
+],
+
+
+
+    };
+
+    chartInstanceRef.current!.setOption(option, true);
+    chartInstanceRef.current!.resize();
+
+    const onResize = () => chartInstanceRef.current?.resize();
+    window.addEventListener('resize', onResize);
+    const ro = new ResizeObserver(() => chartInstanceRef.current?.resize());
+    ro.observe(el);
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      ro.disconnect();
+    };
+  });
+
+  return () => cancelAnimationFrame(raf);
+}, [
+  month1, year1, month2, year2,
+  categorizedGrowth.top_80_skus,
+  categorizedGrowth.new_or_reviving_skus,
+  categorizedGrowth.other_skus,
+]);
+
+useEffect(() => {
+  const el = profitChartRef.current;
+  if (!el) return;
+
+  const raf = requestAnimationFrame(() => {
+    if (profitChartInstanceRef.current && profitChartInstanceRef.current.getDom() !== el) {
+      profitChartInstanceRef.current.dispose();
+      profitChartInstanceRef.current = null;
+    }
+    if (!profitChartInstanceRef.current) {
+      profitChartInstanceRef.current = echarts.init(el);
+    }
+
+    const { x, values } = buildCompareSeries('profit');
+    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+
+    const hasAny =
+      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2 ;
+
+    if (!hasAny) {
+      profitChartInstanceRef.current?.clear();
+      profitChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+      profitChartInstanceRef.current?.resize();
+      return;
+    }
+
+    const option: echarts.EChartsOption = {
+tooltip: {
+  trigger: 'axis',
+  valueFormatter: (v: any) => Math.round(Number(v)).toLocaleString(),
+},
+
+      legend: { top: 0 },
+      grid: { left: 50, right: 20, top: 40, bottom: 35 },
+       color: ['#87AD12', '#AB64B5', '#F47A00',], // Net Sales palette
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: x,
+axisLabel: {
+  interval: 0,
+  margin: 20,
+  align: 'center',
+  formatter: (v: string, idx: number) => {
+    if (v === '') return '';
+    if (idx === 0) return `{m1|${v}}`; // Month1
+    if (idx === 2) return `{m2|${v}}`; // Month2
+    return v;
+  },
+  rich: {
+    // Month1 ko center-left lane ke liye RIGHT align + left padding
+    m1: {
+      align: 'right',
+      padding: [0, 0, 0, 80], // <-- increase/decrease (60-120)
+    },
+    // Month2 ko center-right lane ke liye LEFT align + right padding
+    m2: {
+      align: 'left',
+      padding: [0, 80, 0, 0], // <-- increase/decrease (60-120)
+    },
+  },
+},
+
+
+        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
+      },
+      yAxis: {
+        type: 'value',
+ axisLabel: {
+    formatter: (v: any) => Math.round(Number(v)).toLocaleString(),
+  },
+      },
+   series: [
+  {
+    name: 'New/Reviving',
+    type: 'line',
+    stack: 'Total',
+    symbol: 'none',
+areaStyle: {
+  color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+    { offset: 0.0, color: hexToRgba("#87AD12", 0.12) },
+    { offset: 0.49, color: hexToRgba("#87AD12", 0.12) },
+    { offset: 0.51, color: hexToRgba("#87AD12", 0.28) },
+    { offset: 1.0, color: hexToRgba("#87AD12", 0.28) },
+  ]),
+},
+    data: [newRev_m1, newRev_m1, newRev_m2],
+  },
+  {
+    name: 'Other SKUs',
+    type: 'line',
+    stack: 'Total',
+    symbol: 'none',
+    areaStyle: {
+  color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+    { offset: 0.0, color: hexToRgba("#AB64B5", 0.12) },
+    { offset: 0.49, color: hexToRgba("#AB64B5", 0.12) },
+    { offset: 0.51, color: hexToRgba("#AB64B5", 0.28) },
+    { offset: 1.0, color: hexToRgba("#AB64B5", 0.28) },
+  ]),
+},
+    data: [other_m1, other_m1, other_m2],
+
+  },
+  {
+    name: 'Top 80%',
+    type: 'line',
+    stack: 'Total',
+    symbol: 'none',
+    areaStyle: {
+  color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+    { offset: 0.0, color: hexToRgba("#F47A00", 0.12) },
+    { offset: 0.49, color: hexToRgba("#F47A00", 0.12) },
+    { offset: 0.51, color: hexToRgba("#F47A00", 0.28) },
+    { offset: 1.0, color: hexToRgba("#F47A00", 0.28) },
+  ]),
+},
+
+    data: [top80_m1, top80_m1, top80_m2],
+     markLine: {
+      symbol: "none",
+      silent: true,
+      data: [{ xAxis: "" }], // center category
+      lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+      label: { show: false },
+    },
+  },
+],
+
+
+
+
+    };
+
+    profitChartInstanceRef.current!.setOption(option, true);
+    profitChartInstanceRef.current!.resize();
+
+    const onResize = () => profitChartInstanceRef.current?.resize();
+    window.addEventListener('resize', onResize);
+    const ro = new ResizeObserver(() => profitChartInstanceRef.current?.resize());
+    ro.observe(el);
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      ro.disconnect();
+    };
+  });
+
+  return () => cancelAnimationFrame(raf);
+}, [
+  month1, year1, month2, year2,
+  categorizedGrowth.top_80_skus,
+  categorizedGrowth.new_or_reviving_skus,
+  categorizedGrowth.other_skus,
+]);
+
+
+
+
+
 
   // Helpers
   const months: MonthOption[] = [
@@ -233,7 +629,8 @@ const [activeTab, setActiveTab] = useState<TabKey>('top_80_skus');
     const fieldMap: Record<string, string> = {
       'Unit Growth (%)': 'Unit Growth',
       'ASP Growth (%)': 'ASP Growth',
-      'Sales Growth (%)': 'Sales Growth',
+      'Gross Sales Growth (%)': 'Gross Sales Growth',
+      'Net Sales Growth (%)': 'Net Sales Growth',
       'Sales Mix Change (%)': 'Sales Mix Change',
       'Profit Per Unit (%)': 'Profit Per Unit',
       'CM1 Profit Impact (%)': 'CM1 Profit Impact',
@@ -252,8 +649,16 @@ clone.asp_month2 = row.asp_month2 ?? row.asp_curr ?? null;
 clone.net_sales_month1 = row.net_sales_month1 ?? row.net_sales_prev ?? null;
 clone.net_sales_month2 = row.net_sales_month2 ?? row.net_sales_curr ?? null;
 
+clone.product_sales_month1 = row.product_sales_month1 ?? row.product_sales_prev ?? null;
+clone.product_sales_month2 = row.product_sales_month2 ?? row.product_sales_curr ?? null;
+
+
 clone.sales_mix_month1 = row.sales_mix_month1 ?? row.sales_mix_prev ?? null;
 clone.sales_mix_month2 = row.sales_mix_month2 ?? row.sales_mix_curr ?? row['Sales Mix (Current)'] ?? null;
+
+clone.profit_percentage_month1 = row.profit_percentage_month1 ?? row.profit_percentage_prev ?? null;
+clone.profit_percentage_month2 = row.profit_percentage_month2 ?? row.profit_percentage_curr ?? null;
+
 
 clone.unit_wise_profitability_month1 =
   row.unit_wise_profitability_month1 ?? row.unit_wise_profitability_prev ?? null;
@@ -355,6 +760,35 @@ clone.profit_month2 = row.profit_month2 ?? row.profit_curr ?? null;
     }
   }, [year2, availablePeriods]);
 
+  useEffect(() => {
+  if (!availablePeriods?.length) return;
+
+  // If user already has a valid selection (or storage restored it), don't override
+  const hasValid =
+    month1 && year1 && month2 && year2 &&
+    isPeriodAvailable(year1, month1) &&
+    isPeriodAvailable(year2, month2);
+
+  if (hasValid) return;
+
+  const def = pickDefaultComparePeriods(availablePeriods);
+  if (!def) return;
+
+  const [y2, m2] = def.newer.split('-'); // newer => Month2
+  const [y1, m1] = def.older.split('-'); // older => Month1
+
+  setYear1(y1);
+  setMonth1(m1);
+  setYear2(y2);
+  setMonth2(m2);
+
+  setAutoCompared(false);
+
+  // optional: auto compare on load
+  // handleSubmit(); // (If you want auto fetch immediately)
+}, [availablePeriods]);
+
+
   // =====================
   // Fetch compare result
   // =====================
@@ -406,6 +840,22 @@ saveCompareToStorage({
       setError(err?.response?.data?.error || 'An error occurred');
     }
   };
+
+  useEffect(() => {
+  // auto compare only after defaults are set AND only once
+  if (autoCompared) return;
+
+  if (!month1 || !year1 || !month2 || !year2) return;
+
+  // make sure chosen periods are valid
+  if (!isPeriodAvailable(year1, month1) || !isPeriodAvailable(year2, month2)) return;
+
+  // run compare automatically
+  handleSubmit();
+  setAutoCompared(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [month1, year1, month2, year2, availablePeriods, autoCompared]);
+
 
   // =====================
   // AI insights generate
@@ -466,8 +916,17 @@ saveCompareToStorage({
   // Export to Excel
   // =====================
 const exportToExcel = (rows: SkuItem[], filename = 'export.xlsx') => {
-  const m1Abbr = `${getAbbr(month1)}'${String(year1).slice(2)}`;
-const m2Abbr = `${getAbbr(month2)}'${String(year2).slice(2)}`;
+  // ✅ IMPORTANT: backend fields are tied to month1(old) / month2(new). Keep fixed mapping.
+  const isM2New = true;
+
+  const newMonth = isM2New ? month2 : month1;
+  const newYear = isM2New ? year2 : year1;
+  const oldMonth = isM2New ? month1 : month2;
+  const oldYear = isM2New ? year1 : year2;
+
+  const newAbbr = `${getAbbr(newMonth)}'${String(newYear).slice(2)}`;
+  const oldAbbr = `${getAbbr(oldMonth)}'${String(oldYear).slice(2)}`;
+
   // 1) remove any existing total rows coming from API/data
   const cleanRows = (rows || []).filter((r) => {
     const name = String(r?.product_name || '').toLowerCase().trim();
@@ -479,138 +938,348 @@ const m2Abbr = `${getAbbr(month2)}'${String(year2).slice(2)}`;
     return Number.isFinite(n) ? n : 0;
   };
 
-  // 2) build normal rows
-  const formatted = cleanRows.map((row) => {
-    const unitGrowth = row['Unit Growth'] as GrowthCategory | undefined;
-    const aspGrowth = row['ASP Growth'] as GrowthCategory | undefined;
-    const salesGrowth = row['Sales Growth'] as GrowthCategory | undefined;
-    const mixGrowth = row['Sales Mix Change'] as GrowthCategory | undefined;
-    const unitProfitGrowth = row['Profit Per Unit'] as GrowthCategory | undefined;
-    const profitGrowth = row['CM1 Profit Impact'] as GrowthCategory | undefined;
+  const round2 = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Number(n.toFixed(2)) : null;
+  };
 
-    return {
-      SKU: row.sku || '',
-      Product: row.product_name || '',
+  // helper to pick month1/month2 value based on which is new/old
+  const pickNew = (row: any, keyMonth1: string, keyMonth2: string) =>
+    isM2New ? row?.[keyMonth2] : row?.[keyMonth1];
 
-      [`Qty ${m1Abbr}`]: row.quantity_month1 ?? null,
-      [`Qty ${m2Abbr}`]: row.quantity_month2 ?? null,
-      'Qty %': unitGrowth?.value ?? null,
+  const pickOld = (row: any, keyMonth1: string, keyMonth2: string) =>
+    isM2New ? row?.[keyMonth1] : row?.[keyMonth2];
 
-      [`ASP ${m1Abbr}`]: row.asp_month1 ?? null,
-      [`ASP ${m2Abbr}`]: row.asp_month2 ?? null,
-      'ASP %': aspGrowth?.value ?? null,
+  const pct = (oldV: number, newV: number) => (oldV ? ((newV - oldV) / oldV) * 100 : null);
 
-      [`Net Sales ${m1Abbr}`]: row.net_sales_month1 ?? null,
-      [`Net Sales ${m2Abbr}`]: row.net_sales_month2 ?? null,
-      'Net Sales %': salesGrowth?.value ?? null,
+  // ✅ EXACT column order (NEW month first, then OLD month)
+  const headerOrder = [
+    'SKU',
+    'Product',
 
-      [`Sales Mix ${m1Abbr}`]: row.sales_mix_month1 ?? null,
-      [`Sales Mix ${m2Abbr}`]: row.sales_mix_month2 ?? row['Sales Mix (Month2)'] ?? null,
-      'Sales Mix %': mixGrowth?.value ?? null,
+    `Qty ${newAbbr}`,
+    `Qty ${oldAbbr}`,
+    'Change in Qty (%age)',
 
-      [`Unit Profit ${m1Abbr}`]: row.unit_wise_profitability_month1 ?? null,
-      [`Unit Profit ${m2Abbr}`]: row.unit_wise_profitability_month2 ?? null,
-      'Unit Profit %': unitProfitGrowth?.value ?? null,
+    `Gross Sales ${newAbbr}`,
+    `Gross Sales ${oldAbbr}`,
+    'Change in Gross Sales (%age)',
 
-      [`CM1 Profit ${m1Abbr}`]: row.profit_month1 ?? null,
-      [`CM1 Profit ${m2Abbr}`]: row.profit_month2 ?? null,
-      'CM1 Profit %': profitGrowth?.value ?? null,
-    };
-  });
+    `Net Sales ${newAbbr}`,
+    `Net Sales ${oldAbbr}`,
+    'Change in Net Sales (%age)',
 
-  // 3) compute totals (sum)
-  const totals = cleanRows.reduce(
+    `ASP ${newAbbr}`,
+    `ASP ${oldAbbr}`,
+    'Change in ASP (%age)',
 
-    (acc, r) => {
-      acc.qty1 += num(r.quantity_month1);
-      acc.qty2 += num(r.quantity_month2);
+    `Sales Mix ${newAbbr}`,
+    `Sales Mix ${oldAbbr}`,
+    'Change in Sales Mix (%age)',
 
-      acc.asp1 += num(r.asp_month1);
-      acc.asp2 += num(r.asp_month2);
+    `CM1 Profit ${newAbbr}`,
+    `CM1 Profit ${oldAbbr}`,
+    'Change in CM1 Profit',
 
-      acc.sales1 += num(r.net_sales_month1);
-      acc.sales2 += num(r.net_sales_month2);
+    `CM1 Profit %age(${newAbbr})`,
+    `CM1 Profit %age(${oldAbbr})`,
 
-      acc.mix1 += num(r.sales_mix_month1);
-      acc.mix2 += num(r.sales_mix_month2 ?? r['Sales Mix (Month2)']);
+    `Unit Profit ${newAbbr}`,
+    `Unit Profit ${oldAbbr}`,
+    'Change in Unit Profit (%age)',
+  ];
 
-      acc.up1 += num(r.unit_wise_profitability_month1);
-      acc.up2 += num(r.unit_wise_profitability_month2);
+  /**
+   * ✅ Percent formatting:
+   * formats columns whose header contains "%" OR starts with "Sales Mix "
+   * for rows below the provided header row until it hits a blank separator row.
+   */
+  const addPercentToPercentColumns = (ws: XLSX.WorkSheet, headerRowIndexes: number[] = [0]) => {
+    const ref = ws["!ref"];
+    if (!ref) return;
 
-      acc.p1 += num(r.profit_month1);
-      acc.p2 += num(r.profit_month2);
+    const range = XLSX.utils.decode_range(ref);
+    const isSalesMixHeader = (h: string) => h.trim().toLowerCase().startsWith("sales mix ");
 
-      return acc;
-    },
-    { qty1: 0, qty2: 0, asp1: 0, asp2: 0, sales1: 0, sales2: 0, mix1: 0, mix2: 0, up1: 0, up2: 0, p1: 0, p2: 0 }
-  );
-  const pct = (a: number, b: number) => (a ? ((b - a) / a) * 100 : null);
+    for (const headerRow of headerRowIndexes) {
+      if (headerRow < range.s.r || headerRow > range.e.r) continue;
 
-  // 4) append total row ALWAYS at the end (blank % columns to avoid confusion)
-  formatted.push({
-  SKU: '',
-  Product: 'Total',
+      for (let C = range.s.c; C <= range.e.c; C++) {
+        const headerCell = ws[XLSX.utils.encode_cell({ r: headerRow, c: C })];
+        const header = String(headerCell?.v ?? "");
 
-  [`Qty ${m1Abbr}`]: totals.qty1,
-  [`Qty ${m2Abbr}`]: totals.qty2,
-  'Qty %': pct(totals.qty1, totals.qty2),
+        const shouldFormatAsPercent = header.includes("%") || isSalesMixHeader(header);
+        if (!shouldFormatAsPercent) continue;
 
-  [`ASP ${m1Abbr}`]: totals.asp1,
-  [`ASP ${m2Abbr}`]: totals.asp2,
-  'ASP %': pct(totals.asp1, totals.asp2),
+        for (let R = headerRow + 1; R <= range.e.r; R++) {
+          // stop at blank separator row
+          const a0 = ws[XLSX.utils.encode_cell({ r: R, c: 0 })];
+          const b0 = ws[XLSX.utils.encode_cell({ r: R, c: 1 })];
+          const rowLooksBlank =
+            (!a0 || a0.v == null || a0.v === "") &&
+            (!b0 || b0.v == null || b0.v === "");
+          if (rowLooksBlank) break;
 
-  [`Net Sales ${m1Abbr}`]: totals.sales1,
-  [`Net Sales ${m2Abbr}`]: totals.sales2,
-  'Net Sales %': pct(totals.sales1, totals.sales2),
+          const addr = XLSX.utils.encode_cell({ r: R, c: C });
+          const cell = ws[addr];
+          if (!cell || cell.v == null || cell.v === "") continue;
 
-  [`Sales Mix ${m1Abbr}`]: totals.mix1,
-  [`Sales Mix ${m2Abbr}`]: totals.mix2,
-  'Sales Mix %': null, // or define properly
+          const n = Number(cell.v);
+          if (!Number.isFinite(n)) continue;
 
-  [`Unit Profit ${m1Abbr}`]: totals.up1,
-  [`Unit Profit ${m2Abbr}`]: totals.up2,
-  'Unit Profit %': pct(totals.up1, totals.up2),
-
-  [`CM1 Profit ${m1Abbr}`]: totals.p1,
-  [`CM1 Profit ${m2Abbr}`]: totals.p2,
-  'CM1 Profit %': pct(totals.p1, totals.p2),
-});
-
-
-  const addPercentToPercentColumns = (ws: XLSX.WorkSheet) => {
-  const ref = ws['!ref'];
-  if (!ref) return;
-
-  const range = XLSX.utils.decode_range(ref);
-
-  // header row assumed at row 0
-  for (let C = range.s.c; C <= range.e.c; C++) {
-    const headerCell = ws[XLSX.utils.encode_cell({ r: 0, c: C })];
-    const header = String(headerCell?.v ?? '');
-    if (!header.includes('%')) continue;
-
-    // apply % display to rows (skip header)
-    for (let R = 1; R <= range.e.r; R++) {
-      const addr = XLSX.utils.encode_cell({ r: R, c: C });
-      const cell = ws[addr];
-      if (!cell || cell.v == null || cell.v === '') continue;
-
-      const n = Number(cell.v);
-      if (!Number.isFinite(n)) continue;
-
-      // keep as number but display with percent sign
-      ws[addr] = { ...cell, t: 'n', v: n, z: '0.00"%"' };
+          ws[addr] = { ...cell, t: "n", v: n, z: '0.00"%"' };
+        }
+      }
     }
+  };
+
+  // -------------------------
+  // Shared: formatter for a section (adds a Total row at bottom)
+  // -------------------------
+  const formatRowsWithTotals = (inputRows: SkuItem[]) => {
+    const clean = (inputRows || []).filter((r) => {
+      const name = String(r?.product_name || '').toLowerCase().trim();
+      return name !== 'total' && !name.includes('total (top 80') && name !== 'total (top 80%)';
+    });
+
+    const formatted = clean.map((row) => {
+      const unitGrowth = row['Unit Growth'] as GrowthCategory | undefined;
+      const aspGrowth = row['ASP Growth'] as GrowthCategory | undefined;
+      const grossSalesGrowth = row['Gross Sales Growth'] as GrowthCategory | undefined;
+      const netSalesGrowth = row['Net Sales Growth'] as GrowthCategory | undefined;
+      const mixGrowth = row['Sales Mix Change'] as GrowthCategory | undefined;
+      const unitProfitGrowth = row['Profit Per Unit'] as GrowthCategory | undefined;
+
+      const qtyOld = pickOld(row, 'quantity_month1', 'quantity_month2');
+      const qtyNew = pickNew(row, 'quantity_month1', 'quantity_month2');
+
+      const gsOld = pickOld(row, 'product_sales_month1', 'product_sales_month2');
+      const gsNew = pickNew(row, 'product_sales_month1', 'product_sales_month2');
+
+      const nsOld = pickOld(row, 'net_sales_month1', 'net_sales_month2');
+      const nsNew = pickNew(row, 'net_sales_month1', 'net_sales_month2');
+
+      const aspOld = pickOld(row, 'asp_month1', 'asp_month2');
+      const aspNew = pickNew(row, 'asp_month1', 'asp_month2');
+
+      const mixOld = pickOld(row, 'sales_mix_month1', 'sales_mix_month2');
+      const mixNew = pickNew(row, 'sales_mix_month1', 'sales_mix_month2') ?? row?.['Sales Mix (Month2)'];
+
+      const cm1Old = pickOld(row, 'profit_month1', 'profit_month2');
+      const cm1New = pickNew(row, 'profit_month1', 'profit_month2');
+
+      const cm1PctOld = pickOld(row, 'profit_percentage_month1', 'profit_percentage_month2');
+      const cm1PctNew = pickNew(row, 'profit_percentage_month1', 'profit_percentage_month2');
+
+      const upOld = pickOld(row, 'unit_wise_profitability_month1', 'unit_wise_profitability_month2');
+      const upNew = pickNew(row, 'unit_wise_profitability_month1', 'unit_wise_profitability_month2');
+
+      return {
+        SKU: row.sku || '',
+        Product: row.product_name || '',
+
+        [`Qty ${newAbbr}`]: qtyNew ?? null,
+        [`Qty ${oldAbbr}`]: qtyOld ?? null,
+        'Change in Qty (%age)': unitGrowth?.value ?? null,
+
+        [`Gross Sales ${newAbbr}`]: gsNew ?? null,
+        [`Gross Sales ${oldAbbr}`]: gsOld ?? null,
+        'Change in Gross Sales (%age)': grossSalesGrowth?.value ?? null,
+
+        [`Net Sales ${newAbbr}`]: nsNew ?? null,
+        [`Net Sales ${oldAbbr}`]: nsOld ?? null,
+        'Change in Net Sales (%age)': netSalesGrowth?.value ?? null,
+
+        [`ASP ${newAbbr}`]: round2(aspNew ?? null),
+        [`ASP ${oldAbbr}`]: round2(aspOld ?? null),
+        'Change in ASP (%age)': aspGrowth?.value ?? null,
+
+        [`Sales Mix ${newAbbr}`]: mixNew ?? null,
+        [`Sales Mix ${oldAbbr}`]: mixOld ?? null,
+        'Change in Sales Mix (%age)': mixGrowth?.value ?? null,
+
+        [`CM1 Profit ${newAbbr}`]: cm1New ?? null,
+        [`CM1 Profit ${oldAbbr}`]: cm1Old ?? null,
+        'Change in CM1 Profit': cm1New != null && cm1Old != null ? Number(cm1New) - Number(cm1Old) : null,
+
+        [`CM1 Profit %age(${newAbbr})`]: cm1PctNew ?? null,
+        [`CM1 Profit %age(${oldAbbr})`]: cm1PctOld ?? null,
+
+        [`Unit Profit ${newAbbr}`]: upNew ?? null,
+        [`Unit Profit ${oldAbbr}`]: upOld ?? null,
+        'Change in Unit Profit (%age)': unitProfitGrowth?.value ?? null,
+      };
+    });
+
+    // totals
+    const totals = clean.reduce(
+      (acc, r) => {
+        acc.qtyOld += num(pickOld(r, 'quantity_month1', 'quantity_month2'));
+        acc.qtyNew += num(pickNew(r, 'quantity_month1', 'quantity_month2'));
+
+        acc.gsOld += num(pickOld(r, 'product_sales_month1', 'product_sales_month2'));
+        acc.gsNew += num(pickNew(r, 'product_sales_month1', 'product_sales_month2'));
+
+        acc.nsOld += num(pickOld(r, 'net_sales_month1', 'net_sales_month2'));
+        acc.nsNew += num(pickNew(r, 'net_sales_month1', 'net_sales_month2'));
+
+        acc.mixOld += num(pickOld(r, 'sales_mix_month1', 'sales_mix_month2'));
+        acc.mixNew += num(pickNew(r, 'sales_mix_month1', 'sales_mix_month2') ?? r?.['Sales Mix (Month2)']);
+
+        acc.cm1Old += num(pickOld(r, 'profit_month1', 'profit_month2'));
+        acc.cm1New += num(pickNew(r, 'profit_month1', 'profit_month2'));
+
+        acc.upOld += num(pickOld(r, 'unit_wise_profitability_month1', 'unit_wise_profitability_month2'));
+        acc.upNew += num(pickNew(r, 'unit_wise_profitability_month1', 'unit_wise_profitability_month2'));
+
+        return acc;
+      },
+      { qtyOld: 0, qtyNew: 0, gsOld: 0, gsNew: 0, nsOld: 0, nsNew: 0, mixOld: 0, mixNew: 0, cm1Old: 0, cm1New: 0, upOld: 0, upNew: 0 }
+    );
+
+    const safeDiv = (a: number, b: number) => (b ? a / b : null);
+    const totalAspOld = round2(safeDiv(totals.nsOld, totals.qtyOld));
+    const totalAspNew = round2(safeDiv(totals.nsNew, totals.qtyNew));
+
+    const profitPct = (profit: number, sales: number) => (sales ? (profit / sales) * 100 : null);
+    const totalCm1PctOld = profitPct(totals.cm1Old, totals.nsOld);
+    const totalCm1PctNew = profitPct(totals.cm1New, totals.nsNew);
+
+    const totalSalesMixOld = round2(totals.mixOld);
+    const totalSalesMixNew = round2(totals.mixNew);
+    const totalSalesMixChange =
+      totalSalesMixOld != null && totalSalesMixNew != null ? pct(totalSalesMixOld, totalSalesMixNew) : null;
+
+    formatted.push({
+      SKU: '',
+      Product: 'Total',
+
+      [`Qty ${newAbbr}`]: totals.qtyNew,
+      [`Qty ${oldAbbr}`]: totals.qtyOld,
+      'Change in Qty (%age)': pct(totals.qtyOld, totals.qtyNew),
+
+      [`Gross Sales ${newAbbr}`]: totals.gsNew,
+      [`Gross Sales ${oldAbbr}`]: totals.gsOld,
+      'Change in Gross Sales (%age)': pct(totals.gsOld, totals.gsNew),
+
+      [`Net Sales ${newAbbr}`]: totals.nsNew,
+      [`Net Sales ${oldAbbr}`]: totals.nsOld,
+      'Change in Net Sales (%age)': pct(totals.nsOld, totals.nsNew),
+
+      [`ASP ${newAbbr}`]: totalAspNew,
+      [`ASP ${oldAbbr}`]: totalAspOld,
+      'Change in ASP (%age)': totalAspOld != null && totalAspNew != null ? pct(totalAspOld, totalAspNew) : null,
+
+      [`Sales Mix ${newAbbr}`]: totalSalesMixNew,
+      [`Sales Mix ${oldAbbr}`]: totalSalesMixOld,
+      'Change in Sales Mix (%age)': totalSalesMixChange,
+
+      [`CM1 Profit ${newAbbr}`]: totals.cm1New,
+      [`CM1 Profit ${oldAbbr}`]: totals.cm1Old,
+      'Change in CM1 Profit': totals.cm1New - totals.cm1Old,
+
+      [`CM1 Profit %age(${newAbbr})`]: totalCm1PctNew,
+      [`CM1 Profit %age(${oldAbbr})`]: totalCm1PctOld,
+
+      [`Unit Profit ${newAbbr}`]: totals.upNew,
+      [`Unit Profit ${oldAbbr}`]: totals.upOld,
+      'Change in Unit Profit (%age)': pct(totals.upOld, totals.upNew),
+    });
+
+    return formatted;
+  };
+
+  // -------------------------
+  // Sheet 1: All SKUs (Growth Comparison)
+  // -------------------------
+  const formattedAll = formatRowsWithTotals(cleanRows);
+
+  const ws1 = XLSX.utils.json_to_sheet(formattedAll, { header: headerOrder });
+  XLSX.utils.sheet_add_aoa(ws1, [headerOrder], { origin: 'A1' });
+  addPercentToPercentColumns(ws1, [0]);
+  ws1['!freeze'] = { xSplit: 0, ySplit: 1 };
+
+  // -------------------------
+  // Sheet 2: SKU Split (3 sections + ✅ only Grand Total row)
+  // -------------------------
+  const splitHeader = [...headerOrder];
+  const aoa: any[][] = [];
+
+  const makeSectionAoA = (sectionTitle: string, sectionRows: SkuItem[]) => {
+    const formatted = formatRowsWithTotals(sectionRows);
+
+    const body = formatted.map((obj) => {
+      const rowArr: any[] = [];
+      for (const h of headerOrder) rowArr.push((obj as any)[h] ?? null);
+      return rowArr;
+    });
+
+    const titleRow = [sectionTitle];
+    while (titleRow.length < splitHeader.length) titleRow.push('');
+
+    return { titleRow, headerRow: splitHeader, body };
+  };
+
+  const top80 = categorizedGrowth.top_80_skus || [];
+  const newRev = categorizedGrowth.new_or_reviving_skus || [];
+  const other = categorizedGrowth.other_skus || [];
+
+  const pushSection = (title: string, sectionRows: SkuItem[]) => {
+    const { titleRow, headerRow, body } = makeSectionAoA(title, sectionRows);
+    aoa.push(titleRow);
+    aoa.push(headerRow);
+    aoa.push(...body);
+    aoa.push([]); // blank row gap
+  };
+
+  pushSection('Top 80% SKUs', top80);
+  pushSection('New/Reviving SKUs', newRev);
+  pushSection('Other SKUs', other);
+
+  // ✅ Append Grand Total title + header + ONLY the grand total row (not full table)
+  {
+    const grandTitleRow = ['Grand Total'];
+    while (grandTitleRow.length < splitHeader.length) grandTitleRow.push('');
+
+    // formatRowsWithTotals adds many rows + a Total at the end.
+    // We only want the final "Total" row.
+    const grandFormatted = formatRowsWithTotals([...top80, ...newRev, ...other]);
+    const grandTotalObj = grandFormatted[grandFormatted.length - 1]; // the "Total" row
+
+    const grandTotalRow = headerOrder.map((h) => (grandTotalObj as any)?.[h] ?? null);
+
+    aoa.push(grandTitleRow);
+    aoa.push(splitHeader);
+    aoa.push(grandTotalRow);
   }
-};
 
-  const ws = XLSX.utils.json_to_sheet(formatted);
-  addPercentToPercentColumns(ws);
+  const ws2 = XLSX.utils.aoa_to_sheet(aoa);
+  ws2['!freeze'] = { xSplit: 0, ySplit: 2 };
+
+  // ✅ apply percent formatting for EVERY repeated header row (3 sections + grand total)
+  // In SKU Split, each table header row is the row where col A is "SKU".
+  const findHeaderRows = (ws: XLSX.WorkSheet) => {
+    const ref = ws["!ref"];
+    if (!ref) return [0];
+    const range = XLSX.utils.decode_range(ref);
+
+    const rows: number[] = [];
+    for (let R = range.s.r; R <= range.e.r; R++) {
+      const a = ws[XLSX.utils.encode_cell({ r: R, c: 0 })];
+      if (String(a?.v ?? "").trim() === "SKU") rows.push(R);
+    }
+    return rows.length ? rows : [0];
+  };
+
+  const ws2HeaderRows = findHeaderRows(ws2);
+  addPercentToPercentColumns(ws2, ws2HeaderRows);
+
+  // -------------------------
+  // Build workbook with 2 sheets
+  // -------------------------
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Growth Comparison');
-
-  // Optional: freeze header row
-  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+  XLSX.utils.book_append_sheet(wb, ws1, 'All SKUs');
+  XLSX.utils.book_append_sheet(wb, ws2, 'SKU Split');
 
   XLSX.writeFile(wb, filename);
 };
@@ -687,6 +1356,10 @@ const m2Abbr = `${getAbbr(month2)}'${String(year2).slice(2)}`;
   // =====================
 
   
+  useEffect(() => {
+  // whenever compare/month changes -> categorizedGrowth updates -> reset Others view
+  setExpandAllSkusOthers(false);
+}, [categorizedGrowth]);
 
 
 
@@ -1012,94 +1685,67 @@ const highlightInsightText = (text: string) => {
   const fullCurrent = categorizedGrowth[activeTab] || [];
 
 const currentTabData = React.useMemo(() => {
+  // ✅ full dataset for active tab (your real source)
+  const fullCurrent = (categorizedGrowth?.[activeTab] || []) as SkuItem[];
+
+  // If not All SKUs, return directly
   if (activeTab !== 'all_skus') return fullCurrent;
 
+  // Sort by Sales Mix (Month2) desc (fallback -Infinity)
   const sorted = [...fullCurrent].sort((a, b) => {
-    const am = Number(a['Sales Mix (Month2)'] ?? -Infinity);
-    const bm = Number(b['Sales Mix (Month2)'] ?? -Infinity);
+    const am = Number(a?.['Sales Mix (Month2)'] ?? -Infinity);
+    const bm = Number(b?.['Sales Mix (Month2)'] ?? -Infinity);
     return bm - am;
   });
 
+  // If expanded, show all SKUs (no "Others" row)
+  if (expandAllSkusOthers) {
+    return sorted;
+  }
+
+  // Otherwise show top 5 + Others aggregation
   const top5 = sorted.slice(0, 5);
   const rest = sorted.slice(5);
+
   if (!rest.length) return top5;
 
-  const sum = (key: string) => rest.reduce((acc, r) => acc + Number(r?.[key] ?? 0), 0);
+  const sumNum = (arr: any[], key: string) =>
+    arr.reduce((acc, r) => acc + (Number(r?.[key]) || 0), 0);
 
-  const pct = (m1: number, m2: number) => {
-    if (!Number.isFinite(m1) || !Number.isFinite(m2)) return null;
-    if (m1 === 0) return 0; // backend jaisa rule
-    return Number((((m2 - m1) / m1) * 100).toFixed(2));
+  // For GrowthCategory fields: compute weighted average by Net Sales (month2)
+  const wAvgGrowth = (arr: any[], field: string) => {
+    const wKey = 'net_sales_month2';
+    const totalW = arr.reduce((s, r) => s + (Number(r?.[wKey]) || 0), 0);
+    if (!totalW) return null;
+
+    const val = arr.reduce((s, r) => {
+      const g = r?.[field];
+      const v = Number(g?.value ?? 0);
+      const w = Number(r?.[wKey] ?? 0);
+      return s + v * w;
+    }, 0) / totalW;
+
+    // category only for coloring; keep "Low Growth" so it stays neutral
+    return { category: 'Low Growth', value: val } as GrowthCategory;
   };
-
-  // totals for Others (month1 + month2)
-  const qty1 = sum('quantity_month1');
-  const qty2 = sum('quantity_month2');
-
-  const asp1 = sum('asp_month1');
-  const asp2 = sum('asp_month2');
-
-  const sales1 = sum('net_sales_month1');
-  const sales2 = sum('net_sales_month2');
-
-  const mix1 = sum('sales_mix_month1');
-  const mix2 =
-    sum('sales_mix_month2') + rest.reduce((acc, r) => acc + Number(r?.['Sales Mix (Month2)'] ?? 0), 0) * 0; // keep safe
-  // NOTE: if your data doesn't have sales_mix_month2, you can still show Sales Mix via Sales Mix (Month2) only.
-  // We'll compute Sales Mix Change only if both exist.
-  const canMixChange = Number.isFinite(mix1) && Number.isFinite(mix2) && (mix1 !== 0 || mix2 !== 0);
-
-  const up1 = sum('unit_wise_profitability_month1');
-  const up2 = sum('unit_wise_profitability_month2');
-
-  const p1 = sum('profit_month1');
-  const p2 = sum('profit_month2');
-
-  const classify = (v: number | null) => {
-    if (v == null) return 'No Data';
-    if (v >= 5) return 'High Growth';
-    if (v > 0.5) return 'Low Growth';
-    if (v < -0.5) return 'Negative Growth';
-    return 'No Growth';
-  };
-
-  const makeGrowth = (v: number | null) =>
-    v == null ? null : { category: classify(v), value: v };
 
   const others: any = {
     product_name: 'Others',
-    sku: 'Others',
 
-    // Month2 display columns (not required but ok)
-    'Sales Mix (Month2)': sum('Sales Mix (Month2)'),
+    // ✅ key MUST match UI
+    'Sales Mix (Month2)': sumNum(rest, 'Sales Mix (Month2)'),
 
-    // raw month values so footer/exports remain consistent
-    quantity_month1: qty1,
-    quantity_month2: qty2,
-    asp_month1: asp1,
-    asp_month2: asp2,
-    net_sales_month1: sales1,
-    net_sales_month2: sales2,
-    sales_mix_month1: mix1,
-    sales_mix_month2: mix2,
-    unit_wise_profitability_month1: up1,
-    unit_wise_profitability_month2: up2,
-    profit_month1: p1,
-    profit_month2: p2,
-
-    // growth objects so table stops showing N/A
-    'Unit Growth': makeGrowth(pct(qty1, qty2)),
-    'ASP Growth': makeGrowth(pct(asp1, asp2)),
-    'Sales Growth': makeGrowth(pct(sales1, sales2)),
-    ...(activeTab !== 'new_or_reviving_skus'
-      ? { 'Sales Mix Change': makeGrowth(canMixChange ? pct(mix1, mix2) : null) }
-      : {}),
-    'Profit Per Unit': makeGrowth(pct(up1, up2)),
-    'CM1 Profit Impact': makeGrowth(pct(p1, p2)),
+    // ✅ fields used by table mapping
+    'Unit Growth': wAvgGrowth(rest, 'Unit Growth'),
+    'ASP Growth': wAvgGrowth(rest, 'ASP Growth'),
+    'Net Sales Growth': wAvgGrowth(rest, 'Net Sales Growth'),
+    'Sales Mix Change': wAvgGrowth(rest, 'Sales Mix Change'),
+    'CM1 Profit Impact': wAvgGrowth(rest, 'CM1 Profit Impact'),
+    'Profit Per Unit': wAvgGrowth(rest, 'Profit Per Unit'),
   };
 
   return [...top5, others];
-}, [activeTab, fullCurrent]);
+}, [categorizedGrowth, activeTab, expandAllSkusOthers]);
 
 
 
@@ -1205,6 +1851,23 @@ const isLockedCurrent = (year: string, month: string) => {
   }
   .month-label-short{ display:none; }   /* default: desktop pe short hidden */
   .month-label-full{ display:inline; }
+
+  @keyframes pulseRing {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(94,166,142,.45); }
+  70%  { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(94,166,142,0); }
+  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(94,166,142,0); }
+}
+
+.month-slider.needs-pick .month-dot:not(.disabled):not(.selected) .dot {
+  animation: pulseRing 1.3s infinite;
+}
+
+.month-help {
+  font-size: 12px;
+  color: #5EA68E;
+  font-weight: 700;
+  margin-top: 6px;
+}
 
   /* ======= Responsive changes (under lg) ======= */
   @media (max-width: 1023.98px){
@@ -1339,7 +2002,7 @@ const isLockedCurrent = (year: string, month: string) => {
             <option value="">Year 1</option>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <div className="month-slider">
+       <div className={`month-slider ${year1 && !month1 ? 'needs-pick' : ''}`}>
             {months.map(m => {
 const disabled =
   !year1 ||
@@ -1365,6 +2028,9 @@ const disabled =
               );
             })}
           </div>
+          {year1 && !month1 && (
+  <div className="month-help">Tap any highlighted month to select Month 1</div>
+)}
         </div>
         {/* Row 2 */}
         <div className="month-row">
@@ -1372,7 +2038,7 @@ const disabled =
             <option value="">Year 2</option>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <div className="month-slider">
+<div className={`month-slider ${year2 && !month2 ? 'needs-pick' : ''}`}>
             {months.map(m => {
             const disabled =
   !year2 ||
@@ -1408,6 +2074,32 @@ const disabled =
 
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
+      {/* Chart between toggle and table */}
+<div
+  style={{
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+    gap: 12,
+    marginTop: 14,
+    marginBottom: 10,
+  }}
+>
+  <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 10, background: '#fff' }}>
+    <div style={{ fontWeight: 700, color: '#414042', marginBottom: 6 }}>
+      Net Sales
+    </div>
+    <div ref={chartRef} style={{ width: '100%', height: 320 }} />
+  </div>
+
+  <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 10, background: '#fff' }}>
+    <div style={{ fontWeight: 700, color: '#414042', marginBottom: 6 }}>
+      CM1 Profit 
+    </div>
+    <div ref={profitChartRef} style={{ width: '100%', height: 320 }} />
+  </div>
+</div>
+
+
       {/* Table + actions */}
 {(['top_80_skus','new_or_reviving_skus','other_skus','all_skus'] as TabKey[]).some(
   (k) => (categorizedGrowth[k] || []).length > 0
@@ -1417,6 +2109,7 @@ const disabled =
             <div className='flex md:flex-row flex-col justify-between items-center w-full'>
 <h2 className="text-2xl font-bold text-[#414042] mb-4">Performance-based SKU split</h2>
             <div className='flex justify-center gap-3'>
+
   <div
               style={{
                
@@ -1492,7 +2185,7 @@ exportToExcel(allRows, file);
               <thead className="theadc">
                 <tr>
                   <th>S.No.</th>
-                  <th className="text-left">Product Name</th>
+<th className="text-left" style={{ textAlign: 'left' }}>Product Name</th>
                   <th>Sales Mix ({month2Label || 'Month 2'})</th>
                 <th>Unit Growth (%)</th>
 <th>ASP Growth (%)</th>
@@ -1509,8 +2202,8 @@ exportToExcel(allRows, file);
               <tbody>
 {currentTabData?.map((item, idx) => (
                   <tr key={idx} className="">
-                    <td className="border border-[#414042] px-2 py-2.5 text-center">{idx + 1}</td>
-                  <td className="border border-[#414042] px-2 py-2.5 text-left">
+                    <td className="border border-[#414042] px-2 py-2.5 text-center text-[#414042]">{idx + 1}</td>
+                  <td className="border border-[#414042] px-2 py-2.5 text-left text-[#414042]" style={{ textAlign: 'left' }}>
   {String(item.product_name).trim() === '0' ? (
     <span className="sku-zero-wrap">
       <span className="sku-zero">{item.sku || 'N/A'}</span>
@@ -1528,7 +2221,7 @@ exportToExcel(allRows, file);
 {[
   { field: 'Unit Growth' },
   { field: 'ASP Growth' },
-  { field: 'Sales Growth' },
+  { field: 'Net Sales Growth' },
   ...(activeTab !== 'new_or_reviving_skus' ? [{ field: 'Sales Mix Change' }] : []),
    { field: 'CM1 Profit Impact' },
   { field: 'Profit Per Unit' },
@@ -1571,48 +2264,72 @@ exportToExcel(allRows, file);
   }
 
   // Low Growth / No Growth / No Data etc.
-  return (
-    <td key={field} className="border border-[#414042] px-2 py-2.5 text-center" style={{ fontWeight: 600, color: '#414042' }}>
-      {text}
+ return (
+    <td
+      key={field}
+      className="border border-[#414042] px-2 py-2.5 text-center text-[#414042]"
+      style={{ fontWeight: 600, color: '#414042' }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#414042' }}>
+        {val > 0 ? <FaArrowUp size={12} /> : val < 0 ? <FaArrowDown size={12} /> : null}
+        {text}
+      </span>
     </td>
   );
 })}
 
                   
 
-                    {Object.keys(skuInsights).length > 0 && (
-                      <td className="border border-[#414042] px-2 text-nowrap py-2.5 text-center">
-                        {(() => {
-                          const entry = getInsightForItem(item);
-                          if (entry) {
-                            return (
-                              <button
-                                className="font-semibold underline text-[#414042]"
-                                style={{ margin: 0 }}
-                                onClick={() => {
-                                  setSelectedSku(entry[0]);
-                                  setModalOpen(true);
-                                  setFbType(null);
-                                  setFbText('');
-                                  setFbSuccess(false);
-                                }}
-                              >
-                                View Insights
-                              </button>
-                            );
-                          }
-                          return (
-                            <em style={{ color:'#888' }}>
-                              --
-                              <br />
-                              {/* <small style={{ fontSize: 10 }}>
-                                ({isGlobalData() ? 'Global/Product Name' : 'SKU'}: {item.product_name || item.sku || 'N/A'})
-                              </small> */}
-                            </em>
-                          );
-                        })()}
-                      </td>
-                    )}
+                  {Object.keys(skuInsights).length > 0 && (
+  <td className="border border-[#414042] px-2 text-nowrap py-2.5 text-center">
+    {(() => {
+      // ✅ Only for All SKUs tab + Others row => show expand button
+      if (
+        activeTab === 'all_skus' &&
+        String(item?.product_name ?? '').toLowerCase().trim() === 'others'
+      ) {
+        return (
+          <button
+            className="font-semibold underline text-[#414042]"
+            style={{ margin: 0 }}
+            onClick={() => setExpandAllSkusOthers(true)}
+          >
+            Expand SKUs
+          </button>
+        );
+      }
+
+      // Normal insight behavior
+      const entry = getInsightForItem(item);
+
+      if (entry) {
+        return (
+          <button
+            className="font-semibold underline text-[#414042]"
+            style={{ margin: 0 }}
+            onClick={() => {
+              setSelectedSku(entry[0]);
+              setModalOpen(true);
+              setFbType(null);
+              setFbText('');
+              setFbSuccess(false);
+            }}
+          >
+            View Insights
+          </button>
+        );
+      }
+
+      return (
+        <em style={{ color: '#888' }}>
+          --
+          <br />
+        </em>
+      );
+    })()}
+  </td>
+)}
+
                   </tr>
                 ))}
               </tbody>
@@ -1687,6 +2404,36 @@ exportToExcel(allRows, file);
 
 
             </table>
+            < div className='flex justify-end mt-2'>
+ <div
+  style={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+    flexWrap: 'wrap',
+    fontSize: 12,
+    color: '#414042',
+    marginTop: 6,
+  }}
+>
+  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5EA68E', fontWeight: 700 }}>
+      <FaArrowUp size={12} /> High growth
+    </span>
+  </span>
+
+  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#FF5C5C', fontWeight: 700 }}>
+      <FaArrowDown size={12} /> Negative growth
+    </span>
+  </span>
+
+  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
+    <span style={{ color: '#414042' }}>+ / -</span> Low growth
+  </span>
+</div>
+            </div>
+             
           </div>
         </div>
       )}

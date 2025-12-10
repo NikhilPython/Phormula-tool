@@ -150,7 +150,7 @@ def print_comparison_range():
         print(f"key_column (FE): {key_column} | scan_key (backend): {scan_key}")
 
         # Dynamic column list
-        columns = ['asp', 'quantity', 'profit', 'sales_mix', 'product_name', 'net_sales', 'unit_wise_profitability', 'product_sales','profit_percentage']
+        columns = ['asp', 'quantity', 'profit', 'sales_mix', 'product_name', 'net_sales', 'unit_wise_profitability', 'product_sales','profit_percentage','rembursement_fee']
         if not is_global:
             columns.append('sku')
         cols_str = ', '.join(columns)
@@ -234,7 +234,7 @@ def print_comparison_range():
 
         def calculate_growth(data1, data2, key=scan_key, numeric_fields=None, non_growth_fields=None):
             if non_growth_fields is None:
-                non_growth_fields = ["profit_percentage"]  # ✅ add more raw-only fields here later if needed
+                non_growth_fields = ["profit_percentage","rembursement_fee" ]  # ✅ add more raw-only fields here later if needed
 
             if numeric_fields is None:
                 numeric_fields = list(growth_field_mapping.keys())  # ✅ only fields that have growth metrics
