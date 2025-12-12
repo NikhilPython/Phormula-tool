@@ -4524,454 +4524,6 @@ def _finalize_records(plan: dict, table_records: list[dict]) -> list[dict]:
 
 
 
-# class BusinessAdvisor:
-#     """
-#     Keyword-free advisor:
-#     - Reads monthly series (overall + product) from df_primary
-#     - Builds a customized growth playbook based on signals in the data
-#     - Optionally uses aux['ads'] (monthly ads_spend) to compute ACoS deltas
-#     Returns: list[str] of concise, actionable recommendations
-#     """
-
-#     # ---------- helpers (unchanged from your version, minor robustness) ----------
-#     @staticmethod
-#     def _parse_period_series(df: pd.DataFrame, value_col: str, scope="overall") -> pd.DataFrame:
-#         if df is None or df.empty or value_col not in df.columns or "period" not in df.columns:
-#             return pd.DataFrame()
-#         d = df.copy()
-#         d["_period_dt"] = pd.to_datetime(d["period"], errors="coerce", utc=True)
-#         if d["_period_dt"].isna().all():
-#             try:
-#                 d["_period_dt"] = pd.to_datetime(d["period"], format="%b %Y", errors="coerce", utc=True)
-#             except Exception:
-#                 pass
-#         if "scope" in d.columns and scope:
-#             d = d[d["scope"].astype(str).str.lower().eq(scope.lower())]
-#         return d.dropna(subset=["_period_dt"]).sort_values("_period_dt")
-
-#     @staticmethod
-#     def _last2(df: pd.DataFrame, value_col: str):
-#         if df.empty or value_col not in df.columns:
-#             return None, None, None, None
-#         tail = df[["_period_dt", value_col]].dropna().sort_values("_period_dt").tail(2)
-#         if len(tail) < 2:
-#             return None, None, None, None
-#         prev_dt, last_dt = tail["_period_dt"].iloc[0], tail["_period_dt"].iloc[1]
-#         prev, last = float(tail[value_col].iloc[0] or 0.0), float(tail[value_col].iloc[1] or 0.0)
-#         return prev, last, prev_dt.strftime("%b %Y"), last_dt.strftime("%b %Y")
-
-#     @staticmethod
-#     def _ensure_product_col(d: pd.DataFrame) -> pd.DataFrame:
-#         out = d.copy()
-#         if "product" not in out.columns:
-#             if "key" in out.columns: out["product"] = out["key"]
-#             elif "label" in out.columns: out["product"] = out["label"]
-#         return out
-
-#     @staticmethod
-#     def _product_rollup(df: pd.DataFrame, cols=("sales","profit","quantity","fba_fees")) -> pd.DataFrame:
-#         d = BusinessAdvisor._ensure_product_col(df)
-#         if "product" not in d.columns:
-#             return pd.DataFrame()
-#         if "period" in d.columns:
-#             d["_period_dt"] = pd.to_datetime(d["period"], errors="coerce", utc=True)
-#             d = d.dropna(subset=["_period_dt"]).sort_values("_period_dt")
-#             recent = sorted(d["_period_dt"].unique())[-4:]  # last 4 periods
-#             d = d[d["_period_dt"].isin(recent)]
-#         keep = [c for c in cols if c in d.columns]
-#         if not keep:
-#             return pd.DataFrame()
-#         return d.groupby("product", dropna=True)[keep].sum().reset_index()
-
-#     @staticmethod
-#     def _growth_by_product(df: pd.DataFrame, value_col="sales") -> pd.DataFrame:
-#         d = BusinessAdvisor._ensure_product_col(df)
-#         req = {"product","period", value_col}
-#         if not req.issubset(set(d.columns)):
-#             return pd.DataFrame()
-#         d["_period_dt"] = pd.to_datetime(d["period"], errors="coerce", utc=True)
-#         d = d.dropna(subset=["_period_dt"])
-#         periods = sorted(d["_period_dt"].unique())[-2:]
-#         if len(periods) < 2:
-#             return pd.DataFrame()
-#         p0, p1 = periods
-#         a = d[d["_period_dt"].eq(p0)].groupby("product")[value_col].sum().rename(f"{value_col}_prev")
-#         b = d[d["_period_dt"].eq(p1)].groupby("product")[value_col].sum().rename(f"{value_col}_last")
-#         g = pd.concat([a, b], axis=1).fillna(0.0)
-#         g["growth_abs"] = g[f"{value_col}_last"] - g[f"{value_col}_prev"]
-#         g["growth_pct"] = np.where(g[f"{value_col}_prev"]>0, (g["growth_abs"]/g[f"{value_col}_prev"])*100.0, np.nan)
-#         return g.reset_index().sort_values(["growth_abs","growth_pct"], ascending=[False, False])
-
-#     # ---------- main: keyword-free, data-driven recommendations ----------
-#     @staticmethod
-#     def recommend(query: str, df_primary: pd.DataFrame, aux: dict | None = None) -> list[str]:
-#         """
-#         Data-driven action plan.
-#         - Canonicalizes many Amazon export column names -> {sales, profit, quantity, asp, ...}
-#         - Constructs a monthly 'period'
-#         - Computes profit and ASP if missing
-#         - Produces rollups (totals, by_period, by_entity) to ground the LLM
-#         - Anchors the 30-day checklist to the latest period in the data/time_range
-#         Returns: list[str] bullet points (title + actions + 30-day checklist).
-#         """
-#         aux = aux or {}
-#         scope   = aux.get("scope") or "auto"        # "sku" | "product" | "portfolio" | "auto"
-#         target  = aux.get("target")                 # e.g. "SEWIPESNEW" or "Classic"
-#         country = aux.get("country") or "US"
-#         tr      = aux.get("time_range")             # dict or string
-
-      
-
-#         def _safe_float(x):
-#             try:
-#                 f = float(x)
-#                 return f if np.isfinite(f) else 0.0
-#             except Exception:
-#                 return 0.0
-
-#         # ---- 1) Canonicalize columns --------------------------------------------
-#         alias_map = {
-#             # identifiers / time
-#             "product_name": "product",
-#             "asin": "asin",
-#             "sku": "sku",
-#             "date": "date_time",
-#             "datetime": "date_time",
-#             "date_time": "date_time",
-#             "year": "year",
-#             "month": "month",
-#             "key": "key",
-#             "label": "label",
-#             # core metrics
-#             "product_sales": "sales",
-#             "ordered_revenue": "sales",
-#             "revenue": "sales",
-#             "quantity": "quantity",
-#             "ordered_units": "quantity",
-#             "units": "quantity",
-#             "profit": "profit",
-#             "total": "net_total",
-#             # fees / credits / deductions
-#             "fba_fees": "fba_fees",
-#             "fulfillment_fees": "fba_fees",
-#             "selling_fees": "selling_fees",
-#             "referral_fees": "selling_fees",
-#             "promotional_rebates": "promotional_rebates",
-#             "marketplace_facilitator_tax": "mft",
-#             "other_transaction_fees": "other_txn_fees",
-#             "shipping_credits": "shipping_credits",
-#             "postage_credits": "postage_credits",
-#             "gift_wrap_credits": "gift_wrap_credits",
-#             "other": "other",
-#             # optional taxes
-#             "product_sales_tax": "product_sales_tax",
-#             "shipping_credits_tax": "shipping_credits_tax",
-#             "giftwrap_credits_tax": "giftwrap_credits_tax",
-#             "promotional_rebates_tax": "promotional_rebates_tax",
-#         }
-
-#         canonical_order = [
-#             "period", "date_time", "country", "product", "sku",
-#             "sales", "profit", "quantity", "asp",
-#             "fba_fees", "selling_fees", "promotional_rebates", "mft",
-#             "other_txn_fees", "shipping_credits", "postage_credits",
-#             "gift_wrap_credits", "other", "net_total"
-#         ]
-#         allowed_metrics = ["sales", "profit", "quantity", "asp", "fba_fees", "selling_fees"]
-
-#         # Defensive copy; handle empty
-#         if not isinstance(df_primary, pd.DataFrame) or df_primary.empty:
-#             d = pd.DataFrame()
-#             payload = {
-#                 "meta": {"scope": scope, "target": target, "country": country, "time_range": tr},
-#                 "columns": [], "samples": [], "rollups": {}
-#             }
-#         else:
-#             d = df_primary.copy()
-#             # Lowercase map
-#             d = d.rename(columns={c: alias_map.get(str(c).strip().lower(), str(c).strip().lower()) for c in d.columns})
-
-#             # ---- 2) Period construction ------------------------------------------
-#             if "date_time" in d.columns:
-#                 dt = pd.to_datetime(d["date_time"], errors="coerce")
-#                 d["period"] = dt.dt.to_period("M").astype(str)
-#             elif {"year", "month"}.issubset(d.columns):
-#                 def _ym_to_date(y, m):
-#                     try: return pd.Timestamp(year=int(y), month=int(m), day=1)
-#                     except Exception: return pd.NaT
-#                 d["_tmp_dt"] = [_ym_to_date(y, m) for y, m in zip(d["year"], d["month"])]
-#                 d["period"] = pd.to_datetime(d["_tmp_dt"], errors="coerce").dt.to_period("M").astype(str)
-#                 d.drop(columns=["_tmp_dt"], errors="ignore", inplace=True)
-
-#             if "product" not in d.columns and "product_name" in df_primary.columns:
-#                 d["product"] = df_primary["product_name"]
-
-#             # ---- 3) Numeric cleaning + derived -----------------------------------
-#             numeric_like = [
-#                 "sales","profit","quantity","fba_fees","selling_fees",
-#                 "promotional_rebates","mft","other_txn_fees",
-#                 "shipping_credits","postage_credits","gift_wrap_credits","other","net_total",
-#                 "product_sales_tax","shipping_credits_tax","giftwrap_credits_tax","promotional_rebates_tax",
-#             ]
-#             for c in numeric_like:
-#                 if c in d.columns: d[c] = d[c].map(_safe_float)
-
-#             if "profit" not in d.columns:
-#                 sales = d["sales"] if "sales" in d.columns else 0.0
-#                 pos_add = (
-#                     (d["shipping_credits"] if "shipping_credits" in d.columns else 0.0) +
-#                     (d["postage_credits"] if "postage_credits" in d.columns else 0.0) +
-#                     (d["gift_wrap_credits"] if "gift_wrap_credits" in d.columns else 0.0) +
-#                     (d["other"] if "other" in d.columns else 0.0)
-#                 )
-#                 neg_add = (
-#                     (d["fba_fees"] if "fba_fees" in d.columns else 0.0) +
-#                     (d["selling_fees"] if "selling_fees" in d.columns else 0.0) +
-#                     (d["promotional_rebates"] if "promotional_rebates" in d.columns else 0.0) +
-#                     (d["mft"] if "mft" in d.columns else 0.0) +
-#                     (d["other_txn_fees"] if "other_txn_fees" in d.columns else 0.0)
-#                 )
-#                 d["profit"] = sales + pos_add + neg_add
-
-#             if "asp" not in d.columns and {"sales","quantity"}.issubset(d.columns):
-#                 qty = d["quantity"].replace(0, np.nan)
-#                 d["asp"] = (d["sales"] / qty).replace([np.inf, -np.inf], np.nan).fillna(0.0)
-
-#             keep_cols = [c for c in canonical_order if c in d.columns]
-#             if "sku" in d.columns and "sku" not in keep_cols: keep_cols.append("sku")
-#             if "product" in d.columns and "product" not in keep_cols: keep_cols.append("product")
-#             d = d[keep_cols].copy()
-
-#             # ---- 4) Rollups -------------------------------------------------------
-#             payload = {
-#                 "meta": {"scope": scope, "target": target, "country": country, "time_range": tr},
-#                 "columns": list(d.columns), "samples": [], "rollups": {}
-#             }
-
-#             present = [c for c in ["sales","profit","quantity","asp","fba_fees","selling_fees"] if c in d.columns]
-#             if present:
-#                 totals = d[present].sum(numeric_only=True).to_dict()
-#                 payload["rollups"]["totals"] = {k: float(v) for k, v in totals.items()}
-
-#             if "period" in d.columns and present:
-#                 try:
-#                     grp = d.groupby("period", dropna=True)[present].sum()
-#                     payload["rollups"]["by_period"] = grp.reset_index().to_dict(orient="records")
-#                 except Exception:
-#                     pass
-
-#             key_col = "sku" if "sku" in d.columns else ("product" if "product" in d.columns else None)
-#             if key_col and "sales" in d.columns:
-#                 top = d.groupby(key_col, dropna=True)["sales"].sum().sort_values(ascending=False).reset_index()
-#                 payload["rollups"]["by_entity"] = top.head(30).to_dict(orient="records")
-
-#             try:
-#                 d_sample = d.sort_values("sales", ascending=False).head(80) if "sales" in d.columns else d.head(80)
-#             except Exception:
-#                 d_sample = d.head(80)
-#             payload["samples"] = d_sample.fillna("").to_dict(orient="records")
-
-#         # ---- 4.5) Derive concrete anchor dates from time_range or data ----------
-#         latest_period_end = None
-#         try:
-#             if isinstance(tr, dict) and tr.get("end"):
-#                 latest_period_end = pd.to_datetime(tr["end"], errors="coerce")
-#             if latest_period_end is None and isinstance(d, pd.DataFrame) and not d.empty:
-#                 if "period" in d.columns:
-#                     latest_period_end = pd.to_datetime(d["period"], errors="coerce").max()
-#                     if not pd.isna(latest_period_end):
-#                         latest_period_end = latest_period_end.to_period("M").to_timestamp("M")
-#                 elif "date_time" in d.columns:
-#                     latest_period_end = pd.to_datetime(d["date_time"], errors="coerce").max()
-#         except Exception:
-#             latest_period_end = None
-
-#         if latest_period_end is None:
-#             latest_period_end = pd.Timestamp.utcnow().normalize()
-
-#         # normalize to month end and compute next-month start
-#         latest_period_end = latest_period_end.to_period("M").to_timestamp("M")
-#         next_month_start = (latest_period_end + pd.offsets.MonthBegin(1)).date()
-
-#         payload["meta"]["latest_period_end"] = latest_period_end.date().isoformat()
-#         payload["meta"]["next_month_start"] = next_month_start.isoformat()
-
-#         # ---- 5) Compose LLM prompt (force anchoring & ISO dates) -----------------
-#         system_msg = (
-#             "You are a senior Amazon marketplace growth strategist. "
-#             "Use only the provided payload (totals, by_period, by_entity, samples). "
-#             "Ground every recommendation in the numbers. Do NOT invent months or dates. "
-#             "Anchor scheduling to the provided dates:\n"
-#             "• Treat 'latest_period_end' as the last day with data.\n"
-#             "• Start the 30-day checklist from 'next_month_start'.\n"
-#             "Output requirements:\n"
-#             "1) Short, specific title\n"
-#             "2) 5–8 actionable bullets with numeric targets (prices, ACOS, budgets, % changes)\n"
-#             "3) 30-day checklist with 3–4 weekly milestones using ISO date ranges "
-#             "(YYYY-MM-DD to YYYY-MM-DD), derived from 'next_month_start'."
-#         )
-
-#         scope_hint = "SKU" if scope == "sku" else ("Product" if scope == "product" else "Portfolio")
-#         user_msg = (
-#             f"User asked: {query}\n\n"
-#             f"Context:\n"
-#             f"- Scope: {scope_hint}\n"
-#             f"- Target: {target or 'ALL'}\n"
-#             f"- Country: {country}\n"
-#             f"- Time Range: {tr}\n"
-#             f"- latest_period_end: {payload['meta']['latest_period_end']}\n"
-#             f"- next_month_start: {payload['meta']['next_month_start']}\n\n"
-#             f"DATA (JSON):\n{json.dumps(payload, default=str)[:120000]}"
-#         )
-
-#         try:
-#             resp = oa_client.chat.completions.create(
-#                 model="gpt-4o-mini",
-#                 messages=[
-#                     {"role": "system", "content": system_msg},
-#                     {"role": "user", "content": user_msg},
-#                 ],
-#                 temperature=0.25,
-#                 max_tokens=1000,
-#             )
-#             text = (resp.choices[0].message.content or "").strip()
-#         except Exception as e:
-#             print("[DEBUG][advisor] GPT call failed:", e)
-#             return ["I wasn’t able to generate a growth plan right now."]
-
-#         # ---- 6) Parse compact result back to bullets ----------------------------
-#         lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-#         bullets: list[str] = []
-#         for ln in lines:
-#             if ln.startswith(("-", "•", "*")):
-#                 bullets.append(ln.lstrip("-•* ").strip())
-#             elif len(bullets) == 0 and len(ln) < 120:
-#                 bullets.append(ln)  # Title
-
-#         return bullets or [text[:350]]
-    
-#     # --- 1) Fetch trailing monthly panel for a product (no hardcoded keywords)
-#     @staticmethod
-#     def fetch_product_history(engine, table_name: str, product_phrase: str, months: int = 12) -> pd.DataFrame:
-#         if not engine or not table_name or not (product_phrase or "").strip():
-#             return pd.DataFrame()
-#         sql = text(f"""
-#             WITH base AS (
-#             SELECT
-#                 date_time, product_name, sku, month, year,
-#                 product_sales, product_sales_tax, promotional_rebates,
-#                 postage_credits, gift_wrap_credits, shipping_credits,
-#                 shipping_credits_tax, giftwrap_credits_tax, marketplace_facilitator_tax,
-#                 fba_fees, selling_fees, other_transaction_fees, other,
-#                 cost_of_unit_sold, quantity
-#             FROM {table_name}
-#             WHERE product_name ILIKE :p
-#             )
-#             SELECT
-#             to_char(to_date(year||'-'||lpad(month,2,'0')||'-01','YYYY-MM-DD'),'Mon YYYY') AS period,
-#             product_name AS product,
-#             SUM(COALESCE(product_sales,0))                                       AS sales_raw,
-#             SUM(COALESCE(product_sales_tax,0)+COALESCE(marketplace_facilitator_tax,0)+
-#                 COALESCE(shipping_credits_tax,0)+COALESCE(giftwrap_credits_tax,0)+
-#                 COALESCE(promotional_rebates_tax,0)+COALESCE(other_transaction_fees,0)) AS tax_raw,
-#             SUM(COALESCE(gift_wrap_credits,0)+COALESCE(shipping_credits,0))       AS credits_raw,
-#             SUM(COALESCE(fba_fees,0))                                             AS fba_fees_raw,
-#             SUM(COALESCE(selling_fees,0))                                         AS selling_fees_raw,
-#             SUM(COALESCE(other,0))                                                AS other_raw,
-#             SUM(COALESCE(cost_of_unit_sold,0))                                    AS cost_raw,
-#             SUM(COALESCE(quantity,0))                                             AS qty_raw
-#             FROM base
-#             GROUP BY 1,2
-#             ORDER BY MIN(to_date(year||'-'||lpad(month,2,'0')||'-01','YYYY-MM-DD')) DESC
-#             LIMIT :lim
-#         """)
-#         try:
-#             with engine.connect() as conn:
-#                 df = pd.read_sql(sql, conn, params={"p": f"%{product_phrase}%", "lim": int(months)})
-#             # chronological
-#             return df.iloc[::-1].reset_index(drop=True)
-#         except Exception:
-#             return pd.DataFrame()
-
-#     # --- 2) Compute normalized features (metric-agnostic)
-#     @staticmethod
-#     def compute_period_features(df_monthly: pd.DataFrame) -> pd.DataFrame:
-#         if df_monthly is None or df_monthly.empty:
-#             return pd.DataFrame()
-#         d = df_monthly.copy()
-#         d["sales"]  = pd.to_numeric(d.get("sales_raw"), errors="coerce").fillna(0.0)
-#         tax         = pd.to_numeric(d.get("tax_raw"), errors="coerce").fillna(0.0)
-#         credits     = pd.to_numeric(d.get("credits_raw"), errors="coerce").fillna(0.0)
-#         fba         = pd.to_numeric(d.get("fba_fees_raw"), errors="coerce").fillna(0.0)
-#         selling     = pd.to_numeric(d.get("selling_fees_raw"), errors="coerce").fillna(0.0)
-#         other       = pd.to_numeric(d.get("other_raw"), errors="coerce").fillna(0.0)
-#         cost        = pd.to_numeric(d.get("cost_raw"), errors="coerce").fillna(0.0)
-#         qty         = pd.to_numeric(d.get("qty_raw"), errors="coerce").fillna(0.0)
-#         d["profit"] = d["sales"] + credits - tax - fba - selling - other - cost
-#         d["qty"]    = qty
-#         d["asp"]    = d.apply(lambda r: (r["sales"]/r["qty"]) if r["qty"] > 0 else np.nan, axis=1)
-#         return d[["period","product","sales","profit","qty","asp"]]
-
-#     # --- 3) Diagnose trends safely (works with short history)
-#     @staticmethod
-#     def diagnose_trends(d: pd.DataFrame) -> dict:
-#         out = {}
-#         if d is None or d.empty:
-#             return out
-#         n = len(d.index)
-#         idx = np.arange(n)
-#         for col in ["sales","profit","qty","asp"]:
-#             if col not in d.columns:
-#                 continue
-#             ser = pd.to_numeric(d[col], errors="coerce").fillna(0.0)
-#             if n >= 2:
-#                 try:
-#                     slope = float(np.polyfit(idx, ser, 1)[0])
-#                 except Exception:
-#                     slope = 0.0
-#             else:
-#                 slope = 0.0
-#             out[f"{col}_last"] = float(ser.iloc[-1]) if n else 0.0
-#             out[f"{col}_slope"] = slope
-#             if n >= 2:
-#                 prev = float(ser.iloc[-2])
-#                 out[f"{col}_chg_abs"] = out[f"{col}_last"] - prev
-#                 out[f"{col}_chg_pct"] = (out[f"{col}_chg_abs"] / prev) if prev else None
-#         if "qty" in d.columns:
-#             out["qty_zero_share"] = float((pd.to_numeric(d["qty"], errors="coerce").fillna(0.0) <= 0).mean())
-#         out["months_available"] = int(d["period"].nunique()) if "period" in d.columns else n
-#         return out
-
-#     # --- 4) One-call advisor for a named product (graceful fallbacks)
-#     def answer_for_product(self, product_phrase: str, table_name: str, horizon: str = "next_3_months") -> str:
-#         hist = self.fetch_product_history(self.engine, table_name, product_phrase, months=12)
-#         if hist.empty:
-#             return f"I couldn’t find history for “{product_phrase}”. It may be new or inactive. Try a wider period."
-
-#         panel = self.compute_period_features(hist)
-#         months_available = int(panel["period"].nunique()) if "period" in panel.columns else len(panel.index)
-#         diag = self.diagnose_trends(panel)
-
-#         # Adaptive message (won’t break with 1–2 months)
-#         if months_available < 3:
-#             preface = f"Only {months_available} month(s) of data found for “{product_phrase}”. I’ll use short-term signals."
-#         else:
-#             preface = f"Analyzing {months_available} months of history for “{product_phrase}”."
-
-#         context = {
-#             "product": product_phrase,
-#             "horizon": horizon,
-#             "periods": panel.tail(12).to_dict(orient="records"),
-#             "diagnostics": diag,
-#             "note": preface,
-#         }
-
-#         return generate_openai_answer(
-#             user_query=f"Give actionable guidance to improve upcoming months for {product_phrase}",
-#             mode="advisor",
-#             analysis={"summary": preface, "insights": []},
-#             table_records=[context],
-#         )
 class BusinessAdvisor:
     """
     Keyword-free advisor:
@@ -4993,7 +4545,9 @@ You are a senior ecommerce business analyst.
 
 You receive JSON containing:
 - Overall totals and % change for units, net sales, profit, ASP index and unit profit index
-- SKU tables in sku_tables.top_80_skus and sku_tables.new_reviving_skus including product_name and SKU-wise metrics
+- A SKU table in sku_tables.all_skus including product_name and SKU-wise metrics.
+  Each SKU row also includes an "urgency_score" where higher means this SKU needs more urgent attention (larger declines and higher impact on the business).
+
 
 GOAL
 Produce:
@@ -5012,7 +4566,8 @@ Write 3–5 short bullets describing, in simple language:
 ACTIONS (exactly 5)
 ====================
 
-Return EXACTLY 5 action bullets.
+When choosing the 5 products, ALWAYS prioritize the SKUs with the highest urgency_score (most negative performance with meaningful size). Only pick low-urgency SKUs if there are fewer than 5 high-urgency options.
+
 
 ✅ EACH action bullet MUST follow this exact layout with line breaks:
 
@@ -5229,17 +4784,27 @@ Do not add any extra keys. Do not wrap in Markdown.
             "unit_profit_index_pct": cls._safe_pct(up_prev, up_curr),
         }
 
+
+
     @classmethod
     def _build_sku_tables(cls, d: pd.DataFrame, by_period: list[dict], top_n: int = 80) -> dict:
         """
-        Build sku_tables.top_80_skus and sku_tables.new_reviving_skus.
+        Build sku_tables.all_skus.
 
         Requirements:
         - include product_name and sku-wise metrics.
         - Provide % metrics for ASP, Units, Sales, Sales Mix Change (%) and optional Profit/Profit per unit.
+        - Include an urgency_score per SKU so the model can prioritize which products need urgent attention.
         """
         if d is None or not isinstance(d, pd.DataFrame) or d.empty:
-            return {"top_80_skus": [], "new_reviving_skus": []}
+            print("[DEBUG][sku_tables] empty or invalid df, returning no SKUs")
+            return {"all_skus": []}
+        
+        # 👉 NEW: create a synthetic sku if sku is missing but product exists
+        if "sku" not in d.columns and "product" in d.columns:
+            print("[DEBUG][sku_tables] no 'sku' column, using 'product' as sku surrogate")
+            d = d.copy()
+            d["sku"] = d["product"]
 
         # Ensure we have a stable period order
         bp = list(by_period or [])
@@ -5247,7 +4812,8 @@ Do not add any extra keys. Do not wrap in Markdown.
         curr_period = bp[-1].get("period") if len(bp) >= 1 else None
 
         if not prev_period or not curr_period:
-            return {"top_80_skus": [], "new_reviving_skus": []}
+            print(f"[DEBUG][sku_tables] missing prev/curr periods, by_period={bp}")
+            return {"all_skus": []}
 
         # Total sales for mix calculations
         prev_tot_sales = float(bp[-2].get("sales", 0.0) or 0.0)
@@ -5256,10 +4822,15 @@ Do not add any extra keys. Do not wrap in Markdown.
         # Aggregate per sku+product+period
         grp_cols = [c for c in ["period", "sku", "product", "sales", "profit", "quantity"] if c in d.columns]
         if not {"period", "sku"}.issubset(set(grp_cols)) or "sales" not in grp_cols:
-            return {"top_80_skus": [], "new_reviving_skus": []}
+            print(f"[DEBUG][sku_tables] missing required columns in df: have={grp_cols}")
+            return {"all_skus": []}
 
         g = d[grp_cols].copy()
         g = g[g["period"].isin([prev_period, curr_period])]
+
+        if g.empty:
+            print(f"[DEBUG][sku_tables] no rows for periods prev={prev_period}, curr={curr_period}")
+            return {"all_skus": []}
 
         agg = g.groupby(["period", "sku"], dropna=True).agg(
             product_name=("product", "first") if "product" in g.columns else ("sku", "first"),
@@ -5273,7 +4844,7 @@ Do not add any extra keys. Do not wrap in Markdown.
         curr_df = agg[agg["period"].eq(curr_period)].set_index("sku")
 
         all_skus = sorted(set(prev_df.index).union(set(curr_df.index)))
-        rows = []
+        rows: list[dict] = []
 
         for sku in all_skus:
             prev_row = prev_df.loc[sku] if sku in prev_df.index else None
@@ -5302,10 +4873,15 @@ Do not add any extra keys. Do not wrap in Markdown.
             up_prev = (p_prev / q_prev) if q_prev > 0 else 0.0
             up_curr = (p_curr / q_curr) if q_curr > 0 else 0.0
 
-            # Mix
-            mix_prev = (ns_prev / prev_tot_sales) if prev_tot_sales > 0 else 0.0
-            mix_curr = (ns_curr / curr_tot_sales) if curr_tot_sales > 0 else 0.0
-            mix_change_pct = cls._safe_pct(mix_prev, mix_curr)
+            
+            # Mix (% of total sales in that month)
+            mix_prev_pct = (ns_prev / prev_tot_sales) * 100.0 if prev_tot_sales > 0 else 0.0
+            mix_curr_pct = (ns_curr / curr_tot_sales) * 100.0 if curr_tot_sales > 0 else 0.0
+
+            # Change in mix = current - previous (percentage points)
+            mix_change_pp = mix_curr_pct - mix_prev_pct
+
+
 
             row = {
                 "sku": sku,
@@ -5330,25 +4906,72 @@ Do not add any extra keys. Do not wrap in Markdown.
                 "ASP Growth (%)": cls._safe_pct(asp_prev, asp_curr),
                 "Profit Per Unit Growth (%)": cls._safe_pct(up_prev, up_curr),
 
-                "Sales Mix Change (%)": mix_change_pct,
-            }
+                "Sales Mix Change (%)": mix_change_pp,
 
-            # new/reviving classification for table
-            row["new_or_reviving"] = bool(ns_prev <= 0 and ns_curr > 0)
+            }
 
             rows.append(row)
 
-        # Rank for top_80_skus by curr sales, then abs growth
+        # ---------- urgency_score per SKU ----------
+        def _urgency_score(r: dict) -> float:
+            """
+            Higher score == more urgent to address.
+            Focus on SKUs that:
+            - have meaningful current sales, AND
+            - are declining in sales/profit/mix.
+            """
+            try:
+                ns_curr = float(r.get("net_sales_curr", 0.0) or 0.0)
+                sales_g = r.get("Net Sales Growth (%)") or 0.0
+                profit_g = r.get("Profit Growth (%)") or 0.0
+                mix_g = r.get("Sales Mix Change (%)") or 0.0
+
+                # Only care about declines (negative %)
+                down_sales = max(0.0, -float(sales_g))
+                down_profit = max(0.0, -float(profit_g))
+                down_mix = max(0.0, -float(mix_g))
+
+                if ns_curr <= 0 or (down_sales + down_profit + down_mix) == 0:
+                    return 0.0
+
+                decline_score = down_sales + down_profit + 0.5 * down_mix
+                return ns_curr * decline_score
+            except Exception:
+                return 0.0
+
+        for r in rows:
+            r["urgency_score"] = float(_urgency_score(r))
+
+        # Rank SKUs by urgency first, then by current sales as a tiebreaker
         def _key(r):
-            return (float(r.get("net_sales_curr", 0.0) or 0.0), float(r.get("net_sales_curr", 0.0) or 0.0) - float(r.get("net_sales_prev", 0.0) or 0.0))
+            urg = float(r.get("urgency_score", 0.0) or 0.0)
+            curr = float(r.get("net_sales_curr", 0.0) or 0.0)
+            return (urg, curr)
 
         rows_sorted = sorted(rows, key=_key, reverse=True)
-        top_80 = rows_sorted[: max(0, int(top_n))]
 
-        # New/reviving skus: those not present (or ~0) in prev but now have sales
-        new_rev = [r for r in rows_sorted if r.get("new_or_reviving")]
+        # Debug: show what we're sending to the LLM
+        print(f"[DEBUG][sku_tables] periods used: prev={prev_period}, curr={curr_period}")
+        print(f"[DEBUG][sku_tables] total_skus={len(rows_sorted)}")
+        print("[DEBUG][sku_tables] top 5 SKUs by urgency_score:")
+        for r in rows_sorted[:5]:
+            print(
+                "  -",
+                r.get("product_name"),
+                "| urgency_score=",
+                round(r.get("urgency_score", 0.0), 2),
+                "| Net Sales Growth (%)=",
+                r.get("Net Sales Growth (%)"),
+                "| Profit Growth (%)=",
+                r.get("Profit Growth (%)"),
+                "| Sales Mix Change (%)=",
+                r.get("Sales Mix Change (%)"),
+            )
 
-        return {"top_80_skus": top_80, "new_reviving_skus": new_rev}
+        # Single flat list, no splitting
+        return {"all_skus": rows_sorted}
+
+
 
     @classmethod
     def _call_portfolio_llm(cls, advisor_payload: dict) -> dict:
@@ -5356,6 +4979,22 @@ Do not add any extra keys. Do not wrap in Markdown.
         Calls GPT with strict JSON response format.
         Returns parsed dict with keys: summary_bullets, action_bullets.
         """
+
+        # ---- DEBUG: preview what we're sending to the LLM ----
+        try:
+            sku_tables = (advisor_payload or {}).get("sku_tables") or {}
+            all_skus = sku_tables.get("all_skus") or sku_tables.get("top_80_skus") or []
+            debug_payload = {
+                "overall": advisor_payload.get("overall"),
+                "meta": advisor_payload.get("meta"),
+                "num_skus": len(all_skus),
+                "sku_sample": all_skus[:5],  # just a small sample for logs
+            }
+            print("[DEBUG][advisor] payload preview going to LLM:")
+            print(json.dumps(debug_payload, indent=2, default=str))
+        except Exception as e:
+            print("[DEBUG][advisor] failed to print advisor_payload preview:", e)
+
         prompt = cls.PORTFOLIO_ADVISOR_PROMPT + "\n\nJSON:\n" + json.dumps(advisor_payload, indent=2, default=str)
         out = oa_client.chat.completions.create(
             model="gpt-4o",
@@ -5368,9 +5007,15 @@ Do not add any extra keys. Do not wrap in Markdown.
             ],
         )
         raw = (out.choices[0].message.content or "").strip()
+
+        # ---- DEBUG: raw JSON returned from LLM ----
+        print("[DEBUG][advisor] raw LLM JSON response:")
+        print(raw)
+
         try:
             obj = json.loads(raw) if raw else {}
-        except Exception:
+        except Exception as e:
+            print("[DEBUG][advisor] failed to parse LLM JSON:", e)
             obj = {}
         return obj if isinstance(obj, dict) else {}
 
@@ -5418,6 +5063,7 @@ Do not add any extra keys. Do not wrap in Markdown.
 
         return lines
 
+    
     # ---------- main: keyword-free, data-driven recommendations ----------
     @staticmethod
     def recommend(query: str, df_primary: pd.DataFrame, aux: dict | None = None) -> list[str]:
@@ -5425,7 +5071,7 @@ Do not add any extra keys. Do not wrap in Markdown.
         Portfolio-first action plan aligned to the new JSON prompt.
 
         - Canonicalizes many Amazon export column names -> {sales, profit, quantity, asp, ...}
-        - Constructs a monthly 'period'
+        - Constructs a monthly 'period' where possible
         - Computes profit and ASP if missing
         - Produces rollups (totals, by_period, by_entity) to ground the SKU-table builder
         - Generates overall summary + exactly 5 SKU actions (via strict JSON)
@@ -5433,9 +5079,9 @@ Do not add any extra keys. Do not wrap in Markdown.
         """
         aux = aux or {}
         scope = aux.get("scope") or "auto"  # "sku" | "product" | "portfolio" | "auto"
-        target = aux.get("target")  # if user explicitly asks SKU/product, upstream can set this
+        target = aux.get("target")          # if user explicitly asks SKU/product, upstream can set this
         country = aux.get("country") or "US"
-        tr = aux.get("time_range")  # dict or string
+        tr = aux.get("time_range")          # dict or string
 
         def _safe_float(x):
             try:
@@ -5497,12 +5143,22 @@ Do not add any extra keys. Do not wrap in Markdown.
         # Defensive copy; handle empty
         if not isinstance(df_primary, pd.DataFrame) or df_primary.empty:
             d = pd.DataFrame()
-            payload = {"meta": {"scope": scope, "target": target, "country": country, "time_range": tr},
-                       "columns": [], "samples": [], "rollups": {}}
+            payload = {
+                "meta": {
+                    "scope": scope,
+                    "target": target,
+                    "country": country,
+                    "time_range": tr,
+                },
+                "columns": [],
+                "samples": [],
+                "rollups": {},
+            }
         else:
             d = df_primary.copy()
             # Lowercase map
-            d = d.rename(columns={c: alias_map.get(str(c).strip().lower(), str(c).strip().lower()) for c in d.columns})
+            d = d.rename(columns={c: alias_map.get(str(c).strip().lower(), str(c).strip().lower())
+                                  for c in d.columns})
 
             # ---- 2) Period construction ------------------------------------------
             if "date_time" in d.columns:
@@ -5523,10 +5179,12 @@ Do not add any extra keys. Do not wrap in Markdown.
 
             # ---- 3) Numeric cleaning + derived -----------------------------------
             numeric_like = [
-                "sales","profit","quantity","fba_fees","selling_fees",
-                "promotional_rebates","mft","other_txn_fees",
-                "shipping_credits","postage_credits","gift_wrap_credits","other","net_total",
-                "product_sales_tax","shipping_credits_tax","giftwrap_credits_tax","promotional_rebates_tax",
+                "sales", "profit", "quantity", "fba_fees", "selling_fees",
+                "promotional_rebates", "mft", "other_txn_fees",
+                "shipping_credits", "postage_credits", "gift_wrap_credits",
+                "other", "net_total",
+                "product_sales_tax", "shipping_credits_tax",
+                "giftwrap_credits_tax", "promotional_rebates_tax",
             ]
             for c in numeric_like:
                 if c in d.columns:
@@ -5561,10 +5219,20 @@ Do not add any extra keys. Do not wrap in Markdown.
             d = d[keep_cols].copy()
 
             # ---- 4) Rollups -------------------------------------------------------
-            payload = {"meta": {"scope": scope, "target": target, "country": country, "time_range": tr},
-                       "columns": list(d.columns), "samples": [], "rollups": {}}
+            payload = {
+                "meta": {
+                    "scope": scope,
+                    "target": target,
+                    "country": country,
+                    "time_range": tr,
+                },
+                "columns": list(d.columns),
+                "samples": [],
+                "rollups": {},
+            }
 
-            present = [c for c in ["sales","profit","quantity","asp","fba_fees","selling_fees"] if c in d.columns]
+            present = [c for c in ["sales", "profit", "quantity", "asp", "fba_fees", "selling_fees"]
+                       if c in d.columns]
             if present:
                 totals = d[present].sum(numeric_only=True).to_dict()
                 payload["rollups"]["totals"] = {k: float(v) for k, v in totals.items()}
@@ -5581,8 +5249,8 @@ Do not add any extra keys. Do not wrap in Markdown.
                         pass
 
                     payload["rollups"]["by_period"] = grp.to_dict(orient="records")
-                except Exception:
-                    pass
+                except Exception as e:
+                    print("[DEBUG][advisor] failed building primary by_period rollup:", e)
 
             key_col = "sku" if "sku" in d.columns else ("product" if "product" in d.columns else None)
             if key_col and "sales" in d.columns:
@@ -5607,7 +5275,8 @@ Do not add any extra keys. Do not wrap in Markdown.
                         latest_period_end = latest_period_end.to_period("M").to_timestamp("M")
                 elif "date_time" in d.columns:
                     latest_period_end = pd.to_datetime(d["date_time"], errors="coerce").max()
-        except Exception:
+        except Exception as e:
+            print("[DEBUG][advisor] failed deriving latest_period_end:", e)
             latest_period_end = None
 
         if latest_period_end is None:
@@ -5623,9 +5292,148 @@ Do not add any extra keys. Do not wrap in Markdown.
         try:
             by_period = (payload.get("rollups") or {}).get("by_period") or []
 
-            # Build overall and SKU tables
+            # DEBUG: see what we actually have at this point
+            print("[DEBUG][advisor] initial by_period from rollups:", by_period)
+
+            # ---------- Fallback: rebuild by_period if missing but we DO have 'period' ----------
+            if (not by_period) and isinstance(d, pd.DataFrame) and ("period" in d.columns):
+                present_overall = [c for c in ["sales", "profit", "quantity", "asp"] if c in d.columns]
+                if present_overall:
+                    try:
+                        grp = d.groupby("period", dropna=True)[present_overall].sum().reset_index()
+                        try:
+                            grp["_pdt"] = pd.to_datetime(grp["period"], errors="coerce")
+                            grp = grp.sort_values("_pdt").drop(columns=["_pdt"])
+                        except Exception:
+                            pass
+                        by_period = grp.to_dict(orient="records")
+                        print("[DEBUG][advisor] rebuilt by_period fallback from df_primary:")
+                        print(grp)
+                    except Exception as e:
+                        print("[DEBUG][advisor] failed to rebuild by_period fallback:", e)
+
+            # Build overall (handles 0,1,2 periods gracefully)
             overall = BusinessAdvisor._build_overall_from_by_period(by_period)
-            sku_tables = BusinessAdvisor._build_sku_tables(d, by_period, top_n=80)
+
+            # ---------- SKU table logic: multi-period vs single-period fallback ----------
+            if by_period and len(by_period) >= 2 and "period" in d.columns:
+                # Normal 2-period path
+                sku_tables = BusinessAdvisor._build_sku_tables(d, by_period, top_n=80)
+            else:
+                # Single-period / no-period fallback:
+                # Use snapshot df to build per-SKU metrics so LLM still gets SKUs.
+                print("[DEBUG][advisor] using single-period SKU fallback (no usable prev/curr periods)")
+
+                key_col = None
+                if "sku" in d.columns:
+                    key_col = "sku"
+                elif "product" in d.columns:
+                    key_col = "product"
+
+                if (not isinstance(d, pd.DataFrame)) or d.empty or not key_col or "sales" not in d.columns:
+                    print("[DEBUG][advisor] fallback SKU builder: not enough columns, returning empty sku_tables")
+                    sku_tables = {"all_skus": []}
+                else:
+                    # Aggregate across the available range (treated as "current")
+                    agg_kwargs = {}
+                    if "product" in d.columns:
+                        agg_kwargs["product_name"] = ("product", "first")
+                    else:
+                        agg_kwargs["product_name"] = (key_col, "first")
+
+                    agg_kwargs["net_sales"] = ("sales", "sum")
+                    if "quantity" in d.columns:
+                        agg_kwargs["quantity"] = ("quantity", "sum")
+                    else:
+                        agg_kwargs["quantity"] = (key_col, "size")
+
+                    if "profit" in d.columns:
+                        agg_kwargs["profit"] = ("profit", "sum")
+                    else:
+                        # simple proxy if profit missing
+                        agg_kwargs["profit"] = ("sales", "sum")
+
+                    agg_df = d.groupby(key_col, dropna=True).agg(**agg_kwargs).reset_index()
+
+                    curr_tot_sales = float(agg_df["net_sales"].sum()) if "net_sales" in agg_df.columns else 0.0
+                    rows = []
+
+                    for _, row in agg_df.iterrows():
+                        key = row[key_col]
+                        product_name = str(row.get("product_name") or key)
+
+                        ns_curr = float(row.get("net_sales", 0.0) or 0.0)
+                        q_curr = float(row.get("quantity", 0.0) or 0.0)
+                        p_curr = float(row.get("profit", 0.0) or 0.0)
+
+                        # No previous period → we keep prev values at 0 and all % growth as None
+                        ns_prev = 0.0
+                        q_prev = 0.0
+                        p_prev = 0.0
+
+                        asp_curr = (ns_curr / q_curr) if q_curr > 0 else 0.0
+                        asp_prev = 0.0
+
+                        up_curr = (p_curr / q_curr) if q_curr > 0 else 0.0
+                        up_prev = 0.0
+
+                        mix_curr = (ns_curr / curr_tot_sales) if curr_tot_sales > 0 else 0.0
+
+                        r = {
+                            "sku": key,
+                            "product_name": product_name.strip() or str(key),
+
+                            "net_sales_prev": ns_prev,
+                            "net_sales_curr": ns_curr,
+                            "quantity_prev": q_prev,
+                            "quantity_curr": q_curr,
+                            "profit_prev": p_prev,
+                            "profit_curr": p_curr,
+                            "asp_prev": asp_prev,
+                            "asp_curr": asp_curr,
+                            "profit_per_unit_prev": up_prev,
+                            "profit_per_unit_curr": up_curr,
+
+                            # No real previous period → % metrics are None ("no data")
+                            "Net Sales Growth (%)": BusinessAdvisor._safe_pct(None, ns_curr),
+                            "Unit Growth (%)": BusinessAdvisor._safe_pct(None, q_curr),
+                            "Profit Growth (%)": BusinessAdvisor._safe_pct(None, p_curr),
+                            "ASP Growth (%)": BusinessAdvisor._safe_pct(None, asp_curr),
+                            "Profit Per Unit Growth (%)": BusinessAdvisor._safe_pct(None, up_curr),
+
+                            # We only know current mix, not mix change
+                            "Sales Mix Change (%)": None,
+                        }
+
+                        rows.append(r)
+
+                    # Fallback urgency_score: use current sales so high-impact SKUs still surface
+                    for r in rows:
+                        try:
+                            r["urgency_score"] = float(r.get("net_sales_curr", 0.0) or 0.0)
+                        except Exception:
+                            r["urgency_score"] = 0.0
+
+                    rows_sorted = sorted(
+                        rows,
+                        key=lambda r: (float(r.get("urgency_score", 0.0) or 0.0),
+                                       float(r.get("net_sales_curr", 0.0) or 0.0)),
+                        reverse=True,
+                    )
+
+                    print(f"[DEBUG][advisor][fallback] total_skus={len(rows_sorted)}")
+                    print("[DEBUG][advisor][fallback] top 5 SKUs (by net_sales_curr):")
+                    for r in rows_sorted[:5]:
+                        print(
+                            "  -",
+                            r.get("product_name"),
+                            "| net_sales_curr=",
+                            round(r.get("net_sales_curr", 0.0) or 0.0, 2),
+                            "| urgency_score=",
+                            round(r.get("urgency_score", 0.0) or 0.0, 2),
+                        )
+
+                    sku_tables = {"all_skus": rows_sorted}
 
             advisor_payload = {
                 "meta": {
@@ -5646,6 +5454,8 @@ Do not add any extra keys. Do not wrap in Markdown.
         except Exception as e:
             print("[DEBUG][advisor] portfolio JSON advisor failed:", e)
             return ["I wasn’t able to generate recommendations right now. Please try again."]
+
+
 
     # --- 1) Fetch trailing monthly panel for a product (no hardcoded keywords)
     @staticmethod

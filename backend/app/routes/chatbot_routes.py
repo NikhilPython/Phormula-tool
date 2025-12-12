@@ -1270,281 +1270,7 @@ class QueryBuilder:
         text_in = f"year IN ({', '.join(txt_keys)})"
         return f"({numeric} OR {text_in})"
 
-    # def build(
-    #         self,
-    #         *,
-    #         user_id: str,
-    #         country: Optional[str],
-    #         selected_cols: List[str],    # kept in signature for compatibility, but ignored
-    #         time_entities: Dict[str, Any],
-    #         filters: Dict[str, Any],
-    #         intents: Dict[str, Any],
-    #         limit: int = 100000,
-    #     ) -> Tuple[str, Dict[str, Any], str]:
-
-    #     table = self.table_for(user_id, country)
-    #     params: Dict[str, Any] = {}
-
-    #     is_per_country = self._is_per_country_table(table)
-
-    #     # Safe baseline columns (present in your CSV)
-    #     baseline = {
-    #         "date_time","product_sales","total","product_name",
-    #         "month","year","type","sku","description",
-    #         "promotional_rebates","other","postage_credits","gift_wrap_credits","shipping_credits",
-    #         "product_sales_tax","marketplace_facilitator_tax","shipping_credits_tax",
-    #         "giftwrap_credits_tax","promotional_rebates_tax","other_transaction_fees",
-    #         "fba_fees","selling_fees","cost_of_unit_sold","quantity"
-    #     }
-    #     if not is_per_country:
-    #         baseline = set(baseline) | {"country"}
-
-    #     select_clause = ", ".join(sorted(baseline))
-    #     where: List[str] = []
-
-    #     # Country filter on global table
-    #     if (not is_per_country) and country:
-    #         key = f"eq_country_{len(params)}"
-    #         params[key] = str(country)
-    #         where.append(f"LOWER(country) = LOWER(:{key})")
-    #         print(f"[DEBUG] added country filter for global table: {country}")
-
-    #     # ---------- TIME LOGIC ----------
-    #     import datetime as dt
-
-    #     def _month_clause(month_dicts: List[dict], params: Dict[str, Any]) -> str:
-    #         if not month_dicts:
-    #             return ""
-    #         parts = []
-    #         for i, m in enumerate(month_dicts):
-    #             num = int(m["number"])
-    #             name = str(m["name"])
-    #             p_full = f"mn_full_{i}"
-    #             p_abbr = f"mn_abbr_{i}"
-    #             p_int  = f"mn_int_{i}"
-    #             p_02   = f"mn_02_{i}"
-    #             params[p_full] = name.lower()
-    #             params[p_abbr] = name[:3].lower() + "%"
-    #             params[p_int]  = str(num)
-    #             params[p_02]   = f"{num:02d}"
-    #             parts.append(
-    #                 "("
-    #                 "  LOWER(month) = :" + p_full +
-    #                 "  OR LOWER(month) LIKE :" + p_abbr +
-    #                 "  OR month = :" + p_int +
-    #                 "  OR month = :" + p_02 +
-    #                 ")"
-    #             )
-    #         return "(" + " OR ".join(parts) + ")"
-
-    #     def _year_clause(years: List[int], params: Dict[str, Any]) -> str:
-    #         if not years:
-    #             return ""
-    #         num_keys, str_keys = [], []
-    #         for i, y in enumerate(years):
-    #             k_num = f"y_{i}"
-    #             k_str = f"ys_{i}"
-    #             params[k_num] = int(y)
-    #             params[k_str] = str(y)
-    #             num_keys.append(f":{k_num}")
-    #             str_keys.append(f":{k_str}")
-    #         numeric = f"(year ~ '^[0-9]+$' AND CAST(year AS INT) IN ({', '.join(num_keys)}))"
-    #         text_in = f"(year IN ({', '.join(str_keys)}))"
-    #         return f"({numeric} OR {text_in})"
-
-    #     # A. Single explicit day
-    #     if "explicit_day" in time_entities:
-    #         y, mo, d = time_entities["explicit_day"]
-    #         start_dt = dt.datetime(y, mo, d, 0, 0, 0, tzinfo=dt.timezone.utc)
-    #         end_dt   = start_dt + dt.timedelta(days=1)
-
-    #         params["dt_start"] = start_dt
-    #         params["dt_end"]   = end_dt
-
-    #         if "us_merge" in table.lower():
-    #             dt_expr = (
-    #                 "COALESCE("
-    #                 "  to_timestamp(date_time, 'Mon DD YYYY HH12:MI:SS AM TZ'),"
-    #                 "  to_timestamp(date_time || ' UTC', 'Mon DD YYYY HH12:MI:SS AM TZ')"
-    #                 ")"
-    #             )
-    #         else:
-    #             dt_expr = (
-    #                 "COALESCE("
-    #                 "  to_timestamp(date_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'),"
-    #                 "  to_timestamp(date_time, 'FMDD Mon YYYY HH24:MI:SS TZ'),"
-    #                 "  to_timestamp(date_time || ' UTC', 'FMDD Mon YYYY HH24:MI:SS TZ')"
-    #                 ")"
-    #             )
-
-    #         where.append(f"({dt_expr} >= :dt_start AND {dt_expr} < :dt_end)")
-    #         print(f"[DEBUG] added explicit_day filter: {y}-{mo}-{d}")
-
-    #     # B. Month(s)
-    #     elif time_entities.get("months"):
-    #         m_clause = _month_clause(time_entities["months"], params)
-    #         if m_clause:
-    #             where.append(m_clause)
-    #             print(f"[DEBUG] added month filter(s): {time_entities['months']}")
-    #         y_clause = _year_clause(time_entities.get("years", []), params)
-    #         if y_clause:
-    #             where.append(y_clause)
-    #             print(f"[DEBUG] added year filter(s): {time_entities['years']}")
-
-    #     # C. Explicit date_range
-    #     elif "date_range" in time_entities:
-
-    #         start_dt, end_dt = time_entities["date_range"]
-
-    #         # Normalize start
-    #         try:
-    #             if isinstance(start_dt, dt.date) and not isinstance(start_dt, dt.datetime):
-    #                 start_dt = dt.datetime.combine(start_dt, dt.time.min, tzinfo=dt.timezone.utc)
-    #             elif isinstance(start_dt, dt.datetime) and start_dt.tzinfo is None:
-    #                 start_dt = start_dt.replace(tzinfo=dt.timezone.utc)
-    #         except Exception:
-    #             pass
-
-    #         # Normalize end (IMPORTANT FIX: do NOT add 1 extra day if datetime)
-    #         try:
-    #             if isinstance(end_dt, dt.date) and not isinstance(end_dt, dt.datetime):
-    #                 end_dt = dt.datetime.combine(end_dt, dt.time.min, tzinfo=dt.timezone.utc) + dt.timedelta(days=1)
-    #             elif isinstance(end_dt, dt.datetime):
-    #                 if end_dt.tzinfo is None:
-    #                     end_dt = end_dt.replace(tzinfo=dt.timezone.utc)
-    #         except Exception:
-    #             pass
-
-    #         params["dt_start"] = start_dt
-    #         params["dt_end"]   = end_dt
-
-    #         if "us_merge" in table.lower():
-    #             dt_expr = (
-    #                 "COALESCE("
-    #                 "  to_timestamp(date_time, 'Mon DD YYYY HH12:MI:SS AM TZ'),"
-    #                 "  to_timestamp(date_time || ' UTC', 'Mon DD YYYY HH12:MI:SS AM TZ')"
-    #                 ")"
-    #             )
-    #         else:
-    #             dt_expr = (
-    #                 "COALESCE("
-    #                 "  to_timestamp(date_time, 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'),"
-    #                 "  to_timestamp(date_time, 'FMDD Mon YYYY HH24:MI:SS TZ'),"
-    #                 "  to_timestamp(date_time || ' UTC', 'FMDD Mon YYYY HH24:MI:SS TZ')"
-    #                 ")"
-    #             )
-
-    #         where.append(f"({dt_expr} >= :dt_start AND {dt_expr} < :dt_end)")
-    #         print(f"[DEBUG] added date_range filter: {start_dt} → {end_dt}")
-
-    #     # D. Year(s) only
-    #     elif time_entities.get("years"):
-    #         y_clause = _year_clause(time_entities.get("years", []), params)
-    #         if y_clause:
-    #             where.append(y_clause)
-    #             print(f"[DEBUG] added year filter(s): {time_entities['years']}")
-
-    #     # ---------- END TIME LOGIC ----------
-
-    #     TEXT_COLS = {"product_name","sku","type","description","country","order_id","month","year"}
-
-    #     # ---------- TEXT_LIKE filters ----------
-    #     for col, txt in filters.get("text_like", []):
-    #         if col == "product":
-    #             print(f"[DEBUG] remapping filter column 'product' → 'product_name'")
-    #             col = "product_name"
-    #         key = f"tl_{col}_{len(params)}"
-    #         params[key] = f"%{str(txt)}%"
-    #         where.append(f"LOWER({col}) LIKE LOWER(:{key})")
-    #         print(f"[DEBUG] added TEXT_LIKE filter: {col} LIKE %{txt}%")
-
-    #     # ---------- EQUALS filters ----------
-    #     for col, val in filters.get("equals", []):
-    #         if col == "product":
-    #             col = "product_name"
-    #             print(f"[DEBUG] remapping filter column 'product' → 'product_name'")
-
-    #         if is_per_country and col == "country":
-    #             print(f"[DEBUG] skipping equals filter on country (already handled): {val}")
-    #             continue
-
-    #         key = f"eq_{col}_{len(params)}"
-    #         if col in TEXT_COLS:
-    #             params[key] = str(val)
-    #             where.append(f"LOWER({col}) = LOWER(:{key})")
-    #             print(f"[DEBUG] added TEXT equals filter: {col} = {val}")
-    #         else:
-    #             params[key] = val
-    #             where.append(f"{col} = :{key}")
-    #             print(f"[DEBUG] added NUMERIC equals filter: {col} = {val}")
-
-    #     # ---------- IN_LIST filters ----------
-    #     for col, vals in filters.get("in_list", []):
-    #         if col == "product":
-    #             col = "product_name"
-    #             print(f"[DEBUG] remapping filter column 'product' → 'product_name'")
-    #         if not vals or (is_per_country and col == "country"):
-    #             continue
-    #         keys = []
-    #         for i, v in enumerate(vals):
-    #             k = f"in_{col}_{len(params)}_{i}"
-    #             params[k] = v
-    #             keys.append(f":{k}")
-    #         if col in TEXT_COLS:
-    #             where.append(f"LOWER({col}) IN ({', '.join(keys)})")
-    #             print(f"[DEBUG] added TEXT IN_LIST filter: {col} IN {vals}")
-    #         else:
-    #             where.append(f"{col} IN ({', '.join(keys)})")
-    #             print(f"[DEBUG] added NUMERIC IN_LIST filter: {col} IN {vals}")
-
-    #     # ---------- NUMERIC filters ----------
-    #     for col, op, val in filters.get("numeric", []):
-    #         if col == "product":
-    #             col = "product_name"
-    #             print(f"[DEBUG] remapping filter column 'product' → 'product_name'")
-    #         key = f"num_{col}_{len(params)}"
-    #         params[key] = float(val)
-    #         where.append(f"CAST({col} AS DOUBLE PRECISION) {op} :{key}")
-    #         print(f"[DEBUG] added NUMERIC filter: {col} {op} {val}")
-
-    #     # ---------- BETWEEN filters ----------
-    #     for col, lo, hi in filters.get("between", []):
-    #         if col == "product":
-    #             col = "product_name"
-    #             print(f"[DEBUG] remapping filter column 'product' → 'product_name'")
-    #         key_lo = f"btw_lo_{col}_{len(params)}"
-    #         key_hi = f"btw_hi_{col}_{len(params)+1}"
-    #         params[key_lo] = float(lo)
-    #         params[key_hi] = float(hi)
-    #         where.append(f"CAST({col} AS DOUBLE PRECISION) BETWEEN :{key_lo} AND :{key_hi}")
-    #         print(f"[DEBUG] added BETWEEN filter: {col} BETWEEN {lo} AND {hi}")
-
-    #     where_clause = f"WHERE {' AND '.join(where)}" if where else ""
-
-    #     # ---------- ORDER / SORT ----------
-    #     order_clause = ""
-    #     raw_lower = " ".join(intents.keys())
-    #     if "sorting" in intents or any(w in raw_lower for w in ["recent", "latest", "new"]):
-    #         order_clause = "ORDER BY date_time DESC"
-    #         print(f"[DEBUG] added ORDER BY date_time DESC (recent/latest)")
-    #     elif "product_sales" in baseline:
-    #         order_clause = "ORDER BY product_sales DESC"
-    #         print(f"[DEBUG] added ORDER BY product_sales DESC (default)")
-
-    #     limit = max(1, min(int(limit), 100000))
-
-    #     sql = f"""
-    #         SELECT {select_clause}
-    #         FROM {table}
-    #         {where_clause}
-    #         {order_clause}
-    #         LIMIT {limit}
-    #     """.strip()
-
-    #     print("[DEBUG] Final SQL query:\n", sql)
-    #     print("[DEBUG] Params:", params)
-
-    #     return sql, params, table
+    
     def build(
             self,
             *,
@@ -2370,1288 +2096,7 @@ def apply_reply_to_pending(user_id: int, reply_text: str, engine) -> Optional[di
 
 
 
-# def exec_plan_via_formula(self, *, plan: dict, query: str, user_id: str, country_override: Optional[str] = None):
-#     # ---------- small normalizations (local to this function) ----------
-#     ql = (query or "").lower()
 
-#     # If the planner accidentally set product="sku"/"product", ignore it.
-#     _generic_tokens = {"sku", "product", "products", "product name"}
-#     if isinstance(plan.get("product"), str) and plan["product"].strip().lower() in _generic_tokens:
-#         plan["product"] = None
-
-#     # ---- helpers ------------------------------------------------------------
-#     def _coerce_time_range(tr, user_id: Optional[int] = None, country: Optional[str] = None) -> Optional[dict]:
-#         """
-#         Normalize a time_range-like input into {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}.
-
-#         Accepts:
-#         - dicts with 'start'/'end'
-#         - strings like '2024-03', 'Mar 2024', 'Q2 2023'
-#         - natural spans: 'last 3 months', 'this quarter', 'till now', etc.
-#         Automatically clamps dynamic spans via clamp_relative_time_to_available().
-#         """
-#         # ---------- direct dict ----------
-#         if isinstance(tr, dict) and tr.get("start") and tr.get("end"):
-#             return {"start": tr["start"][:10], "end": tr["end"][:10]}
-
-#         if not isinstance(tr, str):
-#             return None
-
-#         s = tr.strip().lower()
-#         if not s:
-#             return None
-
-#         def _fmt(d: date) -> str:
-#             return d.strftime("%Y-%m-%d")
-
-#         def _last_day_of_month(y, m):
-#             return calendar.monthrange(y, m)[1]
-
-#         def _quarter_bounds(y, q):
-#             start_m, end_m = {1: (1, 3), 2: (4, 6), 3: (7, 9), 4: (10, 12)}[q]
-#             end_d = _last_day_of_month(y, end_m)
-#             return date(y, start_m, 1), date(y, end_m, end_d)
-
-#         # ---------- step 1: reject "future" phrases ----------
-#         if re.search(r"\b(future|upcoming|next\s+(month|quarter|year))\b", s):
-#             return None
-
-#         # ---------- step 2: relative / natural-language phrases ----------
-#         if re.search(
-#             r"\b(last|this|current|previous|past|ytd|year\s*to\s*date|till\s*now|to\s*date|so\s*far|overall|all\s*time|quarter|month|week|year)\b",
-#             s,
-#         ):
-#             try:
-#                 widened = clamp_relative_time_to_available(int(user_id) if user_id else 0, country, s)
-#                 if widened and widened.get("start") and widened.get("end"):
-#                     return {"start": widened["start"][:10], "end": widened["end"][:10]}
-#             except Exception as e:
-#                 print(f"[DEBUG][coerce_time_range] clamp failed for '{s}': {e}")
-
-#         # ---------- step 3: plain YYYY-MM (month) ----------
-#         m = re.fullmatch(r"(\d{4})-(0?[1-9]|1[0-2])", s)
-#         if m:
-#             y, mon = int(m.group(1)), int(m.group(2))
-#             last = calendar.monthrange(y, mon)[1]
-#             return {"start": f"{y:04d}-{mon:02d}-01", "end": f"{y:04d}-{mon:02d}-{last:02d}"}
-
-#         # ---------- step 4: month name + year ----------
-#         m = re.fullmatch(
-#             r"(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+(\d{4})", s, flags=re.I
-#         )
-#         if m:
-#             name, y = m.group(1).lower(), int(m.group(2))
-#             mon = [None, "jan","feb","mar","apr","may","jun","jul","aug","sep","sept","oct","nov","dec"].index(name[:3])
-#             last = calendar.monthrange(y, mon)[1]
-#             return {"start": f"{y:04d}-{mon:02d}-01", "end": f"{y:04d}-{mon:02d}-{last:02d}"}
-
-#         # ---------- step 5: quarter pattern ----------
-#         m = re.fullmatch(r"(q|qtr|quarter|qtd)\s*([1-4])(?:\s+(\d{4}))?", s, flags=re.I)
-#         if m:
-#             qnum = int(m.group(2))
-#             year = int(m.group(3)) if m.group(3) else date.today().year
-#             start, end = _quarter_bounds(year, qnum)
-#             return {"start": _fmt(start), "end": _fmt(end)}
-
-#         # ---------- step 6: year-only ----------
-#         m = re.fullmatch(r"(\d{4})", s)
-#         if m:
-#             y = int(m.group(1))
-#             return {"start": f"{y:04d}-01-01", "end": f"{y:04d}-12-31"}
-
-#         # ---------- fallback ----------
-#         return None
-
-
-#     # ---- main ---------------------------------------------------------------
-#     op = (plan.get("operation") or "aggregate").lower()
-#     country = country_override or plan.get("country")
-
-#     fe = FormulaEngine()
-#     metric_name = (plan.get("metric") or "").strip().lower()
-
-#     # --- Hard override: detect "sales mix" / "profit mix" in the raw query ----
-#     if re.search(r"\b(sales|profit)\s*mix\b", ql):
-#         which = re.search(r"\b(sales|profit)\s*mix\b", ql, flags=re.I).group(1).lower()
-#         metric_name = f"{which}_mix"
-#         plan["metric"] = metric_name
-#         plan["needs_clarification"] = False
-#         plan["clarification_message"] = None
-#         print(f"[DEBUG][metric-override] Forced metric to '{metric_name}' from raw query phrase.")
-
-#         # If user said "mix of <product>" and planner didn't capture it, extract it.
-#         if not plan.get("product"):
-#             m_prod = re.search(r"\b(?:of|for)\s+([A-Za-z0-9\+\-_/ ][^,;]*)", ql)
-#             if m_prod:
-#                 plan["product"] = m_prod.group(1).strip()
-#                 print(f"[DEBUG][metric-override] Captured target_product from query → '{plan['product']}'")
-
-
-#     # Default to sales for rank/compare
-#     if op in {"rank", "compare"} and not metric_name:
-#         plan["metric"] = "sales"
-#         metric_name = "sales"
-#         plan["needs_clarification"] = False
-#         plan["clarification_message"] = None
-#         print("[DEBUG][metric-fix] Defaulted missing metric to 'sales'")
-
-#     if not metric_name or metric_name not in fe.registry:
-#         metric_name = fe.resolve_name(query) or "sales"
-
-#     # --- Mix intent rescue from planner product field -----------------------
-#     # Handle cases like product="mix classic" when planner fails to tag as *_mix.
-#     prod_raw = (plan.get("product") or "").strip()
-#     m = re.match(r"^(?:mix)\s+(.+)$", prod_raw, flags=re.I)
-#     if m and metric_name in {"sales", "profit"}:
-#         target = m.group(1).strip()
-#         candidate = f"{metric_name}_mix"
-#         if candidate in fe.registry:
-#             metric_name = candidate
-#             plan["metric"] = candidate
-#             plan["product"] = target
-#             plan["force_product_only"] = False
-#             print(f"[DEBUG][mix-rescue] Upgraded metric to '{candidate}', target_product='{target}' from product='{prod_raw}'")
-
-#     # --- Grouping inference --------------------------------------------------
-#     try:
-#         plan = infer_group_by(query, plan)
-#     except Exception:
-#         pass
-
-#     # --- rank operation handling --------------------------------------------
-#     try:
-#         if op == "rank":
-#             gb = (plan.get("group_by") or "").lower().strip()
-#             if gb not in {"month", "product", "sku", "country"}:
-#                 plan["group_by"] = "month"
-#             elif gb == "product" and (plan.get("product") or plan.get("filters")):
-#                 plan["group_by"] = "month"
-#     except Exception:
-#         pass
-
-#     if op == "breakdown":
-#         op = "aggregate"
-#         if not (plan.get("group_by") or "").strip():
-#             plan["group_by"] = "product"
-
-#     # --- ✅ Planner-driven breakdown only (no keyword heuristics) -----------
-#     gb_planner = (plan.get("group_by") or "").lower().strip()
-#     is_mix_metric = metric_name in {"sales_mix", "profit_mix"}
-
-#     # Guard for mix metrics — ignore planner-provided breakdowns unless explicitly forced
-#     if is_mix_metric:
-#         # If planner accidentally sent group_by=product or sku, clear it.
-#         if plan.get("group_by"):
-#             print(f"[DEBUG][mix-guard] Clearing planner group_by='{plan.get('group_by')}' for {metric_name}")
-#         plan["group_by"] = None
-#         # Only allow breakdown if explicitly forced by caller
-#         want_breakdown = bool(plan.get("force_breakdown") is True)
-#     else:
-#         want_breakdown = False
-#         if gb_planner in {"product", "sku"}:
-#             want_breakdown = True
-#         elif plan.get("product"):
-#             want_breakdown = True
-#         elif op == "rank":
-#             want_breakdown = True
-
-#     # (the rest of your function remains the same below)
-#     # ------------------------------------------------------
-#     needed_cols = [
-#         "date_time","month","year","product_name","sku","type","description","order_id",
-#         "quantity","price_in_gbp","cost_of_unit_sold",
-#         "product_sales","promotional_rebates","postage_credits","gift_wrap_credits","shipping_credits",
-#         "product_sales_tax","marketplace_facilitator_tax","shipping_credits_tax","giftwrap_credits_tax","promotional_rebates_tax",
-#         "selling_fees","fba_fees","other_transaction_fees","other","total"
-#     ]
-
-#     # --- Natural language time parsing ---
-#     nl_time = FilterParser().parse_time(query)
-#     coerced = _coerce_time_range(plan.get("time_range"), user_id=int(user_id), country=country)
-
-#     # --- Fallback: fill plan.time_range if planner didn't set it ---
-#     tr = plan.get("time_range")
-#     needs_fill = True
-#     if isinstance(tr, dict):
-#         needs_fill = not (tr.get("start") and tr.get("end"))
-#     elif isinstance(tr, str):
-#         # keep as-is; _coerce_time_range will handle strings like "last 4 months"
-#         needs_fill = False  
-
-#     if needs_fill:
-#         try:
-#             clamp_try = clamp_relative_time_to_available(int(user_id), country, query)
-#             if clamp_try and clamp_try.get("start") and clamp_try.get("end"):
-#                 plan["time_range"] = clamp_try
-#                 print(f"[DEBUG][time-fallback] plan.time_range filled via clamp → {plan['time_range']}")
-#         except Exception as e:
-#             print(f"[DEBUG][time-fallback] clamp failed: {e}")
-
-#     # 🔄 Recompute coerced to stay in sync with possibly updated plan.time_range
-#     coerced = coerced or _coerce_time_range(plan.get("time_range"), user_id=int(user_id), country=country)
-#     print(f"[DEBUG][time] NL parsed: {nl_time}, coerced: {coerced}, final plan.time_range: {plan.get('time_range')}")
-#     if isinstance(plan.get("time_range"), str):
-#         if isinstance(coerced, dict):
-#             plan["time_range"] = coerced
-#             print(f"[DEBUG][time] plan.time_range normalized → {plan['time_range']}")
-#         else:
-#             plan["time_range"] = None
-#             print(f"[DEBUG][time] plan.time_range cleared (could not coerce)")
-
-#     def _is_full_month_span(rr: Optional[dict]) -> bool:
-#         if not (isinstance(rr, dict) and rr.get("start") and rr.get("end")):
-#             return False
-#         s = dt.datetime.fromisoformat(rr["start"])
-#         e = dt.datetime.fromisoformat(rr["end"])
-#         last = calendar.monthrange(e.year, e.month)[1]
-#         return (s.day == 1) and (e.day == last)
-
-#     def _months_between(s: dt.date, e: dt.date) -> tuple[list[int], list[int]]:
-#         months, years = [], []
-#         y, m = s.year, s.month
-#         while (y < e.year) or (y == e.year and m <= e.month):
-#             months.append(m); years.append(y)
-#             m += 1
-#             if m > 12:
-#                 m = 1; y += 1
-#         return months, years
-
-#     # --- Compare override (semantic only, no hardcoded keywords) --------------
-#     compare_override = False
-
-#     months_from_nl = list(nl_time.get("months") or [])
-#     years_from_nl  = list(nl_time.get("years") or [])
-
-#         # regex fallback for "Jun 2025 vs Jul 2025"
-#     if len(months_from_nl) < 2:
-#         mon_pat = r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
-#         pairs = re.findall(fr"{mon_pat}\s+(\d{{4}})", query, flags=re.I)
-#         if len(pairs) >= 2:
-#             months_from_nl = [
-#                 {
-#                     "name": m,
-#                     "number": [None, "jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].index(m[:3].lower()),
-#                 }
-#                 for m, _ in pairs[:2]
-#             ]
-#             years_from_nl = [int(y) for _, y in pairs[:2]]
-
-#     # detect multi-month spans (purely from a date range)
-#     full_span_has_2 = False
-#     if coerced and _is_full_month_span(coerced):
-#         s_date = dt.date.fromisoformat(coerced["start"])
-#         e_date = dt.date.fromisoformat(coerced["end"])
-#         ms, _ys = _months_between(s_date, e_date)
-#         full_span_has_2 = len(ms) >= 2
-
-#     if (not full_span_has_2) and nl_time.get("date_range"):
-#         sdt, edt_excl = nl_time["date_range"]
-#         last_incl = (edt_excl - dt.timedelta(days=1))
-#         full_span_has_2 = (sdt.year, sdt.month) != (last_incl.year, last_incl.month)
-
-#     # --- Decide if the user EXPLICITLY asked for a comparison ----------------
-#     ql_norm = (query or "").lower()
-
-#     has_explicit_compare = False
-
-#     # "vs / versus"
-#     if re.search(r"\b(vs\.?|versus)\b", ql_norm):
-#         has_explicit_compare = True
-#     # "compare", "comparison"
-#     elif re.search(r"\bcompare\b", ql_norm) or re.search(r"\bcomparison\b", ql_norm):
-#         has_explicit_compare = True
-#     # "difference/change between ..."
-#     elif re.search(r"\b(difference|diff|change)\s+between\b", ql_norm):
-#         has_explicit_compare = True
-#     # "between Jan 2025 and Feb 2025" (two months + 'between')
-#     elif " between " in ql_norm and len(months_from_nl) >= 2:
-#         has_explicit_compare = True
-#     # Year-on-year style keywords
-#     elif re.search(r"\b(yoy|y\/y|year\s*on\s*year)\b", ql_norm):
-#         has_explicit_compare = True
-
-#     # 🚦 Only apply auto-compare when user *explicitly* asked for comparison
-#     #    This prevents "last 3 months" from turning into unwanted YoY compare.
-#     if (
-#         has_explicit_compare
-#         and metric_name not in {"sales_mix", "profit_mix"}
-#         and (len(months_from_nl) >= 2 or full_span_has_2)
-#     ):
-#         op = "compare"
-#         compare_override = True
-#         coerced = None
-
-
-    
-
-#     # # -------------------- Time entity assembly -------------------------------
-#     # time_entities: Dict[str, Any] = {}
-
-#     # if compare_override:
-#     #     # use months/years parsed from NL for compare
-#     #     ms = months_from_nl
-#     #     ys = sorted(set(years_from_nl)) if years_from_nl else None
-#     #     if ms:
-#     #         # normalize shape to [{'name': ..., 'number': int}]
-#     #         norm = []
-#     #         for m in ms:
-#     #             if isinstance(m, dict) and "number" in m:
-#     #                 norm.append({
-#     #                     "name": m.get("name") or calendar.month_name[m["number"]],
-#     #                     "number": int(m["number"]),
-#     #                 })
-#     #             else:
-#     #                 try:
-#     #                     mi = int(m)
-#     #                     norm.append({
-#     #                         "name": calendar.month_name[mi],
-#     #                         "number": mi,
-#     #                     })
-#     #                 except Exception:
-#     #                     continue
-#     #         if norm:
-#     #             time_entities["months"] = norm
-#     #     if ys:
-#     #         time_entities["years"] = ys
-
-#     # # 🔁 NEW: give explicit month(s) priority over a broad coerced span
-#     # elif nl_time.get("months"):
-#     #     time_entities["months"] = nl_time["months"]
-#     #     if nl_time.get("years"):
-#     #         time_entities["years"] = nl_time["years"]
-
-#     # elif coerced and _is_full_month_span(coerced):
-#     #     s_date = dt.date.fromisoformat(coerced["start"])
-#     #     e_date = dt.date.fromisoformat(coerced["end"])
-#     #     ms, ys = _months_between(s_date, e_date)
-#     #     time_entities["months"] = [
-#     #         {"name": calendar.month_name[m], "number": m} for m in ms
-#     #     ]
-#     #     time_entities["years"] = sorted(set(ys))
-
-#     # elif "explicit_day" in nl_time:
-#     #     time_entities["explicit_day"] = nl_time["explicit_day"]
-
-#     # elif nl_time.get("date_range"):
-#     #     time_entities["date_range"] = nl_time["date_range"]
-
-#     # elif coerced:
-#     #     start_dt = dt.datetime.fromisoformat(coerced["start"]).replace(
-#     #         tzinfo=dt.timezone.utc, hour=0, minute=0, second=0, microsecond=0
-#     #     )
-#     #     end_day = dt.datetime.fromisoformat(coerced["end"]).date()
-#     #     end_exclusive = dt.datetime.combine(
-#     #         end_day + dt.timedelta(days=1),
-#     #         dt.time.min,
-#     #         tzinfo=dt.timezone.utc,
-#     #     )
-#     #     time_entities["date_range"] = (start_dt, end_exclusive)
-
-#     # elif nl_time.get("years"):
-#     #     time_entities["years"] = nl_time["years"]
-
-
-#     # # Debug: see what exact time entities are sent to the SQL builder
-#     # print(f"[DEBUG][time_entities] {time_entities}")
-#         # -------------------- Time entity assembly -------------------------------
-        
-#     # -------------------- Time entity assembly -------------------------------
-
-#     time_entities: Dict[str, Any] = {}
-
-#     if compare_override:
-#         # use months/years parsed from NL for compare
-#         ms = months_from_nl
-#         ys = sorted(set(years_from_nl)) if years_from_nl else None
-#         if ms:
-#             # normalize shape to [{'name': ..., 'number': int}]
-#             norm = []
-#             for m in ms:
-#                 if isinstance(m, dict) and "number" in m:
-#                     norm.append({
-#                         "name": m.get("name") or calendar.month_name[m["number"]],
-#                         "number": int(m["number"]),
-#                     })
-#                 else:
-#                     try:
-#                         mi = int(m)
-#                         norm.append({
-#                             "name": calendar.month_name[mi],
-#                             "number": mi,
-#                         })
-#                     except Exception:
-#                         continue
-#             if norm:
-#                 time_entities["months"] = norm
-#         if ys:
-#             time_entities["years"] = ys
-
-#     # 1️⃣ If parser gave an exact day, that wins
-#     elif "explicit_day" in nl_time:
-#         time_entities["explicit_day"] = nl_time["explicit_day"]
-
-#     # 1.5️⃣ FULL-YEAR OVERRIDE:
-#     # If the user basically said "in 2025" (years only) and the NL parser
-#     # produced a full-year date_range, use that and ignore the coerced span.
-#     elif (
-#         nl_time.get("years")
-#         and not nl_time.get("months")
-#         and not nl_time.get("explicit_day")
-#         and nl_time.get("date_range")
-#     ):
-#         # e.g. nl_time["date_range"] = (2025-01-01 00:00:00, 2025-12-31 23:59:59.999999)
-#         time_entities["date_range"] = nl_time["date_range"]
-
-#     # 2️⃣ Otherwise, if parser gave a date_range, use that
-#     elif nl_time.get("date_range"):
-#         time_entities["date_range"] = nl_time["date_range"]
-
-#     # 3️⃣ If planner/coerced span is NOT a full month
-#     #    (e.g. 2025-10-01 → 2025-10-15), respect that as a date_range
-#     elif coerced and not _is_full_month_span(coerced):
-#         start_dt = dt.datetime.fromisoformat(coerced["start"]).replace(
-#             tzinfo=dt.timezone.utc, hour=0, minute=0, second=0, microsecond=0
-#         )
-#         end_day = dt.datetime.fromisoformat(coerced["end"]).date()
-#         end_exclusive = dt.datetime.combine(
-#             end_day + dt.timedelta(days=1),
-#             dt.time.min,
-#             tzinfo=dt.timezone.utc,
-#         )
-#         time_entities["date_range"] = (start_dt, end_exclusive)
-
-#     # 4️⃣ Otherwise, if we have month(s) from NL, use those
-#     #    (this fixes the "October 2025" slow-sellers case where planner span = Jan–Oct)
-#     elif nl_time.get("months"):
-#         time_entities["months"] = nl_time["months"]
-#         if nl_time.get("years"):
-#             time_entities["years"] = nl_time["years"]
-
-#     # 5️⃣ Or if coerced is a full month or multi-month span, expand to month/year lists
-#     elif coerced and _is_full_month_span(coerced):
-#         s_date = dt.date.fromisoformat(coerced["start"])
-#         e_date = dt.date.fromisoformat(coerced["end"])
-#         ms, ys = _months_between(s_date, e_date)
-#         time_entities["months"] = [
-#             {"name": calendar.month_name[m], "number": m} for m in ms
-#         ]
-#         time_entities["years"] = sorted(set(ys))
-
-#     # 6️⃣ Fallback: only years were parsed
-#     elif nl_time.get("years"):
-#         time_entities["years"] = nl_time["years"]
-
-#     # Debug: see what exact time entities are sent to the SQL builder
-#     print(f"[DEBUG][time_entities] {time_entities}")
-
-
-
-
-#     # >>> Auto-extend single-month spans for TREND using clamp_relative_time_to_available
-#     if (op == "trend") and (not compare_override):
-#         print(f"[DEBUG][auto-extend] incoming plan.time_range={plan.get('time_range')}, coerced={coerced}")
-
-#         anchor = None
-#         candidate = coerced or plan.get("time_range")
-#         if candidate and _is_full_month_span(candidate):
-#             s = dt.date.fromisoformat(candidate["start"])
-#             e = dt.date.fromisoformat(candidate["end"])
-#             if (s.year, s.month) == (e.year, e.month):
-#                 anchor = candidate
-
-#         if anchor:
-#             print(f"[DEBUG][auto-extend] detected single full-month anchor={anchor}")
-#             widened = clamp_relative_time_to_available(int(user_id), country, "last 3 months")
-#             print(f"[DEBUG][auto-extend] widened span from helper={widened}")
-#             if widened:
-#                 coerced = widened
-#                 plan["time_range"] = widened
-#                 time_entities = {
-#                     "date_range": (
-#                         dt.datetime.fromisoformat(widened["start"]).replace(tzinfo=dt.timezone.utc),
-#                         dt.datetime.fromisoformat(widened["end"]).replace(tzinfo=dt.timezone.utc) + dt.timedelta(days=1),
-#                     )
-#                 }
-#                 print(f"[DEBUG][auto-extend] plan.time_range updated to {plan['time_range']}")
-#     # <<< End auto-extend
-
-#     is_mix_metric = metric_name in {"sales_mix", "profit_mix"}
-
-#     # ---------------- Filters ----------------
-#     def _is_days_to_reach_query(q: str) -> bool:
-#         ql_ = (q or "").lower()
-#         return ("how many days" in ql_ and "sales" in ql_) and any(
-#             w in ql_ for w in ["completed", "reached", "achieved", "made", "did"]
-#         )
-
-#     filter_equal: List[Tuple[str, str]] = []
-#     filter_like: List[Tuple[str, str]] = []
-#     filter_numeric: List[Tuple[str, str, float]] = []
-#     filter_in_list: List[Tuple[str, List[str]]] = []
-
-#     REAL_TEXT_COLS = {"product_name","sku","type","description","country","order_id","month","year"}
-#     REAL_NUM_COLS  = {"price_in_gbp","cost_of_unit_sold","quantity","product_sales","total","product_sales_tax","shipping_credits"}
-
-#     has_sku_clause = any(
-#         (isinstance(f, dict) and str(f.get("field","")).lower() == "sku" and str(f.get("op","")).lower() in {"=","in"})
-#         for f in (plan.get("filters") or [])
-#     )
-
-#     if _is_days_to_reach_query(query):
-#         if plan.get("product") and not has_sku_clause:
-#             filter_like.append(("product_name", plan["product"]))
-#         print("[DEBUG] days-to-reach intent → ignoring planner numeric/text filters for SQL stage")
-#     else:
-#         # default to LIKE; only force EQUALS if explicitly requested
-#         if plan.get("product") and not has_sku_clause and (not is_mix_metric or op in {"compare", "rank"}):
-
-#             if bool(plan.get("force_product_only") is True):
-#                 filter_equal.append(("product_name", plan["product"]))  # exact equality only when explicit
-#                 filter_like = [(c, v) for (c, v) in filter_like if c.lower() != "product_name"]
-#                 print(f"[DEBUG] product filter (EQUALS) applied for '{plan['product']}' (explicit force_product_only=True)")
-#             else:
-#                 filter_like.append(("product_name", plan["product"]))   # fuzzy contains by default
-#                 print(f"[DEBUG] product filter (LIKE) applied for '{plan['product']}' (family/variants allowed)")
-
-#         # pass-through any planner-provided filters
-#         for f in (plan.get("filters") or []):
-#             fld = (f.get("field") or "").lower()
-#             val = f.get("value")
-#             opf = (f.get("op") or "=").lower()
-#             if not fld or val is None:
-#                 continue
-#             if fld not in (REAL_TEXT_COLS | REAL_NUM_COLS):
-#                 print(f"[DEBUG] skipping planner filter on non-column '{fld}' (op={opf}, val={val})")
-#                 continue
-#             if fld in REAL_NUM_COLS and opf in {">",">=","<","<=","=","eq"}:
-#                 try:
-#                     filter_numeric.append((fld, opf if opf != "eq" else "=", float(val)))
-#                 except Exception:
-#                     print(f"[DEBUG] ignoring non-numeric value for numeric filter {fld} {opf} {val}")
-#                 continue
-#             if opf in {"=","eq"} and fld in REAL_TEXT_COLS:
-#                 filter_equal.append((fld, str(val)))
-#             elif opf == "in" and isinstance(val, list):
-#                 filter_in_list.append((fld, [str(x) for x in val]))
-#             else:
-#                 filter_like.append((fld, str(val)))
-
-#     # ---------- PATCH D ----------
-#     try:
-#         if has_sku_clause:
-#             print("[DEBUG] PATCH D: SKU clause already present → skipping family disambiguation")
-#         else:
-#             fam = (plan.get("product") or "").strip()
-#             force_product_only = bool(plan.get("force_product_only"))
-#             if fam and not is_mix_metric:
-#                 if force_product_only:
-#                     print(f"[DEBUG] PATCH D: force_product_only=True for '{fam}' → skip SKU disambiguation")
-#                 else:
-#                     skus_for_family = resolve_family_skus(int(user_id), country, fam, limit=500)
-#                     if len(skus_for_family) == 0:
-#                         print(f"[DEBUG] PATCH D: no SKUs found for '{fam}'")
-#                     elif len(skus_for_family) == 1:
-#                         only = skus_for_family[0]
-#                         filter_like  = [(c, v) for (c, v) in filter_like  if c.lower() != "product_name"]
-#                         filter_equal = [(c, v) for (c, v) in filter_equal if c.lower() != "product_name"]
-#                         filter_equal.append(("sku", only))
-#                         print(f"[DEBUG] PATCH D: single-SKU match → {only}")
-#                     else:
-#                         wants_all = any(p in ql for p in [
-#                             "all variants","all sizes","entire range","full range","family total","overall",
-#                             "all skus","all sku","sum all","combined","rollup","roll-up","roll up",
-#                             "variants total","whole range"
-#                         ])
-#                         if wants_all:
-#                             filter_like  = [(c, v) for (c, v) in filter_like  if c.lower() != "product_name"]
-#                             filter_equal = [(c, v) for (c, v) in filter_equal if c.lower() != "product_name"]
-#                             filter_in_list.append(("sku", skus_for_family))
-#                             print(f"[DEBUG] PATCH D: Using SKU IN (…) → {len(skus_for_family)} SKUs")
-#                         else:
-#                             examples = ", ".join(skus_for_family[:5]) + ("…" if len(skus_for_family) > 5 else "")
-#                             msg = (f"I found multiple SKUs for '{fam}'. Would you like one specific variant "
-#                                 f"or all variants?\nExamples: {examples}")
-#                             print("[DEBUG] PATCH D: clarification needed")
-#                             return pd.DataFrame({"_":[msg]}), "sql_special"
-#     except Exception as _e:
-#         print("[DEBUG][WARN] PATCH D failed:", _e)
-
-#     # ===== MIX METRIC FIX (final) =====
-#     ctx_target_product = None
-#     ctx_target_sku = None
-
-#     if is_mix_metric:
-#         # capture target before stripping
-#         for fld, val in list(filter_equal):
-#             if fld.lower() == "sku":
-#                 ctx_target_sku = val
-#             elif fld.lower() == "product_name":
-#                 ctx_target_product = val
-#         for fld, val in list(filter_like):
-#             if fld.lower() == "product_name" and not ctx_target_product:
-#                 ctx_target_product = val
-#         for fld, vals in list(filter_in_list):
-#             if fld.lower() == "sku" and vals and not ctx_target_sku:
-#                 ctx_target_sku = vals[0]
-
-#         # strip ALWAYS so denominator = all products
-#         filter_equal   = [(c, v) for (c, v) in filter_equal   if c.lower() not in ("sku","product_name")]
-#         filter_like    = [(c, v) for (c, v) in filter_like    if c.lower() not in ("sku","product_name")]
-#         filter_in_list = [(c, v) for (c, v) in filter_in_list if c.lower() not in ("sku","product_name")]
-#         print(f"[DEBUG][mix] stripped SKU/product filters for {metric_name} (denominator=all products)")
-
-#     # Build SQL
-#     sql, params, table = self.builder.build(
-#         user_id=user_id,
-#         country=(country if (country and country != "global") else None),
-#         selected_cols=needed_cols,
-#         time_entities=time_entities,
-#         filters={"equals": filter_equal,"text_like": filter_like,"numeric": filter_numeric,"in_list": filter_in_list},
-#         intents={},
-#         limit=1000000,
-#     )
-
-#     # Query → DataFrame
-#     try:
-#         with engine.connect() as conn:
-#             rs = conn.execute(text(sql), params)
-#             df = pd.DataFrame(rs.fetchall(), columns=rs.keys())
-#     except Exception as e:
-#         import traceback; traceback.print_exc()
-#         return pd.DataFrame({"_":[f"SQL error: {e}"]}), "sql_special"
-
-#     try:
-#         debug_money_sums(df, label=f"metric={metric_name} time={plan.get('time_range')} country={country}", fields=MONETARY_FIELDS)
-#         debug_money_sums(df, label="by SKU snapshot", fields=MONETARY_FIELDS, per="sku", top=10)
-#     except Exception as _e:
-#         print("[DEBUG] debug_money_sums failed:", _e)
-
-#     # ---------- SPECIAL CALCULATIONS (RUN BEFORE FE) ----------
-#     try:
-#         product_for_msg = plan.get("product")
-#         special = SpecialCalculations.try_days_to_reach_target(query, df, product_label=product_for_msg)
-#         print(f"[DEBUG] days_to_reach_target returned: {special!r}")
-#         if special:
-#             return pd.DataFrame({"_":[special]}), "sql_special"
-
-#         special_daily = SpecialCalculations.try_days_reaching_sales_daily_threshold(query, df, product_label=product_for_msg)
-#         print(f"[DEBUG] days_reaching_daily_threshold returned: {special_daily!r}")
-#         if special_daily:
-#             return pd.DataFrame({"_":[special_daily]}), "sql_special"
-#     except Exception as e:
-#         print("[DEBUG][WARN] Special calculations failed:", repr(e))
-
-#     # Compute via FormulaEngine
-#     ctx = {"country": country, "want_breakdown": want_breakdown, "raw_query": query}
-#     if metric_name in {"sales_mix", "profit_mix"}:
-#         if plan.get("product"):
-#             ctx["target_product"] = plan["product"]
-#         if ctx_target_product:
-#             ctx["target_product"] = ctx_target_product
-#         if ctx_target_sku:
-#             ctx["target_sku"] = ctx_target_sku
-
-#     evaluator = fe.registry.get(metric_name)
-#     print(f"[TRACE][FE] evaluator picked → metric='{metric_name}', func='{getattr(evaluator, '__name__', type(evaluator))}'")
-#     try:
-#         if metric_name == "sales":
-#             print(f"[TRACE][FE] evaluator is fe._sales? {evaluator is fe._sales}")
-#         elif metric_name == "profit":
-#             print(f"[TRACE][FE] evaluator is fe._profit? {evaluator is fe._profit}")
-#         elif metric_name == "tax":
-#             print(f"[TRACE][FE] evaluator is fe._tax? {evaluator is fe._tax}")
-#         elif metric_name == "credits":
-#             print(f"[TRACE][FE] evaluator is fe._credits? {evaluator is fe._credits}")
-#     except Exception as _e:
-#         print("[TRACE][FE] evaluator identity check failed:", _e)
-
-#     if evaluator is None:
-#         return pd.DataFrame({"_":[f"I can’t compute '{metric_name}'. Try one of: {', '.join(sorted(fe.registry.keys()))}."]}), "sql_special"
-
-#     try:
-#         payload = evaluator(df, ctx)
-#         print(f"[TRACE][FE] evaluator returned: keys={list(payload.keys()) if isinstance(payload, dict) else type(payload)} result={payload.get('result') if isinstance(payload, dict) else None}")
-#     except Exception as e:
-#         import traceback; traceback.print_exc()
-#         return pd.DataFrame({"_":[f"Compute error: {e}"]}), "sql_special"
-
-    
-#     # --- Operation post-processing -------------------------------------------
-#     if op == "compare":
-#         # 🚦 Empty data guard
-#         if df.empty:
-#             country_lbl = country or "the selected marketplace"
-#             return pd.DataFrame({
-#                 "_": [f"No data available in {country_lbl}. Try a different period or marketplace."]
-#             }), "sql_special"
-
-#         tdf = df.copy()
-
-#         # --- Normalize to base month/period (month → Timestamp) ---
-#         if "month" in tdf.columns and "year" in tdf.columns:
-#             mnum = tdf["month"].apply(fe._month_to_int)
-#             yint = tdf["year"].apply(fe._year_int)
-#             tdf["__period__"] = pd.to_datetime(
-#                 dict(year=yint, month=mnum, day=1),
-#                 errors="coerce", utc=True
-#             )
-#         elif "date_time" in tdf.columns:
-#             tdf["__dt"] = pd.to_datetime(tdf["date_time"], errors="coerce", utc=True)
-#             tdf["__period__"] = tdf["__dt"].dt.to_period("M").dt.to_timestamp().dt.tz_localize("UTC")
-#         else:
-#             return pd.DataFrame({"_": ["Compare requested but no time column available."]}), "sql_special"
-
-#         tdf = tdf.dropna(subset=["__period__"]).copy()
-
-#         # --- Detect comparison granularity ---
-#         compare_granularity = "month"
-#         ql_norm = query.lower()
-#         if re.search(r"\bQ[1-4]\b", ql_norm) or "quarter" in ql_norm:
-#             compare_granularity = "quarter"
-#             tdf["__comp_period__"] = tdf["__period__"].dt.to_period("Q").dt.start_time
-#         elif "half" in ql_norm or "h1" in ql_norm or "h2" in ql_norm:
-#             compare_granularity = "half"
-#             tdf["__comp_period__"] = (
-#                 tdf["__period__"].dt.year.astype(str) + "-H" +
-#                 ((tdf["__period__"].dt.month - 1) // 6 + 1).astype(str)
-#             )
-#         elif "year" in ql_norm or len(set(tdf["__period__"].dt.year)) > 1:
-#             compare_granularity = "year"
-#             tdf["__comp_period__"] = tdf["__period__"].dt.to_period("Y").dt.start_time
-#         else:
-#             compare_granularity = "month"
-#             tdf["__comp_period__"] = tdf["__period__"]
-
-#         periods = sorted(tdf["__comp_period__"].dropna().unique())
-
-#         # Pretty label helper
-#         def _label_for_period(p):
-#             if compare_granularity == "quarter":
-#                 ts = pd.Timestamp(p)
-#                 return f"Q{((ts.month - 1)//3)+1} {ts.year}"
-#             elif compare_granularity == "half":
-#                 ts = pd.Timestamp(str(p)) if not isinstance(p, pd.Timestamp) else p
-#                 half = "H1" if int(str(ts)[5]) == 1 else "H2"
-#                 return f"{half} {ts.year}"
-#             elif compare_granularity == "year":
-#                 return str(pd.Timestamp(p).year)
-#             else:
-#                 return pd.Timestamp(p).strftime("%b %Y")
-
-#         # --- Decide comparison mode ---
-#         if " vs " in ql_norm or "compare" in ql_norm or len(periods) == 2:
-#             selected_periods = [periods[0], periods[-1]]
-#         else:
-#             selected_periods = periods  # range compare still chronological
-
-#         # --- Build overall rows for each selected period ---
-#         out_rows = []
-#         for p in selected_periods:
-#             part = tdf[tdf["__comp_period__"].eq(p)]
-#             ev = fe.registry.get(metric_name)
-#             if not ev:
-#                 return pd.DataFrame({"_": [f"Metric '{metric_name}' not supported for compare."]}), "sql_special"
-
-#             ctx_per = {"country": country, "want_breakdown": False, "raw_query": query}
-
-#             # ✅ Preserve mix metric context so each period sees same target
-#             if metric_name in {"sales_mix", "profit_mix"}:
-#                 tp = (ctx_target_product or plan.get("product"))
-#                 if tp:
-#                     ctx_per["target_product"] = tp
-#                 if ctx_target_sku:
-#                     ctx_per["target_sku"] = ctx_target_sku
-#                 print(f"[DEBUG][ctx][compare] mix context → target_product={ctx_per.get('target_product')}, target_sku={ctx_per.get('target_sku')}")
-
-#             payload_p = ev(part, ctx_per)
-#             out_rows.append({
-#                 "scope": "overall",
-#                 "period": _label_for_period(p),
-#                 metric_name: float(payload_p.get("result") or 0.0),
-#                 "_period_key": pd.Timestamp(p)
-#             })
-
-#         # 🔧 Chronological sort
-#         overall_df = (
-#             pd.DataFrame(out_rows)
-#             .sort_values("_period_key")
-#             .drop(columns=["_period_key"])
-#             .reset_index(drop=True)
-#         )
-
-#         # --- Add change columns (prev is earlier period) ---
-#         if len(overall_df) >= 2:
-#             overall_df["prev"] = overall_df[metric_name].shift(1)
-#             overall_df["chg"] = overall_df[metric_name] - overall_df["prev"]
-
-#             # ✅ Avoid double percentage for already-% metrics
-#             if metric_name in {"sales_mix", "profit_mix", "acos", "conversion_rate"}:
-#                 overall_df["pct"] = overall_df["chg"]  # percentage-point difference
-#             else:
-#                 overall_df["pct"] = (overall_df["chg"] / overall_df["prev"]) * 100.0
-
-#         # --- Optional product breakdown (also chronological) ---
-#         if want_breakdown and metric_name in {"sales", "profit", "quantity_sold", "asp"}:
-#             product_rows = []
-#             for p in selected_periods:
-#                 part = tdf[tdf["__comp_period__"].eq(p)]
-#                 evp = fe.registry.get(metric_name)
-#                 payload_p = evp(part, {"country": country, "want_breakdown": True, "raw_query": query})
-#                 t = payload_p.get("table_df")
-#                 if t is None or t.empty:
-#                     continue
-
-#                 dfp = t.copy()
-#                 if "level" in dfp.columns:
-#                     dfp = dfp[dfp["level"].astype(str).str.lower().eq("product")]
-
-#                 for _, r in dfp.iterrows():
-#                     name = str(r.get("key") or r.get("product_name") or "")
-#                     val = float(r.get("result") or 0.0)
-#                     product_rows.append({
-#                         "scope": "product",
-#                         "period": _label_for_period(p),
-#                         "product": name,
-#                         metric_name: val,
-#                         "_period_key": pd.Timestamp(p)
-#                     })
-
-#             product_df = pd.DataFrame(product_rows)
-#             if not product_df.empty:
-#                 product_df = (
-#                     product_df.sort_values(["product", "_period_key"])
-#                             .drop(columns=["_period_key"])
-#                             .reset_index(drop=True)
-#                 )
-#                 product_df["prev"] = product_df.groupby("product")[metric_name].shift(1)
-#                 product_df["chg"] = product_df[metric_name] - product_df["prev"]
-
-#                 # ✅ Same fix for breakdown table
-#                 if metric_name in {"sales_mix", "profit_mix", "acos", "conversion_rate"}:
-#                     product_df["pct"] = product_df["chg"]
-#                 else:
-#                     product_df["pct"] = (product_df["chg"] / product_df["prev"]) * 100.0
-
-#                 overall_df["product"] = None
-#                 result_df = pd.concat([overall_df, product_df], axis=0, ignore_index=True, sort=False)
-#             else:
-#                 result_df = overall_df
-#         else:
-#             result_df = overall_df
-
-#         return result_df, "sql_formula"
-
-
-#     # --- Operation post-processing (rank) -----------------------------------
-        
-#     if op == "rank":
-#         gb = (plan.get("group_by") or "").lower().strip()
-#         k = max(1, min(int(plan.get("top_k") or 1), 100))
-
-#         # also catch a few more synonyms for "lowest"
-#         lowest_words = ("bottom", "lowest", "least", "min", "worst", "fewest", "smallest")
-#         asc = (plan.get("sort_dir") or "desc").lower() == "asc" or any(w in ql for w in lowest_words)
-
-#         # --- Special handling for sales_mix / profit_mix monthly ranking ---
-#         # This ensures "which month has highest sales mix of X" works properly.
-#         if metric_name in {"sales_mix", "profit_mix"} and gb == "month":
-#             tdf = df.copy()
-
-#             # Normalize to month periods
-#             if "date_time" in tdf.columns:
-#                 tdf["__dt"] = pd.to_datetime(tdf["date_time"], errors="coerce", utc=True)
-#                 tdf["__period__"] = tdf["__dt"].dt.to_period("M").dt.to_timestamp()
-#             elif {"month", "year"}.issubset(tdf.columns):
-#                 mnum = tdf["month"].apply(fe._month_to_int)
-#                 yint = tdf["year"].apply(fe._year_int)
-#                 tdf["__period__"] = pd.to_datetime(
-#                     dict(year=yint, month=mnum, day=1),
-#                     errors="coerce",
-#                     utc=True
-#                 )
-#             else:
-#                 return pd.DataFrame({"_": ["No month/year data found for mix ranking."]}), "sql_special"
-
-#             out_rows = []
-
-#             for p in sorted(tdf["__period__"].dropna().unique()):
-#                 part = tdf[tdf["__period__"].eq(p)]
-
-#                 # Prepare context for FE evaluator
-#                 ctx_month = {"country": country, "want_breakdown": False, "raw_query": query}
-
-#                 # Pass product/sku context if available
-#                 if plan.get("product"):
-#                     ctx_month["target_product"] = plan["product"]
-#                 if "ctx_target_product" in locals() and ctx_target_product:
-#                     ctx_month["target_product"] = ctx_target_product
-#                 if "ctx_target_sku" in locals() and ctx_target_sku:
-#                     ctx_month["target_sku"] = ctx_target_sku
-
-#                 ev = fe.registry.get(metric_name)
-#                 if not ev:
-#                     return pd.DataFrame(
-#                         {"_": [f"Metric '{metric_name}' not supported for rank."]}
-#                     ), "sql_special"
-
-#                 payload = ev(part, ctx_month)
-#                 out_rows.append({
-#                     "month": pd.Timestamp(p).strftime("%b %Y"),
-#                     metric_name: float(payload.get("result") or 0.0),
-#                 })
-
-#             ranked = pd.DataFrame(out_rows).sort_values(metric_name, ascending=asc).head(k).reset_index(drop=True)
-
-#             # Add note if fewer months available than expected
-#             available_months = len(set(pd.to_datetime(tdf["__period__"], errors="coerce").dt.month))
-#             if available_months < 12:
-#                 note = f"Note: Only data for {available_months} month{'s' if available_months > 1 else ''} available."
-#                 print(f"[DEBUG][rank-mix] {note}")
-#                 ranked["note"] = note
-
-#             return ranked, "sql_formula"
-
-#         # --- Generic FE-driven ranking (products, months, etc.) ---
-#         if gb in {"month", "product", "sku", "country"}:
-#             ranked = fe.rank_groups(
-#                 df,
-#                 {"country": country, "raw_query": query},
-#                 metric_name=metric_name,
-#                 group_by=gb,
-#                 top_k=k,
-#                 ascending=asc,
-#             )
-#             # If FE returned an error-style dataframe, pass it through
-#             if "_" in ranked.columns and "result" not in ranked.columns:
-#                 return ranked, "sql_special"
-
-#             # Pretty output column names
-#             col_label = {"month": "month", "product": "product", "sku": "sku", "country": "country"}[gb]
-#             ranked = ranked.rename(columns={"group": col_label, "result": metric_name})
-#             return ranked, "sql_formula"
-
-#         # --- Fallback: rank on evaluator's table_df ---
-#         t = payload.get("table_df") if isinstance(payload, dict) else None
-#         if t is None or t.empty:
-#             return pd.DataFrame({"_": ["No rows found to rank."]}), "sql_special"
-
-#         def _subset(df, level_name):
-#             if "level" in df.columns:
-#                 return df[df["level"].astype(str).str.lower().eq(level_name)]
-#             return df.iloc[0:0]
-
-#         if gb == "sku":
-#             subset = _subset(t, "sku") or _subset(t, "product")
-#         elif gb == "product":
-#             subset = _subset(t, "product") or _subset(t, "sku")
-#         else:
-#             subset = t
-
-#         if subset is None or subset.empty:
-#             return pd.DataFrame({"_": ["No product/SKU breakdown available to rank."]}), "sql_special"
-
-#         ranked = subset.sort_values("result", ascending=asc, kind="mergesort").head(k).reset_index(drop=True)
-#         return ranked, "sql_formula"
-
-
-
-
-#         # >>>>>>>>>>> MULTI-METRIC TREND (overall + optional product-wise) <<<<<<<<<<<
-#     if op == "trend":
-#         # 🚦 allow product/SKU breakdown only for these metrics
-#         BREAKDOWN_OK = {"sales", "profit", "quantity_sold", "asp", "fba_fees", "selling_fees"}
-
-#         # Map the requested metric to its output column name
-#         PRIMARY_OUT_NAME = {
-#             "sales": "sales",
-#             "profit": "profit",
-#             "quantity_sold": "quantity",
-#             "asp": "asp",
-#             "fba_fees": "fba_fees",
-#             "selling_fees": "selling_fees",
-
-#             # account-level only metrics — no product/SKU breakdown
-#             "ads_spend": "ads_spend",
-#             "advertising_total": "ads_spend",
-#             "acos": "acos",
-#             "cm2_profit": "cm2_profit",
-#             "reimbursements": "reimbursements",
-#             "reimbursement_factors": "reimbursement_factors",
-#         }.get(metric_name, "value")
-
-#         tdf = df.copy()
-
-#         # normalize to month period using existing helpers
-#         has_month_year = "month" in tdf.columns and "year" in tdf.columns
-#         if has_month_year:
-#             mnum = tdf["month"].apply(fe._month_to_int)
-#             yint = tdf["year"].apply(fe._year_int)
-#             tdf["__period__"] = pd.to_datetime(
-#                 dict(year=yint, month=mnum, day=1),
-#                 errors="coerce",
-#                 utc=True,
-#             )
-#         elif "date_time" in tdf.columns:
-#             tdf["__dt"] = pd.to_datetime(tdf["date_time"], errors="coerce", utc=True)
-#             tdf["__period__"] = (
-#                 tdf["__dt"].dt.to_period("M").dt.to_timestamp().dt.tz_localize("UTC")
-#             )
-#         else:
-#             return pd.DataFrame({"_": ["Trend requested but no time column available."]}), "sql_special"
-
-#         tdf = tdf.dropna(subset=["__period__"]).copy()
-
-#         # clamp to requested time_range (if present)
-#         tr = plan.get("time_range")
-#         if isinstance(tr, dict) and tr.get("start") and tr.get("end"):
-#             start = pd.to_datetime(tr["start"], errors="coerce", utc=True)
-#             end = pd.to_datetime(tr["end"], errors="coerce", utc=True)
-#             if pd.notna(start) and pd.notna(end):
-#                 tdf = tdf[
-#                     (tdf["__period__"] >= start.to_period("M").to_timestamp().tz_localize("UTC"))
-#                     & (tdf["__period__"] <= end.to_period("M").to_timestamp().tz_localize("UTC"))
-#                 ]
-
-#         periods = sorted(tdf["__period__"].dropna().unique())
-#         if not periods:
-#             return pd.DataFrame({"_": ["No data for the requested period(s)."]}), "sql_special"
-
-#         # ——— Overall series for the PRIMARY metric ———
-#         overall_rows = []
-#         for p in periods:
-#             part = tdf[tdf["__period__"].eq(p)]
-#             row = {"scope": "overall", "period": pd.Timestamp(p).to_pydatetime()}
-
-#             ev_primary = fe.registry.get(metric_name)
-#             if not ev_primary:
-#                 return pd.DataFrame(
-#                     {"_": [f"Metric '{metric_name}' is not supported."]}
-#                 ), "sql_special"
-
-#             # ✅ Preserve mix context (fixes trend bugs for sales_mix / profit_mix)
-#             ctx_per = {"country": country, "want_breakdown": False, "raw_query": query}
-#             if metric_name in {"sales_mix", "profit_mix"}:
-#                 tp = (ctx_target_product or plan.get("product"))
-#                 if tp:
-#                     ctx_per["target_product"] = tp
-#                 if ctx_target_sku:
-#                     ctx_per["target_sku"] = ctx_target_sku
-#                 print(
-#                     f"[DEBUG][ctx][trend] mix context → "
-#                     f"target_product={ctx_per.get('target_product')}, "
-#                     f"target_sku={ctx_per.get('target_sku')}"
-#                 )
-
-#             payload_primary = ev_primary(part, ctx_per)
-#             row[PRIMARY_OUT_NAME] = float(payload_primary.get("result") or 0.0)
-
-#             # optional convenience: also add the “core four” for context
-#             if metric_name in BREAKDOWN_OK:
-#                 for metric, out_col in [
-#                     ("sales", "sales"),
-#                     ("profit", "profit"),
-#                     ("asp", "asp"),
-#                     ("quantity_sold", "quantity"),
-#                 ]:
-#                     if out_col == PRIMARY_OUT_NAME:
-#                         continue
-#                     ev = fe.registry.get(metric)
-#                     if ev:
-#                         payload_m = ev(
-#                             part,
-#                             {
-#                                 "country": country,
-#                                 "want_breakdown": False,
-#                                 "raw_query": query,
-#                             },
-#                         )
-#                         row[out_col] = float(payload_m.get("result") or 0.0)
-
-#             overall_rows.append(row)
-
-#         overall_df = (
-#             pd.DataFrame(overall_rows)
-#             .sort_values("period")
-#             .reset_index(drop=True)
-#         )
-
-#         # compute deltas only for the PRIMARY metric
-#         prev_col = f"{PRIMARY_OUT_NAME}_prev"
-#         chg_col = f"{PRIMARY_OUT_NAME}_chg"
-#         pct_col = f"{PRIMARY_OUT_NAME}_pct"
-#         overall_df[prev_col] = overall_df[PRIMARY_OUT_NAME].shift(1)
-#         overall_df[chg_col] = overall_df[PRIMARY_OUT_NAME] - overall_df[prev_col]
-
-#         # ✅ % metrics should use percentage-point deltas, not % of %
-#         if metric_name in {"sales_mix", "profit_mix", "acos", "conversion_rate"}:
-#             overall_df[pct_col] = overall_df[chg_col]
-#         else:
-#             overall_df[pct_col] = (overall_df[chg_col] / overall_df[prev_col]) * 100.0
-
-#         # ——— Product/SKU breakdown ONLY for metrics where it makes sense ———
-#         product_rows = []
-#         if want_breakdown and (metric_name in BREAKDOWN_OK):
-#             for p in periods:
-#                 part = tdf[tdf["__period__"].eq(p)]
-#                 per_prod: dict[str, dict] = {}
-
-#                 def _merge_metric(mname: str, out_col: str):
-#                     ev = fe.registry.get(mname)
-#                     if not ev:
-#                         return
-#                     payload = ev(
-#                         part,
-#                         {
-#                             "country": country,
-#                             "want_breakdown": True,
-#                             "raw_query": query,
-#                         },
-#                     )
-#                     t = payload.get("table_df")
-#                     if t is None or t.empty:
-#                         return
-
-#                     dfp = t.copy()
-#                     if "level" in dfp.columns:
-#                         dfp = dfp[
-#                             dfp["level"].astype(str).str.lower().eq("product")
-#                         ]
-#                     if dfp.empty:
-#                         return
-
-#                     for _, r in dfp.iterrows():
-#                         name = str(
-#                             r.get("key")
-#                             or r.get("product_name")
-#                             or r.get("label")
-#                             or ""
-#                         )
-#                         val = float(r.get("result") or 0.0)
-#                         per_prod.setdefault(
-#                             name,
-#                             {
-#                                 "scope": "product",
-#                                 "period": pd.Timestamp(p).to_pydatetime(),
-#                                 "product": name,
-#                             },
-#                         )
-#                         per_prod[name][out_col] = val
-
-#                 # NOTE: do NOT call _asp with want_breakdown=True here
-#                 _merge_metric("sales", "sales")
-#                 _merge_metric("profit", "profit")
-#                 _merge_metric("quantity_sold", "quantity")
-
-#                 # derive ASP = sales / quantity per product
-#                 for rec in per_prod.values():
-#                     s = rec.get("sales")
-#                     q = rec.get("quantity")
-#                     if s is not None and q not in (None, 0):
-#                         rec["asp"] = s / q
-
-#                 for rec in per_prod.values():
-#                     product_rows.append(rec)
-
-#         product_df = pd.DataFrame(product_rows)
-#         if not product_df.empty:
-#             product_df = (
-#                 product_df.sort_values(["period", "product"])
-#                 .reset_index(drop=True)
-#             )
-#             # deltas for the “core four” only (sales, profit, asp, quantity)
-#             for m in ["sales", "profit", "asp", "quantity"]:
-#                 if m in product_df.columns:
-#                     product_df[f"{m}_prev"] = product_df.groupby("product")[m].shift(1)
-#                     product_df[f"{m}_chg"] = product_df[m] - product_df[f"{m}_prev"]
-#                     product_df[f"{m}_pct"] = (
-#                         product_df[f"{m}_chg"] / product_df[f"{m}_prev"]
-#                     ) * 100.0
-
-#         overall_out = overall_df.copy()
-#         overall_out["product"] = None
-#         overall_out["scope"] = "overall"
-
-#         result_df = pd.concat(
-#             [overall_out, product_df], axis=0, ignore_index=True, sort=False
-#         )
-#         result_df["period"] = (
-#             pd.to_datetime(result_df["period"], utc=True, errors="coerce")
-#             .dt.strftime("%b %Y")
-#         )
-
-#         # strip product rows for account-level metrics (ads_spend, acos, cm2_profit, reimbursements, etc.)
-#         if metric_name not in BREAKDOWN_OK:
-#             result_df = result_df[
-#                 result_df["scope"].astype(str).str.lower() == "overall"
-#             ].copy()
-
-#         return result_df, "sql_formula"
-
-
-
-#     # --- Default aggregate/finalization ------------------------------------
-#     t = payload.get("table_df") if isinstance(payload, dict) else None
-#     if isinstance(t, pd.DataFrame) and not t.empty:
-#         # Decide preferred output level from the user's wording and the plan.
-#         ql_norm = (query or "").lower()
-#         gb = (plan.get("group_by") or "").lower()
-
-#         def _wants_product(text: str) -> bool:
-#             return bool(re.search(
-#                 r"(per|by|each|split|break\s*down)\s+(product|item|asin)|"
-#                 r"(product[-\s]*wise)|"
-#                 r"(across\s+products)|"
-#                 r"(product\s+breakdown)",
-#                 text, re.I
-#             ))
-
-#         def _wants_sku(text: str) -> bool:
-#             return bool(re.search(
-#                 r"(per|by|each|split|break\s*down)\s+(sku|asin|variant)|"
-#                 r"(sku[-\s]*wise)|"
-#                 r"(across\s+skus)|"
-#                 r"(sku\s+breakdown)",
-#                 text, re.I
-#             ))
-
-#         wants_product = _wants_product(ql_norm) or (gb == "product")
-#         wants_sku     = _wants_sku(ql_norm)     or (gb == "sku")
-
-#         # If a level is clearly requested, keep only that level and hide TOTAL/noise.
-#         if "level" in t.columns:
-#             if wants_product and not wants_sku:
-#                 t = t[t["level"].astype(str).str.lower().eq("product")].copy()
-#             elif wants_sku and not wants_product:
-#                 t = t[t["level"].astype(str).str.lower().eq("sku")].copy()
-#             # else: keep whatever FE returned (TOTAL + product + sku)
-
-#         # Keep old behavior for top_k on monthly aggregates
-#         k = int(plan.get("top_k") or 0)
-#         sort_dir = (plan.get("sort_dir") or "desc").lower()
-#         asc = (sort_dir == "asc")
-
-#         metric_cols_pref = ["result", "sales", "orders", "profit", "quantity", "total"]
-#         metric_col = next((c for c in metric_cols_pref if c in t.columns), None)
-
-#         if gb == "month" and k > 0 and metric_col:
-#             t = (t.sort_values(by=[metric_col], ascending=asc, kind="mergesort")
-#                 .head(k)
-#                 .reset_index(drop=True))
-
-#         # 🔹 NEW: for sales breakdowns, hide component_* columns so only main sales number is shown
-#         if metric_name == "sales":
-#             comp_cols = [c for c in t.columns if c.startswith("component_")]
-#             if comp_cols:
-#                 t = t.drop(columns=comp_cols)
-
-#         return t, "sql_formula"
-
-#     # If evaluator only gave a single result number
-#     if isinstance(payload, dict) and "result" in payload:
-#         return pd.DataFrame([{"scope": "overall", metric_name: payload["result"]}]), "sql_formula"
-
-#     # Safety net (never fall off with None)
-#     return pd.DataFrame({"_": ["No result produced."]}), "sql_special"
 
 def exec_plan_via_formula(self, *, plan: dict, query: str, user_id: str, country_override: Optional[str] = None):
     # ---------- small normalizations (local to this function) ----------
@@ -5607,9 +4052,6 @@ def chatbot():
         except Exception as _e:
             print("[DEBUG][followup] failed to stash context:", _e)
 
-
-
-
     def ok(payload: dict):
         if "success" not in payload:
             payload = {"success": True, **payload}
@@ -5814,7 +4256,6 @@ def chatbot():
     orig_q = query
     query_norm = normalize_user_query(query)
 
-    
     # ------------ STEP 1: Handle *pending clarifications* FIRST --------------
     pending_snapshot = PENDING.get(user_id)
     if pending_snapshot:
@@ -5869,7 +4310,6 @@ def chatbot():
                 msg_id = save_chat_to_db(user_id, orig_q, advice_text) or None
                 return ok({"mode": "advisor", "response": advice_text, "message_id": msg_id})
 
-
             # Execute
             try:
                 df, mode = engine_q.exec_plan_via_formula(
@@ -5907,7 +4347,8 @@ def chatbot():
                                         "group_by": plan.get("group_by") or "product",
                                         "filters": [],
                                     },
-                                    query=orig_q,
+                                    # IMPORTANT: advisor internal fetch → neutral query
+                                    query="",
                                     user_id=str(user_id),
                                     country_override=eff_country,
                                 )
@@ -5953,21 +4394,90 @@ def chatbot():
                 msg_id = save_chat_to_db(user_id, query, reply) or None
                 return ok({"response": reply, "message_id": msg_id, "mode": mode})
 
-            # Render formula-mode
             # --- Render formula-mode (PENDING branch) ---
             if mode == "sql_formula":
                 table_records = df_to_records_safe(df)
                 final_records = _finalize_records(plan, table_records)
                 print(f"[DEBUG] wants_advice(pending)={wants_advice(orig_q, plan)}")
-                # Decide: prescriptive advice vs descriptive report (no hard-coded keywords)
+
                 if wants_advice(orig_q, plan):
-                    advice_lines = BusinessAdvisor.recommend(
-                        orig_q,
-                        df,
-                        aux={
-                            "country": country_override or plan.get("country"),
-                            "time_range": plan.get("time_range"),
-                            "scope": (
+                    # --------- Build proper df_primary for BusinessAdvisor (PENDING branch) ----------
+                    try:
+                        # 1) Determine effective country
+                        eff_country = (country_override or plan.get("country") or parse_country_strict(orig_q) or "UK").upper()
+                        if eff_country not in {"UK", "US"}:
+                            store__ = globals().setdefault("LAST_CONTEXT", {})
+                            lc__ = store__.get(int(user_id)) or {}
+                            eff_country = lc__.get("country") or "UK"
+
+                        # 2) Try to infer a single product from query or last context
+                        picked_product = None
+                        try:
+                            cands = product_candidates(engine, user_id, eff_country, orig_q, limit=10) or []
+                        except Exception:
+                            cands = []
+                        if len(cands) == 1:
+                            picked_product = (cands[0].get("product_name") or "").strip()
+
+                        if not picked_product:
+                            lc_safe = (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id)) or {})
+                            if lc_safe.get("product"):
+                                picked_product = lc_safe["product"]
+                                eff_country = lc_safe.get("country") or eff_country
+
+                        # 3) Pick a trailing time window for advisor, prefer clamp
+                        tr = (
+                            clamp_relative_time_to_available(user_id, eff_country, "last 4 months")
+                            or clamp_relative_time_to_available(user_id, eff_country, "last 3 months")
+                            or plan.get("time_range")
+                        )
+
+                        # If clamp couldn't determine a window, build a safe 3-month span
+                        if not tr:
+                            try:
+                                latest_y, latest_m = get_latest_data_year_month(user_id, eff_country)
+                                end_last = calendar.monthrange(latest_y, latest_m)[1]
+                                end = f"{latest_y:04d}-{latest_m:02d}-{end_last:02d}"
+                                start_m = latest_m - 2
+                                start_y = latest_y
+                                while start_m <= 0:
+                                    start_m += 12
+                                    start_y -= 1
+                                start = f"{start_y:04d}-{start_m:02d}-01"
+                                tr = {"start": start, "end": end}
+                            except Exception:
+                                tr = None
+
+                        # 4) Build a TREND plan to feed BusinessAdvisor
+                        trend_plan = {
+                            "operation": "trend",
+                            "metric": plan.get("metric") or "sales",
+                            "time_range": tr,
+                            "country": eff_country,
+                            "group_by": None if picked_product else "product",
+                            "sort_dir": "desc",
+                            "product": picked_product,
+                            "filters": [],
+                        }
+
+                        df_trend, mode_trend = engine_q.exec_plan_via_formula(
+                            plan=trend_plan,
+                            # IMPORTANT: advisor internal fetch → neutral query
+                            query="",
+                            user_id=str(user_id),
+                            country_override=country_override,
+                        )
+
+                        # 5) Choose df_primary + scope/target
+                        if isinstance(df_trend, pd.DataFrame) and not df_trend.empty:
+                            df_primary = df_trend.copy()
+                            scope = "product" if picked_product else "portfolio"
+                            target = picked_product if picked_product else None
+                            time_range_for_advisor = tr
+                        else:
+                            # Fallback: use current df
+                            df_primary = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+                            scope = (
                                 "sku"
                                 if plan.get("force_product_only")
                                 and isinstance(plan.get("product"), str)
@@ -5975,14 +4485,38 @@ def chatbot():
                                 else "product"
                                 if plan.get("product")
                                 else "portfolio"
-                            ),
-                            "target": plan.get("product"),
-                        },
-                    )
-                    reply = "\n".join(advice_lines) if advice_lines else \
-                            "I couldn’t derive targeted growth actions from the latest data."
-                    used_mode = "advisor"
+                            )
+                            target = plan.get("product")
+                            time_range_for_advisor = plan.get("time_range")
+
+                        # 6) Call BusinessAdvisor
+                        advice_lines = BusinessAdvisor.recommend(
+                            orig_q,
+                            df_primary,
+                            aux={
+                                "country": eff_country,
+                                "time_range": time_range_for_advisor,
+                                "scope": scope,
+                                "target": target,
+                            },
+                        )
+                        reply = "\n".join(advice_lines) if advice_lines else \
+                                "I couldn’t derive targeted growth actions from the latest data."
+                        used_mode = "advisor"
+
+                    except Exception as e:
+                        # If anything goes wrong, fall back to plain sql_formula narrative
+                        print("[DEBUG][advisor-pending] failed, falling back to sql_formula narrative:", e)
+                        reply = generate_openai_answer(
+                            user_query=orig_q,
+                            mode="sql_formula",
+                            analysis=None,
+                            table_records=final_records,
+                        )
+                        used_mode = "sql_formula"
+
                 else:
+                    # Non-advisor path: descriptive table narrative
                     reply = generate_openai_answer(
                         user_query=orig_q,
                         mode="sql_formula",
@@ -5991,11 +4525,17 @@ def chatbot():
                     )
                     used_mode = mode
 
+                # Stash context & follow-up memory (unchanged)
                 try:
-                    _stash_context(user_id, plan, country_override, table_records=final_records,user_msg=orig_q,)
+                    _stash_context(
+                        user_id,
+                        plan,
+                        country_override,
+                        table_records=final_records,
+                        user_msg=orig_q,
+                    )
                     _local = globals().setdefault("LAST_CONTEXT", {})
                     FOLLOWUP_MEMORY.push(_local.get(int(user_id), {}))
-
                 except Exception:
                     pass
 
@@ -6006,7 +4546,6 @@ def chatbot():
                     "message_id": msg_id,
                     "table": final_records
                 })
-
 
             # Default: analysis summary
             analysis = analyst.analyze_results(df, orig_q)
@@ -6222,7 +4761,6 @@ def chatbot():
     except Exception as _e:
         print("[DEBUG][followup-decision] failed:", _e)
 
-
     # ------------ STEP 3.45: Follow-up synthesis (context-driven, no keyword heuristics) ----------
     if decision.get("mode") == "followup" and not decision.get("synth"):
         # Nothing was synthesized in decide_followup_or_new.
@@ -6261,7 +4799,6 @@ def chatbot():
             query_for_plan = f"{query_for_plan} {_ctx}"
             print("[DEBUG][planner] primed with", _ctx)
 
-
     # Normalize the primed query (this becomes our canonical query_norm)
     query_for_plan_norm = normalize_user_query(query_for_plan)
     query_norm = query_for_plan_norm
@@ -6282,7 +4819,6 @@ def chatbot():
     print("[DEBUG] Plan (normalized):", plan)
     lc_for_defaults = (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id)) or {})
     plan, _filled = _auto_fill_defaults(plan, query, user_id, country_override, lc_for_defaults)
-
 
     # ---- Sanitize SKU constraint using shape + catalog existence (no keywords) ----
     try:
@@ -6314,8 +4850,7 @@ def chatbot():
             plan["metric"] = lc.get("metric")
         if not _has(plan.get("country")):
             plan["country"] = lc.get("country")
-        
-        
+
         if not _has(plan.get("time_range")):
             if _looks_anaphoric_to_time(query):
                 plan["time_range"] = lc.get("time_range")
@@ -6356,7 +4891,6 @@ def chatbot():
     except Exception as e:
         print("[DEBUG][router] intent routing failed:", e)
         intent = intent or "analytics"
-
 
     try:
         if intent == "general_finance":
@@ -6413,7 +4947,11 @@ def chatbot():
                 }
 
                 df2, mode2 = engine_q.exec_plan_via_formula(
-                    plan=plan2, query=query, user_id=str(user_id), country_override=country_override
+                    plan=plan2,
+                    # IMPORTANT: advisor internal fetch → neutral query
+                    query="",
+                    user_id=str(user_id),
+                    country_override=country_override
                 )
 
                 if df2 is not None and not df2.empty:
@@ -6478,7 +5016,11 @@ def chatbot():
                 }
 
                 df2, mode2 = engine_q.exec_plan_via_formula(
-                    plan=plan2, query=query, user_id=str(user_id), country_override=country_override
+                    plan=plan2,
+                    # IMPORTANT: advisor internal fetch → neutral query
+                    query="",
+                    user_id=str(user_id),
+                    country_override=country_override
                 )
 
                 if df2 is not None and not df2.empty:
@@ -6545,7 +5087,6 @@ def chatbot():
         # 5) If NO candidates → DO NOT return. Fall through to planner/advisor.
         print("[DEBUG][sku-lookup] router said sku_lookup but no candidates; falling through.")
 
-
     # ---------------------- Plan + slot-filling -------------------------------
     try:
         # Preserve old "clamp to available" ONLY when the user actually mentioned time.
@@ -6584,7 +5125,6 @@ def chatbot():
         lc_for_defaults = (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id)) or {})
         plan, _filled = _auto_fill_defaults(plan, query, user_id, country_override, lc_for_defaults)
 
-
         # --- BACKFILL CONTEXT FOR FOLLOW-UPS (after plan rebuild) ---
         def _has(v): 
             return v is not None and v != "" and v != {}
@@ -6610,7 +5150,6 @@ def chatbot():
                     plan.pop("product", None)
                 plan["force_product_only"] = False
 
-
             # If time still missing and user didn't mention one, clamp safely
             try:
                 fp_tmp = FilterParser()
@@ -6628,8 +5167,6 @@ def chatbot():
             except Exception as e:
                 print("[DEBUG][followup/main] clamp fill failed:", e)
 
-
-
         # Advisor short-circuit (main branch)
         if isinstance(plan, dict) and (plan.get("operation") or "").lower() == "advisor":
             advisor = BusinessAdvisor(engine, user_id, country_override)
@@ -6644,7 +5181,6 @@ def chatbot():
 
             msg_id = save_chat_to_db(user_id, query, advice_text) or None
             return ok({"mode": "advisor", "response": advice_text, "message_id": msg_id})
-
 
         # Natural-language time backfill
         try:
@@ -6747,8 +5283,20 @@ def chatbot():
                 if not _probe:
                     guessed = None
 
+            # --- NEW: strip alias-based "product" so it doesn't count as explicit product intent ---
+            alias_match = re.search(r"\(alias:\s*([^)]+)\)", str(query or ""), re.I)
+            alias_name = alias_match.group(1).strip() if alias_match else None
+
+            raw_plan_product = (plan.get("product") or "").strip()
+            if alias_name and raw_plan_product and raw_plan_product.lower() == alias_name.lower():
+                # e.g. "(alias: skin elements)" – this is the business alias, not a specific product
+                print(f"[DEBUG] product came only from alias '{alias_name}' → clearing plan['product']")
+                plan["product"] = None
+                raw_plan_product = ""
+
             wants_split = plan.get("group_by") in {"product", "sku"} or plan.get("operation") == "rank"
-            explicit_product = bool(plan.get("product") or guessed)
+            # explicit_product now means: a real product phrase (guessed) OR a non-alias product set upstream
+            explicit_product = bool(raw_plan_product or guessed)
 
             cands = []
             product_phrase = ""
@@ -6852,29 +5400,33 @@ def chatbot():
                         print("[DEBUG] context auto-pick failed:", _e)
 
                     if not picked:
-                        # ✅ NEW: No clarification, just auto-pick one product
-
-                        chosen = None
-                        try:
-                            # Simple choice: first candidate
-                            chosen = (cands[0].get("product_name") or "").strip()
-                        except Exception as _e:
-                            print("[DEBUG] auto-pick from cands failed:", _e)
-
-                        if chosen:
-                            plan["product"] = chosen
-                            plan["force_product_only"] = False
-                            print(f"[DEBUG] auto-picked product among multiple candidates → {plan['product']!r}")
-                        else:
-                            # If kuch valid naam nahi mila to product filter hata do
-                            print("[DEBUG] multiple candidates but no usable product name → proceeding without product filter")
+                        # IMPORTANT CHANGE:
+                        # If user did not clearly ask about a specific product, DO NOT auto-pick.
+                        if not explicit_product:
+                            print("[DEBUG] multiple candidates but no explicit product intent → proceeding without product filter")
                             plan.pop("product", None)
                             plan["force_product_only"] = False
+                        else:
+                            # User explicitly asked product-wise; safe to auto-pick a candidate.
+                            chosen = None
+                            try:
+                                # Simple choice: first candidate
+                                chosen = (cands[0].get("product_name") or "").strip()
+                            except Exception as _e:
+                                print("[DEBUG] auto-pick from cands failed:", _e)
 
+                            if chosen:
+                                plan["product"] = chosen
+                                plan["force_product_only"] = False
+                                print(f"[DEBUG] auto-picked product among multiple candidates → {plan['product']!r}")
+                            else:
+                                # If kuch valid naam nahi mila to product filter hata do
+                                print("[DEBUG] multiple candidates but no usable product name → proceeding without product filter")
+                                plan.pop("product", None)
+                                plan["force_product_only"] = False
 
         except Exception as _e:
             print("[DEBUG][WARN] product disambiguation failed:", _e)
-
 
         # --- Generic slot detection (top_k, country, time_range) --------------
         # Ensure country is set on follow-ups before we ask for it
@@ -6924,7 +5476,6 @@ def chatbot():
             msg_id = save_chat_to_db(user_id, query, first_prompt) or None
             return ok({"mode": "clarify", "response": first_prompt, "message_id": msg_id})
 
-
         # Print final plan
         print("[DEBUG] Plan (final):", plan)
 
@@ -6933,7 +5484,6 @@ def chatbot():
             plan=plan, query=query, user_id=str(user_id), country_override=country_override
         )
 
-        # Recovery on empty
         # Recovery on empty
         if df is None or df.empty:
             df, mode, plan = _recover_empty_result(df, mode, plan, query)
@@ -6955,7 +5505,8 @@ def chatbot():
                                     "group_by": plan.get("group_by") or "product",
                                     "filters": [],
                                 },
-                                query=query,
+                                # IMPORTANT: advisor internal fetch → neutral query
+                                query="",
                                 user_id=str(user_id),
                                 country_override=eff_country,
                             )
@@ -6984,7 +5535,6 @@ def chatbot():
                 msg_id = save_chat_to_db(user_id, query, reply) or None
                 return ok({"response": reply, "message_id": msg_id, "mode": mode})
 
-
         # SKU clarification (normal)
         if mode == "sql_special" and "_" in df.columns and len(df) == 1:
             reply = str(df.iloc[0]["_"])
@@ -7002,21 +5552,83 @@ def chatbot():
             msg_id = save_chat_to_db(user_id, query, reply) or None
             return ok({"response": reply, "message_id": msg_id, "mode": mode})
 
-        
         # Formula mode → render table narrative OR action plan
         if mode == "sql_formula":
             table_records = df_to_records_safe(df)
             final_records = _finalize_records(plan, table_records)
+            print(f"[DEBUG] wants_advice(pending)={wants_advice(orig_q, plan)}")
 
-            # decide advice vs report
-            if wants_advice(query, plan):
-                advice_lines = BusinessAdvisor.recommend(
-                    query,
-                    df,
-                    aux={
-                        "country": country_override or plan.get("country"),
-                        "time_range": plan.get("time_range"),
-                        "scope": (
+            if wants_advice(orig_q, plan):
+                # --------- Build proper df_primary for BusinessAdvisor (main branch) ----------
+                try:
+                    eff_country = (country_override or plan.get("country") or parse_country_strict(orig_q) or "UK").upper()
+                    if eff_country not in {"UK", "US"}:
+                        store__ = globals().setdefault("LAST_CONTEXT", {})
+                        lc__ = store__.get(int(user_id)) or {}
+                        eff_country = lc__.get("country") or "UK"
+
+                    picked_product = None
+                    try:
+                        cands = product_candidates(engine, user_id, eff_country, orig_q, limit=10) or []
+                    except Exception:
+                        cands = []
+                    if len(cands) == 1:
+                        picked_product = (cands[0].get("product_name") or "").strip()
+
+                    if not picked_product:
+                        lc_safe = (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id)) or {})
+                        if lc_safe.get("product"):
+                            picked_product = lc_safe["product"]
+                            eff_country = lc_safe.get("country") or eff_country
+
+                    tr = (
+                        clamp_relative_time_to_available(user_id, eff_country, "last 4 months")
+                        or clamp_relative_time_to_available(user_id, eff_country, "last 3 months")
+                        or plan.get("time_range")
+                    )
+
+                    if not tr:
+                        try:
+                            latest_y, latest_m = get_latest_data_year_month(user_id, eff_country)
+                            end_last = calendar.monthrange(latest_y, latest_m)[1]
+                            end = f"{latest_y:04d}-{latest_m:02d}-{end_last:02d}"
+                            start_m = latest_m - 2
+                            start_y = latest_y
+                            while start_m <= 0:
+                                start_m += 12
+                                start_y -= 1
+                            start = f"{start_y:04d}-{start_m:02d}-01"
+                            tr = {"start": start, "end": end}
+                        except Exception:
+                            tr = None
+
+                    trend_plan = {
+                        "operation": "trend",
+                        "metric": plan.get("metric") or "sales",
+                        "time_range": tr,
+                        "country": eff_country,
+                        "group_by": None if picked_product else "product",
+                        "sort_dir": "desc",
+                        "product": picked_product,
+                        "filters": [],
+                    }
+
+                    df_trend, mode_trend = engine_q.exec_plan_via_formula(
+                        plan=trend_plan,
+                        # IMPORTANT: advisor internal fetch → neutral query
+                        query="",
+                        user_id=str(user_id),
+                        country_override=country_override,
+                    )
+
+                    if isinstance(df_trend, pd.DataFrame) and not df_trend.empty:
+                        df_primary = df_trend.copy()
+                        scope = "product" if picked_product else "portfolio"
+                        target = picked_product if picked_product else None
+                        time_range_for_advisor = tr
+                    else:
+                        df_primary = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
+                        scope = (
                             "sku"
                             if plan.get("force_product_only")
                             and isinstance(plan.get("product"), str)
@@ -7024,16 +5636,37 @@ def chatbot():
                             else "product"
                             if plan.get("product")
                             else "portfolio"
-                        ),
-                        "target": plan.get("product"),
-                    },
-                )
-                reply = "\n".join(advice_lines) if advice_lines else \
-                        "I couldn’t derive targeted growth actions from the latest data."
-                used_mode = "advisor"
+                        )
+                        target = plan.get("product")
+                        time_range_for_advisor = plan.get("time_range")
+
+                    advice_lines = BusinessAdvisor.recommend(
+                        orig_q,
+                        df_primary,
+                        aux={
+                            "country": eff_country,
+                            "time_range": time_range_for_advisor,
+                            "scope": scope,
+                            "target": target,
+                        },
+                    )
+                    reply = "\n".join(advice_lines) if advice_lines else \
+                            "I couldn’t derive targeted growth actions from the latest data."
+                    used_mode = "advisor"
+
+                except Exception as e:
+                    print("[DEBUG][advisor-pending] failed, falling back to sql_formula narrative:", e)
+                    reply = generate_openai_answer(
+                        user_query=orig_q,
+                        mode="sql_formula",
+                        analysis=None,
+                        table_records=final_records,
+                    )
+                    used_mode = "sql_formula"
+
             else:
                 reply = generate_openai_answer(
-                    user_query=query,
+                    user_query=orig_q,
                     mode="sql_formula",
                     analysis=None,
                     table_records=final_records,
@@ -7041,7 +5674,7 @@ def chatbot():
                 used_mode = mode
 
             try:
-                _stash_context(user_id, plan, country_override, table_records=final_records,user_msg=orig_q )
+                _stash_context(user_id, plan, country_override, table_records=final_records, user_msg=orig_q)
                 _local = globals().setdefault("LAST_CONTEXT", {})
                 FOLLOWUP_MEMORY.push(_local.get(int(user_id), {}))
 

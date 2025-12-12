@@ -150,7 +150,7 @@ def print_comparison_range():
         print(f"key_column (FE): {key_column} | scan_key (backend): {scan_key}")
 
         # Dynamic column list
-        columns = ['asp', 'quantity', 'profit', 'sales_mix', 'product_name', 'net_sales', 'unit_wise_profitability', 'product_sales','profit_percentage','rembursement_fee']
+        columns = ['asp', 'quantity', 'profit', 'sales_mix', 'product_name', 'net_sales', 'unit_wise_profitability', 'product_sales','profit_percentage','rembursement_fee','advertising_total']
         if not is_global:
             columns.append('sku')
         cols_str = ', '.join(columns)
@@ -167,9 +167,83 @@ def print_comparison_range():
                         continue
                     rows.append({col: row_dict.get(col) for col in columns})
                 return rows
+            
+        
+        def query_reimbursement_total(table_name):
+            q = text(f"""
+                SELECT rembursement_fee
+                FROM {table_name}
+                WHERE LOWER(TRIM(product_name)) = 'total'
+                LIMIT 1
+            """)
+            with engine.connect() as conn:
+                r = conn.execute(q).first()
+                if not r:
+                    return 0.0
+                try:
+                    return float(r[0] or 0)
+                except Exception:
+                    return 0.0
+                
+        def query_advertising_total(table_name):
+            q = text(f"""
+                SELECT advertising_total
+                FROM {table_name}
+                WHERE LOWER(TRIM(product_name)) = 'total'
+                LIMIT 1
+            """)
+            with engine.connect() as conn:
+                r = conn.execute(q).first()
+                if not r:
+                    return 0.0
+                try:
+                    return float(r[0] or 0)
+                except Exception:
+                    return 0.0
+                
+
+        def query_expense_total(table_name):
+            q = text(f"""
+                SELECT
+                    ABS(COALESCE(net_taxes, 0)) +
+                    ABS(COALESCE(fba_fees, 0)) +
+                    ABS(COALESCE(selling_fees, 0)) +
+                    ABS(COALESCE(cost_of_unit_sold, 0)) +
+                    ABS(COALESCE(advertising_total, 0)) +
+                    ABS(COALESCE(platform_fee, 0)) -
+                    ABS(COALESCE(net_credits, 0)) AS expense
+                FROM {table_name}
+                WHERE LOWER(TRIM(product_name)) = 'total'
+                LIMIT 1
+            """)
+            with engine.connect() as conn:
+                r = conn.execute(q).first()
+                if not r:
+                    return 0.0
+                try:
+                    return float(r[0] or 0)
+                except Exception:
+                    return 0.0
+        
+        
+
+        
+            
 
         data1 = query_table_columns(table1)  # Month 1 (earlier)
         data2 = query_table_columns(table2)  # Month 2 (later)
+        
+        reimbursement_total_month1 = query_reimbursement_total(table1)
+        reimbursement_total_month2 = query_reimbursement_total(table2)
+
+        advertising_total_month1 = query_advertising_total(table1)
+        advertising_total_month2 = query_advertising_total(table2)
+        
+        expense_total_month1 = query_expense_total(table1)
+        expense_total_month2 = query_expense_total(table2)
+
+
+
 
         print(f"Rows fetched -> data1: {len(data1)} | data2: {len(data2)}")
         if data2:
@@ -234,7 +308,7 @@ def print_comparison_range():
 
         def calculate_growth(data1, data2, key=scan_key, numeric_fields=None, non_growth_fields=None):
             if non_growth_fields is None:
-                non_growth_fields = ["profit_percentage","rembursement_fee" ]  # ✅ add more raw-only fields here later if needed
+                non_growth_fields = ["profit_percentage","rembursement_fee","advertising_total" ]  # ✅ add more raw-only fields here later if needed
 
             if numeric_fields is None:
                 numeric_fields = list(growth_field_mapping.keys())  # ✅ only fields that have growth metrics
@@ -542,7 +616,20 @@ def print_comparison_range():
                 'new_or_reviving_total': new_or_reviving_total,
                 'other_total': other_total,
                 'all_skus_total': all_skus_total,
-            }
+            },'reimbursement_totals': {
+                'month1': round(reimbursement_total_month1, 2),
+                'month2': round(reimbursement_total_month2, 2)
+            },
+             'advertising_totals': {   # ✅ add this
+            'month1': round(advertising_total_month1, 2),
+            'month2': round(advertising_total_month2, 2)
+            },
+            'expense_totals': {   # ✅ NEW
+            'month1': round(expense_total_month1, 2),
+            'month2': round(expense_total_month2, 2)
+            },
+
+            
         }), 200
 
     except jwt.ExpiredSignatureError:
