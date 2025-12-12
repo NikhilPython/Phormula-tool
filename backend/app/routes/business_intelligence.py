@@ -298,13 +298,15 @@ def print_comparison_range():
             else:
                 return "No Growth"
 
-        def safe_float(val):
+        def safe_float(val, ndigits=2):
             try:
                 if val is None:
                     return None
-                return round(float(val), 2)
+                f = float(val)
+                return round(f, ndigits) if ndigits is not None else f
             except (ValueError, TypeError):
                 return None
+
 
         def calculate_growth(data1, data2, key=scan_key, numeric_fields=None, non_growth_fields=None):
             if non_growth_fields is None:
@@ -342,7 +344,7 @@ def print_comparison_range():
                     growth_row['sku'] = row2.get('sku')
 
                 # Month2 sales mix (frontend fallback)
-                sales_mix_val_month2 = safe_float(row2.get('sales_mix'))
+                sales_mix_val_month2 = (row2.get('sales_mix'))
                 growth_row['Sales Mix (Month2)'] = sales_mix_val_month2
 
                 # ✅ set month1 row (if exists)
@@ -359,28 +361,38 @@ def print_comparison_range():
                 # Growth fields (with metrics)
                 # ----------------------------
                 for field in numeric_fields:
-                    val2 = safe_float(row2.get(field))
-                    val1 = safe_float(row1.get(field)) if row1 else None
+                    # raw values for calculation
+                    val2_raw = safe_float(row2.get(field), ndigits=None)
+                    val1_raw = safe_float(row1.get(field), ndigits=None) if row1 else None
+
+                    # rounded values for output fields
+                    val2 = safe_float(row2.get(field), ndigits=2)
+                    val1 = safe_float(row1.get(field), ndigits=2) if row1 else None
 
                     growth_row[f"{field}_month2"] = val2
                     growth_row[f"{field}_month1"] = val1
 
-                    if val1 is None or val2 is None:
+                    if val1_raw is None or val2_raw is None:
                         growth = None
                     else:
                         if field == "sales_mix":
-                            # sales_mix already in % -> change in percentage points
-                            growth = round(val2 - val1, 2)
-                        elif val1 == 0:
-                            growth = 0.0  # avoid infinity
+                            # percentage points
+                            diff = val2_raw - val1_raw
+
+                            # If diff would display as 0.00, force it to 0.0
+                            growth = 0.0 if abs(diff) < 0.005 else round(diff, 2)
+
+                        elif val1_raw == 0:
+                            growth = 0.0
                         else:
-                            growth = round(((val2 - val1) / val1) * 100, 2)
+                            growth = round(((val2_raw - val1_raw) / val1_raw) * 100, 2)
 
                     output_label = growth_field_mapping[field]
                     growth_row[output_label] = {
-                        'category': categorize_growth(growth),
-                        'value': growth
+                        "category": categorize_growth(growth),
+                        "value": growth
                     }
+                # ----------------------------
 
                 if row1 is None:
                     growth_row['new_or_reviving'] = True
