@@ -907,15 +907,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
                                         <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                                             <div className="flex items-center justify-center gap-1">
                                                 Net Credits
-                                                <Tooltip text="Net Credits represent the total credits after adjustments. Formula: postage credits + gift wrap credits" />
+                                                <Tooltip text="Net Credits Formula: Postage Credits + Gift Wrap Credits" />
                                             </div>
                                         </th>
 
                                         <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                                             <div className="flex items-center justify-center gap-1">
                                                 Net Taxes
-                                                <Tooltip text="Net Taxes represent the remaining taxes after deductions. 
-                                                    Formula: Net Taxes = shipping credits tax + giftwrap credits tax + promotional rebates tax + marketplace withheld tax" />
+                                                <Tooltip text="Net Taxes Formula: Net Taxes = Shipping Credits Tax + Giftwrap Credits Tax + Promotional Rebates tax + Marketplace Withheld Tax" />
                                             </div>
                                         </th>
 
@@ -959,12 +958,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                                         <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-[clamp(12px,0.729vw,16px)] text-green-700">
                                             (+)
                                         </td>
-                                        <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-[clamp(12px,0.729vw,16px)] ">
+                                        <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-[clamp(12px,0.729vw,16px)] text-[#ff5c5c]">
                                             (-)
                                         </td>
                                         <td
                                             onClick={handleAmazonFeeClick}
-                                            className="whitespace-nowrap border border-gray-300 px-2 py-2 text-[clamp(12px,0.729vw,16px)] "
+                                            className="whitespace-nowrap border border-gray-300 px-2 py-2 text-[clamp(12px,0.729vw,16px)] text-[#ff5c5c]"
                                         >
                                             (-)
                                         </td>
@@ -1099,7 +1098,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                                             className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
                                         >
                                             Cost of Advertisement &nbsp;
-                                            <strong className="">(-)</strong>
+                                            <strong className="text-[#ff5c5c]">(-)</strong>
                                         </td>
                                         <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                                             {formatValue(totals.advertising_total, "advertising_total")}
@@ -1247,7 +1246,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                                             Product Name
                                         </th>
                                         <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                                            CM1 Profit({currencySymbol})
+                                            CM1 Profit {' '}({currencySymbol})
                                         </th>
                                         <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                                             Profit Mix (%)
@@ -1256,7 +1255,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                                             Sales Mix (%)
                                         </th>
                                         <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                                            CM1 Profit per Unit({currencySymbol})
+                                            CM1 Profit per Unit {' '}({currencySymbol})
                                         </th>
                                     </tr>
                                 </thead>
@@ -1346,7 +1345,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                                             Product Name
                                         </th>
                                         <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                                            CM1 Profit({currencySymbol})
+                                            CM1 Profit {' '}({currencySymbol})
                                         </th>
                                         <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                                             Profit Mix (%)
@@ -1355,7 +1354,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                                             Sales Mix (%)
                                         </th>
                                         <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                                            CM1 Profit per Unit({currencySymbol})
+                                            CM1 Profit per Unit {' '}({currencySymbol})
                                         </th>
                                     </tr>
                                 </thead>

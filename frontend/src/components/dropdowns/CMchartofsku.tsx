@@ -1022,7 +1022,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       return (
         <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
           <PageBreadcrumb
-            pageTitle="SKU Wise CM1 Profit Breakdown"
+            pageTitle="Product Wise CM1 Profit Breakdown"
             variant="page"
             align="left"
             textSize="2xl"
@@ -1039,7 +1039,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       return (
         <div className="flex gap-2">
           <PageBreadcrumb
-            pageTitle="SKU Wise CM1 Profit Breakdown"
+            pageTitle="Product Wise CM1 Profit Breakdown"
             variant="page"
             align="left"
             textSize="2xl"
@@ -1053,7 +1053,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     return (
       <div className="flex gap-2">
         <PageBreadcrumb
-          pageTitle="SKU Wise CM1 Profit Breakdown"
+          pageTitle="Product Wise CM1 Profit Breakdown"
           variant="page"
           align="left"
           textSize="2xl"
@@ -1109,7 +1109,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       <div className="mb-4">
         <div className="w-fit mx-auto md:mx-0">
           <PageBreadcrumb
-            pageTitle={`SKU Wise CM1 Profit Breakdown`}
+            pageTitle={`Product Wise CM1 Profit Breakdown`}
             variant="page"
             align="left"
             textSize="2xl"
