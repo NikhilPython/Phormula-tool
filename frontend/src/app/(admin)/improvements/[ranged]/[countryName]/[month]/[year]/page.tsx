@@ -413,13 +413,13 @@ axisLabel: {
 
         splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
       },
-     yAxis: {
+    yAxis: {
   type: 'value',
-  name: `Net Sales (£)`,
+  name: `Amount (${currency})`,
   nameLocation: 'middle',
   nameGap: 45,
   axisLabel: {
-    formatter: (v: number) => `£${Math.round(v).toLocaleString()}`
+    formatter: (v: number) => `${Math.round(v).toLocaleString()}`
   }
 },
 
@@ -595,14 +595,14 @@ axisLabel: {
       },
 yAxis: {
   type: 'value',
-  name: `CM1 Profit (£)`,
+  name: `Amount (${currency})`,
   nameLocation: 'middle',
   nameGap: 45,
   axisLabel: {
-    formatter: (v: number) => `£${Math.round(v).toLocaleString()}`
+    formatter: (v: number) => `${Math.round(v).toLocaleString()}`
   }
-}
-,
+},
+
    series: [
   {
     name: 'New/Reviving',
@@ -762,7 +762,7 @@ useEffect(() => {
       },
     yAxis: {
   type: 'value',
-  name: 'Units (No.s)',
+  name: 'Nos.',
   nameLocation: 'middle',
   nameGap: 45,
   axisLabel: {
@@ -928,7 +928,7 @@ useEffect(() => {
       },
       yAxis: {
        type: 'value',
-  name: `ASP (£)`,
+  name: `Amount (${currency})`,
   nameLocation: 'middle',
   nameGap: 45,
         axisLabel: {formatter: (value: number) => {
@@ -2507,7 +2507,7 @@ const isLockedCurrent = (year: string, month: string) => {
     background-color:#2c3e50; color:#f8edcf; font-weight:bold;
   }
   .styled-button:hover, .compare-button:hover{ background-color:#1f2a36; }
-  .month-form{ max-width:100%; margin:15px 0; border:1px solid #000000; padding:10px; background:#fff; }
+  .month-form{ max-width:100%; margin:15px 0; border:1px solid #EEEEEE ; padding:10px; background:#fff; }
   .month-tag{ font-size:12px; font-weight:bold; color:#414042; position:absolute; top:-25px; }
   .highlight{ color:#60a68e; }
   .subtitle{ margin-top:0; color:#414042; font-size:14px; }
@@ -2710,7 +2710,7 @@ const isLockedCurrent = (year: string, month: string) => {
 </span>
           </span>
         </h2>
-        <p><i className="">Select the year and month for both periods to compare growth metrics and totals.</i></p>
+        <p><i className="">Select the year and month for both periods to compare growth metrics.</i></p>
       <form onSubmit={handleSubmit} className="month-form ">
         {/* Row 1 */}
         <div className="month-row">
@@ -3087,10 +3087,16 @@ exportToExcel(allRows, file);
                   className="border border-[#414042] px-2 py-2.5 text-center"
                   style={{ fontWeight: 600 }}
                 >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5EA68E' }}>
-                    <FaArrowUp size={12} />
-                    {text}
-                  </span>
+                  <span className="inline-flex items-center justify-center gap-2 font-semibold text-[#5EA68E]">
+  <span className="w-4 flex justify-center">
+    <FaArrowUp size={12} />
+  </span>
+
+  <span className="tabular-nums inline-block w-[10px] text-right">
+    {text}
+  </span>
+</span>
+
                 </td>
               );
             }
@@ -3102,10 +3108,16 @@ exportToExcel(allRows, file);
                   className="border border-[#414042] px-2 py-2.5 text-center"
                   style={{ fontWeight: 600 }}
                 >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#FF5C5C' }}>
-                    <FaArrowDown size={12} />
-                    {text}
-                  </span>
+                 <span className="inline-flex items-center justify-center gap-2 font-semibold text-[#FF5C5C]">
+  <span className="w-4 flex justify-center">
+    <FaArrowDown size={12} />
+  </span>
+
+  <span className="tabular-nums inline-block w-[10px] text-right">
+    {text}
+  </span>
+</span>
+
                 </td>
               );
             }
@@ -3117,10 +3129,16 @@ exportToExcel(allRows, file);
                 className="border border-[#414042] px-2 py-2.5 text-center text-[#414042]"
                 style={{ fontWeight: 600, color: '#414042' }}
               >
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#414042' }}>
-                  {val > 0 ? <FaArrowUp size={12} /> : val < 0 ? <FaArrowDown size={12} /> : null}
-                  {text}
-                </span>
+                <span className="inline-flex items-center justify-center gap-2 font-semibold text-[#414042]">
+  <span className="w-4 flex justify-center">
+    {val > 0 ? <FaArrowUp size={12} /> : val < 0 ? <FaArrowDown size={12} /> : null}
+  </span>
+
+  <span className="tabular-nums inline-block w-[10px] text-right">
+    {text}
+  </span>
+</span>
+
               </td>
             );
           })}

@@ -5525,32 +5525,48 @@ interface ProductwisePerformanceProps {
 }
 
 /* ---------- Slug helpers ---------- */
-const toSlug = (name: string) =>
-  name
-    .trim()
-    .toLowerCase()
-    .replace(/\s*\+\s*/g, " plus ")
-    .replace(/\s+/g, "-");
+// const toSlug = (name: string) =>
+//   name
+//     .trim()
+//     .toLowerCase()
+//     .replace(/\s*\+\s*/g, " plus ")
+//     .replace(/\s+/g, "-");
 
-const fromSlug = (slug: string) =>
-  slug
-    .replace(/-/g, " ")
-    .replace(/\bplus\b/gi, "+")
-    .replace(/\s+/g, " ")
-    .trim();
+// const fromSlug = (slug: string) =>
+//   slug
+//     .replace(/-/g, " ")
+//     .replace(/\bplus\b/gi, "+")
+//     .replace(/\s+/g, " ")
+//     .trim();
+
+// const normalizeProductSlug = (slug?: string) => {
+//   if (!slug) return undefined;
+
+//   try {
+//     const decoded = decodeURIComponent(slug);
+//     if (!decoded.trim()) return undefined;
+//     return fromSlug(decoded);
+//   } catch {
+//     if (!slug.trim()) return undefined;
+//     return fromSlug(slug);
+//   }
+// };
+
+/* ---------- URL-safe helpers (NO "plus" text conversion) ---------- */
+const toSlug = (name: string) => encodeURIComponent(name.trim());
+
+const fromSlug = (slug: string) => decodeURIComponent(slug);
 
 const normalizeProductSlug = (slug?: string) => {
   if (!slug) return undefined;
-
   try {
     const decoded = decodeURIComponent(slug);
-    if (!decoded.trim()) return undefined;
-    return fromSlug(decoded);
+    return decoded.trim() || undefined;
   } catch {
-    if (!slug.trim()) return undefined;
-    return fromSlug(slug);
+    return slug.trim() || undefined;
   }
 };
+
 
 const normalizeCountryKey = (key: string): CountryKey => {
   const lower = key.toLowerCase();
@@ -5836,9 +5852,14 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       };
 
 
+      // if (range === "quarterly") {
+      //   // selectedQuarter is like "Q1", "Q2", "Q3", "Q4"
+      //   payload.quarter = selectedQuarter.replace("Q", ""); // "Q4" -> "4"
+      // }
+
       if (range === "quarterly") {
-        // selectedQuarter is like "Q1", "Q2", "Q3", "Q4"
-        payload.quarter = selectedQuarter.replace("Q", ""); // "Q4" -> "4"
+        const q = (selectedQuarter || "").match(/Q([1-4])/i)?.[1]; // "4"
+        if (q) payload.quarter = q;
       }
 
 
