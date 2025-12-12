@@ -2473,8 +2473,19 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
     # Keep your sign normalization behavior
     if selling_fees > 0:
         selling_fees = -abs(selling_fees)
+    # =========================================================
+    # ✅ MERGE OTHER TRANSACTION FEES INTO FBA FEES
+    # =========================================================
+
+    # Move all other_transaction_fees into fba_fees
+    if abs(other_transaction_fees) > 1e-12:
+        fba_fees += other_transaction_fees
+        other_transaction_fees = 0.0
+
+    # Keep FBA fees negative
     if fba_fees > 0:
         fba_fees = -abs(fba_fees)
+
     if other_transaction_fees > 0:
         other_transaction_fees = -abs(other_transaction_fees)
 

@@ -21,6 +21,7 @@ import math
 import os, re, json
 from pathlib import Path
 from app.utils.formulas_utils import uk_sales, uk_tax, uk_credits, uk_amazon_fee, uk_profit,uk_platform_fee,uk_advertising
+from collections import defaultdict
 
 # ---------- env & setup ----------
 load_dotenv()
@@ -5037,21 +5038,91 @@ Do not add any extra keys. Do not wrap in Markdown.
             obj = {}
         return obj if isinstance(obj, dict) else {}
 
+    
+    @staticmethod
+    def _oxford_join(items: list[str]) -> str:
+        items = [x for x in items if isinstance(x, str) and x.strip()]
+        if len(items) == 0:
+            return ""
+        if len(items) == 1:
+            return items[0]
+        if len(items) == 2:
+            return f"{items[0]} and {items[1]}"
+        return ", ".join(items[:-1]) + f", and {items[-1]}"
+
+    @staticmethod
+    def _parse_action_bullet(bullet: str) -> tuple[str | None, str | None]:
+        """
+        Extracts:
+        - product_name from: 'Product name - <product_name>'
+        - action_sentence as the last non-empty line (Line 5)
+        """
+        if not isinstance(bullet, str) or not bullet.strip():
+            return None, None
+
+        lines = [l.rstrip() for l in bullet.splitlines()]
+        product_name = None
+
+        for l in lines:
+            m = re.match(r"^\s*Product name\s*-\s*(.+?)\s*$", l, flags=re.IGNORECASE)
+            if m:
+                product_name = m.group(1).strip()
+                break
+
+        action_sentence = None
+        for l in reversed(lines):
+            if l.strip():
+                action_sentence = l.strip()
+                break
+
+        return product_name, action_sentence
+
+    @classmethod
+    def _build_grouped_action_lines(cls, action_bullets: list[str]) -> list[str]:
+        """
+        Groups products by identical action sentence (Line 5) and returns
+        consolidated lines like:
+        'Please review the visibility setup for Classic, Intimate Wipes, and Menthol.'
+        """
+        groups = defaultdict(list)
+
+        for b in action_bullets or []:
+            product, action = cls._parse_action_bullet(b)
+            if not product or not action:
+                continue
+            groups[action].append(product)
+
+        # Keep output deterministic: order by frequency desc, then alphabetically by action
+        ordered = sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+
+        out = []
+        for action_sentence, products in ordered:
+            # Convert: "Review the visibility setup for this product."
+            # → "Please review the visibility setup for <products>."
+            action_core = action_sentence.strip().rstrip(".")
+            # lower-case only the first char of the action for nicer grammar
+            if action_core:
+                action_core = action_core[0].lower() + action_core[1:]
+            out.append(f"Please {action_core} for {cls._oxford_join(products)}.")
+        return out
+
+
+
+
     @staticmethod
     def _render_portfolio_response(obj: dict) -> list[str]:
         """
         Convert JSON obj to list[str] for existing RAG route compatibility.
+        Adds a consolidated grouped-actions section (post-processing).
         """
         summary = obj.get("summary_bullets") or []
         actions = obj.get("action_bullets") or []
 
-        # Hard guardrails: ensure types and counts
         if not isinstance(summary, list):
             summary = []
         if not isinstance(actions, list):
             actions = []
 
-        # Keep exactly 5 actions if model returns more/less (we clamp)
         actions = actions[:5]
 
         lines: list[str] = []
@@ -5059,20 +5130,27 @@ Do not add any extra keys. Do not wrap in Markdown.
         for b in summary[:5]:
             if isinstance(b, str) and b.strip():
                 lines.append(f"- {b.strip()}")
+
         lines.append("")
         lines.append("ACTIONS")
         lines.append("")
 
+        # --- existing detailed SKU blocks ---
         for a in actions:
             if isinstance(a, str) and a.strip():
-                # Keep internal line breaks exactly as model returned
                 lines.append(a.strip())
-                lines.append("")  # spacer
+                lines.append("")
 
-        # If the model failed to comply, provide a safe fallback
+        # --- NEW: grouped roll-up at the end ---
+        grouped = BusinessAdvisor._build_grouped_action_lines(actions)
+        if grouped:
+            lines.append("CONSOLIDATED ACTIONS")
+            for g in grouped:
+                lines.append(f"- {g}")
+            lines.append("")
+
+        # Fallback fill (keep your current behavior)
         if len(actions) < 5:
-            # avoid altering other app behavior; just fill with generic placeholders
-            # (still helps UI not look broken)
             for _ in range(5 - len(actions)):
                 lines.append("Product name - (Not enough SKU data)")
                 lines.append("")
@@ -5080,6 +5158,7 @@ Do not add any extra keys. Do not wrap in Markdown.
                 lines.append("")
 
         return lines
+
 
     
     # ---------- main: keyword-free, data-driven recommendations ----------
