@@ -51,6 +51,11 @@
   z-index: 1;                  
 }
 
+.markdown-body h2 { margin: 0.5rem 0 0.5rem; }
+.markdown-body h3 { margin: 0.75rem 0 0.4rem; }
+.markdown-body ul { margin: 0.25rem 0 0.75rem; padding-left: 1.25rem; }
+.markdown-body li { margin: 0.25rem 0; }
+
 .chat-input::placeholder {
   color: #888;
   /* position: absolute;
@@ -83,6 +88,38 @@
 .markdown li {
   margin-bottom: 6px;
 }
+
+.actions-line {
+  display: block;
+  margin-bottom: 16px; /* yahan space control karo */
+}
+
+p:has(strong:contains("Actions:")) {
+  margin-bottom: 16px;
+}
+
+.markdown-body ol ol { list-style-type: lower-roman; }
+
+.markdown-body ol ol { padding-left: 1.6rem; }
+
+/* Outer ordered list (1. Product...) */
+.markdown-body ol {
+  margin: 0.25rem 0 0.75rem;
+  padding-left: 1.25rem;   /* controls left indent of 1,2,3 */
+}
+
+/* Inner ordered list (i, ii, iii) */
+.markdown-body ol ol {
+  list-style-type: lower-roman;
+  margin-top: 0.25rem;
+  padding-left: 1.25rem;   /* controls indent of roman points */
+}
+
+/* Optional: tighter spacing */
+.markdown-body li {
+  margin: 0.2rem 0;
+}
+
 
 
 /* background-image: url('/src/assets/chat-ai-bg.png');

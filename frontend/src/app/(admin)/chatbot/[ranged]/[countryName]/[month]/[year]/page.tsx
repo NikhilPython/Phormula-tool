@@ -86,91 +86,99 @@ const cleanMarkdown = (s = '') =>
     .trim()
 
 
-    function analyticsTextToMarkdown(raw = ""): string {
-  const text = raw.replace(/\r\n/g, "\n").trim();
-  if (!text) return "";
+function analyticsTextToMarkdown(raw = ''): string {
+  const text = raw.replace(/\r\n/g, '\n').trim()
+  if (!text) return ''
 
-  const lines = text
-    .split("\n")
-    .map(l => l.trim())
-    .filter(Boolean);
+  // Normalize spaces but keep newlines
+  const normalized = text
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 
-  let md = "";
-  let mode: "none" | "summary" | "actions" = "none";
-  let i = 0;
+  // --- Split SUMMARY / ACTIONS even if they're in same line ---
+  const upper = normalized.toUpperCase()
+  const sIdx = upper.indexOf('SUMMARY')
+  const aIdx = upper.indexOf('ACTIONS')
 
-  const isHeading = (l: string) => /^summary$/i.test(l) || /^actions$/i.test(l);
-  const isProduct = (l: string) => /^product\s*name\s*-\s*/i.test(l);
+  const summaryPart =
+    sIdx >= 0 && aIdx > sIdx ? normalized.slice(sIdx + 'SUMMARY'.length, aIdx).trim() : ''
+  const actionsPart =
+    aIdx >= 0 ? normalized.slice(aIdx + 'ACTIONS'.length).trim() : normalized.trim()
 
-  while (i < lines.length) {
-    const line = lines[i];
+  const splitSentences = (s: string) =>
+    s
+      .replace(/\s+/g, ' ')
+      .split(/(?<=[.?!])\s+/)
+      .map((x) => x.trim())
+      .filter(Boolean)
 
-    // Headings
-    if (/^summary$/i.test(line)) {
-      md += `## SUMMARY\n\n`;
-      mode = "summary";
-      i++;
-      continue;
-    }
-    if (/^actions$/i.test(line)) {
-      md += `\n---\n\n## ACTIONS\n\n`;
-      mode = "actions";
-      i++;
-      continue;
-    }
+  let md = ''
 
-    // SUMMARY: every sentence -> bullet
-    if (mode === "summary" && !isHeading(line) && !isProduct(line)) {
-      md += `- ${line}\n`;
-      i++;
-      continue;
-    }
-
-    // ACTIONS: Product block
-    if (mode === "actions" && isProduct(line)) {
-      const productName = line.replace(/^product\s*name\s*-\s*/i, "").trim();
-      md += `\n### Product: **${productName}**\n\n`;
-
-      // Collect description lines until next Product/Heading
-      i++;
-      const desc: string[] = [];
-      while (i < lines.length && !isProduct(lines[i]) && !isHeading(lines[i])) {
-        desc.push(lines[i]);
-        i++;
-      }
-
-      // Split desc into: metrics paragraph + action line (usually last)
-      // Heuristic: last line that starts with Review/Reduce/Increase/etc => ACTION
-      const actionIdx = desc.findIndex(d => /^(review|reduce|increase|decrease|optimize|improve)/i.test(d));
-      const actionLine = actionIdx >= 0 ? desc[actionIdx] : desc[desc.length - 1];
-      const metricsLines =
-        actionIdx >= 0 ? desc.filter((_, idx) => idx !== actionIdx) : desc.slice(0, -1);
-
-      // Metrics as bullets (sentences)
-      const metricsText = metricsLines.join(" ");
-      const metricsSentences = metricsText
-        .split(/(?<=[.])\s+/)
-        .map(s => s.trim())
-        .filter(Boolean);
-
-      if (metricsSentences.length) {
-        metricsSentences.forEach(s => (md += `- ${s}\n`));
-      }
-
-      if (actionLine) {
-        md += `\n**Action:** ${actionLine}\n`;
-      }
-
-      continue;
-    }
-
-    // fallback: normal line
-    md += `${line}\n`;
-    i++;
+  // --- SUMMARY ---
+  if (sIdx >= 0) {
+    md += `## **SUMMARY**\n\n`
+    const bullets = splitSentences(summaryPart)
+    bullets.forEach((b) => {
+      md += `- ${b}\n`
+    })
+    md += `\n---\n\n`
   }
 
-  return md.trim();
+  // --- ACTIONS ---
+  md += `## **ACTIONS**\n\n`
+
+  // Handle both:
+  // 1) "Product name - Classic ..." (single line)
+  // 2) Multi-line blocks
+  const productChunks = actionsPart
+    .split(/Product\s*name\s*[-:]\s*/i)
+    .map((x) => x.trim())
+    .filter(Boolean)
+
+  // If "Product name -" not present, fallback to old newline-based logic (optional)
+  if (productChunks.length === 0) return md.trim()
+
+  let p = 0
+
+  for (const chunk of productChunks) {
+    p++
+
+    // Product name = text before first known sentence starter
+    const nameMatch = chunk.match(
+      /^(.*?)(?=\s+(There is|The increase|The ASP|Sales mix|The sales mix)\b)/i
+    )
+    const productName = (nameMatch?.[1] || chunk.split('. ')[0] || chunk).trim()
+
+    // Body = rest after productName
+    const body = chunk.slice(productName.length).trim()
+    const sentences = splitSentences(body)
+
+    const metric1 = sentences[0] || ''
+    const metric2 = sentences[1] || ''
+
+    // Remaining sentences -> action (often "Review..." / "Check...")
+    const rest = sentences.slice(2).join(' ').trim()
+    const actionText = rest.replace(/^Actions?\s*[:\-]\s*/i, '').trim()
+
+    // Outer numbered product
+    md += `${p}. **${productName}**\n`
+
+    // Inner points (2 only)
+    if (metric1) md += `    1. ${metric1}\n`
+    if (metric2) md += `    2. ${metric2}\n`
+
+    // Actions bold (no numeral)
+    if (actionText) md += `\n    **Actions: ${actionText}**\n\n`
+
+    md += `\n`
+  }
+
+  return md.trim()
 }
+
+
+
 
 
 function parseAIResponse(rawText: string): ParsedAI {
@@ -594,7 +602,13 @@ export default function ChatbotPage() {
                             } else {
                               // Default: render as Markdown
 const formatted = analyticsTextToMarkdown(msg.text);
-return <ReactMarkdown>{formatted || msg.text}</ReactMarkdown>;
+
+return (
+  <div className="markdown-body">
+    <ReactMarkdown>{formatted || msg.text}</ReactMarkdown>
+  </div>
+);
+
                             }
                           })()
                         ) : (

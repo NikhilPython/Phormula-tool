@@ -2507,7 +2507,7 @@ const isLockedCurrent = (year: string, month: string) => {
     background-color:#2c3e50; color:#f8edcf; font-weight:bold;
   }
   .styled-button:hover, .compare-button:hover{ background-color:#1f2a36; }
-  .month-form{ max-width:100%; margin:15px 0; border:1px solid #EEEEEE ; padding:10px; background:#fff; }
+  .month-form{ max-width:100%; margin:15px 0; border:1px solid #e4e7ec ; padding:10px; background:#fff; }
   .month-tag{ font-size:12px; font-weight:bold; color:#414042; position:absolute; top:-25px; }
   .highlight{ color:#60a68e; }
   .subtitle{ margin-top:0; color:#414042; font-size:14px; }
@@ -3092,7 +3092,7 @@ exportToExcel(allRows, file);
     <FaArrowUp size={12} />
   </span>
 
-  <span className="tabular-nums inline-block w-[50px] text-right">
+  <span className="tabular-nums inline-block w-[10px] text-right">
     {text}
   </span>
 </span>
@@ -3113,7 +3113,7 @@ exportToExcel(allRows, file);
     <FaArrowDown size={12} />
   </span>
 
-  <span className="tabular-nums inline-block w-[50px] text-right">
+  <span className="tabular-nums inline-block w-[10px] text-right">
     {text}
   </span>
 </span>
@@ -3134,7 +3134,7 @@ exportToExcel(allRows, file);
     {val > 0 ? <FaArrowUp size={12} /> : val < 0 ? <FaArrowDown size={12} /> : null}
   </span>
 
-  <span className="tabular-nums inline-block w-[50px] text-right">
+  <span className="tabular-nums inline-block w-[10px] text-right">
     {text}
   </span>
 </span>
@@ -3201,7 +3201,7 @@ exportToExcel(allRows, file);
   <tr className="bg-[#D9D9D9E5]">
     <td className="border border-[#414042] px-2 py-2.5 text-center"></td>
 
-    <td className="border border-[#414042] px-2 py-2.5 text-left font-bold" style={{ textAlign: 'left' }}>
+    <td className="border border-[#414042] px-2 py-2.5 text-left font-bold " style={{ textAlign: 'left' }}>
       <strong>Total</strong>
     </td>
 
@@ -3213,7 +3213,9 @@ exportToExcel(allRows, file);
           (s, r) => s + Number(r?.['Sales Mix (Month2)'] ?? 0),
           0
         );
-        return `${sum.toFixed(2)}%`;
+        const rounded = Number(sum.toFixed(2));
+        const fixed = Math.abs(rounded - 100) < 0.05 ? 100 : rounded;
+        return `${fixed.toFixed(2)}%`;
       })()}
     </td>
 
@@ -3230,7 +3232,7 @@ exportToExcel(allRows, file);
 
       const cells = [
         ...(activeTab !== 'new_or_reviving_skus'
-          ? [pct(sum('sales_mix_month1'), sum('sales_mix_month2'))]
+          ? [0]
           : []),
         pct(sum('quantity_month1'), sum('quantity_month2')),
         pct(sum('asp_month1'), sum('asp_month2')),
@@ -3239,54 +3241,70 @@ exportToExcel(allRows, file);
         pct(sum('profit_month1'), sum('profit_month2')),
       ];
 
-     return cells.map((v, i) => {
-  const val = Number(v);
-  const sign = val >= 0 ? '+' : '';
-  const text = `${sign}${val.toFixed(2)}%`;
+      return cells.map((v, i) => {
+        const val = Number(v);
+        const sign = val >= 0 ? '+' : '';
+        const text = `${sign}${val.toFixed(2)}%`;
 
-  // ✅ total ka classification:
-  // High Growth: val >= 5
-  // Negative Growth: val < 0
-  // Low Growth: baaki sab (0 to <5)
-  if (val >= 5) {
-    return (
-      <td key={i} className="border border-[#414042] px-2 py-2.5 text-center font-bold" style={{ fontWeight: 600 }}>
-        <span className="inline-flex items-center justify-center gap-2 font-semibold text-[#5EA68E]">
-          <span className="w-4 flex justify-center">
-            <FaArrowUp size={12} />
-          </span>
-          <span className="tabular-nums inline-block w-[50px] text-right">{text}</span>
-        </span>
-      </td>
-    );
-  }
+        // ✅ Total row classification:
+        // High Growth: val >= 5
+        // Negative Growth: val < 0
+        // Low Growth: 0 <= val < 5 (or any other neutral)
+        if (val >= 5) {
+          return (
+            <td
+              key={i}
+              className="border border-[#414042] px-2 py-2.5 text-center font-bold"
+              style={{ fontWeight: 600 }}
+            >
+              <span className="inline-flex items-center justify-center gap-2 font-semibold text-[#5EA68E]">
+                <span className="w-4 flex justify-center">
+                  <FaArrowUp size={12} />
+                </span>
+                <span className="tabular-nums inline-block w-[10px] text-right">
+                  {text}
+                </span>
+              </span>
+            </td>
+          );
+        }
 
-  if (val < 0) {
-    return (
-      <td key={i} className="border border-[#414042] px-2 py-2.5 text-center font-bold" style={{ fontWeight: 600 }}>
-        <span className="inline-flex items-center justify-center gap-2 font-semibold text-[#FF5C5C]">
-          <span className="w-4 flex justify-center">
-            <FaArrowDown size={12} />
-          </span>
-          <span className="tabular-nums inline-block w-[50px] text-right">{text}</span>
-        </span>
-      </td>
-    );
-  }
+        if (val < 0) {
+          return (
+            <td
+              key={i}
+              className="border border-[#414042] px-2 py-2.5 text-center font-bold"
+              style={{ fontWeight: 600 }}
+            >
+              <span className="inline-flex items-center justify-center gap-2 font-semibold text-[#FF5C5C]">
+                <span className="w-4 flex justify-center">
+                  <FaArrowDown size={12} />
+                </span>
+                <span className="tabular-nums inline-block w-[10px] text-right">
+                  {text}
+                </span>
+              </span>
+            </td>
+          );
+        }
 
-  // ✅ Low Growth (neutral) — arrow sign ke basis pe (same as table body)
-  return (
-    <td key={i} className="border border-[#414042] px-2 py-2.5 text-center font-bold" style={{ fontWeight: 600, color: '#414042' }}>
-      <span className="inline-flex items-center justify-center gap-2 font-semibold text-[#414042]">
-        <span className="w-4 flex justify-center">
-          {val > 0 ? <FaArrowUp size={12} /> : val < 0 ? <FaArrowDown size={12} /> : null}
-        </span>
-        <span className="tabular-nums inline-block w-[50px] text-right">{text}</span>
-      </span>
-    </td>
-  );
-});
-
+        return (
+          <td
+            key={i}
+            className="border border-[#414042] px-2 py-2.5 text-center font-bold"
+            style={{ fontWeight: 600, color: '#414042' }}
+          >
+            <span className="inline-flex items-center justify-center gap-2 font-semibold text-[#414042]">
+              <span className="w-4 flex justify-center">
+                {val > 0 ? <FaArrowUp size={12} /> : val < 0 ? <FaArrowDown size={12} /> : null}
+              </span>
+              <span className="tabular-nums inline-block w-[10px] text-right">
+                {text}
+              </span>
+            </span>
+          </td>
+        );
+      });
     })()}
 
     {Object.keys(skuInsights).length > 0 && (
