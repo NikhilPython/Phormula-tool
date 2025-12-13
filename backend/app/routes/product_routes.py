@@ -144,9 +144,41 @@ def get_conversion_rate():
 #         print(f"Unexpected error: {str(e)}")
 #         return jsonify({'error': 'An error occurred while fetching table data'}), 500
 
+def resolve_country(country, currency):
+    country = (country or "").lower()
+    currency = (currency or "").lower()
+
+    # 1. If country = global
+    if country == "global":
+        if currency == "usd":
+            return "global"
+        elif currency == "inr":
+            return "global_inr"
+        elif currency == "gbp":
+            return "global_gbp"
+        elif currency == "cad":
+            return "global_cad"
+        else:
+            return "global"  # default fallback
+
+    # 2. If country = uk
+    if country == "uk":
+        if currency == "usd":
+            return "uk_usd"
+        else:
+            return "uk"  # default for all other currencies
+
+    # 3. Default (no special logic)
+    return country
+
 @product_bp.route('/YearlySKU', methods=['GET'])
 def YearlySKU():
     country = (request.args.get('country') or '').lower()
+    country_param = request.args.get('country', '').lower()
+    currency_param = (request.args.get('homeCurrency') or 'USD').lower()
+
+    country = resolve_country(country_param, currency_param)
+
     year = (request.args.get('year') or '').strip()
 
     # Validate the query parameters
@@ -232,11 +264,43 @@ def YearlySKU():
 #     except:
 #         return jsonify({'error': 'An unexpected error occurred'}), 500
 
+def resolve_country(country, currency):
+    country = (country or "").lower()
+    currency = (currency or "").lower()
+
+    # 1. If country = global
+    if country == "global":
+        if currency == "usd":
+            return "global"
+        elif currency == "inr":
+            return "global_inr"
+        elif currency == "gbp":
+            return "global_gbp"
+        elif currency == "cad":
+            return "global_cad"
+        else:
+            return "global"  # default fallback
+
+    # 2. If country = uk
+    if country == "uk":
+        if currency == "usd":
+            return "uk_usd"
+        else:
+            return "uk"  # default for all other currencies
+
+    # 3. Default (no special logic)
+    return country
+
+
 @product_bp.route('/quarterlyskutable', methods=['GET'])
 def quarterlyskutable():
     # Extract query parameters from the URL
     quarter = request.args.get('quarter')
-    country = request.args.get('country')
+    country_param = request.args.get('country', '')
+    currency_param = (request.args.get('homeCurrency') or 'USD').lower()
+    print("currency-------------", currency_param)
+
+    country = resolve_country(country_param, currency_param)
     year = request.args.get('year')
 
     # Validate the query parameters
@@ -1522,6 +1586,34 @@ def get_consolidated_table_name(country_name):
 #     except:
 #         return jsonify({'error': 'An unexpected error occurred'}), 500
 
+def resolve_country(country, currency):
+    country = (country or "").lower()
+    currency = (currency or "").lower()
+
+    # 1. If country = global
+    if country == "global":
+        if currency == "usd":
+            return "global"
+        elif currency == "inr":
+            return "global_inr"
+        elif currency == "gbp":
+            return "global_gbp"
+        elif currency == "cad":
+            return "global_cad"
+        else:
+            return "global"  # default fallback
+
+    # 2. If country = uk
+    if country == "uk":
+        if currency == "usd":
+            return "uk_usd"
+        else:
+            return "uk"  # default for all other currencies
+
+    # 3. Default (no special logic)
+    return country
+
+
 @product_bp.route('/skutableprofit/<string:skuwise_file_name>', methods=['GET'])
 def skutableprofit(skuwise_file_name):
     auth_header = request.headers.get('Authorization')
@@ -1539,12 +1631,15 @@ def skutableprofit(skuwise_file_name):
 
     try:
         engine = create_engine(db_url)
-        country = request.args.get('country', '')
+        country_param = request.args.get('country', '')
+        currency_param = (request.args.get('homeCurrency') or 'USD').lower()
+
+        country = resolve_country(country_param, currency_param)
         month = request.args.get('month', '')
         year = request.args.get('year', '')
 
         # Determine table name based on country
-        if country == 'global':
+        if country.startswith("global"):
             table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}_table"
         elif country and all([month, year]):
             table_name = f"skuwise_{user_id}{country}{month}{year}"
