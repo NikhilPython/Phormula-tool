@@ -303,6 +303,99 @@ const extractRecoAndInventoryBullets = (md?: string | null) => {
   return { recommendationBullets, inventoryBullets };
 };
 
+        type AiSingleInsightCardProps = {
+  loading: boolean;
+  error: string | null;
+  summaryBullets: string[];
+  recommendationBullets: string[];
+  skuInsightsBullets: string[];
+  inventoryBullets: string[];
+};
+
+const Section = ({
+  title,
+  bullets,
+}: {
+  title: string;
+  bullets: string[];
+}) => {
+  if (!bullets.length) return null;
+
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-charcoal-600">
+        {title}
+      </h3>
+      <ul className="list-disc pl-4 space-y-1 text-sm text-charcoal-500">
+        {bullets.map((b, i) => (
+          <li key={i}>{b}</li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
+  loading,
+  error,
+  summaryBullets,
+  recommendationBullets,
+  skuInsightsBullets,
+  inventoryBullets,
+}) => {
+  if (loading) {
+    return (
+      <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+        <p className="text-sm text-charcoal-400">Generating insights…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-600">
+        {error}
+      </div>
+    );
+  }
+
+  if (
+    !summaryBullets.length &&
+    !recommendationBullets.length &&
+    !skuInsightsBullets.length &&
+    !inventoryBullets.length
+  ) {
+    return null;
+  }
+
+  return (
+    <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-6">
+      <Section
+        title="Month-end Business Summary"
+        bullets={summaryBullets}
+      />
+
+      <Section
+        title="Recommendations"
+        bullets={[...recommendationBullets, ...inventoryBullets]}
+      />
+
+      <Section
+        title="SKU Insights"
+        bullets={skuInsightsBullets}
+      />
+
+      {/* Inventory shown only if still exists separately */}
+      {inventoryBullets.length > 0 && (
+        <Section
+          title="Inventory"
+          bullets={inventoryBullets}
+        />
+      )}
+    </div>
+  );
+};
+
 /* ---------------------- Component ---------------------- */
 const Dropdowns: React.FC<DropdownsProps> = ({
   initialRanged,
@@ -1025,6 +1118,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
 
+
+
+
         // Summary rows: label in A, value in K (index 10)
         const putSummary = (label: string, value: any) => {
           const row = new Array(14).fill("");
@@ -1207,29 +1303,7 @@ const getPnLTitleParts = () => {
 };
 
 
-  const renderAiPanel = () => {
-    if (!allDropdownsSelected) return null;
-
-    return (
-      // <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <MonthEndBusinessSummaryCard
-          loading={aiPanelLoading}
-          error={aiPanelError}
-          summaryBullets={aiPanel?.summaryBullets ?? []}
-          skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-        />
-
-        <RecommendationsCard
-          loading={aiPanelLoading}
-          error={aiPanelError}
-          recommendationBullets={aiPanel?.recommendationBullets ?? []}
-          inventoryBullets={aiPanel?.inventoryBullets ?? []}
-        />
-      </div>
-      // </div>
-    );
-  };
+  
 
 
   return (
@@ -1843,7 +1917,17 @@ const getPnLTitleParts = () => {
             />
           </div>
 
-          {renderAiPanel()}
+{allDropdownsSelected && (
+  <AiSingleInsightCard
+    loading={aiPanelLoading}
+    error={aiPanelError}
+    summaryBullets={aiPanel?.summaryBullets ?? []}
+    recommendationBullets={aiPanel?.recommendationBullets ?? []}
+    skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+    inventoryBullets={aiPanel?.inventoryBullets ?? []}
+  />
+)}
+
 
           <div className="flex flex-wrap justify-between gap-6 md:gap-4 mb-4">
             <div className="flex-1 min-w-[300px]">
@@ -1897,7 +1981,17 @@ const getPnLTitleParts = () => {
             />
           </div>
 
-          {renderAiPanel()}
+{allDropdownsSelected && (
+  <AiSingleInsightCard
+    loading={aiPanelLoading}
+    error={aiPanelError}
+    summaryBullets={aiPanel?.summaryBullets ?? []}
+    recommendationBullets={aiPanel?.recommendationBullets ?? []}
+    skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+    inventoryBullets={aiPanel?.inventoryBullets ?? []}
+  />
+)}
+
 
           <div className="flex flex-wrap justify-between gap-6 md:gap-4">
             <div className="flex-1 min-w-[300px]">
@@ -1948,7 +2042,17 @@ const getPnLTitleParts = () => {
             }}
           />
 
-          {renderAiPanel()}
+          {allDropdownsSelected && (
+  <AiSingleInsightCard
+    loading={aiPanelLoading}
+    error={aiPanelError}
+    summaryBullets={aiPanel?.summaryBullets ?? []}
+    recommendationBullets={aiPanel?.recommendationBullets ?? []}
+    skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+    inventoryBullets={aiPanel?.inventoryBullets ?? []}
+  />
+)}
+
           <div className="flex flex-wrap justify-between gap-6 md:gap-4">
             <div className="flex-1 min-w-[300px]">
               <CircleChart
