@@ -147,23 +147,23 @@ METRIC_COLUMNS = {
     "refund_sales",
     "net_sales",
 
-    "cost_of_unit_sold",
-    "selling_fees",
-    "fba_fees",
-    "amazon_fee",
+    # "cost_of_unit_sold",
+    # "selling_fees",
+    # "fba_fees",
+    # "amazon_fee",
     "platform_fee",
     "platformfeenew",
     "platform_fee_inventory_storage",
     "other_transaction_fees",
     "misc_transaction",
 
-    "tex_and_credits",
+    # "tex_and_credits",
     "net_taxes",
     "net_credits",
 
-    "promotional_rebates",
-    "visible_ads",
-    "dealsvouchar_ads",
+    # "promotional_rebates",
+    # "visible_ads",
+    # "dealsvouchar_ads",
     "advertising_total",
 
     "lost_total",
@@ -554,10 +554,6 @@ When describing SKU performance:
 - Do NOT mix MoM and YoY for the same metric
 - Do NOT invent percentages if data is missing
 
-Example structure:
-- **Product Name**: Sales up 18% MoM driven by unit growth, but profit declined due to higher costs.
-- **Product Name (New / Reviving SKU)**: Strong MoM sales contribution with improving margins.
-
 Do NOT:
 - Mention inventory here
 - Mention platform fees, advertising totals, ACOS, CM2, or ROAS here
@@ -574,16 +570,26 @@ Rules:
 - Actions should be driven by SKU-level behavior OR clear overall trends
 - Do NOT restate metrics
 - Do NOT include generic advice
+- Inventory risks SHOULD be preferentially handled here when they impact profitability, cost, or future loss.
+- Inventory actions must be phrased as business actions, not operational alerts.
+- Do NOT list inventory SKU-by-SKU unless it materially affects profit trajectory.
 
 Examples of valid actions:
 - Reduce ASP slightly on low-margin SKUs showing unit decline.
 - Monitor pricing on fast-growing SKUs to protect margin.
 - Review ad spend on SKUs where profit declined despite sales growth.
+- Investigate negative profit drivers for SKUs showing rising volume but declining profitability to prevent margin erosion.
+- Address aged or unfulfillable inventory exposure on low-performing SKUs to limit storage and write-off risk.
 
 ---
 
 ## INVENTORY
 (ONLY if inventory_alerts exist)
+
+IMPORTANT INVENTORY OUTPUT RULES:
+- This section should be used ONLY when inventory risk cannot be clearly expressed as a recommendation.
+- Prefer summarizing inventory risk in RECOMMENDATIONS when possible.
+- Keep this section minimal (0–2 bullets preferred).
 
 - Use bullets
 - One SKU per bullet
