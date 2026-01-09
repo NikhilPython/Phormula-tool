@@ -317,11 +317,6 @@ const text = rawText || ''
   <span className="px-3 py-1 text-[11px] font-medium text-gray-500 bg-gray-200 rounded-full">
     {formatDayLabel(msg.timestamp)}
   </span>
-     
-      <div className="flex justify-center my-3">
-  <span className="px-3 py-1 text-[11px] font-medium text-gray-500 bg-gray-200 rounded-full">
-    {formatDayLabel(msg.timestamp)}
-  </span>
 </div>
     )}
     <div
