@@ -56,13 +56,13 @@ export default function InventoryChoicePage() {
   const countryProfileKeyBase = countryName || 'global';
 
   // Check once if country profile is already completed for this country/user
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const key = `countryProfileCompleted-${countryProfileKeyBase}`;
-    const hasProfile = localStorage.getItem(key) === 'true';
-    setProfileCompleted(hasProfile);
-    setIsPopupOpen(!hasProfile);
-  }, [countryProfileKeyBase]);
+ useEffect(() => {
+  if (typeof window === 'undefined') return;
+  const key = `countryProfileCompleted-${countryProfileKeyBase}`;
+  const hasProfile = localStorage.getItem(key) === 'true';
+  setProfileCompleted(hasProfile);
+  setIsPopupOpen(false); // ✅ kabhi auto open nahi
+}, [countryProfileKeyBase]);
 
   // Only redirect to automation/manual if profile is completed
   useEffect(() => {
@@ -79,18 +79,20 @@ export default function InventoryChoicePage() {
   }, [profileCompleted, countryName, effectiveMonth, effectiveYear, router]);
 
   const handleAutomation = () => {
-    if (!profileCompleted) {
-      setIsPopupOpen(true);
-      return;
-    }
-    localStorage.setItem(
-      `forecastMethod-${countryName}-${effectiveMonth}-${effectiveYear}`,
-      'automation'
-    );
-    router.push(`/inventoryForecast/${countryName}/${effectiveMonth}/${effectiveYear}`);
-  };
+  if (!profileCompleted) {
+    setIsPopupOpen(true); // ✅ modal ab yahin se open hoga
+    return;
+  }
 
-  const handleManual = () => {
+  localStorage.setItem(
+    `forecastMethod-${countryName}-${effectiveMonth}-${effectiveYear}`,
+    'automation'
+  );
+
+  router.push(`/inventoryForecast/${countryName}/${effectiveMonth}/${effectiveYear}`);
+};
+
+ const handleManual = () => {
     if (!profileCompleted) {
       setIsPopupOpen(true);
       return;
@@ -101,7 +103,6 @@ export default function InventoryChoicePage() {
     );
     router.push(`/manual/${countryName}/${effectiveMonth}/${effectiveYear}`);
   };
-
   // ---- Save Country Profile (Popup Submit) ----
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,10 +191,10 @@ export default function InventoryChoicePage() {
   return (
     <div className="flex justify-center items-center font-lato px-4 py-10 relative">
       {/* Country Profile Popup */}
-      {isPopupOpen && (
+ {isPopupOpen ? (
         <div className="fixed inset-0 z-99999 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
-            <h2 className="text-xl font-semibold text-[#414042] mb-1 text-center">
+            <h2 className="text-xl font-semibold text-charcoal-500 mb-1 text-center">
               Country Profile
             </h2>
             <p className="text-sm text-gray-600 mb-4 text-center">
@@ -209,7 +210,7 @@ export default function InventoryChoicePage() {
                 <select
                   value={country}
                   onChange={(e) => setCountry(e.target.value as 'uk' | 'us')}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#5EA68E]"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   <option value="uk">UK</option>
                   <option value="us">US</option>
@@ -232,6 +233,7 @@ export default function InventoryChoicePage() {
                 />
                 <p className="text-[11px] text-gray-400 mt-1">
                   Marketplace is fixed to Amazon and cannot be changed.
+                  
                 </p>
               </div>
 
@@ -245,7 +247,7 @@ export default function InventoryChoicePage() {
                   min={1}
                   value={transitTime}
                   onChange={(e) => setTransitTime(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#5EA68E]"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                   placeholder="e.g. 7"
                 />
                 {errors.transit_time && (
@@ -265,8 +267,8 @@ export default function InventoryChoicePage() {
                   min={0}
                   value={stockUnit}
                   onChange={(e) => setStockUnit(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#5EA68E]"
-                  placeholder="e.g. 100"
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="e.g. 2"
                 />
                 {errors.stock_unit && (
                   <p className="text-xs text-red-500 mt-1">
@@ -282,7 +284,7 @@ export default function InventoryChoicePage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="mt-2 w-full bg-[#5EA68E] text-[#F8EDCE] py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow hover:bg-[#4e937b] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                className="mt-2 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 shadow hover:bg-[#4e937b] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? 'Saving...' : 'Save & Continue'}
               </button>
@@ -293,20 +295,18 @@ export default function InventoryChoicePage() {
             </p>
           </div>
         </div>
-      )}
-
-      {/* Existing Inventory Choice UI */}
+      ) : ( 
       <div className="bg-white rounded-2xl shadow-[6px_6px_7px_0px_#00000026] w-full max-w-lg md:p-8 p-4 border border-gray-200">
-        <h1 className="md:text-2xl text-xl font-semibold text-center text-[#414042]">
+        <h1 className="md:text-2xl text-xl font-semibold text-center text-charcoal-500">
           Inventory Forecast
         </h1>
-        <p className="text-[#414042] text-center mt-1 md:mb-6 mb-4 md:text-base text-sm">
+        <p className="text-charcoal-500 text-center mt-1 md:mb-6 mb-4 md:text-base text-sm">
           Choose your forecasting method to sync your sales data
         </p>
 
-        <div className="bg-[#F3F8F6] border border-[#5EA68E] rounded-xl md:p-6 p-4">
+        <div className="bg-[#F3F8F6] border border-green-500 rounded-xl md:p-6 p-4">
           <div className="flex justify-start items-center gap-2">
-            <div className="bg-[#D9D9D9] p-2 rounded-lg">
+            <div className="bg-gray-custom p-2 rounded-lg">
               {/* link icon */}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -324,31 +324,31 @@ export default function InventoryChoicePage() {
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-[#414042]">Automation</h2>
-              <p className="md:text-sm text-xs text-[#5EA68E]">Setup in 30 seconds</p>
+              <h2 className="text-lg font-semibold text-charcoal-500">Automation</h2>
+              <p className="md:text-sm text-xs text-green-500">Setup in 30 seconds</p>
             </div>
           </div>
           <ul className="space-y-2 text-gray-700 md:text-sm text-xs mt-3">
             <li className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-[#5EA68E]" />
+              <CheckCircle size={16} className="text-green-500" />
               AI-powered prediction
             </li>
             <li className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-[#5EA68E]" />
+              <CheckCircle size={16} className="text-green-500" />
               Historical data analysis
             </li>
             <li className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-[#5EA68E]" />
+              <CheckCircle size={16} className="text-green-500" />
               Always up-to-date insights
             </li>
             <li className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-[#5EA68E]" />
+              <CheckCircle size={16} className="text-green-500" />
               No manual work required
             </li>
           </ul>
           <button
             onClick={handleAutomation}
-            className="mt-6 w-full bg-[#5EA68E] text-[#F8EDCE] py-2.5 sm:text-base text-sm rounded-lg font-bold flex items-center justify-center gap-2 shadow hover:bg-[#4e937b] transition-all"
+            className="mt-6 w-full bg-green-500 text-yellow-200 py-2.5 sm:text-base text-sm rounded-lg font-bold flex items-center justify-center gap-2 shadow hover:bg-[#4e937b] transition-all"
           >
             Enable Automation
           </button>
@@ -363,7 +363,7 @@ export default function InventoryChoicePage() {
         <div className="text-center">
           <button
             onClick={handleManual}
-            className="text-[#414042] font-medium hover:underline md:text-sm text-xs flex items-center justify-center gap-1 mx-auto"
+            className="text-charcoal-500 font-medium hover:underline md:text-sm text-xs flex items-center justify-center gap-1 mx-auto"
           >
             Set up manual file uploads instead
             <svg
@@ -393,6 +393,7 @@ export default function InventoryChoicePage() {
           Your credentials are encrypted and stored securely
         </p>
       </div>
+       )}
     </div>
   );
 }

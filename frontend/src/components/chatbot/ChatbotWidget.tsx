@@ -47,7 +47,7 @@ export default function ChatbotWidget() {
               pointer-events-auto
               fixed bottom-20 right-4
               w-[360px] sm:w-[380px]
-              2xl:h-[520px] h-[500px]
+              h-[520px]
               bg-white
               rounded-2xl
               shadow-[0_20px_50px_rgba(0,0,0,0.25)]
@@ -68,7 +68,7 @@ export default function ChatbotWidget() {
   "
 >
               <div>
-                <p className="font-semibold text-base text-[#F8EDCE]">Hi {userData?.company_name || "there"} </p>
+                <p className="font-semibold text-base text-[#F8EDCE] ">Hi {userData?.company_name || "there"} </p>
                 <p className="text-[11px] opacity-90">
                   Analytics Assistant
                 </p>

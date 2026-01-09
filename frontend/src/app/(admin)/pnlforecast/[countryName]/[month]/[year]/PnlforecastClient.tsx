@@ -6,6 +6,15 @@ import { useParams, useRouter } from 'next/navigation';
 import './Styles.css';
 import PnlForecastChart from '@/components/pnlforecast/PnlForecastChart';
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import GroupedCollapsibleTable, {
+  ColGroup,
+  LeafCol,
+} from "@/components/ui/table/GroupedCollapsibleTable";
+import { IoDownload } from "react-icons/io5";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
+import { useRef } from "react";
+
 
 
 type RowData = {
@@ -17,15 +26,16 @@ type RowData = {
 
 type ChartDataItem = {
   month: string;
-  SALES?: number | null;
-  COGS?: number | null;
-  'AMAZON EXPENSE'?: number | null;
-  'ADVERTISING COSTS'?: number | null;
-  'CM1 PROFIT'?: number | null;
-  'CM2 PROFIT'?: number | null;
+  SALES?: number;
+  COGS?: number;
+  'AMAZON EXPENSE'?: number;
+  'ADVERTISING COSTS'?: number;
+  'CM1 PROFIT'?: number;
+  'CM2 PROFIT'?: number;
   isForecast?: boolean;
   isHistorical?: boolean;
 };
+
 
 type SelectedGraphs = Record<string, boolean>;
 
@@ -46,6 +56,8 @@ const getCurrencySymbol = (country: string): string => {
       return '¤';
   }
 };
+
+
 
 const formatNumber = (val: any): string => {
   if (val === null || val === undefined || val === '' || isNaN(Number(val))) return 'N/A';
@@ -124,6 +136,8 @@ const urlYear = (params?.year as string) || '';
   const handleAmazonFeeClick = () => setshowamazonfee((p) => !p);
   const handleLosSalesUnitsclick = () => setLosSalesUnits((p) => !p);
 
+  const chartRef = useRef<any>(null);
+
   const [selectedColumns, setSelectedColumns] = useState<string[]>(() => ([
     'sku',
     'product_name',
@@ -167,6 +181,29 @@ const urlYear = (params?.year as string) || '';
       showCm1 && 'profit_percentage_sum',
     ].filter(Boolean) as string[]));
   }, [LosSalesUnits, showCm1]);
+
+  const getChartPngWithWhiteBg = (): string | null => {
+  const chartInstance = chartRef.current;
+  if (!chartInstance) return null;
+
+  const sourceCanvas =
+    chartInstance.canvas || chartInstance.ctx?.canvas;
+  if (!sourceCanvas) return null;
+
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = sourceCanvas.width;
+  exportCanvas.height = sourceCanvas.height;
+
+  const ctx = exportCanvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+  ctx.drawImage(sourceCanvas, 0, 0);
+
+  return exportCanvas.toDataURL("image/png");
+};
+
 
   const [selectedGraphs, setSelectedGraphs] = useState<SelectedGraphs>({
     SALES: true,
@@ -423,69 +460,320 @@ const urlYear = (params?.year as string) || '';
     } catch {}
   };
 
-  const exportTableToExcel = () => {
-    const table = document.querySelector('.tablec') as HTMLTableElement | null;
-    if (!table) return;
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.table_to_sheet(table, { raw: true });
+ const exportTableToExcel = async () => {
+  const workbook = new ExcelJS.Workbook();
 
-    // Normalize numeric/percentage cells
-    for (const cell in ws) {
-      if (!Object.prototype.hasOwnProperty.call(ws, cell)) continue;
-      if (cell[0] === '!') continue;
-      // @ts-ignore
-      let v = ws[cell].v;
-      if (typeof v === 'string' && v.includes('%')) {
-        const cleaned = parseFloat(v.replace(/,/g, '').replace('%', ''));
-        if (!isNaN(cleaned)) {
-          // @ts-ignore
-          ws[cell].v = cleaned / 100;
-          // @ts-ignore
-          ws[cell].t = 'n';
-          // @ts-ignore
-          ws[cell].z = '0.00%';
-        }
-      } else if (typeof v === 'string') {
-        const cleaned = v.replace(/,/g, '');
-        if (!isNaN(parseFloat(cleaned)) && cleaned !== '') {
-          // @ts-ignore
-          ws[cell].v = parseFloat(cleaned);
-          // @ts-ignore
-          ws[cell].t = 'n';
-          // @ts-ignore
-          ws[cell].z = '0.00';
-        }
-      } else if (!isNaN(v) && v !== null && v !== '') {
-        // @ts-ignore
-        ws[cell].v = Number(v);
-        // @ts-ignore
-        ws[cell].t = 'n';
-        // @ts-ignore
-        ws[cell].z = '0.00';
-      }
-    }
+  /* =====================
+     SHEET 1: P&L TABLE
+     ===================== */
+  const tableSheet = workbook.addWorksheet("P&L Forecast");
 
-    XLSX.utils.book_append_sheet(wb, ws, 'P&L Forecast');
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([buf], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'PNL_Forecast.xlsx';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+  tableSheet.addRow([
+    "Product Name",
+    "SKU",
+    "Sales M1",
+    "CM1 M1",
+    "Sales M2",
+    "CM1 M2",
+    "Sales M3",
+    "CM1 M3",
+    "Sales Total",
+    "CM1 Total",
+  ]).font = { bold: true };
+
+  const rows = [
+    ...(productRows || []),
+    ...summaryAsRows,
+  ];
+
+  rows.forEach(r => {
+    tableSheet.addRow([
+      r.product_name,
+      r.sku,
+      r.Total_Sales_1st,
+      r.profit_1st,
+      r.Total_Sales_2nd,
+      r.profit_2nd,
+      r.Total_Sales_3rd,
+      r.profit_3rd,
+      r.Total_Sales_sum,
+      r.profit_sum,
+    ]);
+  });
+
+  tableSheet.columns.forEach(col => col.width = 18);
+
+  /* =====================
+     SHEET 2: CHART IMAGE
+     ===================== */
+  const chartSheet = workbook.addWorksheet("P&L Chart");
+
+  const dataUrl = getChartPngWithWhiteBg();
+  if (dataUrl) {
+    const base64 = dataUrl.split(",")[1];
+const binary = atob(base64);
+const buffer = new ArrayBuffer(binary.length);
+const view = new Uint8Array(buffer);
+
+for (let i = 0; i < binary.length; i++) {
+  view[i] = binary.charCodeAt(i);
+}
+    const imageId = workbook.addImage({
+      buffer,
+      extension: "png",
+    });
+
+    chartSheet.addImage(imageId, "A1:J25");
+  }
+
+  /* =====================
+     DOWNLOAD
+     ===================== */
+  const buf = await workbook.xlsx.writeBuffer();
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    "PNL_Forecast_With_Chart.xlsx"
+  );
+};
+
+
+
+
+const monthGroup = (
+  id: string,
+  label: string,
+  u: string,
+  s: string,
+  p: string,
+  pp: string
+): ColGroup<RowData> => ({
+  id,
+  label,
+  collapsedCols: [
+    { key: s, label: `Sales (${currencySymbol})`, align: "center" },
+    { key: p, label: `CM1 (${currencySymbol})`, align: "center" },
+  ],
+  expandedCols: [
+    { key: u, label: "Units", align: "center" },
+    { key: s, label: `Sales (${currencySymbol})`, align: "center" },
+    { key: p, label: `CM1 (${currencySymbol})`, align: "center" },
+    { key: pp, label: "CM1 %", align: "center" },
+  ],
+});
+
+
+
+const leftCols: LeafCol<RowData>[] = [
+  {
+    key: "sr_no",
+    label: "S. No.",
+    align: "center",
+    thClassName: "th-center",
+    tdClassName: "td-center",
+  },
+  {
+    key: "product_name",
+    label: "Product Name",
+    align: "left",
+    thClassName: "th-left",
+  },
+  {
+    key: "sku",
+    label: "SKU",
+    align: "center",
+  },
+];
+
+
+const groups: ColGroup<RowData>[] = [
+  monthGroup(
+    "m1",
+    `P&L Forecast for ${formatMonthYear(currentMonth, currentYear)}`,
+    "forecast_1st",
+    "Total_Sales_1st",
+    "profit_1st",
+    "profit_percentage_1st"
+  ),
+  monthGroup(
+    "m2",
+    `P&L Forecast for ${formatMonthYear(nextMonth, nextMonthYear)}`,
+    "forecast_2nd",
+    "Total_Sales_2nd",
+    "profit_2nd",
+    "profit_percentage_2nd"
+  ),
+  monthGroup(
+    "m3",
+    `P&L Forecast for ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
+    "forecast_3rd",
+    "Total_Sales_3rd",
+    "profit_3rd",
+    "profit_percentage_3rd"
+  ),
+  monthGroup(
+    "sum",
+    "P&L Forecast for 3 months",
+    "forecast_sum",
+    "Total_Sales_sum",
+    "profit_sum",
+    "profit_percentage_sum"
+  ),
+];
+
+const summaryRows = [
+  {
+    label: "Cost of Advertisement",
+    m1: data?.find(r => r.sku === "advertising_total1")?.value,
+    m2: data?.find(r => r.sku === "advertising_total2")?.value,
+    m3: data?.find(r => r.sku === "advertising_total3")?.value,
+    sum: data?.find(r => r.sku === "advertising_total")?.value,
+  },
+  {
+    label: "Platform Fees",
+    m1: data?.find(r => r.sku === "Platform_Fees1")?.value,
+    m2: data?.find(r => r.sku === "Platform_Fees2")?.value,
+    m3: data?.find(r => r.sku === "Platform_Fees3")?.value,
+    sum: data?.find(r => r.sku === "platform_fees_total")?.value,
+  },
+  {
+    label: "Other Expenses",
+    m1:
+      (data?.find(r => r.sku === "Platform_Fees1")?.value || 0) +
+      (data?.find(r => r.sku === "advertising_total1")?.value || 0),
+    m2:
+      (data?.find(r => r.sku === "Platform_Fees2")?.value || 0) +
+      (data?.find(r => r.sku === "advertising_total2")?.value || 0),
+    m3:
+      (data?.find(r => r.sku === "Platform_Fees3")?.value || 0) +
+      (data?.find(r => r.sku === "advertising_total3")?.value || 0),
+    sum:
+      (data?.find(r => r.sku === "platform_fees_total")?.value || 0) +
+      (data?.find(r => r.sku === "advertising_total")?.value || 0),
+  },
+  {
+    label: "CM2 Profit/Loss",
+    m1: data?.find(r => r.sku === "cm2profit1")?.value,
+    m2: data?.find(r => r.sku === "cm2profit2")?.value,
+    m3: data?.find(r => r.sku === "cm2profit3")?.value,
+    sum: data?.find(r => r.sku === "cm2profit_total")?.value,
+  },
+  {
+    label: "Net Reimbursement (Projected)",
+    m1: data?.find(r => r.sku === "NetReimbursement1")?.value,
+    m2: data?.find(r => r.sku === "NetReimbursement2")?.value,
+    m3: data?.find(r => r.sku === "NetReimbursement3")?.value,
+    sum: data?.find(r => r.sku === "NetReimbursement_total")?.value,
+  },
+  {
+    label: "Reimbursement vs CM2 Margins",
+    m1: data?.find(r => r.sku === "ReimbursementvsCM2Margins1")?.value,
+    m2: data?.find(r => r.sku === "ReimbursementvsCM2Margins2")?.value,
+    m3: data?.find(r => r.sku === "ReimbursementvsCM2Margins3")?.value,
+    sum: data?.find(r => r.sku === "ReimbursementvsCM2Margins_total")?.value,
+  },
+];
+
+
+const productRows = data?.filter(
+  (row) =>
+    row.sku &&
+    ![
+      "acos1",
+      "acos2",
+      "acos3",
+      "Platform_Fees1",
+      "Platform_Fees2",
+      "Platform_Fees3",
+      "advertising_total1",
+      "advertising_total2",
+      "advertising_total3",
+      "cm2profit1",
+      "cm2profit2",
+      "cm2profit3",
+      "NetReimbursement1",
+      "NetReimbursement2",
+      "NetReimbursement3",
+      "ReimbursementvsCM2Margins1",
+      "ReimbursementvsCM2Margins2",
+      "ReimbursementvsCM2Margins3",
+      "Reimbursementvssales1",
+      "Reimbursementvssales2",
+      "Reimbursementvssales3",
+      "cm2margin1",
+      "cm2margin2",
+      "cm2margin3",
+      "platform_fees_total",
+      "advertising_total",
+      "cm2profit_total",
+      "cm2margin_total",
+      "acos_total",
+      "NetReimbursement_total",
+      "ReimbursementvsCM2Margins_total",
+      "Reimbursementvssales_total",
+    ].includes(row.sku)
+);
+
+const summaryAsRows: RowData[] = summaryRows.map(r => ({
+  product_name: r.label,
+  sku: "",
+
+  // Month 1
+  forecast_1st: "",
+  Total_Sales_1st: r.m1 ?? "",
+  profit_1st: "",
+  profit_percentage_1st: "",
+
+  // Month 2
+  forecast_2nd: "",
+  Total_Sales_2nd: r.m2 ?? "",
+  profit_2nd: "",
+  profit_percentage_2nd: "",
+
+  // Month 3
+  forecast_3rd: "",
+  Total_Sales_3rd: r.m3 ?? "",
+  profit_3rd: "",
+  profit_percentage_3rd: "",
+
+  // Sum
+  forecast_sum: "",
+  Total_Sales_sum: r.sum ?? "",
+  profit_sum: "",
+  profit_percentage_sum: "",
+}));
+
+const normalizedProductRows = productRows?.map(r => ({
+  ...r,
+  sku: r.sku === "Total" ? "" : r.sku,
+}));
+
+
+
+
+
 
   return (
     <div className='flex flex-col gap-8'>
-      <h2 style={{ marginBottom: 10, color: '#414042' }} className='2xl:text-2xl text-lg text-[#414042] font-bold'>
+      <div className='flex justify-between'>
+<h2 style={{ marginBottom: 10, color: '#414042' }} className='2xl:text-2xl text-lg text-[#414042] font-bold'>
         P &amp; L Forecast -{' '}
         <span style={{ color: '#60a68e' }}>
         {countryName.toUpperCase()}  ({formatMonthYear(currentMonth, currentYear)} to {formatMonthYear(nextToNextMonth, nextToNextMonthYear)} )
         </span>
       </h2>
+     <button
+              onClick={() => exportTableToExcel()}
+            className="bg-white border border-[#8B8585] px-1  rounded-sm"
+                                        style={{
+                             boxShadow: "0px 4px 4px 0px #00000040",  
+                           }}
+                                     >
+                                     <IoDownload size={27} />
+            </button>
+      </div>
+      
 
       {loading && <div className="loading">Loading...</div>}
       {error && (
@@ -497,656 +785,65 @@ const urlYear = (params?.year as string) || '';
       {data && chartData.length > 0 && (
         <div className='border border-[#414042] rounded-sm'>
           <PnlForecastChart
-          chartData={chartData}
-          currencySymbol={currencySymbol}
-          selectedGraphs={selectedGraphs}
-          handleCheckboxChange={handleCheckboxChange}
-        />
+  ref={chartRef}
+  chartData={chartData}
+  currencySymbol={currencySymbol}
+  selectedGraphs={selectedGraphs}
+  handleCheckboxChange={handleCheckboxChange}
+/>
         </div>
         
       )}
 {data && (
   <div>
     <div className="overflow-x-auto rounded-sm">
-      <table className="w-full border-collapse !2xl:text-sm text-xs  rounded-sm">
-        <thead className="bg-[#5ea68e] text-[#f8edcf]  2xl:text-sm text-xs  !rounded-sm">
-          {/* Top header row with spans (matches JS version) */}
-          <tr className='!py-3 2xl:text-sm text-xs  h-10 rounded-sm'>
-            <th className="border border-black " colSpan={showamazonfee ? 3 : 2}></th>
-            <th className="border border-black" colSpan={showCm1 && LosSalesUnits ? 4 : showCm1 || LosSalesUnits ? 3 : 2}>
-              P&amp;L Forecast for {formatMonthYear(currentMonth, currentYear)}
-            </th>
-            <th className="border border-black" colSpan={showCm1 && LosSalesUnits ? 4 : showCm1 || LosSalesUnits ? 3 : 2}>
-              P&amp;L Forecast for {formatMonthYear(nextMonth, nextMonthYear)}
-            </th>
-            <th className="border border-black" colSpan={showCm1 && LosSalesUnits ? 4 : showCm1 || LosSalesUnits ? 3 : 2}>
-              P&amp;L Forecast for {formatMonthYear(nextToNextMonth, nextToNextMonthYear)}
-            </th>
-            <th className="border border-black" colSpan={showCm1 && LosSalesUnits ? 4 : showCm1 || LosSalesUnits ? 3 : 2}>
-              P&amp;L Forecast for 3 months
-            </th>
-          </tr>
-          {/* Second header row that toggles columns same as JS */}
-<tr className="2xl:text-sm text-xs ">
-  {/* SNO */}
-  <th
-    colSpan={isExpanded ? (showamazonfee ? 1 : 1) : (showamazonfee ? 3 : 2)}
-    className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs  "
-  >
-    Sno.
-  </th>
+    <GroupedCollapsibleTable<RowData>
+  rows={[
+    ...(normalizedProductRows || []),
+    ...summaryAsRows,
+  ]}
+  getRowKey={(r, idx) =>
+    r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
+  }
+  leftCols={leftCols}
+  groups={groups}
+  singleCols={[]}
+ getValue={(row, key, rowIndex) => {
+  if (key === "sr_no") {
+    // ❌ No serial number for Total & Summary rows
+    if (
+      row.product_name === "Total" ||
+      summaryRows.some(s => s.label === row.product_name)
+    ) {
+      return "";
+    }
 
-  {/* EXPANDED AREA */}
-  {isExpanded && (
-    <>
-      {/* SKU */}
-      {showamazonfee && (
-        <th
-          onClick={handleAmazonFeeClick}
-          className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-        >
-          SKU
-        </th>
-      )}
+    // ✅ Count ONLY product rows
+    const productIndex = normalizedProductRows?.findIndex(
+      r => r === row
+    );
 
-      {/* PRODUCT NAME */}
-      <th
-        onClick={handleAmazonFeeClick}
-        className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-      >
-        <div className="flex items-center ">
-          <ChevronLeft
-            className={showamazonfee ? "text-[#414042]" : "text-[#414042]"}
-            size={16}
-          />
-          Product Name
-          <ChevronRight
-            className={!showamazonfee ? "text-[#414042]" : "text-[#414042]"}
-            size={16}
-          />
-        </div>
-      </th>
-    </>
-  )}
+    return productIndex !== undefined && productIndex >= 0
+      ? productIndex + 1
+      : "";
+  }
 
-  {/* 🔵 BLOCK 1 — PROJECTED SALES (UNITS) */}
-  {LosSalesUnits && (
-    <th
-      className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-      onClick={handleLosSalesUnitsclick}
-    >
-      Projected Sales (Units)
-    </th>
-  )}
+  return formatCellValue(key, row[key]);
+}}
 
-  {/* PROJECTED SALES (CURRENCY) */}
-  <th
-    className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-    onClick={handleLosSalesUnitsclick}
-  >
-    <div className="flex items-center ">
-      <ChevronLeft
-        className={LosSalesUnits ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-      Projected Sales ({currencySymbol})
-      <ChevronRight
-        className={!LosSalesUnits ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
+  getRowClassName={(row) => {
+    if (row.product_name === "Total") {
+      return "bg-[#D9D9D9]/90 font-bold ";
+    }
+    if (summaryRows.some(s => s.label === row.product_name)) {
+      return "bg-[#ffffff]";
+    }
+    return "";
+  }}
+/>
+
     </div>
-  </th>
-
-  {/* CM1 */}
-  <th
-    className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-    onClick={handleshowCm1click}
-  >
-    <div className="flex items-center ">
-      <ChevronLeft
-        className={showCm1 ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-      CM1 Profit/Loss ({currencySymbol})
-      <ChevronRight
-        className={!showCm1 ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-    </div>
-  </th>
-
-  {/* CM1 % */}
-  {showCm1 && (
-    <th
-      className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-      onClick={handleshowCm1click}
-    >
-      Projected CM1 Profit/Loss (%)
-    </th>
-  )}
-
-  {/* 🔵 BLOCK 2 — PROJECTED SALES (UNITS) */}
-  {LosSalesUnits && (
-    <th
-      className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-      onClick={handleLosSalesUnitsclick}
-    >
-      Projected Sales (Units)
-    </th>
-  )}
-
-  {/* PROJECTED SALES (CURRENCY) */}
-  <th
-    className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-    onClick={handleLosSalesUnitsclick}
-  >
-    <div className="flex items-center ">
-      <ChevronLeft
-        className={LosSalesUnits ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-      Projected Sales ({currencySymbol})
-      <ChevronRight
-        className={!LosSalesUnits ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-    </div>
-  </th>
-
-  {/* CM1 */}
-  <th
-    className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-    onClick={handleshowCm1click}
-  >
-    <div className="flex items-center ">
-      <ChevronLeft
-        className={showCm1 ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-      CM1 Profit/Loss ({currencySymbol})
-      <ChevronRight
-        className={!showCm1 ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-    </div>
-  </th>
-
-  {showCm1 && (
-    <th
-      className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-      onClick={handleshowCm1click}
-    >
-      Projected CM1 Profit/Loss (%)
-    </th>
-  )}
-
-  {/* 🔵 BLOCK 3 — PROJECTED SALES (UNITS) */}
-  {LosSalesUnits && (
-    <th
-      className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-      onClick={handleLosSalesUnitsclick}
-    >
-      Projected Sales (Units)
-    </th>
-  )}
-
-  {/* PROJECTED SALES (CURRENCY) */}
-  <th
-    className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-    onClick={handleLosSalesUnitsclick}
-  >
-    <div className="flex items-center ">
-      <ChevronLeft
-        className={LosSalesUnits ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-      Projected Sales ({currencySymbol})
-      <ChevronRight
-        className={!LosSalesUnits ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-    </div>
-  </th>
-
-  {/* CM1 */}
-  <th
-    className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-    onClick={handleshowCm1click}
-  >
-    <div className="flex items-center ">
-      <ChevronLeft
-        className={showCm1 ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-      CM1 Profit/Loss ({currencySymbol})
-      <ChevronRight
-        className={!showCm1 ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-    </div>
-  </th>
-
-  {showCm1 && (
-    <th
-      className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-      onClick={handleshowCm1click}
-    >
-      Projected CM1 Profit/Loss (%)
-    </th>
-  )}
-
-  {LosSalesUnits && (
-    <th
-      className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-      onClick={handleLosSalesUnitsclick}
-    >
-      Projected Sales (Units)
-    </th>
-  )}
-   <th
-    className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-    onClick={handleLosSalesUnitsclick}
-  >
-    <div className="flex items-center ">
-      <ChevronLeft
-        className={LosSalesUnits ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-      Projected Sales ({currencySymbol})
-      <ChevronRight
-        className={!LosSalesUnits ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-    </div>
-  </th>
-
-  {/* CM1 */}
-  <th
-    className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-    onClick={handleshowCm1click}
-  >
-    <div className="flex items-center ">
-      <ChevronLeft
-        className={showCm1 ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-      CM1 Profit/Loss ({currencySymbol})
-      <ChevronRight
-        className={!showCm1 ? "text-[#414042]" : "text-[#414042]"}
-        size={16}
-      />
-    </div>
-  </th>
-
-  {showCm1 && (
-    <th
-      className="border border-black bg-[#D9D9D9] text-black h-10 2xl:text-sm text-xs "
-      onClick={handleshowCm1click}
-    >
-      Projected CM1 Profit/Loss (%)
-    </th>
-  )}
-</tr>
-
-
-        </thead>
-        <tbody>
-          {data
-            ?.slice(0, data.findIndex((row) => row.sku === 'Total') + 1 || data.length)
-            .map((row, index) => {
-              const isTotalRow = row.sku === 'Total';
-              if (!isExpanded && !isTotalRow) return null;
-              return (
-                <tr
-                  key={index}
-                  className={` ${isTotalRow ? 'bg-[#D9D9D9]/90 font-bold' : ''}`}
-                >
-                  <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                    {isTotalRow ? (
-                      <span
-                        className="total-icon cursor-pointer"
-                        onClick={() => setIsExpanded(!isExpanded)}
-                      >
-                        {isExpanded ? (
-                          <i className="fa-solid fa-caret-up icon-beat animate-pulse"></i>
-                        ) : (
-                          <i className="fa-solid fa-caret-down icon-beat animate-pulse"></i>
-                        )}
-                      </span>
-                    ) : (
-                      index + 1
-                    )}
-                  </td>
-                  {selectedColumns.map((key, idx) => {
-                    if (key === 'sku' && !showamazonfee) return null;
-                    const leftAlign = key === 'sku' || key === 'product_name';
-                    return (
-                      <td
-                        key={idx}
-                        className={`border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10 ${
-                          leftAlign ? 'text-left' : ''
-                        }`}
-                      >
-                        {formatCellValue(key, row[key])}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          {/* Additional rows below the listing (same as JS) */}
-          <tr className="">
-            <td
-              colSpan={showamazonfee ? 3 : 2}
-              className="border border-black p-3 text-left text-gray-700 2xl:text-sm text-xs  h-10"
-            >
-              Cost of Advertisement
-            </td>
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatNumber(data?.find((r) => r.sku === 'advertising_total1')?.value)}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatNumber(data?.find((r) => r.sku === 'advertising_total2')?.value)}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatNumber(data?.find((r) => r.sku === 'advertising_total3')?.value)}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatNumber(data?.find((r) => r.sku === 'advertising_total')?.value)}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-          </tr>
-          <tr className="">
-            <td
-              colSpan={showamazonfee ? 3 : 2}
-              className="border border-black p-3 text-left text-gray-700 2xl:text-sm text-xs  h-10"
-            >
-              Platform Fees
-            </td>
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('Platform_Fees1')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('Platform_Fees2')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('Platform_Fees3')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('platform_fees_total')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-          </tr>
-          <tr className=" bg-[#D9D9D9]/90 font-bold">
-            <td
-              colSpan={showamazonfee ? 3 : 2}
-              className="border border-black p-3 text-left text-gray-700 2xl:text-sm text-xs  h-10"
-            >
-              Other Expenses
-            </td>
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {getTotal('Platform_Fees1', 'advertising_total1')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {getTotal('Platform_Fees2', 'advertising_total2')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {getTotal('Platform_Fees3', 'advertising_total3')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {getTotal('platform_fees_total', 'advertising_total')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-          </tr>
-          <tr className="">
-            <td
-              onClick={toggleTacosSection}
-              colSpan={showamazonfee ? 3 : 2}
-              className="border border-black p-3 text-left text-gray-700 2xl:text-sm text-xs  h-10 cursor-pointer hover:bg-gray-100"
-            >
-              CM2 Profit/Loss{' '}
-              <span>
-                {showTacosSection ? (
-                  <i className="fa-solid fa-caret-up icon-beat animate-pulse"></i>
-                ) : (
-                  <i className="fa-solid fa-caret-down icon-beat animate-pulse"></i>
-                )}
-              </span>
-            </td>
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('cm2profit1')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('cm2profit2')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('cm2profit3')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('cm2profit_total')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-          </tr>
-          {showTacosSection && (
-            <>
-              <tr className="">
-                <td
-                  colSpan={showamazonfee ? 3 : 2}
-                  className="border border-black p-3 text-left text-gray-700 2xl:text-sm text-xs  h-10"
-                >
-                  CM2 Margins
-                </td>
-                {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-                <td className="border border-black p-3 h-10"></td>
-                <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                  {formatPercent(data?.find((r) => r.sku === 'cm2margin1')?.value)}
-                </td>
-                {showCm1 && <td className="border border-black p-3 h-10"></td>}
-                {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-                <td className="border border-black p-3 h-10"></td>
-                <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                  {formatPercent(data?.find((r) => r.sku === 'cm2margin2')?.value)}
-                </td>
-                {showCm1 && <td className="border border-black p-3 h-10"></td>}
-                {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-                <td className="border border-black p-3 h-10"></td>
-                <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                  {formatPercent(data?.find((r) => r.sku === 'cm2margin3')?.value)}
-                </td>
-                {showCm1 && <td className="border border-black p-3 h-10"></td>}
-                {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-                <td className="border border-black p-3 h-10"></td>
-                <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                  {formatPercent(data?.find((r) => r.sku === 'cm2margin_total')?.value)}
-                </td>
-                {showCm1 && <td className="border border-black p-3 h-10"></td>}
-              </tr>
-              <tr className="">
-                <td
-                  colSpan={showamazonfee ? 3 : 2}
-                  className="border border-black p-3 text-left text-gray-700 2xl:text-sm text-xs  h-10"
-                >
-                  TACoS (Total Advertising Cost of Sale)
-                </td>
-                {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-                <td className="border border-black p-3 h-10"></td>
-                <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                  {formatPercent(data?.find((r) => r.sku === 'acos1')?.value)}
-                </td>
-                {showCm1 && <td className="border border-black p-3 h-10"></td>}
-                {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-                <td className="border border-black p-3 h-10"></td>
-                <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                  {formatPercent(data?.find((r) => r.sku === 'acos2')?.value)}
-                </td>
-                {showCm1 && <td className="border border-black p-3 h-10"></td>}
-                {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-                <td className="border border-black p-3 h-10"></td>
-                <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                  {formatPercent(data?.find((r) => r.sku === 'acos3')?.value)}
-                </td>
-                {showCm1 && <td className="border border-black p-3 h-10"></td>}
-                {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-                <td className="border border-black p-3 h-10"></td>
-                <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                  {formatPercent(data?.find((r) => r.sku === 'acos_total')?.value)}
-                </td>
-                {showCm1 && <td className="border border-black p-3 h-10"></td>}
-              </tr>
-            </>
-          )}
-          <tr className="">
-            <td
-              colSpan={showamazonfee ? 3 : 2}
-              className="border border-black p-3 text-left text-gray-700 2xl:text-sm text-xs  h-10"
-            >
-              Net Reimbursement (Projected)
-            </td>
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('NetReimbursement1')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('NetReimbursement2')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('NetReimbursement3')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatValue('NetReimbursement_total')}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-          </tr>
-          <tr className="">
-            <td
-              colSpan={showamazonfee ? 3 : 2}
-              className="border border-black p-3 text-left text-gray-700 2xl:text-sm text-xs  h-10"
-            >
-              Reimbursement vs CM2 Margins
-            </td>
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatPercent(data?.find((r) => r.sku === 'ReimbursementvsCM2Margins1')?.value)}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatPercent(data?.find((r) => r.sku === 'ReimbursementvsCM2Margins2')?.value)}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatPercent(data?.find((r) => r.sku === 'ReimbursementvsCM2Margins3')?.value)}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-            <td className="border border-black p-3 h-10"></td>
-            <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-              {formatPercent(data?.find((r) => r.sku === 'ReimbursementvsCM2Margins_total')?.value)}
-            </td>
-            {showCm1 && <td className="border border-black p-3 h-10"></td>}
-          </tr>
-          {showTacosSection && (
-            <tr className="">
-              <td
-                colSpan={showamazonfee ? 3 : 2}
-                className="border border-black p-3 text-left text-gray-700 2xl:text-sm text-xs  h-10"
-              >
-                Reimbursement vs Sales
-              </td>
-              {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-              <td className="border border-black p-3 h-10"></td>
-              <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                {formatPercent(data?.find((r) => r.sku === 'Reimbursementvssales1')?.value)}
-              </td>
-              {showCm1 && <td className="border border-black p-3 h-10"></td>}
-              {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-              <td className="border border-black p-3 h-10"></td>
-              <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                {formatPercent(data?.find((r) => r.sku === 'Reimbursementvssales2')?.value)}
-              </td>
-              {showCm1 && <td className="border border-black p-3 h-10"></td>}
-              {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-              <td className="border border-black p-3 h-10"></td>
-              <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                {formatPercent(data?.find((r) => r.sku === 'Reimbursementvssales3')?.value)}
-              </td>
-              {showCm1 && <td className="border border-black p-3 h-10"></td>}
-              {LosSalesUnits && <td className="border border-black p-3 h-10"></td>}
-              <td className="border border-black p-3 h-10"></td>
-              <td className="border border-black p-3 text-center text-gray-700 2xl:text-sm text-xs  h-10">
-                {formatPercent(data?.find((r) => r.sku === 'Reimbursementvssales_total')?.value)}
-              </td>
-              {showCm1 && <td className="border border-black p-3 h-10"></td>}
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-    <button
-      style={{ display: 'flex' }}
-      onClick={() => exportTableToExcel()}
-      className="font-sans 2xl:text-sm text-xs  bg-[#2c3e50] text-[#f8edcf] font-bold border-none rounded cursor-pointer text-center py-2 px-4 mt-2 ml-auto hover:bg-[#34495e]"
-    >
-      Download as Excel (.xlsx)
-    </button>
+    
     <br />
   </div>
 )}

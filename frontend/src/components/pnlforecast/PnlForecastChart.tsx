@@ -1,7 +1,7 @@
 // components/PnlForecastChart.tsx
 'use client';
 
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -40,21 +40,16 @@ interface PnlForecastChartProps {
   handleCheckboxChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-const PnlForecastChart: React.FC<PnlForecastChartProps> = ({
-  chartData,
-  currencySymbol,
-  selectedGraphs,
-  handleCheckboxChange
-}) => {
+const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, currencySymbol, selectedGraphs, handleCheckboxChange }, ref) => {
 
   // ✅ NEW: Forecast/Current+Forecast region should start from first NON-historical month (e.g. Dec)
   const forecastStartIndex = chartData.findIndex(d => !d.isHistorical);
 
   const labels = chartData.map(item => {
     let suffix = '';
-    if (item.isForecast) suffix = ' (F)';
+    if (item.isForecast) suffix = ' ';
     else if (item.isHistorical) suffix = '';
-    else suffix = ' (F)'; // Current & Forecast (as your original logic)
+    else suffix = ' '; // Current & Forecast (as your original logic)
     return `${item.month}${suffix}`;
   });
 
@@ -125,6 +120,7 @@ const PnlForecastChart: React.FC<PnlForecastChartProps> = ({
 
   const options: ChartOptions<'line'> = {
     responsive: true,
+  maintainAspectRatio: false,
     plugins: {
       legend: {
         display: false,
@@ -199,14 +195,13 @@ const PnlForecastChart: React.FC<PnlForecastChartProps> = ({
         flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
-        width: 40%;
+        width: 30%;
         gap: 0.4vh;
       }
 
  .checkbox-group label {
     font-size: 0.7vw; /* Smaller font */
     font-weight: 600;
-    text-decoration: underline;
       text-decoration-thickness: 1.2px;
     display: flex;
     align-items: center;
@@ -236,33 +231,33 @@ const PnlForecastChart: React.FC<PnlForecastChartProps> = ({
 
 
 .checkbox-label.sales {
-  color: #75BBDA;
+  color: #414042;
 }
 .checkbox-label.sales input[type="checkbox"] {
   background-color: #75BBDA;
 }
 
 // .checkbox-label.cogs {
-//   color: #AB64B5;
+//    color: #414042;
 // }
 
 
 .checkbox-label.ad {
-  color: #C49466;
+  color: #414042;
 }
 .checkbox-label.ad input[type="checkbox"] {
   background-color: #C49466;
 }
 
 .checkbox-label.cm1 {
-  color: #7B9A6d;
+  color: #414042;
 }
 .checkbox-label.cm1 input[type="checkbox"] {
   background-color: #7B9A6d;
 }
 
 .checkbox-label.cm2 {
-  color: #B8C78C;
+   color: #414042;
 }
 .checkbox-label.cm2 input[type="checkbox"] {
   background-color: #B8C78C;
@@ -384,7 +379,7 @@ const PnlForecastChart: React.FC<PnlForecastChartProps> = ({
       `}</style>
 
 <br/>
-<div className='flex justify-between items-center mx-2'>
+<div className='flex justify-between items-center mx-5 '>
    <div className="forecast-legend">
         <div className="forecast-legend-item">
           <div className="solid-line"></div>
@@ -410,24 +405,32 @@ const PnlForecastChart: React.FC<PnlForecastChartProps> = ({
               checked={selectedGraphs[name]}
               onChange={handleCheckboxChange}
             />
-            {label.toUpperCase()}
+           {label}
           </label>
         ))}
       </div>
 </div>
      
 
-      <div style={{
-        height: '37vw',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}>
-        <Line data={data} options={options} plugins={[forecastBackgroundPlugin]} />
-      </div>
+     <div
+  style={{
+    height: '450px', // 👈 FIXED HEIGHT
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+  }}
+>
+  <Line
+    ref={ref}
+    data={data}
+    options={options}
+    plugins={[forecastBackgroundPlugin]}
+  />
+</div>
 
     </div>
   );
-};
+})
 
 export default PnlForecastChart;

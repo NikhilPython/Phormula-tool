@@ -6,6 +6,7 @@ import { Message, useChatbotStore } from "@/lib/store/chatbotStore";
 import WindowSendButton from "@/components/chatbot/WindowSendButton";
 import './style.css';
 import { Copy, Share2, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Fragment } from "react";
 
 
 
@@ -310,24 +311,27 @@ const text = rawText || ''
       .map((m) => [m.id, m])
   ).values()
 ).map((msg, idx, arr) => (
-  <>
+ <Fragment key={msg.id}>
     {(idx === 0 || dayKey(msg.timestamp) !== dayKey(arr[idx - 1]?.timestamp)) && (
-      <div className="chat-date-separator"><span>{formatDayLabel(msg.timestamp)}</span></div>
+      <div className="flex justify-center my-3">
+  <span className="px-3 py-1 text-[11px] font-medium text-gray-500 bg-gray-200 rounded-full">
+    {formatDayLabel(msg.timestamp)}
+  </span>
+</div>
     )}
     <div
-    key={msg.id}
     className={`flex ${
       msg.sender === "user" ? "justify-end" : "justify-start"
     }`}
   >
             <div className="flex flex-col max-w-[80%]">
               <div
-              className={`px-4 py-2 rounded-2xl text-sm
-                ${
-                  msg.sender === "user"
-                    ? "bg-[#5EA68E] text-white rounded-br-md"
-                    : "bg-[#F1F1F1] text-gray-800 rounded-bl-md"
-                }`}
+             className={`px-4 py-2 rounded-2xl text-sm leading-snug
+  ${
+    msg.sender === "user"
+      ? "bg-[#5EA68E] text-white rounded-br-md"
+      : "bg-[#F1F1F1] text-gray-800 rounded-bl-md"
+  }`}
             >
              {msg.sender !== "user" && msg.text ? (
   (() => {
@@ -387,12 +391,19 @@ const text = rawText || ''
   msg.text
 )}
 
-              <div className={`chat-msg-meta ${msg.sender === "user" ? "chat-msg-meta-user" : "chat-msg-meta-bot"}`}>{formatTime(msg.timestamp)}</div>
-
+             <div
+  className={`mt-1 text-[10px] leading-none ${
+    msg.sender === "user"
+      ? "text-[#F8EDCE] text-right"
+      : "text-gray-500 text-right"
+  }`}
+>
+  {formatTime(msg.timestamp)}
+</div>
               </div>
 
               {msg.sender !== "user" && (
-                <div className="chat-msg-actions">
+                <div className="flex items-center gap-1 mt-1 pl-1">
                   <button
                     type="button"
                     className={`chat-action-btn ${msg.liked === "like" ? "is-active" : ""}`}
@@ -404,7 +415,7 @@ const text = rawText || ''
                     aria-label="Like"
                     title="Like"
                   >
-                    <ThumbsUp size={16} />
+                    <ThumbsUp size={14} />
                   </button>
 
                   <button
@@ -418,37 +429,39 @@ const text = rawText || ''
                     aria-label="Dislike"
                     title="Dislike"
                   >
-                    <ThumbsDown size={16} />
+                    <ThumbsDown size={14} />
                   </button>
 
                   <button
                     type="button"
-                    className="chat-action-btn"
+                   className="p-1 rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition"
                     onClick={() => handleCopy(msg)}
                     aria-label="Copy"
                     title="Copy"
                   >
-                    <Copy size={16} />
+                    <Copy size={14} />
                   </button>
 
                   <button
                     type="button"
-                    className="chat-action-btn"
+className="p-1 rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition"
                     onClick={() => handleShare(msg)}
                     aria-label="Share"
                     title="Share"
                   >
-                    <Share2 size={16} />
+                    <Share2 size={14} />
                   </button>
 
                   {actionMessage?.id === msg.id && (
-                    <span className="chat-action-toast">{actionMessage.text}</span>
+                    <span className="ml-2 text-[10px] text-gray-500">
+  {actionMessage.text}
+</span>
                   )}
                 </div>
               )}
             </div>
           </div>
-  </>
+  </Fragment>
         ))}
 
         {loading && (
