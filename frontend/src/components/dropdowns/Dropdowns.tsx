@@ -232,6 +232,9 @@ const getPrevYearLabel = (selectedYear: number) => {
   return String(selectedYear - 1); // 2024
 };
 
+
+
+
 // ---------------------- AI Summary Helpers ----------------------
 const monthNameToNumber = (m: string): string => {
   const idx = monthIndexMap[(m || "").toLowerCase()];
@@ -369,6 +372,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setExpenseBreakdownPieBase64(null);
     setProductWiseCm1PieBase64(null);
   }, [range, selectedMonth, selectedQuarter, selectedYear]);
+
+
 
   useEffect(() => {
     if (!showNoDataOverlay) return;
@@ -534,16 +539,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       const data: AiSummaryResponse = await res.json();
 
       const { summaryBullets, skuInsightsBullets } = extractSummaryAndSkuBullets(data.summary);
-const { recommendationBullets, inventoryBullets } = extractRecoAndInventoryBullets(data.recommendations);
+      const { recommendationBullets, inventoryBullets } = extractRecoAndInventoryBullets(data.recommendations);
 
-setAiPanel({
-  summaryBullets,
-  skuInsightsBullets,
-  recommendationBullets,
-  inventoryBullets,
-  rawSummary: data.summary ?? null,
-  rawRecommendations: data.recommendations ?? null,
-});
+      setAiPanel({
+        summaryBullets,
+        skuInsightsBullets,
+        recommendationBullets,
+        inventoryBullets,
+        rawSummary: data.summary ?? null,
+        rawRecommendations: data.recommendations ?? null,
+      });
     } catch (e: any) {
       setAiPanel(null);
       setAiPanelError(e?.message || "Failed to fetch AI summary");
@@ -1174,142 +1179,39 @@ setAiPanel({
   };
 
 
-//   const renderAiPanel = () => {
-//     if (!allDropdownsSelected) return null;
+const getCountryLabel = () => {
+  const c = (countryName || "").toLowerCase();
+  return c === "global" ? "GLOBAL" : (countryName || "").toUpperCase();
+};
 
-//     // show loading even if panel is empty, but only when range selection is ready
-//     const showLoading = aiPanelLoading;
+const getPeriodLabelShort = () => {
+  const yy = String(selectedYear || "").slice(-2);
 
-<<<<<<< HEAD
+  if (range === "monthly" && selectedMonth && selectedYear) {
+    return `${convertToAbbreviatedMonth(selectedMonth)}'${yy}`;
+  }
+  if (range === "quarterly" && selectedQuarter && selectedYear) {
+    return `${selectedQuarter}'${yy}`;
+  }
+  if (range === "yearly" && selectedYear) {
+    return String(selectedYear);
+  }
+  return "";
+};
+
+const getPnLTitleParts = () => {
+  return {
+    country: getCountryLabel(),
+    period: getPeriodLabelShort(),
+  };
+};
+
+
+  const renderAiPanel = () => {
+    if (!allDropdownsSelected) return null;
+
     return (
-      <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Summary */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-<<<<<<< HEAD
-            <div className="text-sm font-semibold text-charcoal-500 mb-2">
-              Month-end Business Summary
-            </div>
-=======
-            {/* <div className="text-sm font-semibold text-charcoal-500 mb-2">
-              Month-end Business Summary
-            </div> */}
-<PageBreadcrumb
-              pageTitle="Month-end Business Summary"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
-=======
-//     return (
-//       <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
-//         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-//           {/* Summary */}
-//           <div className="rounded-xl border border-slate-200 bg-white p-4">
-// <PageBreadcrumb
-//               pageTitle="Month-end Business Summary"
-//               variant="page"
-//               align="left"
-//               textSize="2xl"
-//             />
->>>>>>> origin
-
->>>>>>> origin
-
-//             {showLoading ? (
-//               <div className="text-xs text-charcoal-500">Loading…</div>
-//             ) : aiPanelError ? (
-//               <div className="text-xs text-red-600">{aiPanelError}</div>
-//             ) : aiPanel?.summaryBullets?.length ? (
-//               <ul className="list-disc pl-5 space-y-1 text-xs text-charcoal-500">
-//                 {aiPanel.summaryBullets.map((b, i) => (
-//                   <li key={i}>{b}</li>
-//                 ))}
-//               </ul>
-//             ) : (
-//               <div className="text-xs text-charcoal-500">No summary available.</div>
-//             )}
-//             {aiPanel?.skuInsightsBullets?.length ? (
-//   <>
-//     <div className="mt-4 text-[11px] font-semibold text-charcoal-500">
-//       SKU Insights
-//     </div>
-//     <ul className="list-disc pl-5 space-y-1 text-xs text-charcoal-500 mt-2">
-//       {aiPanel.skuInsightsBullets.map((b, i) => (
-//         <li key={i}>{b}</li>
-//       ))}
-//     </ul>
-//   </>
-// ) : null}
-//           </div>
-
-<<<<<<< HEAD
-          {/* Recommendations */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-<<<<<<< HEAD
-            <div className="text-sm font-semibold text-charcoal-500 mb-2">
-              Recommendations
-            </div>
-=======
-            {/* <div className="text-sm font-semibold text-charcoal-500 mb-2">
-              Recommendations
-            </div> */}
-            <PageBreadcrumb
-              pageTitle="Recommendations"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
->>>>>>> origin
-=======
-//           {/* Recommendations */}
-//           <div className="rounded-xl border border-slate-200 bg-white p-4">
-//             <PageBreadcrumb
-//               pageTitle="Recommendations"
-//               variant="page"
-//               align="left"
-//               textSize="2xl"
-//             />
->>>>>>> origin
-
-//             {showLoading ? (
-//               <div className="text-xs text-charcoal-500">Loading…</div>
-//             ) : aiPanelError ? (
-//               <div className="text-xs text-red-600">{aiPanelError}</div>
-//             ) : aiPanel?.recommendationBullets?.length ? (
-//               <ul className="list-disc pl-5 space-y-1 text-xs text-charcoal-500">
-//                 {aiPanel.recommendationBullets.map((b, i) => (
-//                   <li key={i}>{b}</li>
-//                 ))}
-//               </ul>
-//             ) : (
-//               <div className="text-xs text-charcoal-500">
-//                 Recommendations are generated only for the latest completed period.
-//               </div>
-//             )}
-//             {aiPanel?.inventoryBullets?.length ? (
-//   <>
-//     <div className="mt-4 text-[11px] font-semibold text-charcoal-500">
-//       Inventory
-//     </div>
-//     <ul className="list-disc pl-5 space-y-1 text-xs text-charcoal-500 mt-2">
-//       {aiPanel.inventoryBullets.map((b, i) => (
-//         <li key={i}>{b}</li>
-//       ))}
-//     </ul>
-//   </>
-// ) : null}
-//           </div>
-//         </div>
-//       </div>
-//     );
-//   };
-
-const renderAiPanel = () => {
-  if (!allDropdownsSelected) return null;
-
-  return (
-    // <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+      // <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MonthEndBusinessSummaryCard
           loading={aiPanelLoading}
@@ -1325,9 +1227,9 @@ const renderAiPanel = () => {
           inventoryBullets={aiPanel?.inventoryBullets ?? []}
         />
       </div>
-    // </div>
-  );
-};
+      // </div>
+    );
+  };
 
 
   return (
@@ -1344,7 +1246,7 @@ const renderAiPanel = () => {
               textSize="2xl"
             />
 
-            <span className="text-green-500 font-bold text-lg sm:text-2xl md:text-2xl">
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
               {countryName?.toLowerCase() === "global"
                 ? "Global"
                 : countryName?.toUpperCase()}
@@ -1882,12 +1784,32 @@ const renderAiPanel = () => {
           })()}
 
       </div>
-      
+
 
       {/* Profitability header + bundle download */}
       {allDropdownsSelected && (
         <div className="flex items-center justify-between gap-3">
-          <PageBreadcrumb pageTitle="Profitability" variant="page" align="left" textSize="2xl" />
+          <div className="flex items-baseline gap-2">
+            <PageBreadcrumb
+              pageTitle="P&L - Amazon"
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              {getPnLTitleParts().country}
+            </span>
+
+            {getPnLTitleParts().period ? (
+              <>
+                <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
+                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                  {getPnLTitleParts().period}
+                </span>
+              </>
+            ) : null}
+          </div>
 
           <DownloadIconButton
             onClick={handleDownloadProfitabilityBundle}
