@@ -313,6 +313,10 @@ const text = rawText || ''
 ).map((msg, idx, arr) => (
  <Fragment key={msg.id}>
     {(idx === 0 || dayKey(msg.timestamp) !== dayKey(arr[idx - 1]?.timestamp)) && (
+      <div className="flex justify-center my-3">
+  <span className="px-3 py-1 text-[11px] font-medium text-gray-500 bg-gray-200 rounded-full">
+    {formatDayLabel(msg.timestamp)}
+  </span>
      
       <div className="flex justify-center my-3">
   <span className="px-3 py-1 text-[11px] font-medium text-gray-500 bg-gray-200 rounded-full">
