@@ -1994,6 +1994,7 @@ def _sum_where(
 #         "bucket": tstatus,
 #     }
 
+
 def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
     posted_date = tx.get("postedDate")
     ttype = tx.get("transactionType")
@@ -2077,7 +2078,6 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
             "shipping_credits": 0.0, "shipping_credits_tax": 0.0,
             "gift_wrap_credits": 0.0, "giftwrap_credits_tax": 0.0,
             "promotional_rebates": 0.0, "promotional_rebates_tax": 0.0,
-            "gross_sales": 0.0,  # ✅ NEW
             "sales_tax_collected": 0.0, "marketplace_withheld_tax": 0.0,
             "marketplace_facilitator_tax": 0.0,
             "selling_fees": 0.0, "fba_fees": 0.0,
@@ -2099,7 +2099,6 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
             "shipping_credits": 0.0, "shipping_credits_tax": 0.0,
             "gift_wrap_credits": 0.0, "giftwrap_credits_tax": 0.0,
             "promotional_rebates": 0.0, "promotional_rebates_tax": 0.0,
-            "gross_sales": 0.0,  # ✅ NEW
             "sales_tax_collected": 0.0, "marketplace_withheld_tax": 0.0,
             "marketplace_facilitator_tax": 0.0,
             "selling_fees": 0.0, "fba_fees": 0.0,
@@ -2121,7 +2120,6 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
             "shipping_credits": 0.0, "shipping_credits_tax": 0.0,
             "gift_wrap_credits": 0.0, "giftwrap_credits_tax": 0.0,
             "promotional_rebates": 0.0, "promotional_rebates_tax": 0.0,
-            "gross_sales": 0.0,  # ✅ NEW
             "sales_tax_collected": 0.0, "marketplace_withheld_tax": 0.0,
             "marketplace_facilitator_tax": 0.0,
             "selling_fees": 0.0, "fba_fees": 0.0,
@@ -2132,8 +2130,10 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
 
     # ✅ DebtRecovery / DebtPayment => map to selling_fees (so UI column shows it)
     if ttype_norm in ("debtrecovery", "debt") or desc_norm == "debtpayment":
+        # Selling fees in your reports are expected negative (a cost)
         selling_fees = -abs(total_amount) if abs(total_amount) > eps else 0.0
         total_calc = selling_fees
+
         return {
             "date_time": posted_date, "settlement_id": None, "type": ttype,
             "order_id": order_id, "sku": sku, "description": desc, "quantity": quantity,
@@ -2145,13 +2145,11 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
             "gift_wrap_credits": 0.0, "giftwrap_credits_tax": 0.0,
             "promotional_rebates": 0.0, "promotional_rebates_tax": 0.0,
 
-            "gross_sales": 0.0,  # ✅ NEW
-
             "sales_tax_collected": 0.0,
             "marketplace_withheld_tax": 0.0,
             "marketplace_facilitator_tax": 0.0,
 
-            "selling_fees": selling_fees,
+            "selling_fees": selling_fees,   # ✅ will show here
             "fba_fees": 0.0,
             "other_transaction_fees": 0.0,
             "other": 0.0,
@@ -2159,6 +2157,7 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
             "regulatory_fee": 0.0, "tax_on_regulatory_fee": 0.0, "account_type": None,
             "total": total_calc, "bucket": tstatus,
         }
+
 
     # SellerDealPayment => put in other
     if ttype_norm == "sellerdealpayment":
@@ -2173,7 +2172,6 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
             "shipping_credits": 0.0, "shipping_credits_tax": 0.0,
             "gift_wrap_credits": 0.0, "giftwrap_credits_tax": 0.0,
             "promotional_rebates": 0.0, "promotional_rebates_tax": 0.0,
-            "gross_sales": 0.0,  # ✅ NEW
             "sales_tax_collected": 0.0, "marketplace_withheld_tax": 0.0,
             "marketplace_facilitator_tax": 0.0,
             "selling_fees": 0.0, "fba_fees": 0.0,
@@ -2331,25 +2329,6 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
         other = total_amount
         total_calc = other
 
-    # =========================================================
-    # ✅ NEW: GROSS SALES (your requested formula)
-    # gross_sales = product_sales + product_sales_tax + postage_credits + gift_wrap_credits
-    #              + shipping_credits_tax - promotional_rebates - promotional_rebates_tax
-    #
-    # NOTE: In your logic, postage_credits already includes shipping_credits_tax,
-    # so this formula will double-count shipping_credits_tax. Keeping it exactly
-    # as you requested.
-    # =========================================================
-    gross_sales = (
-        float(product_sales or 0.0)
-        + float(product_sales_tax or 0.0)
-        + float(postage_credits or 0.0)
-        + 0.0  # gift_wrap_credits (you currently set it to 0.0)
-        + float(shipping_credits_tax or 0.0)
-        - float(promotional_rebates or 0.0)
-        - float(promotional_rebates_tax or 0.0)
-    )
-
     return {
         "date_time": posted_date,
         "settlement_id": None,
@@ -2376,9 +2355,6 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
 
         "promotional_rebates": promotional_rebates,
         "promotional_rebates_tax": promotional_rebates_tax,
-
-        # ✅ NEW
-        "gross_sales": gross_sales,
 
         "sales_tax_collected": sales_tax_collected,
         "marketplace_withheld_tax": marketplace_withheld_tax,

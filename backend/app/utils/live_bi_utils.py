@@ -508,12 +508,6 @@ def compute_inventory_coverage_ratio(user_id: int, country: str) -> pd.DataFrame
     return df
 
 
-# -----------------------------------------------------------------------------
-
-
-
-
-
 def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     """
     Given a raw settlement-style DataFrame with columns like:
@@ -1535,8 +1529,6 @@ def _cell_value(x):
 
 
 
-
-
 def build_inventory_signals(user_id: int, country: str) -> dict:
     signals = {}
 
@@ -1937,9 +1929,26 @@ Metrics paragraph rules (Line 2-3)
 
 - Do NOT invent numbers and do NOT add extra reasons.
 
+
+RULE PRECEDENCE (CRITICAL):
+- Visibility INVALIDATION RULE overrides ALL other rules.
+- If a visibility action is invalidated, it must NEVER be selected,
+  even if other rules suggest or allow it.
+
 -----------------------------
 ACTION DECISION RULES (CRITICAL)
 -----------------------------
+
+PRICE EXHAUSTION OVERRIDE (CRITICAL):
+- If ASP is DOWN by more than 10%
+  AND Units are DOWN (negative growth) by more than 60%,
+  THEN pricing has already failed to revive demand.
+- In this case:
+  ❌ Do NOT recommend any ASP increase or decrease.
+  ❌ Ignore the PRICING PRIORITY RULE.
+  ✅ Use ONLY:
+     - "Review the visibility setup for this product."
+
 
 PRICING PRIORITY RULE:
 - If absolute ASP change is greater than 10% (increase or decrease),
@@ -1953,13 +1962,21 @@ MARGIN PROTECTION RULE:
   do NOT suggest further ASP reduction.
 - Prefer:
   - "Increase ASP slightly to strengthen margins."
-  - OR "Monitor performance closely for now."
+ 
 
 PRICE RESISTANCE RULE:
 - If ASP is up AND units and sales are both down,
   interpret this as price resistance.
 - Do NOT attribute decline to ads or visibility.
 - Prefer ASP reduction or monitoring actions.
+
+VISIBILITY INVALIDATION RULE (CRITICAL):
+- If Units are UP (positive growth),
+  ❌ Visibility-related actions are INVALID and must NOT be selected.
+- This includes:
+  - "Check ads and visibility campaigns for this product."
+  - "Review the visibility setup for this product."
+
 
 ADS / VISIBILITY ELIGIBILITY RULE:
 - Ads or visibility actions may be suggested ONLY IF:
@@ -1986,16 +2003,17 @@ SECONDARY STRATEGY RULE (MANDATORY, RANK-ONLY):
 - When the rule is triggered, use ONLY this sentence:
   "If your objective is to boost rank, you may continue with the current pricing setup but monitor performance closely."
 
-
-
-
+IMPORTANT CLARIFICATION:
+- The PRIMARY action (Line 5) represents the default, margin-optimal recommendation.
+- The SECONDARY strategy (Line 6) represents an alternative rank-first option and MAY contradict the primary action.
+- Do NOT weaken or neutralize the primary action to make it consistent with the secondary strategy.
 
 -----------------------------
 Inventory alert rules (Line 7 ONLY, OPTIONAL)
 -----------------------------
 - NEVER create a separate bullet for inventory.
 - Inventory sentence must start with "Inventory:".
-- If no inventory issue exists, DO NOT add Line 6.
+- If no inventory issue exists, DO NOT add Line 7.
 - Do NOT repeat product name.
 - Do NOT mention inventory anywhere else.
 
@@ -2017,9 +2035,6 @@ Allowed secondary strategy sentences (Line 6 only, OPTIONAL)
 Use exactly ONE of these sentences, verbatim:
 - "If your objective is to boost rank, you may continue with the current pricing setup but monitor performance closely."
 
-
-
-
 -----------------------------
 Allowed inventory alerts (Line 7 only, OPTIONAL)
 -----------------------------
@@ -2032,6 +2047,7 @@ Ignore:
 
 OUTPUT FORMAT
 Return ONLY valid JSON:
+
 {{
   "summary_bullets": [...],
   "action_bullets": ["...", "...", "...", "...", "..."]
@@ -2059,7 +2075,7 @@ DATA
                 {"role": "user", "content": prompt},
             ],
             max_tokens=900,
-            temperature=0.2,
+            temperature=0,
             response_format={"type": "json_object"},
         )
 
@@ -2187,8 +2203,6 @@ DATA
     }
 
 
-
-
 #-----------------------------------------------------------------------------
 # ChatGPT insight generator for live MTD vs previous (per-SKU)
 #-----------------------------------------------------------------------------
@@ -2260,94 +2274,171 @@ def generate_live_insight(item, country, prev_label, curr_label):
     else:
         # Existing SKU with prev vs current
         prompt = f"""
-    You are a senior ecommerce business analyst. The data below shows a product's performance
-    comparing a previous period vs the current MTD.
+You are a senior ecommerce business analyst. The data below shows a product's performance
+comparing a previous period vs the current MTD.
 
-    Context:
-    - Country: {country}
-    - Previous period: {prev_label}
-    - Current period: {curr_label}
+Context:
+- Country: {country}
+- Previous period: {prev_label}
+- Current period: {curr_label}
 
-    Details for '{product_name}'
+Details for '{product_name}'
 
-    Observations:
-    - List the 2–3 most important changes using ONLY the given metrics:
-    • quantity_prev vs quantity_curr
-    • net_sales_prev vs net_sales_curr
-    • profit_prev vs profit_curr
-    • asp_prev vs asp_curr
-    • unit_wise_profitability_prev vs unit_wise_profitability_curr
-    • and % fields like "Unit Growth (%)", "Sales Growth (%)", etc.
-    - Use the exact causal tone wherever % values exist:
-    "The increase/decrease in ASP by X% resulted in a dip/growth in units by Y%, which also resulted in sales falling/increasing by Z%."
-    - In at least one observation, mention Sales Mix Change (%) direction if present (up/down).
-    - Do NOT add assumptions like stock issues, supply constraints, replenishment, OOS, or fulfillment problems
-    in observations or metric explanations.
+IMPORTANT FILTER:
+- Ignore any row where product_name is "Total" or contains "Total".
 
-    Improvements:
-    - Provide exactly 3–5 action bullets.
-    - Each action bullet MUST be exactly ONE sentence and MUST be chosen ONLY from the list below, verbatim (no edits):
-    • "Check ads and visibility campaigns for this product."
-    • "Review the visibility setup for this product."
-    • "Reduce ASP slightly to improve traction."
-    • "Increase ASP slightly to strengthen margins."
-    • "Monitor performance closely and reassess next steps."
-    • "Monitor performance closely for now."
-    - Do NOT add any other recommendations, explanations, or extra words.
-    - Do NOT mention stock, inventory, supply, operations, OOS, logistics, replenishment, or warehousing
-    in sales, pricing, or profitability actions.
-    - Decision guidance:
-    • If ASP is strongly up and units are down: prefer "Reduce ASP slightly to improve traction."
-    • If units and sales are down and ASP is flat or slightly up: prefer visibility lines.
-    • If profit/unit profit is very strong and units are stable/slightly down: prefer maintain/increase ASP.
+Observations:
+- List the 2–3 most important changes using ONLY the given metrics:
+• quantity_prev vs quantity_curr
+• net_sales_prev vs net_sales_curr
+• profit_prev vs profit_curr
+• asp_prev vs asp_curr
+• unit_wise_profitability_prev vs unit_wise_profitability_curr
+• and % fields like "Unit Growth (%)", "Sales Growth (%)", etc.
+- Use the exact causal tone wherever % values exist:
+"The increase/decrease in ASP by X% resulted in a dip/growth in units by Y%, which also resulted in sales falling/increasing by Z%."
+- In at least one observation, mention Sales Mix Change (%) direction if present (up/down).
+- Do NOT add assumptions like stock issues, supply constraints, replenishment, OOS, or fulfillment problems
+in observations or metric explanations.
 
-    Then, for each metric, add:
 
-    Unit Growth:
-    • [Explain reasons for the growth/decline using ONLY available signals like unit trend vs ASP trend and what that implies about demand/visibility/conversion.]
-    • [Choose ONE action bullet from the Improvements list that best fits the unit pattern and paste it verbatim.]
+PRIMARY ACTION SELECTION (MANDATORY):
 
-    ASP:
-    • [Explain why ASP changed using ONLY available signals like pricing changes, discounting intensity, or product/pack/channel mix shifts (premium vs value) without referencing costs.]
-    • [Choose ONE action bullet from the Improvements list that best fits the ASP direction and paste it verbatim.]
+- Select EXACTLY ONE primary action based on the Decision Guidance below.
+- The primary action represents the margin-optimal default recommendation.
+- The primary action MUST be reused verbatim:
+  • once in the Improvements section
+  • once in each metric-level action bullet
+- Do NOT select different actions for different metrics.
+- If multiple rules seem relevant, apply the FIRST matching rule in the order given.
+- The secondary strategy sentence (rank-only) is OPTIONAL and EXEMPT from primary action reuse.
 
-    Sales:
-    • [Describe sales trend by explicitly tying it to Units × ASP (e.g., “sales down mainly due to units decline while ASP was flat/up” or “sales up driven by ASP lift with stable units”).]
-    • [Choose ONE action bullet from the Improvements list that best fits the sales pattern and paste it verbatim.]
 
-    Profit:
-    • [Explain profit change using ONLY available signals like sales movement plus realized pricing/discounting/mix impact, and avoid any mention of COGS or cost changes.]
-    • [Choose ONE action bullet from the Improvements list that best aligns with protecting/improving profitability given the observed trend and paste it verbatim.]
+Improvements:
+- List the PRIMARY ACTION only ONCE.
+- Do NOT repeat the same action sentence multiple times.
+- Do NOT add the secondary strategy sentence here.
+- The action MUST be chosen ONLY from the list below, verbatim:
+• "Check ads and visibility campaigns for this product."
+• "Review the visibility setup for this product."
+• "Reduce ASP slightly to improve traction."
+• "Increase ASP slightly to strengthen margins."
+• "Maintain current ASP and monitor performance."
+• "Monitor performance closely for now."
+- Do NOT add any other recommendations or explanations.
+- Do NOT mention stock, inventory, supply, operations, OOS, logistics, replenishment, or warehousing.
 
-    Unit Profitability:
-    • [Explain per-unit profit change using ONLY available signals like realized price/discounting and mix (higher-priced variants) impact, without mentioning COGS.]
-    • [Choose ONE action bullet from the Improvements list that best fits per-unit profit strength/weakness and paste it verbatim.]
 
-    Inventory Alert (OPTIONAL — MUST MATCH OVERALL ACTIONS):
-    - After completing all observations and action bullets above,
-    check inventory_signals for this SKU.
-    - ONLY IF inventory_signals indicate an issue, add ONE final bullet.
-    - The inventory bullet MUST:
-    • Start with "Inventory:"
-    • Use EXACTLY one of the allowed inventory alert sentences below, verbatim.
-    - Allowed inventory alerts (verbatim only):
-    • "Inventory: Initiate inventory replenishment as current cover is below lead time."
-    • "Inventory: Push promotions or ads to clear around <aged_units> units of aged inventory and reduce storage costs."
-    • "Inventory: Amazon has flagged this SKU for inventory optimization; review the recommendation in Seller Central."
-    - If no inventory issue exists, DO NOT add any inventory bullet.
-    - Do NOT add more than ONE inventory bullet.
-    - Do NOT let inventory influence sales, ASP, profit, or pricing explanations.
+Decision Guidance (APPLY IN ORDER — FIRST MATCH WINS, MUTUALLY EXCLUSIVE):
 
-    Instructions:
-    - Use plain text with bullets only.
-    - DO NOT use Markdown formatting (no **bold**, no italics, no headers).
-    - Avoid labels like "Root cause:" or "Action item:". Just use bullet points.
-    - Use % values and trends from the data for every observation.
-    - Make all insights easy for business teams to act on.
 
-    Data:
-    {data_block}
-    """
+CASE C — HEALTHY GROWTH (OVERRIDE):
+• Apply IF ALL of the following are TRUE:
+  - Unit Growth (%) is POSITIVE
+  - Sales Growth (%) is POSITIVE
+  - Profit Growth (%) is POSITIVE
+• This indicates efficient, scalable growth.
+• OVERRIDE all other cases below.
+• Primary Action:
+  "Maintain current ASP and monitor performance."
+
+
+CASE A — MARGIN DILUTION:
+• Apply IF ALL of the following are TRUE:
+  - ASP change is NEGATIVE by more than 10%
+  - Unit Growth (%) is POSITIVE
+  - Sales Growth (%) is FLAT or NEGATIVE
+  - Profit Growth (%) is NEGATIVE
+• This indicates pricing drove volume but hurt overall profitability.
+• Primary Action:
+  "Increase ASP slightly to strengthen margins."
+
+
+CASE B — PRICE RESISTANCE:
+• Apply IF ALL of the following are TRUE:
+  - ASP change is POSITIVE by more than 10%
+  - Unit Growth (%) is NEGATIVE
+  - Sales Growth (%) is NEGATIVE
+• This indicates customers are resisting higher prices.
+• Primary Action:
+  "Reduce ASP slightly to improve traction."
+
+
+PRICE EXHAUSTION OVERRIDE:
+• Apply IF:
+  - ASP change is NEGATIVE by more than 10%
+  AND
+  - Unit Growth (%) is NEGATIVE by more than 60%
+• In this case:
+  "Review the visibility setup for this product."
+
+
+SECONDARY STRATEGY RULE (RANK-ONLY, OPTIONAL):
+
+• Add the following sentence ONLY IF:
+  - Unit Growth (%) is POSITIVE
+  AND
+  - ASP and Units are moving in opposite directions
+  AND
+  - SKU-level Profit (%) is NEGATIVE
+• Use EXACTLY this sentence:
+  "If your objective is to boost rank, you may continue with the current pricing setup but monitor performance closely."
+• This sentence MUST:
+  - Appear ONLY under Unit Growth
+  - Be the FINAL bullet in that section
+  - Appear exactly ONCE
+• This sentence is ALLOWED even though it contains the words "monitor performance closely".
+
+
+Then, for each metric, add:
+
+Unit Growth:
+• Explain the growth or decline using ONLY unit trend vs ASP trend.
+• Repeat the PRIMARY ACTION verbatim.
+• Add the secondary strategy sentence ONLY if triggered.
+
+ASP:
+• Explain the ASP change using ONLY pricing, discounting, or mix signals.
+• Repeat the PRIMARY ACTION verbatim.
+
+Sales:
+• Describe sales as Units × ASP.
+• Repeat the PRIMARY ACTION verbatim.
+
+Profit:
+• Explain profit using sales movement and realized pricing/mix only.
+• Do NOT mention COGS or costs.
+• Repeat the PRIMARY ACTION verbatim.
+
+Unit Profitability:
+• Explain per-unit profit using realized price or mix.
+• Do NOT mention COGS.
+• Repeat the PRIMARY ACTION verbatim.
+
+
+Inventory:
+- Add ONE inventory sentence ONLY IF inventory_signals indicate an issue.
+- The sentence MUST start with "Inventory:" and use EXACTLY one of:
+• "Inventory: Initiate inventory replenishment as current cover is below lead time."
+• "Inventory: Push promotions or ads to clear around <aged_units> units of aged inventory and reduce storage costs."
+• "Inventory: Amazon has flagged this SKU for inventory optimization; review the recommendation in Seller Central."
+- Do NOT let inventory influence pricing or sales logic.
+
+
+Instructions:
+- Use plain text with bullets only.
+- DO NOT use Markdown.
+- Use % values and trends wherever available.
+- Keep insights concise and business-actionable.
+
+Data:
+{data_block}
+"""
+
+
+
+
+
 
 
     try:
@@ -2365,7 +2456,7 @@ def generate_live_insight(item, country, prev_label, curr_label):
                 {"role": "user", "content": prompt},
             ],
             max_tokens=900,
-            temperature=0.4,
+            temperature=0,
         )
 
         ai_text = ai_response.choices[0].message.content.strip()
@@ -2475,7 +2566,7 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
             and coverage_ratio is not None
             and coverage_ratio < transit_time
         ):
-            alert = "Inventory coverage is below transit time; supply inventory required."
+            alert = "Inventory coverage is below transit time.Ref. AI Insights"
             alert_type = "supply"
 
         # 2️⃣ Ageing inventory
