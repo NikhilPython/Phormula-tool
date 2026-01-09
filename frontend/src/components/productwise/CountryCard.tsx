@@ -803,7 +803,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
 
 
   return (
-    <div className="rounded-lg border border-charcoal-500 bg-white p-4 sm:p-5 shadow-sm transition-shadow hover:shadow-md">
+    <div className=" rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm transition-shadow hover:shadow-md">
       <div className="mb-4 flex items-center justify-between gap-2">
         <h4 className="m-0 font-extrabold text-green-500 text-[clamp(14px,1.2vw,20px)] flex items-center gap-2">
           <span

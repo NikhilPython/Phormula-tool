@@ -24,7 +24,7 @@ export const AiButton: React.FC<AiButtonProps> = ({
       className={[
         "relative overflow-hidden",
         "bg-custom-effect",
-        "rounded-sm p-2",
+        "rounded-lg p-2", // ✅ updated
         "text-nowrap flex items-center gap-1 justify-end",
         "text-[#F8EDCE]",
 
@@ -37,12 +37,12 @@ export const AiButton: React.FC<AiButtonProps> = ({
 
         className,
       ].join(" ")}
-      style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
+      // style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
     >
       {/* Base brand gradient */}
       <span className="ai-brand-bg" aria-hidden="true" />
 
-      {/* Animated AI gradient (now BLENDED so green stays visible) */}
+      {/* Animated AI gradient */}
       <span className="ai-animated-bg" aria-hidden="true" />
 
       {/* Shimmer overlay */}
@@ -50,13 +50,14 @@ export const AiButton: React.FC<AiButtonProps> = ({
 
       {/* Content */}
       <span className="relative z-10 flex items-center gap-1 text-xs 2xl:text-sm">
-        <BsStars className="text-xs 2xl:text-sm text-yellow-200" style={{ color: "#F8EDCE" }} />
+        <BsStars
+          className="text-xs 2xl:text-sm text-yellow-200"
+          style={{ color: "#F8EDCE" }}
+        />
         {loading ? "Generating..." : children}
       </span>
 
-
       <style jsx>{`
-        /* ✅ Your green/blue brand gradient */
         .bg-custom-effect {
           background-image: linear-gradient(99.81deg, #5ea68e 0%, #37455f 97.72%);
         }
@@ -66,36 +67,32 @@ export const AiButton: React.FC<AiButtonProps> = ({
           inset: 0;
           background-image: linear-gradient(99.81deg, #5ea68e 0%, #37455f 97.72%);
           z-index: 0;
+          border-radius: 0.5rem; /* ✅ matches rounded-lg */
         }
 
-        /* ✅ Blend this layer instead of covering the brand bg */
-        /* Animated brand gradient (same colors as left button) */
-.ai-animated-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
+        .ai-animated-bg {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          pointer-events: none;
 
-  /* ✅ SAME palette as your left button, just stretched for motion */
-  background-image: linear-gradient(
-    45deg,
-    #5ea68e 0%,
-    #4f8f7b 22%,
-    #37455f 55%,
-    #4f8f7b 78%,
-    #5ea68e 100%
-  );
+          background-image: linear-gradient(
+            45deg,
+            #5ea68e 0%,
+            #4f8f7b 22%,
+            #37455f 55%,
+            #4f8f7b 78%,
+            #5ea68e 100%
+          );
 
-  background-size: 320% 320%;
-  animation: ai-gradient-diagonal 3s linear infinite;
+          background-size: 320% 320%;
+          animation: ai-gradient-diagonal 3s linear infinite;
 
-  /* ✅ no blending / no opacity tint */
-  opacity: 1;
-  mix-blend-mode: normal;
-}
+          opacity: 1;
+          mix-blend-mode: normal;
 
-
-
+          border-radius: 0.5rem; /* ✅ matches rounded-2xl */
+        }
 
         .ai-shimmer {
           position: absolute;

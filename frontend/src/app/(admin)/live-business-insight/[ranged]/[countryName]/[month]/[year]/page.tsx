@@ -162,6 +162,8 @@ const getAbbr = (m?: string) => {
   return m.slice(0, 3);
 };
 
+
+
 // =========================
 // Main Component
 // =========================
@@ -183,6 +185,19 @@ const MonthsforBI: React.FC<MonthsforBIProps> = ({
       all_skus_total: null,
     }
   );
+
+  const titleCountry = useMemo(() => {
+    const c = (countryName || "").toLowerCase();
+    if (c === "global") return "Global";
+    return c.toUpperCase(); // UK / US / CA
+  }, [countryName]);
+
+  const titleMonth = useMemo(() => {
+    // parent sends "january", "february" etc
+    const abbr = (month || "").slice(0, 3);
+    const yy = String(year || "").slice(2);
+    return `${abbr.charAt(0).toUpperCase()}${abbr.slice(1)}'${yy}`; // Jan'26
+  }, [month, year]);
 
   const [activeTab, setActiveTab] = useState<
     'all_skus' | 'top_80_skus' | 'new_or_reviving_skus' | 'other_skus'
@@ -1381,16 +1396,16 @@ const MonthsforBI: React.FC<MonthsforBIProps> = ({
       .map((s) => s.trim())
       .filter(Boolean);
 
-const verbs = [
-  "Check",
-  "Review",
-  "Monitor",
-  "Increase",
-  "Reduce",
-  "Maintain",
-  "Push",
-  "If your objective"
-];
+    const verbs = [
+      "Check",
+      "Review",
+      "Monitor",
+      "Increase",
+      "Reduce",
+      "Maintain",
+      "Push",
+      "If your objective"
+    ];
 
     const isAction = (s: string) =>
       new RegExp(`^(?:⚠\\s*)?(?:${verbs.join("|")})\\b`, "i").test(s);
@@ -2095,10 +2110,24 @@ const verbs = [
           )}
 
           <div>
-            <div className="mt-4 rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm">
+            <div className="mt-4 rounded-2xl border bg-white p-5 shadow-sm">
 
               <div className="flex flex-col 2xl:flex-row gap-4  xl:items-left xl:justify-between">
-                <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" />
+                {/* <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" /> */}
+                <div className="flex flex-wrap items-baseline gap-2 font-bold ">
+                  <PageBreadcrumb
+                    pageTitle={`Amazon`}
+                    variant="page"
+                    align="left"
+                  />
+                  <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-[#5EA68E]">{titleCountry}</span>
+                  <PageBreadcrumb
+                    pageTitle={`- SKU Analysis - MTD`}
+                    variant="page"
+                    align="left"
+                  />
+                  <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-[#5EA68E]">{titleMonth}</span>
+                </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-between">
                   <SegmentedToggle<TabKey>
@@ -2207,7 +2236,7 @@ const verbs = [
                   </span>
 
                   <span className="inline-flex items-center gap-2">
-                    <span className="inline-flex items-center gap-2 text-[#FF5C5C] font-bold">
+                    <span className="inline-flex items-center gap-2 text-[#DC2626] font-bold">
                       <FaArrowDown className="text-[10px] 2xl:text-xs" /> Negative growth
                     </span>
                   </span>

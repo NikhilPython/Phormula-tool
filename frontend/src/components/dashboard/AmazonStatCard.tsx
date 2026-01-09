@@ -64,7 +64,7 @@ const visualIsUp =
   //       : "text-rose-600";
 
 const goodClass = "text-emerald-600";
-const badClass = "text-rose-600";
+const badClass = "text-red-600"; 
 
 const deltaColor =
   deltaToShow == null

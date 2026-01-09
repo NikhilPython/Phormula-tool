@@ -368,14 +368,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return "-";
   }, []);
 
-  // Find asp key (asp or ASP) based on first row
+
   const aspKey = useMemo(() => {
     const first = tableData[0] || {};
     const k = Object.keys(first).find((key) => key.toLowerCase() === "asp");
     return k as keyof TableRow | undefined;
   }, [tableData]);
 
-  // Columns
+
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
       { key: "sno", label: "Sno.", align: "center" },
@@ -389,28 +389,60 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "sales",
       label: "Sales",
-      collapsedCols: [], // ✅ nothing shown in collapsed view
+      collapsedCols: [],
       expandedCols: [
-        { key: "gross_sales", label: "Gross Sales", align: "right" },
-        { key: "sales_refund", label: "Sales - Refund", align: "right" },
-        { key: "taxes_credits", label: "Taxes and Credits", align: "right" },
+        { key: "product_sales", label: "Gross Sales", align: "right" },
+        { key: "refund_sales", label: "Sales - Refund", align: "right" },
+        { key: "tex_and_credits", label: "Taxes and Credits", align: "right" },
+      ],
+    },
+    {
+      id: "units_breakdown",
+      label: "Net Units Sold",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "units_sold", label: "Units Sold", align: "right" },
+        { key: "return_units", label: "Return", align: "right" },
+      ],
+    },
+    {
+      id: "promotions_breakdown",
+      label: "Promotions",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "promotional_rebates", label: "Promotions", align: "right" },
+        { key: "promotional_rebates_percentage", label: "Promotions %", align: "right" },
+      ],
+    },
+    {
+      id: "amazon_breakdown",
+      label: "Amazon Fees",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "selling_fees", label: "Selling Fees", align: "right" },
+        { key: "fba_fees", label: "FBA Fees", align: "right" },
+      ],
+    },
+    {
+      id: "other_transactions_breakdown",
+      label: "Other Transactions",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "net_taxes", label: "Net Taxes", align: "center" },
+        { key: "net_credits", label: "Net Credits", align: "center" },
+        { key: "misc_transaction", label: "Misc. Transactions", align: "center" },
+      ],
+    },
+    {
+      id: "profit_breakdown",
+      label: "CM1 Profit %",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "profit", label: "CM1 Profit Margin", align: "center" },
+        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
       ],
     },
   ];
-
-
-  const singleCols = [
-    // ✅ separate header (rowSpan=2) — this becomes its own top header cell
-    {
-      key: "amazon_fees_total",
-      label: "Amazon Fees",
-      align: "right",
-      thClassName: "font-bold",
-      tdClassName: "font-semibold bg-gray-100 border-l-2 border-gray-400",
-    },
-  ];
-
-
 
   //  const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
   //   () => [
@@ -455,13 +487,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
   // );
 
 
-  // Formatting
-
-  const SINGLE_COLS = [
-    { key: "net_sales", label: "Net Sales", align: "right" },
-  ];
-
-
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
 
@@ -469,7 +494,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     (value: unknown, key: string) => {
       if (value === undefined || value === null || value === "") return "-";
 
-      // ✅ always show positive in table (sign already shown separately)
       const n = Math.abs(toNumber(value));
       if (!Number.isFinite(n)) return "-";
 
@@ -496,9 +520,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "product_sales",       // Gross Sales (+)
         "net_sales",           // Net Sales (+)
         "net_credits",         // Net Credits (+)
+        "misc_transaction",
+        "other_transactions",
       ]),
-    []
-  );
+      []
+    );
 
   const SIGN_MINUS = useMemo(
     () =>
@@ -506,16 +532,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "return_units",        // Return (-)
         "refund_sales",        // Sales - Refund (-)
         "tex_and_credits",     // Taxes and Credits (-)
-
+        
         "cost_of_unit_sold",   // COGS (-)
         "selling_fees",        // Selling Fees (-)
         "fba_fees",            // FBA Fees (-)
         "amazon_fee",          // Amazon Fees (-)
-
+        
         "promotional_rebates", // Promotions (-)
         "platformfeenew",
         "platform_fee_inventory_storage",
-        "other_transactions",
+        "net_taxes",
         "lost_total",
       ]),
     []
@@ -1075,13 +1101,57 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <GroupedCollapsibleTable<TableRow>
                 rows={tableData}
                 leftCols={LEFT_COLS}
-                // groups={[]}
-                // groups={groups}
-                // singleCols={SINGLE_COLS}
                 groups={groups}
-                singleCols={SINGLE_COLS}
-                toggleGroupByColKey={{ net_sales: "sales" }} // ✅ click Net Sales toggles Sales group
-                initialCollapsed={{ sales: true }}
+                singleCols={[
+                  { key: "asp", label: "ASP", align: "right" },
+                  { key: "net_sales", label: "Net Sales", align: "right" },
+                  { key: "cost_of_unit_sold", label: "COGS", align: "right" },
+                  { key: "net_units_sold", label: "Net Units Sold", align: "right" },
+                  { key: "amazon_fee", label: "Amazon Fees", align: "right" },
+                  { key: "other_transactions", label: "Other Transactions", align: "right" },
+                   { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
+                ]}
+                layout={[
+
+
+                  { type: "group", id: "units_breakdown" },
+                  { type: "single", key: "net_units_sold" },
+
+                  { type: "single", key: "asp" },
+
+
+                  { type: "group", id: "sales" },
+                  { type: "single", key: "net_sales" },
+
+                  { type: "group", id: "promotions_breakdown" },
+                  { type: "single", key: "cost_of_unit_sold" },
+
+                  { type: "group", id: "amazon_breakdown" },
+                  { type: "single", key: "amazon_fee" },
+
+                  { type: "group", id: "other_transactions_breakdown" },
+                  { type: "single", key: "other_transactions" },
+                  
+                  { type: "group", id: "profit_breakdown" },
+                  { type: "single", key: "profit_percentage" },
+                ]}
+                initialCollapsed={{
+                  units_breakdown: true,     // ✅ group id
+                  sales: true,
+                  promotions_breakdown: true,
+                  amazon_breakdown: true,
+                  other_transactions_breakdown: true,
+                  profit_breakdown: true,
+                }}
+                toggleGroupByColKey={{
+                  net_units_sold: "units_breakdown",
+                  net_sales: "sales",
+                  cost_of_unit_sold: "promotions_breakdown",
+                  amazon_fee: "amazon_breakdown",
+                  other_transactions: "other_transactions_breakdown",
+                  profit_percentage: "profit_breakdown",
+                }}
+
                 showSignRowInBody
                 getSignForCol={getSignForCol}
                 getRowClassName={(_, index) => {

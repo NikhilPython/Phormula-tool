@@ -34,7 +34,7 @@ export function SegmentedToggle<T extends SegmentedValue = SegmentedValue>({
       className={[
         // ✅ full width by default, can be overridden by parent className
         "w-full sm:w-auto",
-        "flex rounded-lg border bg-gray-50 p-1",
+        "flex rounded-lg border border-[#c4c4c4] bg-gray-50 p-1",
         "gap-1",
         textSizeClass,
         className,

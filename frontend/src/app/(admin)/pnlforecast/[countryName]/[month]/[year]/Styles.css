@@ -53,7 +53,7 @@ h2{
 }
 
 button.styled-button:hover {
-  background-color: #34495e;
+  background-color: #34495e ;
 }
 
 button {
@@ -65,3 +65,6 @@ input {
   animation: blink-caret 1s step-end infinite; /* Optional blinking animation */
 }
 
+.th-left > div {
+  justify-content: flex-start !important;
+}

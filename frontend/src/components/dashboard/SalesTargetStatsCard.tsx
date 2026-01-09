@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { getPrevMonthShortLabel } from "@/lib/dashboard/date";
+import { getISTYearMonth, getPrevMonthShortLabel } from "@/lib/dashboard/date";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import type { RegionKey, RegionMetrics } from "@/lib/dashboard/types";
 import SegmentedToggle from "../ui/SegmentedToggle";
@@ -45,7 +45,14 @@ export default function SalesTargetStatsCard({
   currentReimbursement,
   previousReimbursement,
 }: Props) {
+
   const prevLabel = getPrevMonthShortLabel();
+
+  const { monthName, year } = getISTYearMonth();
+  const monthYearLabel = `${new Date(`${monthName} 1, ${year}`).toLocaleString("en-US", {
+    month: "short",
+  })}'${String(year).slice(-2)}`;
+
 
   // ✅ define availableRegions properly (fixes availableRegions + implicit any)
   const availableRegions = useMemo<RegionKey[]>(() => {
@@ -64,8 +71,24 @@ export default function SalesTargetStatsCard({
 
   return (
     <div className="rounded-2xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-[#D9D9D933]">
-      <div className="relative flex flex-col items-center gap-2">
-        <PageBreadcrumb pageTitle="Sales Target" textSize="2xl" variant="page" align="center" />
+      <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
+        <div className="flex items-center gap-1">
+          <PageBreadcrumb
+            pageTitle="Sales Metrics -"
+            textSize="2xl"
+            variant="page"
+            align="center"
+          />
+
+          <span className="text-green-500 text-base sm:text-xl lg:text-lg 2xl:text-2xl ">
+            {monthYearLabel}
+          </span>
+
+          <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+            MTD
+          </span>
+        </div>
+
 
         {/* ✅ Toggle moved here */}
         {!hideTabs && (
@@ -93,7 +116,7 @@ export default function SalesTargetStatsCard({
             {
               title: "Target Trend",
               value: `${targetTrendPct >= 0 ? "+" : ""}${targetTrendPct.toFixed(2)}%`,
-              helper: `target vs ${prevLabel} total`,
+              helper: `Target vs MTD Trend`,
             },
           ].map((t) => (
             <div
@@ -103,9 +126,8 @@ export default function SalesTargetStatsCard({
               <div className="text-charcoal-500 whitespace-nowrap leading-none  text-[10px] 2xl:text-xs">{t.title}</div>
               <div className="mt-2 text-sm 2xl:text-lg font-semibold whitespace-nowrap leading-none">{t.value}</div>
               <div
-                className={`mt-1 text-[10px] 2xl:text-xs leading-none ${
-                  t.helper === "\u00A0" ? "text-transparent select-none" : "text-gray-500"
-                }`}
+                className={`mt-1 text-[10px] 2xl:text-xs leading-none ${t.helper === "\u00A0" ? "text-transparent select-none" : "text-gray-500"
+                  }`}
               >
                 {t.helper}
               </div>

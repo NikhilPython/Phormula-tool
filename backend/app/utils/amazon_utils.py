@@ -2716,6 +2716,16 @@ def upsert_liveorders_from_rows(rows, user_id: int, country: str, now_utc: datet
         obj.giftwrap_credits_tax = _f(r.get("giftwrap_credits_tax"))
         obj.promotional_rebates = _f(r.get("promotional_rebates"))
         obj.promotional_rebates_tax = _f(r.get("promotional_rebates_tax"))
+        # ✅ NEW: gross_sales
+        obj.gross_sales = (
+            obj.product_sales
+            + obj.product_sales_tax
+            + obj.postage_credits
+            + obj.gift_wrap_credits
+            + obj.shipping_credits_tax
+            - obj.promotional_rebates
+            - obj.promotional_rebates_tax
+        )
         obj.marketplace_facilitator_tax = _f(r.get("marketplace_facilitator_tax"))
         obj.selling_fees = _f(r.get("selling_fees"))
         obj.fba_fees = _f(r.get("fba_fees"))

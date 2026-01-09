@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import SimpleBarChart from "@/components/charts/SimpleBarChart";
 
 type DashboardBargraphCardProps = {
@@ -26,6 +26,17 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   loading,
   allValuesZero = false,
 }) => {
+    const titleCountry = useMemo(() => {
+    const c = (countryName || "").toLowerCase();
+    if (!c) return "";
+    if (c === "global") return "Global";
+    return c.toUpperCase(); // UK / US / CA
+  }, [countryName]);
+
+  const titleMonth = useMemo(() => {
+    return (formattedMonthYear || "").trim();
+  }, [formattedMonthYear]);
+
   return (
     <div className="relative w-full rounded-xl">
       <div

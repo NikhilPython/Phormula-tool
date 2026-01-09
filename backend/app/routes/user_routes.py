@@ -536,6 +536,8 @@ def profileupdate():
     user.company_name = data.get('company_name', user.company_name)
     user.brand_name = data.get('brand_name', user.brand_name)
     user.homeCurrency = data.get('homeCurrency', user.homeCurrency)
+    user.tax_id = data.get('tax_id', user.tax_id)
+    user.address = data.get('address', user.address)
 
     # -------- PASSWORD (HASHED) --------
     new_password = data.get('password')

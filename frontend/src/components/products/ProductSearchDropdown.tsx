@@ -362,7 +362,7 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
           className="
     w-full
     rounded-lg
-    border border-[#8B8585]
+    border border-[#C4C4C4]
     bg-[#FBFBFB]
     px-4 py-2 pl-9
     text-sm text-charcoal-500

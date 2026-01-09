@@ -248,7 +248,7 @@ function RangePicker({
           // fontSize: 12,
         }}
       >
-        <FaCalendarAlt className="text-sm 2xl:text-md"/>
+        <FaCalendarAlt className="text-sm 2xl:text-md" />
         {selectedStartDay && selectedEndDay
           ? `Day ${selectedStartDay} – ${selectedEndDay}`
           : "Select Date Range"}
@@ -2143,10 +2143,23 @@ export default function DashboardPage() {
       ? ((stats_mtdHome - stats_lastMtdHome) / stats_lastMtdHome) * 100
       : 0;
 
-  const stats_targetTrendPct =
-    stats_lastMonthTotalHome > 0
-      ? ((stats_targetHome - stats_lastMonthTotalHome) / stats_lastMonthTotalHome) * 100
-      : 0;
+const getDaysInMonthIST = () => {
+  const now = new Date();
+  const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  return new Date(ist.getFullYear(), ist.getMonth() + 1, 0).getDate(); // 28..31
+};
+
+const todayIST = getDayOfMonthIST();        // D
+const daysInMonthIST = getDaysInMonthIST(); // N
+
+const proratedTargetToDate = (daysInMonthIST > 0)
+  ? (todayIST / daysInMonthIST) * stats_targetHome  // x
+  : 0;
+
+const stats_targetTrendPct =
+  stats_targetHome > 0
+    ? ((proratedTargetToDate - stats_mtdHome) / stats_targetHome) * 100
+    : 0;
 
   return (
     <div className="relative overflow-x-hidden">
@@ -2291,7 +2304,6 @@ export default function DashboardPage() {
                       className="border-[#B75A5A] bg-[#B75A5A4D]"
                     />
 
-                    {/* ✅ GLOBAL: Cost of Ads (uses BI totals when rangeActive) */}
                     <AmazonStatCard
                       label="Cost of Ads"
                       current={
@@ -2459,14 +2471,21 @@ export default function DashboardPage() {
 
             {/* AMAZON SECTION */}
             {hasAmazonCard && (
-              <div className="flex flex-col lg:flex-1 gap-4">
+              <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-6">
                 {/* Amazon KPI Box */}
                 <div className="w-full rounded-2xl border bg-white p-3 2xl:p-5 shadow-sm">
                   <div className="mb-3 lg:mb-2 2xl:mb-4 flex flex-row gap-3 items-start md:items-start md:justify-between">
                     <div className="flex flex-col flex-1 min-w-0">
                       <div className="flex flex-wrap items-baseline gap-2">
                         <PageBreadcrumb pageTitle="Amazon" variant="page" align="left" />
+
+                        {countryName !== "global" && (
+                          <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                            {countryName.toUpperCase()}
+                          </span>
+                        )}
                       </div>
+
 
                     </div>
 
@@ -2926,14 +2945,22 @@ export default function DashboardPage() {
             >
 
               <div className="mb-3 flex items-center justify-between">
-                <div className="text-sm text-gray-500">
-                  <PageBreadcrumb
-                    pageTitle="Amazon"
-                    align="left"
-                    textSize="2xl"
-                    variant="page"
-                  />
+                <div className="text-sm text-charcoal-500">
+                  <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
+                    <PageBreadcrumb
+                      pageTitle="MTD P&L - Amazon"
+                      align="left"
+                      textSize="2xl"
+                      variant="page"
+                    />
+
+                    <span className="text-green-500 ">  {countryName.toUpperCase()}</span>
+                    <span className="text-charcoal-500 "> -</span>
+                    
+                    <span className=" text-green-500">  {formattedMonthYear}</span>
+                  </div>
                 </div>
+
 
                 {!isCountryMode && (
                   <div className="flex items-center gap-3">

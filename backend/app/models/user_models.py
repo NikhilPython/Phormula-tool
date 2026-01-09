@@ -61,6 +61,8 @@ class User(db.Model):
     is_google_user = db.Column(db.Boolean, default=False)
     is_verified = db.Column(db.Boolean, default=False)
     homeCurrency = db.Column(db.String(50), nullable=True)
+    tax_id = db.Column(db.String(100), nullable=True)
+    address = db.Column(db.Text, nullable=True)
     token_name = db.Column(db.String(50), unique=True, nullable=False, index=True)  # Uncommented this line
 
 
@@ -635,6 +637,7 @@ class Liveorder(db.Model):
     marketplace = db.Column(db.String(255))
 
     product_sales = db.Column(db.Float, default=0.0)
+    gross_sales = db.Column(db.Float, default=0.0, nullable=False)
     product_sales_tax = db.Column(db.Float, default=0.0)
     postage_credits = db.Column(db.Float, default=0.0)
     shipping_credits = db.Column(db.Float, default=0.0)

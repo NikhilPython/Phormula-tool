@@ -2,6 +2,8 @@
 
 import React, { useMemo, useState } from "react";
 
+/* ---------------- Types ---------------- */
+
 export type Align = "left" | "center" | "right";
 
 export type LeafCol<RowT> = {
@@ -17,47 +19,46 @@ export type ColGroup<RowT> = {
   id: string;
   label: string;
   headerClassName?: string;
-
-  // columns always visible when collapsed (usually 0 or 1, you will decide)
   collapsedCols: LeafCol<RowT>[];
-
-  // columns visible when expanded (the “children” columns)
   expandedCols: LeafCol<RowT>[];
 };
+
+type LayoutItem<RowT> =
+  | { type: "group"; id: string }
+  | { type: "single"; key: string };
 
 type Props<RowT> = {
   rows: RowT[];
   getRowKey?: (row: RowT, index: number) => string | number;
 
-  // RowSpan=2 columns on left (like Product Name, Net Units Sold, ASP...)
   leftCols: LeafCol<RowT>[];
-
-  // Groups that expand/collapse (like Sales, Promotions, Amazon Fees, Others)
   groups: ColGroup<RowT>[];
-
-  // RowSpan=2 single columns that are not in groups (like Net Sales, COGS, Other Transactions, CM1 Profit Margin)
   singleCols: LeafCol<RowT>[];
+
+  /** ✅ controls order: group / single / group / single */
+  layout?: LayoutItem<RowT>[];
 
   initialCollapsed?: Record<string, boolean>;
 
   getValue: (row: RowT, colKey: string, rowIndex: number) => React.ReactNode;
-
   getRowClassName?: (row: RowT, index: number) => string;
 
-  // Optional: sign row not in THEAD (keeps header strictly 2 rows)
   showSignRowInBody?: boolean;
   getSignForCol?: (colKey: string) => { text: string; className?: string } | null;
+
   toggleGroupByColKey?: Record<string, string>;
+
   tableClassName?: string;
   headerRow1ClassName?: string;
   headerRow2ClassName?: string;
 };
 
-const alignClass = (align?: Align) => {
-  if (align === "left") return "text-left";
-  if (align === "right") return "text-right";
-  return "text-center";
-};
+/* ---------------- Utils ---------------- */
+
+const alignClass = (align?: Align) =>
+  align === "left" ? "text-left" : align === "right" ? "text-right" : "text-center";
+
+/* ---------------- Component ---------------- */
 
 export default function GroupedCollapsibleTable<RowT>({
   rows,
@@ -65,56 +66,157 @@ export default function GroupedCollapsibleTable<RowT>({
   leftCols,
   groups,
   singleCols,
+  layout,
   initialCollapsed,
   getValue,
   getRowClassName,
-
   showSignRowInBody = false,
   getSignForCol,
-toggleGroupByColKey,
+  toggleGroupByColKey,
   tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042]",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
 }: Props<RowT>) {
+  /* ---------------- State ---------------- */
+
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
-    for (const g of groups) base[g.id] = true;
+    groups.forEach((g) => (base[g.id] = true));
     return { ...base, ...(initialCollapsed || {}) };
   });
 
-  const toggleGroup = (id: string) => setCollapsed((p) => ({ ...p, [id]: !p[id] }));
+  const toggleGroup = (id: string) =>
+    setCollapsed((p) => ({ ...p, [id]: !p[id] }));
 
-  // Leaf columns that will actually render in the body (order matters)
+  /* ---------------- Maps ---------------- */
+
+  const groupMap = useMemo(() => {
+    const m = new Map<string, ColGroup<RowT>>();
+    groups.forEach((g) => m.set(g.id, g));
+    return m;
+  }, [groups]);
+
+  const singleMap = useMemo(() => {
+    const m = new Map<string, LeafCol<RowT>>();
+    singleCols.forEach((c) => m.set(c.key, c));
+    return m;
+  }, [singleCols]);
+
+  const resolvedLayout: LayoutItem<RowT>[] = useMemo(
+    () =>
+      layout?.length
+        ? layout
+        : [
+          ...groups.map((g) => ({ type: "group" as const, id: g.id })),
+          ...singleCols.map((c) => ({ type: "single" as const, key: c.key })),
+        ],
+    [layout, groups, singleCols]
+  );
+
+  /* ---------------- Visible Columns ---------------- */
+
   const visibleLeafCols = useMemo(() => {
     const out: LeafCol<RowT>[] = [];
     out.push(...leftCols);
 
-    for (const g of groups) {
-      const isCollapsed = !!collapsed[g.id];
-      out.push(...(isCollapsed ? g.collapsedCols : g.expandedCols));
+    for (const item of resolvedLayout) {
+      if (item.type === "group") {
+        const g = groupMap.get(item.id);
+        if (!g) continue;
+        const isCollapsed = collapsed[g.id];
+        out.push(...(isCollapsed ? g.collapsedCols : g.expandedCols));
+      } else {
+        const c = singleMap.get(item.key);
+        if (c) out.push(c);
+      }
     }
 
-    out.push(...singleCols);
     return out;
-  }, [leftCols, groups, singleCols, collapsed]);
+  }, [leftCols, resolvedLayout, collapsed, groupMap, singleMap]);
 
-  // Row2 leaf headers are ONLY group columns (left + single are rowSpan=2 and do not appear in row2)
-  const row2GroupLeafCols = useMemo(() => {
+  /* ---------------- Row 2 Headers ---------------- */
+
+  const row2LeafCols = useMemo(() => {
     const out: LeafCol<RowT>[] = [];
-    for (const g of groups) {
-      const isCollapsed = !!collapsed[g.id];
+    for (const item of resolvedLayout) {
+      if (item.type !== "group") continue;
+      const g = groupMap.get(item.id);
+      if (!g) continue;
+      const isCollapsed = collapsed[g.id];
       out.push(...(isCollapsed ? g.collapsedCols : g.expandedCols));
     }
     return out;
-  }, [groups, collapsed]);
+  }, [resolvedLayout, collapsed, groupMap]);
 
   const thBase =
     "whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm";
 
+  /* ---------------- Render ---------------- */
+
   return (
     <table className={tableClassName}>
       <thead className="sticky top-0 z-10 font-bold">
-        {/* ✅ Row 1: leftCols(rowSpan=2) + group headers(colSpan) + singleCols(rowSpan=2) */}
+        {/* -------- Header Row 1 -------- */}
+        {/* <tr className={headerRow1ClassName}>
+          {leftCols.map((c) => (
+            <th
+              key={c.key}
+              rowSpan={2}
+              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+            >
+              {c.label}
+            </th>
+          ))}
+
+          {resolvedLayout.map((item) => {
+            if (item.type === "group") {
+  const g = groupMap.get(item.id);
+  if (!g) return null;
+
+  const isCollapsed = collapsed[g.id];
+  const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
+  if (cols.length === 0) return null;
+
+  return (
+    <th
+      key={g.id}
+      colSpan={cols.length}
+      onClick={() => toggleGroup(g.id)}
+      role="button"
+      className={`${thBase} relative cursor-pointer select-none text-center ${g.headerClassName || ""}`}
+      title="Click to expand/collapse"
+    >
+  
+      <span className="absolute left-2 top-1/2 -translate-y-1/2 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+        {isCollapsed ? "+" : "−"}
+      </span>
+
+      {g.label}
+    </th>
+  );
+}
+
+
+            const c = singleMap.get(item.key);
+            if (!c) return null;
+            const target = toggleGroupByColKey?.[c.key];
+
+            return (
+              <th
+                key={c.key}
+                rowSpan={2}
+                onClick={target ? () => toggleGroup(target) : undefined}
+                role={target ? "button" : undefined}
+                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+              >
+                {c.label}
+              </th>
+            );
+          })}
+        </tr> */}
+
+
+        {/* -------- Header Row 1 -------- */}
         <tr className={headerRow1ClassName}>
           {leftCols.map((c) => (
             <th
@@ -122,124 +224,87 @@ toggleGroupByColKey,
               rowSpan={2}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
             >
-              <div className="flex items-center justify-center gap-1">
-                {c.label}
-                {c.tooltip ? c.tooltip : null}
-              </div>
+              {c.label}
             </th>
           ))}
 
-          {/* {groups.map((g) => {
-            const isCollapsed = !!collapsed[g.id];
-            const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
-            const colSpan = Math.max(cols.length, 1);
+          {resolvedLayout.map((item) => {
+            // ----- GROUP HEADERS (no +/- here) -----
+            if (item.type === "group") {
+              const g = groupMap.get(item.id);
+              if (!g) return null;
 
-            return (
-              <th
-                key={g.id}
-                colSpan={colSpan}
-                className={`${thBase} relative text-center ${g.headerClassName || ""}`}
-              >
-                <button
-                  type="button"
+              const isCollapsed = collapsed[g.id];
+              const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
+              if (cols.length === 0) return null;
+
+              return (
+                <th
+                  key={g.id}
+                  colSpan={cols.length}
                   onClick={() => toggleGroup(g.id)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded border border-white/60 bg-white/10 px-1 text-xs"
-                  aria-label={isCollapsed ? `Expand ${g.label}` : `Collapse ${g.label}`}
-                  title={isCollapsed ? "Expand" : "Collapse"}
+                  role="button"
+                  className={`${thBase} cursor-pointer select-none text-center ${g.headerClassName || ""}`}
+                  title="Click to expand/collapse"
                 >
-                  {isCollapsed ? "+" : "−"}
-                </button>
-                <span className="px-6">{g.label}</span>
-              </th>
-            );
-          })} */}
+                  {g.label}
+                </th>
+              );
+            }
 
-          {groups.map((g) => {
-            const isCollapsed = !!collapsed[g.id];
-            const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
-            const colSpan = cols.length;              // ✅ no Math.max
+            // ----- SINGLE HEADERS (show +/- if they toggle a group) -----
+            const c = singleMap.get(item.key);
+            if (!c) return null;
 
-            if (colSpan === 0) return null;           // ✅ hide group header when collapsed has 0 cols
-
-            return (
-              <th key={g.id} colSpan={colSpan} className={`${thBase} relative text-center ${g.headerClassName || ""}`}>
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(g.id)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded border border-white/60 bg-white/10 px-1 text-xs"
-                  aria-label={isCollapsed ? `Expand ${g.label}` : `Collapse ${g.label}`}
-                  title={isCollapsed ? "Expand" : "Collapse"}
-                >
-                  {isCollapsed ? "+" : "−"}
-                </button>
-                <span className="px-6">{g.label}</span>
-              </th>
-            );
-          })}
-
-          {/* 
-          {singleCols.map((c) => (
-            <th
-              key={c.key}
-              rowSpan={2}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
-            >
-              <div className="flex items-center justify-center gap-1">
-                {c.label}
-                {c.tooltip ? c.tooltip : null}
-              </div>
-            </th>
-          ))} */}
-
-          {singleCols.map((c) => {
             const targetGroupId = toggleGroupByColKey?.[c.key];
+            const isExpandable = Boolean(targetGroupId);
+            const isTargetCollapsed = targetGroupId ? collapsed[targetGroupId] : true;
 
             return (
               <th
                 key={c.key}
                 rowSpan={2}
-                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
-                onClick={targetGroupId ? () => toggleGroup(targetGroupId) : undefined}
-                role={targetGroupId ? "button" : undefined}
-                title={targetGroupId ? "Click to expand/collapse" : undefined}
+                onClick={isExpandable ? () => toggleGroup(targetGroupId!) : undefined}
+                role={isExpandable ? "button" : undefined}
+                title={isExpandable ? "Click to expand/collapse" : undefined}
+                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${isExpandable ? "relative cursor-pointer select-none pl-7" : ""
+                  }`}
               >
-                <div className="flex items-center justify-center gap-1">
-                  {c.label}
-                  {c.tooltip ? c.tooltip : null}
-                </div>
+                {c.label}
+                {isExpandable && (
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+                    {isTargetCollapsed ? "+" : "−"}
+                  </span>
+                )}
+
               </th>
             );
           })}
-
         </tr>
 
-        {/* ✅ Row 2: ONLY group leaf headers */}
+
+        {/* -------- Header Row 2 -------- */}
         <tr className={headerRow2ClassName}>
-          {row2GroupLeafCols.map((c) => (
+          {row2LeafCols.map((c) => (
             <th
               key={c.key}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
             >
-              <div className="flex items-center justify-center gap-1">
-                {c.label}
-                {c.tooltip ? c.tooltip : null}
-              </div>
+              {c.label}
             </th>
           ))}
         </tr>
       </thead>
 
       <tbody>
-        {/* Optional sign row as FIRST BODY ROW (keeps header strictly 2 rows) */}
         {showSignRowInBody && (
-          <tr className="bg-white font-bold text-center">
+          <tr className="font-bold text-center">
             {visibleLeafCols.map((c) => {
               const sign = getSignForCol?.(c.key);
               return (
                 <td
                   key={c.key}
-                  className={`whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${sign?.className || ""
-                    }`}
+                  className={`border px-2 py-1 ${sign?.className || ""}`}
                 >
                   {sign?.text || ""}
                 </td>
@@ -248,25 +313,18 @@ toggleGroupByColKey,
           </tr>
         )}
 
-        {rows.map((row, idx) => {
-          const rowKey = getRowKey ? getRowKey(row, idx) : idx;
-          const rowClass = getRowClassName ? getRowClassName(row, idx) : "";
-
-          return (
-            <tr key={rowKey} className={rowClass}>
-              {visibleLeafCols.map((c) => (
-                <td
-                  key={c.key}
-                  className={`whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${alignClass(
-                    c.align
-                  )} ${c.tdClassName || ""}`}
-                >
-                  {getValue(row, c.key, idx)}
-                </td>
-              ))}
-            </tr>
-          );
-        })}
+        {rows.map((row, idx) => (
+          <tr key={getRowKey?.(row, idx) ?? idx} className={getRowClassName?.(row, idx)}>
+            {visibleLeafCols.map((c) => (
+              <td
+                key={c.key}
+                className={`border px-2 py-1 ${alignClass(c.align)} ${c.tdClassName || ""}`}
+              >
+                {getValue(row, c.key, idx)}
+              </td>
+            ))}
+          </tr>
+        ))}
       </tbody>
     </table>
   );

@@ -942,7 +942,19 @@ def process_skuwise_data(user_id, country, month, year):
             if _col in sku_grouped.columns:
                 sku_grouped[_col] = pd.to_numeric(sku_grouped[_col], errors="coerce").fillna(0.0)
 
-        total_product_sales = sku_grouped["product_sales"].sum()
+        # total_product_sales = sku_grouped["product_sales"].sum()
+        total_product_sales = (
+            sku_grouped["product_sales"].sum()
+            + sku_grouped["product_sales_tax"].sum()
+            + sku_grouped["postage_credits"].sum()
+            + sku_grouped["shipping_credits_tax"].sum()
+            + sku_grouped["gift_wrap_credits"].sum()
+            + sku_grouped["promotional_rebates"].sum()
+            + sku_grouped["promotional_rebates_tax"].sum()
+        )
+
+
+
 
         
         # Unit-wise profitability
@@ -1155,14 +1167,16 @@ def process_skuwise_data(user_id, country, month, year):
         total_advertising = abs(advertising_total_all)
         total_platform = abs(platform_total)
 
-        total_expense = (
-            total_net_taxes
-            + total_fba_fees
-            + total_selling_fees
-            + total_cost
-            + total_advertising
-            + total_platform
-            - total_net_credits
+        # total_expense = (
+        #     total_fba_fees
+        #     + total_selling_fees
+        #     - total_platform
+        # )
+        total_expense = round(
+            total_amazon_fee
+            - abs(platformfeenew_total)
+            - abs(platform_fee_inventory_storage_total),
+            2
         )
 
         total_taxes = (sku_grouped["Net Taxes"].sum())
@@ -2136,7 +2150,7 @@ def process_skuwise_data(user_id, country, month, year):
                 total_credits_usd          = convert_value(total_row_usd.get("net_credits", 0))
                 total_tax_usd              = convert_value(total_row_usd.get("net_taxes", 0))
 
-                total_expense_usd  = total_sales_usd - cm2_profit_val_usd
+                total_expense_usd  = total_amazon_fee_val_usd - platform_fee_val_usd
                 otherwplatform_usd = abs(platform_fee_val_usd)
                 taxncredit_usd     = total_tax_usd  + abs(total_credits_usd)
 
