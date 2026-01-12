@@ -1411,153 +1411,153 @@ const SKUtable: React.FC<SKUtableProps> = ({
   //   getDisplayProductNameFromRow,
   // ]);
 
-const handleDownloadExcel = useCallback(() => {
-  const wb = XLSX.utils.book_new();
+  const handleDownloadExcel = useCallback(() => {
+    const wb = XLSX.utils.book_new();
 
-  const excelCols = buildExcelColumnsFromUI(); // [{ key, label }]
-  const colKeys = excelCols.map((c) => c.key);
+    const excelCols = buildExcelColumnsFromUI(); // [{ key, label }]
+    const colKeys = excelCols.map((c) => c.key);
 
-  // Header row from UI labels
-  const headerRow: Record<string, string> = {};
-  excelCols.forEach((c) => {
-    headerRow[c.key] = c.label;
-  });
+    // Header row from UI labels
+    const headerRow: Record<string, string> = {};
+    excelCols.forEach((c) => {
+      headerRow[c.key] = c.label;
+    });
 
-  // Build data rows
-  const tableDataForExcel = tableData.map((row, rowIndex) => {
-    const rowData: Record<string, string | number> = {};
+    // Build data rows
+    const tableDataForExcel = tableData.map((row, rowIndex) => {
+      const rowData: Record<string, string | number> = {};
 
-    colKeys.forEach((key) => {
-      let value: any = (row as any)[key];
+      colKeys.forEach((key) => {
+        let value: any = (row as any)[key];
 
-      // ✅ SNO: integer, blank for Total row
-      if (key === "sno") {
-        const name = getDisplayProductNameFromRow(row);
-        const isTotal = String(name).trim().toLowerCase() === "total";
-        value = isTotal ? "" : rowIndex + 1; // integer
-      }
+        // ✅ SNO: integer, blank for Total row
+        if (key === "sno") {
+          const name = getDisplayProductNameFromRow(row);
+          const isTotal = String(name).trim().toLowerCase() === "total";
+          value = isTotal ? "" : rowIndex + 1; // integer
+        }
 
-      // Product name matches UI fallback
-      if (key === "product_name") value = getDisplayProductNameFromRow(row);
+        // Product name matches UI fallback
+        if (key === "product_name") value = getDisplayProductNameFromRow(row);
 
-      // gross_sales -> product_sales mapping
-      if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+        // gross_sales -> product_sales mapping
+        if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
 
-      // other_transactions mapping
-      if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+        // other_transactions mapping
+        if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
 
-      // quantity meaning units_sold (if present in col list)
-      if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+        // quantity meaning units_sold (if present in col list)
+        if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
 
-      // Pre-rounding
-      if (typeof value === "number") {
-        if (Math.abs(value) < 1e-10) value = 0;
+        // Pre-rounding
+        if (typeof value === "number") {
+          if (Math.abs(value) < 1e-10) value = 0;
 
-        // integer-only fields
-        if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
-          value = Math.trunc(value);
-        } else {
-          value = Number(value.toFixed(2));
+          // integer-only fields
+          if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
+            value = Math.trunc(value);
+          } else {
+            value = Number(value.toFixed(2));
+          }
+        }
+
+        // profit_percentage stored as fraction for excel %
+        if (key === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+
+        rowData[key] = typeof value === "number" && isNaN(value) ? "-" : value;
+      });
+
+      return rowData;
+    });
+
+    const extraRows = getExtraRows();
+
+    const fullData = [
+      ...extraRows.map((row) => ({ product_name: row[0] })),
+      {}, // blank line
+      headerRow,
+      ...tableDataForExcel,
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
+
+    // ---------------------------
+    // ✅ FORCE EXCEL FORMATTING
+    // ---------------------------
+
+    const EXTRA_ROWS_COUNT = extraRows.length;
+    const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT;            // the {} blank row
+    const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;       // headerRow position
+    const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;   // data starts after header
+
+    // Find the sno column index in the worksheet (based on colKeys)
+    const SNO_COL_INDEX = colKeys.indexOf("sno");
+
+    if (ws["!ref"]) {
+      const rng = XLSX.utils.decode_range(ws["!ref"]);
+
+      // ✅ 1) Force sno column (data rows only) to integer format "0"
+      if (SNO_COL_INDEX >= 0) {
+        for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
+          const addr = XLSX.utils.encode_cell({ r, c: SNO_COL_INDEX });
+          const cell = ws[addr];
+          if (!cell) continue;
+
+          // keep blanks (like Total row sno "")
+          if (cell.v === "" || cell.v === null || cell.v === undefined) continue;
+
+          const n = Number(cell.v);
+          if (!Number.isFinite(n)) continue;
+
+          cell.t = "n";
+          cell.v = Math.trunc(n);
+          cell.z = "0"; // ✅ no decimals
         }
       }
 
-      // profit_percentage stored as fraction for excel %
-      if (key === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
-
-      rowData[key] = typeof value === "number" && isNaN(value) ? "-" : value;
-    });
-
-    return rowData;
-  });
-
-  const extraRows = getExtraRows();
-
-  const fullData = [
-    ...extraRows.map((row) => ({ product_name: row[0] })),
-    {}, // blank line
-    headerRow,
-    ...tableDataForExcel,
-  ];
-
-  const ws = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
-
-  // ---------------------------
-  // ✅ FORCE EXCEL FORMATTING
-  // ---------------------------
-
-  const EXTRA_ROWS_COUNT = extraRows.length;
-  const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT;            // the {} blank row
-  const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;       // headerRow position
-  const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;   // data starts after header
-
-  // Find the sno column index in the worksheet (based on colKeys)
-  const SNO_COL_INDEX = colKeys.indexOf("sno");
-
-  if (ws["!ref"]) {
-    const rng = XLSX.utils.decode_range(ws["!ref"]);
-
-    // ✅ 1) Force sno column (data rows only) to integer format "0"
-    if (SNO_COL_INDEX >= 0) {
+      // ✅ 2) Apply formats to other numeric columns (data rows only)
       for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
-        const addr = XLSX.utils.encode_cell({ r, c: SNO_COL_INDEX });
-        const cell = ws[addr];
-        if (!cell) continue;
+        for (let c = 0; c <= rng.e.c; c++) {
+          const addr = XLSX.utils.encode_cell({ r, c });
+          const cell = ws[addr];
+          if (!cell) continue;
 
-        // keep blanks (like Total row sno "")
-        if (cell.v === "" || cell.v === null || cell.v === undefined) continue;
+          const key = colKeys[c];
+          if (!key) continue;
 
-        const n = Number(cell.v);
-        if (!Number.isFinite(n)) continue;
+          // sno already handled
+          if (key === "sno") continue;
 
-        cell.t = "n";
-        cell.v = Math.trunc(n);
-        cell.z = "0"; // ✅ no decimals
+          if (typeof cell.v !== "number") continue;
+
+          cell.t = "n";
+          if (key === "profit_percentage") cell.z = "0.00%";
+          else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
+          else cell.z = "0.00";
+        }
       }
     }
 
-    // ✅ 2) Apply formats to other numeric columns (data rows only)
-    for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
-      for (let c = 0; c <= rng.e.c; c++) {
-        const addr = XLSX.utils.encode_cell({ r, c });
-        const cell = ws[addr];
-        if (!cell) continue;
+    XLSX.utils.book_append_sheet(wb, ws, "SKU Profitability");
 
-        const key = colKeys[c];
-        if (!key) continue;
+    const filename =
+      range === "monthly"
+        ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
+        : range === "quarterly"
+          ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
+          : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
 
-        // sno already handled
-        if (key === "sno") continue;
-
-        if (typeof cell.v !== "number") continue;
-
-        cell.t = "n";
-        if (key === "profit_percentage") cell.z = "0.00%";
-        else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
-        else cell.z = "0.00";
-      }
-    }
-  }
-
-  XLSX.utils.book_append_sheet(wb, ws, "SKU Profitability");
-
-  const filename =
-    range === "monthly"
-      ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
-      : range === "quarterly"
-        ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
-        : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
-
-  XLSX.writeFile(wb, filename);
-}, [
-  tableData,
-  getExtraRows,
-  range,
-  month,
-  yearShort,
-  quarter,
-  getDisplayProductNameFromRow,
-  buildExcelColumnsFromUI,
-]);
+    XLSX.writeFile(wb, filename);
+  }, [
+    tableData,
+    getExtraRows,
+    range,
+    month,
+    yearShort,
+    quarter,
+    getDisplayProductNameFromRow,
+    buildExcelColumnsFromUI,
+  ]);
 
   /* --------- Render guards --------- */
   if (loading) return <div>Loading...</div>;
