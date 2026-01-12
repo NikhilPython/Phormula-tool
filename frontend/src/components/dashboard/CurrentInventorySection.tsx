@@ -1230,57 +1230,23 @@ export default function CurrentInventorySection({
       cellClassName: "text-center",
     });
 
-    cols.push({
-      key: "productName",
-      header: "Product Name",
-      cellClassName: "text-left",
-      headerClassName: "text-left",
-    });
+cols.push({
+  key: "productName",
+  header: "Product Name",
+  width: "150px",
+  cellClassName: "text-left",
+  headerClassName: "text-left",
+});
 
-    cols.push({
-      key: "currentInventory",
-      header: "Current Inventory",
-      cellClassName: "text-center",
-    });
+cols.push({ key: "currentInventory", header: "Current Inventory", width: "110px" });
+cols.push({ key: "inventory180Plus", header: "Inventory 180+ Days", width: "110px" });
+cols.push({ key: "salesRank", header: "Sales Rank", width: "100px" });
+cols.push({ key: "estStorage", header: "Est Storage Cost Next Month", width: "110px" });
+cols.push({ key: "mtdSales", header: "MTD Sales", width: "90px" });
+cols.push({ key: "sales30", header: "Sales for past 30 days", width: "140px" });
+cols.push({ key: "coverageMonths", header: "Inventory Coverage Ratio (in Months)", width: "110px" });
+cols.push({ key: "alert", header: "Inventory Alert", width: "200px" });
 
-    cols.push({
-      key: "inventory180Plus",
-      header: "Inventory 180+ Days",
-      cellClassName: "text-center",
-    });
-
-    cols.push(
-      {
-        key: "salesRank",
-        header: "Sales Rank",
-        cellClassName: "text-center",
-      },
-      {
-        key: "estStorage",
-        header: "Est Storage Cost Next Month",
-        cellClassName: "text-center",
-      },
-      {
-        key: "mtdSales",
-        header: "MTD Sales",
-        cellClassName: "text-center",
-      },
-      {
-        key: "sales30",
-        header: "Sales for past 30 days",
-        cellClassName: "text-center",
-      },
-      {
-        key: "coverageMonths",
-        header: "Inventory Coverage Ratio (In Months)",
-        cellClassName: "text-center",
-      },
-      {
-        key: "alert",
-        header: "Inventory Alerts",
-        cellClassName: "text-center",
-      }
-    );
 
     return cols;
   }, []);
@@ -1320,8 +1286,20 @@ export default function CurrentInventorySection({
           {invError}
         </div>
       ) : (
-        <div className="mt-2 flex-1 w-full max-w-full overflow-x-auto">
-          <div className="min-w-max [&_table]:w-auto">
+        <div className="mt-2 flex-1 w-full max-w-full">
+          <div
+            className="
+      w-full overflow-auto max-h-[70vh] rounded-xl
+      [&_table]:w-full [&_table]:table-fixed
+
+      [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10
+      [&_thead_th]:bg-green-500
+
+    [&_thead_th]:whitespace-normal [&_thead_th]:break-words [&_thead_th]:leading-snug
+      [&_tbody_td]:whitespace-normal md:[&_tbody_td]:whitespace-nowrap
+      [&_tbody_td]:break-words
+    "
+          >
             <DataTable
               columns={columns}
               data={tableRows}
@@ -1339,6 +1317,7 @@ export default function CurrentInventorySection({
             />
           </div>
         </div>
+
       )}
     </div>
   );

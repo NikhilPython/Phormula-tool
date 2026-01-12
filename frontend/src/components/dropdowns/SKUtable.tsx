@@ -1671,7 +1671,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       .toLowerCase() === "total";
 
                   if (isTotalRow) {
-                    return "bg-[#D9D9D933] font-semibold";
+                    return "bg-[#EFEFEF] font-semibold";
                   }
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
@@ -1980,7 +1980,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     </tr>
                   ))}
 
-                  <tr className="bg-gray-200 font-semibold">
+                  <tr className="bg-[#EFEFEF] font-semibold">
                     <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
                       <strong>Total</strong>
                     </td>
@@ -2053,7 +2053,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     </tr>
                   ))}
 
-                  <tr className="bg-gray-200 font-semibold">
+                  <tr className="bg-[#EFEFEF] font-semibold">
                     <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
                       <strong>Total</strong>
                     </td>
