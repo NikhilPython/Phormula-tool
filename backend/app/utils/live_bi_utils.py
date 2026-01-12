@@ -508,16 +508,156 @@ def compute_inventory_coverage_ratio(user_id: int, country: str) -> pd.DataFrame
     return df
 
 
+# def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
+#     """
+#     Given a raw settlement-style DataFrame with columns like:
+
+#       sku, quantity, product_sales, cost_of_unit_sold, etc.
+
+#     compute per-SKU metrics:
+
+#       quantity
+#       product_sales
+#       net_sales
+#       profit
+#       asp
+#       unit_wise_profitability
+#       sales_mix
+#       product_name
+#     """
+#     if df is None or df.empty:
+#         return []
+
+#     df = df.copy()
+
+#     # Keep only valid SKUs (same rule as formula_utils)
+#     if "sku" in df.columns:
+#         df = df.loc[sku_mask(df)]
+
+#     if df.empty:
+#         return []
+
+#     # ---- quantity per SKU ----
+#     if "quantity" in df.columns:
+#         qty_df = (
+#             df.assign(quantity=safe_num(df["quantity"]))
+#               .groupby("sku", as_index=False)["quantity"]
+#               .sum()
+#         )
+#     else:
+#         qty_df = pd.DataFrame(columns=["sku", "quantity"])
+
+#     # ---- product_sales per SKU (GROSS SALES) ----
+#     if "product_sales" in df.columns:
+#         product_sales_df = (
+#             df.assign(product_sales=safe_num(df["product_sales"]))
+#               .groupby("sku", as_index=False)["product_sales"]
+#               .sum()
+#         )
+#     else:
+#         product_sales_df = pd.DataFrame(columns=["sku", "product_sales"])
+
+#     # ---- product_name per SKU (first non-null) ----
+#     if "product_name" in df.columns:
+#         name_df = (
+#             df[["sku", "product_name"]]
+#             .dropna(subset=["sku"])
+#             .groupby("sku", as_index=False)
+#             .first()
+#         )
+#     else:
+#         name_df = pd.DataFrame(columns=["sku", "product_name"])
+
+#     # ---- sales, credits, profit per SKU via formula_utils ----
+#     _, sales_by, _ = uk_sales(df)
+#     _, credits_by, _ = uk_credits(df)
+#     _, profit_by, _ = uk_profit(df)
+
+#     if not sales_by.empty:
+#         sales_by = sales_by.rename(columns={"__metric__": "sales_metric"})
+#     if not credits_by.empty:
+#         credits_by = credits_by.rename(columns={"__metric__": "credits_metric"})
+#     if not profit_by.empty:
+#         profit_by = profit_by.rename(columns={"__metric__": "profit_metric"})
+
+#     # ---- merge everything ----
+#     metrics = (
+#         qty_df
+#         .merge(name_df, on="sku", how="left")
+#         .merge(product_sales_df, on="sku", how="left")  # ✅ ADD
+#         .merge(
+#             sales_by[["sku", "sales_metric"]]
+#             if not sales_by.empty
+#             else pd.DataFrame(columns=["sku", "sales_metric"]),
+#             on="sku", how="left"
+#         )
+#         .merge(
+#             credits_by[["sku", "credits_metric"]]
+#             if not credits_by.empty
+#             else pd.DataFrame(columns=["sku", "credits_metric"]),
+#             on="sku", how="left"
+#         )
+#         .merge(
+#             profit_by[["sku", "profit_metric"]]
+#             if not profit_by.empty
+#             else pd.DataFrame(columns=["sku", "profit_metric"]),
+#             on="sku", how="left"
+#         )
+#     )
+
+#     # ---- compute final fields ----
+#     metrics["quantity"] = safe_num(metrics["quantity"])
+#     metrics["product_sales"] = safe_num(metrics.get("product_sales", 0.0))
+#     metrics["sales_metric"] = safe_num(metrics.get("sales_metric", 0.0))
+#     metrics["credits_metric"] = safe_num(metrics.get("credits_metric", 0.0))
+#     metrics["profit_metric"] = safe_num(metrics.get("profit_metric", 0.0))
+
+#     metrics["net_sales"] = metrics["sales_metric"]
+#     metrics["profit"] = metrics["profit_metric"]
+
+#     # asp & per-unit profitability
+#     qty_nonzero = metrics["quantity"].replace(0, np.nan)
+#     metrics["asp"] = metrics["net_sales"] / qty_nonzero
+#     metrics["unit_wise_profitability"] = metrics["profit"] / qty_nonzero
+
+#     # sales_mix (% of net_sales)
+#     total_net_sales = float(metrics["net_sales"].sum())
+#     if total_net_sales != 0:
+#         metrics["sales_mix"] = (metrics["net_sales"] / total_net_sales) * 100.0
+#     else:
+#         metrics["sales_mix"] = 0.0
+
+#     # ✅ force exact 100%
+#     metrics = normalize_sales_mix(metrics, "sales_mix", digits=2)
+
+#     # final list of dicts expected by growth logic
+#     out_cols = [
+#         "sku",
+#         "product_name",
+#         "quantity",
+#         "product_sales",            # ✅ ADD
+#         "asp",
+#         "profit",
+#         "sales_mix",
+#         "net_sales",
+#         "unit_wise_profitability",
+#     ]
+
+#     return (
+#         metrics[out_cols]
+#         .replace({np.nan: None})
+#         .to_dict(orient="records")
+#     )
+
 def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     """
     Given a raw settlement-style DataFrame with columns like:
-
-      sku, quantity, product_sales, cost_of_unit_sold, etc.
+      sku, quantity, product_sales, taxes, credits, rebates, etc.
 
     compute per-SKU metrics:
-
       quantity
       product_sales
+      gross_sales        ✅ NEW (consistent definition)
       net_sales
       profit
       asp
@@ -537,6 +677,33 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     if df.empty:
         return []
 
+    # Ensure numeric columns exist for gross_sales formula
+    gross_cols = [
+        "product_sales",
+        "product_sales_tax",
+        "postage_credits",
+        "gift_wrap_credits",
+        "shipping_credits_tax",
+        "giftwrap_credits_tax",
+        "promotional_rebates",
+        "promotional_rebates_tax",
+    ]
+    for c in gross_cols:
+        if c not in df.columns:
+            df[c] = 0.0
+
+    # ✅ Row-level gross_sales (robust: subtract abs rebates)
+    df["gross_sales"] = (
+        safe_num(df["product_sales"])
+        + safe_num(df["product_sales_tax"])
+        + safe_num(df["postage_credits"])
+        + safe_num(df["gift_wrap_credits"])
+        + safe_num(df["shipping_credits_tax"])
+        + safe_num(df["giftwrap_credits_tax"])
+        - safe_num(df["promotional_rebates"]).abs()
+        - safe_num(df["promotional_rebates_tax"]).abs()
+    )
+
     # ---- quantity per SKU ----
     if "quantity" in df.columns:
         qty_df = (
@@ -547,15 +714,17 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     else:
         qty_df = pd.DataFrame(columns=["sku", "quantity"])
 
-    # ---- product_sales per SKU (GROSS SALES) ----
-    if "product_sales" in df.columns:
-        product_sales_df = (
-            df.assign(product_sales=safe_num(df["product_sales"]))
-              .groupby("sku", as_index=False)["product_sales"]
-              .sum()
-        )
-    else:
-        product_sales_df = pd.DataFrame(columns=["sku", "product_sales"])
+    # ---- product_sales per SKU ----
+    product_sales_df = (
+        df.assign(product_sales=safe_num(df["product_sales"]))
+          .groupby("sku", as_index=False)["product_sales"]
+          .sum()
+    )
+
+    # ---- gross_sales per SKU ✅ ----
+    gross_sales_df = (
+        df.groupby("sku", as_index=False)["gross_sales"].sum()
+    )
 
     # ---- product_name per SKU (first non-null) ----
     if "product_name" in df.columns:
@@ -573,41 +742,36 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     _, credits_by, _ = uk_credits(df)
     _, profit_by, _ = uk_profit(df)
 
-    if not sales_by.empty:
+    if sales_by is not None and not sales_by.empty:
         sales_by = sales_by.rename(columns={"__metric__": "sales_metric"})
-    if not credits_by.empty:
+    else:
+        sales_by = pd.DataFrame(columns=["sku", "sales_metric"])
+
+    if credits_by is not None and not credits_by.empty:
         credits_by = credits_by.rename(columns={"__metric__": "credits_metric"})
-    if not profit_by.empty:
+    else:
+        credits_by = pd.DataFrame(columns=["sku", "credits_metric"])
+
+    if profit_by is not None and not profit_by.empty:
         profit_by = profit_by.rename(columns={"__metric__": "profit_metric"})
+    else:
+        profit_by = pd.DataFrame(columns=["sku", "profit_metric"])
 
     # ---- merge everything ----
     metrics = (
         qty_df
         .merge(name_df, on="sku", how="left")
-        .merge(product_sales_df, on="sku", how="left")  # ✅ ADD
-        .merge(
-            sales_by[["sku", "sales_metric"]]
-            if not sales_by.empty
-            else pd.DataFrame(columns=["sku", "sales_metric"]),
-            on="sku", how="left"
-        )
-        .merge(
-            credits_by[["sku", "credits_metric"]]
-            if not credits_by.empty
-            else pd.DataFrame(columns=["sku", "credits_metric"]),
-            on="sku", how="left"
-        )
-        .merge(
-            profit_by[["sku", "profit_metric"]]
-            if not profit_by.empty
-            else pd.DataFrame(columns=["sku", "profit_metric"]),
-            on="sku", how="left"
-        )
+        .merge(product_sales_df, on="sku", how="left")
+        .merge(gross_sales_df, on="sku", how="left")  # ✅ NEW
+        .merge(sales_by[["sku", "sales_metric"]], on="sku", how="left")
+        .merge(credits_by[["sku", "credits_metric"]], on="sku", how="left")
+        .merge(profit_by[["sku", "profit_metric"]], on="sku", how="left")
     )
 
     # ---- compute final fields ----
-    metrics["quantity"] = safe_num(metrics["quantity"])
+    metrics["quantity"] = safe_num(metrics.get("quantity", 0.0))
     metrics["product_sales"] = safe_num(metrics.get("product_sales", 0.0))
+    metrics["gross_sales"] = safe_num(metrics.get("gross_sales", 0.0))  # ✅ NEW
     metrics["sales_metric"] = safe_num(metrics.get("sales_metric", 0.0))
     metrics["credits_metric"] = safe_num(metrics.get("credits_metric", 0.0))
     metrics["profit_metric"] = safe_num(metrics.get("profit_metric", 0.0))
@@ -615,27 +779,26 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     metrics["net_sales"] = metrics["sales_metric"]
     metrics["profit"] = metrics["profit_metric"]
 
-    # asp & per-unit profitability
+    # asp & per-unit profitability (based on net_sales)
     qty_nonzero = metrics["quantity"].replace(0, np.nan)
-    metrics["asp"] = metrics["net_sales"] / qty_nonzero
-    metrics["unit_wise_profitability"] = metrics["profit"] / qty_nonzero
+    metrics["asp"] = (metrics["net_sales"] / qty_nonzero).replace([np.inf, -np.inf], np.nan)
+    metrics["unit_wise_profitability"] = (metrics["profit"] / qty_nonzero).replace([np.inf, -np.inf], np.nan)
 
     # sales_mix (% of net_sales)
-    total_net_sales = float(metrics["net_sales"].sum())
+    total_net_sales = float(safe_num(metrics["net_sales"]).sum())
     if total_net_sales != 0:
         metrics["sales_mix"] = (metrics["net_sales"] / total_net_sales) * 100.0
     else:
         metrics["sales_mix"] = 0.0
 
-    # ✅ force exact 100%
     metrics = normalize_sales_mix(metrics, "sales_mix", digits=2)
 
-    # final list of dicts expected by growth logic
     out_cols = [
         "sku",
         "product_name",
         "quantity",
-        "product_sales",            # ✅ ADD
+        "product_sales",
+        "gross_sales",  # ✅ NEW
         "asp",
         "profit",
         "sales_mix",
@@ -648,6 +811,7 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
         .replace({np.nan: None})
         .to_dict(orient="records")
     )
+
 
 def totals_from_daily_series(daily_series):
     """
@@ -667,6 +831,86 @@ def totals_from_daily_series(daily_series):
     }
 
 
+# def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: date):
+#     table_name = construct_prev_table_name(
+#         user_id=user_id,
+#         country=country,
+#         month=prev_start.month,
+#         year=prev_start.year,
+#     )
+
+    
+
+#     query = text(f"""
+#         SELECT *
+#         FROM (
+#             SELECT
+#                 *,
+#                 NULLIF(NULLIF(date_time, '0'), '')::timestamp AS date_ts
+#             FROM {table_name}
+#         ) t
+#         WHERE date_ts >= :start_date
+#           AND date_ts < :end_date_plus_one
+#     """)
+
+#     params = {
+#         "start_date": datetime.combine(prev_start, datetime.min.time()),
+#         "end_date_plus_one": datetime.combine(prev_end + timedelta(days=1), datetime.min.time()),
+#     }
+
+#     with engine_hist.connect() as conn:
+#         result = conn.execute(query, params)
+#         rows = result.fetchall()
+#         if not rows:
+#             return [], []
+
+#         df = pd.DataFrame(rows, columns=result.keys())
+
+#     # 1) per-SKU metrics (unchanged)
+#     sku_metrics = compute_sku_metrics_from_df(df)
+
+#     # 2) daily series
+#     daily_series = []
+#     date_col = "date_ts" if "date_ts" in df.columns else "date_time"
+
+#     if date_col in df.columns:
+#         tmp_all = df.copy()
+#         tmp_all["date_only"] = pd.to_datetime(tmp_all[date_col], errors="coerce").dt.date
+#         tmp_all = tmp_all.dropna(subset=["date_only"])
+
+#         # For sales/profit you may want SKU-only rows
+#         tmp_sku = tmp_all.copy()
+#         if "sku" in tmp_sku.columns:
+#             tmp_sku = tmp_sku.loc[sku_mask(tmp_sku)].copy()
+
+#         for d in sorted(tmp_all["date_only"].unique()):
+#             day_all = tmp_all[tmp_all["date_only"] == d]
+#             day_sku = tmp_sku[tmp_sku["date_only"] == d]
+
+#             quantity = float(safe_num(day_sku.get("quantity", 0)).sum()) if len(day_sku) else 0.0
+#             product_sales = float(safe_num(day_sku.get("product_sales", 0)).sum()) if len(day_sku) else 0.0
+
+#             # sales/profit based on SKU rows (keeps your earlier behavior)
+#             net_sales, _, _ = uk_sales(day_sku if len(day_sku) else day_all)
+#             profit, _, _ = uk_profit(day_sku if len(day_sku) else day_all)
+
+#             # ✅ fees MUST be computed on ALL rows for that date
+#             platform_fee_total, _, _ = uk_platform_fee(day_all)
+#             advertising_total, _, _ = uk_advertising(day_all)
+
+#             daily_series.append({
+#                 "date": d.isoformat(),
+#                 "quantity": float(quantity),
+#                 "product_sales": float(product_sales),
+#                 "net_sales": float(net_sales),
+#                 "profit": float(profit),
+#                 "platform_fee": float(platform_fee_total),
+#                 "advertising": float(advertising_total),
+#             })
+
+#     daily_series = sorted(daily_series, key=lambda x: x["date"])
+#     return sku_metrics, daily_series
+
 def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: date):
     table_name = construct_prev_table_name(
         user_id=user_id,
@@ -674,8 +918,6 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         month=prev_start.month,
         year=prev_start.year,
     )
-
-    
 
     query = text(f"""
         SELECT *
@@ -702,8 +944,84 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
 
         df = pd.DataFrame(rows, columns=result.keys())
 
-    # 1) per-SKU metrics (unchanged)
+    # 1) per-SKU metrics (now includes gross_sales if you updated compute_sku_metrics_from_df)
     sku_metrics = compute_sku_metrics_from_df(df)
+
+    # ------------------------------------------------------------
+    # ✅ Fee extraction for PREVIOUS PERIOD (robust, like liveorders)
+    # ------------------------------------------------------------
+    def _fee_amount_col(xdf: pd.DataFrame) -> pd.Series:
+        """
+        Prefer other_transaction_fees if present and non-zero, else fallback to total.
+        """
+        if xdf is None or xdf.empty:
+            return pd.Series(dtype=float)
+
+        if "other_transaction_fees" in xdf.columns:
+            s = safe_num(xdf["other_transaction_fees"])
+            if float(np.nansum(s.values)) != 0.0:
+                return s
+
+        return safe_num(xdf.get("total", 0.0))
+
+    def _calc_fees_from_hist(day_df: pd.DataFrame) -> tuple[float, float]:
+        """
+        Returns (platform_fee, advertising) as POSITIVE numbers.
+
+        This mirrors your fetch_current_mtd_data() logic.
+        """
+        if day_df is None or day_df.empty:
+            return 0.0, 0.0
+
+        t = day_df.get("type", "").fillna("").astype(str).str.lower()
+        d = day_df.get("description", "").fillna("").astype(str).str.lower()
+        amt = _fee_amount_col(day_df)
+
+        # ignore cash movement + normal order payments
+        ignore = (
+            t.str.contains("transfer|disbursement", na=False)
+            | d.str.contains("disbursement", na=False)
+            | d.str.contains("order payment", na=False)
+        )
+
+        # Advertising bucket
+        is_ads = (
+            t.str.contains(r"productadspayment|sellerdealpayment", na=False)
+            | d.str.contains(r"productadspayment|sellerdealcomplete", na=False)
+            | d.str.contains(r"couponparticipationevent|couponperformanceevent", na=False)
+            | d.str.contains(r"\bcoupon\b", na=False)
+        ) & (~ignore)
+
+        # Platform fee bucket
+        is_platform_fee = (
+            (t.str.contains("servicefee", na=False) | d.str.contains(r"\bfee\b", na=False))
+            & d.str.contains(
+                r"fba|storage|disposal|subscription|longterm|long term|referral|commission",
+                na=False
+            )
+        ) & (~ignore) & (~is_ads)
+
+        ads_total = float(np.nansum(amt[is_ads].values))
+        pf_total  = float(np.nansum(amt[is_platform_fee].values))
+
+        return abs(pf_total), abs(ads_total)
+
+    # ------------------------------------------------------------
+    # ✅ Ensure columns exist for gross_sales daily calc
+    # ------------------------------------------------------------
+    needed = [
+        "product_sales",
+        "product_sales_tax",
+        "postage_credits",
+        "gift_wrap_credits",
+        "shipping_credits_tax",
+        "giftwrap_credits_tax",
+        "promotional_rebates",
+        "promotional_rebates_tax",
+    ]
+    for c in needed:
+        if c not in df.columns:
+            df[c] = 0.0
 
     # 2) daily series
     daily_series = []
@@ -726,18 +1044,30 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
             quantity = float(safe_num(day_sku.get("quantity", 0)).sum()) if len(day_sku) else 0.0
             product_sales = float(safe_num(day_sku.get("product_sales", 0)).sum()) if len(day_sku) else 0.0
 
+            # ✅ gross_sales per day (robust rebates)
+            gross_sales = float((
+                safe_num(day_sku.get("product_sales", 0.0))
+                + safe_num(day_sku.get("product_sales_tax", 0.0))
+                + safe_num(day_sku.get("postage_credits", 0.0))
+                + safe_num(day_sku.get("gift_wrap_credits", 0.0))
+                + safe_num(day_sku.get("shipping_credits_tax", 0.0))
+                + safe_num(day_sku.get("giftwrap_credits_tax", 0.0))
+                - safe_num(day_sku.get("promotional_rebates", 0.0)).abs()
+                - safe_num(day_sku.get("promotional_rebates_tax", 0.0)).abs()
+            ).sum()) if len(day_sku) else 0.0
+
             # sales/profit based on SKU rows (keeps your earlier behavior)
             net_sales, _, _ = uk_sales(day_sku if len(day_sku) else day_all)
             profit, _, _ = uk_profit(day_sku if len(day_sku) else day_all)
 
-            # ✅ fees MUST be computed on ALL rows for that date
-            platform_fee_total, _, _ = uk_platform_fee(day_all)
-            advertising_total, _, _ = uk_advertising(day_all)
+            # ✅ FIXED: fees computed on ALL rows using hist classifier (NOT uk_platform_fee/uk_advertising)
+            platform_fee_total, advertising_total = _calc_fees_from_hist(day_all)
 
             daily_series.append({
                 "date": d.isoformat(),
                 "quantity": float(quantity),
                 "product_sales": float(product_sales),
+                "gross_sales": float(gross_sales),
                 "net_sales": float(net_sales),
                 "profit": float(profit),
                 "platform_fee": float(platform_fee_total),
@@ -748,20 +1078,261 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     return sku_metrics, daily_series
 
 
+# def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
+#     """
+#     Returns:
+#       sku_metrics: list of per-SKU metrics from liveorders
+#       daily_series: date-wise series with qty/net_sales/product_sales/profit + platform_fee/advertising
+
+#     FIX:
+#       - Compute fees directly from liveorders patterns (type/description),
+#         because liveorders uses values like ProductAdsPayment / ServiceFee which
+#         settlement-style parsers may not recognize.
+#       - Fees returned as POSITIVE numbers (expense) to support:
+#           CM2 = Profit - Advertising - Platform Fees
+#     """
+
+#     table_live = "liveorders"
+
+#     query_live = text(f"""
+#         SELECT
+#             sku,
+#             quantity,
+#             cogs,
+#             product_sales,
+#             promotional_rebates,
+#             profit,
+#             total,
+#             purchase_date,
+#             order_status,
+#             description,
+#             type,
+#             other_transaction_fees,
+#             other
+#         FROM {table_live}
+#         WHERE user_id = :user_id
+#           AND purchase_date >= :start_date
+#           AND purchase_date < :end_date_plus_one
+#     """)
+
+#     params = {
+#         "user_id": user_id,
+#         "start_date": datetime.combine(curr_start, datetime.min.time()),
+#         "end_date_plus_one": datetime.combine(curr_end + timedelta(days=1), datetime.min.time()),
+#     }
+
+#     with engine_live.connect() as conn:
+#         res = conn.execute(query_live, params)
+#         rows = res.fetchall()
+#         if not rows:
+            
+#             return [], []
+
+#         df = pd.DataFrame(rows, columns=res.keys())
+
+#     # ----------------------------
+#     # SKU + mapping logic
+#     # ----------------------------
+#     df["sku"] = df["sku"].astype(str).str.strip()
+#     df.loc[df["sku"].str.lower().isin(["none", "nan", "null", ""]), "sku"] = None
+
+#     df["product_name"] = df["sku"].fillna("")
+
+#     df["__has_mapping__"] = False
+#     try:
+#         sku_map_df = fetch_sku_product_mapping(user_id)
+#         if not sku_map_df.empty:
+#             sku_map_df = sku_map_df.copy()
+#             sku_map_df["sku"] = sku_map_df["sku"].astype(str).str.strip()
+
+#             mapped_skus = set(sku_map_df["sku"].dropna())
+#             df["__has_mapping__"] = df["sku"].astype(str).str.strip().isin(mapped_skus)
+
+#             df = df.merge(
+#                 sku_map_df,
+#                 on="sku",
+#                 how="left",
+#                 suffixes=("", "_from_sku_table"),
+#             )
+
+#             if "product_name_from_sku_table" in df.columns:
+#                 df["product_name"] = df["product_name_from_sku_table"].combine_first(df["product_name"])
+#                 df.drop(columns=["product_name_from_sku_table"], inplace=True)
+#         else:
+#             print("[DEBUG] SKU mapping DF empty, using SKU as product_name.")
+#     except Exception as e:
+#         print("[WARN] Failed to fetch/merge SKU product mapping:", e)
+
+#     # ----------------------------
+#     # Numeric prep
+#     # ----------------------------
+#     df["quantity"] = safe_num(df.get("quantity", 0))
+#     df["profit"] = safe_num(df.get("profit", 0))
+#     df["cogs"] = safe_num(df.get("cogs", 0))
+#     df["product_sales"] = safe_num(df.get("product_sales", 0))
+#     df["promotional_rebates"] = safe_num(df.get("promotional_rebates", 0))
+#     df["net_sales"] = df["product_sales"] + df["promotional_rebates"]
+
+#     # total is what your table shows as the signed amount
+#     df["total"] = safe_num(df.get("total", 0))
+
+#     # normalize text cols
+#     df["description"] = df.get("description", "").fillna("").astype(str)
+#     df["type"] = df.get("type", "").fillna("").astype(str)
+
+#     # ----------------------------
+#     # ✅ Fee extraction (LIVEORDERS-SPECIFIC)
+#     # ----------------------------
+#     def _fee_amount_col(xdf: pd.DataFrame) -> pd.Series:
+#         """
+#         Prefer other_transaction_fees if populated, else fallback to total.
+#         In your sample, both match for fee rows (e.g., -386.59).
+#         """
+#         if "other_transaction_fees" in xdf.columns:
+#             s = safe_num(xdf["other_transaction_fees"])
+#             # if it's all zeros, use total
+#             if float(np.nansum(s.values)) != 0.0:
+#                 return s
+#         return safe_num(xdf["total"])
+
+#     def _calc_fees_from_liveorders(day_df: pd.DataFrame) -> tuple[float, float]:
+#         """
+#         Returns (platform_fee, advertising) as POSITIVE numbers.
+
+#         Advertising (per your samples):
+#         - ProductAdsPayment
+#         - SellerDealPayment / SellerDealComplete
+#         - CouponParticipationEvent / CouponPerformanceEvent (these are ServiceFee rows)
+
+#         Platform fees:
+#         - FBA storage / disposal / long-term storage
+#         - Subscription
+#         - Other operational Amazon fees (referral/commission etc.)
+#         """
+#         if day_df is None or day_df.empty:
+#             return 0.0, 0.0
+
+#         t = day_df["type"].fillna("").astype(str).str.lower()
+#         d = day_df["description"].fillna("").astype(str).str.lower()
+#         amt = _fee_amount_col(day_df)
+
+#         # ignore cash movement + normal order payments
+#         ignore = (
+#             t.str.contains("transfer|disbursement", na=False)
+#             | d.str.contains("disbursement", na=False)
+#             | d.str.contains("order payment", na=False)
+#         )
+
+#         # --- Advertising bucket ---
+#         # Matches your examples:
+#         # ProductAdsPayment, SellerDealPayment/SellerDealComplete,
+#         # ServiceFee CouponParticipationEvent/CouponPerformanceEvent
+#         is_ads = (
+#             t.str.contains(r"productadspayment|sellerdealpayment", na=False)
+#             | d.str.contains(r"productadspayment|sellerdealcomplete", na=False)
+#             | d.str.contains(r"couponparticipationevent|couponperformanceevent", na=False)
+#             | d.str.contains(r"\bcoupon\b", na=False)  # optional: keeps coupon-related fees in ads
+#         ) & (~ignore)
+
+#         # --- Platform fee bucket ---
+#         # Matches your examples:
+#         # FBADisposal, FBAStorageBilling, Subscription, FBALongTermStorageBilling
+#         # (and other typical Amazon platform fees)
+#         is_platform_fee = (
+#             (t.str.contains("servicefee", na=False) | d.str.contains(r"\bfee\b", na=False))
+#             & d.str.contains(
+#                 r"fba|storage|disposal|subscription|longterm|long term|referral|commission",
+#                 na=False
+#             )
+#         ) & (~ignore) & (~is_ads)
+
+#         ads_total = float(np.nansum(amt[is_ads].values))
+#         pf_total  = float(np.nansum(amt[is_platform_fee].values))
+
+#         # return as positive expenses
+#         return abs(pf_total), abs(ads_total)
+
+#     # ----------------------------
+#     # Per-SKU metrics (same as before)
+#     # ----------------------------
+#     # Only real SKUs here (exclude NULL sku fee rows from sku table)
+#     df_sku = df.dropna(subset=["sku"]).copy()
+
+#     sku_agg = (
+#         df_sku.groupby("sku", as_index=False)
+#           .agg(
+#               product_name=("product_name", "first"),
+#               quantity=("quantity", "sum"),
+#               net_sales=("net_sales", "sum"),
+#               product_sales=("product_sales", "sum"),
+#               profit=("profit", "sum"),
+#               cogs=("cogs", "sum"),
+#               __has_mapping__=("__has_mapping__", "max"),
+#           )
+#     )
+
+#     qty_nonzero = sku_agg["quantity"].replace(0, np.nan)
+#     sku_agg["asp"] = (sku_agg["net_sales"] / qty_nonzero).fillna(0.0)
+#     sku_agg["unit_wise_profitability"] = (sku_agg["profit"] / qty_nonzero).fillna(0.0)
+
+#     total_net_sales = float(sku_agg["net_sales"].sum())
+#     sku_agg["sales_mix"] = (sku_agg["net_sales"] / total_net_sales) * 100.0 if total_net_sales else 0.0
+#     sku_agg = normalize_sales_mix(sku_agg, "sales_mix", digits=2)
+
+#     sku_metrics = sku_agg.to_dict(orient="records")
+
+#     # ----------------------------
+#     # Daily series (sales + fees)
+#     # ----------------------------
+#     daily_series = []
+
+#     df["date_only"] = pd.to_datetime(df["purchase_date"], errors="coerce").dt.date
+#     df = df.dropna(subset=["date_only"])
+
+#     # sales/profit per day (includes fee rows too, but they usually have 0 qty/net_sales/profit)
+#     daily_qty = df.groupby("date_only", as_index=False)["quantity"].sum()
+#     qty_map = {d: float(v) for d, v in zip(daily_qty["date_only"], daily_qty["quantity"])}
+
+#     daily_ns = df.groupby("date_only", as_index=False)["net_sales"].sum()
+#     ns_map = {d: float(v) for d, v in zip(daily_ns["date_only"], daily_ns["net_sales"])}
+
+#     daily_ps = df.groupby("date_only", as_index=False)["product_sales"].sum()
+#     ps_map = {d: float(v) for d, v in zip(daily_ps["date_only"], daily_ps["product_sales"])}
+
+#     daily_profit = df.groupby("date_only", as_index=False)["profit"].sum()
+#     profit_map = {d: float(v) for d, v in zip(daily_profit["date_only"], daily_profit["profit"])}
+
+#     # ✅ fees per day
+#     pf_map, ad_map = {}, {}
+#     for d, day_df in df.groupby("date_only"):
+#         pf, ad = _calc_fees_from_liveorders(day_df)
+#         pf_map[d] = float(pf)
+#         ad_map[d] = float(ad)
+
+#     all_days = sorted(set(qty_map) | set(ns_map) | set(ps_map) | set(profit_map) | set(pf_map) | set(ad_map))
+#     for d in all_days:
+#         daily_series.append({
+#             "date": d.isoformat(),
+#             "quantity": qty_map.get(d, 0.0),
+#             "net_sales": ns_map.get(d, 0.0),
+#             "product_sales": ps_map.get(d, 0.0),
+#             "profit": profit_map.get(d, 0.0),
+#             "platform_fee": pf_map.get(d, 0.0),
+#             "advertising": ad_map.get(d, 0.0),
+#         })
+
+#     return sku_metrics, daily_series
+
 def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     """
     Returns:
       sku_metrics: list of per-SKU metrics from liveorders
-      daily_series: date-wise series with qty/net_sales/product_sales/profit + platform_fee/advertising
+      daily_series: date-wise series with qty/net_sales/product_sales/gross_sales/profit
+                   + platform_fee/advertising
 
-    FIX:
-      - Compute fees directly from liveorders patterns (type/description),
-        because liveorders uses values like ProductAdsPayment / ServiceFee which
-        settlement-style parsers may not recognize.
-      - Fees returned as POSITIVE numbers (expense) to support:
-          CM2 = Profit - Advertising - Platform Fees
+    Fees returned as POSITIVE numbers to support:
+      CM2 = Profit - Advertising - Platform Fees
     """
-
     table_live = "liveorders"
 
     query_live = text(f"""
@@ -771,6 +1342,7 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
             cogs,
             product_sales,
             promotional_rebates,
+            gross_sales,              -- ✅ NEW (read from DB)
             profit,
             total,
             purchase_date,
@@ -795,7 +1367,6 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         res = conn.execute(query_live, params)
         rows = res.fetchall()
         if not rows:
-            
             return [], []
 
         df = pd.DataFrame(rows, columns=res.keys())
@@ -828,8 +1399,6 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
             if "product_name_from_sku_table" in df.columns:
                 df["product_name"] = df["product_name_from_sku_table"].combine_first(df["product_name"])
                 df.drop(columns=["product_name_from_sku_table"], inplace=True)
-        else:
-            print("[DEBUG] SKU mapping DF empty, using SKU as product_name.")
     except Exception as e:
         print("[WARN] Failed to fetch/merge SKU product mapping:", e)
 
@@ -843,42 +1412,29 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     df["promotional_rebates"] = safe_num(df.get("promotional_rebates", 0))
     df["net_sales"] = df["product_sales"] + df["promotional_rebates"]
 
-    # total is what your table shows as the signed amount
+    # ✅ gross_sales from DB (fallback compute if missing)
+    if "gross_sales" in df.columns:
+        df["gross_sales"] = safe_num(df.get("gross_sales", 0))
+    else:
+        # fallback: best-effort = product_sales only
+        df["gross_sales"] = safe_num(df.get("product_sales", 0))
+
     df["total"] = safe_num(df.get("total", 0))
 
-    # normalize text cols
     df["description"] = df.get("description", "").fillna("").astype(str)
     df["type"] = df.get("type", "").fillna("").astype(str)
 
     # ----------------------------
-    # ✅ Fee extraction (LIVEORDERS-SPECIFIC)
+    # Fee extraction (LIVEORDERS-SPECIFIC)
     # ----------------------------
     def _fee_amount_col(xdf: pd.DataFrame) -> pd.Series:
-        """
-        Prefer other_transaction_fees if populated, else fallback to total.
-        In your sample, both match for fee rows (e.g., -386.59).
-        """
         if "other_transaction_fees" in xdf.columns:
             s = safe_num(xdf["other_transaction_fees"])
-            # if it's all zeros, use total
             if float(np.nansum(s.values)) != 0.0:
                 return s
         return safe_num(xdf["total"])
 
     def _calc_fees_from_liveorders(day_df: pd.DataFrame) -> tuple[float, float]:
-        """
-        Returns (platform_fee, advertising) as POSITIVE numbers.
-
-        Advertising (per your samples):
-        - ProductAdsPayment
-        - SellerDealPayment / SellerDealComplete
-        - CouponParticipationEvent / CouponPerformanceEvent (these are ServiceFee rows)
-
-        Platform fees:
-        - FBA storage / disposal / long-term storage
-        - Subscription
-        - Other operational Amazon fees (referral/commission etc.)
-        """
         if day_df is None or day_df.empty:
             return 0.0, 0.0
 
@@ -886,28 +1442,19 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         d = day_df["description"].fillna("").astype(str).str.lower()
         amt = _fee_amount_col(day_df)
 
-        # ignore cash movement + normal order payments
         ignore = (
             t.str.contains("transfer|disbursement", na=False)
             | d.str.contains("disbursement", na=False)
             | d.str.contains("order payment", na=False)
         )
 
-        # --- Advertising bucket ---
-        # Matches your examples:
-        # ProductAdsPayment, SellerDealPayment/SellerDealComplete,
-        # ServiceFee CouponParticipationEvent/CouponPerformanceEvent
         is_ads = (
             t.str.contains(r"productadspayment|sellerdealpayment", na=False)
             | d.str.contains(r"productadspayment|sellerdealcomplete", na=False)
             | d.str.contains(r"couponparticipationevent|couponperformanceevent", na=False)
-            | d.str.contains(r"\bcoupon\b", na=False)  # optional: keeps coupon-related fees in ads
+            | d.str.contains(r"\bcoupon\b", na=False)
         ) & (~ignore)
 
-        # --- Platform fee bucket ---
-        # Matches your examples:
-        # FBADisposal, FBAStorageBilling, Subscription, FBALongTermStorageBilling
-        # (and other typical Amazon platform fees)
         is_platform_fee = (
             (t.str.contains("servicefee", na=False) | d.str.contains(r"\bfee\b", na=False))
             & d.str.contains(
@@ -919,13 +1466,11 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         ads_total = float(np.nansum(amt[is_ads].values))
         pf_total  = float(np.nansum(amt[is_platform_fee].values))
 
-        # return as positive expenses
         return abs(pf_total), abs(ads_total)
 
     # ----------------------------
-    # Per-SKU metrics (same as before)
+    # Per-SKU metrics
     # ----------------------------
-    # Only real SKUs here (exclude NULL sku fee rows from sku table)
     df_sku = df.dropna(subset=["sku"]).copy()
 
     sku_agg = (
@@ -935,6 +1480,7 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
               quantity=("quantity", "sum"),
               net_sales=("net_sales", "sum"),
               product_sales=("product_sales", "sum"),
+              gross_sales=("gross_sales", "sum"),  # ✅ NEW
               profit=("profit", "sum"),
               cogs=("cogs", "sum"),
               __has_mapping__=("__has_mapping__", "max"),
@@ -952,14 +1498,13 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     sku_metrics = sku_agg.to_dict(orient="records")
 
     # ----------------------------
-    # Daily series (sales + fees)
+    # Daily series
     # ----------------------------
     daily_series = []
 
     df["date_only"] = pd.to_datetime(df["purchase_date"], errors="coerce").dt.date
     df = df.dropna(subset=["date_only"])
 
-    # sales/profit per day (includes fee rows too, but they usually have 0 qty/net_sales/profit)
     daily_qty = df.groupby("date_only", as_index=False)["quantity"].sum()
     qty_map = {d: float(v) for d, v in zip(daily_qty["date_only"], daily_qty["quantity"])}
 
@@ -969,23 +1514,26 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     daily_ps = df.groupby("date_only", as_index=False)["product_sales"].sum()
     ps_map = {d: float(v) for d, v in zip(daily_ps["date_only"], daily_ps["product_sales"])}
 
+    daily_gs = df.groupby("date_only", as_index=False)["gross_sales"].sum()  # ✅ NEW
+    gs_map = {d: float(v) for d, v in zip(daily_gs["date_only"], daily_gs["gross_sales"])}
+
     daily_profit = df.groupby("date_only", as_index=False)["profit"].sum()
     profit_map = {d: float(v) for d, v in zip(daily_profit["date_only"], daily_profit["profit"])}
 
-    # ✅ fees per day
     pf_map, ad_map = {}, {}
     for d, day_df in df.groupby("date_only"):
         pf, ad = _calc_fees_from_liveorders(day_df)
         pf_map[d] = float(pf)
         ad_map[d] = float(ad)
 
-    all_days = sorted(set(qty_map) | set(ns_map) | set(ps_map) | set(profit_map) | set(pf_map) | set(ad_map))
+    all_days = sorted(set(qty_map) | set(ns_map) | set(ps_map) | set(gs_map) | set(profit_map) | set(pf_map) | set(ad_map))
     for d in all_days:
         daily_series.append({
             "date": d.isoformat(),
             "quantity": qty_map.get(d, 0.0),
             "net_sales": ns_map.get(d, 0.0),
             "product_sales": ps_map.get(d, 0.0),
+            "gross_sales": gs_map.get(d, 0.0),   # ✅ NEW
             "profit": profit_map.get(d, 0.0),
             "platform_fee": pf_map.get(d, 0.0),
             "advertising": ad_map.get(d, 0.0),

@@ -25,7 +25,7 @@ db_url3 = os.getenv("DATABASE_AMAZON_URL")
 phormula_engine = create_engine(db_url)
 chatbot_engine = create_engine(db_url2)
 amazon_engine = create_engine(db_url3)
-
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 MONTH_NUM_TO_NAME = {
@@ -205,7 +205,8 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
     g = df.groupby("sku", dropna=False).agg(agg).reset_index()
 
     out = {}
-    for _, r in g.iterrows():
+    for r in g.to_dict(orient="records"):
+
         sku = str(r["sku"])
 
         # ✅ product_name fallback logic
@@ -338,6 +339,61 @@ def build_inventory_alerts(df: pd.DataFrame) -> dict:
 
 
 
+# def compare_sku_metrics(current: dict, previous: dict) -> dict:
+#     output = {}
+
+#     all_skus = set(current.keys()) | set(previous.keys())
+
+#     for sku in all_skus:
+#         curr = current.get(sku, {})
+#         prev = previous.get(sku, {})
+
+#         sku_out = {}
+
+#         # ---------------- ADDITIVE METRICS ----------------
+#         for metric in METRIC_COLUMNS:
+#             if metric not in curr and metric not in prev:
+#                 continue
+
+#             try:
+#                 new = float(curr.get(metric, 0.0) or 0.0)
+#                 old = float(prev.get(metric, 0.0) or 0.0)
+#             except (TypeError, ValueError):
+#                 continue
+
+#             delta = new - old
+#             pct = (delta / old * 100) if old != 0 else None
+
+#             sku_out[metric] = {
+#                 "current": round(new, 2),
+#                 "previous": round(old, 2),
+#                 "delta": round(delta, 2),
+#                 "delta_pct": round(pct, 2) if pct is not None else None
+#             }
+
+#         # ---------------- PERCENTAGE METRICS ----------------
+#         for metric in PERCENTAGE_COLUMNS:
+#             if metric not in curr and metric not in prev:
+#                 continue
+
+#             try:
+#                 new = float(curr.get(metric))
+#                 old = float(prev.get(metric))
+#             except (TypeError, ValueError):
+#                 continue
+
+#             delta = new - old
+
+#             sku_out[metric] = {
+#                 "current": round(new, 2),
+#                 "previous": round(old, 2),
+#                 "delta": round(delta, 2),   # ✅ percentage-point change
+#                 "delta_pct": None           # ❌ intentionally skipped
+#             }
+
+#         output[sku] = sku_out
+
+#     return output
 def compare_sku_metrics(current: dict, previous: dict) -> dict:
     output = {}
 
@@ -348,6 +404,13 @@ def compare_sku_metrics(current: dict, previous: dict) -> dict:
         prev = previous.get(sku, {})
 
         sku_out = {}
+
+        # ✅ PRESERVE PRODUCT NAME (CRITICAL)
+        sku_out["product_name"] = (
+            curr.get("product_name")
+            or prev.get("product_name")
+            or sku
+        )
 
         # ---------------- ADDITIVE METRICS ----------------
         for metric in METRIC_COLUMNS:
@@ -386,8 +449,8 @@ def compare_sku_metrics(current: dict, previous: dict) -> dict:
             sku_out[metric] = {
                 "current": round(new, 2),
                 "previous": round(old, 2),
-                "delta": round(delta, 2),   # ✅ percentage-point change
-                "delta_pct": None           # ❌ intentionally skipped
+                "delta": round(delta, 2),   # percentage-point change
+                "delta_pct": None           # intentionally skipped
             }
 
         output[sku] = sku_out
@@ -438,9 +501,9 @@ You are a senior ecommerce performance analyst.
 You receive structured JSON data containing:
 - Overall MoM metrics (month-over-month)
 - Overall YoY metrics (year-over-year, optional)
-- SKU-level MoM comparisons
-- SKU-level YoY comparisons
-- Inventory alerts per SKU (optional)
+- Product-level MoM comparisons
+- Product-level YoY comparisons
+- Inventory alerts per Product (optional)
 
 IMPORTANT DATA RULES:
 - All numbers are pre-calculated
@@ -473,7 +536,7 @@ ACOS SUMMARY RULE (CRITICAL):
 - Describe ACOS movement using percentage points (e.g., "ACOS increased by 2.4 points").
 - Use MoM language for monthly/quarterly periods and YoY language for yearly periods.
 - Do NOT describe ACOS as growth or decline in percentage terms.
-- Do NOT mention ACOS in SKU INSIGHTS, RECOMMENDATIONS, or INVENTORY sections.
+- Do NOT mention ACOS in PRODUCT INSIGHTS, RECOMMENDATIONS, or INVENTORY sections.
 
 QUANTITY DEFINITIONS:
 - quantity = gross units shipped
@@ -488,12 +551,12 @@ REIMBURSEMENT LOGIC:
 - Treat this as cost recovery or credit.
 - Do NOT describe lost_total as a loss or negative event.
 
-SPECIAL SKU LOGIC:
-- If a SKU appears in MoM data but NOT in YoY data, treat it as a **New / Reviving SKU**
+SPECIAL PRODUCT LOGIC:
+- If a Product appears in MoM data but NOT in YoY data, treat it as a **New / Reviving SKU**
 - Explicitly call this out in insights or actions
 
 NEW / REVIVING SKU YoY RULE (CRITICAL):
-- For any SKU labeled as **New / Reviving SKU**:
+- For any Product labeled as **New / Reviving SKU**:
   - YoY comparison is NOT APPLICABLE.
   - Do NOT mention YoY percentages, YoY growth, or YoY trends.
   - Only describe MoM performance or absolute contribution.
@@ -503,7 +566,7 @@ DISPLAY NAME RULE (CRITICAL):
 - Always use product_name when available.
 - If product_name is missing, blank, null, or "0", fall back to SKU.
 - Never display raw SKU if a valid product_name exists.
-- The first bolded text in SKU INSIGHTS MUST always be product_name.
+- The first bolded text in PRODUCT INSIGHTS MUST always be product_name.
 
 TIME COMPARISON LOGIC (CRITICAL):
 - If the period is MONTHLY or QUARTERLY:
@@ -527,7 +590,7 @@ OUTPUT FORMAT (MARKDOWN ONLY)
 ## SUMMARY
 (4–6 bullets ONLY)
 
-- Summarize overall movement in **net units sold (total_quantity), net sales, and profit**
+- Summarize overall movement in **net units sold, net sales, and profit**
   (Use MoM for monthly/quarterly periods, YoY for yearly periods)
 - Clearly state whether growth/decline is **volume-led, cost-led, or margin-led**
 - Call out **major overall cost drivers** if they materially impacted profit
@@ -537,17 +600,17 @@ OUTPUT FORMAT (MARKDOWN ONLY)
 
 ---
 
-## SKU INSIGHTS
+## PRODUCT INSIGHTS
 (5–7 bullets ONLY)
 
 Each bullet must:
 - Start with **Product name**
-- Mention **1–2 key SKU-level metrics only** (units sold, net sales, profit, ASP)
+- Mention **key Product-level metrics only** (units sold, net sales, profit, ASP)
 - Clearly state direction (up/down/flat)
-- If SKU is New / Reviving, explicitly label it:
+- If Product is New / Reviving, explicitly label it:
   **“(New / Reviving SKU)”**
 
-When describing SKU performance:
+When describing Product performance:
 - Always include percentage values when available
 - Use MoM percentages for monthly/quarterly periods
 - Use YoY percentages for yearly periods
@@ -641,19 +704,16 @@ def generate_ai_summary(payload, allow_recommendations):
         "inventory_alerts": payload.get("inventory_alerts"),
     }
 
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = openai_client.chat.completions.create(
+    model="gpt-4.1",
+    messages=[
+        {"role": "system", "content": AI_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(user_prompt, separators=(",", ":"))}
+    ],
+    temperature=0.3,
 
-    response = client.chat.completions.create(
-        model="gpt-4.1",
-        messages=[
-            {"role": "system", "content": AI_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": json.dumps(user_prompt, indent=2)
-            }
-        ],
-        temperature=0.3
     )
+
 
     ai_text = response.choices[0].message.content.strip()
 
