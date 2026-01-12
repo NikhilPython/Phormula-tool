@@ -331,13 +331,13 @@ const Section = ({
         {title}
       </h3>
       <ul className="list-disc pl-4 space-y-1 text-sm text-charcoal-500">
-  {bullets.map((b, i) => (
-    <li
-      key={i}
-      dangerouslySetInnerHTML={renderMarkdownInline(b)}
-    />
-  ))}
-</ul>
+        {bullets.map((b, i) => (
+          <li
+            key={i}
+            dangerouslySetInnerHTML={renderMarkdownInline(b)}
+          />
+        ))}
+      </ul>
     </div>
   );
 };
@@ -450,8 +450,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [aiPanel, setAiPanel] = useState<AiPanelData | null>(null);
   const [aiPanelLoading, setAiPanelLoading] = useState(false);
   const [aiPanelError, setAiPanelError] = useState<string | null>(null);
-  
-// ✅ ADD THIS (request version guard)
+
+  // ✅ ADD THIS (request version guard)
   const aiRequestIdRef = useRef(0);
 
   const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
@@ -660,77 +660,77 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   //   }
   // };
 
-const fetchAiSummary = async (rangeType: RangeType) => {
-  if (!countryName || !rangeType || !selectedYear) return;
+  const fetchAiSummary = async (rangeType: RangeType) => {
+    if (!countryName || !rangeType || !selectedYear) return;
 
-  const requestId = ++aiRequestIdRef.current; // ✅ 1️⃣ request version
+    const requestId = ++aiRequestIdRef.current; // ✅ 1️⃣ request version
 
-  const timeline =
-    rangeType === "monthly"
-      ? monthNameToNumber(selectedMonth)
-      : rangeType === "quarterly"
-      ? selectedQuarter
-      : "ALL";
+    const timeline =
+      rangeType === "monthly"
+        ? monthNameToNumber(selectedMonth)
+        : rangeType === "quarterly"
+          ? selectedQuarter
+          : "ALL";
 
-  if (rangeType === "monthly" && !timeline) return;
-  if (rangeType === "quarterly" && !selectedQuarter) return;
+    if (rangeType === "monthly" && !timeline) return;
+    if (rangeType === "quarterly" && !selectedQuarter) return;
 
-  setAiPanelLoading(true);
-  setAiPanelError(null);
-  setAiPanel(null); // ✅ 2️⃣ clear stale summary
+    setAiPanelLoading(true);
+    setAiPanelError(null);
+    setAiPanel(null); // ✅ 2️⃣ clear stale summary
 
-  try {
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("jwtToken")
-        : null;
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
 
-    const url = new URL("http://127.0.0.1:5000/summary");
-    url.searchParams.set("country", countryName);
-    url.searchParams.set("period", rangeType);
-    url.searchParams.set("timeline", String(timeline));
-    url.searchParams.set("year", String(selectedYear));
+      const url = new URL("http://127.0.0.1:5000/summary");
+      url.searchParams.set("country", countryName);
+      url.searchParams.set("period", rangeType);
+      url.searchParams.set("timeline", String(timeline));
+      url.searchParams.set("year", String(selectedYear));
 
-    const res = await fetch(url.toString(), {
-      method: "GET",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      cache: "no-store",
-    });
+      const res = await fetch(url.toString(), {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: "no-store",
+      });
 
-    if (!res.ok) {
+      if (!res.ok) {
+        if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
+        setAiPanel(null);
+        setAiPanelError("Failed to fetch AI summary");
+        return;
+      }
+
+      const data: AiSummaryResponse = await res.json();
+
+      if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
+
+      const { summaryBullets, skuInsightsBullets } =
+        extractSummaryAndSkuBullets(data.summary);
+      const { recommendationBullets, inventoryBullets } =
+        extractRecoAndInventoryBullets(data.recommendations);
+
+      setAiPanel({
+        summaryBullets,
+        skuInsightsBullets,
+        recommendationBullets,
+        inventoryBullets,
+        rawSummary: data.summary ?? null,
+        rawRecommendations: data.recommendations ?? null,
+      });
+    } catch (e: any) {
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
       setAiPanel(null);
-      setAiPanelError("Failed to fetch AI summary");
-      return;
+      setAiPanelError(e?.message || "Failed to fetch AI summary");
+    } finally {
+      if (requestId === aiRequestIdRef.current) {
+        setAiPanelLoading(false); // ✅ 3️⃣ guard
+      }
     }
-
-    const data: AiSummaryResponse = await res.json();
-
-    if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
-
-    const { summaryBullets, skuInsightsBullets } =
-      extractSummaryAndSkuBullets(data.summary);
-    const { recommendationBullets, inventoryBullets } =
-      extractRecoAndInventoryBullets(data.recommendations);
-
-    setAiPanel({
-      summaryBullets,
-      skuInsightsBullets,
-      recommendationBullets,
-      inventoryBullets,
-      rawSummary: data.summary ?? null,
-      rawRecommendations: data.recommendations ?? null,
-    });
-  } catch (e: any) {
-    if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
-    setAiPanel(null);
-    setAiPanelError(e?.message || "Failed to fetch AI summary");
-  } finally {
-    if (requestId === aiRequestIdRef.current) {
-      setAiPanelLoading(false); // ✅ 3️⃣ guard
-    }
-  }
-};
+  };
 
 
 
@@ -1210,12 +1210,16 @@ const fetchAiSummary = async (rangeType: RangeType) => {
 
 
       const buffer = await wb.xlsx.writeBuffer();
+      const periodLabel = getPeriodLabelShort(); // Jan'25 / Q4'25 / 2025
+      const fileName = `P&L - Product Breakdown - ${periodLabel || String(selectedYear)}.xlsx`;
+
       saveAs(
         new Blob([buffer], {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }),
-        "Profitability_Bundle.xlsx"
+        fileName
       );
+
     } catch (e) {
       console.error("Combined export failed:", e);
     }
