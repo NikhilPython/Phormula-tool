@@ -276,7 +276,7 @@
 "use client";
 
 import React from "react";
-import Papa from "papaparse";
+import Papa, { type ParseResult } from "papaparse";
 import * as XLSX from "xlsx";
 import { FiDownload } from "react-icons/fi";
 import { useUploadSkuMultiCountryMutation } from "@/lib/api/skuApi";

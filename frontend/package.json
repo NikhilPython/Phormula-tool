@@ -61,6 +61,7 @@
     "@svgr/webpack": "^8.1.0",
     "@types/file-saver": "^2.0.7",
     "@types/node": "^20",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-date-range": "^1.4.10",
     "@types/react-dom": "^19",

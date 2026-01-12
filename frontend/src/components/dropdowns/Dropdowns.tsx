@@ -250,7 +250,11 @@ const extractBullets = (md: string | null | undefined): string[] => {
     .map((l) => l.replace(/^-\s+/, "").trim())
     .filter(Boolean);
 };
-
+const renderMarkdownInline = (text: string) => {
+  // convert **bold** → <strong>
+  const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
+  return { __html: html };
+};
 // Pull only bullets under "## SUMMARY" section if present; otherwise fallback to all bullets
 // --- NEW: split markdown into sections by "## " headings
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
@@ -327,10 +331,13 @@ const Section = ({
         {title}
       </h3>
       <ul className="list-disc pl-4 space-y-1 text-sm text-charcoal-500">
-        {bullets.map((b, i) => (
-          <li key={i}>{b}</li>
-        ))}
-      </ul>
+  {bullets.map((b, i) => (
+    <li
+      key={i}
+      dangerouslySetInnerHTML={renderMarkdownInline(b)}
+    />
+  ))}
+</ul>
     </div>
   );
 };
