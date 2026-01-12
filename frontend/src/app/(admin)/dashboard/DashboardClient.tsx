@@ -87,7 +87,7 @@ type DailyPoint = {
   date: string;
   quantity?: number;
   net_sales?: number;
-  product_sales?: number;
+  gross_sales?: number;
   profit?: number;
   cm2_profit?: number; // ✅ add
 };
@@ -716,7 +716,7 @@ const fetchFxRates = useCallback(async () => {
     const convPoint = (p: DailyPoint): DailyPoint => ({
       ...p,
       net_sales: p.net_sales != null ? convertToDisplayCurrency(p.net_sales, biDataCurrency) : p.net_sales,
-      product_sales: p.product_sales != null ? convertToDisplayCurrency(p.product_sales, biDataCurrency) : p.product_sales,
+      gross_sales: p.gross_sales != null ? convertToDisplayCurrency(p.gross_sales, biDataCurrency) : p.gross_sales,
       profit: p.profit != null ? convertToDisplayCurrency(p.profit, biDataCurrency) : p.profit,
       cm2_profit: p.cm2_profit != null ? convertToDisplayCurrency(p.cm2_profit, biDataCurrency) : p.cm2_profit,
     });
@@ -1089,7 +1089,7 @@ const fetchFxRates = useCallback(async () => {
 
 
     const grossSalesGBP =
-      totals?.product_sales != null ? toNumberSafe(totals.product_sales) : null; // ✅ current gross
+      totals?.gross_sales != null ? toNumberSafe(totals.gross_sales) : null; // ✅ current gross
 
     const advertisingGBP =
       derived?.advertising_fees != null ? toNumberSafe(derived.advertising_fees) : 0;
@@ -1256,7 +1256,7 @@ const fetchFxRates = useCallback(async () => {
     const curr = {
       units: sum(currPts, "quantity"),
       netSales: sum(currPts, "net_sales"),
-      grossSales: sum(currPts, "product_sales"),
+      grossSales: sum(currPts, "gross_sales"),
       profit: sum(currPts, "profit"),
       cm2Profit: sum(currPts, "cm2_profit"),
     };
@@ -1264,7 +1264,7 @@ const fetchFxRates = useCallback(async () => {
     const prev = {
       units: sum(prevPts, "quantity"),
       netSales: sum(prevPts, "net_sales"),
-      grossSales: sum(prevPts, "product_sales"),
+      grossSales: sum(prevPts, "gross_sales"),
       profit: sum(prevPts, "profit"),
       cm2Profit: sum(prevPts, "cm2_profit"),
     };
@@ -1348,9 +1348,9 @@ const fetchFxRates = useCallback(async () => {
 
 
   const amazonUK_Gross_USD = useMemo(() => {
-    const grossGBP = toNumberSafe(totals?.product_sales); // ✅ current gross
+    const grossGBP = toNumberSafe(totals?.gross_sales); // ✅ current gross
     return grossGBP * gbpToUsd;
-  }, [totals?.product_sales, gbpToUsd]);
+  }, [totals?.gross_sales, gbpToUsd]);
 
 
 

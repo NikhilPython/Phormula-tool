@@ -2535,6 +2535,7 @@ def fetch_conversion_rate(country: str, year: int, month_name: str,
 TOTAL_FIELDS = [
     "quantity",
     "product_sales",
+    "gross_sales",
     "product_sales_tax",
     "postage_credits",
     "shipping_credits",

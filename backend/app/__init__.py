@@ -21,20 +21,20 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
-    # ✅ IMPROVED Session setup for chatbot memory
-    app.config['SESSION_TYPE'] = 'filesystem'
-    app.config['SESSION_PERMANENT'] = True
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
+    # # ✅ IMPROVED Session setup for chatbot memory
+    # app.config['SESSION_TYPE'] = 'filesystem'
+    # app.config['SESSION_PERMANENT'] = True
+    # app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
     
-    # 🔧 ADD THESE MISSING SESSION CONFIGURATIONS:
-    app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
-    app.config['SESSION_KEY_PREFIX'] = 'chatbot:'  # Namespace for session keys
-    app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'  # Explicit session directory
-    app.config['SESSION_FILE_THRESHOLD'] = 500  # Max session files
+    # # 🔧 ADD THESE MISSING SESSION CONFIGURATIONS:
+    # app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
+    # app.config['SESSION_KEY_PREFIX'] = 'chatbot:'  # Namespace for session keys
+    # app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'  # Explicit session directory
+    # app.config['SESSION_FILE_THRESHOLD'] = 500  # Max session files
     
     
     # Initialize session AFTER setting all config
-    Session(app)
+    # Session(app)
     
     # Database configuration
     app.config['SQLALCHEMY_BINDS'] = {

@@ -39,12 +39,12 @@ class Config:
     SQLALCHEMY_DATABASE_AMAZON_URL = _env("DATABASE_AMAZON_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # --- Session ---
-    SESSION_COOKIE_SECURE   = _env_bool("SESSION_COOKIE_SECURE", True)
-    SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_NAME     = "chatbot_session"
-    PERMANENT_SESSION_DURATION = timedelta(hours=_env_int("SESSION_HOURS", 6) or 6)
+    # # --- Session ---
+    # SESSION_COOKIE_SECURE   = _env_bool("SESSION_COOKIE_SECURE", True)
+    # SESSION_COOKIE_HTTPONLY = True
+    # SESSION_COOKIE_SAMESITE = "Lax"
+    # SESSION_COOKIE_NAME     = "chatbot_session"
+    # PERMANENT_SESSION_DURATION = timedelta(hours=_env_int("SESSION_HOURS", 6) or 6)
 
     # --- Uploads ---
     @staticmethod
