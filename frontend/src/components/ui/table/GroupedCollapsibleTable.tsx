@@ -74,7 +74,7 @@ export default function GroupedCollapsibleTable<RowT>({
   getSignForCol,
   toggleGroupByColKey,
   onVisibleColCountChange,
-  tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042] text-xs 2xl:text-sm",
+  tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042] text-[10px] 2xl:text-xs ",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
 }: Props<RowT>) {
@@ -154,10 +154,9 @@ export default function GroupedCollapsibleTable<RowT>({
     return out;
   }, [resolvedLayout, collapsed, groupMap]);
 
-
-const thBase =
-  "whitespace-nowrap border border-gray-300 px-2 py-2";
-
+  const cellPadding = "px-2 sm:px-3 py-3";
+  const thBase =
+    `whitespace-nowrap border border-gray-300 ${cellPadding}`;
 
   /* ---------------- Render ---------------- */
 
@@ -275,18 +274,22 @@ const thBase =
                 onClick={isExpandable ? () => toggleGroup(targetGroupId!) : undefined}
                 role={isExpandable ? "button" : undefined}
                 title={isExpandable ? "Click to expand/collapse" : undefined}
-                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${isExpandable ? "relative cursor-pointer select-none pl-7" : ""
+                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${isExpandable ? "cursor-pointer select-none" : ""
                   }`}
               >
-                {c.label}
-                {isExpandable && (
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
-                    {isTargetCollapsed ? "+" : "−"}
-                  </span>
-                )}
+                <div className="flex items-center justify-center gap-2 min-w-0">
+                  {isExpandable && (
+                    <span className="shrink-0 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+                      {isTargetCollapsed ? "+" : "−"}
+                    </span>
+                  )}
 
+                  {/* label */}
+                  <span className="min-w-0 truncate">{c.label}</span>
+                </div>
               </th>
             );
+
           })}
         </tr>
 
@@ -312,7 +315,7 @@ const thBase =
               return (
                 <td
                   key={c.key}
-                  className={`border px-2 py-1 ${sign?.className || ""}`}
+                  className={`border ${cellPadding} ${sign?.className || ""}`}
                 >
                   {sign?.text || ""}
                 </td>
@@ -326,8 +329,9 @@ const thBase =
             {visibleLeafCols.map((c) => (
               <td
                 key={c.key}
-                className={`border px-2 py-1 ${alignClass(c.align)} ${c.tdClassName || ""}`}
+                className={`border ${cellPadding} ${alignClass(c.align)} ${c.tdClassName || ""}`}
               >
+
                 {getValue(row, c.key, idx)}
               </td>
             ))}

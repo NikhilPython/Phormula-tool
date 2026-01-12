@@ -327,10 +327,16 @@ const Section = ({
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-charcoal-600">
+      {/* <h3 className="text-sm font-semibold text-charcoal-600">
         {title}
-      </h3>
-      <ul className="list-disc pl-4 space-y-1 text-sm text-charcoal-500">
+      </h3> */}
+       <PageBreadcrumb
+              pageTitle= {title}
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+      <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-500">
         {bullets.map((b, i) => (
           <li
             key={i}

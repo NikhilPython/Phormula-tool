@@ -1565,7 +1565,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   return (
     <>
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-1 sm:p-2">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
             {/* <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" /> */}
@@ -1646,7 +1646,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   { type: "single", key: "profit" },
                 ]}
                 initialCollapsed={{
-                  units_breakdown: true,     // ✅ group id
+                  units_breakdown: true,
                   sales: true,
                   promotions_breakdown: true,
                   amazon_breakdown: true,
@@ -1664,10 +1664,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 onVisibleColCountChange={setMainColCount}
                 showSignRowInBody
                 getSignForCol={getSignForCol}
-                getRowClassName={(_, index) => {
-                  const isLastRow = index === tableData.length - 1;
-                  return `${index % 2 === 0 ? "bg-white" : "bg-gray-50"} ${isLastRow ? "bg-gray-200 font-semibold" : ""}`;
+                getRowClassName={(row, index) => {
+                  const isTotalRow =
+                    String((row as any)?.product_name || "")
+                      .trim()
+                      .toLowerCase() === "total";
+
+                  if (isTotalRow) {
+                    return "bg-[#D9D9D933] font-semibold";
+                  }
+
+                  return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                 }}
+
                 getValue={(row, colKey, rowIndex) => {
                   const isLastRow = rowIndex === tableData.length - 1;
 
@@ -1693,131 +1702,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 }}
               />
 
-              {/* Summary rows */}
-              {/* <table className="w-full table-auto border-collapse text-[#414042]">
-                <tbody>
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Cost of Advertisement <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.advertising_total, "advertising_total")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Visibility - Ads <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.visible_ads, "visible_ads")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Visibility - Deals, Vouchers and Reviews <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Other Transactions
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.other_transactions, "other_transactions")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Platform Fees <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.platform_fee, "platform_fee")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Inventory Storage Fees <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.inventory_storage_fees, "inventory_storage_fees")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Reimbursement for lost Inventory
-                      {totals.reimbursement_lost_inventory_units ? ` - ${totals.reimbursement_lost_inventory_units} Units ` : " "}
-                      <strong>(+)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.lost_total, "lost_total")}
-                    </td>
-                  </tr>
-
-                  {(countryName === "us" || countryName === "global") && (
-                    <tr>
-                      <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                        Shipment Charges <strong>(-)</strong>
-                      </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                        {formatValue(totals.shipment_charges, "shipment_charges")}
-                      </td>
-                    </tr>
-                  )}
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">CM2 Profit/Loss</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.cm2_profit, "cm2_profit")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">CM2 Margins</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.cm2_margins, "cm2_margins")}%
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Net Reimbursement
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(Math.abs(totals.reimbursement_lost_inventory_amount), "reimbursement_lost_inventory_amount")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">TACoS (Total Advertising Cost of Sale)</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.acos, "acos")}%
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">Reimbursement vs CM2 Margins</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">Reimbursement vs Sales</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%
-                    </td>
-                  </tr>
-                </tbody>
-              </table> */}
-
               {mainColCount > 0 && (
                 <table className="w-full table-auto border-collapse text-[#414042]">
                   <tbody>
@@ -1831,7 +1715,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       {/* Label spans all columns except last 2 */}
                       <td
                         colSpan={Math.max(mainColCount - 2, 1)}
-                        className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
+                        className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs "
                       >
                         <span className="inline-flex items-center gap-2">
                           <span className="rounded border border-gray-400 px-1 text-xs">
@@ -1842,10 +1726,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       </td>
 
                       {/* Expanded column (blank on parent) */}
-                      <td className="border border-gray-300 px-2 py-2" />
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3" />
 
                       {/* ✅ Parent total ALWAYS in LAST column */}
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {formatValue(totals.advertising_total, "advertising_total")}
                       </td>
                     </tr>
@@ -1855,35 +1739,35 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         <tr>
                           <td
                             colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs "
                           >
-                            Visibility - Ads <strong>(-)</strong>
+                            Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong>
                           </td>
 
                           {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                             {formatValue(totals.visible_ads, "visible_ads")}
                           </td>
 
                           {/* end col blank */}
-                          <td className="border border-gray-300 px-2 py-2" />
+                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
                         </tr>
 
                         <tr>
                           <td
                             colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs"
                           >
-                            Visibility - Deals, Vouchers and Reviews <strong>(-)</strong>
+                            Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong>
                           </td>
 
                           {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                             {formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads")}
                           </td>
 
                           {/* end col blank */}
-                          <td className="border border-gray-300 px-2 py-2" />
+                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
                         </tr>
                       </>
                     )}
@@ -1897,7 +1781,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     >
                       <td
                         colSpan={Math.max(mainColCount - 2, 1)}
-                        className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
+                        className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs"
                       >
                         <span className="inline-flex items-center gap-2">
                           <span className="rounded border border-gray-400 px-1 text-xs">
@@ -1908,10 +1792,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       </td>
 
                       {/* Expanded column (blank on parent) */}
-                      <td className="border border-gray-300 px-2 py-2" />
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3" />
 
                       {/* ✅ Parent total ALWAYS in LAST column */}
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {formatValue(totals.other_transactions, "other_transactions")}
                       </td>
                     </tr>
@@ -1922,53 +1806,53 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         <tr>
                           <td
                             colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs"
                           >
-                            Platform Fees <strong>(-)</strong>
+                            Platform Fees <strong className="text-[#ff5c5c]">(-)</strong>
                           </td>
 
                           {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                             {formatValue(totals.platform_fee, "platform_fee")}
                           </td>
 
-                          <td className="border border-gray-300 px-2 py-2" />
+                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
                         </tr>
 
                         <tr>
                           <td
                             colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs"
                           >
-                            Inventory Storage Fees <strong>(-)</strong>
+                            Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong>
                           </td>
 
                           {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                             {formatValue(totals.inventory_storage_fees, "inventory_storage_fees")}
                           </td>
 
-                          <td className="border border-gray-300 px-2 py-2" />
+                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
                         </tr>
 
                         <tr>
                           <td
                             colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs"
                           >
                             Reimbursement for lost Inventory
                             {totals.reimbursement_lost_inventory_units
                               ? ` - ${totals.reimbursement_lost_inventory_units} Units `
                               : " "}
-                            <strong>(+)</strong>
+                            <strong className="text-green-500">(+)</strong>
                           </td>
 
                           {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                             {formatValue(totals.lost_total, "lost_total")}
                           </td>
 
-                          <td className="border border-gray-300 px-2 py-2" />
+                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
                         </tr>
                       </>
                     )}
@@ -1978,16 +1862,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       <tr>
                         <td
                           colSpan={8}
-                          className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
+                          className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs"
                         >
                           Shipment Charges <strong>(-)</strong>
                         </td>
 
                         {/* blank 2nd last */}
-                        <td className="border border-gray-300 px-2 py-2" />
+                        <td className="border border-gray-300 px-2 sm:px-3 py-3" />
 
                         {/* ✅ value in LAST */}
-                        <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-right text-[clamp(12px,0.729vw,16px)]">
+                        <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-right text-[10px] 2xl:text-xs">
                           {formatValue(totals.shipment_charges, "shipment_charges")}
                         </td>
                       </tr>
@@ -2019,15 +1903,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       <tr key={r.label}>
                         <td
                           colSpan={6}
-                          className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
+                          className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs"
                         >
                           {r.label}
                         </td>
 
-                        <td colSpan={2} className="border border-gray-300 px-2 py-2" />
+                        <td colSpan={2} className="border border-gray-300 px-2 sm:px-3 py-3" />
 
                         {/* ✅ value in LAST */}
-                        <td colSpan={2} className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                        <td colSpan={2} className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                           {r.value}
                         </td>
                       </tr>
@@ -2043,7 +1927,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       </div>
 
       {/* Top & Bottom tables */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-1 sm:p-2">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
           {/* Top 5 */}
           <div className="flex-1 min-w-0">
@@ -2055,19 +1939,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-green-500 font-bold text-[#f8edcf]">
-                    <th className="w-[160px] whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Product Name
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       CM1 Profit ({currencySymbol})
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Profit Mix (%)
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Sales Mix (%)
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       CM1 Profit per Unit ({currencySymbol})
                     </th>
                   </tr>
@@ -2075,40 +1959,41 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <tbody>
                   {topData.rows.map((item, index) => (
                     <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                      <td className="w-[160px] whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                        <span className="flex max-w-[220px] items-center truncate" title={item.product_name}>
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs whitespace-normal break-words align-top">
+                        <span title={item.product_name} className="block">
                           {item.product_name || "-"}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.profit}
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.profitMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.salesMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.unit_wise_profitability}
                       </td>
                     </tr>
                   ))}
 
                   <tr className="bg-gray-200 font-semibold">
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
                       <strong>Total</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{topData.totals.profit}</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{topData.totals.profitMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{topData.totals.salesMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong></strong>
                     </td>
                   </tr>
@@ -2127,19 +2012,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-[#B75A5A] font-bold text-[#f8edcf]">
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Product Name
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       CM1 Profit ({currencySymbol})
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Profit Mix (%)
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Sales Mix (%)
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       CM1 Profit per Unit ({currencySymbol})
                     </th>
                   </tr>
@@ -2147,40 +2032,41 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <tbody>
                   {bottomData.rows.map((item, index) => (
                     <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                        <span className="inline-flex max-w-[220px] items-center truncate" title={item.product_name}>
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs whitespace-normal break-words align-top">
+                        <span title={item.product_name} className="block">
                           {item.product_name || "-"}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.profit}
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.profitMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.salesMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.unit_wise_profitability}
                       </td>
                     </tr>
                   ))}
 
                   <tr className="bg-gray-200 font-semibold">
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
                       <strong>Total</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{bottomData.totals.profit}</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{bottomData.totals.profitMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{bottomData.totals.salesMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong></strong>
                     </td>
                   </tr>
