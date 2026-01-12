@@ -19,10 +19,19 @@ import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import { ALL_PLATFORM_DEFS, type PlatformId } from "@/lib/utils/platforms";
 import ReactCountryFlag from "react-country-flag";
 import { FaPlus } from "react-icons/fa6";
-import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataTable"; 
+import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataTable";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { useSelector } from "react-redux";
 
+const safeJson = (val: any) => {
+  try {
+    if (!val) return null;
+    if (typeof val === "object") return val;
+    return JSON.parse(val);
+  } catch {
+    return null;
+  }
+};
 
 type FormState = {
   brand_name: string;
@@ -31,8 +40,18 @@ type FormState = {
   email: string;
   phone_number: string;
   homeCurrency: string;
-  target_sales: string; 
+  target_sales: string;
+
+  gst_no: string;
+  pan_no: string;
+
+  address_building: string;
+  address_city: string;
+  address_country: string;
+  address_state: string;
+  address_zipcode: string;
 };
+
 
 type Section = "personal" | "company" | "targets";
 
@@ -129,7 +148,7 @@ const platformToCountry = (pid: PlatformId) => {
   if (pid === "amazon-us") return "us";
   if (pid === "amazon-uk") return "uk";
   if (pid === "amazon-ca") return "ca";
-  return "global"; 
+  return "global";
 };
 
 function InfoCard({
@@ -165,10 +184,14 @@ function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+
+
+
+
 export default function UserInfoCard() {
 
-const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
-const [ratesLoading, setRatesLoading] = useState(false);
+  const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
+  const [ratesLoading, setRatesLoading] = useState(false);
   const { isOpen, openModal, closeModal } = useModal();
 
   // ✅ route param from /country/{range}/{country}/{month}/{year} (may be undefined on profile pages)
@@ -177,13 +200,13 @@ const [ratesLoading, setRatesLoading] = useState(false);
   // ✅ connected marketplaces (from your existing hook)
   const connected = useConnectedPlatforms();
   const connectedPlatformsForTargets = useMemo(() => {
-  const ids: PlatformId[] = [];
-  if (connected.amazonUs) ids.push("amazon-us");
-  if (connected.amazonUk) ids.push("amazon-uk");
-  if (connected.amazonCa) ids.push("amazon-ca");
-  if (connected.shopify) ids.push("shopify");
-  return ids;
-}, [connected.amazonUs, connected.amazonUk, connected.amazonCa, connected.shopify]);
+    const ids: PlatformId[] = [];
+    if (connected.amazonUs) ids.push("amazon-us");
+    if (connected.amazonUk) ids.push("amazon-uk");
+    if (connected.amazonCa) ids.push("amazon-ca");
+    if (connected.shopify) ids.push("shopify");
+    return ids;
+  }, [connected.amazonUs, connected.amazonUk, connected.amazonCa, connected.shopify]);
 
   const pagePlatform: PlatformId = useMemo(() => {
     const c = (params?.country || "").toLowerCase();
@@ -219,76 +242,77 @@ const [ratesLoading, setRatesLoading] = useState(false);
   );
 
   const { data, isLoading, isError } = useGetUserDataQuery();
+  console.log("User data123:", data);
 
-const token = useSelector((state: any) => state.auth?.token); 
+  const token = useSelector((state: any) => state.auth?.token);
 
 
-useEffect(() => {
-  if (!token) return; // ✅ wait for redux token
+  useEffect(() => {
+    if (!token) return; // ✅ wait for redux token
 
-  const fetchRates = async () => {
-    try {
-      setRatesLoading(true);
+    const fetchRates = async () => {
+      try {
+        setRatesLoading(true);
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/currency-rates`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/currency-rates`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Failed to fetch rates: ${res.status} ${errText}`);
         }
-      );
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Failed to fetch rates: ${res.status} ${errText}`);
+        const json = await res.json();
+        setCurrencyRates(json);
+      } catch (e) {
+        console.error(e);
+        setCurrencyRates([]);
+      } finally {
+        setRatesLoading(false);
       }
+    };
 
-      const json = await res.json();
-      setCurrencyRates(json);
-    } catch (e) {
-      console.error(e);
-      setCurrencyRates([]);
-    } finally {
-      setRatesLoading(false);
+    fetchRates();
+  }, [token]);
+
+
+  const rateMap = useMemo(() => {
+    // key: "usd|gb|uk"
+    const map = new Map<string, number>();
+
+    for (const r of currencyRates) {
+      const key = `${r.user_currency}|${r.selected_currency}|${r.country}`;
+      map.set(key, Number(r.conversion_rate));
     }
+
+    return map;
+  }, [currencyRates]);
+
+
+  const getFxDb = (from: string, to: string, country: string) => {
+    const f = (from || "").toLowerCase();
+    const t = (to || "").toLowerCase();
+    const c = (country || "").toLowerCase();
+
+    if (f === t) return 1;
+
+    // direct
+    const direct = rateMap.get(`${f}|${t}|${c}`);
+    if (direct != null) return direct;
+
+    // inverse (if only opposite exists)
+    const inv = rateMap.get(`${t}|${f}|${c}`);
+    if (inv != null && inv !== 0) return 1 / inv;
+
+    // fallback 1 if missing
+    return 1;
   };
-
-  fetchRates();
-}, [token]);
-
-
-const rateMap = useMemo(() => {
-  // key: "usd|gb|uk"
-  const map = new Map<string, number>();
-
-  for (const r of currencyRates) {
-    const key = `${r.user_currency}|${r.selected_currency}|${r.country}`;
-    map.set(key, Number(r.conversion_rate));
-  }
-
-  return map;
-}, [currencyRates]);
-
-
-const getFxDb = (from: string, to: string, country: string) => {
-  const f = (from || "").toLowerCase();
-  const t = (to || "").toLowerCase();
-  const c = (country || "").toLowerCase();
-
-  if (f === t) return 1;
-
-  // direct
-  const direct = rateMap.get(`${f}|${t}|${c}`);
-  if (direct != null) return direct;
-
-  // inverse (if only opposite exists)
-  const inv = rateMap.get(`${t}|${f}|${c}`);
-  if (inv != null && inv !== 0) return 1 / inv;
-
-  // fallback 1 if missing
-  return 1;
-};
 
 
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
@@ -301,7 +325,17 @@ const getFxDb = (from: string, to: string, country: string) => {
     phone_number: "",
     homeCurrency: "",
     target_sales: "",
+
+    gst_no: "",
+    pan_no: "",
+
+    address_building: "",
+    address_city: "",
+    address_country: "",
+    address_state: "",
+    address_zipcode: "",
   });
+
 
   // ✅ per-section edit state
   const [activeSection, setActiveSection] = useState<Section>("personal");
@@ -311,93 +345,106 @@ const getFxDb = (from: string, to: string, country: string) => {
   };
 
   const homeCurrencyCode = (
-  (data as any)?.homeCurrency ||
-  form.homeCurrency ||
-  pageCurrency ||
-  "USD"
-).toUpperCase();
+    (data as any)?.homeCurrency ||
+    form.homeCurrency ||
+    pageCurrency ||
+    "USD"
+  ).toUpperCase();
 
-const baseNativeTarget = Number((data as any)?.target_sales ?? 0);
+  const baseNativeTarget = Number((data as any)?.target_sales ?? 0);
 
-const monthlyTargetData: TargetRow[] = useMemo(() => {
-  const rows: TargetRow[] = connectedPlatformsForTargets.map((pid, idx) => {
-    const meta =
-      PLATFORM_TARGET_META[pid] ?? { marketplace: String(pid), currencySymbol: "" };
+  const monthlyTargetData: TargetRow[] = useMemo(() => {
+    const rows: TargetRow[] = connectedPlatformsForTargets.map((pid, idx) => {
+      const meta =
+        PLATFORM_TARGET_META[pid] ?? { marketplace: String(pid), currencySymbol: "" };
 
-    const nativeCurrency = platformToCurrencyCode(pid) || homeCurrencyCode;
-    const country = platformToCountry(pid);
+      const nativeCurrency = platformToCurrencyCode(pid) || homeCurrencyCode;
+      const country = platformToCountry(pid);
 
-    // ✅ conversion rate (native -> home)
-    const nativeToHome = getFxDb(nativeCurrency, homeCurrencyCode, country);
+      // ✅ conversion rate (native -> home)
+      const nativeToHome = getFxDb(nativeCurrency, homeCurrencyCode, country);
 
-    // ✅ home target = native target * rate
-    const homeTarget = baseNativeTarget * nativeToHome;
+      // ✅ home target = native target * rate
+      const homeTarget = baseNativeTarget * nativeToHome;
 
-    return {
-      sno: `${idx + 1}.`,
-      marketplace: meta.marketplace,
-      targetNative: money(baseNativeTarget, nativeCurrency),
-      conversion: nativeCurrency === homeCurrencyCode ? "-" : nativeToHome.toFixed(3),
-      targetHome: money(homeTarget, homeCurrencyCode),
-    };
-  });
-
-  // ✅ Total row = sum of all home targets
-  if (rows.length) {
-    const totalHome = rows.reduce((sum, row: any) => {
-      const num = Number(String(row.targetHome).replace(/[^0-9.-]+/g, ""));
-      return sum + (Number.isFinite(num) ? num : 0);
-    }, 0);
-
-    rows.push({
-      sno: "",
-      marketplace: "Total",
-      targetNative: "",
-      conversion: "",
-      targetHome: money(totalHome, homeCurrencyCode),
-      __isTotal: true,
+      return {
+        sno: `${idx + 1}.`,
+        marketplace: meta.marketplace,
+        targetNative: money(baseNativeTarget, nativeCurrency),
+        conversion: nativeCurrency === homeCurrencyCode ? "-" : nativeToHome.toFixed(3),
+        targetHome: money(homeTarget, homeCurrencyCode),
+      };
     });
-  }
 
-  return rows;
-}, [connectedPlatformsForTargets, baseNativeTarget, homeCurrencyCode, rateMap]);
+    // ✅ Total row = sum of all home targets
+    if (rows.length) {
+      const totalHome = rows.reduce((sum, row: any) => {
+        const num = Number(String(row.targetHome).replace(/[^0-9.-]+/g, ""));
+        return sum + (Number.isFinite(num) ? num : 0);
+      }, 0);
 
-const monthlyTargetColumns: ColumnDef<TargetRow>[] = useMemo(
-  () => [
-    { key: "sno", header: "S.No.", width: "60px" },
-    { key: "marketplace", header: "Marketplace", width: "180px" },
-    { key: "targetNative", header: "Target (Native Currency)", width: "220px" },
-    { key: "conversion", header: `Conversion Rate ${homeCurrencyCode})`, width: "210px" },
-    // ✅ REPLACES "Target (Global Currency)"
-    { key: "targetHome", header: `Target (${homeCurrencyCode})`, width: "200px" },
-  ],
-  [homeCurrencyCode]
-);
+      rows.push({
+        sno: "",
+        marketplace: "Total",
+        targetNative: "",
+        conversion: "",
+        targetHome: money(totalHome, homeCurrencyCode),
+        __isTotal: true,
+      });
+    }
+
+    return rows;
+  }, [connectedPlatformsForTargets, baseNativeTarget, homeCurrencyCode, rateMap]);
+
+  const monthlyTargetColumns: ColumnDef<TargetRow>[] = useMemo(
+    () => [
+      { key: "sno", header: "S.No.", width: "60px" },
+      { key: "marketplace", header: "Marketplace", width: "180px" },
+      { key: "targetNative", header: "Target (Native Currency)", width: "220px" },
+      { key: "conversion", header: `Conversion Rate ${homeCurrencyCode})`, width: "210px" },
+      // ✅ REPLACES "Target (Global Currency)"
+      { key: "targetHome", header: `Target (${homeCurrencyCode})`, width: "200px" },
+    ],
+    [homeCurrencyCode]
+  );
 
 
   // ✅ compute effective currency AFTER data + form exist
   const effectiveCurrency =
     pageCurrency || form.homeCurrency || (data as any)?.homeCurrency || "USD";
 
-  // seed form once data arrives/changes
   useEffect(() => {
-    if (data) {
-      setForm({
-        brand_name: data.brand_name ?? "",
-        company_name: data.company_name ?? "",
-        annual_sales_range: data.annual_sales_range ?? "",
-        email: data.email ?? "",
-        phone_number: data.phone_number ?? "",
-        homeCurrency: (data as any).homeCurrency ?? "",
-        target_sales:
-          (data as any).target_sales != null
-            ? String((data as any).target_sales)
-            : "",
-      });
-    }
+    if (!data) return;
+
+    const tax = (data as any)?.tax_id ?? {};
+    const addr = (data as any)?.address ?? {};
+
+    setForm({
+      brand_name: data.brand_name ?? "",
+      company_name: data.company_name ?? "",
+      annual_sales_range: data.annual_sales_range ?? "",
+      email: data.email ?? "",
+      phone_number: data.phone_number ?? "",
+      homeCurrency: (data as any).homeCurrency ?? "",
+      target_sales:
+        (data as any).target_sales != null
+          ? String((data as any).target_sales)
+          : "",
+
+      gst_no: tax.gst_no ?? "",
+      pan_no: tax.pan_no ?? "",
+
+      address_building: addr.building ?? "",
+      address_city: addr.city ?? "",
+      address_country: addr.country ?? "",
+      address_state: addr.state ?? "",
+      address_zipcode: addr.zipcode ?? "",
+    });
   }, [data]);
 
-  // ✅ OPTIONAL: if homeCurrency not set yet, default it from current country page
+
+
+
   useEffect(() => {
     if (pageCurrency && !form.homeCurrency) {
       setForm((prev) => ({ ...prev, homeCurrency: pageCurrency }));
@@ -409,32 +456,44 @@ const monthlyTargetColumns: ColumnDef<TargetRow>[] = useMemo(
 
   const handleInput =
     (key: keyof FormState) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      setForm((prev) => ({ ...prev, [key]: e.target.value }));
-    };
+      (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        setForm((prev) => ({ ...prev, [key]: e.target.value }));
+      };
 
-const buildPayloadBySection = () => {
-  if (activeSection === "personal") {
+  const buildPayloadBySection = () => {
+    if (activeSection === "personal") {
+      return {
+        phone_number: form.phone_number,
+      };
+    }
+
+    if (activeSection === "company") {
+      return {
+        brand_name: form.brand_name,
+        company_name: form.company_name,
+        annual_sales_range: form.annual_sales_range,
+        homeCurrency: form.homeCurrency,
+
+        tax_id: {
+          gst_no: form.gst_no,
+          pan_no: form.pan_no,
+        },
+        address: {
+          building: form.address_building,
+          city: form.address_city,
+          country: form.address_country,
+          state: form.address_state,
+          zipcode: form.address_zipcode,
+        },
+
+      };
+    }
+
+    // ✅ targets
     return {
-      phone_number: form.phone_number,
+      target_sales: form.target_sales === "" ? null : Number(form.target_sales),
     };
-  }
-
-  if (activeSection === "company") {
-    return {
-      brand_name: form.brand_name,
-      company_name: form.company_name,
-      annual_sales_range: form.annual_sales_range,
-      homeCurrency: form.homeCurrency,
-      // ✅ removed target_sales from Company section
-    };
-  }
-
-  // ✅ targets
-  return {
-    target_sales: form.target_sales === "" ? null : Number(form.target_sales),
   };
-};
 
   const handleSave = async () => {
     try {
@@ -478,15 +537,15 @@ const buildPayloadBySection = () => {
     activeSection === "personal"
       ? "Edit Personal Info"
       : activeSection === "company"
-      ? "Edit Company Info"
-      : "Edit Monthly Targets";
+        ? "Edit Company Info"
+        : "Edit Monthly Targets";
 
   const modalSubtitle =
     activeSection === "personal"
       ? "Update your contact and password settings."
       : activeSection === "company"
-      ? "Update your company and business details."
-      : "Update your marketplace targets.";
+        ? "Update your company and business details."
+        : "Update your marketplace targets.";
 
   return (
     <div className="">
@@ -504,27 +563,27 @@ const buildPayloadBySection = () => {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <InfoCard
               title={
-    <PageBreadcrumb
-      pageTitle="Personal Info"
-      variant="table"
-      align="left"
-      // textSize="base"
-    />
-  }
+                <PageBreadcrumb
+                  pageTitle="Personal Info"
+                  variant="table"
+                  align="left"
+                // textSize="base"
+                />
+              }
               action={
-  <button
-    onClick={() => openSection("targets")}
-    className="
+                <button
+                  onClick={() => openSection("targets")}
+                  className="
       inline-flex items-center justify-center
       h-9 w-9
       text-gray-700
       
     "
-    aria-label="Edit"
-  >
-    <FiEdit className="text-lg" />
-  </button>
-}
+                  aria-label="Edit"
+                >
+                  <FiEdit className="text-lg" />
+                </button>
+              }
             >
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <InfoItem label="Email" value={show(data?.email)} />
@@ -534,17 +593,16 @@ const buildPayloadBySection = () => {
                   value={
                     <span
                       onClick={handleForgotPassword}
-                      className={`cursor-pointer ${
-                        isSuccess
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-blue-600 hover:underline"
-                      }`}
+                      className={`cursor-pointer ${isSuccess
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-blue-600 hover:underline"
+                        }`}
                     >
                       {isSending
                         ? "Sending..."
                         : isSuccess
-                        ? "Email sent for password reset"
-                        : "Click here to change password"}
+                          ? "Email sent for password reset"
+                          : "Click here to change password"}
                     </span>
                   }
                 />
@@ -553,30 +611,30 @@ const buildPayloadBySection = () => {
 
             {/* Company Info */}
             <InfoCard
-               title={
-    <PageBreadcrumb
-      pageTitle="Company Info"
-      variant="table"
-      align="left"
-      // textSize="base"
-    />
-  }
+              title={
+                <PageBreadcrumb
+                  pageTitle="Company Info"
+                  variant="table"
+                  align="left"
+                // textSize="base"
+                />
+              }
               action={
-  <button
-    onClick={() => openSection("company")}
-    className="
+                <button
+                  onClick={() => openSection("company")}
+                  className="
       inline-flex items-center justify-center
       h-9 w-9
       text-gray-700
       
     "
-    aria-label="Edit"
-  >
-    <FiEdit className="text-lg" />
-  </button>
-}
+                  aria-label="Edit"
+                >
+                  <FiEdit className="text-lg" />
+                </button>
+              }
             >
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                 <InfoItem label="Company Name" value={show(data?.company_name)} />
                 <InfoItem label="Brand Name" value={show(data?.brand_name)} />
                 <InfoItem
@@ -587,131 +645,140 @@ const buildPayloadBySection = () => {
                   label="Revenue"
                   value={show(data?.annual_sales_range)}
                 />
-                {/* <InfoItem
-                  label="Target Sales"
-                  value={formatCurrency((data as any)?.target_sales, effectiveCurrency)}
-                /> */}
-            </div>
+                <InfoItem label="GST No." value={show((data as any)?.tax_id?.gst_no)} />
+                <InfoItem label="PAN No." value={show((data as any)?.tax_id?.pan_no)} />
+                <InfoItem
+                  label="Address"
+                  value={(() => {
+                    const a = (data as any)?.address || {};
+                    const full = [a.building, a.city, a.state, a.country, a.zipcode]
+                      .filter(Boolean)
+                      .join(", ");
+                    return show(full);
+                  })()}
+                />
+
+              </div>
             </InfoCard>
 
             {/* Integrations (placeholder) */}
-              <div className="lg:col-span-2">
-         <InfoCard 
-          title={
-    <PageBreadcrumb
-      pageTitle="Integrations"
-      variant="table"
-      align="left"
-      // textSize="base"
-    />
-  }>
-  {(() => {
-    const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
-      platformIsConnected(p.id, connected)
-    );
-
-    if (connectedPlatforms.length === 0) {
-      return (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          No platforms connected yet.
-        </p>
-      );
-    }
-
-    return (
-      <>
-        {/* Connected platforms */}
-        <div className="space-y-3">
-          {connectedPlatforms.map((p) => {
-            const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
-
-            return (
-              <div key={p.id} className="flex items-center gap-3">
-                {meta.countryCode && (
-                  <ReactCountryFlag
-                    svg
-                    countryCode={meta.countryCode as any}
-                    className="text-[22px] leading-none"
-                    aria-label={meta.label}
+            <div className="lg:col-span-2">
+              <InfoCard
+                title={
+                  <PageBreadcrumb
+                    pageTitle="Integrations"
+                    variant="table"
+                    align="left"
+                  // textSize="base"
                   />
-                )}
+                }>
+                {(() => {
+                  const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
+                    platformIsConnected(p.id, connected)
+                  );
 
-                <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                  {meta.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+                  if (connectedPlatforms.length === 0) {
+                    return (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        No platforms connected yet.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <>
+                      {/* Connected platforms */}
+                      <div className="space-y-3">
+                        {connectedPlatforms.map((p) => {
+                          const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
+
+                          return (
+                            <div key={p.id} className="flex items-center gap-3">
+                              {meta.countryCode && (
+                                <ReactCountryFlag
+                                  svg
+                                  countryCode={meta.countryCode as any}
+                                  className="text-[22px] leading-none"
+                                  aria-label={meta.label}
+                                />
+                              )}
+
+                              <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                                {meta.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
 
 
 
-        {/* + Integrate more marketplaces */}
-<Link
-  href=""
-  className="
+                      {/* + Integrate more marketplaces */}
+                      <Link
+                        href=""
+                        className="
     inline-flex items-center gap-2
     text-sm font-semibold text-green-500 dark:text-emerald-400
     mt-4 whitespace-nowrap
     border-b border-transparent
     hover:border-green-500 dark:hover:border-emerald-400
   "
->
-  <FaPlus size={12} />
-  <span>Integrate more marketplaces</span>
-</Link>
+                      >
+                        <FaPlus size={12} />
+                        <span>Integrate more marketplaces</span>
+                      </Link>
 
-      </>
-    );
-  })()}
-</InfoCard>
+                    </>
+                  );
+                })()}
+              </InfoCard>
 
-  </div>
+            </div>
 
- {/* Row 3 - full width */}
-  <div className="lg:col-span-2">
-            <InfoCard
-  title={
-    <PageBreadcrumb
-      pageTitle="Monthly Targets"
-      variant="table"
-      align="left"
-      // textSize="base"
-    />
-  }
-action={
-  <button
-    onClick={() => openSection("targets")}
-    className="
+            {/* Row 3 - full width */}
+            <div className="lg:col-span-2">
+              <InfoCard
+                title={
+                  <PageBreadcrumb
+                    pageTitle="Monthly Targets"
+                    variant="table"
+                    align="left"
+                  // textSize="base"
+                  />
+                }
+                action={
+                  <button
+                    onClick={() => openSection("targets")}
+                    className="
       inline-flex items-center justify-center
       h-9 w-9
       text-gray-700
       
     "
-    aria-label="Edit"
-  >
-    <FiEdit className="text-lg" />
-  </button>
-}
+                    aria-label="Edit"
+                  >
+                    <FiEdit className="text-lg" />
+                  </button>
+                }
 
->
-  <DataTable
-    columns={monthlyTargetColumns}
-    data={monthlyTargetData}
-    paginate={false}
-    scrollY={false}
-    stickyHeader={false}
-    emptyMessage={
-  ratesLoading ? "Loading currency rates..." : "No connected marketplaces."
-}
+              >
+                <DataTable
+                  columns={monthlyTargetColumns}
+                  data={monthlyTargetData}
+                  paginate={false}
+                  scrollY={false}
+                  stickyHeader={false}
+                  emptyMessage={
+                    ratesLoading ? "Loading currency rates..." : "No connected marketplaces."
+                  }
 
-    className="rounded-xl"
-    rowClassName={(row) =>
-      row.__isTotal ? "font-semibold bg-slate-50" : ""
-    }
-  />
-</InfoCard>
-  </div>
+                  className="rounded-xl"
+                  rowClassName={(row) =>
+                    row.__isTotal ? "font-semibold bg-slate-50" : ""
+                  }
+                />
+              </InfoCard>
+            </div>
 
           </div>
         </div>
@@ -719,18 +786,26 @@ action={
 
       {/* ---- MODAL ---- */}
       <Modal isOpen={isOpen} onClose={closeModal} className="max-w-[700px] m-4">
-        <div className="no-scrollbar relative w-full max-w-[700px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
+        <div className="no-scrollbar relative w-full max-w-[700px] overflow-y-auto  rounded-2xl border border-gray-200 bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
-            <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
+            {/* <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
               {modalTitle}
-            </h4>
-            <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
+            </h4> */}
+
+            <PageBreadcrumb
+              pageTitle={modalTitle}
+              variant="table"
+              align="left"
+              textSize="2xl"
+            />
+
+            <p className="mb-6 text-sm text-charcoal-500 ">
               {modalSubtitle}
             </p>
           </div>
 
           <form className="flex flex-col" onSubmit={(e) => e.preventDefault()}>
-            <div className="custom-scrollbar h-[450px] overflow-y-auto px-2 pb-3">
+            <div className="custom-scrollbar h-full overflow-y-auto px-2 pb-3">
               <div className="mt-2">
                 <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
                   {/* PERSONAL */}
@@ -754,17 +829,16 @@ action={
                         <Label>Reset Password</Label>
                         <p
                           onClick={handleForgotPassword}
-                          className={`text-sm font-medium cursor-pointer ${
-                            isSuccess
-                              ? "text-green-600 dark:text-green-400"
-                              : "text-blue-600 hover:underline"
-                          }`}
+                          className={`text-sm font-medium cursor-pointer ${isSuccess
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-blue-600 hover:underline"
+                            }`}
                         >
                           {isSending
                             ? "Sending..."
                             : isSuccess
-                            ? "Email sent for password reset"
-                            : "Click here to change password"}
+                              ? "Email sent for password reset"
+                              : "Click here to change password"}
                         </p>
                       </div>
                     </>
@@ -822,45 +896,83 @@ action={
                           ))}
                         </select>
                       </div>
+                      <div className="col-span-2 lg:col-span-1">
+                        <Label>GST No.</Label>
+                        <Input type="text" value={form.gst_no} onChange={handleInput("gst_no")} />
+                      </div>
 
-                     
+                      <div className="col-span-2 lg:col-span-1">
+                        <Label>PAN No.</Label>
+                        <Input type="text" value={form.pan_no} onChange={handleInput("pan_no")} />
+                      </div>
+
+                      {/* Address block */}
+                      <div className="col-span-2">
+                        <Label>Address</Label>
+
+                        <div className="grid grid-cols-1 gap-4">
+                          {/* Building */}
+                          <Input
+                            type="text"
+                            placeholder="Building No."
+                            value={form.address_building}
+                            onChange={handleInput("address_building")}
+                          />
+
+                          {/* City */}
+                          <Input
+                            type="text"
+                            placeholder="City"
+                            value={form.address_city}
+                            onChange={handleInput("address_city")}
+                          />
+
+                          {/* ✅ 3 columns row: Country / State / Zipcode */}
+                          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                            <Input
+                              type="text"
+                              placeholder="Country/Region"
+                              value={form.address_country}
+                              onChange={handleInput("address_country")}
+                            />
+
+                            <Input
+                              type="text"
+                              placeholder="State"
+                              value={form.address_state}
+                              onChange={handleInput("address_state")}
+                            />
+
+                            <Input
+                              type="text"
+                              placeholder="Zipcode"
+                              value={form.address_zipcode}
+                              onChange={handleInput("address_zipcode")}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+
                     </>
                   )}
 
                   {activeSection === "targets" && (
-  <>
-    {/* ✅ Edit Monthly Target (same input moved from Company) */}
-    <div className="col-span-2 lg:col-span-1">
-      <Label>Monthly Target ({homeCurrencyCode})</Label>
-      <Input
-        type="number"
-        inputMode="numeric"
-        step={1}
-        min="0"
-        value={form.target_sales}
-        onChange={handleInput("target_sales")}
-      />
-    </div>
-
-    {/* <div className="col-span-2">
-      <div className="mt-3">
-        <DataTable
-          columns={monthlyTargetColumns}
-          data={monthlyTargetData}
-          paginate={false}
-          scrollY={false}
-          stickyHeader={false}
-          emptyMessage="No connected marketplaces."
-          className="rounded-xl"
-          rowClassName={(row) =>
-            // @ts-expect-error
-            row.__isTotal ? "font-semibold bg-slate-50" : ""
-          }
-        />
-      </div>
-    </div> */}
-  </>
-)}
+                    <>
+                      {/* ✅ Edit Monthly Target (same input moved from Company) */}
+                      <div className="col-span-2 lg:col-span-1">
+                        <Label>Monthly Target ({homeCurrencyCode})</Label>
+                        <Input
+                          type="number"
+                          inputMode="numeric"
+                          step={1}
+                          min="0"
+                          value={form.target_sales}
+                          onChange={handleInput("target_sales")}
+                        />
+                      </div>
+                    </>
+                  )}
 
                 </div>
               </div>

@@ -440,6 +440,104 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [tableData, getDisplayProductNameFromRow]);
 
 
+  const getTitle = useCallback(() => `Profit Breakup (SKU Level)`, []);
+
+const getExtraRows = useCallback(() => {
+  const formattedCountry = isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase();
+  return [
+    [`${userData?.brand_name || "N/A"}`],
+    [`${userData?.company_name || "N/A"}`],
+    [getTitle()],
+    [`Currency:  ${currencySymbol}`],
+    [`Country: ${formattedCountry}`],
+    [`Platform: Amazon`],
+  ];
+}, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
+
+
+  const buildSkuSheetModel = useCallback(() => {
+    const { columnsToDisplay2, rowsForExcel } = buildExcelTableData();
+
+    const headerRow: Record<string, string> = {
+      product_name: "Product Name",
+      quantity: "Quantity Sold",
+      asp: "ASP",
+      product_sales: "Gross Sales",
+      net_sales: "Net Sales",
+      cost_of_unit_sold: "Cost of Goods Sold",
+      amazon_fee: "Amazon Fees",
+      selling_fees: "Selling Fees",
+      fba_fees: "FBA fees",
+      net_credits: "Net Credits",
+      net_taxes: "Net Taxes",
+      profit: "CM1 Profit",
+      profit_percentage: "CM1 Profit (%)",
+      unit_wise_profitability: "CM1 Profit per Unit",
+    };
+
+    const signRow: Record<string, string> = {
+      net_sales: "(+)",
+      cost_of_unit_sold: "(-)",
+      amazon_fee: "(-)",
+      selling_fees: "(-)",
+      fba_fees: "(-)",
+      net_credits: "(+)",
+    };
+
+    // ✅ Summary rows should match what you show below the table (same labels + same values)
+    const summaryRows: Record<string, string | number>[] = [
+      { product_name: "Cost of Advertisement", net_taxes: Math.abs(Number(totals.advertising_total || 0)) },
+      { product_name: "Visibility - Ads (-)", net_taxes: Math.abs(Number(totals.visible_ads || 0)) },
+      { product_name: "Visibility - Deals, Vouchers and Reviews (-)", net_taxes: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
+
+      ...(countryName === "us" || countryName === "global"
+        ? [{ product_name: "Shipment Charges (-)", net_taxes: Math.abs(Number(totals.shipment_charges || 0)) }]
+        : []),
+
+      { product_name: "Other Transactions (-)", net_taxes: Math.abs(Number(totals.other_transactions || 0)) },
+      { product_name: "Platform Fees (-)", net_taxes: Math.abs(Number(totals.platform_fee || 0)) },
+      { product_name: "Inventory Storage Fees (-)", net_taxes: Math.abs(Number(totals.inventory_storage_fees || 0)) },
+
+      // ✅ Keep CM2 profit signed if your UI keeps it signed
+      { product_name: "CM2 Profit/Loss", net_taxes: Number(totals.cm2_profit || 0) },
+      { product_name: "CM2 Margins", net_taxes: Number(totals.cm2_margins || 0) / 100 },
+      { product_name: "TACoS (Total Advertising Cost of Sale)", net_taxes: Number(totals.acos || 0) / 100 },
+
+      { product_name: "Net Reimbursement during the month", net_taxes: Math.abs(Number(totals.reimbursement_lost_inventory_amount || 0)) },
+      { product_name: "Reimbursement vs CM2 Margins", net_taxes: Number(totals.rembursment_vs_cm2_margins || 0) / 100 },
+      { product_name: "Reimbursement vs Sales", net_taxes: Number(totals.reimbursement_vs_sales || 0) / 100 },
+    ];
+
+    // ✅ Formats (exactly what you want Excel to display like UI)
+    const formats: Record<string, "int" | "money" | "percent" | "text"> = {
+      product_name: "text",
+      quantity: "int",
+      asp: "money",
+      product_sales: "money",
+      net_sales: "money",
+      cost_of_unit_sold: "money",
+      amazon_fee: "money",
+      selling_fees: "money",
+      fba_fees: "money",
+      net_credits: "money",
+      net_taxes: "money",
+      profit: "money",
+      profit_percentage: "percent",
+      unit_wise_profitability: "money",
+    };
+
+    return {
+      columns: columnsToDisplay2 as unknown as readonly string[],
+      extraRows: getExtraRows(),
+      headerRow,
+      signRow,
+      rows: rowsForExcel,
+      summaryRows,
+      formats,
+    };
+  }, [buildExcelTableData, countryName, getExtraRows, totals]);
+
+
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
       { key: "sno", label: "Sno.", align: "center" },
@@ -859,31 +957,51 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [countryName, buildSkuUrl, token, dummyTableData]);
 
   /* --------- Export payload --------- */
-  useEffect(() => {
-    if (!tableData || tableData.length === 0) return;
+  // useEffect(() => {
+  //   if (!tableData || tableData.length === 0) return;
 
-    onExportPayloadChange?.({
-      tableData,
-      totals,
-      currencySymbol,
-      brandName: userData?.brand_name,
-      companyName: userData?.company_name,
-      title: "Profit Breakup (SKU Level)",
-      periodLabel,
-      range,
-      countryName,
-    });
-  }, [
+  //   onExportPayloadChange?.({
+  //     tableData,
+  //     totals,
+  //     currencySymbol,
+  //     brandName: userData?.brand_name,
+  //     companyName: userData?.company_name,
+  //     title: "Profit Breakup (SKU Level)",
+  //     periodLabel,
+  //     range,
+  //     countryName,
+  //   });
+  // }, [
+  //   tableData,
+  //   totals,
+  //   currencySymbol,
+  //   userData?.brand_name,
+  //   userData?.company_name,
+  //   periodLabel,
+  //   range,
+  //   countryName,
+  //   onExportPayloadChange,
+  // ]);
+
+  useEffect(() => {
+  if (!tableData || tableData.length === 0) return;
+
+  onExportPayloadChange?.({
     tableData,
     totals,
     currencySymbol,
-    userData?.brand_name,
-    userData?.company_name,
+    brandName: userData?.brand_name,
+    companyName: userData?.company_name,
+    title: "Profit Breakup (SKU Level)",
     periodLabel,
     range,
     countryName,
-    onExportPayloadChange,
-  ]);
+
+    // ✅ NEW: parent will export EXACTLY what UI uses
+    sheetModel: buildSkuSheetModel(),
+  });
+}, [tableData, totals, currencySymbol, userData, periodLabel, range, countryName, onExportPayloadChange, buildSkuSheetModel]);
+
 
   /* --------- Top/Bottom helpers --------- */
   const getTop5Profitable = useCallback(
@@ -957,20 +1075,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     setShowModal(true);
   }, []);
 
-  const getTitle = useCallback(() => `Profit Breakup (SKU Level)`, []);
-
-  const getExtraRows = useCallback(() => {
-    const formattedCountry = isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase();
-    return [
-      [`${userData?.brand_name || "N/A"}`],
-      [`${userData?.company_name || "N/A"}`],
-      [getTitle()],
-      [`Currency:  ${currencySymbol}`],
-      [`Country: ${formattedCountry}`],
-      [`Platform: Amazon`],
-    ];
-  }, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
-
+ 
   /* --------- Excel Download --------- */
   const handleDownloadExcel = useCallback(() => {
     const wb = XLSX.utils.book_new();
@@ -1007,8 +1112,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           column === "product_sales"
             ? (row.product_sales ?? (row as any).gross_sales ?? 0)
             : column === "quantity"
-              ? (row.quantity ?? row.units_sold ?? 0)
-
+              ? (row.quantity ?? (row as any).total_quantity ?? 0)
               : (row as any)[column];
 
         if (column === "product_name") value = getDisplayProductNameFromRow(row);
@@ -1800,3 +1904,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
 };
 
 export default SKUtable;
+
+
+

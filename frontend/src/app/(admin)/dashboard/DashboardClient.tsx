@@ -55,12 +55,10 @@ const baseURL =
 // const API_URL = `${baseURL}/amazon_api/orders`;
 const FIN_MTD_TX_ENDPOINT = `${baseURL}/amazon_api/finances/mtd_transactions`;
 const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
-// const FX_ENDPOINT = `${baseURL}/currency-rate`;
+// const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
-// ✅ BI endpoint (same one your graph uses)
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 
-/** 💵 FX defaults (used until backend answers) */
 const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
 const INR_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_INR_TO_USD || "0.01128");
 const CAD_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_CAD_TO_USD || "0.74");
@@ -485,100 +483,70 @@ export default function DashboardPage() {
   const [cadToUsd, setCadToUsd] = useState(CAD_TO_USD_ENV);
   const [fxLoading, setFxLoading] = useState(false);
 
-  const fetchFxRates = useCallback(async () => {
-    try {
-      setFxLoading(true);
+type CurrencyRateRow = {
+  conversion_rate: number;
+  country: string;
+  month: string;
+  selected_currency: string;
+  user_currency: string;
+  year: number;
+};
 
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      };
-      if (token) (headers as any).Authorization = `Bearer ${token}`;
+const fetchFxRates = useCallback(async () => {
+  try {
+    setFxLoading(true);
 
-      const { monthName, year } = getISTYearMonth();
-      const month = monthName.toLowerCase();
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-      const commonBody = {
-        month,
-        year,
-        fetch_if_missing: true,
-        seed_all: true,
-      };
+    const headers: HeadersInit = { Accept: "application/json" };
+    if (token) (headers as any).Authorization = `Bearer ${token}`;
 
-      const [ukRes, inrRes, cadRes] = await Promise.all([
-        fetch(FX_ENDPOINT, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            ...commonBody,
-            user_currency: "gbp",
-            country: "uk",
-            selected_currency: "usd",
-          }),
-        }),
-        fetch(FX_ENDPOINT, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            ...commonBody,
-            user_currency: "inr",
-            country: "india",
-            selected_currency: "usd",
-          }),
-        }),
-        fetch(FX_ENDPOINT, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            ...commonBody,
-            user_currency: "cad",
-            country: "ca",
-            selected_currency: "usd",
-          }),
-        }),
-      ]);
+    const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
+    if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
 
-      if (ukRes.ok) {
-        const json = await ukRes.json();
-        console.log("💱 GBP → USD FX response:", json);
+    const rows: CurrencyRateRow[] = await res.json();
 
-        const rate = json?.record?.conversion_rate;
-        if (json?.success && rate != null) {
-          setGbpToUsd(Number(rate));
-          console.log("✅ GBP → USD rate used:", Number(rate));
-        }
-      }
+    const { monthName, year } = getISTYearMonth();
+    const month = monthName.toLowerCase();
 
-      if (inrRes.ok) {
-        const json = await inrRes.json();
-        console.log("💱 INR → USD FX response:", json);
+    // current-month only
+    const cur = (rows || []).filter(
+      (r) =>
+        String(r.month || "").toLowerCase() === month &&
+        Number(r.year) === Number(year)
+    );
 
-        const rate = json?.record?.conversion_rate;
-        if (json?.success && rate != null) {
-          setInrToUsd(Number(rate));
-          console.log("✅ INR → USD rate used:", Number(rate));
-        }
-      }
+    // helper: find conversion for pair (from -> to)
+    const getRate = (from: string, to: string) => {
+      const row = cur.find(
+        (r) =>
+          String(r.user_currency).toLowerCase() === from &&
+          String(r.selected_currency).toLowerCase() === to
+      );
+      const rate = Number(row?.conversion_rate);
+      return Number.isFinite(rate) && rate > 0 ? rate : null;
+    };
 
-      if (cadRes.ok) {
-        const json = await cadRes.json();
-        console.log("💱 CAD → USD FX response:", json);
+    // ✅ set the three your code currently uses (from -> USD)
+    const gbpUsd = getRate("gbp", "usd");
+    const inrUsd = getRate("inr", "usd");
+    const cadUsd = getRate("cad", "usd");
 
-        const rate = json?.record?.conversion_rate;
-        if (json?.success && rate != null) {
-          setCadToUsd(Number(rate));
-          console.log("✅ CAD → USD rate used:", Number(rate));
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch FX rates", err);
-    } finally {
-      setFxLoading(false);
-    }
-  }, []);
+    if (gbpUsd != null) setGbpToUsd(gbpUsd);
+    if (inrUsd != null) setInrToUsd(inrUsd);
+    if (cadUsd != null) setCadToUsd(cadUsd);
+
+    console.log("✅ FX (current month)", { month, year, gbpUsd, inrUsd, cadUsd });
+  } catch (err) {
+    console.error("Failed to fetch FX from DB, keeping env defaults", err);
+  } finally {
+    setFxLoading(false);
+  }
+}, []);
+
 
   useEffect(() => {
     console.log("📊 FINAL FX RATES IN USE", {
@@ -2143,23 +2111,23 @@ export default function DashboardPage() {
       ? ((stats_mtdHome - stats_lastMtdHome) / stats_lastMtdHome) * 100
       : 0;
 
-const getDaysInMonthIST = () => {
-  const now = new Date();
-  const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-  return new Date(ist.getFullYear(), ist.getMonth() + 1, 0).getDate(); // 28..31
-};
+  const getDaysInMonthIST = () => {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    return new Date(ist.getFullYear(), ist.getMonth() + 1, 0).getDate(); // 28..31
+  };
 
-const todayIST = getDayOfMonthIST();        // D
-const daysInMonthIST = getDaysInMonthIST(); // N
+  const todayIST = getDayOfMonthIST();        // D
+  const daysInMonthIST = getDaysInMonthIST(); // N
 
-const proratedTargetToDate = (daysInMonthIST > 0)
-  ? (todayIST / daysInMonthIST) * stats_targetHome  // x
-  : 0;
-
-const stats_targetTrendPct =
-  stats_targetHome > 0
-    ? ((proratedTargetToDate - stats_mtdHome) / stats_targetHome) * 100
+  const proratedTargetToDate = (daysInMonthIST > 0)
+    ? (todayIST / daysInMonthIST) * stats_targetHome  // x
     : 0;
+
+  const stats_targetTrendPct =
+    stats_targetHome > 0
+      ? ((proratedTargetToDate - stats_mtdHome) / stats_targetHome) * 100
+      : 0;
 
   return (
     <div className="relative overflow-x-hidden">
@@ -2869,17 +2837,14 @@ const stats_targetTrendPct =
                 targetTrendPct={stats_targetTrendPct}
                 currentReimbursement={reimbursementHome.current}
                 previousReimbursement={reimbursementHome.previous}
-                targetHome={stats_targetHome}
               />
             </div>
 
             <div className="w-full lg:sticky lg:top-4 2xl:top-6">
               <SalesTargetCard
                 data={targetData}
-                regions={regions}
-                value={targetRegion}
-                onChange={setTargetRegion}
-                hideTabs={isCountryMode}
+                // onChange={setTargetRegion}
+                // hideTabs={isCountryMode}
                 homeCurrency={displayCurrency}
                 convertToHomeCurrency={identityConvert}
                 formatHomeK={formatDisplayK}
@@ -2956,7 +2921,7 @@ const stats_targetTrendPct =
 
                     <span className="text-green-500 ">  {countryName.toUpperCase()}</span>
                     <span className="text-charcoal-500 "> -</span>
-                    
+
                     <span className=" text-green-500">  {formattedMonthYear}</span>
                   </div>
                 </div>

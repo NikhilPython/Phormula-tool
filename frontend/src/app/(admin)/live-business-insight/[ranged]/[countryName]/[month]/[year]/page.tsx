@@ -23,6 +23,7 @@ type MonthsforBIProps = {
   ranged: string; // "QTD", "MTD", etc
   month: string; // "november"
   year: string; // "2025"
+   initialData?: ApiResponse | null;
 };
 
 // =========================
@@ -173,6 +174,7 @@ const MonthsforBI: React.FC<MonthsforBIProps> = ({
   ranged,
   month,
   year,
+  initialData
 }) => {
   const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>(
     {
@@ -2097,7 +2099,7 @@ const MonthsforBI: React.FC<MonthsforBIProps> = ({
               )}
 
               {overallActions.length > 0 && (
-                <div className="bg-[#5EA68E33] border border-[#5EA68E] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500  w-full">
+                <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500  w-full">
                   <PageBreadcrumb pageTitle="AI-Powered Recommendations" variant="page" align="left" />
                   <ul className="list-disc pl-5 space-y-1 pt-2">
                     {overallActions.map((line, idx) => (

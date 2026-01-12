@@ -283,12 +283,12 @@ const parseMdSections = (md?: string | null): Record<string, string[]> => {
   return out;
 };
 
-// --- REPLACE old extractSummaryBullets with this (so it can also show SKU INSIGHTS)
+// --- REPLACE old extractSummaryBullets with this (so it can also show PRODUCT INSIGHTS)
 const extractSummaryAndSkuBullets = (md?: string | null) => {
   const sections = parseMdSections(md);
   return {
     summaryBullets: sections["SUMMARY"] ?? [],
-    skuInsightsBullets: sections["SKU INSIGHTS"] ?? [],
+    skuInsightsBullets: sections["PRODUCT INSIGHTS"] ?? [],
   };
 };
 
@@ -381,7 +381,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
       />
 
       <Section
-        title="SKU Insights"
+        title="PRODUCT INSIGHTS"
         bullets={skuInsightsBullets}
       />
 
@@ -443,6 +443,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [aiPanel, setAiPanel] = useState<AiPanelData | null>(null);
   const [aiPanelLoading, setAiPanelLoading] = useState(false);
   const [aiPanelError, setAiPanelError] = useState<string | null>(null);
+  
+// ✅ ADD THIS (request version guard)
+  const aiRequestIdRef = useRef(0);
 
   const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
   const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
@@ -589,66 +592,142 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
 
-  const fetchAiSummary = async (rangeType: RangeType) => {
-    // only fetch when the selection is valid for the current range
-    if (!countryName || !rangeType || !selectedYear) return;
+  // const fetchAiSummary = async (rangeType: RangeType) => {
+  //   // only fetch when the selection is valid for the current range
+  //   if (!countryName || !rangeType || !selectedYear) return;
 
-    const timeline =
-      rangeType === "monthly"
-        ? monthNameToNumber(selectedMonth)
-        : rangeType === "quarterly"
-          ? selectedQuarter
-          : "ALL";
+  //   const timeline =
+  //     rangeType === "monthly"
+  //       ? monthNameToNumber(selectedMonth)
+  //       : rangeType === "quarterly"
+  //         ? selectedQuarter
+  //         : "ALL";
 
-    if (rangeType === "monthly" && !timeline) return;
-    if (rangeType === "quarterly" && !selectedQuarter) return;
+  //   if (rangeType === "monthly" && !timeline) return;
+  //   if (rangeType === "quarterly" && !selectedQuarter) return;
 
-    setAiPanelLoading(true);
-    setAiPanelError(null);
+  //   setAiPanelLoading(true);
+  //   setAiPanelError(null);
 
-    try {
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+  //   try {
+  //     const token =
+  //       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-      const url = new URL("http://127.0.0.1:5000/summary");
-      url.searchParams.set("country", countryName);
-      url.searchParams.set("period", rangeType);
-      url.searchParams.set("timeline", String(timeline));
-      url.searchParams.set("year", String(selectedYear));
+  //     const url = new URL("http://127.0.0.1:5000/summary");
+  //     url.searchParams.set("country", countryName);
+  //     url.searchParams.set("period", rangeType);
+  //     url.searchParams.set("timeline", String(timeline));
+  //     url.searchParams.set("year", String(selectedYear));
 
-      const res = await fetch(url.toString(), {
-        method: "GET",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        cache: "no-store",
-      });
+  //     const res = await fetch(url.toString(), {
+  //       method: "GET",
+  //       headers: token ? { Authorization: `Bearer ${token}` } : {},
+  //       cache: "no-store",
+  //     });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        setAiPanel(null);
-        setAiPanelError(String(err?.error ?? res.statusText));
-        return;
-      }
+  //     if (!res.ok) {
+  //       const err = await res.json().catch(() => ({}));
+  //       setAiPanel(null);
+  //       setAiPanelError(String(err?.error ?? res.statusText));
+  //       return;
+  //     }
 
-      const data: AiSummaryResponse = await res.json();
+  //     const data: AiSummaryResponse = await res.json();
 
-      const { summaryBullets, skuInsightsBullets } = extractSummaryAndSkuBullets(data.summary);
-      const { recommendationBullets, inventoryBullets } = extractRecoAndInventoryBullets(data.recommendations);
+  //     const { summaryBullets, skuInsightsBullets } = extractSummaryAndSkuBullets(data.summary);
+  //     const { recommendationBullets, inventoryBullets } = extractRecoAndInventoryBullets(data.recommendations);
 
-      setAiPanel({
-        summaryBullets,
-        skuInsightsBullets,
-        recommendationBullets,
-        inventoryBullets,
-        rawSummary: data.summary ?? null,
-        rawRecommendations: data.recommendations ?? null,
-      });
-    } catch (e: any) {
+  //     setAiPanel({
+  //       summaryBullets,
+  //       skuInsightsBullets,
+  //       recommendationBullets,
+  //       inventoryBullets,
+  //       rawSummary: data.summary ?? null,
+  //       rawRecommendations: data.recommendations ?? null,
+  //     });
+  //   } catch (e: any) {
+  //     setAiPanel(null);
+  //     setAiPanelError(e?.message || "Failed to fetch AI summary");
+  //   } finally {
+  //     setAiPanelLoading(false);
+  //   }
+  // };
+
+const fetchAiSummary = async (rangeType: RangeType) => {
+  if (!countryName || !rangeType || !selectedYear) return;
+
+  const requestId = ++aiRequestIdRef.current; // ✅ 1️⃣ request version
+
+  const timeline =
+    rangeType === "monthly"
+      ? monthNameToNumber(selectedMonth)
+      : rangeType === "quarterly"
+      ? selectedQuarter
+      : "ALL";
+
+  if (rangeType === "monthly" && !timeline) return;
+  if (rangeType === "quarterly" && !selectedQuarter) return;
+
+  setAiPanelLoading(true);
+  setAiPanelError(null);
+  setAiPanel(null); // ✅ 2️⃣ clear stale summary
+
+  try {
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("jwtToken")
+        : null;
+
+    const url = new URL("http://127.0.0.1:5000/summary");
+    url.searchParams.set("country", countryName);
+    url.searchParams.set("period", rangeType);
+    url.searchParams.set("timeline", String(timeline));
+    url.searchParams.set("year", String(selectedYear));
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
       setAiPanel(null);
-      setAiPanelError(e?.message || "Failed to fetch AI summary");
-    } finally {
-      setAiPanelLoading(false);
+      setAiPanelError("Failed to fetch AI summary");
+      return;
     }
-  };
+
+    const data: AiSummaryResponse = await res.json();
+
+    if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
+
+    const { summaryBullets, skuInsightsBullets } =
+      extractSummaryAndSkuBullets(data.summary);
+    const { recommendationBullets, inventoryBullets } =
+      extractRecoAndInventoryBullets(data.recommendations);
+
+    setAiPanel({
+      summaryBullets,
+      skuInsightsBullets,
+      recommendationBullets,
+      inventoryBullets,
+      rawSummary: data.summary ?? null,
+      rawRecommendations: data.recommendations ?? null,
+    });
+  } catch (e: any) {
+    if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
+    setAiPanel(null);
+    setAiPanelError(e?.message || "Failed to fetch AI summary");
+  } finally {
+    if (requestId === aiRequestIdRef.current) {
+      setAiPanelLoading(false); // ✅ 3️⃣ guard
+    }
+  }
+};
+
+
+
+
 
   // month comes in as lowercase from PeriodFiltersTable ("january", etc.)
   const handleMonthChange = (v: string) => {
@@ -908,6 +987,69 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
+  const buildSkuWorksheetFromModel = (
+    ws: ExcelJS.Worksheet,
+    model: NonNullable<SkuExportPayload["sheetModel"]>
+  ) => {
+    const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
+
+    const colIndex: Record<string, number> = {};
+    columns.forEach((k, i) => (colIndex[k] = i + 1)); // 1-based for ExcelJS
+
+    const fmtFor = (key: string) => {
+      const t = formats?.[key];
+      if (t === "int") return "#,##0";
+      if (t === "money") return "#,##0.00";
+      if (t === "percent") return "0.00%";
+      return undefined;
+    };
+
+    // ---- meta rows (in column A)
+    for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
+    ws.addRow([""]); // spacer
+
+    // ---- header row
+    ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
+
+    // ---- sign row (align to columns)
+    ws.addRow(columns.map((k) => signRow?.[k] ?? ""));
+
+    // ---- table rows
+    for (const r of rows || []) {
+      ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
+    }
+
+    // spacer between table and summary
+    ws.addRow([""]);
+
+    // ---- summary rows
+    // If model uses { product_name, net_taxes } like your current model,
+    // keep label in product_name col and value in net_taxes col.
+    const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
+    const valueKey = columns.includes("net_taxes") ? "net_taxes" : columns[columns.length - 1];
+
+    for (const sr of summaryRows || []) {
+      const line = new Array(columns.length).fill("");
+      line[colIndex[labelKey] - 1] = (sr as any)?.[labelKey] ?? "";
+      line[colIndex[valueKey] - 1] = (sr as any)?.[valueKey] ?? "";
+      ws.addRow(line);
+    }
+
+    // ---- formatting by column key
+    for (const k of columns) {
+      const idx = colIndex[k];
+      const nf = fmtFor(k);
+      if (nf) ws.getColumn(idx).numFmt = nf;
+    }
+
+    // ---- make header bold
+    const headerRowNumber = (extraRows?.length ?? 0) + 2; // meta + blank spacer => header sits here
+    ws.getRow(headerRowNumber).font = { bold: true };
+
+    // ---- make sign row a bit muted (optional)
+    ws.getRow(headerRowNumber + 1).font = { italic: true };
+  };
+
 
   const handleDownloadProfitabilityBundle = async () => {
     try {
@@ -1020,134 +1162,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       // =========================================================
       // ✅ TAB 1: SKU Profitability  (SWAPPED → now first sheet)
       // =========================================================
+      // =========================================================
+      // ✅ TAB 1: SKU Profitability  (now uses sheetModel)
+      // =========================================================
       const wsSku = wb.addWorksheet("SKU Profitability");
 
-      if (skuExportPayload) {
-        const {
-          brandName,
-          companyName,
-          currencySymbol,
-          title,
-          periodLabel,
-          tableData,
-          totals,
-          countryName,
-        } = skuExportPayload;
-
-        // -------- Meta rows --------
-        wsSku.addRow([brandName || "N/A"]);
-        wsSku.addRow([companyName || "N/A"]);
-        wsSku.addRow([`${title || "Profit Breakup (SKU Level)"} - ${periodLabel}`]);
-        wsSku.addRow([`Currency: ${currencySymbol}`]);
-        wsSku.addRow([`Country: ${(countryName || "").toUpperCase()}`]);
-        wsSku.addRow([`Platform: Amazon`]);
-        wsSku.addRow([""]);
-
-        // -------- Columns (same order as your screenshot) --------
-        const columns = [
-          { key: "product_name", header: "Product Name" }, // A
-          { key: "quantity", header: "Quantity Sold" }, // B
-          { key: "asp", header: "ASP" }, // C
-          { key: "product_sales", header: "Gross Sale" }, // D
-          { key: "net_sales", header: "Net Sales" }, // E
-          { key: "cost_of_unit_sold", header: "Cost of Go" }, // F
-          { key: "amazon_fee", header: "Amazon Fe" }, // G
-          { key: "selling_fees", header: "Selling Fee" }, // H
-          { key: "fba_fees", header: "FBA fees" }, // I
-          { key: "net_credits", header: "Net Credits" }, // J
-          { key: "net_taxes", header: "Net Taxes" }, // K
-          { key: "profit", header: "CM1 Profit" }, // L
-          { key: "profit_percentage", header: "CM1 Profit (%)" }, // M
-          { key: "unit_wise_profitability", header: "CM1 Profit per Unit" }, // N
-        ] as const;
-
-        // Header row
-        wsSku.addRow(columns.map((c) => c.header));
-
-        // Signage row
-        wsSku.addRow([
-          "",
-          "",
-          "",
-          "",
-          "(+)", // Net Sales
-          "(-)", // COGS
-          "(-)", // Amazon
-          "(-)", // Selling
-          "(-)", // FBA
-          "(+)", // Net Credits
-          "",
-          "",
-          "",
-          "",
-        ]);
-
-        // Safe name fallback
-        const safeName = (r: any) => {
-          const name = r?.product_name;
-          const sku = r?.sku;
-          return name !== undefined && name !== null && String(name).trim() !== "" && String(name) !== "0"
-            ? String(name)
-            : sku ?? "-";
-        };
-
-        // Data rows
-        // Data rows
-        for (const r of tableData) {
-          wsSku.addRow([
-            safeName(r),
-            r.quantity ?? "",
-            r.asp ?? r.ASP ?? "",
-            r.product_sales ?? "",
-            r.net_sales ?? r.Net_Sales ?? "",
-            r.cost_of_unit_sold ?? "",
-            r.amazon_fee ?? "",
-            r.selling_fees ?? "",
-            r.fba_fees ?? "",
-            r.net_credits ?? "",
-            r.net_taxes ?? "",
-            r.profit ?? r.Profit ?? "",
-            typeof r.profit_percentage === "number" ? r.profit_percentage / 100 : "",
-            r.unit_wise_profitability ?? "",
-          ]);
-        }
-
-        // ✅ spacer row (blank line)
-        wsSku.addRow([""]);
-
-
-
-
-        // Summary rows: label in A, value in K (index 10)
-        const putSummary = (label: string, value: any) => {
-          const row = new Array(14).fill("");
-          row[0] = label;
-          row[10] = value; // Column K
-          wsSku.addRow(row);
-        };
-
-        putSummary("Cost of Advertisement (-)", Math.abs(Number(totals?.advertising_total || 0)));
-        if ((countryName || "").toLowerCase() === "us" || (countryName || "").toLowerCase() === "global") {
-          putSummary("Shipment Charges (-)", Math.abs(Number(totals?.shipment_charges || 0)));
-        }
-        putSummary("Platform Fees (-)", Math.abs(Number(totals?.platform_fee || 0)));
-        putSummary("CM2 Profit/Loss", Math.abs(Number(totals?.cm2_profit || 0)));
-        putSummary("CM2 Margins", Number(totals?.cm2_margins || 0) / 100);
-        putSummary("TACoS (Total Advertising Cost of Sale)", Number(totals?.acos || 0) / 100);
-        putSummary("Net Reimbursement during the month", Math.abs(Number(totals?.rembursement_fee || 0)));
-        putSummary("Reimbursement vs CM2 Margins", Number(totals?.rembursment_vs_cm2_margins || 0) / 100);
-        putSummary("Reimbursement vs Sales", Number(totals?.reimbursement_vs_sales || 0) / 100);
-
-        // Formatting
-        wsSku.getColumn(2).numFmt = "#,##0"; // Quantity
-
-        // Money columns D..L + N  => 4..12 and 14
-        [4, 5, 6, 7, 8, 9, 10, 11, 12, 14].forEach((c) => {
-          wsSku.getColumn(c).numFmt = "#,##0.00";
-        });
-
-        // Percent col M
-        wsSku.getColumn(13).numFmt = "0.00%";
+      if (skuExportPayload?.sheetModel) {
+        buildSkuWorksheetFromModel(wsSku, skuExportPayload.sheetModel);
+      } else if (skuExportPayload) {
+        // fallback: keep old behavior OR show message
+        wsSku.addRow(["SKU sheet model not available"]);
       } else {
         wsSku.addRow(["SKU data not available"]);
       }
@@ -1189,8 +1213,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       console.error("Combined export failed:", e);
     }
   };
-
-
 
   useEffect(() => {
     if (range === "monthly") {
@@ -2205,7 +2227,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             />
           </div>
 
-          
+
           {allDropdownsSelected && (
             <AiSingleInsightCard
               loading={aiPanelLoading}

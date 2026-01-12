@@ -23,7 +23,7 @@ from sqlalchemy import MetaData, Table, Column, Integer, String, Float, text
 from dotenv import load_dotenv
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import func
-
+import json
 
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
@@ -330,6 +330,8 @@ def get_user_data():
         'country': user.country,
         'homeCurrency': user.homeCurrency,
         'target_sales': float(user.target_sales) if user.target_sales is not None else None,  # ✅ add
+        'tax_id': user.tax_id,
+        'address': user.address
     })
 
 
@@ -508,6 +510,65 @@ def switch_profile(profile_id):
 
 
 
+# @user_bp.route('/profileupdate', methods=['POST'])
+# def profileupdate():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         user_id = payload['user_id']
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     user = User.query.get(user_id)
+#     if not user:
+#         return jsonify({'error': 'User not found'}), 404
+
+#     data = request.get_json() or {}
+
+#     # -------- SAFE FIELD UPDATES --------
+#     user.email = data.get('email', user.email)
+#     user.phone_number = data.get('phone_number', user.phone_number)
+#     user.annual_sales_range = data.get('annual_sales_range', user.annual_sales_range)
+#     user.company_name = data.get('company_name', user.company_name)
+#     user.brand_name = data.get('brand_name', user.brand_name)
+#     user.homeCurrency = data.get('homeCurrency', user.homeCurrency)
+#     user.tax_id = data.get('tax_id', user.tax_id)
+#     user.address = data.get('address', user.address)
+
+#     # -------- PASSWORD (HASHED) --------
+#     new_password = data.get('password')
+#     if new_password:
+#         user.password = generate_password_hash(
+#             new_password, method='pbkdf2:sha256', salt_length=8
+#         )
+
+#     # -------- COUNTRY + MARKETPLACE --------
+#     new_country = data.get('country')
+#     if new_country:
+#         user.country = new_country
+#         user.marketplace_id = compute_marketplace_ids_from_country(new_country)
+
+#     # -------- TARGET SALES (VALIDATED) --------
+#     target_sales = data.get('target_sales')
+#     if target_sales is not None:
+#         try:
+#             user.target_sales = float(target_sales)
+#         except (TypeError, ValueError):
+#             return jsonify({'error': 'target_sales must be a number'}), 400
+
+#     try:
+#         db.session.commit()
+#         return jsonify({'message': 'Profile updated successfully'}), 200
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({'error': str(e)}), 500
+
 @user_bp.route('/profileupdate', methods=['POST'])
 def profileupdate():
     auth_header = request.headers.get('Authorization')
@@ -527,32 +588,54 @@ def profileupdate():
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
 
-    # -------- SAFE FIELD UPDATES --------
+    # ---------- SAFE FIELD UPDATES ----------
     user.email = data.get('email', user.email)
     user.phone_number = data.get('phone_number', user.phone_number)
     user.annual_sales_range = data.get('annual_sales_range', user.annual_sales_range)
     user.company_name = data.get('company_name', user.company_name)
     user.brand_name = data.get('brand_name', user.brand_name)
     user.homeCurrency = data.get('homeCurrency', user.homeCurrency)
-    user.tax_id = data.get('tax_id', user.tax_id)
-    user.address = data.get('address', user.address)
 
-    # -------- PASSWORD (HASHED) --------
+    # ---------- TAX ID (JSON SAFE) ----------
+    tax_val = data.get('tax_id', user.tax_id)
+
+    if isinstance(tax_val, str):
+        try:
+            tax_val = json.loads(tax_val)
+        except Exception:
+            return jsonify({'error': 'Invalid tax_id format'}), 400
+
+    user.tax_id = tax_val
+
+    # ---------- ADDRESS (JSON SAFE) ----------
+    addr_val = data.get('address', user.address)
+
+    if isinstance(addr_val, str):
+        try:
+            addr_val = json.loads(addr_val)
+        except Exception:
+            return jsonify({'error': 'Invalid address format'}), 400
+
+    user.address = addr_val
+
+    # ---------- PASSWORD (HASHED) ----------
     new_password = data.get('password')
     if new_password:
         user.password = generate_password_hash(
-            new_password, method='pbkdf2:sha256', salt_length=8
+            new_password,
+            method='pbkdf2:sha256',
+            salt_length=8
         )
 
-    # -------- COUNTRY + MARKETPLACE --------
+    # ---------- COUNTRY + MARKETPLACE ----------
     new_country = data.get('country')
     if new_country:
         user.country = new_country
         user.marketplace_id = compute_marketplace_ids_from_country(new_country)
 
-    # -------- TARGET SALES (VALIDATED) --------
+    # ---------- TARGET SALES (VALIDATED) ----------
     target_sales = data.get('target_sales')
     if target_sales is not None:
         try:
@@ -560,13 +643,13 @@ def profileupdate():
         except (TypeError, ValueError):
             return jsonify({'error': 'target_sales must be a number'}), 400
 
+    # ---------- COMMIT ----------
     try:
         db.session.commit()
         return jsonify({'message': 'Profile updated successfully'}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
-
 
 
 @user_bp.route('/feepreviewupload', methods=['POST'])
