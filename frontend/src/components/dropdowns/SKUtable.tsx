@@ -11,7 +11,7 @@ import Productinfoinpopup from "./Productinfoinpopup";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import { SkuExportPayload } from "@/lib/utils/exportTypes";
-import GroupedCollapsibleTable, { LeafCol } from "../ui/table/GroupedCollapsibleTable";
+import GroupedCollapsibleTable, { LeafCol, ColGroup } from "../ui/table/GroupedCollapsibleTable";
 
 /* ---------- Types ---------- */
 
@@ -237,6 +237,8 @@ function normalizeRows(data: any[]): TableRow[] {
   });
 }
 
+
+
 function computeTotalsFromLastRow(rows: TableRow[]): Totals {
   const lastRow: any = rows[rows.length - 1] || {};
 
@@ -386,156 +388,74 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return k as keyof TableRow | undefined;
   }, [tableData]);
 
-  const buildExcelTableData = useCallback(() => {
-    const columnsToDisplay2 = [
-      "product_name",
-      "quantity",
-      "asp",
-      "product_sales",
-      "net_sales",
-      "cost_of_unit_sold",
-      "amazon_fee",
-      "selling_fees",
-      "fba_fees",
-      "net_credits",
-      "net_taxes",
-      "profit",
-      "profit_percentage",
-      "unit_wise_profitability",
-    ] as const;
+  // const buildExcelTableData = useCallback(() => {
+  //   const columnsToDisplay2 = [
+  //     "product_name",
+  //     "quantity",
+  //     "asp",
+  //     "product_sales",
+  //     "net_sales",
+  //     "cost_of_unit_sold",
+  //     "amazon_fee",
+  //     "selling_fees",
+  //     "fba_fees",
+  //     "net_credits",
+  //     "net_taxes",
+  //     "profit",
+  //     "profit_percentage",
+  //     "unit_wise_profitability",
+  //   ] as const;
 
-    const rowsForExcel = tableData.map((row) => {
-      const rowData: Record<string, string | number> = {};
+  //   const rowsForExcel = tableData.map((row) => {
+  //     const rowData: Record<string, string | number> = {};
 
-      columnsToDisplay2.forEach((column) => {
-        let value: any = (row as any)[column];
+  //     columnsToDisplay2.forEach((column) => {
+  //       let value: any = (row as any)[column];
 
-        // ✅ name fallback same as UI
-        if (column === "product_name") value = getDisplayProductNameFromRow(row);
+  //       // ✅ name fallback same as UI
+  //       if (column === "product_name") value = getDisplayProductNameFromRow(row);
 
-        // ✅ hard mapping rules (match your current excel logic)
-        if (column === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+  //       // ✅ hard mapping rules (match your current excel logic)
+  //       if (column === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
 
-        // ✅ quantity = Units Sold (NOT total_quantity)
-        if (column === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+  //       // ✅ quantity = Units Sold (NOT total_quantity)
+  //       if (column === "quantity") value = row.quantity ?? row.units_sold ?? 0;
 
-        // number formatting rules
-        if (typeof value === "number") {
-          if (Math.abs(value) < 1e-10) value = 0;
+  //       // number formatting rules
+  //       if (typeof value === "number") {
+  //         if (Math.abs(value) < 1e-10) value = 0;
 
-          // keep decimals except quantity
-          if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
-        }
+  //         // keep decimals except quantity
+  //         if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
+  //       }
 
-        // percent stored as fraction for excel (same as you do now)
-        if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+  //       // percent stored as fraction for excel (same as you do now)
+  //       if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
 
-        rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
-      });
+  //       rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
+  //     });
 
-      return rowData;
-    });
+  //     return rowData;
+  //   });
 
-    return { columnsToDisplay2, rowsForExcel };
-  }, [tableData, getDisplayProductNameFromRow]);
+  //   return { columnsToDisplay2, rowsForExcel };
+  // }, [tableData, getDisplayProductNameFromRow]);
 
 
   const getTitle = useCallback(() => `Profit Breakup (SKU Level)`, []);
 
-const getExtraRows = useCallback(() => {
-  const formattedCountry = isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase();
-  return [
-    [`${userData?.brand_name || "N/A"}`],
-    [`${userData?.company_name || "N/A"}`],
-    [getTitle()],
-    [`Currency:  ${currencySymbol}`],
-    [`Country: ${formattedCountry}`],
-    [`Platform: Amazon`],
-  ];
-}, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
-
-
-  const buildSkuSheetModel = useCallback(() => {
-    const { columnsToDisplay2, rowsForExcel } = buildExcelTableData();
-
-    const headerRow: Record<string, string> = {
-      product_name: "Product Name",
-      quantity: "Quantity Sold",
-      asp: "ASP",
-      product_sales: "Gross Sales",
-      net_sales: "Net Sales",
-      cost_of_unit_sold: "Cost of Goods Sold",
-      amazon_fee: "Amazon Fees",
-      selling_fees: "Selling Fees",
-      fba_fees: "FBA fees",
-      net_credits: "Net Credits",
-      net_taxes: "Net Taxes",
-      profit: "CM1 Profit",
-      profit_percentage: "CM1 Profit (%)",
-      unit_wise_profitability: "CM1 Profit per Unit",
-    };
-
-    const signRow: Record<string, string> = {
-      net_sales: "(+)",
-      cost_of_unit_sold: "(-)",
-      amazon_fee: "(-)",
-      selling_fees: "(-)",
-      fba_fees: "(-)",
-      net_credits: "(+)",
-    };
-
-    // ✅ Summary rows should match what you show below the table (same labels + same values)
-    const summaryRows: Record<string, string | number>[] = [
-      { product_name: "Cost of Advertisement", net_taxes: Math.abs(Number(totals.advertising_total || 0)) },
-      { product_name: "Visibility - Ads (-)", net_taxes: Math.abs(Number(totals.visible_ads || 0)) },
-      { product_name: "Visibility - Deals, Vouchers and Reviews (-)", net_taxes: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
-
-      ...(countryName === "us" || countryName === "global"
-        ? [{ product_name: "Shipment Charges (-)", net_taxes: Math.abs(Number(totals.shipment_charges || 0)) }]
-        : []),
-
-      { product_name: "Other Transactions (-)", net_taxes: Math.abs(Number(totals.other_transactions || 0)) },
-      { product_name: "Platform Fees (-)", net_taxes: Math.abs(Number(totals.platform_fee || 0)) },
-      { product_name: "Inventory Storage Fees (-)", net_taxes: Math.abs(Number(totals.inventory_storage_fees || 0)) },
-
-      // ✅ Keep CM2 profit signed if your UI keeps it signed
-      { product_name: "CM2 Profit/Loss", net_taxes: Number(totals.cm2_profit || 0) },
-      { product_name: "CM2 Margins", net_taxes: Number(totals.cm2_margins || 0) / 100 },
-      { product_name: "TACoS (Total Advertising Cost of Sale)", net_taxes: Number(totals.acos || 0) / 100 },
-
-      { product_name: "Net Reimbursement during the month", net_taxes: Math.abs(Number(totals.reimbursement_lost_inventory_amount || 0)) },
-      { product_name: "Reimbursement vs CM2 Margins", net_taxes: Number(totals.rembursment_vs_cm2_margins || 0) / 100 },
-      { product_name: "Reimbursement vs Sales", net_taxes: Number(totals.reimbursement_vs_sales || 0) / 100 },
+  const getExtraRows = useCallback(() => {
+    const formattedCountry = isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase();
+    return [
+      [`${userData?.brand_name || "N/A"}`],
+      [`${userData?.company_name || "N/A"}`],
+      [getTitle()],
+      [`Currency:  ${currencySymbol}`],
+      [`Country: ${formattedCountry}`],
+      [`Platform: Amazon`],
     ];
+  }, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
 
-    // ✅ Formats (exactly what you want Excel to display like UI)
-    const formats: Record<string, "int" | "money" | "percent" | "text"> = {
-      product_name: "text",
-      quantity: "int",
-      asp: "money",
-      product_sales: "money",
-      net_sales: "money",
-      cost_of_unit_sold: "money",
-      amazon_fee: "money",
-      selling_fees: "money",
-      fba_fees: "money",
-      net_credits: "money",
-      net_taxes: "money",
-      profit: "money",
-      profit_percentage: "percent",
-      unit_wise_profitability: "money",
-    };
-
-    return {
-      columns: columnsToDisplay2 as unknown as readonly string[],
-      extraRows: getExtraRows(),
-      headerRow,
-      signRow,
-      rows: rowsForExcel,
-      summaryRows,
-      formats,
-    };
-  }, [buildExcelTableData, countryName, getExtraRows, totals]);
 
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
@@ -547,66 +467,66 @@ const getExtraRows = useCallback(() => {
     []
   );
 
-  const groups = [
-    {
-      id: "sales",
-      label: "Sales",
-      collapsedCols: [],
-      expandedCols: [
-        { key: "product_sales", label: "Gross Sales", align: "center" },
-        { key: "refund_sales", label: "Sales - Refund", align: "center" },
-        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
-      ],
-    },
-    {
-      id: "units_breakdown",
-      label: "Net Units Sold",
-      collapsedCols: [],
-      expandedCols: [
-        { key: "sku", label: "SKU", align: "center" },
-        { key: "units_sold", label: "Units Sold", align: "center" },
-        { key: "return_units", label: "Return", align: "center" },
-      ],
-    },
-    {
-      id: "promotions_breakdown",
-      label: "",
-      collapsedCols: [],
-      expandedCols: [
-        { key: "promotional_rebates", label: "Promotions", align: "center" },
-        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
-      ],
-    },
-    {
-      id: "amazon_breakdown",
-      label: "Amazon Fees",
-      collapsedCols: [],
-      expandedCols: [
-        { key: "selling_fees", label: "Selling Fees", align: "center" },
-        { key: "fba_fees", label: "FBA Fees", align: "center" },
-      ],
-    },
-    {
-      id: "other_transactions_breakdown",
-      label: "Other Transactions",
-      collapsedCols: [],
-      expandedCols: [
-        { key: "net_taxes", label: "Net Taxes", align: "center" },
-        { key: "net_credits", label: "Net Credits", align: "center" },
-        { key: "misc_transaction", label: "Misc. Transactions", align: "center" },
-      ],
-    },
-    {
-      id: "profit_breakdown",
-      label: "CM1 Profit ",
-      collapsedCols: [],
-      expandedCols: [
-        // { key: "profit", label: "CM1 Profit Margin", align: "center" },
-        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
-        { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
-      ],
-    },
-  ];
+  // const groups = [
+  //   {
+  //     id: "sales",
+  //     label: "Sales",
+  //     collapsedCols: [],
+  //     expandedCols: [
+  //       { key: "product_sales", label: "Gross Sales", align: "center" },
+  //       { key: "refund_sales", label: "Sales - Refund", align: "center" },
+  //       { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
+  //     ],
+  //   },
+  //   {
+  //     id: "units_breakdown",
+  //     label: "Net Units Sold",
+  //     collapsedCols: [],
+  //     expandedCols: [
+  //       { key: "sku", label: "SKU", align: "center" },
+  //       { key: "units_sold", label: "Units Sold", align: "center" },
+  //       { key: "return_units", label: "Return", align: "center" },
+  //     ],
+  //   },
+  //   {
+  //     id: "promotions_breakdown",
+  //     label: "",
+  //     collapsedCols: [],
+  //     expandedCols: [
+  //       { key: "promotional_rebates", label: "Promotions", align: "center" },
+  //       { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
+  //     ],
+  //   },
+  //   {
+  //     id: "amazon_breakdown",
+  //     label: "Amazon Fees",
+  //     collapsedCols: [],
+  //     expandedCols: [
+  //       { key: "selling_fees", label: "Selling Fees", align: "center" },
+  //       { key: "fba_fees", label: "FBA Fees", align: "center" },
+  //     ],
+  //   },
+  //   {
+  //     id: "other_transactions_breakdown",
+  //     label: "Other Transactions",
+  //     collapsedCols: [],
+  //     expandedCols: [
+  //       { key: "net_taxes", label: "Net Taxes", align: "center" },
+  //       { key: "net_credits", label: "Net Credits", align: "center" },
+  //       { key: "misc_transaction", label: "Misc. Transactions", align: "center" },
+  //     ],
+  //   },
+  //   {
+  //     id: "profit_breakdown",
+  //     label: "CM1 Profit ",
+  //     collapsedCols: [],
+  //     expandedCols: [
+  //       // { key: "profit", label: "CM1 Profit Margin", align: "center" },
+  //       { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
+  //       { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
+  //     ],
+  //   },
+  // ];
 
   //  const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
   //   () => [
@@ -650,6 +570,127 @@ const getExtraRows = useCallback(() => {
   //   [aspKey]
   // );
 
+  const groups = useMemo<ColGroup<TableRow>[]>(() => ([
+    {
+      id: "sales",
+      label: "Sales",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "product_sales", label: "Gross Sales", align: "center" as const },
+        { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
+        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
+      ],
+    },
+    {
+      id: "units_breakdown",
+      label: "Net Units Sold",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "sku", label: "SKU", align: "center" as const },
+        { key: "units_sold", label: "Units Sold", align: "center" as const },
+        { key: "return_units", label: "Return", align: "center" as const },
+      ],
+    },
+    {
+      id: "promotions_breakdown",
+      label: "",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "promotional_rebates", label: "Promotions", align: "center" as const },
+        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+      ],
+    },
+    {
+      id: "amazon_breakdown",
+      label: "Amazon Fees",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+        { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+      ],
+    },
+    {
+      id: "other_transactions_breakdown",
+      label: "Other Transactions",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "net_taxes", label: "Net Taxes", align: "center" as const },
+        { key: "net_credits", label: "Net Credits", align: "center" as const },
+        { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+      ],
+    },
+    {
+      id: "profit_breakdown",
+      label: "CM1 Profit",
+      collapsedCols: [],
+      expandedCols: [
+        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
+        { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+      ],
+    },
+  ]), []);
+
+
+  const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
+    () => [
+      { key: "asp", label: "ASP", align: "center" },
+      { key: "net_sales", label: "Net Sales", align: "center" },
+      { key: "cost_of_unit_sold", label: "COGS", align: "center" },
+      { key: "net_units_sold", label: "Net Units Sold", align: "center" },
+      { key: "amazon_fee", label: "Amazon Fees", align: "center" },
+      { key: "other_transactions", label: "Other Transactions", align: "center" },
+      { key: "profit", label: "CM1 Profit Margin", align: "center" },
+    ],
+    []
+  );
+
+  const buildExcelColumnsFromUI = useCallback((): LeafCol<TableRow>[] => {
+    // Exact order you want in Excel
+    const ordered: LeafCol<TableRow>[] = [
+      { key: "sno", label: "S. no", align: "center" as const },
+
+      { key: "product_name", label: "Product Name", align: "left" as const },
+      { key: "sku", label: "SKU", align: "center" as const },
+
+      { key: "units_sold", label: "Units Sold", align: "center" as const },
+      { key: "return_units", label: "Return", align: "center" as const },
+      { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
+
+      { key: "asp", label: "ASP", align: "center" as const },
+
+      { key: "product_sales", label: "Gross Sales", align: "center" as const },
+      { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
+      { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
+      { key: "net_sales", label: "Net Sales", align: "center" as const },
+
+      { key: "promotional_rebates", label: "Promotions", align: "center" as const },
+      { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+
+      { key: "cost_of_unit_sold", label: "COGS", align: "center" as const },
+
+      { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+      { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+      { key: "amazon_fee", label: "Amazon Fees", align: "center" as const },
+
+      { key: "net_taxes", label: "Net Taxes", align: "center" as const },
+      { key: "net_credits", label: "Net Credits", align: "center" as const },
+      { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+      { key: "other_transactions", label: "Other Transactions", align: "center" as const },
+
+      { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
+      { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
+      { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+    ];
+
+    // optional: remove duplicates if any
+    const seen = new Set<string>();
+    return ordered.filter((c) => {
+      if (!c.key) return false;
+      if (seen.has(c.key)) return false;
+      seen.add(c.key);
+      return true;
+    });
+  }, []);
 
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
@@ -726,6 +767,126 @@ const getExtraRows = useCallback(() => {
     },
     [SIGN_PLUS, SIGN_MINUS]
   );
+  const buildSkuSheetModel = useCallback(() => {
+    // ✅ Take columns from UI
+    const excelCols = buildExcelColumnsFromUI(); // [{ key, label, ... }]
+    const colKeys = excelCols.map((c) => c.key);
+
+    // ✅ Header row from UI labels
+    const headerRow: Record<string, string> = {};
+    excelCols.forEach((c) => {
+      headerRow[c.key] = c.label;
+    });
+
+    // ✅ Optional sign row (only if you still want it in export payload)
+    const signRow: Record<string, string> = {};
+    colKeys.forEach((k) => {
+      const s = getSignForCol(k);
+      if (s?.text) signRow[k] = s.text;
+    });
+
+    const rowsForExcel = tableData.map((row, rowIndex) => {
+      const out: Record<string, string | number> = {};
+
+      colKeys.forEach((key) => {
+        let value: any = (row as any)[key];
+
+        if (key === "sno") {
+          const name = getDisplayProductNameFromRow(row);
+          const isTotal = String(name).trim().toLowerCase() === "total";
+          value = isTotal ? "" : rowIndex + 1;
+        }
+
+
+        // Product name fallback
+        if (key === "product_name") value = getDisplayProductNameFromRow(row);
+
+        // Mapping rules
+        if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+        if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+
+        // If you want quantity in excel to mean Units Sold like UI
+        if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+
+        // Formatting/rounding
+        if (typeof value === "number") {
+          if (Math.abs(value) < 1e-10) value = 0;
+
+          if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
+            value = Math.trunc(value);   // ✅ sno becomes 1,2,3 (not 1.00)
+          } else {
+            value = Number(value.toFixed(2));
+          }
+
+        }
+
+        // percent stored as fraction for excel
+        if (key === "profit_percentage" && typeof value === "number") {
+          value = Number(value) / 100;
+        }
+
+        out[key] = typeof value === "number" && isNaN(value) ? "-" : value;
+      });
+
+      return out;
+    });
+
+    // ✅ Summary rows (same as your current one — keep it if parent needs it)
+    const summaryRows: Record<string, string | number>[] = [
+      { product_name: "Cost of Advertisement", net_taxes: Math.abs(Number(totals.advertising_total || 0)) },
+      { product_name: "Visibility - Ads (-)", net_taxes: Math.abs(Number(totals.visible_ads || 0)) },
+      {
+        product_name: "Visibility - Deals, Vouchers and Reviews (-)",
+        net_taxes: Math.abs(Number(totals.dealsvouchar_ads || 0)),
+      },
+
+      ...(countryName === "us" || countryName === "global"
+        ? [{ product_name: "Shipment Charges (-)", net_taxes: Math.abs(Number(totals.shipment_charges || 0)) }]
+        : []),
+
+      { product_name: "Other Transactions (-)", net_taxes: Math.abs(Number(totals.other_transactions || 0)) },
+      { product_name: "Platform Fees (-)", net_taxes: Math.abs(Number(totals.platform_fee || 0)) },
+      { product_name: "Inventory Storage Fees (-)", net_taxes: Math.abs(Number(totals.inventory_storage_fees || 0)) },
+
+      { product_name: "CM2 Profit/Loss", net_taxes: Number(totals.cm2_profit || 0) },
+      { product_name: "CM2 Margins", net_taxes: Number(totals.cm2_margins || 0) / 100 },
+      { product_name: "TACoS (Total Advertising Cost of Sale)", net_taxes: Number(totals.acos || 0) / 100 },
+
+      {
+        product_name: "Net Reimbursement during the month",
+        net_taxes: Math.abs(Number(totals.reimbursement_lost_inventory_amount || 0)),
+      },
+      { product_name: "Reimbursement vs CM2 Margins", net_taxes: Number(totals.rembursment_vs_cm2_margins || 0) / 100 },
+      { product_name: "Reimbursement vs Sales", net_taxes: Number(totals.reimbursement_vs_sales || 0) / 100 },
+    ];
+
+    // ✅ Formats per key (optional)
+    const formats: Record<string, "int" | "money" | "percent" | "text"> = {};
+    colKeys.forEach((k) => {
+      if (k === "product_name" || k === "sku") formats[k] = "text";
+      else if (k === "profit_percentage") formats[k] = "percent";
+      else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(k)) formats[k] = "int";
+      else formats[k] = "money";
+    });
+
+    return {
+      columns: colKeys as readonly string[],
+      extraRows: getExtraRows(),
+      headerRow,
+      signRow,
+      rows: rowsForExcel,
+      summaryRows,
+      formats,
+    };
+  }, [
+    tableData,
+    totals,
+    countryName,
+    getExtraRows,
+    getDisplayProductNameFromRow,
+    buildExcelColumnsFromUI,
+    getSignForCol,
+  ]);
 
   // Period label
   const yearShort = typeof year === "string" ? year.toString().slice(-2) : String(year).slice(-2);
@@ -984,23 +1145,23 @@ const getExtraRows = useCallback(() => {
   // ]);
 
   useEffect(() => {
-  if (!tableData || tableData.length === 0) return;
+    if (!tableData || tableData.length === 0) return;
 
-  onExportPayloadChange?.({
-    tableData,
-    totals,
-    currencySymbol,
-    brandName: userData?.brand_name,
-    companyName: userData?.company_name,
-    title: "Profit Breakup (SKU Level)",
-    periodLabel,
-    range,
-    countryName,
+    onExportPayloadChange?.({
+      tableData,
+      totals,
+      currencySymbol,
+      brandName: userData?.brand_name,
+      companyName: userData?.company_name,
+      title: "Profit Breakup (SKU Level)",
+      periodLabel,
+      range,
+      countryName,
 
-    // ✅ NEW: parent will export EXACTLY what UI uses
-    sheetModel: buildSkuSheetModel(),
-  });
-}, [tableData, totals, currencySymbol, userData, periodLabel, range, countryName, onExportPayloadChange, buildSkuSheetModel]);
+      // ✅ NEW: parent will export EXACTLY what UI uses
+      sheetModel: buildSkuSheetModel(),
+    });
+  }, [tableData, totals, currencySymbol, userData, periodLabel, range, countryName, onExportPayloadChange, buildSkuSheetModel]);
 
 
   /* --------- Top/Bottom helpers --------- */
@@ -1075,180 +1236,328 @@ const getExtraRows = useCallback(() => {
     setShowModal(true);
   }, []);
 
- 
+
   /* --------- Excel Download --------- */
-  const handleDownloadExcel = useCallback(() => {
-    const wb = XLSX.utils.book_new();
+  // const handleDownloadExcel = useCallback(() => {
+  //   const wb = XLSX.utils.book_new();
 
-    const columnsToDisplay2 = [
-      "product_name",
-      "quantity",
-      "asp",
-      "product_sales",
-      "net_sales",
-      "cost_of_unit_sold",
-      "amazon_fee",
-      "selling_fees",
-      "fba_fees",
-      "net_credits",
-      "net_taxes",
-      "profit",
-      "profit_percentage",
-      "unit_wise_profitability",
-    ] as const;
+  //   const columnsToDisplay2 = [
+  //     "product_name",
+  //     "quantity",
+  //     "asp",
+  //     "product_sales",
+  //     "net_sales",
+  //     "cost_of_unit_sold",
+  //     "amazon_fee",
+  //     "selling_fees",
+  //     "fba_fees",
+  //     "net_credits",
+  //     "net_taxes",
+  //     "profit",
+  //     "profit_percentage",
+  //     "unit_wise_profitability",
+  //   ] as const;
 
-    const percentageSummaryLabels = [
-      "CM2 Margins",
-      "TACoS (Total Advertising Cost of Sale)",
-      "Reimbursement vs CM2 Margins",
-      "Reimbursement vs Sales",
-    ];
+  //   const percentageSummaryLabels = [
+  //     "CM2 Margins",
+  //     "TACoS (Total Advertising Cost of Sale)",
+  //     "Reimbursement vs CM2 Margins",
+  //     "Reimbursement vs Sales",
+  //   ];
 
-    const tableDataForExcel = tableData.map((row) => {
-      const rowData: Record<string, string | number> = {};
+  //   const tableDataForExcel = tableData.map((row) => {
+  //     const rowData: Record<string, string | number> = {};
 
-      columnsToDisplay2.forEach((column) => {
-        let value: any =
-          column === "product_sales"
-            ? (row.product_sales ?? (row as any).gross_sales ?? 0)
-            : column === "quantity"
-              ? (row.quantity ?? (row as any).total_quantity ?? 0)
-              : (row as any)[column];
+  //     columnsToDisplay2.forEach((column) => {
+  //       let value: any =
+  //         column === "product_sales"
+  //           ? (row.product_sales ?? (row as any).gross_sales ?? 0)
+  //           : column === "quantity"
+  //             ? (row.quantity ?? (row as any).total_quantity ?? 0)
+  //             : (row as any)[column];
 
-        if (column === "product_name") value = getDisplayProductNameFromRow(row);
+  //       if (column === "product_name") value = getDisplayProductNameFromRow(row);
 
-        if (typeof value === "number") {
-          if (Math.abs(value) < 1e-10) value = 0;
-          if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
+  //       if (typeof value === "number") {
+  //         if (Math.abs(value) < 1e-10) value = 0;
+  //         if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
+  //       }
+
+  //       if (column === "asp" && typeof value === "number") value = Number(value.toFixed(2));
+  //       if (column === "unit_wise_profitability" && typeof value === "number") value = Number(value.toFixed(2));
+  //       if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+
+  //       rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
+  //     });
+
+  //     return rowData;
+  //   });
+
+  //   const summaryRows: Record<string, string | number>[] = [
+  //     { [columnsToDisplay2[0]]: "Cost of Advertisement", [columnsToDisplay2[10]]: Math.abs(Number(totals.advertising_total)) },
+
+  //     { [columnsToDisplay2[0]]: "Visibility - Ads (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.visible_ads)) },
+  //     { [columnsToDisplay2[0]]: "Visibility - Deals, Vouchers and Reviews (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.dealsvouchar_ads)) },
+
+  //     ...(countryName === "us" || countryName === "global"
+  //       ? [
+  //         {
+  //           [columnsToDisplay2[0]]: "Shipment Charges (-)",
+  //           [columnsToDisplay2[10]]: Math.abs(Number(totals.shipment_charges)),
+  //         },
+  //       ]
+  //       : []),
+
+  //     { [columnsToDisplay2[0]]: "Other Transactions (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.other_transactions)) },
+  //     { [columnsToDisplay2[0]]: "Platform Fees (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.platform_fee)) },
+  //     { [columnsToDisplay2[0]]: "Inventory Storage Fees (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.inventory_storage_fees)) },
+
+  //     { [columnsToDisplay2[0]]: "CM2 Profit/Loss", [columnsToDisplay2[10]]: Number(totals.cm2_profit) },
+  //     { [columnsToDisplay2[0]]: "CM2 Margins", [columnsToDisplay2[10]]: Number(totals.cm2_margins) / 100 },
+  //     { [columnsToDisplay2[0]]: "TACoS (Total Advertising Cost of Sale)", [columnsToDisplay2[10]]: Number(totals.acos) / 100 },
+
+  //     { [columnsToDisplay2[0]]: "Net Reimbursement during the month", [columnsToDisplay2[10]]: Math.abs(Number(totals.reimbursement_lost_inventory_amount)) },
+  //     { [columnsToDisplay2[0]]: "Reimbursement vs CM2 Margins", [columnsToDisplay2[10]]: Number(totals.rembursment_vs_cm2_margins) / 100 },
+  //     { [columnsToDisplay2[0]]: "Reimbursement vs Sales", [columnsToDisplay2[10]]: Number(totals.reimbursement_vs_sales) / 100 },
+  //   ];
+
+  //   const headerRow = {
+  //     [columnsToDisplay2[0]]: "Product Name",
+  //     [columnsToDisplay2[1]]: "Quantity Sold",
+  //     [columnsToDisplay2[2]]: "ASP",
+  //     [columnsToDisplay2[3]]: "Gross Sales",
+  //     [columnsToDisplay2[4]]: "Net Sales",
+  //     [columnsToDisplay2[5]]: "Cost of Goods Sold",
+  //     [columnsToDisplay2[6]]: "Amazon Fees",
+  //     [columnsToDisplay2[7]]: "Selling Fees",
+  //     [columnsToDisplay2[8]]: "FBA fees",
+  //     [columnsToDisplay2[9]]: "Net Credits",
+  //     [columnsToDisplay2[10]]: "Net Taxes",
+  //     [columnsToDisplay2[11]]: "CM1 Profit",
+  //     [columnsToDisplay2[12]]: "CM1 Profit (%)",
+  //     [columnsToDisplay2[13]]: "CM1 Profit per Unit",
+  //   };
+
+  //   const signageRow = {
+  //     [columnsToDisplay2[2]]: "",
+  //     [columnsToDisplay2[3]]: "",
+  //     [columnsToDisplay2[4]]: "(+)",
+  //     [columnsToDisplay2[5]]: "(-)",
+  //     [columnsToDisplay2[6]]: "(-)",
+  //     [columnsToDisplay2[7]]: "(-)",
+  //     [columnsToDisplay2[8]]: "(-)",
+  //     [columnsToDisplay2[9]]: "(+)",
+  //     [columnsToDisplay2[10]]: "",
+  //     [columnsToDisplay2[11]]: "",
+  //     [columnsToDisplay2[12]]: "",
+  //     [columnsToDisplay2[13]]: "",
+  //   };
+
+  //   const fullData = [
+  //     ...getExtraRows().map((row) => ({ [columnsToDisplay2[0]]: row[0] })),
+  //     {},
+  //     headerRow,
+  //     signageRow,
+  //     ...tableDataForExcel,
+  //     ...summaryRows,
+  //   ];
+
+  //   const finalWs = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
+
+  //   if (finalWs["!ref"]) {
+  //     const rng = XLSX.utils.decode_range(finalWs["!ref"]);
+  //     for (let r = 6; r <= rng.e.r; r++) {
+  //       for (let c = 1; c < columnsToDisplay2.length; c++) {
+  //         const cellAddress = XLSX.utils.encode_cell({ r, c });
+  //         const colKey = columnsToDisplay2[c] as string;
+
+  //         if (finalWs[cellAddress] && typeof finalWs[cellAddress].v === "number") {
+  //           finalWs[cellAddress].t = "n";
+
+  //           const rowHeaderVal = finalWs[XLSX.utils.encode_cell({ r, c: 0 })]?.v as string | undefined;
+  //           const isPct =
+  //             colKey === "profit_percentage" ||
+  //             (rowHeaderVal ? percentageSummaryLabels.includes(rowHeaderVal) : false);
+
+  //           if (isPct) finalWs[cellAddress].z = "#,##0.00%";
+  //           else if (colKey === "quantity") finalWs[cellAddress].z = "#,##0";
+  //           else finalWs[cellAddress].z = "#,##0.00";
+  //         }
+  //       }
+  //     }
+  //   }
+
+  //   XLSX.utils.book_append_sheet(wb, finalWs, "SKU Profitability");
+
+
+
+  //   const filename =
+  //     range === "monthly"
+  //       ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
+  //       : range === "quarterly"
+  //         ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
+  //         : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
+
+  //   XLSX.writeFile(wb, filename);
+  // }, [
+  //   tableData,
+  //   totals,
+  //   getExtraRows,
+  //   range,
+  //   month,
+  //   yearShort,
+  //   quarter,
+  //   countryName,
+  //   getDisplayProductNameFromRow,
+  // ]);
+
+const handleDownloadExcel = useCallback(() => {
+  const wb = XLSX.utils.book_new();
+
+  const excelCols = buildExcelColumnsFromUI(); // [{ key, label }]
+  const colKeys = excelCols.map((c) => c.key);
+
+  // Header row from UI labels
+  const headerRow: Record<string, string> = {};
+  excelCols.forEach((c) => {
+    headerRow[c.key] = c.label;
+  });
+
+  // Build data rows
+  const tableDataForExcel = tableData.map((row, rowIndex) => {
+    const rowData: Record<string, string | number> = {};
+
+    colKeys.forEach((key) => {
+      let value: any = (row as any)[key];
+
+      // ✅ SNO: integer, blank for Total row
+      if (key === "sno") {
+        const name = getDisplayProductNameFromRow(row);
+        const isTotal = String(name).trim().toLowerCase() === "total";
+        value = isTotal ? "" : rowIndex + 1; // integer
+      }
+
+      // Product name matches UI fallback
+      if (key === "product_name") value = getDisplayProductNameFromRow(row);
+
+      // gross_sales -> product_sales mapping
+      if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+
+      // other_transactions mapping
+      if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+
+      // quantity meaning units_sold (if present in col list)
+      if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+
+      // Pre-rounding
+      if (typeof value === "number") {
+        if (Math.abs(value) < 1e-10) value = 0;
+
+        // integer-only fields
+        if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
+          value = Math.trunc(value);
+        } else {
+          value = Number(value.toFixed(2));
         }
+      }
 
-        if (column === "asp" && typeof value === "number") value = Number(value.toFixed(2));
-        if (column === "unit_wise_profitability" && typeof value === "number") value = Number(value.toFixed(2));
-        if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+      // profit_percentage stored as fraction for excel %
+      if (key === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
 
-        rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
-      });
-
-      return rowData;
+      rowData[key] = typeof value === "number" && isNaN(value) ? "-" : value;
     });
 
-    const summaryRows: Record<string, string | number>[] = [
-      { [columnsToDisplay2[0]]: "Cost of Advertisement", [columnsToDisplay2[10]]: Math.abs(Number(totals.advertising_total)) },
+    return rowData;
+  });
 
-      { [columnsToDisplay2[0]]: "Visibility - Ads (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.visible_ads)) },
-      { [columnsToDisplay2[0]]: "Visibility - Deals, Vouchers and Reviews (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.dealsvouchar_ads)) },
+  const extraRows = getExtraRows();
 
-      ...(countryName === "us" || countryName === "global"
-        ? [
-          {
-            [columnsToDisplay2[0]]: "Shipment Charges (-)",
-            [columnsToDisplay2[10]]: Math.abs(Number(totals.shipment_charges)),
-          },
-        ]
-        : []),
+  const fullData = [
+    ...extraRows.map((row) => ({ product_name: row[0] })),
+    {}, // blank line
+    headerRow,
+    ...tableDataForExcel,
+  ];
 
-      { [columnsToDisplay2[0]]: "Other Transactions (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.other_transactions)) },
-      { [columnsToDisplay2[0]]: "Platform Fees (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.platform_fee)) },
-      { [columnsToDisplay2[0]]: "Inventory Storage Fees (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.inventory_storage_fees)) },
+  const ws = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
 
-      { [columnsToDisplay2[0]]: "CM2 Profit/Loss", [columnsToDisplay2[10]]: Number(totals.cm2_profit) },
-      { [columnsToDisplay2[0]]: "CM2 Margins", [columnsToDisplay2[10]]: Number(totals.cm2_margins) / 100 },
-      { [columnsToDisplay2[0]]: "TACoS (Total Advertising Cost of Sale)", [columnsToDisplay2[10]]: Number(totals.acos) / 100 },
+  // ---------------------------
+  // ✅ FORCE EXCEL FORMATTING
+  // ---------------------------
 
-      { [columnsToDisplay2[0]]: "Net Reimbursement during the month", [columnsToDisplay2[10]]: Math.abs(Number(totals.reimbursement_lost_inventory_amount)) },
-      { [columnsToDisplay2[0]]: "Reimbursement vs CM2 Margins", [columnsToDisplay2[10]]: Number(totals.rembursment_vs_cm2_margins) / 100 },
-      { [columnsToDisplay2[0]]: "Reimbursement vs Sales", [columnsToDisplay2[10]]: Number(totals.reimbursement_vs_sales) / 100 },
-    ];
+  const EXTRA_ROWS_COUNT = extraRows.length;
+  const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT;            // the {} blank row
+  const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;       // headerRow position
+  const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;   // data starts after header
 
-    const headerRow = {
-      [columnsToDisplay2[0]]: "Product Name",
-      [columnsToDisplay2[1]]: "Quantity Sold",
-      [columnsToDisplay2[2]]: "ASP",
-      [columnsToDisplay2[3]]: "Gross Sales",
-      [columnsToDisplay2[4]]: "Net Sales",
-      [columnsToDisplay2[5]]: "Cost of Goods Sold",
-      [columnsToDisplay2[6]]: "Amazon Fees",
-      [columnsToDisplay2[7]]: "Selling Fees",
-      [columnsToDisplay2[8]]: "FBA fees",
-      [columnsToDisplay2[9]]: "Net Credits",
-      [columnsToDisplay2[10]]: "Net Taxes",
-      [columnsToDisplay2[11]]: "CM1 Profit",
-      [columnsToDisplay2[12]]: "CM1 Profit (%)",
-      [columnsToDisplay2[13]]: "CM1 Profit per Unit",
-    };
+  // Find the sno column index in the worksheet (based on colKeys)
+  const SNO_COL_INDEX = colKeys.indexOf("sno");
 
-    const signageRow = {
-      [columnsToDisplay2[2]]: "",
-      [columnsToDisplay2[3]]: "",
-      [columnsToDisplay2[4]]: "(+)",
-      [columnsToDisplay2[5]]: "(-)",
-      [columnsToDisplay2[6]]: "(-)",
-      [columnsToDisplay2[7]]: "(-)",
-      [columnsToDisplay2[8]]: "(-)",
-      [columnsToDisplay2[9]]: "(+)",
-      [columnsToDisplay2[10]]: "",
-      [columnsToDisplay2[11]]: "",
-      [columnsToDisplay2[12]]: "",
-      [columnsToDisplay2[13]]: "",
-    };
+  if (ws["!ref"]) {
+    const rng = XLSX.utils.decode_range(ws["!ref"]);
 
-    const fullData = [
-      ...getExtraRows().map((row) => ({ [columnsToDisplay2[0]]: row[0] })),
-      {},
-      headerRow,
-      signageRow,
-      ...tableDataForExcel,
-      ...summaryRows,
-    ];
+    // ✅ 1) Force sno column (data rows only) to integer format "0"
+    if (SNO_COL_INDEX >= 0) {
+      for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
+        const addr = XLSX.utils.encode_cell({ r, c: SNO_COL_INDEX });
+        const cell = ws[addr];
+        if (!cell) continue;
 
-    const finalWs = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
+        // keep blanks (like Total row sno "")
+        if (cell.v === "" || cell.v === null || cell.v === undefined) continue;
 
-    if (finalWs["!ref"]) {
-      const rng = XLSX.utils.decode_range(finalWs["!ref"]);
-      for (let r = 6; r <= rng.e.r; r++) {
-        for (let c = 1; c < columnsToDisplay2.length; c++) {
-          const cellAddress = XLSX.utils.encode_cell({ r, c });
-          const colKey = columnsToDisplay2[c] as string;
+        const n = Number(cell.v);
+        if (!Number.isFinite(n)) continue;
 
-          if (finalWs[cellAddress] && typeof finalWs[cellAddress].v === "number") {
-            finalWs[cellAddress].t = "n";
-
-            const rowHeaderVal = finalWs[XLSX.utils.encode_cell({ r, c: 0 })]?.v as string | undefined;
-            const isPct =
-              colKey === "profit_percentage" ||
-              (rowHeaderVal ? percentageSummaryLabels.includes(rowHeaderVal) : false);
-
-            if (isPct) finalWs[cellAddress].z = "#,##0.00%";
-            else if (colKey === "quantity") finalWs[cellAddress].z = "#,##0";
-            else finalWs[cellAddress].z = "#,##0.00";
-          }
-        }
+        cell.t = "n";
+        cell.v = Math.trunc(n);
+        cell.z = "0"; // ✅ no decimals
       }
     }
 
-    XLSX.utils.book_append_sheet(wb, finalWs, "SKU Profitability");
+    // ✅ 2) Apply formats to other numeric columns (data rows only)
+    for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
+      for (let c = 0; c <= rng.e.c; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = ws[addr];
+        if (!cell) continue;
 
+        const key = colKeys[c];
+        if (!key) continue;
 
+        // sno already handled
+        if (key === "sno") continue;
 
-    const filename =
-      range === "monthly"
-        ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
-        : range === "quarterly"
-          ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
-          : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
+        if (typeof cell.v !== "number") continue;
 
-    XLSX.writeFile(wb, filename);
-  }, [
-    tableData,
-    totals,
-    getExtraRows,
-    range,
-    month,
-    yearShort,
-    quarter,
-    countryName,
-    getDisplayProductNameFromRow,
-  ]);
+        cell.t = "n";
+        if (key === "profit_percentage") cell.z = "0.00%";
+        else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
+        else cell.z = "0.00";
+      }
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, "SKU Profitability");
+
+  const filename =
+    range === "monthly"
+      ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
+      : range === "quarterly"
+        ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
+        : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
+
+  XLSX.writeFile(wb, filename);
+}, [
+  tableData,
+  getExtraRows,
+  range,
+  month,
+  yearShort,
+  quarter,
+  getDisplayProductNameFromRow,
+  buildExcelColumnsFromUI,
+]);
 
   /* --------- Render guards --------- */
   if (loading) return <div>Loading...</div>;
@@ -1311,16 +1620,8 @@ const getExtraRows = useCallback(() => {
                 rows={tableData}
                 leftCols={LEFT_COLS}
                 groups={groups}
-                singleCols={[
-                  { key: "asp", label: "ASP", align: "center" },
-                  { key: "net_sales", label: "Net Sales", align: "center" },
-                  { key: "cost_of_unit_sold", label: "COGS", align: "center" },
-                  { key: "net_units_sold", label: "Net Units Sold", align: "center" },
-                  { key: "amazon_fee", label: "Amazon Fees", align: "center" },
-                  { key: "other_transactions", label: "Other Transactions", align: "center" },
-                  // { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
-                  { key: "profit", label: "CM1 Profit Margin", align: "center" },
-                ]}
+
+                singleCols={SINGLE_COLS}
                 layout={[
 
                   { type: "group", id: "units_breakdown" },
