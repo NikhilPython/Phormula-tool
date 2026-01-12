@@ -98,9 +98,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
   const normalizedHomeCurrency = (homeCurrency || "").trim().toLowerCase();
 
-  // ✅ For global pages: we want to filter rows by `country` field.
-  // - global (base)
-  // - global_inr, global_cad, global_gbp
+
   const globalCountryKey = normalizedHomeCurrency
     ? `global_${normalizedHomeCurrency}`
     : "global";
@@ -637,7 +635,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
 
   return (
     // <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
-    <div className="relative w-full">  
+    <div className="relative w-full bg-[#D9D9D933]">  
     {loading ? (
         <div className="flex h-[260px] md:h-[320px] items-center justify-center">
           <Loader

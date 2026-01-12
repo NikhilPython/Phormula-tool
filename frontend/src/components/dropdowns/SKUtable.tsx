@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -1700,225 +1698,96 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   return formatValue((row as any)[colKey], colKey);
                 }}
+                summary={{
+                  enabled: mainColCount > 0,
+
+                  sections: [
+                    {
+                      id: "ads",
+                      label: "Cost of Advertisement",
+                      endValue: formatValue(totals.advertising_total, "advertising_total"),
+                      defaultCollapsed: true,
+                      children: [
+                        {
+                          id: "ads_1",
+                          label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.visible_ads, "visible_ads"),
+                        },
+                        {
+                          id: "ads_2",
+                          label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads"),
+                        },
+                      ],
+                    },
+
+                    {
+                      id: "other",
+                      label: "Other Transactions",
+                      endValue: formatValue(totals.other_transactions, "other_transactions"),
+                      defaultCollapsed: true,
+                      children: [
+                        {
+                          id: "other_1",
+                          label: <>Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.platform_fee, "platform_fee"),
+                        },
+                        {
+                          id: "other_2",
+                          label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
+                        },
+                        {
+                          id: "other_3",
+                          label: (
+                            <>
+                              Reimbursement for lost Inventory
+                              {totals.reimbursement_lost_inventory_units
+                                ? ` - ${totals.reimbursement_lost_inventory_units} Units `
+                                : " "}
+                              <strong className="text-green-500">(+)</strong>
+                            </>
+                          ),
+                          midValue: formatValue(totals.lost_total, "lost_total"),
+                        },
+                      ],
+                    },
+                  ],
+
+                  fixedRows: [
+                    ...(countryName === "us" || countryName === "global"
+                      ? [
+                        {
+                          id: "ship",
+                          label: <>Shipment Charges <strong>(-)</strong></>,
+                          endValue: formatValue(totals.shipment_charges, "shipment_charges"),
+                        },
+                      ]
+                      : []),
+
+                    { id: "cm2_profit", label: "CM2 Profit/Loss", endValue: formatValue(totals.cm2_profit, "cm2_profit") },
+                    { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}%` },
+                    {
+                      id: "net_reimb",
+                      label: "Net Reimbursement",
+                      endValue: formatValue(Math.abs(totals.reimbursement_lost_inventory_amount), "reimbursement_lost_inventory_amount"),
+                    },
+                    { id: "tacos", label: "TACoS (Total Advertising Cost of Sale)", endValue: `${formatValue(totals.acos, "acos")}%` },
+                    {
+                      id: "rv_cm2",
+                      label: "Reimbursement vs CM2 Margins",
+                      endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%`,
+                    },
+                    {
+                      id: "rv_sales",
+                      label: "Reimbursement vs Sales",
+                      endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
+                    },
+                  ],
+
+                  valueCols: 2,
+                }}
               />
-
-              {mainColCount > 0 && (
-                <table className="w-full table-auto border-collapse text-[#414042]">
-                  <tbody>
-                    {/* ===================== Group 1: Cost of Advertisement ===================== */}
-                    <tr
-                      onClick={() => toggleSummary("ads")}
-                      role="button"
-                      className="cursor-pointer font-semibold bg-gray-50"
-                      title="Click to expand/collapse"
-                    >
-                      {/* Label spans all columns except last 2 */}
-                      <td
-                        colSpan={Math.max(mainColCount - 2, 1)}
-                        className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs "
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <span className="rounded border border-gray-400 px-1 text-xs">
-                            {summaryCollapsed.ads ? "+" : "−"}
-                          </span>
-                          Cost of Advertisement
-                        </span>
-                      </td>
-
-                      {/* Expanded column (blank on parent) */}
-                      <td className="border border-gray-300 px-2 sm:px-3 py-3" />
-
-                      {/* ✅ Parent total ALWAYS in LAST column */}
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                        {formatValue(totals.advertising_total, "advertising_total")}
-                      </td>
-                    </tr>
-
-                    {!summaryCollapsed.ads && (
-                      <>
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs "
-                          >
-                            Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                            {formatValue(totals.visible_ads, "visible_ads")}
-                          </td>
-
-                          {/* end col blank */}
-                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
-                        </tr>
-
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs"
-                          >
-                            Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                            {formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads")}
-                          </td>
-
-                          {/* end col blank */}
-                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
-                        </tr>
-                      </>
-                    )}
-
-                    {/* ===================== Group 2: Other Transactions ===================== */}
-                    <tr
-                      onClick={() => toggleSummary("other")}
-                      role="button"
-                      className="cursor-pointer font-semibold bg-gray-50"
-                      title="Click to expand/collapse"
-                    >
-                      <td
-                        colSpan={Math.max(mainColCount - 2, 1)}
-                        className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs"
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <span className="rounded border border-gray-400 px-1 text-xs">
-                            {summaryCollapsed.other ? "+" : "−"}
-                          </span>
-                          Other Transactions
-                        </span>
-                      </td>
-
-                      {/* Expanded column (blank on parent) */}
-                      <td className="border border-gray-300 px-2 sm:px-3 py-3" />
-
-                      {/* ✅ Parent total ALWAYS in LAST column */}
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                        {formatValue(totals.other_transactions, "other_transactions")}
-                      </td>
-                    </tr>
-
-                    {!summaryCollapsed.other && (
-                      <>
-
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs"
-                          >
-                            Platform Fees <strong className="text-[#ff5c5c]">(-)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                            {formatValue(totals.platform_fee, "platform_fee")}
-                          </td>
-
-                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
-                        </tr>
-
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs"
-                          >
-                            Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                            {formatValue(totals.inventory_storage_fees, "inventory_storage_fees")}
-                          </td>
-
-                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
-                        </tr>
-
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right text-[10px] 2xl:text-xs"
-                          >
-                            Reimbursement for lost Inventory
-                            {totals.reimbursement_lost_inventory_units
-                              ? ` - ${totals.reimbursement_lost_inventory_units} Units `
-                              : " "}
-                            <strong className="text-green-500">(+)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                            {formatValue(totals.lost_total, "lost_total")}
-                          </td>
-
-                          <td className="border border-gray-300 px-2 sm:px-3 py-3" />
-                        </tr>
-                      </>
-                    )}
-
-                    {/* ===================== Non-collapsible rows (✅ value in LAST column) ===================== */}
-                    {(countryName === "us" || countryName === "global") && (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs"
-                        >
-                          Shipment Charges <strong>(-)</strong>
-                        </td>
-
-                        {/* blank 2nd last */}
-                        <td className="border border-gray-300 px-2 sm:px-3 py-3" />
-
-                        {/* ✅ value in LAST */}
-                        <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-right text-[10px] 2xl:text-xs">
-                          {formatValue(totals.shipment_charges, "shipment_charges")}
-                        </td>
-                      </tr>
-                    )}
-
-                    {[
-                      { label: "CM2 Profit/Loss", value: formatValue(totals.cm2_profit, "cm2_profit") },
-                      { label: "CM2 Margins", value: `${formatValue(totals.cm2_margins, "cm2_margins")}%` },
-                      {
-                        label: "Net Reimbursement",
-                        value: formatValue(
-                          Math.abs(totals.reimbursement_lost_inventory_amount),
-                          "reimbursement_lost_inventory_amount"
-                        ),
-                      },
-                      {
-                        label: "TACoS (Total Advertising Cost of Sale)",
-                        value: `${formatValue(totals.acos, "acos")}%`,
-                      },
-                      {
-                        label: "Reimbursement vs CM2 Margins",
-                        value: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%`,
-                      },
-                      {
-                        label: "Reimbursement vs Sales",
-                        value: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
-                      },
-                    ].map((r) => (
-                      <tr key={r.label}>
-                        <td
-                          colSpan={6}
-                          className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs"
-                        >
-                          {r.label}
-                        </td>
-
-                        <td colSpan={2} className="border border-gray-300 px-2 sm:px-3 py-3" />
-
-                        {/* ✅ value in LAST */}
-                        <td colSpan={2} className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                          {r.value}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
 
 
             </div>
@@ -1927,7 +1796,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       </div>
 
       {/* Top & Bottom tables */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+      <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
         <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
           {/* Top 5 */}
           <div className="flex-1 min-w-0">
@@ -1939,7 +1808,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-green-500 font-bold text-[#f8edcf]">
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs break-words leading-snug">
                       Product Name
                     </th>
                     <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
@@ -2012,7 +1881,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-[#B75A5A] font-bold text-[#f8edcf]">
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs break-words leading-snug">
                       Product Name
                     </th>
                     <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
