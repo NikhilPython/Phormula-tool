@@ -261,17 +261,14 @@ function computeTotalsFromLastRow(rows: TableRow[]): Totals {
     advertising_total: toNumber(lastRow.advertising_total),
     visible_ads: toNumber(lastRow.visible_ads),
     dealsvouchar_ads: toNumber(lastRow.dealsvouchar_ads),
-    // ✅ SUMMARY "Other Transactions" should show platform_fee (total row)
     other_transactions: toNumber(lastRow.platform_fee),
     platform_fee: platformFees,
     inventory_storage_fees: inventoryStorageFees,
     reimbursement_lost_inventory_amount: reimbursementAmount,
     reimbursement_lost_inventory_units: reimbursementUnits,
     lost_total: toNumber(lastRow.lost_total),
-
     shipment_charges: toNumber(lastRow.shipment_charges),
     reimbursement_vs_sales: toNumber(lastRow.reimbursement_vs_sales),
-
     cm2_profit: toNumber(lastRow.cm2_profit),
     cm2_margins: cm2MarginsValue,
     acos: toNumber(lastRow.acos),
@@ -766,17 +763,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
     [SIGN_PLUS, SIGN_MINUS]
   );
   const buildSkuSheetModel = useCallback(() => {
-    // ✅ Take columns from UI
-    const excelCols = buildExcelColumnsFromUI(); // [{ key, label, ... }]
+    const excelCols = buildExcelColumnsFromUI();
     const colKeys = excelCols.map((c) => c.key);
 
-    // ✅ Header row from UI labels
     const headerRow: Record<string, string> = {};
     excelCols.forEach((c) => {
       headerRow[c.key] = c.label;
     });
 
-    // ✅ Optional sign row (only if you still want it in export payload)
     const signRow: Record<string, string> = {};
     colKeys.forEach((k) => {
       const s = getSignForCol(k);
@@ -806,19 +800,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
         // If you want quantity in excel to mean Units Sold like UI
         if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
 
-        // Formatting/rounding
         if (typeof value === "number") {
           if (Math.abs(value) < 1e-10) value = 0;
 
           if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
-            value = Math.trunc(value);   // ✅ sno becomes 1,2,3 (not 1.00)
+            value = Math.trunc(value);  
           } else {
             value = Number(value.toFixed(2));
           }
 
         }
 
-        // percent stored as fraction for excel
         if (key === "profit_percentage" && typeof value === "number") {
           value = Number(value) / 100;
         }
@@ -829,14 +821,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
       return out;
     });
 
-    // ✅ Summary rows (same as your current one — keep it if parent needs it)
     const summaryRows: Record<string, string | number>[] = [
       { product_name: "Cost of Advertisement", net_taxes: Math.abs(Number(totals.advertising_total || 0)) },
       { product_name: "Visibility - Ads (-)", net_taxes: Math.abs(Number(totals.visible_ads || 0)) },
-      {
-        product_name: "Visibility - Deals, Vouchers and Reviews (-)",
-        net_taxes: Math.abs(Number(totals.dealsvouchar_ads || 0)),
-      },
+      { product_name: "Visibility - Deals, Vouchers and Reviews (-)", net_taxes: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
 
       ...(countryName === "us" || countryName === "global"
         ? [{ product_name: "Shipment Charges (-)", net_taxes: Math.abs(Number(totals.shipment_charges || 0)) }]
@@ -846,17 +834,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { product_name: "Platform Fees (-)", net_taxes: Math.abs(Number(totals.platform_fee || 0)) },
       { product_name: "Inventory Storage Fees (-)", net_taxes: Math.abs(Number(totals.inventory_storage_fees || 0)) },
 
+      // ✅ THIS is the missing line (matches UI)
+      { product_name: "Reimbursement for lost Inventory", net_taxes: Math.abs(Number(totals.lost_total || 0)) },
+
       { product_name: "CM2 Profit/Loss", net_taxes: Number(totals.cm2_profit || 0) },
       { product_name: "CM2 Margins", net_taxes: Number(totals.cm2_margins || 0) / 100 },
       { product_name: "TACoS (Total Advertising Cost of Sale)", net_taxes: Number(totals.acos || 0) / 100 },
 
-      {
-        product_name: "Net Reimbursement during the month",
-        net_taxes: Math.abs(Number(totals.reimbursement_lost_inventory_amount || 0)),
-      },
       { product_name: "Reimbursement vs CM2 Margins", net_taxes: Number(totals.rembursment_vs_cm2_margins || 0) / 100 },
       { product_name: "Reimbursement vs Sales", net_taxes: Number(totals.reimbursement_vs_sales || 0) / 100 },
     ];
+
 
     // ✅ Formats per key (optional)
     const formats: Record<string, "int" | "money" | "percent" | "text"> = {};
@@ -865,6 +853,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       else if (k === "profit_percentage") formats[k] = "percent";
       else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(k)) formats[k] = "int";
       else formats[k] = "money";
+      // formats["summary_value"] = "money";
+
     });
 
     return {

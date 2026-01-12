@@ -1032,12 +1032,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
     }
 
-    // spacer between table and summary
     ws.addRow([""]);
 
-    // ---- summary rows
-    // If model uses { product_name, net_taxes } like your current model,
-    // keep label in product_name col and value in net_taxes col.
     const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
     const valueKey = columns.includes("net_taxes") ? "net_taxes" : columns[columns.length - 1];
 
