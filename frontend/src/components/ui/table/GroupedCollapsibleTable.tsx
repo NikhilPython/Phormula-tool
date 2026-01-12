@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 /* ---------------- Types ---------------- */
 
@@ -39,7 +39,7 @@ type Props<RowT> = {
   layout?: LayoutItem<RowT>[];
 
   initialCollapsed?: Record<string, boolean>;
-
+  onVisibleColCountChange?: (n: number) => void;
   getValue: (row: RowT, colKey: string, rowIndex: number) => React.ReactNode;
   getRowClassName?: (row: RowT, index: number) => string;
 
@@ -73,7 +73,8 @@ export default function GroupedCollapsibleTable<RowT>({
   showSignRowInBody = false,
   getSignForCol,
   toggleGroupByColKey,
-  tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042]",
+  onVisibleColCountChange,
+  tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042] text-xs 2xl:text-sm",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
 }: Props<RowT>) {
@@ -134,6 +135,11 @@ export default function GroupedCollapsibleTable<RowT>({
     return out;
   }, [leftCols, resolvedLayout, collapsed, groupMap, singleMap]);
 
+  useEffect(() => {
+    onVisibleColCountChange?.(visibleLeafCols.length);
+  }, [visibleLeafCols.length, onVisibleColCountChange]);
+
+
   /* ---------------- Row 2 Headers ---------------- */
 
   const row2LeafCols = useMemo(() => {
@@ -148,8 +154,10 @@ export default function GroupedCollapsibleTable<RowT>({
     return out;
   }, [resolvedLayout, collapsed, groupMap]);
 
-  const thBase =
-    "whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm";
+
+const thBase =
+  "whitespace-nowrap border border-gray-300 px-2 py-2";
+
 
   /* ---------------- Render ---------------- */
 

@@ -44,7 +44,7 @@ type BargraphProps = {
   homeCurrency?: string;
   onNoDataChange?: (noData: boolean) => void;
   onExportApiReady?: (api: ProfitChartExportApi) => void;   // ✅ add
-  hideDownloadButton?: boolean; 
+  hideDownloadButton?: boolean;
 };
 
 type UploadRow = {
@@ -238,12 +238,12 @@ const Bargraph: React.FC<BargraphProps> = ({
   );
 
   useEffect(() => {
-  onExportApiReady?.({
-    getChartBase64,
-    title: `Profitability - ${formattedMonthYear}`,
-    currencySymbol,
-  });
-}, [onExportApiReady, formattedMonthYear, currencySymbol]);
+    onExportApiReady?.({
+      getChartBase64,
+      title: `Profitability - ${formattedMonthYear}`,
+      currencySymbol,
+    });
+  }, [onExportApiReady, formattedMonthYear, currencySymbol]);
 
 
   const getExtraRows = () => {
@@ -317,7 +317,7 @@ const Bargraph: React.FC<BargraphProps> = ({
         return {
           chartData: { labels: [], datasets: [] } as ChartData<"bar">,
           chartOptions: {} as ChartOptions<"bar">,
-          exportToExcel: async () => {},
+          exportToExcel: async () => { },
           allValuesZero: true,
           metricsToShow: [] as (typeof preferredOrder)[number][],
           values: [] as number[],
@@ -505,18 +505,14 @@ const Bargraph: React.FC<BargraphProps> = ({
   }, [onNoDataChange, allValuesZero, loading]);
 
   return (
-    <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+    <div className="relative w-full rounded-xl bg-white p-4 sm:p-5">
       <div className={allValuesZero && !loading ? "opacity-30 pointer-events-none" : "opacity-100"}>
-        <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
-            <PageBreadcrumb pageTitle="Profitability" variant="page" align="left" textSize="2xl" />
+        {!hideDownloadButton && (
+          <div className="flex justify-end mb-2">
+            <DownloadIconButton onClick={exportToExcel} />
           </div>
+        )}
 
-          <div className="flex justify-center sm:justify-end">
-            {/* <DownloadIconButton onClick={exportToExcel} /> */}
-             {!hideDownloadButton && <DownloadIconButton onClick={exportToExcel} />}
-          </div>
-        </div>
 
         <div className="mt-4 w-full h-[46vh] sm:h-[48vh] md:h-[50vh] transition-opacity duration-300">
           {loading ? (

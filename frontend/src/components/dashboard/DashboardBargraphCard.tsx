@@ -60,7 +60,7 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
               labels={labels}
               values={values}
               colors={colors}
-              xTitle={formattedMonthYear}
+              // xTitle={formattedMonthYear}
               yTitle={`Amount (${currencySymbol})`}
             />
           )}

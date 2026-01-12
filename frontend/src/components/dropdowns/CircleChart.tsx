@@ -301,7 +301,6 @@ const CircleChart: React.FC<CircleChartProps> = ({
     return () => clearTimeout(t);
   }, [displayChartData, onExportBase64Ready]);
 
-
   const options: ChartOptions<"pie"> = {
     responsive: true,
     elements: {
@@ -309,35 +308,67 @@ const CircleChart: React.FC<CircleChartProps> = ({
         borderWidth: 0,
       },
     },
-
     plugins: {
       legend: {
         position: legendPosition,
         align: "center",
         labels: {
           usePointStyle: true,
+
+          // ✅ one legend item per slice + percentage
+          generateLabels: (chart) => {
+            const data = chart.data;
+            const labels = (data.labels || []) as string[];
+
+            const dataset = data.datasets?.[0] as any;
+            const rawValues = ((dataset?.data || []) as number[]).map((v) =>
+              Math.abs(Number(v || 0))
+            );
+            const total = rawValues.reduce((a, b) => a + b, 0);
+
+            const bg = dataset?.backgroundColor as any[]; // array of colors
+
+            return labels.map((label, i) => {
+              const value = rawValues[i] ?? 0;
+              const pct = total ? (value / total) * 100 : 0;
+
+              // Chart.js uses this to toggle slice visibility
+              const hidden = !chart.getDataVisibility(i);
+
+              return {
+                text: `${label} (${pct.toFixed(2)}%)`,
+                fillStyle: Array.isArray(bg) ? bg[i] : bg,
+                strokeStyle: "transparent",
+                lineWidth: 0,
+                hidden,
+                index: i, // IMPORTANT for toggling
+                pointStyle: "circle",
+              };
+            });
+          },
         },
       },
+
       tooltip: {
         callbacks: {
-          label: (ctx: TooltipItem<"pie">) => {
+          label: (ctx) => {
             const value = Math.abs(Number(ctx.raw ?? 0));
             const dataset = ctx.chart.data.datasets?.[ctx.datasetIndex] as
               | { data: number[] }
               | undefined;
+
             const total = (dataset?.data ?? []).reduce(
               (acc, v) => acc + Math.abs(Number(v || 0)),
               0
             );
+
             const pct = total ? (value / total) * 100 : 0;
             const label = ctx.label ? `${ctx.label}: ` : "";
-            return `${label}${currencySymbol}${value.toLocaleString(
-              undefined,
-              {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              }
-            )} (${pct.toFixed(2)}%)`;
+
+            return `${label}${currencySymbol}${value.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })} (${pct.toFixed(2)}%)`;
           },
         },
       },
@@ -351,13 +382,14 @@ const CircleChart: React.FC<CircleChartProps> = ({
     maintainAspectRatio: false,
   };
 
+
   return (
     <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
       {/* Heading */}
       <div className="mb-4">
         <div className="w-fit mx-auto md:mx-0">
           <PageBreadcrumb
-            pageTitle={`Expense Breakdown`}
+            pageTitle={`Expense Breakup`}
             variant="page"
             textSize="2xl"
             align="left"

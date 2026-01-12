@@ -303,7 +303,7 @@ const extractRecoAndInventoryBullets = (md?: string | null) => {
   return { recommendationBullets, inventoryBullets };
 };
 
-        type AiSingleInsightCardProps = {
+type AiSingleInsightCardProps = {
   loading: boolean;
   error: string | null;
   summaryBullets: string[];
@@ -1275,10 +1275,57 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
 
-const getCountryLabel = () => {
-  const c = (countryName || "").toLowerCase();
-  return c === "global" ? "GLOBAL" : (countryName || "").toUpperCase();
-};
+  const getCountryLabel = () => {
+    const c = (countryName || "").toLowerCase();
+    return c === "global" ? "GLOBAL" : (countryName || "").toUpperCase();
+  };
+
+  const getPeriodLabelShort = () => {
+    const yy = String(selectedYear || "").slice(-2);
+
+    if (range === "monthly" && selectedMonth && selectedYear) {
+      return `${convertToAbbreviatedMonth(selectedMonth)}'${yy}`;
+    }
+    if (range === "quarterly" && selectedQuarter && selectedYear) {
+      return `${selectedQuarter}'${yy}`;
+    }
+    if (range === "yearly" && selectedYear) {
+      return String(selectedYear);
+    }
+    return "";
+  };
+
+  const getPnLTitleParts = () => {
+    return {
+      country: getCountryLabel(),
+      period: getPeriodLabelShort(),
+    };
+  };
+
+
+  const renderAiPanel = () => {
+    if (!allDropdownsSelected) return null;
+
+    return (
+      // <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <MonthEndBusinessSummaryCard
+          loading={aiPanelLoading}
+          error={aiPanelError}
+          summaryBullets={aiPanel?.summaryBullets ?? []}
+          skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+        />
+
+        <RecommendationsCard
+          loading={aiPanelLoading}
+          error={aiPanelError}
+          recommendationBullets={aiPanel?.recommendationBullets ?? []}
+          inventoryBullets={aiPanel?.inventoryBullets ?? []}
+        />
+      </div>
+      // </div>
+    );
+  };
 
 const getPeriodLabelShort = () => {
   const yy = String(selectedYear || "").slice(-2);
@@ -1860,8 +1907,7 @@ const getPnLTitleParts = () => {
       </div>
 
 
-      {/* Profitability header + bundle download */}
-      {allDropdownsSelected && (
+      {/* {allDropdownsSelected && (
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
             <PageBreadcrumb
@@ -1895,13 +1941,94 @@ const getPnLTitleParts = () => {
             }
           />
         </div>
-      )}
+      )} */}
+
+
+      {/* {allDropdownsSelected && range === "yearly" && selectedYear && (
+        <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-baseline gap-2">
+              <PageBreadcrumb
+                pageTitle="P&L - Amazon"
+                variant="page"
+                align="left"
+                textSize="2xl"
+              />
+
+              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                {getPnLTitleParts().country}
+              </span>
+
+              <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
+
+              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                {getPnLTitleParts().period}
+              </span>
+            </div>
+
+            <DownloadIconButton
+              onClick={handleDownloadProfitabilityBundle}
+              disabled={
+                !chartExportApi ||
+                !skuExportPayload ||
+                !expenseBreakdownPieBase64 ||
+                !productWiseCm1PieBase64
+              }
+            />
+          </div>
+
+        
+
+          <GraphPage
+            range={range}
+            selectedYear={selectedYear}
+            countryName={initialCountryName}
+            homeCurrency={globalHomeCurrency}
+            hideDownloadButton
+            onExportApiReady={setChartExportApi}
+            onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+          />
+        </div>
+      )} */}
 
 
       {/* Charts & Tables */}
       {range === "monthly" && selectedMonth && selectedYear && (
         <>
-          <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+          <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+            {/* Heading INSIDE border */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-baseline gap-2">
+                <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
+
+                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                  {getPnLTitleParts().country}
+                </span>
+
+                {getPnLTitleParts().period ? (
+                  <>
+                    <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
+                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                      {getPnLTitleParts().period}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+
+              <DownloadIconButton
+                onClick={handleDownloadProfitabilityBundle}
+                disabled={
+                  !chartExportApi ||
+                  !skuExportPayload ||
+                  !expenseBreakdownPieBase64 ||
+                  !productWiseCm1PieBase64
+                }
+              />
+            </div>
+
+
+            {/* Graph */}
             <Bargraph
               range={range}
               selectedMonth={selectedMonth}
@@ -1917,17 +2044,17 @@ const getPnLTitleParts = () => {
             />
           </div>
 
-{allDropdownsSelected && (
-  <AiSingleInsightCard
-    loading={aiPanelLoading}
-    error={aiPanelError}
-    summaryBullets={aiPanel?.summaryBullets ?? []}
-    recommendationBullets={aiPanel?.recommendationBullets ?? []}
-    skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-    inventoryBullets={aiPanel?.inventoryBullets ?? []}
-  />
-)}
 
+          {allDropdownsSelected && (
+            <AiSingleInsightCard
+              loading={aiPanelLoading}
+              error={aiPanelError}
+              summaryBullets={aiPanel?.summaryBullets ?? []}
+              recommendationBullets={aiPanel?.recommendationBullets ?? []}
+              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+              inventoryBullets={aiPanel?.inventoryBullets ?? []}
+            />
+          )}
 
           <div className="flex flex-wrap justify-between gap-6 md:gap-4 mb-4">
             <div className="flex-1 min-w-[300px]">
@@ -1965,7 +2092,40 @@ const getPnLTitleParts = () => {
 
       {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
         <>
-          <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+          <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+            {/* Heading INSIDE border */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-baseline gap-2">
+                <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
+
+                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                  {getPnLTitleParts().country}
+                </span>
+
+                {getPnLTitleParts().period ? (
+                  <>
+                    <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
+                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                      {getPnLTitleParts().period}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+
+              <DownloadIconButton
+                onClick={handleDownloadProfitabilityBundle}
+                disabled={
+                  !chartExportApi ||
+                  !skuExportPayload ||
+                  !expenseBreakdownPieBase64 ||
+                  !productWiseCm1PieBase64
+                }
+              />
+            </div>
+
+
+
+            {/* Graph */}
             <GraphPage
               range={range}
               selectedQuarter={selectedQuarter}
@@ -1981,17 +2141,17 @@ const getPnLTitleParts = () => {
             />
           </div>
 
-{allDropdownsSelected && (
-  <AiSingleInsightCard
-    loading={aiPanelLoading}
-    error={aiPanelError}
-    summaryBullets={aiPanel?.summaryBullets ?? []}
-    recommendationBullets={aiPanel?.recommendationBullets ?? []}
-    skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-    inventoryBullets={aiPanel?.inventoryBullets ?? []}
-  />
-)}
 
+          {allDropdownsSelected && (
+            <AiSingleInsightCard
+              loading={aiPanelLoading}
+              error={aiPanelError}
+              summaryBullets={aiPanel?.summaryBullets ?? []}
+              recommendationBullets={aiPanel?.recommendationBullets ?? []}
+              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+              inventoryBullets={aiPanel?.inventoryBullets ?? []}
+            />
+          )}
 
           <div className="flex flex-wrap justify-between gap-6 md:gap-4">
             <div className="flex-1 min-w-[300px]">
@@ -2027,7 +2187,101 @@ const getPnLTitleParts = () => {
         </>
       )}
 
-      {range === "yearly" && selectedYear && (
+      {allDropdownsSelected && range === "yearly" && selectedYear && (
+        <>
+          {/* Graph + header card */}
+          <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-baseline gap-2">
+                <PageBreadcrumb
+                  pageTitle="P&L - Amazon"
+                  variant="page"
+                  align="left"
+                  textSize="2xl"
+                />
+
+                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                  {getPnLTitleParts().country}
+                </span>
+
+                <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
+
+                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                  {getPnLTitleParts().period}
+                </span>
+              </div>
+
+              <DownloadIconButton
+                onClick={handleDownloadProfitabilityBundle}
+                disabled={
+                  !chartExportApi ||
+                  !skuExportPayload ||
+                  !expenseBreakdownPieBase64 ||
+                  !productWiseCm1PieBase64
+                }
+              />
+            </div>
+
+            <GraphPage
+              range={range}
+              selectedYear={selectedYear}
+              countryName={initialCountryName}
+              homeCurrency={globalHomeCurrency}
+              hideDownloadButton
+              onExportApiReady={setChartExportApi}
+              onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+            />
+          </div>
+
+          
+          {allDropdownsSelected && (
+            <AiSingleInsightCard
+              loading={aiPanelLoading}
+              error={aiPanelError}
+              summaryBullets={aiPanel?.summaryBullets ?? []}
+              recommendationBullets={aiPanel?.recommendationBullets ?? []}
+              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+              inventoryBullets={aiPanel?.inventoryBullets ?? []}
+            />
+          )}
+
+          {/* ✅ Pie charts (needed for download button + yearly UI parity) */}
+          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
+            <div className="flex-1 min-w-[300px]">
+              <CircleChart
+                range={range}
+                year={selectedYear}
+                countryName={initialCountryName}
+                homeCurrency={globalHomeCurrency}
+                onExportBase64Ready={setExpenseBreakdownPieBase64}
+              />
+            </div>
+
+            <div className="flex-1 min-w-[300px]">
+              <CMchartofsku
+                range={range}
+                year={selectedYear}
+                countryName={initialCountryName}
+                homeCurrency={globalHomeCurrency}
+                onExportBase64Ready={setProductWiseCm1PieBase64}
+              />
+            </div>
+          </div>
+
+          {/* ✅ SKU table (needed for yearly UI + skuExportPayload) */}
+          <SKUtable
+            range={range}
+            year={selectedYear}
+            countryName={initialCountryName}
+            homeCurrency={globalHomeCurrency}
+            hideDownloadButton
+            onExportPayloadChange={setSkuExportPayload}
+          />
+        </>
+      )}
+
+
+      {/* {range === "yearly" && selectedYear && (
         <>
           <GraphPage
             range={range}
@@ -2083,7 +2337,7 @@ const getPnLTitleParts = () => {
           />
 
         </>
-      )}
+      )} */}
 
       {showNoDataOverlay && (
         <div
