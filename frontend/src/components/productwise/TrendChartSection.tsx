@@ -1764,6 +1764,7 @@ interface TrendChartSectionProps {
 
   // ✅ AI insights hook (optional)
   onViewBusinessInsights?: () => void;
+  insightsLoading?: boolean;
 }
 
 const TrendChartSection: React.FC<TrendChartSectionProps> = ({

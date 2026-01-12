@@ -108,8 +108,8 @@ export default function UserAddressCard() {
 
           {/* Update Fee Preview Information */}
           <div>
-            {/* <p className="mb-2 text-sm leading-normal text-charcoal-500 font-bold">
-              Warehouse Inventory            </p> */}
+            <p className="mb-2 text-sm leading-normal text-charcoal-500 font-bold">
+              Warehouse Inventory            </p>
 
             {/* Uncomment when you want chips */}
             {/* {isLoading && (
@@ -180,13 +180,12 @@ export default function UserAddressCard() {
         className="m-4 max-w-[500px] shadow-[6px_6px_7px_0px_#00000026] border border-[#D9D9D9]"
       >
         <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar dark:bg-gray-900 lg:p-9">
-          <SkuMultiCountryUpload
-            onClose={skuModal.closeModal}
-            onComplete={() => {
-              skuModal.closeModal(); 
-            }}
-          />
-
+        <SkuMultiCountryUpload
+  onClose={skuModal.closeModal}
+  onComplete={() => {
+    skuModal.closeModal(); // upload ke baad modal band
+  }}
+/>
         </div>
       </Modal>
     </>

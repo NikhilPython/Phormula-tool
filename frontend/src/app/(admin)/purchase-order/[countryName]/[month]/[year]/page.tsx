@@ -37,15 +37,19 @@ const formatCountry = (c: string) => {
   return v.toUpperCase();
 };
 
-export function generateMetadata({ params }: { params: Params }): Metadata {
-  const country = formatCountry(params.countryName);
-  const monthFormatted = monthName(decodeURIComponent(params.month || ""));
-  const year = String(params.year || "");
+export async function generateMetadata(
+  { params }: { params: Promise<Params> }
+): Promise<Metadata> {
 
- const title =
+  const { countryName, month, year } = await params;
+
+  const country = formatCountry(countryName);
+  const monthFormatted = monthName(decodeURIComponent(month || ""));
+
+  const title =
     country === "Global"
       ? `Global Purchase Order`
-      : `Purchase Order | Amazon ${country} `;
+      : `Purchase Order | Amazon ${country}`;
 
   return {
     title,

@@ -15,6 +15,8 @@ db_url = os.getenv("DATABASE_URL")
 engine_hist = create_engine(db_url)
 
 
+
+
 def test_send_email():
     from flask_mail import Message
     from app import mail  # Assuming you've imported mail correctly
@@ -158,12 +160,13 @@ def render_sku_card(sku):
       </div>
 
       <table width="100%" cellspacing="8">
-        <tr>
-          {metric_box("ASP Change", sku["metrics"]["ASP"], asp_neg)}
-          {metric_box("Units", sku["metrics"]["Units"], units_neg)}
-          {metric_box("Sales Mix", sku["metrics"]["Sales Mix"], mix_neg)}
-          {metric_box("Profit", sku["metrics"]["Profit"], profit_neg)}
-        </tr>
+       <tr>
+  {metric_box("ASP Change", sku["metrics"]["ASP"], asp_neg)}
+  {metric_box("Units", sku["metrics"]["Units"], units_neg)}
+  {metric_box("Sales", sku["metrics"]["Sales"], sku["negatives"].get("Sales", False))}
+  {metric_box("Sales Mix", sku["metrics"]["Sales Mix"], mix_neg)}
+  {metric_box("Profit", sku["metrics"]["Profit"], profit_neg)}
+</tr>
       </table>
 
       <p style="font-size:13px; color:#555; line-height:1.6; margin-top:12px;">
@@ -179,11 +182,19 @@ def render_sku_card(sku):
         font-weight:500;
         border-radius:6px;
       ">
-        <strong>Action:</strong> {sku["action"]}
+        <strong>Action</strong><br/>{sku["action"]}
       </div>
     </div>
     """
 
+GENERIC_ACTION_PATTERNS = [
+    "monitor performance",
+    "monitor closely",
+    "maintain current asp and",
+    "reduce asp slightly",
+    "improve traction",
+    "if your objective is",
+]
 
 
 
@@ -199,20 +210,12 @@ def _extract_pct(text: str, pattern: str):
 
 
 def parse_action_bullet_to_card(bullet: str) -> dict | None:
-    """
-    Convert one AI action_bullet string into the dict expected by render_sku_card().
-    Expected bullet format (from build_ai_summary prompt):
-      Product name - <name>
-
-      <2 sentence paragraph...>
-
-      <one action sentence>
-    """
     if not bullet or not str(bullet).strip():
         return None
 
     lines = [l.rstrip() for l in str(bullet).splitlines()]
-    # remove leading/trailing empty lines
+
+    # trim empty lines
     while lines and not lines[0].strip():
         lines.pop(0)
     while lines and not lines[-1].strip():
@@ -221,41 +224,110 @@ def parse_action_bullet_to_card(bullet: str) -> dict | None:
     if not lines:
         return None
 
-    # Product line
+    # ---------- Product ----------
     product = lines[0]
     if product.lower().startswith("product name"):
-        # Product name - Classic
         parts = product.split("-", 1)
-        if len(parts) == 2 and parts[1].strip():
+        if len(parts) == 2:
             product = parts[1].strip()
 
-    # Action line = last non-empty line
-    action = ""
+    # ---------- Inventory action (last line) ----------
+    inventory_action = ""
     for l in reversed(lines):
         if l.strip():
-            action = l.strip()
+            inventory_action = l.strip()
             break
 
-    # Description = everything between first line and last action line (excluding blank lines)
-    middle = []
-    for l in lines[1:]:
-        if l.strip() and l.strip() != action:
-            middle.append(l.strip())
-    description = " ".join(middle).strip()
+    # ---------- Buckets ----------
+    pricing_action = ""
+    rank_action = ""
+    generic_actions = []
+    description_lines = []
 
-    # Extract % metrics from the description text (best-effort)
-    # Extract % metrics from the description text (best-effort)
-    # Note: avoid sales_mix being caught by generic sales regex by matching sales mix first.
+    for l in lines[1:]:
+        low = l.lower()
+
+        if "increase asp" in low:
+            pricing_action = "Increase ASP slightly to strengthen margins."
+
+        elif "boost rank" in low or "current pricing setup" in low:
+            rank_action = l.strip()
+
+        elif l.strip() != inventory_action:
+            description_lines.append(l.strip())
+
+    raw_description = " ".join(description_lines).strip()
+
+    # ---- SENTENCE LEVEL SPLIT ----
+    sentences = re.split(r'(?<=[.!?])\s+', raw_description)
+
+    clean_sentences = []
+    pricing_action = ""
+    rank_action = ""
+
+    for s in sentences:
+        low = s.lower()
+
+        if any(p in low for p in GENERIC_ACTION_PATTERNS) and "by" not in low:
+            generic_actions.append(s.strip())
+
+        elif "increase asp" in low:
+            pricing_action = "Increase ASP slightly to strengthen margins."
+
+        elif "boost rank" in low or "current pricing setup" in low:
+            rank_action = s.strip()
+
+        else:
+            clean_sentences.append(s.strip())
+
+
+
+    # Final cleaned description (NO ACTION LINES)
+    description = " ".join(clean_sentences).strip()
+
+
+    # ---------- FINAL ACTION ORDER ----------
+    actions = []
+    
+    for ga in generic_actions:
+        actions.append(ga)
+
+    if pricing_action:
+        actions.append(pricing_action)
+
+    if rank_action:
+        actions.append(rank_action)
+
+    if inventory_action and inventory_action not in actions:
+        actions.append(inventory_action)
+
+    action = "<br/>".join(f"{i+1}. {a}" for i, a in enumerate(actions))
+
+
+    # ---------- Metrics extraction ----------
     mix_val = _extract_pct(description, r"sales\s*mix[^%]*?by\s*([+-]?\d+(?:\.\d+)?)%")
     asp_val = _extract_pct(description, r"\bASP\b[^%]*?by\s*([+-]?\d+(?:\.\d+)?)%")
     units_val = _extract_pct(description, r"\bunits?\b[^%]*?by\s*([+-]?\d+(?:\.\d+)?)%")
     profit_val = _extract_pct(description, r"\bprofit(?!\s*margin)\b[^%]*?by\s*([+-]?\d+(?:\.\d+)?)%")
+    sales_val = _extract_pct(description, r"\bsales\b[^%]*?by\s*([+-]?\d+(?:\.\d+)?)%")
 
-    # If numbers come without sign but text says decrease/dip/down, infer negatives from description.
     negatives = {
-        "ASP": _metric_is_negative(description, r"asp", asp_val),
-        "Units": _metric_is_negative(description, r"units?", units_val),
-        "Sales Mix": _metric_is_negative(description, r"sales\s*mix|mix", mix_val),
+        "ASP": (
+    False
+    if re.search(r"(up|increase|increased|growth).{0,30}asp|asp.{0,30}(up|increase|increased|growth)", description, re.I)
+    else _metric_is_negative(description, r"asp", asp_val)
+),
+        "Units": (
+    False
+    if re.search(r"(growth|increase|increased|up).{0,30}units|units.{0,30}(growth|increase|increased|up)", description, re.I)
+    else _metric_is_negative(description, r"units?", units_val)
+),
+        "Sales": _metric_is_negative(description, r"sales", sales_val),
+        "Sales Mix": (
+    False
+    if re.search(r"(up|increase|increased|growth).{0,30}sales\s*mix|sales\s*mix.{0,30}(up|increase|increased|growth)", description, re.I)
+    else _metric_is_negative(description, r"sales\s*mix", mix_val)
+),
         "Profit": _metric_is_negative(description, r"profit", profit_val),
     }
 
@@ -265,17 +337,17 @@ def parse_action_bullet_to_card(bullet: str) -> dict | None:
     metrics = {
         "ASP": _abs_or_zero(asp_val),
         "Units": _abs_or_zero(units_val),
+        "Sales": _abs_or_zero(sales_val),
         "Sales Mix": _abs_or_zero(mix_val),
         "Profit": _abs_or_zero(profit_val),
     }
-
 
     return {
         "product": product,
         "metrics": metrics,
         "negatives": negatives,
-        "description": description or "",
-        "action": action or "",
+        "description": description,
+        "action": action,
     }
 
 

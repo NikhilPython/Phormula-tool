@@ -23,7 +23,7 @@ import {
 import { FiDownload } from "react-icons/fi";
 import DataTable, { ColumnDef } from "@/components/ui/table/DataTable";
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
-import ExcelJS from "exceljs/dist/exceljs.min.js";
+
 import { saveAs } from "file-saver";
 import CashFlowSankey from "@/components/cashflow/CashFlowSankey";
 
@@ -758,96 +758,6 @@ if (
 
     const fileName = `SummaryTable_${periodType}_${year}.xlsx`;
     XLSX.writeFile(wb, fileName);
-  };
-
-  const downloadCombinedExcelWithImage = async () => {
-    if (!data?.summary) return;
-
-    // 1. Create workbook / sheet
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Cashflow");
-
-    // 2. Meta info (brand, company, etc.)
-    const company = userData?.company_name || "N/A";
-    const brand = userData?.brand_name || "N/A";
-
-    const metaRows = [
-      [`Brand: ${brand}`],
-      [`Company: ${company}`],
-      [`Period Type: ${capitalize(periodType)}`],
-      [`Time Frame: ${xAxisTitle}`],
-      [`Currency: ${currencySymbol}`],
-      [`Country: ${capitalize(countryName || "")}`],
-      [""],
-    ];
-
-    metaRows.forEach((row) => worksheet.addRow(row));
-
-    // 3. TABLE SECTION (summary table ON TOP)
-    worksheet.addRow(["TABLE SUMMARY"]);
-    worksheet.addRow(["S.No.", "Category", "", `Amount (${currencySymbol})`]);
-
-    const signs = ["(+)", "(-)", "(-)", "(-)", "(-)", "(-)", "(+)"];
-
-    columnsToDisplay2.forEach((key, index) => {
-      const label = labelMap[key];
-      const sign = signs[index] || "";
-      const isLastRow = index === columnsToDisplay2.length - 1;
-
-      const val = Number(
-        Math.abs(getSafeValue(key as keyof SummaryShape)).toFixed(2)
-      );
-
-      worksheet.addRow([
-        isLastRow ? "" : index + 1,
-        label,
-        isLastRow ? "" : sign,
-        val,
-      ]);
-    });
-
-    worksheet.addRow([""]); // blank row after table
-
-    // 4. Capture chart as PNG from Chart.js and place it BELOW the table
-    const chartInstance: any = chartRef.current;
-    if (chartInstance) {
-      // Try to get the base64 image from the chart instance
-      let dataUrl: string | undefined;
-
-      if (typeof chartInstance.toBase64Image === "function") {
-        dataUrl = chartInstance.toBase64Image("image/png", 1.0);
-      } else if (chartInstance.canvas?.toDataURL) {
-        // Fallback: access canvas directly
-        dataUrl = chartInstance.canvas.toDataURL("image/png", 1.0);
-      }
-
-      if (dataUrl) {
-        // Strip the "data:image/png;base64," prefix for ExcelJS
-        const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");
-
-        const imageId = workbook.addImage({
-          base64,
-          extension: "png",
-        });
-
-        // First free row after table
-        const startRow = worksheet.rowCount + 1;
-        const startCol = 1;
-
-        // You can tweak ext.width/height to resize the chart in Excel
-        worksheet.addImage(imageId, {
-          tl: { col: startCol - 1, row: startRow - 1 },
-          ext: { width: 800, height: 400 },
-        });
-      }
-    }
-
-    // 5. Download file in browser
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    saveAs(blob, `Cashflow_${periodType}_${year}.xlsx`);
   };
 
 

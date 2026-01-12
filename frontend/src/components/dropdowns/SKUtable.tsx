@@ -1,3 +1,5 @@
+
+
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -9,7 +11,12 @@ import Productinfoinpopup from "./Productinfoinpopup";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import { SkuExportPayload } from "@/lib/utils/exportTypes";
-import GroupedCollapsibleTable, { LeafCol, ColGroup } from "../ui/table/GroupedCollapsibleTable";
+import GroupedCollapsibleTable, {
+  LeafCol,
+  ColGroup,
+  Align,
+} from "../ui/table/GroupedCollapsibleTable";
+
 
 /* ---------- Types ---------- */
 
@@ -462,110 +469,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
     []
   );
 
-  // const groups = [
-  //   {
-  //     id: "sales",
-  //     label: "Sales",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "product_sales", label: "Gross Sales", align: "center" },
-  //       { key: "refund_sales", label: "Sales - Refund", align: "center" },
-  //       { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "units_breakdown",
-  //     label: "Net Units Sold",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "sku", label: "SKU", align: "center" },
-  //       { key: "units_sold", label: "Units Sold", align: "center" },
-  //       { key: "return_units", label: "Return", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "promotions_breakdown",
-  //     label: "",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "promotional_rebates", label: "Promotions", align: "center" },
-  //       { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "amazon_breakdown",
-  //     label: "Amazon Fees",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "selling_fees", label: "Selling Fees", align: "center" },
-  //       { key: "fba_fees", label: "FBA Fees", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "other_transactions_breakdown",
-  //     label: "Other Transactions",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "net_taxes", label: "Net Taxes", align: "center" },
-  //       { key: "net_credits", label: "Net Credits", align: "center" },
-  //       { key: "misc_transaction", label: "Misc. Transactions", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "profit_breakdown",
-  //     label: "CM1 Profit ",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       // { key: "profit", label: "CM1 Profit Margin", align: "center" },
-  //       { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
-  //       { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
-  //     ],
-  //   },
-  // ];
+  const groups: ColGroup<TableRow>[] = [
 
-  //  const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
-  //   () => [
-  //     // Units
-  //     { key: "units_sold", label: "Units Sold", align: "center" },
-  //     { key: "return_units", label: "Return", align: "center" },
-  //     { key: "net_units_sold", label: "Net Units Sold", align: "center" },
-
-  //     // ASP
-  //     { key: (aspKey ?? "asp") as string, label: "ASP", align: "center" },
-
-  //     // Sales
-  //     { key: "product_sales", label: "Gross Sales", align: "center" },
-  //     { key: "refund_sales", label: "Sales - Refund", align: "center" },
-  //     { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
-  //     { key: "net_sales", label: "Net Sales", align: "center" },
-
-  //     // Promotions
-  //     { key: "promotional_rebates", label: "Promotions", align: "center" },
-  //     { key: "promotional_rebates_percentage", label: "Promotions %age", align: "center" },
-
-  //     // COGS
-  //     { key: "cost_of_unit_sold", label: "COGS", align: "center" },
-
-  //     // Amazon Fees
-  //     { key: "selling_fees", label: "Selling Fees", align: "center" },
-  //     { key: "fba_fees", label: "FBA Fees", align: "center" },
-  //     { key: "amazon_fee", label: "Amazon Fees", align: "center" },
-
-  //     // Others
-  //     { key: "net_taxes", label: "Net Taxes", align: "center" },
-  //     { key: "net_credits", label: "Net Credits", align: "center" },
-  //     { key: "misc_transaction", label: "Misc. Transactions", align: "center" },
-  //     { key: "other_transactions", label: "Other Transactions", align: "center" },
-
-  //     // CM1
-  //     { key: "profit", label: "CM1 Profit Margin", align: "center" },
-  //     { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
-  //     { key: "profit_percentage", label: "CM1 Profit %age", align: "center" },
-  //   ],
-  //   [aspKey]
-  // );
-
-  const groups = useMemo<ColGroup<TableRow>[]>(() => ([
     {
       id: "sales",
       label: "Sales",
@@ -623,7 +528,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
       ],
     },
-  ]), []);
+  ]; 
 
 
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
@@ -1553,7 +1458,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   return (
     <>
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-1 sm:p-2">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
             {/* <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" /> */}
@@ -1563,14 +1468,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   <>
                     Monthly P&amp;L - Product Breakdown -{" "}
                     <span className="text-[#5EA68E] font-bold">
-                      {convertToAbbreviatedMonth(month)}'{String(year).slice(-2)}
+                      {convertToAbbreviatedMonth(month)}&apos;{String(year).slice(-2)}
                     </span>
                   </>
                 ) : range === "quarterly" ? (
                   <>
                     Quarterly P&amp;L - Product Breakdown -{" "}
                     <span className="text-[#5EA68E] font-bold">
-                      {quarter}'{String(year).slice(-2)}
+                      {quarter}&apos;{String(year).slice(-2)}
                     </span>
                   </>
                 ) : (
@@ -1634,7 +1539,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   { type: "single", key: "profit" },
                 ]}
                 initialCollapsed={{
-                  units_breakdown: true,
+                  units_breakdown: true,     // ✅ group id
                   sales: true,
                   promotions_breakdown: true,
                   amazon_breakdown: true,
@@ -1652,19 +1557,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 onVisibleColCountChange={setMainColCount}
                 showSignRowInBody
                 getSignForCol={getSignForCol}
-                getRowClassName={(row, index) => {
-                  const isTotalRow =
-                    String((row as any)?.product_name || "")
-                      .trim()
-                      .toLowerCase() === "total";
-
-                  if (isTotalRow) {
-                    return "bg-[#EFEFEF] font-semibold";
-                  }
-
-                  return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                getRowClassName={(_, index) => {
+                  const isLastRow = index === tableData.length - 1;
+                  return `${index % 2 === 0 ? "bg-white" : "bg-gray-50"} ${isLastRow ? "bg-gray-200 font-semibold" : ""}`;
                 }}
-
                 getValue={(row, colKey, rowIndex) => {
                   const isLastRow = rowIndex === tableData.length - 1;
 
@@ -1688,96 +1584,350 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   return formatValue((row as any)[colKey], colKey);
                 }}
-                summary={{
-                  enabled: mainColCount > 0,
-
-                  sections: [
-                    {
-                      id: "ads",
-                      label: "Cost of Advertisement",
-                      endValue: formatValue(totals.advertising_total, "advertising_total"),
-                      defaultCollapsed: true,
-                      children: [
-                        {
-                          id: "ads_1",
-                          label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.visible_ads, "visible_ads"),
-                        },
-                        {
-                          id: "ads_2",
-                          label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads"),
-                        },
-                      ],
-                    },
-
-                    {
-                      id: "other",
-                      label: "Other Transactions",
-                      endValue: formatValue(totals.other_transactions, "other_transactions"),
-                      defaultCollapsed: true,
-                      children: [
-                        {
-                          id: "other_1",
-                          label: <>Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.platform_fee, "platform_fee"),
-                        },
-                        {
-                          id: "other_2",
-                          label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
-                        },
-                        {
-                          id: "other_3",
-                          label: (
-                            <>
-                              Reimbursement for lost Inventory
-                              {totals.reimbursement_lost_inventory_units
-                                ? ` - ${totals.reimbursement_lost_inventory_units} Units `
-                                : " "}
-                              <strong className="text-green-500">(+)</strong>
-                            </>
-                          ),
-                          midValue: formatValue(totals.lost_total, "lost_total"),
-                        },
-                      ],
-                    },
-                  ],
-
-                  fixedRows: [
-                    ...(countryName === "us" || countryName === "global"
-                      ? [
-                        {
-                          id: "ship",
-                          label: <>Shipment Charges <strong>(-)</strong></>,
-                          endValue: formatValue(totals.shipment_charges, "shipment_charges"),
-                        },
-                      ]
-                      : []),
-
-                    { id: "cm2_profit", label: "CM2 Profit/Loss", endValue: formatValue(totals.cm2_profit, "cm2_profit") },
-                    { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}%` },
-                    {
-                      id: "net_reimb",
-                      label: "Net Reimbursement",
-                      endValue: formatValue(Math.abs(totals.reimbursement_lost_inventory_amount), "reimbursement_lost_inventory_amount"),
-                    },
-                    { id: "tacos", label: "TACoS (Total Advertising Cost of Sale)", endValue: `${formatValue(totals.acos, "acos")}%` },
-                    {
-                      id: "rv_cm2",
-                      label: "Reimbursement vs CM2 Margins",
-                      endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%`,
-                    },
-                    {
-                      id: "rv_sales",
-                      label: "Reimbursement vs Sales",
-                      endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
-                    },
-                  ],
-
-                  valueCols: 2,
-                }}
               />
+
+              {/* Summary rows */}
+              {/* <table className="w-full table-auto border-collapse text-[#414042]">
+                <tbody>
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                      Cost of Advertisement <strong>(-)</strong>
+                    </td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.advertising_total, "advertising_total")}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                      Visibility - Ads <strong>(-)</strong>
+                    </td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.visible_ads, "visible_ads")}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                      Visibility - Deals, Vouchers and Reviews <strong>(-)</strong>
+                    </td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads")}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                      Other Transactions
+                    </td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.other_transactions, "other_transactions")}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                      Platform Fees <strong>(-)</strong>
+                    </td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.platform_fee, "platform_fee")}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                      Inventory Storage Fees <strong>(-)</strong>
+                    </td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.inventory_storage_fees, "inventory_storage_fees")}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                      Reimbursement for lost Inventory
+                      {totals.reimbursement_lost_inventory_units ? ` - ${totals.reimbursement_lost_inventory_units} Units ` : " "}
+                      <strong>(+)</strong>
+                    </td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.lost_total, "lost_total")}
+                    </td>
+                  </tr>
+
+                  {(countryName === "us" || countryName === "global") && (
+                    <tr>
+                      <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                        Shipment Charges <strong>(-)</strong>
+                      </td>
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                        {formatValue(totals.shipment_charges, "shipment_charges")}
+                      </td>
+                    </tr>
+                  )}
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">CM2 Profit/Loss</td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.cm2_profit, "cm2_profit")}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">CM2 Margins</td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.cm2_margins, "cm2_margins")}%
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                      Net Reimbursement
+                    </td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(Math.abs(totals.reimbursement_lost_inventory_amount), "reimbursement_lost_inventory_amount")}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">TACoS (Total Advertising Cost of Sale)</td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.acos, "acos")}%
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">Reimbursement vs CM2 Margins</td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">Reimbursement vs Sales</td>
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      {formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%
+                    </td>
+                  </tr>
+                </tbody>
+              </table> */}
+
+              {mainColCount > 0 && (
+                <table className="w-full table-auto border-collapse text-[#414042]">
+                  <tbody>
+                    {/* ===================== Group 1: Cost of Advertisement ===================== */}
+                    <tr
+                      onClick={() => toggleSummary("ads")}
+                      role="button"
+                      className="cursor-pointer font-semibold bg-gray-50"
+                      title="Click to expand/collapse"
+                    >
+                      {/* Label spans all columns except last 2 */}
+                      <td
+                        colSpan={Math.max(mainColCount - 2, 1)}
+                        className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <span className="rounded border border-gray-400 px-1 text-xs">
+                            {summaryCollapsed.ads ? "+" : "−"}
+                          </span>
+                          Cost of Advertisement
+                        </span>
+                      </td>
+
+                      {/* Expanded column (blank on parent) */}
+                      <td className="border border-gray-300 px-2 py-2" />
+
+                      {/* ✅ Parent total ALWAYS in LAST column */}
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                        {formatValue(totals.advertising_total, "advertising_total")}
+                      </td>
+                    </tr>
+
+                    {!summaryCollapsed.ads && (
+                      <>
+                        <tr>
+                          <td
+                            colSpan={Math.max(mainColCount - 2, 1)}
+                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                          >
+                            Visibility - Ads <strong>(-)</strong>
+                          </td>
+
+                          {/* Expanded child value stays in 2nd last column */}
+                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                            {formatValue(totals.visible_ads, "visible_ads")}
+                          </td>
+
+                          {/* end col blank */}
+                          <td className="border border-gray-300 px-2 py-2" />
+                        </tr>
+
+                        <tr>
+                          <td
+                            colSpan={Math.max(mainColCount - 2, 1)}
+                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                          >
+                            Visibility - Deals, Vouchers and Reviews <strong>(-)</strong>
+                          </td>
+
+                          {/* Expanded child value stays in 2nd last column */}
+                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                            {formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads")}
+                          </td>
+
+                          {/* end col blank */}
+                          <td className="border border-gray-300 px-2 py-2" />
+                        </tr>
+                      </>
+                    )}
+
+                    {/* ===================== Group 2: Other Transactions ===================== */}
+                    <tr
+                      onClick={() => toggleSummary("other")}
+                      role="button"
+                      className="cursor-pointer font-semibold bg-gray-50"
+                      title="Click to expand/collapse"
+                    >
+                      <td
+                        colSpan={Math.max(mainColCount - 2, 1)}
+                        className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <span className="rounded border border-gray-400 px-1 text-xs">
+                            {summaryCollapsed.other ? "+" : "−"}
+                          </span>
+                          Other Transactions
+                        </span>
+                      </td>
+
+                      {/* Expanded column (blank on parent) */}
+                      <td className="border border-gray-300 px-2 py-2" />
+
+                      {/* ✅ Parent total ALWAYS in LAST column */}
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                        {formatValue(totals.other_transactions, "other_transactions")}
+                      </td>
+                    </tr>
+
+                    {!summaryCollapsed.other && (
+                      <>
+
+                        <tr>
+                          <td
+                            colSpan={Math.max(mainColCount - 2, 1)}
+                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                          >
+                            Platform Fees <strong>(-)</strong>
+                          </td>
+
+                          {/* Expanded child value stays in 2nd last column */}
+                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                            {formatValue(totals.platform_fee, "platform_fee")}
+                          </td>
+
+                          <td className="border border-gray-300 px-2 py-2" />
+                        </tr>
+
+                        <tr>
+                          <td
+                            colSpan={Math.max(mainColCount - 2, 1)}
+                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                          >
+                            Inventory Storage Fees <strong>(-)</strong>
+                          </td>
+
+                          {/* Expanded child value stays in 2nd last column */}
+                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                            {formatValue(totals.inventory_storage_fees, "inventory_storage_fees")}
+                          </td>
+
+                          <td className="border border-gray-300 px-2 py-2" />
+                        </tr>
+
+                        <tr>
+                          <td
+                            colSpan={Math.max(mainColCount - 2, 1)}
+                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
+                          >
+                            Reimbursement for lost Inventory
+                            {totals.reimbursement_lost_inventory_units
+                              ? ` - ${totals.reimbursement_lost_inventory_units} Units `
+                              : " "}
+                            <strong>(+)</strong>
+                          </td>
+
+                          {/* Expanded child value stays in 2nd last column */}
+                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                            {formatValue(totals.lost_total, "lost_total")}
+                          </td>
+
+                          <td className="border border-gray-300 px-2 py-2" />
+                        </tr>
+                      </>
+                    )}
+
+                    {/* ===================== Non-collapsible rows (✅ value in LAST column) ===================== */}
+                    {(countryName === "us" || countryName === "global") && (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
+                        >
+                          Shipment Charges <strong>(-)</strong>
+                        </td>
+
+                        {/* blank 2nd last */}
+                        <td className="border border-gray-300 px-2 py-2" />
+
+                        {/* ✅ value in LAST */}
+                        <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-right text-[clamp(12px,0.729vw,16px)]">
+                          {formatValue(totals.shipment_charges, "shipment_charges")}
+                        </td>
+                      </tr>
+                    )}
+
+                    {[
+                      { label: "CM2 Profit/Loss", value: formatValue(totals.cm2_profit, "cm2_profit") },
+                      { label: "CM2 Margins", value: `${formatValue(totals.cm2_margins, "cm2_margins")}%` },
+                      {
+                        label: "Net Reimbursement",
+                        value: formatValue(
+                          Math.abs(totals.reimbursement_lost_inventory_amount),
+                          "reimbursement_lost_inventory_amount"
+                        ),
+                      },
+                      {
+                        label: "TACoS (Total Advertising Cost of Sale)",
+                        value: `${formatValue(totals.acos, "acos")}%`,
+                      },
+                      {
+                        label: "Reimbursement vs CM2 Margins",
+                        value: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%`,
+                      },
+                      {
+                        label: "Reimbursement vs Sales",
+                        value: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
+                      },
+                    ].map((r) => (
+                      <tr key={r.label}>
+                        <td
+                          colSpan={6}
+                          className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
+                        >
+                          {r.label}
+                        </td>
+
+                        <td colSpan={2} className="border border-gray-300 px-2 py-2" />
+
+                        {/* ✅ value in LAST */}
+                        <td colSpan={2} className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                          {r.value}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
 
 
             </div>
@@ -1786,7 +1936,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       </div>
 
       {/* Top & Bottom tables */}
-      <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-1 sm:p-2">
         <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
           {/* Top 5 */}
           <div className="flex-1 min-w-0">
@@ -1798,19 +1948,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-green-500 font-bold text-[#f8edcf]">
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="w-[160px] whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
                       Product Name
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       CM1 Profit ({currencySymbol})
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       Profit Mix (%)
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       Sales Mix (%)
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       CM1 Profit per Unit ({currencySymbol})
                     </th>
                   </tr>
@@ -1818,41 +1968,40 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <tbody>
                   {topData.rows.map((item, index) => (
                     <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs whitespace-normal break-words align-top">
-                        <span title={item.product_name} className="block">
+                      <td className="w-[160px] whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                        <span className="flex max-w-[220px] items-center truncate" title={item.product_name}>
                           {item.product_name || "-"}
                         </span>
                       </td>
-
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                         {item.profit}
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                         {item.profitMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                         {item.salesMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                         {item.unit_wise_profitability}
                       </td>
                     </tr>
                   ))}
 
-                  <tr className="bg-[#EFEFEF] font-semibold">
-                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
+                  <tr className="bg-gray-200 font-semibold">
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
                       <strong>Total</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       <strong>{topData.totals.profit}</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       <strong>{topData.totals.profitMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       <strong>{topData.totals.salesMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       <strong></strong>
                     </td>
                   </tr>
@@ -1871,19 +2020,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-[#B75A5A] font-bold text-[#f8edcf]">
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
                       Product Name
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       CM1 Profit ({currencySymbol})
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       Profit Mix (%)
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       Sales Mix (%)
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       CM1 Profit per Unit ({currencySymbol})
                     </th>
                   </tr>
@@ -1891,41 +2040,40 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <tbody>
                   {bottomData.rows.map((item, index) => (
                     <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs whitespace-normal break-words align-top">
-                        <span title={item.product_name} className="block">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                        <span className="inline-flex max-w-[220px] items-center truncate" title={item.product_name}>
                           {item.product_name || "-"}
                         </span>
                       </td>
-
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                         {item.profit}
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                         {item.profitMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                         {item.salesMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                         {item.unit_wise_profitability}
                       </td>
                     </tr>
                   ))}
 
-                  <tr className="bg-[#EFEFEF] font-semibold">
-                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
+                  <tr className="bg-gray-200 font-semibold">
+                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
                       <strong>Total</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       <strong>{bottomData.totals.profit}</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       <strong>{bottomData.totals.profitMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       <strong>{bottomData.totals.salesMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
                       <strong></strong>
                     </td>
                   </tr>

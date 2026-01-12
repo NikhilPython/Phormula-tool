@@ -37,20 +37,25 @@ const formatCountry = (c: string) => {
   return v.toUpperCase();
 };
 
-export function generateMetadata({ params }: { params: Params }): Metadata {
-  const country = formatCountry(params.countryName);
-  const monthFormatted = monthName(decodeURIComponent(params.month || ""));
-  const year = String(params.year || "");
+export async function generateMetadata(
+  { params }: { params: Promise<Params> }
+): Promise<Metadata> {
 
-  const title = ` Inventory Reconciliation | Amazon ${country}`;
+  const { countryName, month, year } = await params;
+
+  const country = formatCountry(countryName);
+  const monthFormatted = monthName(decodeURIComponent(month || ""));
 
   return {
-    title,
+    title: `Inventory Reconciliation | Amazon ${country}`,
     description: `Inventory summary and landing cost dashboard for ${country} in ${monthFormatted} ${year}. Review SKU-level costs, gross margins, aged inventory buckets, storage cost estimates, and ledger snapshots.`,
     robots: { index: false, follow: false },
   };
 }
 
-export default function Page({ params }: { params: Params }) {
-  return <InputCostClient params={Promise.resolve(params)} />;
+
+export default function Page(
+  { params }: { params: Promise<Params> }
+) {
+  return <InputCostClient params={params} />;
 }

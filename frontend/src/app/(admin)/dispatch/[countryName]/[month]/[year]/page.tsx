@@ -37,15 +37,17 @@ const formatCountry = (c: string) => {
   return v.toUpperCase();
 };
 
-export function generateMetadata({ params }: { params: Params }): Metadata {
-  const country = formatCountry(params.countryName);
-  const monthFormatted = monthName(decodeURIComponent(params.month || ""));
-  const year = String(params.year || "");
+export async function generateMetadata(
+  { params }: { params: Promise<Params> }
+): Promise<Metadata> {
 
-  const title = `Dispatch Planning | Amazon ${country}`;
+  const { countryName, month, year } = await params;
+
+  const country = formatCountry(countryName);
+  const monthFormatted = monthName(decodeURIComponent(month || ""));
 
   return {
-    title,
+    title: `Dispatch Planning | Amazon ${country}`,
     description: `Dispatch report for ${country} for ${monthFormatted} ${year}. Review inventory at month end, projected sales, dispatch plan, coverage ratio, and export the report to Excel.`,
     robots: { index: false, follow: false },
   };

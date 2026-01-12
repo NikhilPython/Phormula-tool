@@ -37,16 +37,21 @@ const formatCountry = (c: string) => {
   return v.toUpperCase();
 };
 
-export function generateMetadata({ params }: { params: Params }): Metadata {
-  const country = formatCountry(params.countryName);
-  const monthFormatted = monthName(decodeURIComponent(params.month || ""));
-  const year = String(params.year || "");
-  const range = String(params.ranged || "").toUpperCase();
+export async function generateMetadata(
+  { params }: { params: Promise<Params> }
+): Promise<Metadata> {
 
-  const title = `Chatbot`;
+  const resolvedParams = await params;
+
+  const country = formatCountry(resolvedParams.countryName);
+  const monthFormatted = monthName(
+    decodeURIComponent(resolvedParams.month || "")
+  );
+  const year = String(resolvedParams.year || "");
+  const range = String(resolvedParams.ranged || "").toUpperCase();
 
   return {
-    title,
+    title: "Chatbot",
     description: `Chatbot analytics assistant for ${country} (${range}) in ${monthFormatted} ${year}. Ask questions, get performance insights, and explore business trends.`,
     robots: { index: false, follow: false },
   };

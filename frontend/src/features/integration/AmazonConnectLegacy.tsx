@@ -90,12 +90,12 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
 
   const { data: user } = useGetUserDataQuery();
 
-const countryMarketplaceMap = useMemo(() => {
-  return buildCountryMarketplaceMap(
-    user?.countries,
-    user?.marketplaces
-  );
-}, [user]);
+  const countryMarketplaceMap = useMemo(() => {
+    if (!user?.country || !user?.marketplace_id) return {};
+    return {
+      [user.country]: user.marketplace_id,
+    };
+  }, [user]);
 
   const country =
   REGION_LABELS[region]?.toLowerCase(); // "uk" | "us"

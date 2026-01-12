@@ -518,7 +518,11 @@ export type CountryKey =
   | "ca"
   | "india";
 
-export type Range = "monthly" | "quarterly" | "yearly";
+  export type Range =
+  | "monthly"
+  | "quarterly"
+  | "yearly"
+  | "lifetime";
 
 export type MonthDatum = {
   month: string; // "October"

@@ -44,7 +44,8 @@ import { DateRange } from "react-date-range";
 import "react-date-range/dist/styles.css";
 import "react-date-range/dist/theme/default.css";
 import { FaCalendarAlt } from "react-icons/fa";
-import MonthsforBI from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/page";
+import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/liveBusinessClient";
+
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -2888,7 +2889,7 @@ const fetchFxRates = useCallback(async () => {
         <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
           {showLiveBI && (
             <div className="w-full max-w-full min-w-0">
-              <MonthsforBI
+              <LiveBusinessClient
                 countryName={countryName}
                 ranged="MTD"
                 month={currMonthName.toLowerCase()}

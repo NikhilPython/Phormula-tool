@@ -8,10 +8,10 @@ import PhoneInput from "../group-input/PhoneInput";
 
 export default function InputGroup() {
   const countries = [
-    { code: "US", label: "+1" },
-    { code: "GB", label: "+44" },
-    { code: "CA", label: "+1" },
-    { code: "AU", label: "+61" },
+    { code: "US", name: "United States", label: "+1" },
+    { code: "GB", name: "United Kingdom", label: "+44" },
+    { code: "CA", name: "Canada", label: "+1" },
+    { code: "AU", name: "Australia", label: "+61" },
   ];
   const handlePhoneNumberChange = (phoneNumber: string) => {
     console.log("Updated phone number:", phoneNumber);

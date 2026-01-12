@@ -505,7 +505,7 @@ const Bargraph: React.FC<BargraphProps> = ({
   }, [onNoDataChange, allValuesZero, loading]);
 
   return (
-    <div className="relative w-full rounded-xl bg-[#D9D9D933] p-4 sm:p-5">
+    <div className="relative w-full rounded-xl bg-white p-4 sm:p-5">
       <div className={allValuesZero && !loading ? "opacity-30 pointer-events-none" : "opacity-100"}>
         {!hideDownloadButton && (
           <div className="flex justify-end mb-2">
@@ -529,6 +529,7 @@ const Bargraph: React.FC<BargraphProps> = ({
           ) : (
             chartData.datasets.length > 0 && (
               <Bar
+                // ✅ Capture chart instance for Excel export
                 ref={(instance) => {
                   chartRef.current = (instance as any) ?? null;
                 }}

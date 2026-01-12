@@ -16,6 +16,11 @@ interface InputProps {
   success?: boolean;
   error?: boolean;
   hint?: string; // Optional hint text
+  required?: boolean;
+  autoComplete?: string;
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  onFocus?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  inputMode?: string;
 }
 
 const Input: FC<InputProps> = ({
@@ -34,6 +39,8 @@ const Input: FC<InputProps> = ({
   success = false,
   error = false,
   hint,
+  required,
+  inputMode
 }) => {
   // Determine input styles based on state (disabled, success, error)
   let inputClasses = `h-11 w-full rounded-lg border appearance-none px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400  ${className}`;

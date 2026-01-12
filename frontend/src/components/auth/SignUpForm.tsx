@@ -254,7 +254,10 @@ export default function SignUpForm() {
   const digits = String(value || "").replace(/\D/g, "");
   setPhoneRaw(digits);
   setPhoneDialCode(meta?.dialCode || "");
-  setPhoneMeta({ dialCode: meta?.dialCode || "", iso2: meta?.iso2 });
+  setPhoneMeta({
+    dialCode: meta?.dialCode || "",
+    iso2: meta?.country?.code,
+  });
   setTouched((p) => ({ ...p, phone: true })); // 👈 IMPORTANT
 }}
                       onBlur={() => setTouched((p) => ({ ...p, phone: true }))}

@@ -6,10 +6,10 @@ import { useParams, useRouter } from 'next/navigation';
 import './Styles.css';
 import PnlForecastChart from '@/components/pnlforecast/PnlForecastChart';
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import GroupedCollapsibleTable, {
+import GroupedCollapsibleTables, {
   ColGroup,
   LeafCol,
-} from "@/components/ui/table/GroupedCollapsibleTable";
+} from "@/components/ui/table/GroupedCollapsibleTables";
 import { IoDownload } from "react-icons/io5";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
@@ -797,7 +797,7 @@ const normalizedProductRows = productRows?.map(r => ({
 {data && (
   <div>
     <div className="overflow-x-auto rounded-sm">
-    <GroupedCollapsibleTable<RowData>
+    <GroupedCollapsibleTables<RowData>
   rows={[
     ...(normalizedProductRows || []),
     ...summaryAsRows,

@@ -51,58 +51,7 @@ type Props<RowT> = {
   tableClassName?: string;
   headerRow1ClassName?: string;
   headerRow2ClassName?: string;
-  summary?: SummaryBlock<RowT>;
-
 };
-
-export type SummaryRow<RowT> = {
-  id: string;
-  label: React.ReactNode;
-
-  /** optional “expanded” value (the 2nd-last column in your current summary table) */
-  midValue?: React.ReactNode;
-
-  /** the “total / parent” value (the LAST column) */
-  endValue?: React.ReactNode;
-
-  /** optional: customize label alignment */
-  labelAlign?: Align;
-};
-
-export type SummarySection<RowT> = {
-  id: string;
-  label: React.ReactNode;
-
-  /** parent row last-column value */
-  endValue: React.ReactNode;
-
-  /** child rows shown when expanded */
-  children: SummaryRow<RowT>[];
-
-  /** default collapsed/expanded */
-  defaultCollapsed?: boolean;
-};
-
-export type SummaryBlock<RowT> = {
-  /** render summary only when this returns true */
-  enabled?: boolean;
-
-  /** collapsible sections like Ads / Other */
-  sections?: SummarySection<RowT>[];
-
-  /** always-visible rows like Shipment Charges, CM2 rows, etc. */
-  fixedRows?: SummaryRow<RowT>[];
-
-  /**
-   * How many columns from the end you want to reserve for values.
-   * Your existing summary layout uses:
-   * - label spans (visibleCols - 2)
-   * - midValue in 2nd-last
-   * - endValue in last
-   */
-  valueCols?: 2; // keep it 2 for your design
-};
-
 
 /* ---------------- Utils ---------------- */
 
@@ -125,10 +74,9 @@ export default function GroupedCollapsibleTable<RowT>({
   getSignForCol,
   toggleGroupByColKey,
   onVisibleColCountChange,
-  tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042] text-[10px] 2xl:text-xs ",
+  tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042] text-xs 2xl:text-sm",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
-  summary
 }: Props<RowT>) {
   /* ---------------- State ---------------- */
 
@@ -137,18 +85,6 @@ export default function GroupedCollapsibleTable<RowT>({
     groups.forEach((g) => (base[g.id] = true));
     return { ...base, ...(initialCollapsed || {}) };
   });
-
-  const [summaryCollapsed, setSummaryCollapsed] = useState<Record<string, boolean>>(() => {
-    const base: Record<string, boolean> = {};
-    (summary?.sections || []).forEach((s) => {
-      base[s.id] = s.defaultCollapsed ?? true;
-    });
-    return base;
-  });
-
-  const toggleSummary = (id: string) =>
-    setSummaryCollapsed((p) => ({ ...p, [id]: !p[id] }));
-
 
   const toggleGroup = (id: string) =>
     setCollapsed((p) => ({ ...p, [id]: !p[id] }));
@@ -218,15 +154,10 @@ export default function GroupedCollapsibleTable<RowT>({
     return out;
   }, [resolvedLayout, collapsed, groupMap]);
 
-  const visibleCount = visibleLeafCols.length;
-  const valueCols = summary?.valueCols ?? 2;
-  const labelColSpan = Math.max(visibleCount - valueCols, 1);
-  const midColSpan = 1;
-  const endColSpan = 1;
 
-  const cellPadding = "px-2 sm:px-3 py-3";
-  const thBase =
-    `whitespace-nowrap border border-gray-300 ${cellPadding}`;
+const thBase =
+  "whitespace-nowrap border border-gray-300 px-2 py-2";
+
 
   /* ---------------- Render ---------------- */
 
@@ -234,6 +165,64 @@ export default function GroupedCollapsibleTable<RowT>({
     <table className={tableClassName}>
       <thead className="sticky top-0 z-10 font-bold">
         {/* -------- Header Row 1 -------- */}
+        {/* <tr className={headerRow1ClassName}>
+          {leftCols.map((c) => (
+            <th
+              key={c.key}
+              rowSpan={2}
+              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+            >
+              {c.label}
+            </th>
+          ))}
+
+          {resolvedLayout.map((item) => {
+            if (item.type === "group") {
+  const g = groupMap.get(item.id);
+  if (!g) return null;
+
+  const isCollapsed = collapsed[g.id];
+  const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
+  if (cols.length === 0) return null;
+
+  return (
+    <th
+      key={g.id}
+      colSpan={cols.length}
+      onClick={() => toggleGroup(g.id)}
+      role="button"
+      className={`${thBase} relative cursor-pointer select-none text-center ${g.headerClassName || ""}`}
+      title="Click to expand/collapse"
+    >
+  
+      <span className="absolute left-2 top-1/2 -translate-y-1/2 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+        {isCollapsed ? "+" : "−"}
+      </span>
+
+      {g.label}
+    </th>
+  );
+}
+
+
+            const c = singleMap.get(item.key);
+            if (!c) return null;
+            const target = toggleGroupByColKey?.[c.key];
+
+            return (
+              <th
+                key={c.key}
+                rowSpan={2}
+                onClick={target ? () => toggleGroup(target) : undefined}
+                role={target ? "button" : undefined}
+                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+              >
+                {c.label}
+              </th>
+            );
+          })}
+        </tr> */}
+
 
         {/* -------- Header Row 1 -------- */}
         <tr className={headerRow1ClassName}>
@@ -286,22 +275,18 @@ export default function GroupedCollapsibleTable<RowT>({
                 onClick={isExpandable ? () => toggleGroup(targetGroupId!) : undefined}
                 role={isExpandable ? "button" : undefined}
                 title={isExpandable ? "Click to expand/collapse" : undefined}
-                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${isExpandable ? "cursor-pointer select-none" : ""
+                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${isExpandable ? "relative cursor-pointer select-none pl-7" : ""
                   }`}
               >
-                <div className="flex items-center justify-center gap-2 min-w-0">
-                  {isExpandable && (
-                    <span className="shrink-0 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
-                      {isTargetCollapsed ? "+" : "−"}
-                    </span>
-                  )}
+                {c.label}
+                {isExpandable && (
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+                    {isTargetCollapsed ? "+" : "−"}
+                  </span>
+                )}
 
-                  {/* label */}
-                  <span className="min-w-0 truncate">{c.label}</span>
-                </div>
               </th>
             );
-
           })}
         </tr>
 
@@ -327,7 +312,7 @@ export default function GroupedCollapsibleTable<RowT>({
               return (
                 <td
                   key={c.key}
-                  className={`border ${cellPadding} ${sign?.className || ""}`}
+                  className={`border px-2 py-1 ${sign?.className || ""}`}
                 >
                   {sign?.text || ""}
                 </td>
@@ -341,93 +326,14 @@ export default function GroupedCollapsibleTable<RowT>({
             {visibleLeafCols.map((c) => (
               <td
                 key={c.key}
-                className={`border ${cellPadding} ${alignClass(c.align)} ${c.tdClassName || ""}`}
+                className={`border px-2 py-1 ${alignClass(c.align)} ${c.tdClassName || ""}`}
               >
-
                 {getValue(row, c.key, idx)}
               </td>
             ))}
           </tr>
         ))}
       </tbody>
-
-
-      {summary?.enabled !== false && (summary?.sections?.length || summary?.fixedRows?.length) ? (
-        <>
-          {/* ---------- Collapsible Sections ---------- */}
-          {(summary.sections || []).map((sec) => {
-            const isCollapsed = summaryCollapsed[sec.id] ?? true;
-
-            return (
-              <React.Fragment key={sec.id}>
-                {/* Parent row */}
-                <tr
-                  onClick={() => toggleSummary(sec.id)}
-                  role="button"
-                  className="cursor-pointer font-semibold bg-gray-50"
-                  title="Click to expand/collapse"
-                >
-                  <td colSpan={labelColSpan} className="border border-gray-300 px-2 sm:px-3 py-3 text-left">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="rounded border border-gray-400 px-1 text-xs">
-                        {isCollapsed ? "+" : "−"}
-                      </span>
-                      {sec.label}
-                    </span>
-                  </td>
-
-                  {/* 2nd-last blank (matches your current layout) */}
-                  <td colSpan={midColSpan} className="border border-gray-300 px-2 sm:px-3 py-3" />
-
-                  {/* LAST column value */}
-                  <td colSpan={endColSpan} className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center">
-                    {sec.endValue}
-                  </td>
-                </tr>
-
-                {/* Child rows */}
-                {!isCollapsed &&
-                  sec.children.map((ch) => (
-                    <tr key={ch.id}>
-                      <td
-                        colSpan={labelColSpan}
-                        className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right"
-                      >
-                        {ch.label}
-                      </td>
-
-                      {/* 2nd-last value */}
-                      <td colSpan={midColSpan} className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center">
-                        {ch.midValue ?? ""}
-                      </td>
-
-                      {/* last blank */}
-                      <td colSpan={endColSpan} className="border border-gray-300 px-2 sm:px-3 py-3" />
-                    </tr>
-                  ))}
-              </React.Fragment>
-            );
-          })}
-
-          {/* ---------- Fixed rows (always visible) ---------- */}
-          {(summary.fixedRows || []).map((r) => (
-            <tr key={r.id}>
-              <td colSpan={labelColSpan} className="border border-gray-300 px-2 sm:px-3 py-3 text-left">
-                {r.label}
-              </td>
-
-              {/* keep mid column empty for fixed rows (like your current design) */}
-              <td colSpan={midColSpan} className="border border-gray-300 px-2 sm:px-3 py-3" />
-
-              {/* last column value */}
-              <td colSpan={endColSpan} className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center">
-                {r.endValue ?? ""}
-              </td>
-            </tr>
-          ))}
-        </>
-      ) : null}
-
     </table>
   );
 }

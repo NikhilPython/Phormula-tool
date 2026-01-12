@@ -1,6 +1,8 @@
 import { baseApi } from "./baseApi";
 
 export type UserData = {
+  marketplace_id: any;
+  country: string;
   id?: string;
   email?: string;
   phone_number?: string;

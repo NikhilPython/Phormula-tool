@@ -429,7 +429,7 @@ const options: ChartOptions<"pie"> = {
 
 
   return (
-    <div className="relative w-full rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
+    <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
       {/* Heading */}
       <div className="mb-4">
         <div className="w-fit mx-auto md:mx-0">

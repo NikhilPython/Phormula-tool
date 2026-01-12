@@ -2563,14 +2563,15 @@ const MonthsforBI: React.FC = () => {
     if (!year || !month) return false;
     // Lock ONLY if backend has current month AND the option is current month
     return isCurrentPeriodAvailable && `${year}-${month}` === currentPeriodKey;
-
-    useEffect(() => {
-      if (year1 && year2 && year1 === year2 && month1 && month2 && month1 === month2) {
-        // keep Month 1, reset Month 2
-        setMonth2('');
-      }
-    }, [year1, year2, month1, month2]);
   };
+
+  // Prevent selecting the same month for both periods
+  useEffect(() => {
+    if (year1 && year2 && year1 === year2 && month1 && month2 && month1 === month2) {
+      // keep Month 1, reset Month 2
+      setMonth2('');
+    }
+  }, [year1, year2, month1, month2]);
 
 
   return (

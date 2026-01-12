@@ -465,6 +465,10 @@ interface PhoneInputProps {
   placeholder?: string;
   onChange?: (phoneNumber: string, meta: PhoneInputMeta) => void;
   value?: string;
+  required?: boolean;
+  autoComplete?: string;
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
+  selectPosition?: "start" | "end";
 }
 
 const PRIORITY_CODES = ["US", "IN", "GB", "CA"];
@@ -474,6 +478,10 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
   placeholder = "Enter phone number",
   onChange,
   value,
+  required,
+  autoComplete,
+  onBlur,
+  selectPosition = "start",
 }) => {
   const defaultCountry =
     countries.find((c) => c.code === "US") ?? countries[0];

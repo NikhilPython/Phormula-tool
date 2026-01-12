@@ -326,7 +326,7 @@ export default function InventoryForecastPage() {
         <div className="alert-container">
           <div className="alert-message">
             <i className="fa-solid fa-circle-exclamation alert-icon"></i>
-            <span>Please upload at least 4 months' files to see for the next two months.</span>
+            <span>Please upload at least 4 months&apos; files to see for the next two months.</span>
           </div>
           <button
             className="alert-button"
@@ -368,7 +368,11 @@ export default function InventoryForecastPage() {
       showCloseButton
       className="max-w-4xl w-full mx-auto p-0"
     >
-      <FileUploadForm />
+      <FileUploadForm initialCountry={''} onClose={function (): void {
+        throw new Error('Function not implemented.');
+      } } onComplete={function (): void {
+        throw new Error('Function not implemented.');
+      } } />
     </Modal>
   </div>
 );
