@@ -138,25 +138,35 @@ const LiveLineChart: React.FC<{
 
     const option = {
       color: ["#CECBC7", "#ED9F50"],
-
       tooltip: {
         trigger: "axis",
         textStyle: { fontSize: tooltipFontSize },
         formatter: (params: any) => {
           const day = params?.[0]?.axisValue ?? "";
+
+          const stripRange = (name: string) =>
+            (name || "").replace(/\s*\d+\s*[–-]\s*\d+\s*$/g, "");
+
           const lines = (params || []).map((p: any) => {
             const val = p.data;
+
+            const seriesName = stripRange(p.seriesName);
+
             const shown =
               val == null
                 ? "-"
                 : metric === "net_sales"
-                  ? `${Number(val).toFixed(2)}`
+                  ? `${currencySymbol ?? ""}${Number(val).toFixed(2)}`
                   : `${Number(val)}`;
-            return `${p.marker}${p.seriesName} <b>${shown}</b>`;
+
+            return `${p.marker}${seriesName} <b>${shown}</b>`;
           });
+
           return [`Day ${day}`, ...lines].join("<br/>");
         },
+
       },
+
 
       legend: {
         top: 4,
@@ -269,7 +279,7 @@ export default function LiveBiLineChartPanel({
         </div>
       </div>
 
-      <div className="" style={{marginTop:"-5px"}}>
+      <div className="" style={{ marginTop: "-5px" }}>
         {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
         {error && <div className="text-sm text-red-500">{error}</div>}
 
@@ -280,7 +290,7 @@ export default function LiveBiLineChartPanel({
             metric={chartMetric}
             prevLabel={prevLegend}
             currLabel={currLegend}
-            currencySymbol={currencySymbol}   // ✅ from props now
+            currencySymbol={currencySymbol}  
             selectedStartDay={selectedStartDay}
             selectedEndDay={selectedEndDay}
           />

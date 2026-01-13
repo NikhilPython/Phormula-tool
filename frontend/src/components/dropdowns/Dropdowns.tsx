@@ -327,10 +327,16 @@ const Section = ({
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-charcoal-600">
+      {/* <h3 className="text-sm font-semibold text-charcoal-600">
         {title}
-      </h3>
-      <ul className="list-disc pl-4 space-y-1 text-sm text-charcoal-500">
+      </h3> */}
+      <PageBreadcrumb
+        pageTitle={title}
+        variant="page"
+        align="left"
+        textSize="2xl"
+      />
+      <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-500">
         {bullets.map((b, i) => (
           <li
             key={i}
@@ -1234,6 +1240,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [range, selectedMonth, selectedQuarter, selectedYear]);
 
   useEffect(() => {
+    if (!allDropdownsSelected) return;
+
+    if (typeof window === "undefined") return;
+
+    if (window.location.hash === "#business-summary") {
+      requestAnimationFrame(() => {
+        const el = document.getElementById("business-summary");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [allDropdownsSelected]);
+
+
+  useEffect(() => {
     if (typeof document === "undefined") return;
 
     const body = document.body;
@@ -1907,97 +1927,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       </div>
 
-
-      {/* {allDropdownsSelected && (
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-baseline gap-2">
-            <PageBreadcrumb
-              pageTitle="P&L - Amazon"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
-
-            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              {getPnLTitleParts().country}
-            </span>
-
-            {getPnLTitleParts().period ? (
-              <>
-                <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().period}
-                </span>
-              </>
-            ) : null}
-          </div>
-
-          <DownloadIconButton
-            onClick={handleDownloadProfitabilityBundle}
-            disabled={
-              !chartExportApi ||
-              !skuExportPayload ||
-              !expenseBreakdownPieBase64 ||
-              !productWiseCm1PieBase64
-            }
-          />
-        </div>
-      )} */}
-
-
-      {/* {allDropdownsSelected && range === "yearly" && selectedYear && (
-        <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
-
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-baseline gap-2">
-              <PageBreadcrumb
-                pageTitle="P&L - Amazon"
-                variant="page"
-                align="left"
-                textSize="2xl"
-              />
-
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                {getPnLTitleParts().country}
-              </span>
-
-              <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                {getPnLTitleParts().period}
-              </span>
-            </div>
-
-            <DownloadIconButton
-              onClick={handleDownloadProfitabilityBundle}
-              disabled={
-                !chartExportApi ||
-                !skuExportPayload ||
-                !expenseBreakdownPieBase64 ||
-                !productWiseCm1PieBase64
-              }
-            />
-          </div>
-
-        
-
-          <GraphPage
-            range={range}
-            selectedYear={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportApiReady={setChartExportApi}
-            onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-          />
-        </div>
-      )} */}
-
-
       {/* Charts & Tables */}
       {range === "monthly" && selectedMonth && selectedYear && (
         <>
-          <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
             {/* Heading INSIDE border */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
@@ -2047,14 +1980,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
           {allDropdownsSelected && (
-            <AiSingleInsightCard
-              loading={aiPanelLoading}
-              error={aiPanelError}
-              summaryBullets={aiPanel?.summaryBullets ?? []}
-              recommendationBullets={aiPanel?.recommendationBullets ?? []}
-              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-              inventoryBullets={aiPanel?.inventoryBullets ?? []}
-            />
+            <div id="business-summary" className="scroll-mt-[80px]">
+              <AiSingleInsightCard
+                loading={aiPanelLoading}
+                error={aiPanelError}
+                summaryBullets={aiPanel?.summaryBullets ?? []}
+                recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              />
+            </div>
           )}
 
           <div className="flex flex-wrap justify-between gap-6 md:gap-4 mb-4">
@@ -2093,7 +2028,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
         <>
-          <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
             {/* Heading INSIDE border */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
@@ -2144,14 +2079,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
           {allDropdownsSelected && (
-            <AiSingleInsightCard
-              loading={aiPanelLoading}
-              error={aiPanelError}
-              summaryBullets={aiPanel?.summaryBullets ?? []}
-              recommendationBullets={aiPanel?.recommendationBullets ?? []}
-              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-              inventoryBullets={aiPanel?.inventoryBullets ?? []}
-            />
+            <div id="business-summary" className="scroll-mt-[80px]">
+              <AiSingleInsightCard
+                loading={aiPanelLoading}
+                error={aiPanelError}
+                summaryBullets={aiPanel?.summaryBullets ?? []}
+                recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              />
+            </div>
           )}
 
           <div className="flex flex-wrap justify-between gap-6 md:gap-4">
@@ -2191,7 +2128,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       {allDropdownsSelected && range === "yearly" && selectedYear && (
         <>
           {/* Graph + header card */}
-          <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
                 <PageBreadcrumb
@@ -2236,17 +2173,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
           {allDropdownsSelected && (
-            <AiSingleInsightCard
-              loading={aiPanelLoading}
-              error={aiPanelError}
-              summaryBullets={aiPanel?.summaryBullets ?? []}
-              recommendationBullets={aiPanel?.recommendationBullets ?? []}
-              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-              inventoryBullets={aiPanel?.inventoryBullets ?? []}
-            />
+            <div id="business-summary" className="scroll-mt-[80px]">
+              <AiSingleInsightCard
+                loading={aiPanelLoading}
+                error={aiPanelError}
+                summaryBullets={aiPanel?.summaryBullets ?? []}
+                recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              />
+            </div>
           )}
 
-          {/* ✅ Pie charts (needed for download button + yearly UI parity) */}
           <div className="flex flex-wrap justify-between gap-6 md:gap-4">
             <div className="flex-1 min-w-[300px]">
               <CircleChart
@@ -2269,7 +2207,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           </div>
 
-          {/* ✅ SKU table (needed for yearly UI + skuExportPayload) */}
           <SKUtable
             range={range}
             year={selectedYear}
@@ -2280,55 +2217,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           />
         </>
       )}
-
-
-      {/* {range === "yearly" && selectedYear && (
-        <>
-          <GraphPage
-            range={range}
-            selectedYear={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportApiReady={setChartExportApi}
-            onNoDataChange={(noData) => {
-              console.log("🔥 [Yearly] GraphPage → onNoDataChange:", noData);
-              setShowNoDataOverlay(noData);
-            }}
-          />
-
-          {renderAiPanel()}
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <CircleChart
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setExpenseBreakdownPieBase64}
-              />
-            </div>
-            <div className="flex-1 min-w-[300px]">
-              <CMchartofsku
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setProductWiseCm1PieBase64}
-              />
-            </div>
-          </div>
-          <SKUtable
-            range={range}
-            year={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportPayloadChange={setSkuExportPayload}
-          />
-
-        </>
-      )} */}
 
       {showNoDataOverlay && (
         <div
