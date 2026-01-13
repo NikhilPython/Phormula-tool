@@ -1000,65 +1000,124 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
-  const buildSkuWorksheetFromModel = (
-    ws: ExcelJS.Worksheet,
-    model: NonNullable<SkuExportPayload["sheetModel"]>
-  ) => {
-    const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
+const buildSkuWorksheetFromModel = (
+  ws: ExcelJS.Worksheet,
+  model: NonNullable<SkuExportPayload["sheetModel"]>
+) => {
+  const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
 
-    const colIndex: Record<string, number> = {};
-    columns.forEach((k, i) => (colIndex[k] = i + 1)); // 1-based for ExcelJS
+  const colIndex: Record<string, number> = {};
+  columns.forEach((k, i) => (colIndex[k] = i + 1)); // 1-based for ExcelJS
 
-    const fmtFor = (key: string) => {
-      const t = formats?.[key];
-      if (t === "int") return "#,##0";
-      if (t === "money") return "#,##0.00";
-      if (t === "percent") return "0.00%";
-      return undefined;
-    };
-
-    // ---- meta rows (in column A)
-    for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
-    ws.addRow([""]); // spacer
-
-    // ---- header row
-    ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
-
-    // ---- sign row (align to columns)
-    ws.addRow(columns.map((k) => signRow?.[k] ?? ""));
-
-    // ---- table rows
-    for (const r of rows || []) {
-      ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
-    }
-
-    ws.addRow([""]);
-
-    const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
-    const valueKey = columns.includes("net_taxes") ? "net_taxes" : columns[columns.length - 1];
-
-    for (const sr of summaryRows || []) {
-      const line = new Array(columns.length).fill("");
-      line[colIndex[labelKey] - 1] = (sr as any)?.[labelKey] ?? "";
-      line[colIndex[valueKey] - 1] = (sr as any)?.[valueKey] ?? "";
-      ws.addRow(line);
-    }
-
-    // ---- formatting by column key
-    for (const k of columns) {
-      const idx = colIndex[k];
-      const nf = fmtFor(k);
-      if (nf) ws.getColumn(idx).numFmt = nf;
-    }
-
-    // ---- make header bold
-    const headerRowNumber = (extraRows?.length ?? 0) + 2; // meta + blank spacer => header sits here
-    ws.getRow(headerRowNumber).font = { bold: true };
-
-    // ---- make sign row a bit muted (optional)
-    ws.getRow(headerRowNumber + 1).font = { italic: true };
+  const fmtFor = (key: string) => {
+    const t = formats?.[key];
+    if (t === "int") return "#,##0";
+    if (t === "money") return "#,##0.00";
+    if (t === "percent") return "0.00%";
+    return undefined;
   };
 
+  // ---- meta rows (in column A)
+  for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
+  ws.addRow([""]); // spacer
+
+  // ---- header row
+  ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
+
+  // ---- sign row (align to columns)
+  ws.addRow(columns.map((k) => signRow?.[k] ?? ""));
+
+  // ---- table rows
+  for (const r of rows || []) {
+    ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
+  }
+
+  ws.addRow([""]);
+
+  const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
+  const valueKey =
+    columns.includes("profit") ? "profit"
+      : columns.includes("net_taxes") ? "net_taxes"
+        : columns[columns.length - 1];
+
+  // ✅ percent-only summary labels
+  const PERCENT_SUMMARY_LABELS = new Set([
+    "CM2 Margins",
+    "TACoS (Total Advertising Cost of Sale)",
+    "Reimbursement vs CM2 Margins",
+    "Reimbursement vs Sales",
+  ]);
+
+  // ✅ rows that should keep title but BLANK value (because breakdown rows exist below)
+  const SUMMARY_NO_VALUE_LABELS = new Set([
+    "Cost of Advertisement",
+    "Other Transactions (-)",
+    "Other Transactions",
+  ]);
+
+  // ✅ store row numbers to re-apply % after column formatting
+  const percentSummaryRowNumbers: number[] = [];
+
+  // ---- summary rows (ONLY ONCE)
+  for (const sr of summaryRows || []) {
+    let label = String((sr as any)?.[labelKey] ?? "").trim();
+    let value: any = (sr as any)?.[valueKey] ?? "";
+
+    // ✅ add "(+)" prefix for reimbursement row label
+    if (label === "Reimbursement for lost Inventory") {
+      label = "(+) Reimbursement for lost Inventory";
+    }
+
+    // ✅ clean label for matching rules (so "(+)" doesn't break your sets)
+    const cleanLabel = label.replace(/^\(\+\)\s*/i, "").trim();
+
+    const isPercentRow = PERCENT_SUMMARY_LABELS.has(cleanLabel);
+
+    // ✅ UI gives percent-number like 27.37 -> Excel needs 0.2737
+    if (isPercentRow && typeof value === "number") {
+      value = value / 100;
+    }
+
+    // ✅ remove value ONLY for these parent rows (title stays)
+    if (SUMMARY_NO_VALUE_LABELS.has(cleanLabel)) {
+      value = "";
+    }
+
+    const line = new Array(columns.length).fill("");
+    line[colIndex[labelKey] - 1] = label;
+    line[colIndex[valueKey] - 1] = value;
+
+    const excelRow = ws.addRow(line);
+
+    if ((sr as any).__bold) {
+      excelRow.font = { bold: true };
+    }
+
+    if (isPercentRow) {
+      percentSummaryRowNumbers.push(excelRow.number);
+    }
+  }
+
+  // ---- formatting by column key (may overwrite numFmt)
+  for (const k of columns) {
+    const idx = colIndex[k];
+    const nf = fmtFor(k);
+    if (nf) ws.getColumn(idx).numFmt = nf;
+  }
+
+  // ✅ re-apply percent formatting AFTER column formats
+  for (const r of percentSummaryRowNumbers) {
+    ws.getRow(r).getCell(colIndex[valueKey]).numFmt = "0.00%";
+    // or "#,##0.00%" if you want comma-grouping for huge % like 1835.09%
+  }
+
+  // ---- make header bold
+  const headerRowNumber = (extraRows?.length ?? 0) + 2;
+  ws.getRow(headerRowNumber).font = { bold: true };
+
+  // ---- sign row italic
+  ws.getRow(headerRowNumber + 1).font = { italic: true };
+};
 
   const handleDownloadProfitabilityBundle = async () => {
     try {

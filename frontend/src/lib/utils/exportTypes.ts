@@ -8,14 +8,21 @@ export type ProfitChartExportApi = {
 
 
 export type SkuSheetModel = {
-  columns: readonly string[];                 // ["product_name","quantity",...]
-  extraRows: string[][];                      // your meta rows
-  headerRow: Record<string, string>;          // column labels
-  signRow: Record<string, string>;            // (+)/(-) row
+  columns: readonly string[];
+  extraRows: string[][];
+  headerRow: Record<string, string>;
+  signRow: Record<string, string>;
   rows: Array<Record<string, string | number>>;
-  summaryRows: Array<Record<string, string | number>>;
-  formats: Record<string, "int" | "money" | "percent" | "text">; // excel formats per key
+summaryRows: Array<
+  Record<string, string | number> & {
+    __bold?: boolean;
+  }
+>;
+
+  formats: Record<string, "int" | "money" | "percent" | "text">;
+  summaryValueKey?: string; // e.g. "profit"
 };
+
 
 export type SkuExportPayload = {
   tableData: any[];

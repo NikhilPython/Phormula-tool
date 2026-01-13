@@ -116,7 +116,7 @@ type Totals = {
   profit: number;
   net_sales: number;
   lost_total: number;
-
+  net_reimbursement: number;
 };
 
 type JwtPayload = {
@@ -243,10 +243,12 @@ function computeTotalsFromLastRow(rows: TableRow[]): Totals {
   const platformFees = toNumber(lastRow.platformfeenew);
   const inventoryStorageFees = toNumber(lastRow.platform_fee_inventory_storage);
 
-  const reimbursementAmount =
-    toNumber(lastRow.reimbursement_lost_inventory_amount) ||
-    toNumber(lastRow.rembursement_fee) ||
-    0;
+  // const reimbursementAmount =
+  //   toNumber(lastRow.reimbursement_lost_inventory_amount) ||
+  //   toNumber(lastRow.rembursement_fee) ||
+  //   0;
+
+  const netReimbursement = toNumber(lastRow.rembursement_fee);
 
   const reimbursementUnits = toNumber(lastRow.reimbursement_lost_inventory_units) || 0;
 
@@ -264,7 +266,8 @@ function computeTotalsFromLastRow(rows: TableRow[]): Totals {
     other_transactions: toNumber(lastRow.platform_fee),
     platform_fee: platformFees,
     inventory_storage_fees: inventoryStorageFees,
-    reimbursement_lost_inventory_amount: reimbursementAmount,
+    reimbursement_lost_inventory_amount:
+      toNumber(lastRow.reimbursement_lost_inventory_amount) || 0,
     reimbursement_lost_inventory_units: reimbursementUnits,
     lost_total: toNumber(lastRow.lost_total),
     shipment_charges: toNumber(lastRow.shipment_charges),
@@ -273,7 +276,7 @@ function computeTotalsFromLastRow(rows: TableRow[]): Totals {
     cm2_margins: cm2MarginsValue,
     acos: toNumber(lastRow.acos),
     rembursment_vs_cm2_margins: toNumber(lastRow.rembursment_vs_cm2_margins),
-
+    net_reimbursement: netReimbursement,
     profit: toNumber(lastRow.Profit ?? lastRow.profit),
     net_sales: toNumber(lastRow.Net_Sales ?? lastRow.net_sales),
   };
@@ -315,6 +318,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     profit: 0,
     net_sales: 0,
     lost_total: 0,
+    net_reimbursement: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -461,109 +465,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ],
     []
   );
-
-  // const groups = [
-  //   {
-  //     id: "sales",
-  //     label: "Sales",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "product_sales", label: "Gross Sales", align: "center" },
-  //       { key: "refund_sales", label: "Sales - Refund", align: "center" },
-  //       { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "units_breakdown",
-  //     label: "Net Units Sold",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "sku", label: "SKU", align: "center" },
-  //       { key: "units_sold", label: "Units Sold", align: "center" },
-  //       { key: "return_units", label: "Return", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "promotions_breakdown",
-  //     label: "",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "promotional_rebates", label: "Promotions", align: "center" },
-  //       { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "amazon_breakdown",
-  //     label: "Amazon Fees",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "selling_fees", label: "Selling Fees", align: "center" },
-  //       { key: "fba_fees", label: "FBA Fees", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "other_transactions_breakdown",
-  //     label: "Other Transactions",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       { key: "net_taxes", label: "Net Taxes", align: "center" },
-  //       { key: "net_credits", label: "Net Credits", align: "center" },
-  //       { key: "misc_transaction", label: "Misc. Transactions", align: "center" },
-  //     ],
-  //   },
-  //   {
-  //     id: "profit_breakdown",
-  //     label: "CM1 Profit ",
-  //     collapsedCols: [],
-  //     expandedCols: [
-  //       // { key: "profit", label: "CM1 Profit Margin", align: "center" },
-  //       { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
-  //       { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
-  //     ],
-  //   },
-  // ];
-
-  //  const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
-  //   () => [
-  //     // Units
-  //     { key: "units_sold", label: "Units Sold", align: "center" },
-  //     { key: "return_units", label: "Return", align: "center" },
-  //     { key: "net_units_sold", label: "Net Units Sold", align: "center" },
-
-  //     // ASP
-  //     { key: (aspKey ?? "asp") as string, label: "ASP", align: "center" },
-
-  //     // Sales
-  //     { key: "product_sales", label: "Gross Sales", align: "center" },
-  //     { key: "refund_sales", label: "Sales - Refund", align: "center" },
-  //     { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
-  //     { key: "net_sales", label: "Net Sales", align: "center" },
-
-  //     // Promotions
-  //     { key: "promotional_rebates", label: "Promotions", align: "center" },
-  //     { key: "promotional_rebates_percentage", label: "Promotions %age", align: "center" },
-
-  //     // COGS
-  //     { key: "cost_of_unit_sold", label: "COGS", align: "center" },
-
-  //     // Amazon Fees
-  //     { key: "selling_fees", label: "Selling Fees", align: "center" },
-  //     { key: "fba_fees", label: "FBA Fees", align: "center" },
-  //     { key: "amazon_fee", label: "Amazon Fees", align: "center" },
-
-  //     // Others
-  //     { key: "net_taxes", label: "Net Taxes", align: "center" },
-  //     { key: "net_credits", label: "Net Credits", align: "center" },
-  //     { key: "misc_transaction", label: "Misc. Transactions", align: "center" },
-  //     { key: "other_transactions", label: "Other Transactions", align: "center" },
-
-  //     // CM1
-  //     { key: "profit", label: "CM1 Profit Margin", align: "center" },
-  //     { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
-  //     { key: "profit_percentage", label: "CM1 Profit %age", align: "center" },
-  //   ],
-  //   [aspKey]
-  // );
 
   const groups = useMemo<ColGroup<TableRow>[]>(() => ([
     {
@@ -804,7 +705,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           if (Math.abs(value) < 1e-10) value = 0;
 
           if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
-            value = Math.trunc(value);  
+            value = Math.trunc(value);
           } else {
             value = Number(value.toFixed(2));
           }
@@ -821,40 +722,48 @@ const SKUtable: React.FC<SKUtableProps> = ({
       return out;
     });
 
-    const summaryRows: Record<string, string | number>[] = [
-      { product_name: "Cost of Advertisement", net_taxes: Math.abs(Number(totals.advertising_total || 0)) },
-      { product_name: "Visibility - Ads (-)", net_taxes: Math.abs(Number(totals.visible_ads || 0)) },
-      { product_name: "Visibility - Deals, Vouchers and Reviews (-)", net_taxes: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
+
+
+    const summaryRows: Array<Record<string, string | number | boolean> & { __bold?: boolean }> = [
+      { product_name: "Cost of Advertisement", profit: Math.abs(Number(totals.advertising_total || 0)), __bold: true },
+
+      { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.visible_ads || 0)) },
+
+      { product_name: "Visibility - Deals, Vouchers and Reviews (-)", profit: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
 
       ...(countryName === "us" || countryName === "global"
-        ? [{ product_name: "Shipment Charges (-)", net_taxes: Math.abs(Number(totals.shipment_charges || 0)) }]
+        ? [{ product_name: "Shipment Charges (-)", profit: Math.abs(Number(totals.shipment_charges || 0)) }]
         : []),
 
-      { product_name: "Other Transactions (-)", net_taxes: Math.abs(Number(totals.other_transactions || 0)) },
-      { product_name: "Platform Fees (-)", net_taxes: Math.abs(Number(totals.platform_fee || 0)) },
-      { product_name: "Inventory Storage Fees (-)", net_taxes: Math.abs(Number(totals.inventory_storage_fees || 0)) },
+      { product_name: "Other Transactions (-)", profit: Math.abs(Number(totals.other_transactions || 0)), __bold: true },
 
-      // ✅ THIS is the missing line (matches UI)
-      { product_name: "Reimbursement for lost Inventory", net_taxes: Math.abs(Number(totals.lost_total || 0)) },
+      { product_name: "Platform Fees (-)", profit: Math.abs(Number(totals.platform_fee || 0)) },
 
-      { product_name: "CM2 Profit/Loss", net_taxes: Number(totals.cm2_profit || 0) },
-      { product_name: "CM2 Margins", net_taxes: Number(totals.cm2_margins || 0) / 100 },
-      { product_name: "TACoS (Total Advertising Cost of Sale)", net_taxes: Number(totals.acos || 0) / 100 },
+      { product_name: "Inventory Storage Fees (-)", profit: Math.abs(Number(totals.inventory_storage_fees || 0)) },
 
-      { product_name: "Reimbursement vs CM2 Margins", net_taxes: Number(totals.rembursment_vs_cm2_margins || 0) / 100 },
-      { product_name: "Reimbursement vs Sales", net_taxes: Number(totals.reimbursement_vs_sales || 0) / 100 },
+      { product_name: "Reimbursement for lost Inventory", profit: Math.abs(Number(totals.lost_total || 0)) },
+
+      // ✅ Highlight key rows (bold)
+      { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit || 0), __bold: true },
+
+      { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: true },
+
+      { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0) , __bold: true },
+      { product_name: "Net Reimbursement", profit: Math.abs(Number(totals.net_reimbursement || 0)), __bold: true},
+
+      { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0) , __bold: true },
+
+      { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0) , __bold: true },
     ];
 
 
-    // ✅ Formats per key (optional)
+
     const formats: Record<string, "int" | "money" | "percent" | "text"> = {};
     colKeys.forEach((k) => {
       if (k === "product_name" || k === "sku") formats[k] = "text";
       else if (k === "profit_percentage") formats[k] = "percent";
       else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(k)) formats[k] = "int";
       else formats[k] = "money";
-      // formats["summary_value"] = "money";
-
     });
 
     return {
@@ -865,6 +774,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       rows: rowsForExcel,
       summaryRows,
       formats,
+      summaryValueKey: "profit",
     };
   }, [
     tableData,
@@ -953,7 +863,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     []
   );
 
-  // Modal shell
   const CustomModal: React.FC<React.PropsWithChildren<{ onClose: () => void }>> = ({ onClose, children }) => {
     return (
       <div onClick={onClose} className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
@@ -1226,158 +1135,135 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
 
   /* --------- Excel Download --------- */
+
   // const handleDownloadExcel = useCallback(() => {
   //   const wb = XLSX.utils.book_new();
 
-  //   const columnsToDisplay2 = [
-  //     "product_name",
-  //     "quantity",
-  //     "asp",
-  //     "product_sales",
-  //     "net_sales",
-  //     "cost_of_unit_sold",
-  //     "amazon_fee",
-  //     "selling_fees",
-  //     "fba_fees",
-  //     "net_credits",
-  //     "net_taxes",
-  //     "profit",
-  //     "profit_percentage",
-  //     "unit_wise_profitability",
-  //   ] as const;
+  //   const excelCols = buildExcelColumnsFromUI();
+  //   const colKeys = excelCols.map((c) => c.key);
 
-  //   const percentageSummaryLabels = [
-  //     "CM2 Margins",
-  //     "TACoS (Total Advertising Cost of Sale)",
-  //     "Reimbursement vs CM2 Margins",
-  //     "Reimbursement vs Sales",
-  //   ];
+  //   // Header row from UI labels
+  //   const headerRow: Record<string, string> = {};
+  //   excelCols.forEach((c) => {
+  //     headerRow[c.key] = c.label;
+  //   });
 
-  //   const tableDataForExcel = tableData.map((row) => {
+  //   // Build data rows
+  //   const tableDataForExcel = tableData.map((row, rowIndex) => {
   //     const rowData: Record<string, string | number> = {};
 
-  //     columnsToDisplay2.forEach((column) => {
-  //       let value: any =
-  //         column === "product_sales"
-  //           ? (row.product_sales ?? (row as any).gross_sales ?? 0)
-  //           : column === "quantity"
-  //             ? (row.quantity ?? (row as any).total_quantity ?? 0)
-  //             : (row as any)[column];
+  //     colKeys.forEach((key) => {
+  //       let value: any = (row as any)[key];
 
-  //       if (column === "product_name") value = getDisplayProductNameFromRow(row);
-
-  //       if (typeof value === "number") {
-  //         if (Math.abs(value) < 1e-10) value = 0;
-  //         if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
+  //       // ✅ SNO: integer, blank for Total row
+  //       if (key === "sno") {
+  //         const name = getDisplayProductNameFromRow(row);
+  //         const isTotal = String(name).trim().toLowerCase() === "total";
+  //         value = isTotal ? "" : rowIndex + 1; // integer
   //       }
 
-  //       if (column === "asp" && typeof value === "number") value = Number(value.toFixed(2));
-  //       if (column === "unit_wise_profitability" && typeof value === "number") value = Number(value.toFixed(2));
-  //       if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+  //       // Product name matches UI fallback
+  //       if (key === "product_name") value = getDisplayProductNameFromRow(row);
 
-  //       rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
+  //       // gross_sales -> product_sales mapping
+  //       if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+
+  //       // other_transactions mapping
+  //       if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+
+  //       // quantity meaning units_sold (if present in col list)
+  //       if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+
+  //       // Pre-rounding
+  //       if (typeof value === "number") {
+  //         if (Math.abs(value) < 1e-10) value = 0;
+
+  //         // integer-only fields
+  //         if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
+  //           value = Math.trunc(value);
+  //         } else {
+  //           value = Number(value.toFixed(2));
+  //         }
+  //       }
+
+  //       // profit_percentage stored as fraction for excel %
+  //       if (key === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+
+  //       rowData[key] = typeof value === "number" && isNaN(value) ? "-" : value;
   //     });
 
   //     return rowData;
   //   });
 
-  //   const summaryRows: Record<string, string | number>[] = [
-  //     { [columnsToDisplay2[0]]: "Cost of Advertisement", [columnsToDisplay2[10]]: Math.abs(Number(totals.advertising_total)) },
-
-  //     { [columnsToDisplay2[0]]: "Visibility - Ads (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.visible_ads)) },
-  //     { [columnsToDisplay2[0]]: "Visibility - Deals, Vouchers and Reviews (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.dealsvouchar_ads)) },
-
-  //     ...(countryName === "us" || countryName === "global"
-  //       ? [
-  //         {
-  //           [columnsToDisplay2[0]]: "Shipment Charges (-)",
-  //           [columnsToDisplay2[10]]: Math.abs(Number(totals.shipment_charges)),
-  //         },
-  //       ]
-  //       : []),
-
-  //     { [columnsToDisplay2[0]]: "Other Transactions (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.other_transactions)) },
-  //     { [columnsToDisplay2[0]]: "Platform Fees (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.platform_fee)) },
-  //     { [columnsToDisplay2[0]]: "Inventory Storage Fees (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.inventory_storage_fees)) },
-
-  //     { [columnsToDisplay2[0]]: "CM2 Profit/Loss", [columnsToDisplay2[10]]: Number(totals.cm2_profit) },
-  //     { [columnsToDisplay2[0]]: "CM2 Margins", [columnsToDisplay2[10]]: Number(totals.cm2_margins) / 100 },
-  //     { [columnsToDisplay2[0]]: "TACoS (Total Advertising Cost of Sale)", [columnsToDisplay2[10]]: Number(totals.acos) / 100 },
-
-  //     { [columnsToDisplay2[0]]: "Net Reimbursement during the month", [columnsToDisplay2[10]]: Math.abs(Number(totals.reimbursement_lost_inventory_amount)) },
-  //     { [columnsToDisplay2[0]]: "Reimbursement vs CM2 Margins", [columnsToDisplay2[10]]: Number(totals.rembursment_vs_cm2_margins) / 100 },
-  //     { [columnsToDisplay2[0]]: "Reimbursement vs Sales", [columnsToDisplay2[10]]: Number(totals.reimbursement_vs_sales) / 100 },
-  //   ];
-
-  //   const headerRow = {
-  //     [columnsToDisplay2[0]]: "Product Name",
-  //     [columnsToDisplay2[1]]: "Quantity Sold",
-  //     [columnsToDisplay2[2]]: "ASP",
-  //     [columnsToDisplay2[3]]: "Gross Sales",
-  //     [columnsToDisplay2[4]]: "Net Sales",
-  //     [columnsToDisplay2[5]]: "Cost of Goods Sold",
-  //     [columnsToDisplay2[6]]: "Amazon Fees",
-  //     [columnsToDisplay2[7]]: "Selling Fees",
-  //     [columnsToDisplay2[8]]: "FBA fees",
-  //     [columnsToDisplay2[9]]: "Net Credits",
-  //     [columnsToDisplay2[10]]: "Net Taxes",
-  //     [columnsToDisplay2[11]]: "CM1 Profit",
-  //     [columnsToDisplay2[12]]: "CM1 Profit (%)",
-  //     [columnsToDisplay2[13]]: "CM1 Profit per Unit",
-  //   };
-
-  //   const signageRow = {
-  //     [columnsToDisplay2[2]]: "",
-  //     [columnsToDisplay2[3]]: "",
-  //     [columnsToDisplay2[4]]: "(+)",
-  //     [columnsToDisplay2[5]]: "(-)",
-  //     [columnsToDisplay2[6]]: "(-)",
-  //     [columnsToDisplay2[7]]: "(-)",
-  //     [columnsToDisplay2[8]]: "(-)",
-  //     [columnsToDisplay2[9]]: "(+)",
-  //     [columnsToDisplay2[10]]: "",
-  //     [columnsToDisplay2[11]]: "",
-  //     [columnsToDisplay2[12]]: "",
-  //     [columnsToDisplay2[13]]: "",
-  //   };
+  //   const extraRows = getExtraRows();
 
   //   const fullData = [
-  //     ...getExtraRows().map((row) => ({ [columnsToDisplay2[0]]: row[0] })),
-  //     {},
+  //     ...extraRows.map((row) => ({ product_name: row[0] })),
+  //     {}, // blank line
   //     headerRow,
-  //     signageRow,
   //     ...tableDataForExcel,
-  //     ...summaryRows,
   //   ];
 
-  //   const finalWs = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
+  //   const ws = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
 
-  //   if (finalWs["!ref"]) {
-  //     const rng = XLSX.utils.decode_range(finalWs["!ref"]);
-  //     for (let r = 6; r <= rng.e.r; r++) {
-  //       for (let c = 1; c < columnsToDisplay2.length; c++) {
-  //         const cellAddress = XLSX.utils.encode_cell({ r, c });
-  //         const colKey = columnsToDisplay2[c] as string;
+  //   // ---------------------------
+  //   // ✅ FORCE EXCEL FORMATTING
+  //   // ---------------------------
 
-  //         if (finalWs[cellAddress] && typeof finalWs[cellAddress].v === "number") {
-  //           finalWs[cellAddress].t = "n";
+  //   const EXTRA_ROWS_COUNT = extraRows.length;
+  //   const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT;            // the {} blank row
+  //   const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;       // headerRow position
+  //   const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;   // data starts after header
 
-  //           const rowHeaderVal = finalWs[XLSX.utils.encode_cell({ r, c: 0 })]?.v as string | undefined;
-  //           const isPct =
-  //             colKey === "profit_percentage" ||
-  //             (rowHeaderVal ? percentageSummaryLabels.includes(rowHeaderVal) : false);
+  //   // Find the sno column index in the worksheet (based on colKeys)
+  //   const SNO_COL_INDEX = colKeys.indexOf("sno");
 
-  //           if (isPct) finalWs[cellAddress].z = "#,##0.00%";
-  //           else if (colKey === "quantity") finalWs[cellAddress].z = "#,##0";
-  //           else finalWs[cellAddress].z = "#,##0.00";
-  //         }
+  //   if (ws["!ref"]) {
+  //     const rng = XLSX.utils.decode_range(ws["!ref"]);
+
+  //     // ✅ 1) Force sno column (data rows only) to integer format "0"
+  //     if (SNO_COL_INDEX >= 0) {
+  //       for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
+  //         const addr = XLSX.utils.encode_cell({ r, c: SNO_COL_INDEX });
+  //         const cell = ws[addr];
+  //         if (!cell) continue;
+
+  //         // keep blanks (like Total row sno "")
+  //         if (cell.v === "" || cell.v === null || cell.v === undefined) continue;
+
+  //         const n = Number(cell.v);
+  //         if (!Number.isFinite(n)) continue;
+
+  //         cell.t = "n";
+  //         cell.v = Math.trunc(n);
+  //         cell.z = "0"; // ✅ no decimals
+  //       }
+  //     }
+
+  //     // ✅ 2) Apply formats to other numeric columns (data rows only)
+  //     for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
+  //       for (let c = 0; c <= rng.e.c; c++) {
+  //         const addr = XLSX.utils.encode_cell({ r, c });
+  //         const cell = ws[addr];
+  //         if (!cell) continue;
+
+  //         const key = colKeys[c];
+  //         if (!key) continue;
+
+  //         // sno already handled
+  //         if (key === "sno") continue;
+
+  //         if (typeof cell.v !== "number") continue;
+
+  //         cell.t = "n";
+  //         if (key === "profit_percentage") cell.z = "0.00%";
+  //         else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
+  //         else cell.z = "0.00";
   //       }
   //     }
   //   }
 
-  //   XLSX.utils.book_append_sheet(wb, finalWs, "SKU Profitability");
-
-
+  //   XLSX.utils.book_append_sheet(wb, ws, "SKU Profitability");
 
   //   const filename =
   //     range === "monthly"
@@ -1389,15 +1275,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
   //   XLSX.writeFile(wb, filename);
   // }, [
   //   tableData,
-  //   totals,
   //   getExtraRows,
   //   range,
   //   month,
   //   yearShort,
   //   quarter,
-  //   countryName,
   //   getDisplayProductNameFromRow,
+  //   buildExcelColumnsFromUI,
   // ]);
+
+  // ✅ FULL UPDATED FUNCTION (drop-in replace your current handleDownloadExcel)
 
   const handleDownloadExcel = useCallback(() => {
     const wb = XLSX.utils.book_new();
@@ -1405,15 +1292,26 @@ const SKUtable: React.FC<SKUtableProps> = ({
     const excelCols = buildExcelColumnsFromUI(); // [{ key, label }]
     const colKeys = excelCols.map((c) => c.key);
 
+    // ✅ CHANGE THIS to shift summary values to a different column
+    // Example options: "net_taxes", "net_sales", "profit", "amazon_fee", etc.
+    const SUMMARY_VALUE_KEY: string = "profit"; // <-- CHANGE HERE
+
+    // helper: force ALL rows to have ALL columns (prevents shifting)
+    const rowWithAllCols = (overrides: Record<string, any> = {}) => {
+      const base: Record<string, any> = {};
+      colKeys.forEach((k) => (base[k] = ""));
+      return { ...base, ...overrides };
+    };
+
     // Header row from UI labels
-    const headerRow: Record<string, string> = {};
+    const headerRow = rowWithAllCols();
     excelCols.forEach((c) => {
       headerRow[c.key] = c.label;
     });
 
-    // Build data rows
+    // Build data rows (same mapping rules as your UI)
     const tableDataForExcel = tableData.map((row, rowIndex) => {
-      const rowData: Record<string, string | number> = {};
+      const rowData = rowWithAllCols();
 
       colKeys.forEach((key) => {
         let value: any = (row as any)[key];
@@ -1422,7 +1320,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         if (key === "sno") {
           const name = getDisplayProductNameFromRow(row);
           const isTotal = String(name).trim().toLowerCase() === "total";
-          value = isTotal ? "" : rowIndex + 1; // integer
+          value = isTotal ? "" : rowIndex + 1;
         }
 
         // Product name matches UI fallback
@@ -1460,38 +1358,103 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     const extraRows = getExtraRows();
 
-    const fullData = [
-      ...extraRows.map((row) => ({ product_name: row[0] })),
-      {}, // blank line
-      headerRow,
-      ...tableDataForExcel,
+    const summaryRows = [
+      rowWithAllCols({
+        product_name: "Cost of Advertisement",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.advertising_total || 0)),
+      }),
+      rowWithAllCols({
+        product_name: "Visibility - Ads (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.visible_ads || 0)),
+      }),
+      rowWithAllCols({
+        product_name: "Visibility - Deals, Vouchers and Reviews (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.dealsvouchar_ads || 0)),
+      }),
+
+      ...(countryName === "us" || countryName === "global"
+        ? [
+          rowWithAllCols({
+            product_name: "Shipment Charges (-)",
+            [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.shipment_charges || 0)),
+          }),
+        ]
+        : []),
+
+      rowWithAllCols({
+        product_name: "Other Transactions (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.other_transactions || 0)),
+      }),
+      rowWithAllCols({
+        product_name: "Platform Fees (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.platform_fee || 0)),
+      }),
+      rowWithAllCols({
+        product_name: "Inventory Storage Fees (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.inventory_storage_fees || 0)),
+      }),
+
+      rowWithAllCols({
+        product_name: "Reimbursement for lost Inventory",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.lost_total || 0)),
+      }),
+
+      rowWithAllCols({
+        product_name: "CM2 Profit/Loss",
+        [SUMMARY_VALUE_KEY]: Number(totals.cm2_profit || 0),
+      }),
+      rowWithAllCols({
+        product_name: "CM2 Margins",
+        [SUMMARY_VALUE_KEY]: Number(totals.cm2_margins || 0) / 100,
+      }),
+      rowWithAllCols({
+        product_name: "TACoS (Total Advertising Cost of Sale)",
+        [SUMMARY_VALUE_KEY]: Number(totals.acos || 0) / 100,
+      }),
+      rowWithAllCols({
+        product_name: "Reimbursement vs CM2 Margins",
+        [SUMMARY_VALUE_KEY]: Number(totals.rembursment_vs_cm2_margins || 0) / 100,
+      }),
+      rowWithAllCols({
+        product_name: "Reimbursement vs Sales",
+        [SUMMARY_VALUE_KEY]: Number(totals.reimbursement_vs_sales || 0) / 100,
+      }),
     ];
 
-    const ws = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
+    const fullData = [
+      ...extraRows.map((row) => rowWithAllCols({ product_name: row[0] })),
+      rowWithAllCols({}), // blank line
+      headerRow,
+      ...tableDataForExcel,
+      rowWithAllCols({}), // blank line before summary
+      ...summaryRows,
+    ];
+
+    // ✅ Force column order (prevents shifting forever)
+    const ws = XLSX.utils.json_to_sheet(fullData, {
+      header: colKeys,
+      skipHeader: true,
+    });
 
     // ---------------------------
-    // ✅ FORCE EXCEL FORMATTING
+    // ✅ FORCE EXCEL FORMATTING (same as you already do, but now reliable)
     // ---------------------------
-
     const EXTRA_ROWS_COUNT = extraRows.length;
-    const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT;            // the {} blank row
-    const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;       // headerRow position
-    const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;   // data starts after header
+    const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT; // unused but kept for clarity
+    const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;
+    const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;
 
-    // Find the sno column index in the worksheet (based on colKeys)
     const SNO_COL_INDEX = colKeys.indexOf("sno");
 
     if (ws["!ref"]) {
       const rng = XLSX.utils.decode_range(ws["!ref"]);
 
-      // ✅ 1) Force sno column (data rows only) to integer format "0"
+      // 1) Force sno to integer
       if (SNO_COL_INDEX >= 0) {
         for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
           const addr = XLSX.utils.encode_cell({ r, c: SNO_COL_INDEX });
           const cell = ws[addr];
           if (!cell) continue;
-
-          // keep blanks (like Total row sno "")
           if (cell.v === "" || cell.v === null || cell.v === undefined) continue;
 
           const n = Number(cell.v);
@@ -1499,11 +1462,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           cell.t = "n";
           cell.v = Math.trunc(n);
-          cell.z = "0"; // ✅ no decimals
+          cell.z = "0";
         }
       }
 
-      // ✅ 2) Apply formats to other numeric columns (data rows only)
+      // 2) Apply formats to numeric cells
       for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
         for (let c = 0; c <= rng.e.c; c++) {
           const addr = XLSX.utils.encode_cell({ r, c });
@@ -1513,14 +1476,28 @@ const SKUtable: React.FC<SKUtableProps> = ({
           const key = colKeys[c];
           if (!key) continue;
 
-          // sno already handled
           if (key === "sno") continue;
-
           if (typeof cell.v !== "number") continue;
 
           cell.t = "n";
+
+          // percent columns
           if (key === "profit_percentage") cell.z = "0.00%";
-          else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
+
+          // ✅ if your summary column is a percent field (like cm2_margins, acos), you can optionally format it:
+          // NOTE: those rows are already stored as /100 above, so they should be percent formatted.
+          // If SUMMARY_VALUE_KEY is "net_taxes" (money), keep money formatting.
+          if (
+            addr &&
+            (key === SUMMARY_VALUE_KEY) &&
+            ["cm2_margins", "acos", "rembursment_vs_cm2_margins", "reimbursement_vs_sales"].includes(
+              String((ws[XLSX.utils.encode_cell({ r, c: 1 })]?.v ?? "")).toLowerCase()
+            )
+          ) {
+            // optional: leave as-is; most people skip this block
+          }
+
+          if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
           else cell.z = "0.00";
         }
       }
@@ -1538,6 +1515,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
     XLSX.writeFile(wb, filename);
   }, [
     tableData,
+    totals,
+    countryName,
     getExtraRows,
     range,
     month,
@@ -1546,6 +1525,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     getDisplayProductNameFromRow,
     buildExcelColumnsFromUI,
   ]);
+
 
   /* --------- Render guards --------- */
   if (loading) return <div>Loading...</div>;
@@ -1757,12 +1737,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                     { id: "cm2_profit", label: "CM2 Profit/Loss", endValue: formatValue(totals.cm2_profit, "cm2_profit") },
                     { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}%` },
+
+                    // ✅ TACoS first
+                    { id: "tacos", label: "TACoS (Total Advertising Cost of Sale)", endValue: `${formatValue(totals.acos, "acos")}%` },
+
+                    // ✅ then Net Reimbursement (below TACoS)
                     {
                       id: "net_reimb",
                       label: "Net Reimbursement",
-                      endValue: formatValue(Math.abs(totals.reimbursement_lost_inventory_amount), "reimbursement_lost_inventory_amount"),
+                      endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
                     },
-                    { id: "tacos", label: "TACoS (Total Advertising Cost of Sale)", endValue: `${formatValue(totals.acos, "acos")}%` },
                     {
                       id: "rv_cm2",
                       label: "Reimbursement vs CM2 Margins",
