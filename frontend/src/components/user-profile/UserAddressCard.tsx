@@ -108,8 +108,8 @@ export default function UserAddressCard() {
 
           {/* Update Fee Preview Information */}
           <div>
-            <p className="mb-2 text-sm leading-normal text-charcoal-500 font-bold">
-              Warehouse Inventory            </p>
+            {/* <p className="mb-2 text-sm leading-normal text-charcoal-500 font-bold">
+              Warehouse Inventory            </p> */}
 
             {/* Uncomment when you want chips */}
             {/* {isLoading && (

@@ -774,7 +774,7 @@ export default function UserInfoCard() {
 
                   className="rounded-xl"
                   rowClassName={(row) =>
-                    row.__isTotal ? "font-semibold bg-slate-50" : ""
+                    row.__isTotal ? "font-semibold bg-[#D9D9D933]" : ""
                   }
                 />
               </InfoCard>
