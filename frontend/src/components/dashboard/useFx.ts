@@ -23,7 +23,7 @@ export type FromCurrency = "USD" | "GBP" | "INR" | "CAD";
 /* ===================== ENV & ENDPOINTS ===================== */
 
 const baseURL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://13.126.252.94:5000";
 
 const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 

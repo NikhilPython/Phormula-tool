@@ -185,7 +185,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         }
 
         const res = await fetch(
-          `http://127.0.0.1:5000/pie-chart?${params.toString()}`,
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/pie-chart?${params.toString()}`,
           {
             method: "GET",
             headers: token ? { Authorization: `Bearer ${token}` } : {},

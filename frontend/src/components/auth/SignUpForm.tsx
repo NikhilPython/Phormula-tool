@@ -347,7 +347,10 @@ export default function SignUpForm() {
                       placeholder="Confirm your password"
                       type={showConfirm ? "text" : "password"}
                       value={confirm}
-                      onChange={(e) => setConfirm(e.target.value)}
+                      onChange={(e) => {
+                      setConfirm(e.target.value);
+                       setTouched((p) => ({ ...p, confirm: true }));
+           }}
                       onBlur={() => setTouched((p) => ({ ...p, confirm: true }))}
                       autoComplete="new-password"
                       required

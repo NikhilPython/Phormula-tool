@@ -8,7 +8,7 @@ import Loader from "@/components/loader/Loader";
 import { getISTYearMonth } from "@/lib/dashboard/date";
 
 const baseURL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://13.126.252.94:5000";
 const INVENTORY_AGED_ENDPOINT = `${baseURL}/amazon_api/inventory/aged`;
 
 /** Columns taken from your attached Excel, excluding the `id` column.

@@ -148,7 +148,7 @@ const Bargraph: React.FC<BargraphProps> = ({
         const token =
           typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-        const url = new URL("http://127.0.0.1:5000/upload_history");
+        const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`);
 
         // ✅ Only send homeCurrency for GLOBAL
         if (isGlobalPage && homeCurrency) {
@@ -203,7 +203,7 @@ const Bargraph: React.FC<BargraphProps> = ({
     const fetchUser = async () => {
       if (!token) return;
       try {
-        const response = await fetch("http://127.0.0.1:5000/get_user_data", {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/get_user_data`, {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
         });

@@ -201,7 +201,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
         }
         setLoading(true);
 
-        const url = new URL("http://127.0.0.1:5000/upload_history");
+        const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`);
 
         // optional: keep sending it (backend might use it later)
         if (isGlobalPage && normalizedHomeCurrency) {
@@ -266,7 +266,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
         return;
       }
       try {
-        const response = await fetch("http://127.0.0.1:5000/get_user_data", {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/get_user_data`, {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
         });

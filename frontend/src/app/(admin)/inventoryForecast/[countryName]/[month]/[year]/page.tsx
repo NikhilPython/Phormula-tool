@@ -99,7 +99,7 @@ export default function InventoryForecastPage() {
     try {
       const token = tokenOrFail();
 
-      const res = await fetch('http://127.0.0.1:5000/upload_history', {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -193,8 +193,8 @@ export default function InventoryForecastPage() {
 
       const endpoint =
         countryName === 'global'
-          ? `http://127.0.0.1:5000/forecast_global?month=${encodeURIComponent(apiMonth)}&year=${encodeURIComponent(apiYear)}`
-          : `http://127.0.0.1:5000/api/forecast?country=${encodeURIComponent(countryName)}&month=${encodeURIComponent(apiMonth)}&year=${encodeURIComponent(apiYear)}`;
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/forecast_global?month=${encodeURIComponent(apiMonth)}&year=${encodeURIComponent(apiYear)}`
+          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/forecast?country=${encodeURIComponent(countryName)}&month=${encodeURIComponent(apiMonth)}&year=${encodeURIComponent(apiYear)}`;
 
       const res = await fetch(endpoint, {
         method: 'GET',

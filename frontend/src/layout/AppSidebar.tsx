@@ -237,7 +237,7 @@ const AppSidebar: React.FC = () => {
       }
 
       const res = await fetch(
-        "http://localhost:5000/amazon_api/inventory/aged",
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/inventory/aged`,
         {
           method: "GET",
           headers: {
@@ -271,7 +271,7 @@ const AppSidebar: React.FC = () => {
       }
 
       const baseUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://13.126.252.94:5000";
 
       const months = [
         "january", "february", "march", "april", "may", "june",

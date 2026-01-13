@@ -111,7 +111,7 @@ interface ApiResponse {
 // =========================
 // Config
 // =========================
-const API_BASE = 'http://127.0.0.1:5000';
+const API_BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 
 type TabKey = 'top_80_skus' | 'new_or_reviving_skus' | 'other_skus' | 'all_skus';
 

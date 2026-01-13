@@ -353,7 +353,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
 
       {summary?.enabled !== false && (summary?.sections?.length || summary?.fixedRows?.length) ? (
-        <>
+        <tfoot>
           {/* ---------- Collapsible Sections ---------- */}
           {(summary.sections || []).map((sec) => {
             const isCollapsed = summaryCollapsed[sec.id] ?? true;
@@ -376,10 +376,8 @@ export default function GroupedCollapsibleTable<RowT>({
                     </span>
                   </td>
 
-                  {/* 2nd-last blank (matches your current layout) */}
                   <td colSpan={midColSpan} className="border border-gray-300 px-2 sm:px-3 py-3" />
 
-                  {/* LAST column value */}
                   <td colSpan={endColSpan} className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center">
                     {sec.endValue}
                   </td>
@@ -396,12 +394,10 @@ export default function GroupedCollapsibleTable<RowT>({
                         {ch.label}
                       </td>
 
-                      {/* 2nd-last value */}
                       <td colSpan={midColSpan} className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center">
                         {ch.midValue ?? ""}
                       </td>
 
-                      {/* last blank */}
                       <td colSpan={endColSpan} className="border border-gray-300 px-2 sm:px-3 py-3" />
                     </tr>
                   ))}
@@ -416,16 +412,14 @@ export default function GroupedCollapsibleTable<RowT>({
                 {r.label}
               </td>
 
-              {/* keep mid column empty for fixed rows (like your current design) */}
               <td colSpan={midColSpan} className="border border-gray-300 px-2 sm:px-3 py-3" />
 
-              {/* last column value */}
               <td colSpan={endColSpan} className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center">
                 {r.endValue ?? ""}
               </td>
             </tr>
           ))}
-        </>
+        </tfoot>
       ) : null}
 
     </table>

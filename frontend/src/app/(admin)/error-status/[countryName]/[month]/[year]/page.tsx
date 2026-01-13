@@ -97,7 +97,7 @@ export default function ErrorStatusPage() {
           typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
         const resp = await fetch(
-          `http://127.0.0.1:5000/get_error_file/${effectiveCountry}/${month}/${year}`,
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/get_error_file/${effectiveCountry}/${month}/${year}`,
           { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {} }
         );
 
@@ -143,7 +143,7 @@ export default function ErrorStatusPage() {
 
     try {
       const resp = await fetch(
-        `http://127.0.0.1:5000/get_error_file/${effectiveCountry}/${month}/${year}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/get_error_file/${effectiveCountry}/${month}/${year}`,
         { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {} }
       );
       if (!resp.ok) {

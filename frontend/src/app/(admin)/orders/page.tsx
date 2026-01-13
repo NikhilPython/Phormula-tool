@@ -65,7 +65,7 @@ export default function OrdersPage() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const url = new URL("http://localhost:5000/shopify/get_orders");
+        const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/shopify/get_orders`);
         url.searchParams.set("shop", shop);
         url.searchParams.set("token", token);
         url.searchParams.set("user_token", user_token);
@@ -118,7 +118,7 @@ export default function OrdersPage() {
           token,
         });
 
-        const res = await fetch(`http://localhost:5000/shopify/dropdown?${params.toString()}`);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/shopify/dropdown?${params.toString()}`);
         const text = await res.text();
 
         // Replace bare-word NaN with 0.0 to avoid JSON.parse errors

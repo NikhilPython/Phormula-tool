@@ -87,7 +87,7 @@ export default function DispatchPage() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:5000/getDispatchfile?country=${countryName}&month=${monthdpValue}&year=${yeardpValue}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile?country=${countryName}&month=${monthdpValue}&year=${yeardpValue}`,
         {
           method: 'GET',
           headers: {

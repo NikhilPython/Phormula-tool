@@ -180,7 +180,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
       }
 
       const response = await fetch(
-        `http://127.0.0.1:5000/upload_history2?${params.toString()}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history2?${params.toString()}`,
         {
           method: "GET",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
