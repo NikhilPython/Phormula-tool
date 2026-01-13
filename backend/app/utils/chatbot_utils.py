@@ -786,8 +786,8 @@ class FormulaEngine:
             "profit per unit": "unit_profitability", "ppu": "unit_profitability",
             "sales share": "sales_mix", "profit share": "profit_mix",
             "quantity sold": "quantity_sold", "qty sold": "quantity_sold",
-            "units sold": "quantity_sold", "sold units": "quantity_sold",
-            "total units": "quantity_sold", "ordered units": "quantity_sold","orders": "quantity_sold",
+            "units sold": "quantity_sold", "sold units": "quantity_sold", "net units": "quantity_sold", "units": "quantity_sold","net quantity": "quantity_sold",
+            "total units": "quantity_sold", "ordered units": "quantity_sold","orders": "quantity_sold", "total orders": "quantity_sold",
             "amazon fee": "amazon_fees", "amazon fees": "amazon_fees", "amazon fees total": "amazon_fees",
             "ads spend": "advertising_total", "ad spend": "advertising_total", "ads_spend": "advertising_total",
             "refund": "refunds", "refund count": "refunds", "returns": "refunds",
@@ -1458,18 +1458,22 @@ class FormulaEngine:
 
     # ---------- evaluators ----------
     def _sales(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> Dict[str, Any]:
-        
+
         is_us = self._is_us(ctx, df)
 
-        # ---------- UK → centralized + per-product + optional month breakdown ----------
+        # ---------- UK logic ----------
         if not is_us:
             try:
-                # Region-scoped frame (applies SKU mask etc.)
+                print("\n[SALES DEBUG] ===== _sales() START =====")
+
+                # Region-scoped frame
                 df_region = self._df_for_region(df, ctx)
                 if df_region is None:
                     df_region = pd.DataFrame()
 
-                # Keep only valid SKUs (same as _profit)
+                print(f"[SALES DEBUG] Rows after region filter: {len(df_region)}")
+
+                # ---------- VALID SKU FILTER ----------
                 dfk = df_region.copy()
                 dfk["sku"] = dfk.get("sku", "").astype(str).str.strip()
                 dfk = dfk[
@@ -1479,103 +1483,95 @@ class FormulaEngine:
                     & (dfk["sku"].str.lower() != "none")
                 ]
 
-                # -------------------- NEW: month-wise breakdown path --------------------
-                group_by = (ctx.get("group_by") or "").lower()
+                print(f"[SALES DEBUG] Rows after valid SKU filter: {len(dfk)}")
 
-                if group_by == "month" and not dfk.empty:
-                    # Build a normalized monthly period column (__period__)
-                    if "date_time" in dfk.columns:
-                        dfk["__dt"] = pd.to_datetime(dfk["date_time"], errors="coerce", utc=True)
-                        dfk["__period__"] = (
-                            dfk["__dt"]
-                            .dt.to_period("M")
-                            .dt.to_timestamp()
-                            .dt.tz_localize("UTC")
-                        )
-                    elif {"month", "year"}.issubset(dfk.columns):
-                        # Reuse helpers used elsewhere (compare/trend code)
-                        mnum = dfk["month"].apply(self._month_to_int)
-                        yint = dfk["year"].apply(self._year_int)
-                        dfk["__period__"] = pd.to_datetime(
-                            dict(year=yint, month=mnum, day=1),
-                            errors="coerce",
-                            utc=True,
-                        )
-                    else:
-                        dfk["__period__"] = pd.NaT  # no usable time columns
+                if dfk.empty:
+                    print("[SALES DEBUG] No valid SKUs found → returning 0")
+                    table = self._total_only_table("sales", 0.0)
+                    return {
+                        "result": self._sr(0.0),
+                        "explanation": "No valid SKU rows available for sales calculation.",
+                        "table_df": table,
+                    }
 
-                    periods = sorted(dfk["__period__"].dropna().unique())
+                # ---------- MATCH process_skuwise_data FILTERS ----------
+                type_str = dfk.get("type", "").astype(str).str.strip()
+                desc_str = dfk.get("description", "").astype(str).str.strip()
 
-                    if periods:
-                        month_rows = []
+                LOST_DESCRIPTIONS = {
+                    "REVERSAL_REIMBURSEMENT",
+                    "WAREHOUSE_LOST",
+                    "WAREHOUSE_DAMAGE",
+                    "MISSING_FROM_INBOUND",
+                }
 
-                  
+                is_refund = type_str.str.contains("refund", case=False, na=False)
+                is_lost   = desc_str.isin(LOST_DESCRIPTIONS)
 
-                        for p in periods:
-                            part = dfk[dfk["__period__"].eq(p)].copy()
-                            # Reuse centralized logic so "sales" definition stays identical
-                            mon_total, _mon_by_sku, _ = uk_sales(part)
-                            month_rows.append(
-                                {
-                                    "level": "month",
-                                    "key": pd.Timestamp(p).strftime("%b %Y"),
-                                    "result": float(mon_total or 0.0),
-                                    "_period_key": pd.Timestamp(p),
-                                }
-                            )
+                df_base   = dfk.loc[~is_refund & ~is_lost].copy()
+                df_refund = dfk.loc[is_refund].copy()
 
-                        per_month = (
-                            pd.DataFrame(month_rows)
-                            .sort_values("_period_key")
-                            .drop(columns=["_period_key"])
-                            .reset_index(drop=True)
-                        )
+                print(f"[SALES DEBUG] Base rows (non-refund, non-lost): {len(df_base)}")
+                print(f"[SALES DEBUG] Refund rows: {len(df_refund)}")
+                print(f"[SALES DEBUG] Lost rows: {int(is_lost.sum())}")
 
-                        sales_total = float(per_month["result"].sum() or 0.0)
+                # ---------- BASE SALES ----------
+                base_total, base_by_sku, _ = uk_sales(df_base)
+                print(f"[SALES DEBUG] Base sales total (before refunds): {base_total}")
 
-                        # Add a TOTAL row at the top for consistency with other metrics
-                        total_row = pd.DataFrame(
-                            [{"level": "total", "key": "TOTAL", "result": sales_total}]
-                        )
-                        table = pd.concat([total_row, per_month], ignore_index=True)
+                if not isinstance(base_by_sku, pd.DataFrame):
+                    base_by_sku = pd.DataFrame(columns=["sku", "__metric__"])
 
-                        expl = (
-                            "UK sales via centralized uk_sales, aggregated month-wise "
-                            "over the selected period."
-                        )
-                        return {
-                            "result": self._sr(sales_total),
-                            "explanation": expl,
-                            "table_df": table,
-                        }
+                # ---------- REFUND SALES ----------
+                if "product_sales" not in df_refund.columns:
+                    df_refund["product_sales"] = 0.0
 
-                    
+                refund_sales_df = (
+                    df_refund.groupby("sku", as_index=False)["product_sales"]
+                    .sum()
+                    .rename(columns={"product_sales": "refund_sales"})
+                )
 
-                # -------------------- Existing UK total + product/SKU logic --------------------
-        
+                refund_sales_df["refund_sales"] = pd.to_numeric(
+                    refund_sales_df["refund_sales"], errors="coerce"
+                ).fillna(0.0)
 
-                # Centralized UK sales helper (same style as _profit)
-                sales_total, sales_by_sku, _ = uk_sales(dfk)
+                refund_sales_total = float(refund_sales_df["refund_sales"].sum())
+                print(f"[SALES DEBUG] Refund sales total: {refund_sales_total}")
 
-                # Ensure we have a DataFrame
-                if not isinstance(sales_by_sku, pd.DataFrame):
-                    sales_by_sku = pd.DataFrame(columns=["sku", "__metric__"])
+                # ---------- MERGE + FINAL NET SALES ----------
+                sales_by_sku = base_by_sku.merge(
+                    refund_sales_df,
+                    on="sku",
+                    how="left"
+                )
 
-                # --- per-SKU: only sku + __metric__ (no components) ---
-                per_sku = sales_by_sku.copy()
-                if "sku" not in per_sku.columns:
-                    per_sku["sku"] = ""
-                if "__metric__" not in per_sku.columns:
-                    # fallback: if central fn didn't set __metric__, try product_sales
-                    if "product_sales" in per_sku.columns:
-                        per_sku["__metric__"] = pd.to_numeric(
-                            per_sku["product_sales"], errors="coerce"
-                        ).fillna(0.0)
-                    else:
-                        per_sku["__metric__"] = 0.0
-                per_sku = per_sku[["sku", "__metric__"]]
+                sales_by_sku["refund_sales"] = pd.to_numeric(
+                    sales_by_sku.get("refund_sales", 0),
+                    errors="coerce"
+                ).fillna(0.0)
 
-                # --- per-product: roll up SKU totals -> product_name ---
+                sales_by_sku["__metric__"] = (
+                    pd.to_numeric(sales_by_sku.get("__metric__", 0), errors="coerce").fillna(0.0)
+                    + sales_by_sku["refund_sales"]
+                )
+
+                sales_total = float(sales_by_sku["__metric__"].sum())
+                print(f"[SALES DEBUG] FINAL Net Sales (base + refunds): {sales_total}")
+
+                # ---------- SAMPLE SKU CHECK ----------
+                if not sales_by_sku.empty:
+                    print(
+                        "[SALES DEBUG] Sample SKU breakdown (top 5 by abs sales):\n",
+                        sales_by_sku
+                        .assign(abs_val=lambda x: x["__metric__"].abs())
+                        .sort_values("abs_val", ascending=False)
+                        .head(5)[["sku", "__metric__", "refund_sales"]]
+                    )
+
+                # ---------- PER-SKU / PER-PRODUCT ----------
+                per_sku = sales_by_sku[["sku", "__metric__"]].copy()
+
                 sku2prod = self._sku_to_product(dfk)
                 if (
                     not per_sku.empty
@@ -1591,43 +1587,38 @@ class FormulaEngine:
                 else:
                     per_prod = pd.DataFrame(columns=["product_name", "__metric__"])
 
-                # --- final table: ONLY totals + per-product (no components) ---
+                # ---------- FINAL TABLE ----------
                 if ctx.get("want_breakdown"):
-                    # component_cols = [] → _final_table will NOT add any component_* columns
                     table = self._final_table(
                         "sales",
-                        float(sales_total or 0.0),
-                        per_sku[["sku", "__metric__"]],
-                        per_prod[["product_name", "__metric__"]],
+                        sales_total,
+                        per_sku,
+                        per_prod,
                         component_cols=[],
                     )
                 else:
-                    table = self._total_only_table("sales", float(sales_total or 0.0))
+                    table = self._total_only_table("sales", sales_total)
 
-                expl = (
-                    "UK sales via centralized uk_sales, with per-SKU and per-product totals only."
-                )
+                print("[SALES DEBUG] ===== _sales() END =====\n")
+
                 return {
                     "result": self._sr(sales_total),
-                    "explanation": expl,
+                    "explanation": (
+                        "UK Net Sales matched to process_skuwise_data "
+                        "(base sales + refund sales)."
+                    ),
                     "table_df": table,
                 }
 
             except Exception as e:
-                
-                # strict: no fallback calc
-                try:
-                    nan_val = float("nan")
-                    table = self._total_only_table("sales", nan_val)
-                    sr_val = self._sr(nan_val)
-                except Exception:
-                    table, sr_val = pd.DataFrame(), None
+                print(f"[SALES DEBUG][ERROR] {e}")
+                nan_val = float("nan")
+                table = self._total_only_table("sales", nan_val)
                 return {
-                    "result": sr_val,
-                    "explanation": f"UK sales failed in centralized formula: {e}. No fallback executed by design.",
+                    "result": self._sr(nan_val),
+                    "explanation": f"UK sales failed after alignment: {e}",
                     "table_df": table,
                 }
-
         # ---------- US → keep existing local path ----------
 
         total, per_sku, per_prod, comps = self._sales_components(df, ctx)
@@ -1640,101 +1631,240 @@ class FormulaEngine:
         return {"result": self._sr(total), "explanation": expl, "table_df": table}
 
 
-
-
    
     def _tax(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> Dict[str, Any]:
-        
+
         is_us = self._is_us(ctx, df)
 
-        # ---------- UK → centralized-only (matches _sales style) ----------
+        # ===================== UK LOGIC =====================
         if not is_us:
-            def _call_central(fn, df_, ctx_):
-                sig = inspect.signature(fn)
-                kwargs = {}
-                if "want_breakdown" in sig.parameters:
-                    kwargs["want_breakdown"] = bool(ctx_.get("want_breakdown"))
-                if "country" in sig.parameters:
-                    kwargs["country"] = ctx_.get("country", "UK")
-                if "debug" in sig.parameters:
-                    kwargs["debug"] = True
-                return fn(df=df_, **kwargs)
-
-            def _normalize(raw):
-                # Accepts tuple/dict/None just like _sales
-                if raw is None:
-                    return {"total": 0.0, "per_sku": pd.DataFrame(), "per_product": pd.DataFrame(), "components": []}
-                if isinstance(raw, tuple) and len(raw) >= 2:
-                    return {"total": float(raw[0] or 0.0),
-                            "per_sku": raw[1] if isinstance(raw[1], pd.DataFrame) else pd.DataFrame(),
-                            "per_product": pd.DataFrame(),
-                            "components": raw[2] if len(raw) > 2 else []}
-                if isinstance(raw, dict):
-                    return {"total": float(raw.get("total", 0.0)),
-                            "per_sku": raw.get("per_sku") or pd.DataFrame(),
-                            "per_product": raw.get("per_product") or pd.DataFrame(),
-                            "components": raw.get("components") or []}
-                return {"total": 0.0, "per_sku": pd.DataFrame(), "per_product": pd.DataFrame(), "components": []}
-
-            def _ensure_cols(per_sku: pd.DataFrame, comps: list[str]) -> pd.DataFrame:
-                base = ["sku", "__metric__"]
-                default_comps = [
-                    "product_sales_tax",
-                    "marketplace_facilitator_tax",
-                    "shipping_credits_tax",
-                    "giftwrap_credits_tax",
-                    "promotional_rebates_tax",
-                    "other_transaction_fees",
-                ]
-                want = base + (comps or default_comps)
-                if not isinstance(per_sku, pd.DataFrame) or per_sku.empty:
-                    return pd.DataFrame(columns=want)
-                for c in want:
-                    if c not in per_sku.columns:
-                        per_sku[c] = "" if c == "sku" else 0.0
-                return per_sku[want]
-
             try:
-                df_region = self._df_for_region(df, ctx)               # <- SKU-filtered
-                raw = _call_central(uk_tax, df_region, ctx)
-                payload = _normalize(raw)
+                print("\n[TAX DEBUG] ===== _tax() START (MATCH process_skuwise_data) =====")
 
-                total, per_sku, per_prod, comps = (
-                    payload["total"], payload["per_sku"], payload["per_product"], payload["components"]
+                # ---------- REGION FILTER ----------
+                df_region = self._df_for_region(df, ctx)
+                if df_region is None:
+                    df_region = pd.DataFrame()
+
+                # ---------- VALID SKU FILTER ----------
+                dfk = df_region.copy()
+                dfk["sku"] = dfk.get("sku", "").astype(str).str.strip()
+                dfk = dfk[
+                    dfk["sku"].notna()
+                    & (dfk["sku"] != "")
+                    & (dfk["sku"] != "0")
+                    & (dfk["sku"].str.lower() != "none")
+                ]
+
+                if dfk.empty:
+                    table = self._total_only_table("tax", 0.0)
+                    return {
+                        "result": self._sr(0.0),
+                        "explanation": "No valid SKU rows for tax calculation.",
+                        "table_df": table,
+                    }
+
+                # ---------- SPLIT REFUND / LOST ----------
+                type_str = dfk.get("type", "").astype(str).str.strip()
+                desc_str = dfk.get("description", "").astype(str).str.strip()
+
+                LOST_DESCRIPTIONS = {
+                    "REVERSAL_REIMBURSEMENT",
+                    "WAREHOUSE_LOST",
+                    "WAREHOUSE_DAMAGE",
+                    "MISSING_FROM_INBOUND",
+                }
+
+                is_refund = type_str.str.contains("refund", case=False, na=False)
+                is_lost   = desc_str.isin(LOST_DESCRIPTIONS)
+
+                # EXACT MATCH with process_skuwise_data
+                df_base   = df_region.loc[~is_refund & ~is_lost].copy()
+                df_refund = df_region.loc[is_refund].copy()
+            
+
+                # ---------- ENSURE REQUIRED COLUMNS ----------
+                required_cols = [
+                    "product_sales_tax",
+                    "shipping_credits_tax",
+                    "promotional_rebates_tax",
+                    "marketplace_facilitator_tax",
+                    "shipping_credits",
+                    "promotional_rebates",
+                ]
+
+                for c in required_cols:
+                    if c not in dfk.columns:
+                        dfk[c] = 0.0
+                    dfk[c] = pd.to_numeric(dfk[c], errors="coerce").fillna(0.0)
+
+                # ================= BASE TAX (NON-REFUND, NON-LOST) =================
+                base_tax_by_sku = (
+                    df_base.groupby("sku", as_index=False)[
+                        [
+                            "product_sales_tax",
+                            "shipping_credits_tax",
+                            "promotional_rebates_tax",
+                            "marketplace_facilitator_tax",
+                        ]
+                    ]
+                    .sum()
                 )
 
-                if ctx.get("want_breakdown"):
-                    table = self._final_table(
-                        "tax",
-                        total,
-                        _ensure_cols(per_sku, comps),
-                        per_prod if not per_prod.empty else pd.DataFrame(columns=["product_name", "__metric__"]),
-                        comps or [
-                            "product_sales_tax","marketplace_facilitator_tax","shipping_credits_tax",
-                            "giftwrap_credits_tax","promotional_rebates_tax","other_transaction_fees"
-                        ],
+                base_tax_by_sku["base_tax"] = (
+                    base_tax_by_sku["product_sales_tax"]
+                    + base_tax_by_sku["shipping_credits_tax"]
+                    + base_tax_by_sku["promotional_rebates_tax"]
+                    + base_tax_by_sku["marketplace_facilitator_tax"]
+                )
+
+                # ================= REFUND TAX =================
+                if df_refund.empty:
+                    refund_tax_df = pd.DataFrame(
+                        columns=["sku", "sales_tax_refund", "refund_rebate"]
                     )
                 else:
-                    table = self._total_only_table("tax", total)
+                    refund_tax_df = (
+                        df_refund.groupby("sku", as_index=False)[
+                            ["product_sales_tax", "promotional_rebates"]
+                        ]
+                        .sum()
+                        .rename(
+                            columns={
+                                "product_sales_tax": "sales_tax_refund",
+                                "promotional_rebates": "refund_rebate",
+                            }
+                        )
+                    )
 
-                expl = "UK tax (centralized via formulas_utils.uk_tax)."
-                return {"result": self._sr(total), "explanation": expl, "table_df": table}
+                # 50% rule (matches process_skuwise_data)
+                refund_tax_df["sales_tax_refund"] = (
+                    pd.to_numeric(refund_tax_df["sales_tax_refund"], errors="coerce")
+                    .fillna(0.0)
+                )
 
-            except Exception as e:
-                
-                # strict: no fallback calc
-                try:
-                    nan_val = float("nan")
-                    table = self._total_only_table("tax", nan_val)
-                    sr_val = self._sr(nan_val)
-                except Exception:
-                    table, sr_val = pd.DataFrame(), None
+                refund_tax_df["refund_rebate"] = (
+                    pd.to_numeric(refund_tax_df["refund_rebate"], errors="coerce")
+                    .fillna(0.0)
+                )
+
+                # ================= DIGITAL TRANSACTION TAX =================
+                # EXACT MATCH (includes shipping_credits intentionally)
+                if df_refund.empty:
+                    digital_tax_df = pd.DataFrame(columns=["sku", "digital_transaction_tax"])
+                else:
+                    digital_tax_df = (
+                        df_refund.groupby("sku", as_index=False)[
+                            [
+                                "product_sales_tax",
+                                "shipping_credits",
+                                "shipping_credits_tax",
+                                "promotional_rebates_tax",
+                            ]
+                        ]
+                        .sum()
+                    )
+
+                    digital_tax_df["digital_transaction_tax"] = (
+                        digital_tax_df["product_sales_tax"]
+                        + digital_tax_df["shipping_credits"]
+                        + digital_tax_df["shipping_credits_tax"]
+                        + digital_tax_df["promotional_rebates_tax"]
+                    )
+
+                    digital_tax_df = digital_tax_df[["sku", "digital_transaction_tax"]]
+
+                # ================= MERGE ALL =================
+                tax_by_sku = (
+                    base_tax_by_sku
+                    .merge(refund_tax_df, on="sku", how="left")
+                    .merge(digital_tax_df, on="sku", how="left")
+                )
+
+                for c in ["sales_tax_refund", "refund_rebate", "digital_transaction_tax"]:
+                    tax_by_sku[c] = pd.to_numeric(
+                        tax_by_sku.get(c, 0), errors="coerce"
+                    ).fillna(0.0)
+
+                # ================= FINAL NET TAX =================
+                tax_by_sku["__metric__"] = (
+                    tax_by_sku["base_tax"]
+                    + tax_by_sku["sales_tax_refund"]
+                    - tax_by_sku["refund_rebate"]
+                    - tax_by_sku["digital_transaction_tax"]
+                )
+                print("\n[TAX DEBUG][_tax] SKU-wise breakdown")
+
+                debug_df = tax_by_sku[[
+                    "sku",
+                    "product_sales_tax",
+                    "shipping_credits_tax",
+                    "promotional_rebates_tax",
+                    "marketplace_facilitator_tax",
+                    "sales_tax_refund",
+                    "refund_rebate",
+                    "digital_transaction_tax",
+                    "__metric__",
+                ]].copy()
+
+                debug_df = debug_df.fillna(0).sort_values("sku")
+
+                print(debug_df.to_string(index=False))
+
+                print("\n[TAX DEBUG][_tax] TOTALS")
+                print(f"product_sales_tax           : {debug_df['product_sales_tax'].sum():.2f}")
+                print(f"shipping_credits_tax        : {debug_df['shipping_credits_tax'].sum():.2f}")
+                print(f"promotional_rebates_tax     : {debug_df['promotional_rebates_tax'].sum():.2f}")
+                print(f"marketplace_facilitator_tax: {debug_df['marketplace_facilitator_tax'].sum():.2f}")
+                print(f"sales_tax_refund            : {debug_df['sales_tax_refund'].sum():.2f}")
+                print(f"refund_rebate               : {debug_df['refund_rebate'].sum():.2f}")
+                print(f"digital_transaction_tax     : {debug_df['digital_transaction_tax'].sum():.2f}")
+                print(f"NET TAX (__metric__)        : {debug_df['__metric__'].sum():.2f}")
+
+
+                tax_total = float(tax_by_sku["__metric__"].sum())
+                per_sku = tax_by_sku[["sku", "__metric__"]].copy()
+
+                # ---------- PER PRODUCT ----------
+                sku2prod = self._sku_to_product(dfk)
+                if not per_sku.empty and not sku2prod.empty:
+                    per_prod = (
+                        per_sku.merge(sku2prod, on="sku", how="left")
+                        .groupby("product_name", dropna=True)["__metric__"]
+                        .sum()
+                        .reset_index()
+                    )
+                else:
+                    per_prod = pd.DataFrame(columns=["product_name", "__metric__"])
+
+                table = (
+                    self._final_table("tax", tax_total, per_sku, per_prod, [])
+                    if ctx.get("want_breakdown")
+                    else self._total_only_table("tax", tax_total)
+                )
+
+                print("[TAX DEBUG] ===== _tax() END (MATCHED) =====\n")
+
                 return {
-                    "result": sr_val,
-                    "explanation": f"UK tax failed in centralized formula: {e}. No fallback executed by design.",
+                    "result": self._sr(tax_total),
+                    "explanation": (
+                        "UK Net Tax calculated exactly like process_skuwise_data "
+                        "(base tax + refund tax − refund rebate − digital transaction tax)."
+                    ),
                     "table_df": table,
                 }
 
+            except Exception as e:
+                nan_val = float("nan")
+                table = self._total_only_table("tax", nan_val)
+                return {
+                    "result": self._sr(nan_val),
+                    "explanation": f"UK tax failed after alignment: {e}",
+                    "table_df": table,
+                }
+
+       
+        # ===================== US LOGIC =====================
         # ---------- US → local components (matches _sales structure) ----------
         total, per_sku, per_prod, comps = self._tax_components(df, ctx)
         table = (
@@ -1749,87 +1879,164 @@ class FormulaEngine:
         return {"result": self._sr(total), "explanation": expl, "table_df": table}
 
 
-    
-
     def _credits(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> Dict[str, Any]:
-        
+
         is_us = self._is_us(ctx, df)
 
-        # ---------- UK → centralized-only (matches _sales / _tax structure) ----------
+        # ---------- UK logic ----------
         if not is_us:
-            def _call_central(fn, df_, ctx_):
-                sig = inspect.signature(fn)
-                kwargs = {}
-                if "want_breakdown" in sig.parameters:
-                    kwargs["want_breakdown"] = bool(ctx_.get("want_breakdown"))
-                if "country" in sig.parameters:
-                    kwargs["country"] = ctx_.get("country", "UK")
-                if "debug" in sig.parameters:
-                    kwargs["debug"] = True
-                return fn(df=df_, **kwargs)
-
-            def _normalize(raw):
-                if raw is None:
-                    return {"total": 0.0, "per_sku": pd.DataFrame(), "per_product": pd.DataFrame(), "components": []}
-                if isinstance(raw, tuple) and len(raw) >= 2:
-                    return {"total": float(raw[0] or 0.0),
-                            "per_sku": raw[1] if isinstance(raw[1], pd.DataFrame) else pd.DataFrame(),
-                            "per_product": pd.DataFrame(),
-                            "components": raw[2] if len(raw) > 2 else []}
-                if isinstance(raw, dict):
-                    return {"total": float(raw.get("total", 0.0)),
-                            "per_sku": raw.get("per_sku") or pd.DataFrame(),
-                            "per_product": raw.get("per_product") or pd.DataFrame(),
-                            "components": raw.get("components") or []}
-                return {"total": 0.0, "per_sku": pd.DataFrame(), "per_product": pd.DataFrame(), "components": []}
-
-            def _ensure_cols(per_sku: pd.DataFrame, comps: list[str]) -> pd.DataFrame:
-                base = ["sku", "__metric__"]
-                default_comps = ["postage_credits", "gift_wrap_credits"]
-                want = base + (comps or default_comps)
-                if not isinstance(per_sku, pd.DataFrame) or per_sku.empty:
-                    return pd.DataFrame(columns=want)
-                for c in want:
-                    if c not in per_sku.columns:
-                        per_sku[c] = "" if c == "sku" else 0.0
-                return per_sku[want]
-
             try:
-                df_region = self._df_for_region(df, ctx)  # <- SKU-filtered
-                raw = _call_central(uk_credits, df_region, ctx)
-                payload = _normalize(raw)
+                print("\n[CREDITS DEBUG] ===== _credits() START =====")
 
-                total, per_sku, per_prod, comps = (
-                    payload["total"], payload["per_sku"], payload["per_product"], payload["components"]
+                # Region-scoped data
+                df_region = self._df_for_region(df, ctx)
+                if df_region is None:
+                    df_region = pd.DataFrame()
+
+                print(f"[CREDITS DEBUG] Rows after region filter: {len(df_region)}")
+
+                # ---------- VALID SKU FILTER ----------
+                dfk = df_region.copy()
+                dfk["sku"] = dfk.get("sku", "").astype(str).str.strip()
+                dfk = dfk[
+                    dfk["sku"].notna()
+                    & (dfk["sku"] != "")
+                    & (dfk["sku"] != "0")
+                    & (dfk["sku"].str.lower() != "none")
+                ]
+
+                print(f"[CREDITS DEBUG] Rows after valid SKU filter: {len(dfk)}")
+
+                if dfk.empty:
+                    print("[CREDITS DEBUG] No valid SKUs → returning 0")
+                    table = self._total_only_table("credits", 0.0)
+                    return {
+                        "result": self._sr(0.0),
+                        "explanation": "No valid SKU rows available for credits calculation.",
+                        "table_df": table,
+                    }
+
+                # ---------- MATCH process_skuwise_data FILTERS ----------
+                type_str = dfk.get("type", "").astype(str).str.strip()
+                desc_str = dfk.get("description", "").astype(str).str.strip()
+
+                LOST_DESCRIPTIONS = {
+                    "REVERSAL_REIMBURSEMENT",
+                    "WAREHOUSE_LOST",
+                    "WAREHOUSE_DAMAGE",
+                    "MISSING_FROM_INBOUND",
+                }
+
+                is_refund = type_str.str.contains("refund", case=False, na=False)
+                is_lost   = desc_str.isin(LOST_DESCRIPTIONS)
+
+                df_base   = dfk.loc[~is_refund & ~is_lost].copy()
+                df_refund = dfk.loc[is_refund].copy()
+
+                print(f"[CREDITS DEBUG] Base rows (non-refund, non-lost): {len(df_base)}")
+                print(f"[CREDITS DEBUG] Refund rows: {len(df_refund)}")
+                print(f"[CREDITS DEBUG] Lost rows: {int(is_lost.sum())}")
+
+                # ---------- BASE CREDITS ----------
+                base_total, base_by_sku, _ = uk_credits(df_base)
+
+                if not isinstance(base_by_sku, pd.DataFrame):
+                    base_by_sku = pd.DataFrame(columns=["sku", "__metric__"])
+
+                print(f"[CREDITS DEBUG] Base credits total: {base_total}")
+
+                # ---------- REFUND CREDITS ----------
+                if df_refund.empty:
+                    refund_by_sku = pd.DataFrame(columns=["sku", "refund_credits"])
+                else:
+                    refund_total, refund_by_sku_raw, _ = uk_credits(df_refund)
+
+                    if not isinstance(refund_by_sku_raw, pd.DataFrame):
+                        refund_by_sku = pd.DataFrame(columns=["sku", "refund_credits"])
+                    else:
+                        refund_by_sku = refund_by_sku_raw[["sku", "__metric__"]].rename(
+                            columns={"__metric__": "refund_credits"}
+                        )
+
+                    print(f"[CREDITS DEBUG] Refund credits total: {refund_total}")
+
+                # ---------- MERGE BASE + REFUND ----------
+                credits_by_sku = base_by_sku.merge(
+                    refund_by_sku,
+                    on="sku",
+                    how="left"
                 )
 
+                credits_by_sku["refund_credits"] = pd.to_numeric(
+                    credits_by_sku.get("refund_credits", 0),
+                    errors="coerce"
+                ).fillna(0.0)
+
+                credits_by_sku["__metric__"] = (
+                    pd.to_numeric(credits_by_sku.get("__metric__", 0), errors="coerce").fillna(0.0)
+                    + credits_by_sku["refund_credits"]
+                )
+
+                credits_total = float(credits_by_sku["__metric__"].sum())
+                print(f"[CREDITS DEBUG] FINAL Net Credits: {credits_total}")
+
+                # ---------- SAMPLE SKU CHECK ----------
+                if not credits_by_sku.empty:
+                    print(
+                        "[CREDITS DEBUG] Sample SKU breakdown (top 5):\n",
+                        credits_by_sku
+                        .assign(abs_val=lambda x: x["__metric__"].abs())
+                        .sort_values("abs_val", ascending=False)
+                        .head(5)[["sku", "__metric__", "refund_credits"]]
+                    )
+
+                per_sku = credits_by_sku[["sku", "__metric__"]].copy()
+
+                # ---------- PER-PRODUCT ----------
+                sku2prod = self._sku_to_product(dfk)
+                if not per_sku.empty and not sku2prod.empty:
+                    tmp = per_sku.merge(sku2prod, on="sku", how="left")
+                    per_prod = (
+                        tmp.groupby("product_name", dropna=True)["__metric__"]
+                        .sum()
+                        .reset_index()
+                    )
+                else:
+                    per_prod = pd.DataFrame(columns=["product_name", "__metric__"])
+
+                # ---------- FINAL TABLE ----------
                 if ctx.get("want_breakdown"):
                     table = self._final_table(
                         "credits",
-                        total,
-                        _ensure_cols(per_sku, comps),
-                        per_prod if not per_prod.empty else pd.DataFrame(columns=["product_name", "__metric__"]),
-                        comps or ["postage_credits", "gift_wrap_credits"],
+                        credits_total,
+                        per_sku,
+                        per_prod,
+                        component_cols=[],   # IMPORTANT: net credits only
                     )
                 else:
-                    table = self._total_only_table("credits", total)
+                    table = self._total_only_table("credits", credits_total)
 
-                expl = "UK credits (centralized via formulas_utils.uk_credits)."
-                return {"result": self._sr(total), "explanation": expl, "table_df": table}
+                print("[CREDITS DEBUG] ===== _credits() END =====\n")
 
-            except Exception as e:
-                # strict: no fallback calc
-                try:
-                    nan_val = float("nan")
-                    table = self._total_only_table("credits", nan_val)
-                    sr_val = self._sr(nan_val)
-                except Exception:
-                    table, sr_val = pd.DataFrame(), None
                 return {
-                    "result": sr_val,
-                    "explanation": f"UK credits failed in centralized formula: {e}. No fallback executed by design.",
+                    "result": self._sr(credits_total),
+                    "explanation": (
+                        "UK Net Credits matched to process_skuwise_data "
+                        "(base credits + refund credits, lost excluded)."
+                    ),
                     "table_df": table,
                 }
+
+            except Exception as e:
+                print(f"[CREDITS DEBUG][ERROR] {e}")
+                nan_val = float("nan")
+                table = self._total_only_table("credits", nan_val)
+                return {
+                    "result": self._sr(nan_val),
+                    "explanation": f"UK credits failed after alignment: {e}",
+                    "table_df": table,
+                }
+
 
         # ---------- US → local components (matches _sales / _tax structure) ----------
         total, per_sku, per_prod, comps = self._credits_components(df, ctx)
@@ -1874,142 +2081,168 @@ class FormulaEngine:
         
    
     def _profit(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Profit entrypoint aligned with _sales/_tax/_credits structure.
 
-        - UK: Uses centralized sales/tax/credits; RE-CALCULATES amazon_fee locally:
-            amazon_fee_total = abs(sum(fba_fees + selling_fees)) over valid SKUs only,
-            with a single abs at the end (not per component). Profit is then:
-            |Sales| + |Credits| − |Taxes| − amazon_fee_total − |COGS|.
-            Per-SKU profit computed similarly for breakdowns.
-        - US: Local per-SKU build (unchanged).
-        """
-        
         is_us = self._is_us(ctx, df)
 
-        # ---------- UK → centralized components + local Amazon-fee recalc ----------
+        # ===================== UK PROFIT =====================
         if not is_us:
-            # Region/SKU-scoped view
-            df_region = self._df_for_region(df, ctx)
-            if df_region is None:
-                df_region = pd.DataFrame()
+            try:
+                print("\n[PROFIT DEBUG] ===== _profit() START (ALIGNED) =====")
 
-            # Keep only valid SKUs
-            dfk = df_region.copy()
-            dfk["sku"] = dfk.get("sku", "").astype(str).str.strip()
-            dfk = dfk[
-                dfk["sku"].notna()
-                & (dfk["sku"] != "")
-                & (dfk["sku"] != "0")
-                & (dfk["sku"].str.lower() != "none")
-            ]
+                # ---------- REGION ----------
+                df_region = self._df_for_region(df, ctx)
+                if df_region is None or df_region.empty:
+                    table = self._total_only_table("profit", 0.0)
+                    return {
+                        "result": self._sr(0.0),
+                        "explanation": "No regional data available for profit calculation.",
+                        "table_df": table,
+                    }
 
-            # Ensure numeric columns exist & are numeric
-            for col in ["fba_fees", "selling_fees", "cost_of_unit_sold"]:
-                if col not in dfk.columns:
-                    dfk[col] = 0.0
-                dfk[col] = self._safe_num(dfk[col])
+                # ---------- VALID SKU FILTER ----------
+                dfk = df_region.copy()
+                dfk["sku"] = dfk.get("sku", "").astype(str).str.strip()
+                dfk = dfk[
+                    dfk["sku"].notna()
+                    & (dfk["sku"] != "")
+                    & (dfk["sku"] != "0")
+                    & (dfk["sku"].str.lower() != "none")
+                ]
 
-            # --- Centralized component helpers (authoritative for these) ---
-            # NOTE: we do NOT use centralized amazon_fee; we recalc locally per your rule
-            sales_total,   sales_by_sku,   _ = uk_sales(dfk)
-            tax_total,     tax_by_sku,     _ = uk_tax(dfk)
-            credits_total, credits_by_sku, _ = uk_credits(dfk)
+                print(f"[PROFIT DEBUG] Rows after SKU filter: {len(dfk)}")
 
-            # --- Local Amazon Fee Recalculation (your rule) ---
-            # amazon_fee_total = abs(sum(fba_fees + selling_fees))  (single abs at end)
-            amazon_fee_total = abs(dfk["fba_fees"].sum() + dfk["selling_fees"].sum())
+                if dfk.empty:
+                    table = self._total_only_table("profit", 0.0)
+                    return {
+                        "result": self._sr(0.0),
+                        "explanation": "No valid SKU rows for profit calculation.",
+                        "table_df": table,
+                    }
 
-            # Per-SKU amazon fee (use abs on the per-sku combined value, not per component)
-            fee_by_sku = (
-                dfk.groupby("sku", dropna=True)[["fba_fees", "selling_fees"]]
-                .sum()
-                .reset_index()
-            )
-            fee_by_sku["amazon_fee"] = (fee_by_sku["fba_fees"] + fee_by_sku["selling_fees"]).abs()
-            fee_by_sku = fee_by_sku[["sku", "amazon_fee"]]
+                # ===================== CORE COMPONENTS =====================
+                sales_res   = self._sales(dfk, ctx)
+                credits_res = self._credits(dfk, ctx)
+                tax_res     = self._tax(dfk, ctx)
 
-            # --- COGS (|cost_of_unit_sold|) ---
-            cost_by_sku = (
-                dfk.groupby("sku", dropna=True)["cost_of_unit_sold"]
-                .sum()
-                .abs()
-                .reset_index()
-            ).rename(columns={"cost_of_unit_sold": "cost"})
-            cost_total = float(cost_by_sku["cost"].sum()) if not cost_by_sku.empty else 0.0
+                sales_total   = float(sales_res["result"])
+                credits_total = float(credits_res["result"])
+                tax_total     = float(tax_res["result"])
 
-            # --- Build per-SKU frame from components ---
-            # Normalize component frames and merge
-            def _pick(df_, name):
-                if isinstance(df_, pd.DataFrame) and not df_.empty and "__metric__" in df_.columns and "sku" in df_.columns:
-                    out = df_[["sku", "__metric__"]].copy()
-                    out = out.rename(columns={"__metric__": name})
-                    out[name] = self._safe_num(out[name])
-                    out["sku"] = out["sku"].astype(str)
-                    return out
-                return pd.DataFrame(columns=["sku", name])
+                print(f"[PROFIT DEBUG] Net Sales   : {sales_total}")
+                print(f"[PROFIT DEBUG] Net Credits : {credits_total}")
+                print(f"[PROFIT DEBUG] Net Taxes   : {tax_total}")
 
-            sales_per_sku   = _pick(sales_by_sku,   "sales")
-            credits_per_sku = _pick(credits_by_sku, "credits")
-            taxes_per_sku   = _pick(tax_by_sku,     "taxes")
+                sales_by_sku   = sales_res["table_df"]["per_sku"]   if ctx.get("want_breakdown") else None
+                credits_by_sku = credits_res["table_df"]["per_sku"] if ctx.get("want_breakdown") else None
+                tax_by_sku     = tax_res["table_df"]["per_sku"]     if ctx.get("want_breakdown") else None
 
-            per_sku = (
-                pd.DataFrame({"sku": dfk["sku"].unique()})
-                .merge(sales_per_sku,   on="sku", how="left")
-                .merge(credits_per_sku, on="sku", how="left")
-                .merge(taxes_per_sku,   on="sku", how="left")
-                .merge(fee_by_sku,      on="sku", how="left")
-                .merge(cost_by_sku,     on="sku", how="left")
-            ).fillna(0.0)
+                # ===================== REFUND / LOST FLAGS =====================
+                t = dfk.get("type", "").astype(str).str.lower()
+                d = dfk.get("description", "").astype(str)
 
-            # Profit per SKU:
-            # |Sales| + |Credits| − |Taxes| − amazon_fee (local) − |COGS|
-            for col in ["sales", "credits", "taxes", "amazon_fee", "cost"]:
-                per_sku[col] = self._safe_num(per_sku[col])
+                is_refund = t.str.contains("refund", na=False)
 
-            per_sku["__metric__"] = (
-                per_sku["sales"].abs()
-                + per_sku["credits"].abs()
-                + per_sku["taxes"].abs()
-                - per_sku["amazon_fee"]
-                - per_sku["cost"].abs()
-            )
+                LOST_DESCRIPTIONS = {
+                    "REVERSAL_REIMBURSEMENT",
+                    "WAREHOUSE_LOST",
+                    "WAREHOUSE_DAMAGE",
+                    "MISSING_FROM_INBOUND",
+                }
+                is_lost = d.isin(LOST_DESCRIPTIONS)
 
-            total = float(per_sku["__metric__"].sum())
+                # ===================== AMAZON FEES =====================
+                df_base = dfk.loc[~is_refund & ~is_lost].copy()
+                amazon_fee_total, amazon_fee_by_sku, _ = uk_amazon_fee(df_base)
 
-            
-            # Build output table(s)
-            if not ctx.get("want_breakdown"):
-                table = self._total_only_table("profit", total)
-            else:
-                # Optional product roll-up
-                sku2prod = self._sku_to_product(dfk)
-                if not sku2prod.empty and "product_name" in sku2prod.columns:
-                    per_prod = (
-                        per_sku.merge(sku2prod, on="sku", how="left")
-                            .groupby("product_name", dropna=True)
-                            [["sales", "credits", "taxes", "amazon_fee", "cost", "__metric__"]]
-                            .sum().reset_index()
-                    )
+                print(f"[PROFIT DEBUG] Amazon Fee : {amazon_fee_total}")
+
+                # ===================== COGS (REFUND-AWARE, CORRECT) =====================
+                cost_df = dfk.copy()
+
+                if "cost_of_unit_sold" in cost_df.columns:
+                    cost_df["cost_of_unit_sold"] = pd.to_numeric(
+                        cost_df["cost_of_unit_sold"], errors="coerce"
+                    ).fillna(0.0)
                 else:
-                    per_prod = pd.DataFrame(
-                        columns=["product_name", "__metric__", "sales", "credits", "taxes", "amazon_fee", "cost"]
-                    )
+                    cost_df["cost_of_unit_sold"] = 0.0
 
-                table = self._final_table(
-                    "profit",
-                    total,
-                    per_sku[["sku", "__metric__", "sales", "credits", "taxes", "amazon_fee", "cost"]],
-                    per_prod[["product_name", "__metric__", "sales", "credits", "taxes", "amazon_fee", "cost"]],
-                    ["sales", "credits", "taxes", "amazon_fee", "cost"],
+                # Apply sign logic
+                cost_df["signed_cost"] = 0.0
+                cost_df.loc[~is_refund & ~is_lost, "signed_cost"] = cost_df["cost_of_unit_sold"]
+                cost_df.loc[is_refund, "signed_cost"] = -cost_df["cost_of_unit_sold"]
+                # lost/damaged rows stay 0
+
+                cogs_by_sku = (
+                    cost_df
+                    .groupby("sku", as_index=False)["signed_cost"]
+                    .sum()
+                    .rename(columns={"signed_cost": "cogs"})
                 )
 
-            expl = (
-                "UK profit computed with centralized sales/taxes/credits, "
-                "local Amazon fee = abs(sum(fba_fees + selling_fees)) over valid SKUs, "
-                "and profit = |Sales| + |Credits| − |Taxes| − AmazonFee − |COGS|."
-            )
-            return {"result": self._sr(total), "explanation": expl, "table_df": table}
+                cogs_total = float(cogs_by_sku["cogs"].sum())
+
+                print("\n[COGS DEBUG] ===== Refund-aware COGS by SKU =====")
+                print(cogs_by_sku.head(20))
+                print(f"[PROFIT DEBUG] COGS Total : {cogs_total}")
+
+                # ===================== PROFIT =====================
+                if ctx.get("want_breakdown"):
+                    per_sku = (
+                        sales_by_sku
+                        .merge(credits_by_sku, on="sku", how="left")
+                        .merge(tax_by_sku, on="sku", how="left")
+                        .merge(
+                            amazon_fee_by_sku[["sku", "__metric__"]]
+                            .rename(columns={"__metric__": "amazon_fee"}),
+                            on="sku",
+                            how="left",
+                        )
+                        .merge(cogs_by_sku, on="sku", how="left")
+                    ).fillna(0.0)
+
+                    per_sku["__metric__"] = (
+                        per_sku["sales"]
+                        + per_sku["credits"]
+                        - per_sku["tax"]
+                        - per_sku["amazon_fee"]
+                        - per_sku["cogs"]
+                    )
+
+                    total_profit = float(per_sku["__metric__"].sum())
+
+                else:
+                    total_profit = (
+                        sales_total
+                        + credits_total
+                        - tax_total
+                        - amazon_fee_total
+                        - cogs_total
+                    )
+                    table = self._total_only_table("profit", total_profit)
+
+                print(f"[PROFIT DEBUG] FINAL PROFIT : {total_profit}")
+                print("[PROFIT DEBUG] ===== _profit() END =====\n")
+
+                return {
+                    "result": self._sr(total_profit),
+                    "explanation": (
+                        "UK profit: Net Sales + Net Credits − Net Taxes − Amazon Fee "
+                        "− (Order COGS − Refund COGS)."
+                    ),
+                    "table_df": table,
+                }
+
+            except Exception as e:
+                print(f"[PROFIT DEBUG][ERROR] {e}")
+                nan_val = float("nan")
+                table = self._total_only_table("profit", nan_val)
+                return {
+                    "result": self._sr(nan_val),
+                    "explanation": f"UK profit failed: {e}",
+                    "table_df": table,
+                }
+
+
 
         # ---------- US → local component build (unchanged) ----------
         sales_total,   sales_by_sku,   _, _ = self._sales_components(df, ctx)
@@ -2583,32 +2816,41 @@ class FormulaEngine:
         if n == 0:
             return pd.Series(dtype=float)
 
-        # Normalize quantity column
-        if "quantity" in df.columns:
-            q_raw = df["quantity"].astype(str)
-        else:
-            q_raw = pd.Series([""] * n, index=df.index)
+        t = (
+            df["type"].astype(str).str.strip().str.lower()
+            if "type" in df.columns
+            else pd.Series([""] * n, index=df.index)
+        )
+
+        q_raw = (
+            df["quantity"].astype(str)
+            if "quantity" in df.columns
+            else pd.Series([""] * n, index=df.index)
+        )
 
         q = pd.to_numeric(q_raw.str.replace(",", "", regex=False), errors="coerce")
 
-        # SKU validity
         if "sku" in df.columns:
             has_sku = self._sku_mask(df)
         else:
             has_sku = pd.Series([True] * n, index=df.index)
 
-        # ✅ NO type filtering — take all rows
-        mask = has_sku
+        # 🔹 UPDATED: Order OR Shipment
+        is_order_or_shipment = (
+            t.str.startswith("order") | t.str.startswith("shipment")
+        )
+
+        mask = is_order_or_shipment & has_sku
 
         units = pd.Series(0.0, index=df.index)
-
-        # Missing quantity → default to 1 for valid rows
         q_filled = q.copy()
+
+        # Default quantity = 1 if missing
         q_filled[mask & q_filled.isna()] = 1.0
 
         units[mask] = q_filled[mask].fillna(0.0)
-
         return units
+
 
 
     def _order_units_by_sku(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -2623,6 +2865,7 @@ class FormulaEngine:
         units = units.loc[tmp.index]
         tmp["quantity"] = units.values
         return tmp.groupby("sku", dropna=True)["quantity"].sum().reset_index()
+
 
     def _asp(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> Dict[str, Any]:
         """

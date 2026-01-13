@@ -464,10 +464,10 @@ def process_skuwise_data(user_id, country, month, year):
         df = df[df["sku"].notna() & (df["sku"].astype(str).str.strip() != "")]
 
         # ============================================================
-# NEW (TOP): Refund-only Sales + Non-refund Net Tax + Non-refund Digital Tax (SKU-wise)
-# ============================================================
+        # NEW (TOP): Refund-only Sales + Non-refund Net Tax + Non-refund Digital Tax (SKU-wise)
+        # ============================================================
 
-# make sure type/sku string
+        # make sure type/sku string
         df["sku"] = df["sku"].astype(str).str.strip()
         df["type"] = df.get("type", "").astype(str).str.strip()
 
@@ -508,10 +508,10 @@ def process_skuwise_data(user_id, country, month, year):
 
 
         # ============================================================
-# FIXED: Refund-only Sales + Net Tax (SKU-wise) with breakup prints
-# ============================================================
+        # FIXED: Refund-only Sales + Net Tax (SKU-wise) with breakup prints
+        # ============================================================
 
-# make sure sku/type are strings
+        # make sure sku/type are strings
         df["sku"] = df["sku"].astype(str).str.strip()
         df["type"] = df.get("type", "").astype(str).str.strip()
 
@@ -660,36 +660,7 @@ def process_skuwise_data(user_id, country, month, year):
         df_refund_kw   = df.loc[refund_mask].copy()
         df_non_refund  = df.loc[~refund_mask].copy()
 
-        # # ---------------------------
-        # # ✅ COGS ONLY NON-REFUND (SKU-wise)
-        # # ---------------------------
-        # if "cost_of_unit_sold" not in df_non_refund.columns:
-        #     df_non_refund["cost_of_unit_sold"] = 0.0
-
-        # cogs_by_sku = (
-        #     df_non_refund.groupby("sku", as_index=False)["cost_of_unit_sold"]
-        #     .sum()
-        #     .rename(columns={"cost_of_unit_sold": "cost_of_unit_sold_non_refund"})
-        # )
-
-        # cogs_by_sku["cost_of_unit_sold_non_refund"] = pd.to_numeric(
-        #     cogs_by_sku["cost_of_unit_sold_non_refund"], errors="coerce"
-        # ).fillna(0.0)
-
-
-        # # after sku_grouped is created (and sku cleaned)
-        # sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
-
-        # # merge non-refund cogs and override
-        # sku_grouped = sku_grouped.merge(cogs_by_sku, on="sku", how="left")
-        # sku_grouped["cost_of_unit_sold_non_refund"] = pd.to_numeric(
-        #     sku_grouped.get("cost_of_unit_sold_non_refund", 0), errors="coerce"
-        # ).fillna(0.0)
-
-        # # ✅ force final COGS = NON-REFUND only
-        # sku_grouped["cost_of_unit_sold"] = sku_grouped["cost_of_unit_sold_non_refund"]
-        # sku_grouped.drop(columns=["cost_of_unit_sold_non_refund"], inplace=True, errors="ignore")
-
+        
 
 
 
@@ -764,14 +735,7 @@ def process_skuwise_data(user_id, country, month, year):
         refund_tax_total, refund_tax_by_sku, _     = uk_tax(df_refund)  if not df_refund.empty else (0, pd.DataFrame(), None)
         refund_cred_total, refund_cred_by_sku, _   = uk_credits(df_refund) if not df_refund.empty else (0, pd.DataFrame(), None)
 
-        # Merge refund sales
-        # if not refund_sales_by_sku.empty:
-        #     sku_grouped = sku_grouped.merge(
-        #         refund_sales_by_sku[["sku", "__metric__"]].rename(columns={"__metric__": "refund_sales"}),
-        #         on="sku", how="left"
-        #     )
-        # else:
-        #     sku_grouped["refund_sales"] = 0.0
+      
 
         # Merge refund tax
         if not refund_tax_by_sku.empty:
@@ -830,9 +794,7 @@ def process_skuwise_data(user_id, country, month, year):
 
 
         # ---------- UPDATED: Gross Sales formula ----------
-# gross_sales = product_sales + tax + postage credit + gift wrap credit
-#               + postage credit tax + gift wrap credit tax
-#               - promotional rebates - promotional rebates tax
+
 
         for _c in [
             "product_sales", "product_sales_tax",
@@ -880,13 +842,7 @@ def process_skuwise_data(user_id, country, month, year):
         for _col in [ "sales_tax_refund", "sales_credit_refund", "refund_rebate", "gross_sales"]:
             sku_grouped[_col] = pd.to_numeric(sku_grouped[_col], errors="coerce").fillna(0.0)
 
-        # if not tax_by_sku.empty:
-        #     sku_grouped = sku_grouped.merge(
-        #         tax_by_sku[["sku", "__metric__"]].rename(columns={"__metric__": "Net Taxes"}),
-        #         on="sku", how="left"
-        #     )
-        # else:
-        #     sku_grouped["Net Taxes"] = 0.0
+      
 
         if not credits_by_sku.empty:
             sku_grouped = sku_grouped.merge(
@@ -904,13 +860,6 @@ def process_skuwise_data(user_id, country, month, year):
         else:
             sku_grouped["amazon_fee"] = 0.0
 
-        # if not profit_by_sku.empty:
-        #     sku_grouped = sku_grouped.merge(
-        #         profit_by_sku[["sku", "__metric__"]].rename(columns={"__metric__": "profit"}),
-        #         on="sku", how="left"
-        #     )
-        # else:
-        #     sku_grouped["profit"] = 0.0
 
         # NEW: merge centralized platform/ad per-SKU into sku_grouped
         if not platform_by_sku.empty:
@@ -957,46 +906,9 @@ def process_skuwise_data(user_id, country, month, year):
 
 
         
-        # Unit-wise profitability
         
-        # Previous unit-wise profitability
-        # sku_grouped["previous_profit"] = pd.to_numeric(sku_grouped["previous_profit"], errors="coerce")
-        # sku_grouped["previous_quantity"] = pd.to_numeric(sku_grouped["previous_quantity"], errors="coerce")
-        # sku_grouped["previous_unit_wise_profitability"] = (sku_grouped["previous_profit"] / sku_grouped["previous_quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
-
-        # % change and growth buckets
-        # sku_grouped["unit_wise_profitability_percentage"] = (
-        #     (sku_grouped["unit_wise_profitability"] - sku_grouped["previous_unit_wise_profitability"]) /
-        #     sku_grouped["previous_unit_wise_profitability"]
-        # ) * 100
-        # sku_grouped["unit_wise_profitability_percentage"] = sku_grouped["unit_wise_profitability_percentage"].replace([float('inf'), -float('inf')], 0).fillna(0)
-        # # sku_grouped["unit_wise_profitability_growth"] = np.select(
-        # #     [
-        #         sku_grouped["unit_wise_profitability_percentage"] >= 5,
-        #         sku_grouped["unit_wise_profitability_percentage"] > 0.5,
-        #         sku_grouped["unit_wise_profitability_percentage"] < -0.5
-        #     ],
-        #     ["High Growth", "Low Growth", "Negative Growth"],
-        #     default="No Growth"
-        # )
-
-        # ASP & growth
         sku_grouped["asp"] = (sku_grouped["Net Sales"] / sku_grouped["quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
-        # sku_grouped["previous_asp"] = (sku_grouped["previous_net_sales"] / sku_grouped["previous_quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
-        # sku_grouped["asp_percentag"] = ((sku_grouped["asp"] - sku_grouped["previous_asp"]) / sku_grouped["previous_asp"]) * 100
-        # sku_grouped["asp_percentag"] = sku_grouped["asp_percentag"].replace([float('inf'), -float('inf')], 0).fillna(0)
-        # sku_grouped["asp_growth"] = np.select(
-        #     [
-        #         sku_grouped["asp_percentag"] >= 5,
-        #         sku_grouped["asp_percentag"] > 0.5,
-        #         sku_grouped["asp_percentag"] < -0.5
-        #     ],
-        #     ["High Growth", "Low Growth", "Negative Growth"],
-        #     default="No Growth"
-        # )
-
-        # Tax/Credit per unit
-        # sku_grouped["text_credit_change"] = ((sku_grouped["Net Taxes"] - sku_grouped["Net Credits"]) / sku_grouped["quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
+        
         sku_grouped["previous_text_credit_change"] = ((sku_grouped["previous_net_taxes"] - sku_grouped["previous_net_credits"]) / sku_grouped["previous_quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
 
         # Profit change & growth
@@ -1081,13 +993,39 @@ def process_skuwise_data(user_id, country, month, year):
            
         )
 
+        print("\n[TAX DEBUG][process_skuwise_data] SKU-wise breakdown")
+
+        debug_cols = [
+            "sku",
+            "product_sales_tax",
+            postage_credit_tax_col,
+            "promotional_rebates_tax",
+            "marketplace_facilitator_tax",
+            "sales_tax_refund",
+            "refund_rebate",
+            "digital_transaction_tax",
+            "net_tax",
+        ]
+
+        print(
+            sku_grouped[debug_cols]
+            .fillna(0)
+            .sort_values("sku")
+            .to_string(index=False)
+        )
+
+        print("\n[TAX DEBUG][process_skuwise_data] TOTALS")
+        for c in debug_cols[1:]:
+            print(f"{c}: {sku_grouped[c].sum():.2f}")
+
+
         
 
         # ✅ IMPORTANT: so downstream expense formulas work
         sku_grouped["Net Taxes"] = sku_grouped["net_tax"]
 
         # ---------------- PROFIT (NEW FORMULA) ----------------
-# profit = net_sales + credits - taxes - amazon_fee - cost_of_unit_sold
+
 
 # Ensure required columns exist
         for c in ["Net Sales", "Net Credits", "Net Taxes", "amazon_fee", "cost_of_unit_sold"]:
@@ -1098,6 +1036,27 @@ def process_skuwise_data(user_id, country, month, year):
         for c in ["Net Sales", "Net Credits", "Net Taxes", "amazon_fee", "cost_of_unit_sold"]:
             sku_grouped[c] = pd.to_numeric(sku_grouped[c], errors="coerce").fillna(0.0)
 
+        print("\n[PROFIT CROSS-CHECK] ===== INPUT COMPONENTS (SKU-WISE) =====")
+
+        print(
+            sku_grouped[[
+                "sku",
+                "Net Sales",
+                "Net Credits",
+                "Net Taxes",
+                "amazon_fee",
+                "cost_of_unit_sold"
+            ]].to_string(index=False)
+        )
+
+        print("\n[PROFIT CROSS-CHECK] ----- TOTAL INPUT SUMS -----")
+        print("TOTAL Net Sales       :", sku_grouped["Net Sales"].sum())
+        print("TOTAL Net Credits     :", sku_grouped["Net Credits"].sum())
+        print("TOTAL Net Taxes       :", sku_grouped["Net Taxes"].sum())
+        print("TOTAL Amazon Fee      :", sku_grouped["amazon_fee"].sum())
+        print("TOTAL Cost of Sold    :", sku_grouped["cost_of_unit_sold"].sum())
+    
+
         # Compute profit SKU-wise
         sku_grouped["profit"] = (
             sku_grouped["Net Sales"]
@@ -1107,6 +1066,19 @@ def process_skuwise_data(user_id, country, month, year):
             - sku_grouped["cost_of_unit_sold"]
         )
         # ------------------------------------------------------
+        print("\n[PROFIT CROSS-CHECK] ===== PROFIT RESULT (SKU-WISE) =====")
+
+        print(
+            sku_grouped[[
+                "sku",
+                "profit"
+            ]].to_string(index=False)
+        )
+
+        print("\n[PROFIT CROSS-CHECK] ----- TOTAL PROFIT -----")
+        print("TOTAL PROFIT :", sku_grouped["profit"].sum())
+
+        print("[PROFIT CROSS-CHECK] ===== END =====\n")
 
         
 
@@ -1167,11 +1139,6 @@ def process_skuwise_data(user_id, country, month, year):
         total_advertising = abs(advertising_total_all)
         total_platform = abs(platform_total)
 
-        # total_expense = (
-        #     total_fba_fees
-        #     + total_selling_fees
-        #     - total_platform
-        # )
         total_expense = round(
             total_amazon_fee
             - abs(platformfeenew_total)
@@ -1307,15 +1274,6 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["unit_wise_profitability"] = ((float(sum_row.get("profit", 0))) / qty) if qty != 0 else 0
 
 
-        # sum_row["previous_unit_wise_profitability"] = (
-        #     (float(sum_row.get("previous_profit", 0)) - float(sum_row.get("previous_net_taxes", 0))) /
-        #     prev_qty
-        # ) * 100 if prev_qty != 0 else 0
-
-        # prev_uwp = float(sum_row.get("previous_unit_wise_profitability", 0) or 0)
-        # sum_row["unit_wise_profitability_percentage"] = (
-        #     (float(sum_row["unit_wise_profitability"]) - prev_uwp) / prev_uwp
-        # ) * 100 if prev_uwp != 0 else 0
 
         sum_row["unit_increase"] = (
             (qty - prev_qty) / prev_qty
@@ -1373,79 +1331,7 @@ def process_skuwise_data(user_id, country, month, year):
             prev_net_sales_total
         ) if prev_net_sales_total != 0 else 0
 
-        # Growth buckets (unchanged logic)
-        # if sum_row["unit_wise_profitability_percentage"] >= 5:
-        #     sum_row["unit_wise_profitability_growth"] = "High Growth"
-        # elif sum_row["unit_wise_profitability_percentage"] > 0.5:
-        #     sum_row["unit_wise_profitability_growth"] = "Low Growth"
-        # elif sum_row["unit_wise_profitability_percentage"] < -0.5:
-        #     sum_row["unit_wise_profitability_growth"] = "Negative Growth"
-        # else:
-        #     sum_row["unit_wise_profitability_growth"] = "No Growth"
-
-        # if sum_row["asp_percentag"] >= 5:
-        #     sum_row["asp_growth"] = "High Growth"
-        # elif sum_row["asp_percentag"] > 0.5:
-        #     sum_row["asp_growth"] = "Low Growth"
-        # elif sum_row["asp_percentag"] < -0.5:
-        #     sum_row["asp_growth"] = "Negative Growth"
-        # else:
-        #     sum_row["asp_growth"] = "No Growth"
-
-        # if sum_row["profit_change"] >= 5:
-        #     sum_row["profit_growth"] = "High Growth"
-        # elif sum_row["profit_change"] > 0.5:
-        #     sum_row["profit_growth"] = "Low Growth"
-        # elif sum_row["profit_change"] < -0.5:
-        #     sum_row["profit_growth"] = "Negative Growth"
-        # else:
-        #     sum_row["profit_growth"] = "No Growth"
-
-        # if sum_row["unit_increase"] >= 5:
-        #     sum_row["unit_growth"] = "High Growth"
-        # elif sum_row["unit_increase"] > 0.5:
-        #     sum_row["unit_growth"] = "Low Growth"
-        # elif sum_row["unit_increase"] < -0.5:
-        #     sum_row["unit_growth"] = "Negative Growth"
-        # else:
-        #     sum_row["unit_growth"] = "No Growth"
-
-        # if sum_row["profit_mix_percentage"] >= 5:
-        #     sum_row["profit_mix_growth"] = "High Growth"
-        # elif sum_row["profit_mix_percentage"] > 0.5:
-        #     sum_row["profit_mix_growth"] = "Low Growth"
-        # elif sum_row["profit_mix_percentage"] < -0.5:
-        #     sum_row["profit_mix_growth"] = "Negative Growth"
-        # else:
-        #     sum_row["profit_mix_growth"] = "No Growth"
-
-        # if sum_row["sales_percentage"] >= 5:
-        #     sum_row["sales_growth"] = "High Growth"
-        # elif sum_row["sales_percentage"] > 0.5:
-        #     sum_row["sales_growth"] = "Low Growth"
-        # elif sum_row["sales_percentage"] < -0.5:
-        #     sum_row["sales_growth"] = "Negative Growth"
-        # else:
-        #     sum_row["sales_growth"] = "No Growth"
-
-        # if sum_row["unit_wise_amazon_fee_percentage"] >= 5:
-        #     sum_row["amazon_fee_growth"] = "High Growth"
-        # elif sum_row["unit_wise_amazon_fee_percentage"] > 0.5:
-        #     sum_row["amazon_fee_growth"] = "Low Growth"
-        # elif sum_row["unit_wise_amazon_fee_percentage"] < -0.5:
-        #     sum_row["amazon_fee_growth"] = "Negative Growth"
-        # else:
-        #     sum_row["amazon_fee_growth"] = "No Growth"
-
-        # if sum_row["sales_mix_percentage"] >= 5:
-        #     sum_row["sales_mix_growth"] = "High Growth"
-        # elif sum_row["sales_mix_percentage"] > 0.5:
-        #     sum_row["sales_mix_growth"] = "Low Growth"
-        # elif sum_row["sales_mix_percentage"] < -0.5:
-        #     sum_row["sales_mix_growth"] = "Negative Growth"
-        # else:
-        #     sum_row["sales_mix_growth"] = "No Growth"
-
+       
 
         # Ensure sku_grouped has unique columns BEFORE appending total row
         if not sku_grouped.columns.is_unique:
