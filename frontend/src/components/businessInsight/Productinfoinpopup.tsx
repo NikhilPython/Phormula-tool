@@ -14,6 +14,8 @@ import {
   Filler,
 } from "chart.js";
 import Loader from '@/components/loader/Loader';
+import Button from '../ui/button/Button';
+import PageBreadcrumb from '../common/PageBreadCrumb';
 
 ChartJS.register(
   CategoryScale,
@@ -57,11 +59,11 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
- const { month, quarter, year } = params as {
-  month?: string;
-  quarter?: string;
-  year?: string;
-};
+  const { month, quarter, year } = params as {
+    month?: string;
+    quarter?: string;
+    year?: string;
+  };
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -73,7 +75,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   // State for controls
   const [timeRange, setTimeRange] = useState<'Yearly' | 'Quarterly'>('Yearly');
-  const selectedYear = parseInt(year as string) || new Date().getFullYear(); 
+  const selectedYear = parseInt(year as string) || new Date().getFullYear();
   const [selectedQuarter, setSelectedQuarter] = useState<string>('1');
   const [selectedCountries, setSelectedCountries] = useState<Record<string, boolean>>({
     uk: true,
@@ -81,14 +83,14 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   });
 
   useEffect(() => {
-  const scope = (countryName || "").toLowerCase();
+    const scope = (countryName || "").toLowerCase();
 
-  if (scope === "uk") {
-    setSelectedCountries({ uk: true, global: false });
-  } else if (scope === "global") {
-    setSelectedCountries({ uk: false, global: true });
-  }
-}, [countryName]);
+    if (scope === "uk") {
+      setSelectedCountries({ uk: true, global: false });
+    } else if (scope === "global") {
+      setSelectedCountries({ uk: false, global: true });
+    }
+  }, [countryName]);
 
 
 
@@ -153,7 +155,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   // Currency for chart: follow the same behavior as TrendChartSection/ProductwisePerformance.
   // If the page scope is UK, show GBP; otherwise default to USD.
-const pageScope = (countryName || "global").toLowerCase();
+  const pageScope = (countryName || "global").toLowerCase();
 
   const baseCurrency: "GBP" | "USD" = pageScope === "uk" ? "GBP" : "USD";
 
@@ -164,33 +166,33 @@ const pageScope = (countryName || "global").toLowerCase();
 
   // Map UI country keys (uk/global/us) to backend keys based on currency (e.g., uk_gbp vs uk_usd).
   // If a key is already suffixed, keep it as-is.
-//  const backendKeyFor = (country: string) => {
-//   const c = country.toLowerCase();
-//   if (c.includes("_")) return c;
+  //  const backendKeyFor = (country: string) => {
+  //   const c = country.toLowerCase();
+  //   if (c.includes("_")) return c;
 
-//   // UK data source generally GBP
-//   if (c === "uk") return "uk_gbp";
+  //   // UK data source generally GBP
+  //   if (c === "uk") return "uk_gbp";
 
-//   // global should follow page currency
-//   if (c === "global") return baseCurrencyLower === "gbp" ? "global_gbp" : "global_usd";
+  //   // global should follow page currency
+  //   if (c === "global") return baseCurrencyLower === "gbp" ? "global_gbp" : "global_usd";
 
-//   return `${c}_${baseCurrencyLower}`;
-// };
+  //   return `${c}_${baseCurrencyLower}`;
+  // };
 
-const backendKeyFor = (country: string) => {
-  const c = country.toLowerCase();
+  const backendKeyFor = (country: string) => {
+    const c = country.toLowerCase();
 
-  // ✅ API already returns uk & us directly
-  if (c === "uk") return "uk";
-  if (c === "us") return "us";
+    // ✅ API already returns uk & us directly
+    if (c === "uk") return "uk";
+    if (c === "us") return "us";
 
-  // Global is currency-specific
-  if (c === "global") {
-    return baseCurrency === "GBP" ? "global_gbp" : "global_usd";
-  }
+    // Global is currency-specific
+    if (c === "global") {
+      return baseCurrency === "GBP" ? "global_gbp" : "global_usd";
+    }
 
-  return c;
-};
+    return c;
+  };
 
 
   const fetchProductData = async () => {
@@ -199,16 +201,16 @@ const backendKeyFor = (country: string) => {
 
     try {
       // Get selected countries as array
-const countries = Object.keys(selectedCountries).filter(c => selectedCountries[c]);
+      const countries = Object.keys(selectedCountries).filter(c => selectedCountries[c]);
 
-const requestPayload = {
-  product_name: productname,
-  time_range: timeRange,
-  year: selectedYear,
-  quarter: timeRange === "Quarterly" ? selectedQuarter : null,
-  countries,               // ✅ "uk", "global" direct
-  home_currency: baseCurrency,  // ✅ backend ko bata do kis currency me chahiye
-};
+      const requestPayload = {
+        product_name: productname,
+        time_range: timeRange,
+        year: selectedYear,
+        quarter: timeRange === "Quarterly" ? selectedQuarter : null,
+        countries,               // ✅ "uk", "global" direct
+        home_currency: baseCurrency,  // ✅ backend ko bata do kis currency me chahiye
+      };
 
       console.log('Sending request:', requestPayload);
 
@@ -259,103 +261,103 @@ const requestPayload = {
   };
 
   useEffect(() => {
-  fetchProductData();
-}, [productname, year, timeRange, selectedQuarter, baseCurrency]);
+    fetchProductData();
+  }, [productname, year, timeRange, selectedQuarter, baseCurrency]);
 
 
-const prepareChartData = () => {
-  if (!data || !data.data) return [];
+  const prepareChartData = () => {
+    if (!data || !data.data) return [];
 
-  const monthOrder = [
-    'January','February','March','April','May','June',
-    'July','August','September','October','November','December'
-  ];
+    const monthOrder = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
 
-  const allMonths = new Set<string>();
+    const allMonths = new Set<string>();
 
-  // 1) Collect months from ANY arrays under each country
-  Object.values(data.data as any).forEach((countryBlock: any) => {
-    if (!countryBlock) return;
+    // 1) Collect months from ANY arrays under each country
+    Object.values(data.data as any).forEach((countryBlock: any) => {
+      if (!countryBlock) return;
 
-    // Normalize to: list of arrays of rows
-    const arrays: any[][] = [];
+      // Normalize to: list of arrays of rows
+      const arrays: any[][] = [];
 
-    if (Array.isArray(countryBlock)) {
-      arrays.push(countryBlock);
-    } else {
-      // countryBlock is an object like { Yearly: [...], Quarterly: [...] }
-      Object.values(countryBlock).forEach((maybeArr: any) => {
-        if (Array.isArray(maybeArr)) arrays.push(maybeArr);
-      });
-    }
+      if (Array.isArray(countryBlock)) {
+        arrays.push(countryBlock);
+      } else {
+        // countryBlock is an object like { Yearly: [...], Quarterly: [...] }
+        Object.values(countryBlock).forEach((maybeArr: any) => {
+          if (Array.isArray(maybeArr)) arrays.push(maybeArr);
+        });
+      }
 
-    arrays.forEach(rows => {
-      rows.forEach((m: any) => {
-        if (m?.month) allMonths.add(String(m.month));
+      arrays.forEach(rows => {
+        rows.forEach((m: any) => {
+          if (m?.month) allMonths.add(String(m.month));
+        });
       });
     });
-  });
 
-  const labels = Array.from(allMonths).sort(
-    (a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b)
-  );
+    const labels = Array.from(allMonths).sort(
+      (a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b)
+    );
 
-  if (!labels.length) return []; 
+    if (!labels.length) return [];
 
-  const getMetric = (country: string, month: string) => {
-  const backendKey = backendKeyFor(country);
-  const countryBlock: any = (data.data as any)[backendKey];
-  if (!countryBlock) return 0;
+    const getMetric = (country: string, month: string) => {
+      const backendKey = backendKeyFor(country);
+      const countryBlock: any = (data.data as any)[backendKey];
+      if (!countryBlock) return 0;
 
-  let rows: any[] = [];
+      let rows: any[] = [];
 
-  if (Array.isArray(countryBlock)) {
-    rows = countryBlock;
-  } else {
-    const preferred = countryBlock?.[timeRange];
-    if (Array.isArray(preferred)) {
-      rows = preferred;
-    } else {
-      const firstArr = Object.values(countryBlock).find(
-        (v: any) => Array.isArray(v)
-      ) as any[] | undefined;
-      if (firstArr) rows = firstArr;
-    }
-  }
+      if (Array.isArray(countryBlock)) {
+        rows = countryBlock;
+      } else {
+        const preferred = countryBlock?.[timeRange];
+        if (Array.isArray(preferred)) {
+          rows = preferred;
+        } else {
+          const firstArr = Object.values(countryBlock).find(
+            (v: any) => Array.isArray(v)
+          ) as any[] | undefined;
+          if (firstArr) rows = firstArr;
+        }
+      }
 
-  const found = rows.find((m: any) => String(m.month) === String(month));
-  return found ? Number(found.net_sales || 0) : 0;
-};
+      const found = rows.find((m: any) => String(m.month) === String(month));
+      return found ? Number(found.net_sales || 0) : 0;
+    };
 
 
-  return labels.map((month) => {
-const ukRaw = getMetric("uk", month);
-const usRaw = getMetric("us", month);
-const rawGlobal = getMetric("global", month);
+    return labels.map((month) => {
+      const ukRaw = getMetric("uk", month);
+      const usRaw = getMetric("us", month);
+      const rawGlobal = getMetric("global", month);
 
-// 🔑 PAGE SCOPE CHECK
-const pageScope = (countryName || "global").toLowerCase();
+      // 🔑 PAGE SCOPE CHECK
+      const pageScope = (countryName || "global").toLowerCase();
 
-// UK page par GLOBAL ko forcefully band
-let globalShown = rawGlobal;
+      // UK page par GLOBAL ko forcefully band
+      let globalShown = rawGlobal;
 
-if (pageScope === "uk") {
-  globalShown = 0;
-}
+      if (pageScope === "uk") {
+        globalShown = 0;
+      }
 
-const point: Record<string, any> = { month };
+      const point: Record<string, any> = { month };
 
-if (selectedCountries.uk) point.uk = ukRaw;
-if (selectedCountries.us) point.us = usRaw;
+      if (selectedCountries.uk) point.uk = ukRaw;
+      if (selectedCountries.us) point.us = usRaw;
 
-// ❗ UK page par GLOBAL bilkul mat add karo
-if (selectedCountries.global && pageScope !== "uk") {
-  point.global = globalShown;
-}
+      // ❗ UK page par GLOBAL bilkul mat add karo
+      if (selectedCountries.global && pageScope !== "uk") {
+        point.global = globalShown;
+      }
 
-return point;
-  });
-};
+      return point;
+    });
+  };
 
 
 
@@ -383,31 +385,31 @@ return point;
     if (!raw || raw.length === 0) return null;
 
     const labels = raw.map(item => item.month);
-  const datasets = Object.keys(selectedCountries)
-  .filter(country => selectedCountries[country])
-.filter((country) => {
-  const key = backendKeyFor(country);                 // ✅ uk -> uk_gbp
-  const block = (data?.data as any)?.[key];
-  if (!block) return false;
+    const datasets = Object.keys(selectedCountries)
+      .filter(country => selectedCountries[country])
+      .filter((country) => {
+        const key = backendKeyFor(country);                 // ✅ uk -> uk_gbp
+        const block = (data?.data as any)?.[key];
+        if (!block) return false;
 
-  if (Array.isArray(block)) return block.length > 0;
+        if (Array.isArray(block)) return block.length > 0;
 
-  return Object.values(block).some(
-    (v: any) => Array.isArray(v) && v.length > 0
-  );
-})
+        return Object.values(block).some(
+          (v: any) => Array.isArray(v) && v.length > 0
+        );
+      })
       .map(country => ({
         label: country.toUpperCase(),
         data: raw.map(item => item[country] || 0),
         borderColor: getCountryColor(country),
         backgroundColor: getCountryColor(country),
-        
-tension: 0.35,
+
+        tension: 0.35,
         pointRadius: 3,
         // pointHoverRadius: 5,
         fill: false,
-         borderDash: country === "global" ? [6, 4] : undefined,
-  borderWidth: country === "global" ? 2.5 : 2,
+        borderDash: country === "global" ? [6, 4] : undefined,
+        borderWidth: country === "global" ? 2.5 : 2,
       } as const));
 
     return { labels, datasets };
@@ -415,51 +417,84 @@ tension: 0.35,
 
   const chartJSData = buildChartJSData();
 
+const formatMonthLabel = (raw: string, fallbackYear: number) => {
+  const s = String(raw).trim();
+
+  // If already like Jan'25, keep it
+  if (/[A-Za-z]{3}'\d{2}/.test(s)) return s;
+
+  const map: Record<string, string> = {
+    January: "Jan", February: "Feb", March: "Mar", April: "Apr",
+    May: "May", June: "Jun", July: "Jul", August: "Aug",
+    September: "Sep", October: "Oct", November: "Nov", December: "Dec",
+  };
+
+  // Case: "January 2025"
+  const spaceYear = s.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (spaceYear) {
+    const mon = map[spaceYear[1]] ?? spaceYear[1].slice(0, 3);
+    return `${mon}'${spaceYear[2].slice(-2)}`;
+  }
+
+  // Case: "Jan-25" or "Jan 25"
+  const shortYear = s.match(/^([A-Za-z]{3})[-\s]?(\d{2})$/);
+  if (shortYear) return `${shortYear[1]}'${shortYear[2]}`;
+
+  // Case: full month name only -> use selectedYear
+  const mon = map[s] ?? s.slice(0, 3);
+  return `${mon}'${String(fallbackYear).slice(-2)}`;
+};
+
+
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
-      legend: {
-        display: false, // as per your config
-      },
+      legend: { display: false },
       tooltip: {
         callbacks: {
           label: (context: any) => {
             const value = context.parsed.y;
             return `${context.dataset.label}: ${formatCurrency(value)}`;
+          },
+          // optional: make tooltip title also show formatted label
+          title: (items: any) => {
+            const rawLabel = items?.[0]?.label ?? "";
+            return formatMonthLabel(String(rawLabel), selectedYear);
           }
         }
       }
     },
     scales: {
       x: {
-        title: {
-          display: true,
-          text: 'Month'
+        title: { display: true, text: "Month" },
+        ticks: {
+          callback: function (value: any) {
+            // value -> index, this.getLabelForValue(value) -> label string
+            const label = (this as any).getLabelForValue(value);
+            return formatMonthLabel(String(label), selectedYear);
+          }
         }
       },
       y: {
-        title: {
-          display: true,
-          text: `Amount (${currencySymbol})`
-        },
+        title: { display: true, text: `Amount (${currencySymbol})` },
         min: 0,
-        ticks: {
-          padding: 0
-        }
+        ticks: { padding: 0 }
       }
     }
   };
+
 
   const isImprovementsPage = pathname?.includes("mprovements") || false;
 
   const scope = (countryName || "").toLowerCase();
 
-const visibleCountries =
-  scope === "uk"
-    ? ["uk"]              // UK page: only UK option visible
-    : scope === "global"
-    ? ["global"]          // Global page: only Global option visible
-    : Object.keys(selectedCountries);
+  const visibleCountries =
+    scope === "uk"
+      ? ["uk"]              // UK page: only UK option visible
+      : scope === "global"
+        ? ["global"]          // Global page: only Global option visible
+        : Object.keys(selectedCountries);
 
   return (
     <>
@@ -770,7 +805,7 @@ text-align: center;
         }
 
 h2 {
-  font-size: 18px;
+  // font-size: 18px;
   font-family: 'Lato', sans-serif;
   color: #414042;
   background-color: white;
@@ -785,16 +820,16 @@ h2 {
 
           {/* Loading State */}
           {loading && (
-           <div className="flex flex-col items-center justify-center py-12 text-center">
-                        <Loader
-                          src="/infinity-unscreen.gif"
-                          size={150}
-                          transparent
-                          roundedClass="rounded-none"
-                          backgroundClass="bg-transparent"
-                          respectReducedMotion
-                        />
-                      </div>
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Loader
+                src="/infinity-unscreen.gif"
+                size={150}
+                transparent
+                roundedClass="rounded-none"
+                backgroundClass="bg-transparent"
+                respectReducedMotion
+              />
+            </div>
           )}
 
           {/* Error State */}
@@ -807,7 +842,7 @@ h2 {
               marginBottom: '32px'
             }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ color: '#dc2626', fontSize: '1.25rem', marginRight: '12px' }}>❌</div>
+                <div style={{ color: '#FF5C5C', fontSize: '1.25rem', marginRight: '12px' }}>❌</div>
                 <p style={{ color: '#b91c1c', fontWeight: '500', margin: 0 }}>
                   {error}
                 </p>
@@ -827,43 +862,64 @@ h2 {
                   <div className="net-sales-content">
                     <div className="net-sales-left">
                       <div className="net-sales-header">
-                        <h3 className="net-sales-title">Net Sales Trend -
+                        {/* <h3 className="net-sales-title">Net Sales Trend -
                           <b className="highlighted">  {productname} {" "}(
                     {timeRange === "Yearly"
                       ? `YTD ${selectedYear}`
                       : `Q${selectedQuarter}'${selectedYear}`})
-                  </b></h3>                       
+                  </b></h3>                        */}
+                        <PageBreadcrumb
+                          variant="page"
+                          align="left"
+                          textSize="xl"
+                          pageTitle={
+                            <>
+                              <span className="text-charcoal-500 font-bold">
+                                Net Sales Trend –
+                              </span>
+
+                              <span className="text-[#60a68e] font-bold ml-1">
+                                {productname} (
+                                {timeRange === "Yearly"
+                                  ? `YTD ${selectedYear}`
+                                  : `Q${selectedQuarter}'${selectedYear}`}
+                                )
+                              </span>
+                            </>
+                          }
+                        />
+
                       </div>
                     </div>
 
                     <div className="net-sales-right">
                       <div className="country-toggle-group">
-                        
-{Object.entries(selectedCountries)
-  .filter(([country]) => visibleCountries.includes(country))
-  .map(([country, isSelected]) => {
-    const color = getCountryColor(country);
-    return (
-      <label
-        key={country}
-        className={`country-toggle ${isSelected ? "active" : ""}`}
-        style={{ ['--country-color' as string]: color }}
-      >
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => handleCountryChange(country)}
-        />
-        <span className="country-label">{country.toUpperCase()}</span>
-      </label>
-    );
-  })}
+
+                        {Object.entries(selectedCountries)
+                          .filter(([country]) => visibleCountries.includes(country))
+                          .map(([country, isSelected]) => {
+                            const color = getCountryColor(country);
+                            return (
+                              <label
+                                key={country}
+                                className={`country-toggle ${isSelected ? "active" : ""}`}
+                                style={{ ['--country-color' as string]: color }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleCountryChange(country)}
+                                />
+                                <span className="country-label">{country.toUpperCase()}</span>
+                              </label>
+                            );
+                          })}
 
                       </div>
                     </div>
                   </div>
                 </div>
-                <div style={{
+                {/* <div style={{
                   height: 'auto', maxHeight: '500px', display: 'flex',
                   justifyContent: 'center', alignItems: 'center'
                 }}>
@@ -874,14 +930,23 @@ h2 {
                     <p>No chart data available</p>
                   )}
 
+                </div> */}
+                <div style={{ width: "100%", height: "420px" }}>
+                  {chartJSData ? (
+                    <Line data={chartJSData} options={chartOptions as any} />
+                  ) : (
+                    <p>No chart data available</p>
+                  )}
                 </div>
-                {!isImprovementsPage && (
-                  <button className="styled-button"
-                  onClick={() =>router.push(`/skuwiseprofit/${productname}/${countryName}/${month}/${year}`)}>
-                  Check Full Performance{" "}
-                  <i className="fa-solid fa-arrow-up-right-from-square"></i>
-                </button>
-                )}
+
+                {/* {!isImprovementsPage && (
+                    <button className="styled-button"
+                    onClick={() =>router.push(`/skuwiseprofit/${productname}/${countryName}/${month}/${year}`)}>
+                    Check Full Performance{" "}
+                    <i className="fa-solid fa-arrow-up-right-from-square"></i>
+                  </button>
+                  <Button variant='primary' size='sm' className='mt-4'>  Check Full Performance</Button>
+                )} */}
               </div>
 
 

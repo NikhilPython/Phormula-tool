@@ -1072,7 +1072,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     companyBrandRow[0] = `Company Name : ${companyName}`;
 
     // RIGHT → BRAND NAME (above CM1 Profit Margin)
-    companyBrandRow[PROFIT_COL_INDEX - 1] = `Brand Name : ${brandName}`;
+    companyBrandRow[PROFIT_COL_INDEX - 1] = `${brandName}`;
 
     const cbRow = ws.addRow(companyBrandRow);
     cbRow.font = { bold: false };

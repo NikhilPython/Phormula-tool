@@ -5,6 +5,7 @@ import Drawer from '@mui/material/Drawer';
 import IconButton from '@mui/material/IconButton';
 import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
+import PageBreadcrumb from '../common/PageBreadCrumb';
 
 // =========================
 // Types (same as your page)
@@ -49,8 +50,8 @@ const highlightInsightText = (text: string) => {
 
   return parts.map((part, idx) => {
     const lower = part.toLowerCase();
-    if (greenWords.includes(lower)) return <span key={idx} style={{ color: '#16a34a', fontWeight: 600 }}>{part}</span>;
-    if (redWords.includes(lower)) return <span key={idx} style={{ color: '#dc2626', fontWeight: 600 }}>{part}</span>;
+    if (greenWords.includes(lower)) return <span key={idx} style={{ color: '#5EA68E', fontWeight: 600 }}>{part}</span>;
+    if (redWords.includes(lower)) return <span key={idx} style={{ color: '#FF5C5C', fontWeight: 600 }}>{part}</span>;
     return <span key={idx}>{part}</span>;
   });
 };
@@ -100,15 +101,15 @@ const renderFormattedInsight = (
   const headingOf = (line: string): string | null => {
     const m =
       line.match(/^details\s+for/i) ? ['Details'] :
-      line.match(/^(observations)\s*:?\s*$/i) ? ['Observations'] :
-      line.match(/^(improvements)\s*:?\s*$/i) ? ['Improvements'] :
-      line.match(/^(unit\s+growth)\s*:?\s*$/i) ? ['Unit Growth'] :
-      line.match(/^(asp)\s*:?\s*$/i) ? ['ASP'] :
-      line.match(/^(sales)\s*:?\s*$/i) ? ['Sales'] :
-      line.match(/^(profit)\s*:?\s*$/i) ? ['Profit'] :
-      line.match(/^(unit\s+profitability)\s*:?\s*$/i) ? ['Unit Profitability'] :
-      line.match(/^(summary)\s*:?\s*$/i) ? ['Summary'] :
-      null;
+        line.match(/^(observations)\s*:?\s*$/i) ? ['Observations'] :
+          line.match(/^(improvements)\s*:?\s*$/i) ? ['Improvements'] :
+            line.match(/^(unit\s+growth)\s*:?\s*$/i) ? ['Unit Growth'] :
+              line.match(/^(asp)\s*:?\s*$/i) ? ['ASP'] :
+                line.match(/^(sales)\s*:?\s*$/i) ? ['Sales'] :
+                  line.match(/^(profit)\s*:?\s*$/i) ? ['Profit'] :
+                    line.match(/^(unit\s+profitability)\s*:?\s*$/i) ? ['Unit Profitability'] :
+                      line.match(/^(summary)\s*:?\s*$/i) ? ['Summary'] :
+                        null;
     return m ? m[0] : null;
   };
 
@@ -144,7 +145,7 @@ const renderFormattedInsight = (
     return (
       <div key={idx} style={{ marginBottom: 12 }}>
         {(isList || sec === 'Summary') && (
-          <strong style={{ display: 'block', marginBottom: 6, fontSize: 15, color: '#414042' }}>
+          <strong className="block mb-1.5 text-xs 2xl:text-sm text-charcoal-500 font-bold">
             {sec}
           </strong>
         )}
@@ -162,11 +163,11 @@ const renderFormattedInsight = (
               if (isSubHeading) {
                 const label = trimmed.replace(/:$/, '').trim();
                 return (
-                  <li key={i} style={{ listStyle: 'none', marginTop: 10, marginBottom: 4 }}>
+                  <li key={i} className="text-xs 2xl:text-sm text-charcoal-500" style={{ listStyle: 'none', marginTop: 10, marginBottom: 4 }}>
                     <span
                       style={{
                         fontWeight: 700,
-                        fontSize: 14,
+                        // fontSize: 14,
                         color: '#374151',
                         borderLeft: '3px solid #60a68e',
                         paddingLeft: 8,
@@ -179,7 +180,7 @@ const renderFormattedInsight = (
               }
 
               return (
-                <li key={i} style={{ marginBottom: 4, lineHeight: 1.6, fontSize: 13 }}>
+                <li key={i} className="text-xs 2xl:text-sm text-charcoal-500" style={{ marginBottom: 4, lineHeight: 1.6 }}>
                   {highlightInsightText(trimmed)}
                 </li>
               );
@@ -188,7 +189,7 @@ const renderFormattedInsight = (
         ) : (
           <div>
             {content.map((line, i) => (
-              <p key={i} style={{ margin: '4px 0', lineHeight: 1.6, fontSize: 13 }}>
+              <p key={i} className="text-xs 2xl:text-sm text-charcoal-500" style={{ margin: '4px 0', lineHeight: 1.6}}>
                 {highlightInsightText(line)}
               </p>
             ))}
@@ -309,18 +310,33 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>
-            AI Insight for{' '}
-            <span style={{ color: '#60a68e' }}>
-              {insightData.product_name || selectedSku}
-            </span>
-          </h2>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 8,
+          }}
+        >
+          <PageBreadcrumb
+            variant="page"
+            align="left"
+            textSize="2xl"
+            pageTitle={
+              <>
+                AI Insight for{" "}
+                <span style={{ color: "#60a68e" }}>
+                  {insightData.product_name || selectedSku}
+                </span>
+              </>
+            }
+          />
 
           <IconButton size="small" onClick={onClose} aria-label="Close">
-            x
+            ×
           </IconButton>
         </div>
+
 
 
         {/* Insight */}

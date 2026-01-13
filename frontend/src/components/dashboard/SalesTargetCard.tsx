@@ -148,33 +148,33 @@ export default function SalesTargetCard({
   // const pctDisplay = ratio * 100;
 
 
-// ---- Gauge ratios (all in HOME currency) ----
-// We want all arcs to be comparable on one scale.
-// Scale = max(MTD, Target, Prev Month Sale). This prevents "everything full".
-const mtdVal = Math.max(0, Number(mtdHomeResolved) || 0);
-const targetVal = Math.max(0, Number(targetHomeResolved) || 0);
-const prevVal = Math.max(0, Number(lastMonthTotalHomeResolved) || 0);
+  // ---- Gauge ratios (all in HOME currency) ----
+  // We want all arcs to be comparable on one scale.
+  // Scale = max(MTD, Target, Prev Month Sale). This prevents "everything full".
+  const mtdVal = Math.max(0, Number(mtdHomeResolved) || 0);
+  const targetVal = Math.max(0, Number(targetHomeResolved) || 0);
+  const prevVal = Math.max(0, Number(lastMonthTotalHomeResolved) || 0);
 
-// ✅ shared max for normalization
-const gaugeMax = Math.max(mtdVal, targetVal, prevVal, 1);
+  // ✅ shared max for normalization
+  const gaugeMax = Math.max(mtdVal, targetVal, prevVal, 1);
 
-// normalized [0..1]
-const mtdNorm = mtdVal / gaugeMax;
-const targetNorm = targetVal / gaugeMax;
-const prevNorm = prevVal / gaugeMax;
+  // normalized [0..1]
+  const mtdNorm = mtdVal / gaugeMax;
+  const targetNorm = targetVal / gaugeMax;
+  const prevNorm = prevVal / gaugeMax;
 
-// draw (clamped)
-const greenDraw = Math.min(Math.max(mtdNorm, 0), 1);     // MTD
-const decDraw = Math.min(Math.max(targetNorm, 0), 1);    // Target
-const orangeDraw = Math.min(Math.max(prevNorm, 0), 1);   // Prev month sale
+  // draw (clamped)
+  const greenDraw = Math.min(Math.max(mtdNorm, 0), 1);     // MTD
+  const decDraw = Math.min(Math.max(targetNorm, 0), 1);    // Target
+  const orangeDraw = Math.min(Math.max(prevNorm, 0), 1);   // Prev month sale
 
-// degrees
-const toDeg_MTD = 180 * greenDraw;
-const toDeg_DecTarget = 180 * decDraw;
-const toDeg_Orange = 180 * orangeDraw;
+  // degrees
+  const toDeg_MTD = 180 * greenDraw;
+  const toDeg_DecTarget = 180 * decDraw;
+  const toDeg_Orange = 180 * orangeDraw;
 
-// ✅ Target achieved should still be mtd / target (not mtd / gaugeMax)
-const pctDisplay = targetVal > 0 ? (mtdVal / targetVal) * 100 : 0;
+  // ✅ Target achieved should still be mtd / target (not mtd / gaugeMax)
+  const pctDisplay = targetVal > 0 ? (mtdVal / targetVal) * 100 : 0;
 
 
   const { todayDay } = getISTDayInfo();
@@ -318,16 +318,26 @@ const pctDisplay = targetVal > 0 ? (mtdVal / targetVal) * 100 : 0;
   const fmtPct = (v: number) => `${v.toFixed(2)}%`;
 
   const formatWithCurrencySpace = (value: number) => {
-    // formatHomeK returns something like "£514.04" or "$1.31k"
-    const s = formatHomeK(value);
+    const s = String(formatHomeK(value)).trim(); 
 
-    // remove only the *leading* currency symbol if present
-    const withoutSymbol = s.startsWith(homeCurrencySymbol)
-      ? s.slice(homeCurrencySymbol.length).trim()
-      : s;
+    // handle sign
+    let sign = "";
+    let rest = s;
 
-    return `${homeCurrencySymbol} ${withoutSymbol}`;
+    if (rest.startsWith("-") || rest.startsWith("+")) {
+      sign = rest[0];
+      rest = rest.slice(1).trim();
+    }
+
+    // remove existing currency symbol
+    if (rest.startsWith(homeCurrencySymbol)) {
+      rest = rest.slice(homeCurrencySymbol.length).trim();
+    }
+
+    // ✅ sign before currency
+    return `${sign}${homeCurrencySymbol}${rest}`;
   };
+
 
 
   const showReimbDelta =

@@ -11,6 +11,8 @@ import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
 import DataTable, { ColumnDef } from "@/components/ui/table/DataTable";
 import MonthYearPickerWithCurrent from "@/components/filters/MonthYearPickerWithCurrent";
 import { ReactNode } from "react";
+import PageBreadcrumb from '@/components/common/PageBreadCrumb';
+import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
 
 
 
@@ -40,7 +42,7 @@ interface SkuRow {
 }
 
 export type InventoryTableRow = {
-  s_no: number;
+ s_no: number | string;
   product_name: string;
   sku: string;
   asin: string;
@@ -79,11 +81,11 @@ function getCurrencyForCountry(country: string): string {
 }
 
 const allMonths = [
-  'january','february','march','april','may','june',
-  'july','august','september','october','november','december'
+  'january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december'
 ];
 
- 
+
 
 /* ================= COMPONENT ================= */
 export default function InputCostPage({ params }: Params) {
@@ -110,33 +112,33 @@ export default function InputCostPage({ params }: Params) {
   const [showAgeBreakup, setShowAgeBreakup] = useState(false);
   const [showSkuExpand, setShowSkuExpand] = useState(false);
   const [ledgerMode, setLedgerMode] = useState(false);
-const [ledgerMap, setLedgerMap] = useState<Record<string, number>>({});
-const now = new Date();
+  const [ledgerMap, setLedgerMap] = useState<Record<string, number>>({});
+  const now = new Date();
 
-const [month, setMonth] = useState(
-  allMonths[now.getMonth()] // e.g. "september"
-);
+  const [month, setMonth] = useState(
+    allMonths[now.getMonth()] // e.g. "september"
+  );
 
-const [year, setYear] = useState(
-  String(now.getFullYear())
-);
+  const [year, setYear] = useState(
+    String(now.getFullYear())
+  );
 
-const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
 
-  
- 
+
+
 
 
   // ✅ Helper: match ageing row by SKU (most reliable for uploaded SKU table)
-const getAgeingForRow = (row: SkuRow) => {
-  const key = String(row.product_name || '').trim().toLowerCase();
-  return ageingMap[key] || {};
-};
+  const getAgeingForRow = (row: SkuRow) => {
+    const key = String(row.product_name || '').trim().toLowerCase();
+    return ageingMap[key] || {};
+  };
 
-const currentMonthIndex = new Date().getMonth(); // 0-based
+  const currentMonthIndex = new Date().getMonth(); // 0-based
 
 
-const filteredMonths = allMonths.filter((_, i) => i !== currentMonthIndex);
+  const filteredMonths = allMonths.filter((_, i) => i !== currentMonthIndex);
 
 
   /* ================= COLUMN LOGIC ================= */
@@ -144,110 +146,110 @@ const filteredMonths = allMonths.filter((_, i) => i !== currentMonthIndex);
     data.every(r => !r[columnName]);
 
   const isCurrentMonth =
-  month === allMonths[new Date().getMonth()] &&
-  year === String(new Date().getFullYear());
+    month === allMonths[new Date().getMonth()] &&
+    year === String(new Date().getFullYear());
 
   const fetchLedgerSnapshot = async () => {
-  if (!month || !year) return;
+    if (!month || !year) return;
 
-  if (isCurrentMonth) {
-    cancelLedgerView();
-    return;
-  }
-
-  setLedgerLoading(true); // 🔥 start loader
-
-  try {
-    const monthMap: Record<string, number> = {
-      january: 1,
-      february: 2,
-      march: 3,
-      april: 4,
-      may: 5,
-      june: 6,
-      july: 7,
-      august: 8,
-      september: 9,
-      october: 10,
-      november: 11,
-      december: 12,
-    };
-
-    const m = monthMap[month.toLowerCase()];
-    if (!m) {
-      setLedgerLoading(false);
+    if (isCurrentMonth) {
+      cancelLedgerView();
       return;
     }
 
-    // 🔥 Last date of selected month
-    const lastDate = new Date(Date.UTC(Number(year), m, 0))
-      .toISOString()
-      .split('T')[0];
+    setLedgerLoading(true); // 🔥 start loader
 
-    const token = localStorage.getItem('jwtToken');
-    if (!token) {
-      setLedgerLoading(false);
-      return;
-    }
+    try {
+      const monthMap: Record<string, number> = {
+        january: 1,
+        february: 2,
+        march: 3,
+        april: 4,
+        may: 5,
+        june: 6,
+        july: 7,
+        august: 8,
+        september: 9,
+        october: 10,
+        november: 11,
+        december: 12,
+      };
 
-    const res = await fetch(
-      `http://127.0.0.1:5000/amazon_api/inventory/ledger-summary` +
+      const m = monthMap[month.toLowerCase()];
+      if (!m) {
+        setLedgerLoading(false);
+        return;
+      }
+
+      // 🔥 Last date of selected month
+      const lastDate = new Date(Date.UTC(Number(year), m, 0))
+        .toISOString()
+        .split('T')[0];
+
+      const token = localStorage.getItem('jwtToken');
+      if (!token) {
+        setLedgerLoading(false);
+        return;
+      }
+
+      const res = await fetch(
+        `http://127.0.0.1:5000/amazon_api/inventory/ledger-summary` +
         `?start_date=${lastDate}&end_date=${lastDate}&store_in_db=true`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
-    if (!res.ok) {
-      throw new Error('Failed to fetch ledger snapshot');
+      if (!res.ok) {
+        throw new Error('Failed to fetch ledger snapshot');
+      }
+
+      const json = await res.json();
+      const items = Array.isArray(json?.items) ? json.items : [];
+
+      // 🔥 SKU → Ending Balance map
+      const map: Record<string, number> = {};
+
+      items.forEach((it: any) => {
+        if (
+          it.disposition === 'SELLABLE' &&
+          it.msku
+        ) {
+          const sku = it.msku.trim().toUpperCase();
+
+          map[sku] =
+            (map[sku] || 0) +
+            Number(it.ending_warehouse_balance || 0);
+        }
+      });
+
+      setLedgerMap(map);
+      setLedgerMode(true); // 🔥 switch to ledger view
+    } catch (error) {
+      console.error('Ledger snapshot error:', error);
+      alert('Failed to load ledger report. Please try again.');
+    } finally {
+      setLedgerLoading(false); // 🔥 stop loader
     }
-
-    const json = await res.json();
-    const items = Array.isArray(json?.items) ? json.items : [];
-
-    // 🔥 SKU → Ending Balance map
-    const map: Record<string, number> = {};
-
-    items.forEach((it: any) => {
-      if (
-        it.disposition === 'SELLABLE' &&
-        it.msku
-      ) {
-        const sku = it.msku.trim().toUpperCase();
-
-        map[sku] =
-          (map[sku] || 0) +
-          Number(it.ending_warehouse_balance || 0);
-      }
-    });
-
-    setLedgerMap(map);
-    setLedgerMode(true); // 🔥 switch to ledger view
-  } catch (error) {
-    console.error('Ledger snapshot error:', error);
-    alert('Failed to load ledger report. Please try again.');
-  } finally {
-    setLedgerLoading(false); // 🔥 stop loader
-  }
-};
+  };
 
 
-const cancelLedgerView = () => {
-  const now = new Date();
+  const cancelLedgerView = () => {
+    const now = new Date();
 
-  setMonth(allMonths[now.getMonth()]);
-  setYear(String(now.getFullYear()));
+    setMonth(allMonths[now.getMonth()]);
+    setYear(String(now.getFullYear()));
 
-  setLedgerMode(false);
-  setLedgerMap({});
-};
+    setLedgerMode(false);
+    setLedgerMap({});
+  };
 
 
 
 
-  
+
 
   const getVisibleColumns = (data: SkuRow[]) => {
     const base = ['s_no', 'product_name'];
@@ -363,9 +365,9 @@ const cancelLedgerView = () => {
 
     const rates = await res.json();
 
-   setCurrencyRates(Array.isArray(rates) ? rates : []);
+    setCurrencyRates(Array.isArray(rates) ? rates : []);
   };
-  
+
 
   // ASP
   const fetchAspData = async () => {
@@ -384,27 +386,27 @@ const cancelLedgerView = () => {
   };
 
   // 🔥 AGEING INVENTORY (NEW)
- // 🔥 AGEING INVENTORY (map by SKU)
-const fetchAgeingInventory = async () => {
-  const token = localStorage.getItem('jwtToken');
-  if (!token) return;
+  // 🔥 AGEING INVENTORY (map by SKU)
+  const fetchAgeingInventory = async () => {
+    const token = localStorage.getItem('jwtToken');
+    if (!token) return;
 
-  const res = await fetch(
-    'http://127.0.0.1:5000/amazon_api/inventory/aged/columns?latest=1',
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+    const res = await fetch(
+      'http://127.0.0.1:5000/amazon_api/inventory/aged/columns?latest=1',
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
 
-  const json = await res.json();
-  const rows = Array.isArray(json?.data) ? json.data : [];
+    const json = await res.json();
+    const rows = Array.isArray(json?.data) ? json.data : [];
 
-  const map: Record<string, any> = {};
-  rows.forEach((r: any) => {
-    const key = String(r['product-name'] || '').trim().toLowerCase();
-    if (key) map[key] = r;
-  });
+    const map: Record<string, any> = {};
+    rows.forEach((r: any) => {
+      const key = String(r['product-name'] || '').trim().toLowerCase();
+      if (key) map[key] = r;
+    });
 
-  setAgeingMap(map);
-};
+    setAgeingMap(map);
+  };
 
 
 
@@ -421,7 +423,7 @@ const fetchAgeingInventory = async () => {
       .finally(() => setLoading(false));
   }, [countryName, monthParam, yearParam]);
 
-   const saveChanges = async () => {
+  const saveChanges = async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
     if (!token) {
       alert('Authorization token is missing');
@@ -484,7 +486,7 @@ const fetchAgeingInventory = async () => {
   };
 
 
-   const handleDownloadXLSX = () => {
+  const handleDownloadXLSX = () => {
     if (!skuData || skuData.length === 0) {
       alert('No data available to download.');
       return;
@@ -536,169 +538,169 @@ const fetchAgeingInventory = async () => {
   if (error) return <div>Error: {error}</div>;
 
   const totalAvailableUnits = skuData.reduce((sum, row) => {
-  const ageing = getAgeingForRow(row);
-  return sum + Number(ageing.available || 0);
-}, 0);
-
-const totalStorageCost = skuData.reduce((sum, row) => {
-  const ageing = getAgeingForRow(row);
-  return sum + Number(ageing['estimated-storage-cost-next-month'] || 0);
-}, 0);
-
-const totals = skuData.reduce(
-  (acc, row) => {
     const ageing = getAgeingForRow(row);
-    const sku = String(row[`sku_${countryName}`] || '').toUpperCase();
+    return sum + Number(ageing.available || 0);
+  }, 0);
 
-    acc.available += Number(ageing.available || 0);
+  const totalStorageCost = skuData.reduce((sum, row) => {
+    const ageing = getAgeingForRow(row);
+    return sum + Number(ageing['estimated-storage-cost-next-month'] || 0);
+  }, 0);
 
-    acc.age180 +=
-      Number(ageing['inv-age-181-to-270-days'] || 0) +
-      Number(ageing['inv-age-271-to-365-days'] || 0) +
-      Number(ageing['inv-age-365-plus-days'] || 0);
+  const totals = skuData.reduce(
+    (acc, row) => {
+      const ageing = getAgeingForRow(row);
+      const sku = String(row[`sku_${countryName}`] || '').toUpperCase();
 
-    acc.age0_90 += Number(ageing['inv-age-0-to-90-days'] || 0);
-    acc.age91_180 += Number(ageing['inv-age-91-to-180-days'] || 0);
+      acc.available += Number(ageing.available || 0);
 
-    acc.storageCost += Number(ageing['estimated-storage-cost-next-month'] || 0);
+      acc.age180 +=
+        Number(ageing['inv-age-181-to-270-days'] || 0) +
+        Number(ageing['inv-age-271-to-365-days'] || 0) +
+        Number(ageing['inv-age-365-plus-days'] || 0);
 
-    acc.endingBalance += Number(ledgerMap[sku] || 0);
+      acc.age0_90 += Number(ageing['inv-age-0-to-90-days'] || 0);
+      acc.age91_180 += Number(ageing['inv-age-91-to-180-days'] || 0);
 
-    return acc;
-  },
-  {
-    available: 0,
-    age180: 0,
-    age0_90: 0,
-    age91_180: 0,
-    storageCost: 0,
-    endingBalance: 0,
-  }
-);
+      acc.storageCost += Number(ageing['estimated-storage-cost-next-month'] || 0);
 
-const formatNumber = (v: any) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n.toLocaleString() : '-';
-};
+      acc.endingBalance += Number(ledgerMap[sku] || 0);
 
-const tableRows: InventoryTableRow[] = skuData.map((row) => {
-  const ageing = getAgeingForRow(row);
-  const sku = String(row[`sku_${countryName}`] || "").toUpperCase();
+      return acc;
+    },
+    {
+      available: 0,
+      age180: 0,
+      age0_90: 0,
+      age91_180: 0,
+      storageCost: 0,
+      endingBalance: 0,
+    }
+  );
 
-  return {
-    s_no: row.s_no,
-    product_name: row.product_name,
-    sku: row[`sku_${countryName}`] ?? "-",
-    asin: row.asin ?? "-",
-    barcode: row.product_barcode ?? "-",
-    price: `${getCurrencySymbol(row.currency)} ${row.price}`,
-    margin: renderGrossMarginCell(row, `gross_margin_${countryName}`),
-    available: formatNumber(ageing.available),
-    age_0_90: formatNumber(ageing["inv-age-0-to-90-days"]),
-    age_91_180: formatNumber(ageing["inv-age-91-to-180-days"]),
-    age_180: formatNumber(
-      Number(ageing["inv-age-181-to-270-days"] || 0) +
-      Number(ageing["inv-age-271-to-365-days"] || 0)
-    ),
-    storage: formatNumber(
-      Number(ageing["estimated-storage-cost-next-month"] || 0).toFixed(2)
-    ),
-    ledger: ledgerMap[sku] ?? 0,
+  const formatNumber = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toLocaleString() : '-';
   };
-});
 
-tableRows.push({
-  s_no: 0,
-  product_name: "TOTAL",
-  sku: "",
-  asin: "",
-  barcode: "",
-  price: "",
-  margin: <></>,
-  available: formatNumber(totals.available),
-  age_0_90: formatNumber(totals.age0_90),
-  age_91_180: formatNumber(totals.age91_180),
-  age_180: formatNumber(totals.age180),
-  storage: formatNumber(totals.storageCost.toFixed(2)),
-  ledger: totals.endingBalance,
-  __isTotal: true,
-});
+  const tableRows: InventoryTableRow[] = skuData.map((row) => {
+    const ageing = getAgeingForRow(row);
+    const sku = String(row[`sku_${countryName}`] || "").toUpperCase();
 
-const columns: ColumnDef<any>[] = [
-  { key: "s_no", header: "Sno.", width: "60px" },
-  {
-    key: "product_name",
-    header: "Product Name",
-    cellClassName: "text-left whitespace-normal",
-    width: "200px",
-  },
+    return {
+      s_no: row.s_no,
+      product_name: row.product_name,
+      sku: row[`sku_${countryName}`] ?? "-",
+      asin: row.asin ?? "-",
+      barcode: row.product_barcode ?? "-",
+      price: `${getCurrencySymbol(row.currency)} ${row.price}`,
+      margin: renderGrossMarginCell(row, `gross_margin_${countryName}`),
+      available: formatNumber(ageing.available),
+      age_0_90: formatNumber(ageing["inv-age-0-to-90-days"]),
+      age_91_180: formatNumber(ageing["inv-age-91-to-180-days"]),
+      age_180: formatNumber(
+        Number(ageing["inv-age-181-to-270-days"] || 0) +
+        Number(ageing["inv-age-271-to-365-days"] || 0)
+      ),
+      storage: formatNumber(
+        Number(ageing["estimated-storage-cost-next-month"] || 0).toFixed(2)
+      ),
+      ledger: ledgerMap[sku] ?? 0,
+    };
+  });
 
-  {
-  key: "sku",
-  header: (
-    <div
-      onClick={() => setShowSkuExpand(p => !p)}
-      className="relative cursor-pointer flex items-center justify-center gap-2"
-    >
-      <FaCaretLeft />
-      <span>SKU</span>
-      <FaCaretRight />
-    </div>
-  ),
-},
+  tableRows.push({
+    s_no: "",
+    product_name: "TOTAL",
+    sku: "",
+    asin: "",
+    barcode: "",
+    price: "",
+    margin: <></>,
+    available: formatNumber(totals.available),
+    age_0_90: formatNumber(totals.age0_90),
+    age_91_180: formatNumber(totals.age91_180),
+    age_180: formatNumber(totals.age180),
+    storage: formatNumber(totals.storageCost.toFixed(2)),
+    ledger: totals.endingBalance,
+    __isTotal: true,
+  });
 
-  ...(showSkuExpand
-    ? [
+  const columns: ColumnDef<any>[] = [
+    { key: "s_no", header: "Sno.", width: "60px" },
+    {
+      key: "product_name",
+      header: "Product Name",
+      cellClassName: "text-left whitespace-normal",
+      width: "200px",
+    },
+
+    {
+      key: "sku",
+      header: (
+        <div
+          onClick={() => setShowSkuExpand(p => !p)}
+          className="relative cursor-pointer flex items-center justify-center gap-2"
+        >
+          <FaCaretLeft />
+          <span>SKU</span>
+          <FaCaretRight />
+        </div>
+      ),
+    },
+
+    ...(showSkuExpand
+      ? [
         { key: "asin", header: "ASIN" },
         { key: "barcode", header: "Product Barcode" },
       ]
-    : []),
+      : []),
 
-  { key: "price", header: "Landing Cost" },
-  { key: "margin", header: "Gross Margin (%)" },
+    { key: "price", header: "Landing Cost" },
+    { key: "margin", header: "Gross Margin (%)" },
 
-  ...(!ledgerMode
-    ? [
+    ...(!ledgerMode
+      ? [
         { key: "available", header: "Total Inventory" },
 
         ...(showAgeBreakup
           ? [
-              { key: "age_0_90", header: "0–90" },
-              { key: "age_91_180", header: "91–180" },
-            ]
+            { key: "age_0_90", header: "0–90" },
+            { key: "age_91_180", header: "91–180" },
+          ]
           : []),
 
         {
-  key: "age_180",
-  header: (
-    <div
-      onClick={() => setShowAgeBreakup(p => !p)}
-      className="relative cursor-pointer flex items-center justify-center"
-    >
-      {/* LEFT ICON */}
-      <span className="absolute left-2">
-        {showAgeBreakup ? <FaCaretRight /> : <FaCaretLeft />}
-      </span>
+          key: "age_180",
+          header: (
+            <div
+              onClick={() => setShowAgeBreakup(p => !p)}
+              className="relative cursor-pointer flex items-center justify-center"
+            >
+              {/* LEFT ICON */}
+              <span className="absolute left-2">
+                {showAgeBreakup ? <FaCaretRight /> : <FaCaretLeft />}
+              </span>
 
-      {/* TEXT */}
-      <span className="px-6">
-        {showAgeBreakup ? "180+" : "Aged Inventory"}
-      </span>
+              {/* TEXT */}
+              <span className="px-6">
+                {showAgeBreakup ? "180+" : "Aged Inventory"}
+              </span>
 
-      {/* RIGHT ICON */}
-      <span className="absolute right-2">
-        {showAgeBreakup ? <FaCaretLeft /> : <FaCaretRight />}
-      </span>
-    </div>
-  ),
-},
+              {/* RIGHT ICON */}
+              <span className="absolute right-2">
+                {showAgeBreakup ? <FaCaretLeft /> : <FaCaretRight />}
+              </span>
+            </div>
+          ),
+        },
 
         { key: "storage", header: "Est. Storage Cost" },
       ]
-    : [
+      : [
         { key: "ledger", header: "Ending Warehouse Balance" },
       ]),
-];
+  ];
 
 
 
@@ -706,7 +708,7 @@ const columns: ColumnDef<any>[] = [
   /* ================= RENDER ================= */
   return (
     <div>
-<style>{`
+      <style>{`
   div {
     font-family: 'Lato', sans-serif;
   }
@@ -763,12 +765,12 @@ const columns: ColumnDef<any>[] = [
   }
 
   .gross-margin-positive {
-    color: #28a745;
+    color: #5EA68E;
     font-weight: bold;
   }
 
   .gross-margin-negative {
-    color: #dc3545;
+    color: #FF5C5C;
     font-weight: bold;
   }
 
@@ -787,76 +789,132 @@ const columns: ColumnDef<any>[] = [
         .fetch-button:hover:not(:disabled) { background-color: #1f2a36; }
         .fetch-button:disabled { background-color: #6b7280; cursor: not-allowed; opacity: 0.8; }
 `}</style>
-<h2 className='text-2xl text-[#414042] font-bold '>
+      {/* <h2 className='text-2xl text-[#414042] font-bold '>
         Inventory Summary - <span style={{ color: '#60a68e' }}> {countryName?.toUpperCase()}</span>
       </h2>
-<div className='flex justify-between w-full items-center '>
-<div>
+      <div className='flex justify-between w-full items-center '>
+        <div>
 
-     <div className="flex gap-4 items-center my-4">
-       <MonthYearPickerWithCurrent
-  month={month}
-  year={year}
-  onMonthChange={setMonth}
-  onYearChange={setYear}
-  valueMode="lower"
-/>
+          <div className="flex gap-4 items-center my-4">
+            <MonthYearPickerWithCurrent
+              month={month}
+              year={year}
+              onMonthChange={setMonth}
+              onYearChange={setYear}
+              valueMode="lower"
+            />
 
-        {!ledgerMode && (
-          <div className="button-wrapper">
-         <button
-  className="fetch-button"
-  onClick={fetchLedgerSnapshot}
-  disabled={ledgerLoading}
->
-  {ledgerLoading ? 'Loading...' : 'Get Report'}
-</button>
+            {!ledgerMode && (
+              <div className="button-wrapper">
+                <button
+                  className="fetch-button"
+                  onClick={fetchLedgerSnapshot}
+                  disabled={ledgerLoading}
+                >
+                  {ledgerLoading ? 'Loading...' : 'Get Report'}
+                </button>
+              </div>
+
+            )}
+
+            {ledgerMode && (
+              <button className="fetch-button " onClick={cancelLedgerView}>
+                Cancel
+              </button>
+            )}
+          </div>
         </div>
-          
+        <div className='flex justify-end items-end '>
+          <button
+            onClick={handleDownloadXLSX}
+            className="bg-white border border-[#8B8585] px-1 rounded-sm py-1"
+            style={{
+              boxShadow: "0px 4px 4px 0px #00000040",
+            }}
+          >
+            <IoDownload size={27} />
+          </button>
+        </div>
+      </div> */}
+
+<div className="w-full">
+  {/* Top row: Breadcrumb (left) + Month/Year picker (right) */}
+  <div className="flex items-start justify-between w-full">
+    <PageBreadcrumb
+      variant="page"
+      align="left"
+      textSize="2xl"
+      pageTitle={
+        <>
+          <span className="text-[#414042] font-bold">Inventory Reconciliation - </span>
+          <span className="text-[#60a68e] font-bold">
+            {countryName?.toUpperCase()}
+          </span>
+        </>
+      }
+    />
+
+    <div className="flex flex-col items-end mb-2">
+      {/* Picker on the top right */}
+      <MonthYearPickerWithCurrent
+        month={month}
+        year={year}
+        onMonthChange={setMonth}
+        onYearChange={setYear}
+        valueMode="lower"
+      />
+
+      {/* Buttons below picker, right aligned */}
+      <div className="flex items-center gap-3 mt-3">
+        {!ledgerMode && (
+          <button
+            className="fetch-button"
+            onClick={fetchLedgerSnapshot}
+            disabled={ledgerLoading}
+          >
+            {ledgerLoading ? "Loading..." : "Get Report"}
+          </button>
         )}
 
         {ledgerMode && (
-          <button className="fetch-button " onClick={cancelLedgerView}>
+          <button className="fetch-button" onClick={cancelLedgerView}>
             Cancel
           </button>
         )}
-      </div>
-</div>
- <div className='flex justify-end items-end '>
-           <button
-                    onClick={handleDownloadXLSX}
-                  className="bg-white border border-[#8B8585] px-1 rounded-sm py-1"
-                                              style={{
-                                   boxShadow: "0px 4px 4px 0px #00000040",  
-                                 }}
-                                           >
-                                           <IoDownload size={27} />
-                  </button>
-        </div>
-</div>
 
+        {/* <button
+          onClick={handleDownloadXLSX}
+          className="bg-white border border-[#8B8585] px-1 py-1 rounded-sm shadow-[0px_4px_4px_0px_#00000040]"
+        >
+          <IoDownload size={27} />
+        </button> */}
+         <DownloadIconButton onClick={handleDownloadXLSX} size='md'/>
+      </div>
+    </div>
+  </div>
+</div>
 
 
       {/* ================= TABLE ================= */}
-     <DataTable
-  columns={columns}
-  data={tableRows}
-  loading={loading || ledgerLoading}
-  paginate
-  pageSize={20}
-  maxHeight="70vh"
-  zebra
-  stickyHeader
-  rowClassName={(row) =>
-    (row as any).__isTotal
-      ? "bg-[#D9D9D9] font-semibold"
-      : ""
-  }
-/>
+      <DataTable
+        columns={columns}
+        data={tableRows}
+        loading={loading || ledgerLoading}
+        paginate
+        pageSize={20}
+        maxHeight="70vh"
+        zebra
+        stickyHeader
+        rowClassName={(row) =>
+          (row as any).__isTotal
+            ? "bg-[#D9D9D9] font-semibold"
+            : ""
+        }
+      />
 
 
-      
-       
+
+
 
 
       {showMultiuseCountry && (
@@ -905,22 +963,22 @@ const columns: ColumnDef<any>[] = [
               &times;
             </button>
 
-           <div
-  style={{
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    zIndex: 2000, // 🔥 high z-index
-  }}
->
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                position: 'relative',
+                zIndex: 2000, // 🔥 high z-index
+              }}
+            >
               <SkuMultiuseCountryUpload onClose={function (): void {
-                              throw new Error('Function not implemented.');
-                          } } onComplete={function (): void {
-                              throw new Error('Function not implemented.');
-                          } } />
+                throw new Error('Function not implemented.');
+              }} onComplete={function (): void {
+                throw new Error('Function not implemented.');
+              }} />
             </div>
           </div>
         </div>
@@ -933,7 +991,7 @@ const columns: ColumnDef<any>[] = [
         onCancel={() => setShowModal(false)}
       />
     </div>
-    
-    
+
+
   );
 }
