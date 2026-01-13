@@ -1550,14 +1550,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   <>
                     Monthly P&amp;L - Product Breakdown -{" "}
                     <span className="text-[#5EA68E] font-bold">
-                      {convertToAbbreviatedMonth(month)}'{String(year).slice(-2)}
+                      {convertToAbbreviatedMonth(month)}&apos;{String(year).slice(-2)}
                     </span>
                   </>
                 ) : range === "quarterly" ? (
                   <>
                     Quarterly P&amp;L - Product Breakdown -{" "}
                     <span className="text-[#5EA68E] font-bold">
-                      {quarter}'{String(year).slice(-2)}
+                      {quarter}&apos;{String(year).slice(-2)}
                     </span>
                   </>
                 ) : (
