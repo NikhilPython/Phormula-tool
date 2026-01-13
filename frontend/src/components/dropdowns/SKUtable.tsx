@@ -724,8 +724,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
 
 
-    const summaryRows: Array<Record<string, string | number | boolean> & { __bold?: boolean }> = [
-      { product_name: "Cost of Advertisement", profit: Math.abs(Number(totals.advertising_total || 0)), __bold: true },
+    type SummaryRow = Record<string, string | number> & { __bold?: number };
+
+    const summaryRows: SummaryRow[] = [
+      { product_name: "Cost of Advertisement", profit: Math.abs(Number(totals.advertising_total || 0)), __bold: 1 },
 
       { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.visible_ads || 0)) },
 
@@ -735,7 +737,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ? [{ product_name: "Shipment Charges (-)", profit: Math.abs(Number(totals.shipment_charges || 0)) }]
         : []),
 
-      { product_name: "Other Transactions (-)", profit: Math.abs(Number(totals.other_transactions || 0)), __bold: true },
+      { product_name: "Other Transactions (-)", profit: Math.abs(Number(totals.other_transactions || 0)), __bold: 1 },
 
       { product_name: "Platform Fees (-)", profit: Math.abs(Number(totals.platform_fee || 0)) },
 
@@ -743,19 +745,24 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
       { product_name: "Reimbursement for lost Inventory", profit: Math.abs(Number(totals.lost_total || 0)) },
 
-      // ✅ Highlight key rows (bold)
-      { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit || 0), __bold: true },
+      { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit || 0), __bold: 1 },
 
-      { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: true },
+      { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: 1 },
 
-      { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0) , __bold: true },
-      { product_name: "Net Reimbursement", profit: Math.abs(Number(totals.net_reimbursement || 0)), __bold: true},
+      { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0), __bold: 1 },
 
-      { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0) , __bold: true },
+      { product_name: "Net Reimbursement", profit: Math.abs(Number(totals.net_reimbursement || 0)), __bold: 1 },
 
-      { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0) , __bold: true },
+      { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0), __bold: 1 },
+
+      { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0), __bold: 1 },
     ];
 
+    const normalizedSummaryRows =
+      summaryRows.map((r) => ({
+        ...r,
+        __bold: r.__bold ? true : undefined,
+      })) as Array<Record<string, string | number> & { __bold?: boolean }>;
 
 
     const formats: Record<string, "int" | "money" | "percent" | "text"> = {};
@@ -772,7 +779,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       headerRow,
       signRow,
       rows: rowsForExcel,
-      summaryRows,
+      summaryRows: normalizedSummaryRows,
       formats,
       summaryValueKey: "profit",
     };
