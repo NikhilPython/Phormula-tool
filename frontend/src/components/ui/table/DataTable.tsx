@@ -66,7 +66,7 @@ export default function DataTable<T extends Row>({
   onPageChange,
   loading = false,
   loaderHeight = 260,
-  headerMaxWidth = 140, // ✅ tune this (120–180 usually best)
+  headerMaxWidth = 110, // ✅ tune this (120–180 usually best)
 }: DataTableProps<T>) {
   const containerStyle: React.CSSProperties = {
     maxHeight: scrollY
@@ -202,16 +202,21 @@ export default function DataTable<T extends Row>({
                 key={String(col.key) + i}
                 onClick={col.onHeaderClick}
                 className={clsx(
-                  // "border border-[#e1e5ea] px-2 sm:px-3 py-2 text-center align-middle",
-                  // "whitespace-normal break-words leading-tight",
-                  "whitespace-nowrap border border-gray-300 px-2 py-2 text-center",
+                  "border border-gray-300 px-2 py-2 text-center align-middle",
+                  // ✅ allow wrapping
+                  "whitespace-normal break-words leading-snug",
+                  // optional pointer behavior
                   col.headerClassName,
                   col.onHeaderClick && "cursor-pointer select-none"
                 )}
                 style={thStyle(col)}
               >
-                {formatHeader(col.header)}
+                {/* ✅ clamp header to max 2 lines */}
+                <div className="mx-auto max-w-full overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                  {formatHeader(col.header)}
+                </div>
               </th>
+
             ))}
           </tr>
         </thead>
@@ -250,7 +255,7 @@ export default function DataTable<T extends Row>({
                     <td
                       key={String(col.key) + ci}
                       className={clsx(
-                        "border border-[#e1e5ea] px-2 sm:px-3 py-3 align-middle text-center",
+                        "border border-[#e1e5ea] px-2 py-2 align-middle text-center",
                         "whitespace-nowrap",
                         col.cellClassName
                       )}

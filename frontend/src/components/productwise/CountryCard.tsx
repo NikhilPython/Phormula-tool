@@ -750,15 +750,15 @@ const CountryCard: React.FC<CountryCardProps> = ({
   const getTileStyle = (k: TileKey) => {
     switch (k) {
       case "netSales":
-        return "bg-[#75BBDA4D] border-[#75BBDA]"; 
+        return "bg-[#75BBDA4D] border-[#75BBDA]";
       case "units":
-        return "bg-[#FDD36F4D] border-[#FDD36F]"; 
+        return "bg-[#FDD36F4D] border-[#FDD36F]";
       case "cm1Profit":
-        return "bg-[#7B9A6D4D] border-[#7B9A6D]"; 
+        return "bg-[#7B9A6D4D] border-[#7B9A6D]";
       case "avgMonthlySales":
-        return "bg-[#ED9F504D] border-[#ED9F50]"; 
+        return "bg-[#ED9F504D] border-[#ED9F50]";
       case "avgMonthlyUnits":
-        return "bg-[#C494664D] border-[#C49466]"; 
+        return "bg-[#C494664D] border-[#C49466]";
       case "cm1ProfitPct":
         return "bg-[#B8C78C4D] border-[#B8C78C]"; // light peach
       default:
@@ -829,10 +829,10 @@ const CountryCard: React.FC<CountryCardProps> = ({
             value={formatAmount(stats.avgSales)}
           />
           <StatTile
-  label="Avg Selling Price"
-  tileKey="avgMonthlyUnits" // keep same styling key so nothing else changes
-  value={formatAmountWith2Decimals(stats.avgSellingPrice ?? stats.avg_selling_price ?? stats.asp ?? stats.ASP ?? 0)}
-/>
+            label="Avg Selling Price"
+            tileKey="avgMonthlyUnits" // keep same styling key so nothing else changes
+            value={formatAmountWith2Decimals(stats.avgSellingPrice ?? stats.avg_selling_price ?? stats.asp ?? stats.ASP ?? 0)}
+          />
 
           <StatTile
             label="CM1 Profit %"

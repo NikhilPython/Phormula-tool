@@ -126,11 +126,14 @@ const MonthYearPickerTable: React.FC<MonthYearPickerTableProps> = ({
     }
 
     // ✅ Force month to last fetched (only once) if empty or different
-    const latestMonthNormalized = normalizeForSelect(latest.month);
-    if (latestMonthNormalized && selectMonthValue !== latestMonthNormalized) {
-      // emitMonth uses valueMode, so call that to preserve behavior
-      emitMonth(latestMonthNormalized);
+    if (typeof latest.month === "string") {
+      const latestMonthNormalized = normalizeForSelect(latest.month);
+      if (latestMonthNormalized && selectMonthValue !== latestMonthNormalized) {
+        // emitMonth uses valueMode, so call that to preserve behavior
+        emitMonth(latestMonthNormalized);
+      }
     }
+
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

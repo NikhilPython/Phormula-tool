@@ -214,6 +214,7 @@ type Provider = "amazon" | "shopify";
 type Props = {
   open: boolean;
   onClose: () => void;
+  onConnected?: () => void;
 };
 
 const options: { key: Provider; title: string; icon: string }[] = [
@@ -221,7 +222,7 @@ const options: { key: Provider; title: string; icon: string }[] = [
   { key: "shopify", title: "Shopify ", icon: "/shopify.png" },
 ];
 
-const IntegrationsModal: React.FC<Props> = ({ open, onClose }) => {
+const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
   const reduxToken = useSelector((state: any) => state.auth?.token);
@@ -298,6 +299,7 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose }) => {
       );
       router.push(url);
       onClose();
+      onConnected?.();
       return;
     }
 

@@ -68,25 +68,25 @@ export default function UserAddressCard() {
       {/* ✅ ONLY Product Information wrapped in InfoCard */}
       <InfoCard
         title={
-              <PageBreadcrumb
-      pageTitle="Product & Inventory Controls"
-      variant="table"
-      align="left"
-      // textSize="base"
-    />
+          <PageBreadcrumb
+            pageTitle="Product & Inventory Controls"
+            variant="table"
+            align="left"
+          // textSize="base"
+          />
         }
       >
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-7 2xl:gap-x-32">
           {/* SKU Information */}
-<div className="flex items-center gap-2">
-  <p className="text-sm font-bold leading-normal text-charcoal-500">
-    SKU Information
-  </p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-bold leading-normal text-charcoal-500">
+              SKU Information
+            </p>
 
-  <div className="flex items-center gap-2">
-    <button
-      onClick={skuModal.openModal}
-      className="
+            <div className="flex items-center gap-2">
+              <button
+                onClick={skuModal.openModal}
+                className="
         inline-flex items-center gap-1.5
         rounded-md
         px-2 py-1
@@ -94,22 +94,22 @@ export default function UserAddressCard() {
         hover:bg-gray-100
         dark:text-gray-200 dark:hover:bg-gray-800
       "
-      aria-label="Upload SKU"
-      title="Upload SKU"
-    >
-      <TiUpload size={14} />
-      {/* <span>Upload</span> */}
-    </button>
+                aria-label="Upload SKU"
+                title="Upload SKU"
+              >
+                <TiUpload size={14} />
+                {/* <span>Upload</span> */}
+              </button>
 
 
-  </div>
-</div>
+            </div>
+          </div>
 
 
           {/* Update Fee Preview Information */}
           <div>
             <p className="mb-2 text-sm leading-normal text-charcoal-500 font-bold">
-Warehouse Inventory            </p>
+              Warehouse Inventory            </p>
 
             {/* Uncomment when you want chips */}
             {/* {isLoading && (
@@ -180,7 +180,12 @@ Warehouse Inventory            </p>
         className="m-4 max-w-[500px] shadow-[6px_6px_7px_0px_#00000026] border border-[#D9D9D9]"
       >
         <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar dark:bg-gray-900 lg:p-9">
-          <SkuMultiCountryUpload onClose={skuModal.closeModal} />
+        <SkuMultiCountryUpload
+  onClose={skuModal.closeModal}
+  onComplete={() => {
+    skuModal.closeModal(); // upload ke baad modal band
+  }}
+/>
         </div>
       </Modal>
     </>

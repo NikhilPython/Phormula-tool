@@ -5,8 +5,9 @@ import React from "react";
 
 export type CountryOption = {
   name: string;
+  nameLocal?: string; // ✅ ADD THIS (optional)
   dialCode: string;
-  iso2: string; // used to build the emoji flag
+  iso2: string;
 };
 
 const COUNTRY_OPTIONS: CountryOption[] = [

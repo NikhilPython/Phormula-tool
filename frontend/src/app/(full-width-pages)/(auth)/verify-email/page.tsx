@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import VerifyEmailClient from "./VerifyEmailClient";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
   title: "Verify Email",
@@ -12,5 +13,9 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <VerifyEmailClient />;
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <VerifyEmailClient />
+    </Suspense>
+  );
 }

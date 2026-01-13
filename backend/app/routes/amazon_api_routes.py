@@ -781,7 +781,19 @@ def finances_mtd_transactions():
         except Exception as e:
             db.session.rollback()
             return jsonify({"success": False, "error": f"DB store failed: {str(e)}"}), 500
-
+        
+    # ✅ NEW: compute gross_sales per row (so totals can sum it)
+    for r in all_rows:
+        r["gross_sales"] = (
+            float(r.get("product_sales", 0.0)) +
+            float(r.get("product_sales_tax", 0.0)) +
+            float(r.get("postage_credits", 0.0)) +
+            float(r.get("gift_wrap_credits", 0.0)) +
+            float(r.get("shipping_credits_tax", 0.0)) +
+            float(r.get("giftwrap_credits_tax", 0.0)) -
+            float(r.get("promotional_rebates", 0.0)) -
+            float(r.get("promotional_rebates_tax", 0.0))
+        )
     totals = compute_totals(all_rows)
 
     # ✅ NEW: tax_and_credits
@@ -800,6 +812,7 @@ def finances_mtd_transactions():
     selling_fees = float(totals.get("selling_fees", 0.0))
     fba_fees     = float(totals.get("fba_fees", 0.0))
     amazon_fees  = abs(selling_fees) + abs(fba_fees)   # ✅ positive
+    gross_sales = float(totals.get("gross_sales", 0.0))
 
     net_sales = float(totals.get("product_sales", 0.0)) + float(totals.get("promotional_rebates", 0.0))
     qty = float(totals.get("quantity", 0.0)) or 0.0
@@ -836,6 +849,7 @@ def finances_mtd_transactions():
         "platform_fee": round(platform_fee_total, 2),          # ✅ NEW
         "advertising_fees": round(advertising_fee_total, 2),   # ✅ NEW
         "net_sales": round(net_sales, 2),
+        "gross_sales": round(gross_sales, 2),
         "asp": round(asp, 2),
         "profit": round(profit, 2),
         "cm2_profit": round(cm2_profit, 2),   

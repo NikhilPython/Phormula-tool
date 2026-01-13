@@ -397,12 +397,12 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
 
   const { data: user } = useGetUserDataQuery();
 
-const countryMarketplaceMap = React.useMemo(() => {
-  return buildCountryMarketplaceMap(
-    user?.countries,
-    user?.marketplaces
-  );
-}, [user]);
+  const countryMarketplaceMap = useMemo(() => {
+    if (!user?.country || !user?.marketplace_id) return {};
+    return {
+      [user.country]: user.marketplace_id,
+    };
+  }, [user]);
 
    let countryUsed = (country || "uk").toLowerCase();
 let marketplaceIdUsed = countryMarketplaceMap[countryUsed];

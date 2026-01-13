@@ -155,12 +155,7 @@ const AppSidebar: React.FC = () => {
   const [selectedPlatform, setSelectedPlatform] = useState<string>(
     countryFromRoute ? `amazon-${countryFromRoute}` : "global"
   );
-  const countryMarketplaceMap = React.useMemo(() => {
-    return buildCountryMarketplaceMap(
-      user?.countries,
-      user?.marketplaces
-    );
-  }, [user]);
+
 
   useEffect(() => {
     // 1️⃣ URL has highest priority
@@ -257,9 +252,7 @@ const AppSidebar: React.FC = () => {
       }
 
       const data = await res.json();
-      console.log("Aged Inventory Response:", data);
 
-      // 👉 yahin se tum data ko store / context / redux me bhej sakte ho
     } catch (err) {
       console.error("Aged Inventory API Error:", err);
     }
@@ -280,7 +273,6 @@ const AppSidebar: React.FC = () => {
       const baseUrl =
         process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
 
-      // 🔒 month/year se LAST DATE nikaalne ka logic (same as page)
       const months = [
         "january", "february", "march", "april", "may", "june",
         "july", "august", "september", "october", "november", "december",
@@ -314,14 +306,6 @@ const AppSidebar: React.FC = () => {
       if (!res.ok) throw new Error(data?.error || "Ledger API failed");
 
       console.log("✅ Inventory Forecast API Response:", data);
-
-      // 👉 yahan tum:
-      // - context
-      // - redux
-      // - localStorage
-      // - ya direct table component
-      // bhej sakte ho
-
     } catch (err) {
       console.error("❌ Inventory Forecast API Error:", err);
     }
@@ -455,7 +439,7 @@ const AppSidebar: React.FC = () => {
         {
           name: "Current Inventory",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
-          onClick: handleFetchAgedInventory, // optional: keep/remove if you want an API call here
+          onClick: handleFetchAgedInventory,
         },
       ],
     },
@@ -469,12 +453,16 @@ const AppSidebar: React.FC = () => {
         {
           name: "P&L Dashboard",
           path: ({ ranged, countryName, month, year }) =>
-            `/pnl-dashboard/${ranged}/${countryName}/${month}/${year}`, // your Profits page
+            `/pnl-dashboard/${ranged}/${countryName}/${month}/${year}`,
         },
         {
           name: "Business Summary",
-          path: "#", // nothing to map
+          path: ({ ranged, countryName, month, year }) =>
+            `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}#business-summary`,
         },
+
         {
           name: "Cash Flow",
           path: ({ countryName, month, year }) =>
@@ -609,7 +597,7 @@ const AppSidebar: React.FC = () => {
         ${isMobileOpen
           ? "w-full"
           : showText
-          ? "w-[clamp(155px,13vw,210px)] xl:w-[clamp(180px,16vw,250px)]"
+            ? "w-[clamp(155px,13vw,210px)] xl:w-[clamp(180px,16vw,250px)]"
             : "w-[56px] sm:w-[64px] xl:w-[72px]"
         }
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}

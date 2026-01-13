@@ -228,7 +228,11 @@ export default function CurrentInventoryPage({ params }: PageParams) {
             showCloseButton
             className="max-w-4xl w-full mx-auto p-0"
           >
-            <FileUploadForm />
+            <FileUploadForm initialCountry={''} onClose={function (): void {
+                throw new Error('Function not implemented.');
+              } } onComplete={function (): void {
+                throw new Error('Function not implemented.');
+              } } />
           </Modal>
         </>
       ) : (

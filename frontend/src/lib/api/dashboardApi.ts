@@ -7,8 +7,10 @@ export type RangeApi = "MTD" | "QTD" | "YTD";
 export const rangeToApi = (r: string): RangeApi =>
   r === "monthly" ? "MTD" : r === "quarterly" ? "QTD" : "YTD";
 
-export const titleCase = (s?: string) =>
-  (s || "").length ? s[0].toUpperCase() + s.slice(1).toLowerCase() : "";
+export const titleCase = (s?: string) => {
+  if (!s) return "";
+  return s[0].toUpperCase() + s.slice(1).toLowerCase();
+};
 
 const buildParams = (obj: Record<string, any>) => {
   const sp = new URLSearchParams();

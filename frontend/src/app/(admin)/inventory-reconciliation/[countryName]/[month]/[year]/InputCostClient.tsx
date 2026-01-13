@@ -10,6 +10,7 @@ import { FaCaretLeft, FaCaretRight } from "react-icons/fa";
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
 import DataTable, { ColumnDef } from "@/components/ui/table/DataTable";
 import MonthYearPickerWithCurrent from "@/components/filters/MonthYearPickerWithCurrent";
+import { ReactNode } from "react";
 
 
 
@@ -37,6 +38,23 @@ interface SkuRow {
   currency?: string;
   [key: string]: any;
 }
+
+export type InventoryTableRow = {
+  s_no: number;
+  product_name: string;
+  sku: string;
+  asin: string;
+  barcode: string;
+  price: string;
+  margin: ReactNode;
+  available: string;
+  age_0_90: string;
+  age_91_180: string;
+  age_180: string;
+  storage: string;
+  ledger: number;
+  __isTotal?: boolean;
+};
 
 /* ================= UTILS ================= */
 const getCurrencySymbol = (country: string | undefined): string => {
@@ -563,7 +581,7 @@ const formatNumber = (v: any) => {
   return Number.isFinite(n) ? n.toLocaleString() : '-';
 };
 
-const tableRows = skuData.map((row, index) => {
+const tableRows: InventoryTableRow[] = skuData.map((row) => {
   const ageing = getAgeingForRow(row);
   const sku = String(row[`sku_${countryName}`] || "").toUpperCase();
 
@@ -575,7 +593,6 @@ const tableRows = skuData.map((row, index) => {
     barcode: row.product_barcode ?? "-",
     price: `${getCurrencySymbol(row.currency)} ${row.price}`,
     margin: renderGrossMarginCell(row, `gross_margin_${countryName}`),
-
     available: formatNumber(ageing.available),
     age_0_90: formatNumber(ageing["inv-age-0-to-90-days"]),
     age_91_180: formatNumber(ageing["inv-age-91-to-180-days"]),
@@ -583,16 +600,15 @@ const tableRows = skuData.map((row, index) => {
       Number(ageing["inv-age-181-to-270-days"] || 0) +
       Number(ageing["inv-age-271-to-365-days"] || 0)
     ),
-
     storage: formatNumber(
       Number(ageing["estimated-storage-cost-next-month"] || 0).toFixed(2)
     ),
-
-    ledger: ledgerMap[sku] ?? "-",
+    ledger: ledgerMap[sku] ?? 0,
   };
 });
+
 tableRows.push({
-  s_no: <></>,
+  s_no: 0,
   product_name: "TOTAL",
   sku: "",
   asin: "",
@@ -604,7 +620,7 @@ tableRows.push({
   age_91_180: formatNumber(totals.age91_180),
   age_180: formatNumber(totals.age180),
   storage: formatNumber(totals.storageCost.toFixed(2)),
-  ledger: formatNumber(totals.endingBalance),
+  ledger: totals.endingBalance,
   __isTotal: true,
 });
 

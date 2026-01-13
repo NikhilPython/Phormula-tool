@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -11,7 +9,7 @@ import Productinfoinpopup from "./Productinfoinpopup";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import { SkuExportPayload } from "@/lib/utils/exportTypes";
-import GroupedCollapsibleTable, { LeafCol } from "../ui/table/GroupedCollapsibleTable";
+import GroupedCollapsibleTable, { LeafCol, ColGroup } from "../ui/table/GroupedCollapsibleTable";
 
 /* ---------- Types ---------- */
 
@@ -118,7 +116,7 @@ type Totals = {
   profit: number;
   net_sales: number;
   lost_total: number;
-
+  net_reimbursement: number;
 };
 
 type JwtPayload = {
@@ -237,16 +235,20 @@ function normalizeRows(data: any[]): TableRow[] {
   });
 }
 
+
+
 function computeTotalsFromLastRow(rows: TableRow[]): Totals {
   const lastRow: any = rows[rows.length - 1] || {};
 
   const platformFees = toNumber(lastRow.platformfeenew);
   const inventoryStorageFees = toNumber(lastRow.platform_fee_inventory_storage);
 
-  const reimbursementAmount =
-    toNumber(lastRow.reimbursement_lost_inventory_amount) ||
-    toNumber(lastRow.rembursement_fee) ||
-    0;
+  // const reimbursementAmount =
+  //   toNumber(lastRow.reimbursement_lost_inventory_amount) ||
+  //   toNumber(lastRow.rembursement_fee) ||
+  //   0;
+
+  const netReimbursement = toNumber(lastRow.rembursement_fee);
 
   const reimbursementUnits = toNumber(lastRow.reimbursement_lost_inventory_units) || 0;
 
@@ -261,22 +263,20 @@ function computeTotalsFromLastRow(rows: TableRow[]): Totals {
     advertising_total: toNumber(lastRow.advertising_total),
     visible_ads: toNumber(lastRow.visible_ads),
     dealsvouchar_ads: toNumber(lastRow.dealsvouchar_ads),
-    // ✅ SUMMARY "Other Transactions" should show platform_fee (total row)
     other_transactions: toNumber(lastRow.platform_fee),
     platform_fee: platformFees,
     inventory_storage_fees: inventoryStorageFees,
-    reimbursement_lost_inventory_amount: reimbursementAmount,
+    reimbursement_lost_inventory_amount:
+      toNumber(lastRow.reimbursement_lost_inventory_amount) || 0,
     reimbursement_lost_inventory_units: reimbursementUnits,
     lost_total: toNumber(lastRow.lost_total),
-
     shipment_charges: toNumber(lastRow.shipment_charges),
     reimbursement_vs_sales: toNumber(lastRow.reimbursement_vs_sales),
-
     cm2_profit: toNumber(lastRow.cm2_profit),
     cm2_margins: cm2MarginsValue,
     acos: toNumber(lastRow.acos),
     rembursment_vs_cm2_margins: toNumber(lastRow.rembursment_vs_cm2_margins),
-
+    net_reimbursement: netReimbursement,
     profit: toNumber(lastRow.Profit ?? lastRow.profit),
     net_sales: toNumber(lastRow.Net_Sales ?? lastRow.net_sales),
   };
@@ -318,6 +318,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     profit: 0,
     net_sales: 0,
     lost_total: 0,
+    net_reimbursement: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -386,58 +387,74 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return k as keyof TableRow | undefined;
   }, [tableData]);
 
-  const buildExcelTableData = useCallback(() => {
-    const columnsToDisplay2 = [
-      "product_name",
-      "quantity",
-      "asp",
-      "product_sales",
-      "net_sales",
-      "cost_of_unit_sold",
-      "amazon_fee",
-      "selling_fees",
-      "fba_fees",
-      "net_credits",
-      "net_taxes",
-      "profit",
-      "profit_percentage",
-      "unit_wise_profitability",
-    ] as const;
+  // const buildExcelTableData = useCallback(() => {
+  //   const columnsToDisplay2 = [
+  //     "product_name",
+  //     "quantity",
+  //     "asp",
+  //     "product_sales",
+  //     "net_sales",
+  //     "cost_of_unit_sold",
+  //     "amazon_fee",
+  //     "selling_fees",
+  //     "fba_fees",
+  //     "net_credits",
+  //     "net_taxes",
+  //     "profit",
+  //     "profit_percentage",
+  //     "unit_wise_profitability",
+  //   ] as const;
 
-    const rowsForExcel = tableData.map((row) => {
-      const rowData: Record<string, string | number> = {};
+  //   const rowsForExcel = tableData.map((row) => {
+  //     const rowData: Record<string, string | number> = {};
 
-      columnsToDisplay2.forEach((column) => {
-        let value: any = (row as any)[column];
+  //     columnsToDisplay2.forEach((column) => {
+  //       let value: any = (row as any)[column];
 
-        // ✅ name fallback same as UI
-        if (column === "product_name") value = getDisplayProductNameFromRow(row);
+  //       // ✅ name fallback same as UI
+  //       if (column === "product_name") value = getDisplayProductNameFromRow(row);
 
-        // ✅ hard mapping rules (match your current excel logic)
-        if (column === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+  //       // ✅ hard mapping rules (match your current excel logic)
+  //       if (column === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
 
-        // ✅ quantity = Units Sold (NOT total_quantity)
-        if (column === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+  //       // ✅ quantity = Units Sold (NOT total_quantity)
+  //       if (column === "quantity") value = row.quantity ?? row.units_sold ?? 0;
 
-        // number formatting rules
-        if (typeof value === "number") {
-          if (Math.abs(value) < 1e-10) value = 0;
+  //       // number formatting rules
+  //       if (typeof value === "number") {
+  //         if (Math.abs(value) < 1e-10) value = 0;
 
-          // keep decimals except quantity
-          if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
-        }
+  //         // keep decimals except quantity
+  //         if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
+  //       }
 
-        // percent stored as fraction for excel (same as you do now)
-        if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+  //       // percent stored as fraction for excel (same as you do now)
+  //       if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
 
-        rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
-      });
+  //       rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
+  //     });
 
-      return rowData;
-    });
+  //     return rowData;
+  //   });
 
-    return { columnsToDisplay2, rowsForExcel };
-  }, [tableData, getDisplayProductNameFromRow]);
+  //   return { columnsToDisplay2, rowsForExcel };
+  // }, [tableData, getDisplayProductNameFromRow]);
+
+
+  const getTitle = useCallback(() => `Profit Breakup (SKU Level)`, []);
+
+  const getExtraRows = useCallback(() => {
+    const formattedCountry = isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase();
+    return [
+      [`${userData?.brand_name || "N/A"}`],
+      [`${userData?.company_name || "N/A"}`],
+      [getTitle()],
+      [`Currency:  ${currencySymbol}`],
+      [`Country: ${formattedCountry}`],
+      [`Platform: Amazon`],
+    ];
+  }, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
+
 
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
@@ -449,15 +466,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
     []
   );
 
-  const groups = [
+  const groups = useMemo<ColGroup<TableRow>[]>(() => ([
     {
       id: "sales",
       label: "Sales",
       collapsedCols: [],
       expandedCols: [
-        { key: "product_sales", label: "Gross Sales", align: "center" },
-        { key: "refund_sales", label: "Sales - Refund", align: "center" },
-        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
+        { key: "product_sales", label: "Gross Sales", align: "center" as const },
+        { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
+        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
       ],
     },
     {
@@ -465,9 +482,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
       label: "Net Units Sold",
       collapsedCols: [],
       expandedCols: [
-        { key: "sku", label: "SKU", align: "center" },
-        { key: "units_sold", label: "Units Sold", align: "center" },
-        { key: "return_units", label: "Return", align: "center" },
+        { key: "sku", label: "SKU", align: "center" as const },
+        { key: "units_sold", label: "Units Sold", align: "center" as const },
+        { key: "return_units", label: "Return", align: "center" as const },
       ],
     },
     {
@@ -475,8 +492,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       label: "",
       collapsedCols: [],
       expandedCols: [
-        { key: "promotional_rebates", label: "Promotions", align: "center" },
-        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
+        { key: "promotional_rebates", label: "Promotions", align: "center" as const },
+        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
       ],
     },
     {
@@ -484,8 +501,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       label: "Amazon Fees",
       collapsedCols: [],
       expandedCols: [
-        { key: "selling_fees", label: "Selling Fees", align: "center" },
-        { key: "fba_fees", label: "FBA Fees", align: "center" },
+        { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+        { key: "fba_fees", label: "FBA Fees", align: "center" as const },
       ],
     },
     {
@@ -493,65 +510,83 @@ const SKUtable: React.FC<SKUtableProps> = ({
       label: "Other Transactions",
       collapsedCols: [],
       expandedCols: [
-        { key: "net_taxes", label: "Net Taxes", align: "center" },
-        { key: "net_credits", label: "Net Credits", align: "center" },
-        { key: "misc_transaction", label: "Misc. Transactions", align: "center" },
+        { key: "net_taxes", label: "Net Taxes", align: "center" as const },
+        { key: "net_credits", label: "Net Credits", align: "center" as const },
+        { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
       ],
     },
     {
       id: "profit_breakdown",
-      label: "CM1 Profit ",
+      label: "CM1 Profit",
       collapsedCols: [],
       expandedCols: [
-        // { key: "profit", label: "CM1 Profit Margin", align: "center" },
-        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
-        { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
+        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
+        { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
       ],
     },
-  ];
+  ]), []);
 
-  //  const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
-  //   () => [
-  //     // Units
-  //     { key: "units_sold", label: "Units Sold", align: "center" },
-  //     { key: "return_units", label: "Return", align: "center" },
-  //     { key: "net_units_sold", label: "Net Units Sold", align: "center" },
 
-  //     // ASP
-  //     { key: (aspKey ?? "asp") as string, label: "ASP", align: "center" },
+  const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
+    () => [
+      { key: "asp", label: "ASP", align: "center" },
+      { key: "net_sales", label: "Net Sales", align: "center" },
+      { key: "cost_of_unit_sold", label: "COGS", align: "center" },
+      { key: "net_units_sold", label: "Net Units Sold", align: "center" },
+      { key: "amazon_fee", label: "Amazon Fees", align: "center" },
+      { key: "other_transactions", label: "Other Transactions", align: "center" },
+      { key: "profit", label: "CM1 Profit Margin", align: "center" },
+    ],
+    []
+  );
 
-  //     // Sales
-  //     { key: "product_sales", label: "Gross Sales", align: "center" },
-  //     { key: "refund_sales", label: "Sales - Refund", align: "center" },
-  //     { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
-  //     { key: "net_sales", label: "Net Sales", align: "center" },
+  const buildExcelColumnsFromUI = useCallback((): LeafCol<TableRow>[] => {
+    // Exact order you want in Excel
+    const ordered: LeafCol<TableRow>[] = [
+      { key: "sno", label: "S. no", align: "center" as const },
 
-  //     // Promotions
-  //     { key: "promotional_rebates", label: "Promotions", align: "center" },
-  //     { key: "promotional_rebates_percentage", label: "Promotions %age", align: "center" },
+      { key: "product_name", label: "Product Name", align: "left" as const },
+      { key: "sku", label: "SKU", align: "center" as const },
 
-  //     // COGS
-  //     { key: "cost_of_unit_sold", label: "COGS", align: "center" },
+      { key: "units_sold", label: "Units Sold", align: "center" as const },
+      { key: "return_units", label: "Return", align: "center" as const },
+      { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
 
-  //     // Amazon Fees
-  //     { key: "selling_fees", label: "Selling Fees", align: "center" },
-  //     { key: "fba_fees", label: "FBA Fees", align: "center" },
-  //     { key: "amazon_fee", label: "Amazon Fees", align: "center" },
+      { key: "asp", label: "ASP", align: "center" as const },
 
-  //     // Others
-  //     { key: "net_taxes", label: "Net Taxes", align: "center" },
-  //     { key: "net_credits", label: "Net Credits", align: "center" },
-  //     { key: "misc_transaction", label: "Misc. Transactions", align: "center" },
-  //     { key: "other_transactions", label: "Other Transactions", align: "center" },
+      { key: "product_sales", label: "Gross Sales", align: "center" as const },
+      { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
+      { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
+      { key: "net_sales", label: "Net Sales", align: "center" as const },
 
-  //     // CM1
-  //     { key: "profit", label: "CM1 Profit Margin", align: "center" },
-  //     { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
-  //     { key: "profit_percentage", label: "CM1 Profit %age", align: "center" },
-  //   ],
-  //   [aspKey]
-  // );
+      { key: "promotional_rebates", label: "Promotions", align: "center" as const },
+      { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
 
+      { key: "cost_of_unit_sold", label: "COGS", align: "center" as const },
+
+      { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+      { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+      { key: "amazon_fee", label: "Amazon Fees", align: "center" as const },
+
+      { key: "net_taxes", label: "Net Taxes", align: "center" as const },
+      { key: "net_credits", label: "Net Credits", align: "center" as const },
+      { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+      { key: "other_transactions", label: "Other Transactions", align: "center" as const },
+
+      { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
+      { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
+      { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+    ];
+
+    // optional: remove duplicates if any
+    const seen = new Set<string>();
+    return ordered.filter((c) => {
+      if (!c.key) return false;
+      if (seen.has(c.key)) return false;
+      seen.add(c.key);
+      return true;
+    });
+  }, []);
 
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
@@ -628,6 +663,135 @@ const SKUtable: React.FC<SKUtableProps> = ({
     },
     [SIGN_PLUS, SIGN_MINUS]
   );
+  const buildSkuSheetModel = useCallback(() => {
+    const excelCols = buildExcelColumnsFromUI();
+    const colKeys = excelCols.map((c) => c.key);
+
+    const headerRow: Record<string, string> = {};
+    excelCols.forEach((c) => {
+      headerRow[c.key] = c.label;
+    });
+
+    const signRow: Record<string, string> = {};
+    colKeys.forEach((k) => {
+      const s = getSignForCol(k);
+      if (s?.text) signRow[k] = s.text;
+    });
+
+    const rowsForExcel = tableData.map((row, rowIndex) => {
+      const out: Record<string, string | number> = {};
+
+      colKeys.forEach((key) => {
+        let value: any = (row as any)[key];
+
+        if (key === "sno") {
+          const name = getDisplayProductNameFromRow(row);
+          const isTotal = String(name).trim().toLowerCase() === "total";
+          value = isTotal ? "" : rowIndex + 1;
+        }
+
+
+        // Product name fallback
+        if (key === "product_name") value = getDisplayProductNameFromRow(row);
+
+        // Mapping rules
+        if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+        if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+
+        // If you want quantity in excel to mean Units Sold like UI
+        if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+
+        if (typeof value === "number") {
+          if (Math.abs(value) < 1e-10) value = 0;
+
+          if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
+            value = Math.trunc(value);
+          } else {
+            value = Number(value.toFixed(2));
+          }
+
+        }
+
+        if (key === "profit_percentage" && typeof value === "number") {
+          value = Number(value) / 100;
+        }
+
+        out[key] = typeof value === "number" && isNaN(value) ? "-" : value;
+      });
+
+      return out;
+    });
+
+
+
+    type SummaryRow = Record<string, string | number> & { __bold?: number };
+
+    const summaryRows: SummaryRow[] = [
+      { product_name: "Cost of Advertisement", profit: Math.abs(Number(totals.advertising_total || 0)), __bold: 1 },
+
+      { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.visible_ads || 0)) },
+
+      { product_name: "Visibility - Deals, Vouchers and Reviews (-)", profit: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
+
+      ...(countryName === "us" || countryName === "global"
+        ? [{ product_name: "Shipment Charges (-)", profit: Math.abs(Number(totals.shipment_charges || 0)) }]
+        : []),
+
+      { product_name: "Other Transactions (-)", profit: Math.abs(Number(totals.other_transactions || 0)), __bold: 1 },
+
+      { product_name: "Platform Fees (-)", profit: Math.abs(Number(totals.platform_fee || 0)) },
+
+      { product_name: "Inventory Storage Fees (-)", profit: Math.abs(Number(totals.inventory_storage_fees || 0)) },
+
+      { product_name: "Reimbursement for lost Inventory", profit: Math.abs(Number(totals.lost_total || 0)) },
+
+      { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit || 0), __bold: 1 },
+
+      { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: 1 },
+
+      { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0), __bold: 1 },
+
+      { product_name: "Net Reimbursement", profit: Math.abs(Number(totals.net_reimbursement || 0)), __bold: 1 },
+
+      { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0), __bold: 1 },
+
+      { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0), __bold: 1 },
+    ];
+
+    const normalizedSummaryRows =
+      summaryRows.map((r) => ({
+        ...r,
+        __bold: r.__bold ? true : undefined,
+      })) as Array<Record<string, string | number> & { __bold?: boolean }>;
+
+
+    const formats: Record<string, "int" | "money" | "percent" | "text"> = {};
+    colKeys.forEach((k) => {
+      if (k === "product_name" || k === "sku") formats[k] = "text";
+      else if (k === "profit_percentage") formats[k] = "percent";
+      else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(k)) formats[k] = "int";
+      else formats[k] = "money";
+    });
+
+    return {
+      columns: colKeys as readonly string[],
+      extraRows: getExtraRows(),
+      headerRow,
+      signRow,
+      rows: rowsForExcel,
+      summaryRows: normalizedSummaryRows,
+      formats,
+      summaryValueKey: "profit",
+    };
+  }, [
+    tableData,
+    totals,
+    countryName,
+    getExtraRows,
+    getDisplayProductNameFromRow,
+    buildExcelColumnsFromUI,
+    getSignForCol,
+  ]);
 
   // Period label
   const yearShort = typeof year === "string" ? year.toString().slice(-2) : String(year).slice(-2);
@@ -706,7 +870,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     []
   );
 
-  // Modal shell
   const CustomModal: React.FC<React.PropsWithChildren<{ onClose: () => void }>> = ({ onClose, children }) => {
     return (
       <div onClick={onClose} className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
@@ -859,6 +1022,32 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [countryName, buildSkuUrl, token, dummyTableData]);
 
   /* --------- Export payload --------- */
+  // useEffect(() => {
+  //   if (!tableData || tableData.length === 0) return;
+
+  //   onExportPayloadChange?.({
+  //     tableData,
+  //     totals,
+  //     currencySymbol,
+  //     brandName: userData?.brand_name,
+  //     companyName: userData?.company_name,
+  //     title: "Profit Breakup (SKU Level)",
+  //     periodLabel,
+  //     range,
+  //     countryName,
+  //   });
+  // }, [
+  //   tableData,
+  //   totals,
+  //   currencySymbol,
+  //   userData?.brand_name,
+  //   userData?.company_name,
+  //   periodLabel,
+  //   range,
+  //   countryName,
+  //   onExportPayloadChange,
+  // ]);
+
   useEffect(() => {
     if (!tableData || tableData.length === 0) return;
 
@@ -872,18 +1061,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
       periodLabel,
       range,
       countryName,
+
+      // ✅ NEW: parent will export EXACTLY what UI uses
+      sheetModel: buildSkuSheetModel(),
     });
-  }, [
-    tableData,
-    totals,
-    currencySymbol,
-    userData?.brand_name,
-    userData?.company_name,
-    periodLabel,
-    range,
-    countryName,
-    onExportPayloadChange,
-  ]);
+  }, [tableData, totals, currencySymbol, userData, periodLabel, range, countryName, onExportPayloadChange, buildSkuSheetModel]);
+
 
   /* --------- Top/Bottom helpers --------- */
   const getTop5Profitable = useCallback(
@@ -957,174 +1140,377 @@ const SKUtable: React.FC<SKUtableProps> = ({
     setShowModal(true);
   }, []);
 
-  const getTitle = useCallback(() => `Profit Breakup (SKU Level)`, []);
-
-  const getExtraRows = useCallback(() => {
-    const formattedCountry = isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase();
-    return [
-      [`${userData?.brand_name || "N/A"}`],
-      [`${userData?.company_name || "N/A"}`],
-      [getTitle()],
-      [`Currency:  ${currencySymbol}`],
-      [`Country: ${formattedCountry}`],
-      [`Platform: Amazon`],
-    ];
-  }, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
 
   /* --------- Excel Download --------- */
+
+  // const handleDownloadExcel = useCallback(() => {
+  //   const wb = XLSX.utils.book_new();
+
+  //   const excelCols = buildExcelColumnsFromUI();
+  //   const colKeys = excelCols.map((c) => c.key);
+
+  //   // Header row from UI labels
+  //   const headerRow: Record<string, string> = {};
+  //   excelCols.forEach((c) => {
+  //     headerRow[c.key] = c.label;
+  //   });
+
+  //   // Build data rows
+  //   const tableDataForExcel = tableData.map((row, rowIndex) => {
+  //     const rowData: Record<string, string | number> = {};
+
+  //     colKeys.forEach((key) => {
+  //       let value: any = (row as any)[key];
+
+  //       // ✅ SNO: integer, blank for Total row
+  //       if (key === "sno") {
+  //         const name = getDisplayProductNameFromRow(row);
+  //         const isTotal = String(name).trim().toLowerCase() === "total";
+  //         value = isTotal ? "" : rowIndex + 1; // integer
+  //       }
+
+  //       // Product name matches UI fallback
+  //       if (key === "product_name") value = getDisplayProductNameFromRow(row);
+
+  //       // gross_sales -> product_sales mapping
+  //       if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+
+  //       // other_transactions mapping
+  //       if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+
+  //       // quantity meaning units_sold (if present in col list)
+  //       if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+
+  //       // Pre-rounding
+  //       if (typeof value === "number") {
+  //         if (Math.abs(value) < 1e-10) value = 0;
+
+  //         // integer-only fields
+  //         if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
+  //           value = Math.trunc(value);
+  //         } else {
+  //           value = Number(value.toFixed(2));
+  //         }
+  //       }
+
+  //       // profit_percentage stored as fraction for excel %
+  //       if (key === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+
+  //       rowData[key] = typeof value === "number" && isNaN(value) ? "-" : value;
+  //     });
+
+  //     return rowData;
+  //   });
+
+  //   const extraRows = getExtraRows();
+
+  //   const fullData = [
+  //     ...extraRows.map((row) => ({ product_name: row[0] })),
+  //     {}, // blank line
+  //     headerRow,
+  //     ...tableDataForExcel,
+  //   ];
+
+  //   const ws = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
+
+  //   // ---------------------------
+  //   // ✅ FORCE EXCEL FORMATTING
+  //   // ---------------------------
+
+  //   const EXTRA_ROWS_COUNT = extraRows.length;
+  //   const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT;            // the {} blank row
+  //   const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;       // headerRow position
+  //   const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;   // data starts after header
+
+  //   // Find the sno column index in the worksheet (based on colKeys)
+  //   const SNO_COL_INDEX = colKeys.indexOf("sno");
+
+  //   if (ws["!ref"]) {
+  //     const rng = XLSX.utils.decode_range(ws["!ref"]);
+
+  //     // ✅ 1) Force sno column (data rows only) to integer format "0"
+  //     if (SNO_COL_INDEX >= 0) {
+  //       for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
+  //         const addr = XLSX.utils.encode_cell({ r, c: SNO_COL_INDEX });
+  //         const cell = ws[addr];
+  //         if (!cell) continue;
+
+  //         // keep blanks (like Total row sno "")
+  //         if (cell.v === "" || cell.v === null || cell.v === undefined) continue;
+
+  //         const n = Number(cell.v);
+  //         if (!Number.isFinite(n)) continue;
+
+  //         cell.t = "n";
+  //         cell.v = Math.trunc(n);
+  //         cell.z = "0"; // ✅ no decimals
+  //       }
+  //     }
+
+  //     // ✅ 2) Apply formats to other numeric columns (data rows only)
+  //     for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
+  //       for (let c = 0; c <= rng.e.c; c++) {
+  //         const addr = XLSX.utils.encode_cell({ r, c });
+  //         const cell = ws[addr];
+  //         if (!cell) continue;
+
+  //         const key = colKeys[c];
+  //         if (!key) continue;
+
+  //         // sno already handled
+  //         if (key === "sno") continue;
+
+  //         if (typeof cell.v !== "number") continue;
+
+  //         cell.t = "n";
+  //         if (key === "profit_percentage") cell.z = "0.00%";
+  //         else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
+  //         else cell.z = "0.00";
+  //       }
+  //     }
+  //   }
+
+  //   XLSX.utils.book_append_sheet(wb, ws, "SKU Profitability");
+
+  //   const filename =
+  //     range === "monthly"
+  //       ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
+  //       : range === "quarterly"
+  //         ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
+  //         : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
+
+  //   XLSX.writeFile(wb, filename);
+  // }, [
+  //   tableData,
+  //   getExtraRows,
+  //   range,
+  //   month,
+  //   yearShort,
+  //   quarter,
+  //   getDisplayProductNameFromRow,
+  //   buildExcelColumnsFromUI,
+  // ]);
+
+  // ✅ FULL UPDATED FUNCTION (drop-in replace your current handleDownloadExcel)
+
   const handleDownloadExcel = useCallback(() => {
     const wb = XLSX.utils.book_new();
 
-    const columnsToDisplay2 = [
-      "product_name",
-      "quantity",
-      "asp",
-      "product_sales",
-      "net_sales",
-      "cost_of_unit_sold",
-      "amazon_fee",
-      "selling_fees",
-      "fba_fees",
-      "net_credits",
-      "net_taxes",
-      "profit",
-      "profit_percentage",
-      "unit_wise_profitability",
-    ] as const;
+    const excelCols = buildExcelColumnsFromUI(); // [{ key, label }]
+    const colKeys = excelCols.map((c) => c.key);
 
-    const percentageSummaryLabels = [
-      "CM2 Margins",
-      "TACoS (Total Advertising Cost of Sale)",
-      "Reimbursement vs CM2 Margins",
-      "Reimbursement vs Sales",
-    ];
+    // ✅ CHANGE THIS to shift summary values to a different column
+    // Example options: "net_taxes", "net_sales", "profit", "amazon_fee", etc.
+    const SUMMARY_VALUE_KEY: string = "profit"; // <-- CHANGE HERE
 
-    const tableDataForExcel = tableData.map((row) => {
-      const rowData: Record<string, string | number> = {};
+    // helper: force ALL rows to have ALL columns (prevents shifting)
+    const rowWithAllCols = (overrides: Record<string, any> = {}) => {
+      const base: Record<string, any> = {};
+      colKeys.forEach((k) => (base[k] = ""));
+      return { ...base, ...overrides };
+    };
 
-      columnsToDisplay2.forEach((column) => {
-        let value: any =
-          column === "product_sales"
-            ? (row.product_sales ?? (row as any).gross_sales ?? 0)
-            : column === "quantity"
-              ? (row.quantity ?? row.units_sold ?? 0)
+    // Header row from UI labels
+    const headerRow = rowWithAllCols();
+    excelCols.forEach((c) => {
+      headerRow[c.key] = c.label;
+    });
 
-              : (row as any)[column];
+    // Build data rows (same mapping rules as your UI)
+    const tableDataForExcel = tableData.map((row, rowIndex) => {
+      const rowData = rowWithAllCols();
 
-        if (column === "product_name") value = getDisplayProductNameFromRow(row);
+      colKeys.forEach((key) => {
+        let value: any = (row as any)[key];
 
-        if (typeof value === "number") {
-          if (Math.abs(value) < 1e-10) value = 0;
-          if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
+        // ✅ SNO: integer, blank for Total row
+        if (key === "sno") {
+          const name = getDisplayProductNameFromRow(row);
+          const isTotal = String(name).trim().toLowerCase() === "total";
+          value = isTotal ? "" : rowIndex + 1;
         }
 
-        if (column === "asp" && typeof value === "number") value = Number(value.toFixed(2));
-        if (column === "unit_wise_profitability" && typeof value === "number") value = Number(value.toFixed(2));
-        if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+        // Product name matches UI fallback
+        if (key === "product_name") value = getDisplayProductNameFromRow(row);
 
-        rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
+        // gross_sales -> product_sales mapping
+        if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+
+        // other_transactions mapping
+        if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+
+        // quantity meaning units_sold (if present in col list)
+        if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+
+        // Pre-rounding
+        if (typeof value === "number") {
+          if (Math.abs(value) < 1e-10) value = 0;
+
+          // integer-only fields
+          if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
+            value = Math.trunc(value);
+          } else {
+            value = Number(value.toFixed(2));
+          }
+        }
+
+        // profit_percentage stored as fraction for excel %
+        if (key === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
+
+        rowData[key] = typeof value === "number" && isNaN(value) ? "-" : value;
       });
 
       return rowData;
     });
 
-    const summaryRows: Record<string, string | number>[] = [
-      { [columnsToDisplay2[0]]: "Cost of Advertisement", [columnsToDisplay2[10]]: Math.abs(Number(totals.advertising_total)) },
+    const extraRows = getExtraRows();
 
-      { [columnsToDisplay2[0]]: "Visibility - Ads (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.visible_ads)) },
-      { [columnsToDisplay2[0]]: "Visibility - Deals, Vouchers and Reviews (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.dealsvouchar_ads)) },
+    const summaryRows = [
+      rowWithAllCols({
+        product_name: "Cost of Advertisement",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.advertising_total || 0)),
+      }),
+      rowWithAllCols({
+        product_name: "Visibility - Ads (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.visible_ads || 0)),
+      }),
+      rowWithAllCols({
+        product_name: "Visibility - Deals, Vouchers and Reviews (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.dealsvouchar_ads || 0)),
+      }),
 
       ...(countryName === "us" || countryName === "global"
         ? [
-          {
-            [columnsToDisplay2[0]]: "Shipment Charges (-)",
-            [columnsToDisplay2[10]]: Math.abs(Number(totals.shipment_charges)),
-          },
+          rowWithAllCols({
+            product_name: "Shipment Charges (-)",
+            [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.shipment_charges || 0)),
+          }),
         ]
         : []),
 
-      { [columnsToDisplay2[0]]: "Other Transactions (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.other_transactions)) },
-      { [columnsToDisplay2[0]]: "Platform Fees (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.platform_fee)) },
-      { [columnsToDisplay2[0]]: "Inventory Storage Fees (-)", [columnsToDisplay2[10]]: Math.abs(Number(totals.inventory_storage_fees)) },
+      rowWithAllCols({
+        product_name: "Other Transactions (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.other_transactions || 0)),
+      }),
+      rowWithAllCols({
+        product_name: "Platform Fees (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.platform_fee || 0)),
+      }),
+      rowWithAllCols({
+        product_name: "Inventory Storage Fees (-)",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.inventory_storage_fees || 0)),
+      }),
 
-      { [columnsToDisplay2[0]]: "CM2 Profit/Loss", [columnsToDisplay2[10]]: Number(totals.cm2_profit) },
-      { [columnsToDisplay2[0]]: "CM2 Margins", [columnsToDisplay2[10]]: Number(totals.cm2_margins) / 100 },
-      { [columnsToDisplay2[0]]: "TACoS (Total Advertising Cost of Sale)", [columnsToDisplay2[10]]: Number(totals.acos) / 100 },
+      rowWithAllCols({
+        product_name: "Reimbursement for lost Inventory",
+        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.lost_total || 0)),
+      }),
 
-      { [columnsToDisplay2[0]]: "Net Reimbursement during the month", [columnsToDisplay2[10]]: Math.abs(Number(totals.reimbursement_lost_inventory_amount)) },
-      { [columnsToDisplay2[0]]: "Reimbursement vs CM2 Margins", [columnsToDisplay2[10]]: Number(totals.rembursment_vs_cm2_margins) / 100 },
-      { [columnsToDisplay2[0]]: "Reimbursement vs Sales", [columnsToDisplay2[10]]: Number(totals.reimbursement_vs_sales) / 100 },
+      rowWithAllCols({
+        product_name: "CM2 Profit/Loss",
+        [SUMMARY_VALUE_KEY]: Number(totals.cm2_profit || 0),
+      }),
+      rowWithAllCols({
+        product_name: "CM2 Margins",
+        [SUMMARY_VALUE_KEY]: Number(totals.cm2_margins || 0) / 100,
+      }),
+      rowWithAllCols({
+        product_name: "TACoS (Total Advertising Cost of Sale)",
+        [SUMMARY_VALUE_KEY]: Number(totals.acos || 0) / 100,
+      }),
+      rowWithAllCols({
+        product_name: "Reimbursement vs CM2 Margins",
+        [SUMMARY_VALUE_KEY]: Number(totals.rembursment_vs_cm2_margins || 0) / 100,
+      }),
+      rowWithAllCols({
+        product_name: "Reimbursement vs Sales",
+        [SUMMARY_VALUE_KEY]: Number(totals.reimbursement_vs_sales || 0) / 100,
+      }),
     ];
 
-    const headerRow = {
-      [columnsToDisplay2[0]]: "Product Name",
-      [columnsToDisplay2[1]]: "Quantity Sold",
-      [columnsToDisplay2[2]]: "ASP",
-      [columnsToDisplay2[3]]: "Gross Sales",
-      [columnsToDisplay2[4]]: "Net Sales",
-      [columnsToDisplay2[5]]: "Cost of Goods Sold",
-      [columnsToDisplay2[6]]: "Amazon Fees",
-      [columnsToDisplay2[7]]: "Selling Fees",
-      [columnsToDisplay2[8]]: "FBA fees",
-      [columnsToDisplay2[9]]: "Net Credits",
-      [columnsToDisplay2[10]]: "Net Taxes",
-      [columnsToDisplay2[11]]: "CM1 Profit",
-      [columnsToDisplay2[12]]: "CM1 Profit (%)",
-      [columnsToDisplay2[13]]: "CM1 Profit per Unit",
-    };
-
-    const signageRow = {
-      [columnsToDisplay2[2]]: "",
-      [columnsToDisplay2[3]]: "",
-      [columnsToDisplay2[4]]: "(+)",
-      [columnsToDisplay2[5]]: "(-)",
-      [columnsToDisplay2[6]]: "(-)",
-      [columnsToDisplay2[7]]: "(-)",
-      [columnsToDisplay2[8]]: "(-)",
-      [columnsToDisplay2[9]]: "(+)",
-      [columnsToDisplay2[10]]: "",
-      [columnsToDisplay2[11]]: "",
-      [columnsToDisplay2[12]]: "",
-      [columnsToDisplay2[13]]: "",
-    };
-
     const fullData = [
-      ...getExtraRows().map((row) => ({ [columnsToDisplay2[0]]: row[0] })),
-      {},
+      ...extraRows.map((row) => rowWithAllCols({ product_name: row[0] })),
+      rowWithAllCols({}), // blank line
       headerRow,
-      signageRow,
       ...tableDataForExcel,
+      rowWithAllCols({}), // blank line before summary
       ...summaryRows,
     ];
 
-    const finalWs = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
+    // ✅ Force column order (prevents shifting forever)
+    const ws = XLSX.utils.json_to_sheet(fullData, {
+      header: colKeys,
+      skipHeader: true,
+    });
 
-    if (finalWs["!ref"]) {
-      const rng = XLSX.utils.decode_range(finalWs["!ref"]);
-      for (let r = 6; r <= rng.e.r; r++) {
-        for (let c = 1; c < columnsToDisplay2.length; c++) {
-          const cellAddress = XLSX.utils.encode_cell({ r, c });
-          const colKey = columnsToDisplay2[c] as string;
+    // ---------------------------
+    // ✅ FORCE EXCEL FORMATTING (same as you already do, but now reliable)
+    // ---------------------------
+    const EXTRA_ROWS_COUNT = extraRows.length;
+    const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT; // unused but kept for clarity
+    const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;
+    const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;
 
-          if (finalWs[cellAddress] && typeof finalWs[cellAddress].v === "number") {
-            finalWs[cellAddress].t = "n";
+    const SNO_COL_INDEX = colKeys.indexOf("sno");
 
-            const rowHeaderVal = finalWs[XLSX.utils.encode_cell({ r, c: 0 })]?.v as string | undefined;
-            const isPct =
-              colKey === "profit_percentage" ||
-              (rowHeaderVal ? percentageSummaryLabels.includes(rowHeaderVal) : false);
+    if (ws["!ref"]) {
+      const rng = XLSX.utils.decode_range(ws["!ref"]);
 
-            if (isPct) finalWs[cellAddress].z = "#,##0.00%";
-            else if (colKey === "quantity") finalWs[cellAddress].z = "#,##0";
-            else finalWs[cellAddress].z = "#,##0.00";
+      // 1) Force sno to integer
+      if (SNO_COL_INDEX >= 0) {
+        for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
+          const addr = XLSX.utils.encode_cell({ r, c: SNO_COL_INDEX });
+          const cell = ws[addr];
+          if (!cell) continue;
+          if (cell.v === "" || cell.v === null || cell.v === undefined) continue;
+
+          const n = Number(cell.v);
+          if (!Number.isFinite(n)) continue;
+
+          cell.t = "n";
+          cell.v = Math.trunc(n);
+          cell.z = "0";
+        }
+      }
+
+      // 2) Apply formats to numeric cells
+      for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
+        for (let c = 0; c <= rng.e.c; c++) {
+          const addr = XLSX.utils.encode_cell({ r, c });
+          const cell = ws[addr];
+          if (!cell) continue;
+
+          const key = colKeys[c];
+          if (!key) continue;
+
+          if (key === "sno") continue;
+          if (typeof cell.v !== "number") continue;
+
+          cell.t = "n";
+
+          // percent columns
+          if (key === "profit_percentage") cell.z = "0.00%";
+
+          // ✅ if your summary column is a percent field (like cm2_margins, acos), you can optionally format it:
+          // NOTE: those rows are already stored as /100 above, so they should be percent formatted.
+          // If SUMMARY_VALUE_KEY is "net_taxes" (money), keep money formatting.
+          if (
+            addr &&
+            (key === SUMMARY_VALUE_KEY) &&
+            ["cm2_margins", "acos", "rembursment_vs_cm2_margins", "reimbursement_vs_sales"].includes(
+              String((ws[XLSX.utils.encode_cell({ r, c: 1 })]?.v ?? "")).toLowerCase()
+            )
+          ) {
+            // optional: leave as-is; most people skip this block
           }
+
+          if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
+          else cell.z = "0.00";
         }
       }
     }
 
-    XLSX.utils.book_append_sheet(wb, finalWs, "SKU Profitability");
-
-
+    XLSX.utils.book_append_sheet(wb, ws, "SKU Profitability");
 
     const filename =
       range === "monthly"
@@ -1137,14 +1523,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [
     tableData,
     totals,
+    countryName,
     getExtraRows,
     range,
     month,
     yearShort,
     quarter,
-    countryName,
     getDisplayProductNameFromRow,
+    buildExcelColumnsFromUI,
   ]);
+
 
   /* --------- Render guards --------- */
   if (loading) return <div>Loading...</div>;
@@ -1152,7 +1540,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   return (
     <>
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-1 sm:p-2">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
             {/* <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" /> */}
@@ -1162,14 +1550,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   <>
                     Monthly P&amp;L - Product Breakdown -{" "}
                     <span className="text-[#5EA68E] font-bold">
-                      {convertToAbbreviatedMonth(month)}'{String(year).slice(-2)}
+                      {convertToAbbreviatedMonth(month)}&apos;{String(year).slice(-2)}
                     </span>
                   </>
                 ) : range === "quarterly" ? (
                   <>
                     Quarterly P&amp;L - Product Breakdown -{" "}
                     <span className="text-[#5EA68E] font-bold">
-                      {quarter}'{String(year).slice(-2)}
+                      {quarter}&apos;{String(year).slice(-2)}
                     </span>
                   </>
                 ) : (
@@ -1207,16 +1595,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 rows={tableData}
                 leftCols={LEFT_COLS}
                 groups={groups}
-                singleCols={[
-                  { key: "asp", label: "ASP", align: "center" },
-                  { key: "net_sales", label: "Net Sales", align: "center" },
-                  { key: "cost_of_unit_sold", label: "COGS", align: "center" },
-                  { key: "net_units_sold", label: "Net Units Sold", align: "center" },
-                  { key: "amazon_fee", label: "Amazon Fees", align: "center" },
-                  { key: "other_transactions", label: "Other Transactions", align: "center" },
-                  // { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
-                  { key: "profit", label: "CM1 Profit Margin", align: "center" },
-                ]}
+
+                singleCols={SINGLE_COLS}
                 layout={[
 
                   { type: "group", id: "units_breakdown" },
@@ -1241,7 +1621,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   { type: "single", key: "profit" },
                 ]}
                 initialCollapsed={{
-                  units_breakdown: true,     // ✅ group id
+                  units_breakdown: true,
                   sales: true,
                   promotions_breakdown: true,
                   amazon_breakdown: true,
@@ -1259,10 +1639,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 onVisibleColCountChange={setMainColCount}
                 showSignRowInBody
                 getSignForCol={getSignForCol}
-                getRowClassName={(_, index) => {
-                  const isLastRow = index === tableData.length - 1;
-                  return `${index % 2 === 0 ? "bg-white" : "bg-gray-50"} ${isLastRow ? "bg-gray-200 font-semibold" : ""}`;
+                getRowClassName={(row, index) => {
+                  const isTotalRow =
+                    String((row as any)?.product_name || "")
+                      .trim()
+                      .toLowerCase() === "total";
+
+                  if (isTotalRow) {
+                    return "bg-[#EFEFEF] font-semibold";
+                  }
+
+                  return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                 }}
+
                 getValue={(row, colKey, rowIndex) => {
                   const isLastRow = rowIndex === tableData.length - 1;
 
@@ -1286,350 +1675,100 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   return formatValue((row as any)[colKey], colKey);
                 }}
+                summary={{
+                  enabled: mainColCount > 0,
+
+                  sections: [
+                    {
+                      id: "ads",
+                      label: "Cost of Advertisement",
+                      endValue: formatValue(totals.advertising_total, "advertising_total"),
+                      defaultCollapsed: true,
+                      children: [
+                        {
+                          id: "ads_1",
+                          label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.visible_ads, "visible_ads"),
+                        },
+                        {
+                          id: "ads_2",
+                          label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads"),
+                        },
+                      ],
+                    },
+
+                    {
+                      id: "other",
+                      label: "Other Transactions",
+                      endValue: formatValue(totals.other_transactions, "other_transactions"),
+                      defaultCollapsed: true,
+                      children: [
+                        {
+                          id: "other_1",
+                          label: <>Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.platform_fee, "platform_fee"),
+                        },
+                        {
+                          id: "other_2",
+                          label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
+                        },
+                        {
+                          id: "other_3",
+                          label: (
+                            <>
+                              Reimbursement for lost Inventory
+                              {totals.reimbursement_lost_inventory_units
+                                ? ` - ${totals.reimbursement_lost_inventory_units} Units `
+                                : " "}
+                              <strong className="text-green-500">(+)</strong>
+                            </>
+                          ),
+                          midValue: formatValue(totals.lost_total, "lost_total"),
+                        },
+                      ],
+                    },
+                  ],
+
+                  fixedRows: [
+                    ...(countryName === "us" || countryName === "global"
+                      ? [
+                        {
+                          id: "ship",
+                          label: <>Shipment Charges <strong>(-)</strong></>,
+                          endValue: formatValue(totals.shipment_charges, "shipment_charges"),
+                        },
+                      ]
+                      : []),
+
+                    { id: "cm2_profit", label: "CM2 Profit/Loss", endValue: formatValue(totals.cm2_profit, "cm2_profit") },
+                    { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}%` },
+
+                    // ✅ TACoS first
+                    { id: "tacos", label: "TACoS (Total Advertising Cost of Sale)", endValue: `${formatValue(totals.acos, "acos")}%` },
+
+                    // ✅ then Net Reimbursement (below TACoS)
+                    {
+                      id: "net_reimb",
+                      label: "Net Reimbursement",
+                      endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+                    },
+                    {
+                      id: "rv_cm2",
+                      label: "Reimbursement vs CM2 Margins",
+                      endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%`,
+                    },
+                    {
+                      id: "rv_sales",
+                      label: "Reimbursement vs Sales",
+                      endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
+                    },
+                  ],
+
+                  valueCols: 2,
+                }}
               />
-
-              {/* Summary rows */}
-              {/* <table className="w-full table-auto border-collapse text-[#414042]">
-                <tbody>
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Cost of Advertisement <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.advertising_total, "advertising_total")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Visibility - Ads <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.visible_ads, "visible_ads")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Visibility - Deals, Vouchers and Reviews <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Other Transactions
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.other_transactions, "other_transactions")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Platform Fees <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.platform_fee, "platform_fee")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Inventory Storage Fees <strong>(-)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.inventory_storage_fees, "inventory_storage_fees")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Reimbursement for lost Inventory
-                      {totals.reimbursement_lost_inventory_units ? ` - ${totals.reimbursement_lost_inventory_units} Units ` : " "}
-                      <strong>(+)</strong>
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.lost_total, "lost_total")}
-                    </td>
-                  </tr>
-
-                  {(countryName === "us" || countryName === "global") && (
-                    <tr>
-                      <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                        Shipment Charges <strong>(-)</strong>
-                      </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                        {formatValue(totals.shipment_charges, "shipment_charges")}
-                      </td>
-                    </tr>
-                  )}
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">CM2 Profit/Loss</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.cm2_profit, "cm2_profit")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">CM2 Margins</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.cm2_margins, "cm2_margins")}%
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                      Net Reimbursement
-                    </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(Math.abs(totals.reimbursement_lost_inventory_amount), "reimbursement_lost_inventory_amount")}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">TACoS (Total Advertising Cost of Sale)</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.acos, "acos")}%
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">Reimbursement vs CM2 Margins</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">Reimbursement vs Sales</td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                      {formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%
-                    </td>
-                  </tr>
-                </tbody>
-              </table> */}
-
-              {mainColCount > 0 && (
-                <table className="w-full table-auto border-collapse text-[#414042]">
-                  <tbody>
-                    {/* ===================== Group 1: Cost of Advertisement ===================== */}
-                    <tr
-                      onClick={() => toggleSummary("ads")}
-                      role="button"
-                      className="cursor-pointer font-semibold bg-gray-50"
-                      title="Click to expand/collapse"
-                    >
-                      {/* Label spans all columns except last 2 */}
-                      <td
-                        colSpan={Math.max(mainColCount - 2, 1)}
-                        className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <span className="rounded border border-gray-400 px-1 text-xs">
-                            {summaryCollapsed.ads ? "+" : "−"}
-                          </span>
-                          Cost of Advertisement
-                        </span>
-                      </td>
-
-                      {/* Expanded column (blank on parent) */}
-                      <td className="border border-gray-300 px-2 py-2" />
-
-                      {/* ✅ Parent total ALWAYS in LAST column */}
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                        {formatValue(totals.advertising_total, "advertising_total")}
-                      </td>
-                    </tr>
-
-                    {!summaryCollapsed.ads && (
-                      <>
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
-                          >
-                            Visibility - Ads <strong>(-)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                            {formatValue(totals.visible_ads, "visible_ads")}
-                          </td>
-
-                          {/* end col blank */}
-                          <td className="border border-gray-300 px-2 py-2" />
-                        </tr>
-
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
-                          >
-                            Visibility - Deals, Vouchers and Reviews <strong>(-)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                            {formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads")}
-                          </td>
-
-                          {/* end col blank */}
-                          <td className="border border-gray-300 px-2 py-2" />
-                        </tr>
-                      </>
-                    )}
-
-                    {/* ===================== Group 2: Other Transactions ===================== */}
-                    <tr
-                      onClick={() => toggleSummary("other")}
-                      role="button"
-                      className="cursor-pointer font-semibold bg-gray-50"
-                      title="Click to expand/collapse"
-                    >
-                      <td
-                        colSpan={Math.max(mainColCount - 2, 1)}
-                        className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <span className="rounded border border-gray-400 px-1 text-xs">
-                            {summaryCollapsed.other ? "+" : "−"}
-                          </span>
-                          Other Transactions
-                        </span>
-                      </td>
-
-                      {/* Expanded column (blank on parent) */}
-                      <td className="border border-gray-300 px-2 py-2" />
-
-                      {/* ✅ Parent total ALWAYS in LAST column */}
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                        {formatValue(totals.other_transactions, "other_transactions")}
-                      </td>
-                    </tr>
-
-                    {!summaryCollapsed.other && (
-                      <>
-
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
-                          >
-                            Platform Fees <strong>(-)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                            {formatValue(totals.platform_fee, "platform_fee")}
-                          </td>
-
-                          <td className="border border-gray-300 px-2 py-2" />
-                        </tr>
-
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
-                          >
-                            Inventory Storage Fees <strong>(-)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                            {formatValue(totals.inventory_storage_fees, "inventory_storage_fees")}
-                          </td>
-
-                          <td className="border border-gray-300 px-2 py-2" />
-                        </tr>
-
-                        <tr>
-                          <td
-                            colSpan={Math.max(mainColCount - 2, 1)}
-                            className="border border-gray-300 px-2 py-2 pl-8 text-right text-[clamp(12px,0.729vw,16px)]"
-                          >
-                            Reimbursement for lost Inventory
-                            {totals.reimbursement_lost_inventory_units
-                              ? ` - ${totals.reimbursement_lost_inventory_units} Units `
-                              : " "}
-                            <strong>(+)</strong>
-                          </td>
-
-                          {/* Expanded child value stays in 2nd last column */}
-                          <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                            {formatValue(totals.lost_total, "lost_total")}
-                          </td>
-
-                          <td className="border border-gray-300 px-2 py-2" />
-                        </tr>
-                      </>
-                    )}
-
-                    {/* ===================== Non-collapsible rows (✅ value in LAST column) ===================== */}
-                    {(countryName === "us" || countryName === "global") && (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
-                        >
-                          Shipment Charges <strong>(-)</strong>
-                        </td>
-
-                        {/* blank 2nd last */}
-                        <td className="border border-gray-300 px-2 py-2" />
-
-                        {/* ✅ value in LAST */}
-                        <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-right text-[clamp(12px,0.729vw,16px)]">
-                          {formatValue(totals.shipment_charges, "shipment_charges")}
-                        </td>
-                      </tr>
-                    )}
-
-                    {[
-                      { label: "CM2 Profit/Loss", value: formatValue(totals.cm2_profit, "cm2_profit") },
-                      { label: "CM2 Margins", value: `${formatValue(totals.cm2_margins, "cm2_margins")}%` },
-                      {
-                        label: "Net Reimbursement",
-                        value: formatValue(
-                          Math.abs(totals.reimbursement_lost_inventory_amount),
-                          "reimbursement_lost_inventory_amount"
-                        ),
-                      },
-                      {
-                        label: "TACoS (Total Advertising Cost of Sale)",
-                        value: `${formatValue(totals.acos, "acos")}%`,
-                      },
-                      {
-                        label: "Reimbursement vs CM2 Margins",
-                        value: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%`,
-                      },
-                      {
-                        label: "Reimbursement vs Sales",
-                        value: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
-                      },
-                    ].map((r) => (
-                      <tr key={r.label}>
-                        <td
-                          colSpan={6}
-                          className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]"
-                        >
-                          {r.label}
-                        </td>
-
-                        <td colSpan={2} className="border border-gray-300 px-2 py-2" />
-
-                        {/* ✅ value in LAST */}
-                        <td colSpan={2} className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
-                          {r.value}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
 
 
             </div>
@@ -1638,7 +1777,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       </div>
 
       {/* Top & Bottom tables */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-1 sm:p-2">
+      <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
         <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
           {/* Top 5 */}
           <div className="flex-1 min-w-0">
@@ -1650,19 +1789,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-green-500 font-bold text-[#f8edcf]">
-                    <th className="w-[160px] whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs break-words leading-snug">
                       Product Name
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       CM1 Profit ({currencySymbol})
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Profit Mix (%)
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Sales Mix (%)
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       CM1 Profit per Unit ({currencySymbol})
                     </th>
                   </tr>
@@ -1670,40 +1809,41 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <tbody>
                   {topData.rows.map((item, index) => (
                     <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                      <td className="w-[160px] whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                        <span className="flex max-w-[220px] items-center truncate" title={item.product_name}>
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs whitespace-normal break-words align-top">
+                        <span title={item.product_name} className="block">
                           {item.product_name || "-"}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.profit}
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.profitMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.salesMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.unit_wise_profitability}
                       </td>
                     </tr>
                   ))}
 
-                  <tr className="bg-gray-200 font-semibold">
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                  <tr className="bg-[#EFEFEF] font-semibold">
+                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
                       <strong>Total</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{topData.totals.profit}</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{topData.totals.profitMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{topData.totals.salesMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong></strong>
                     </td>
                   </tr>
@@ -1722,19 +1862,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-[#B75A5A] font-bold text-[#f8edcf]">
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs break-words leading-snug">
                       Product Name
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       CM1 Profit ({currencySymbol})
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Profit Mix (%)
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       Sales Mix (%)
                     </th>
-                    <th className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
                       CM1 Profit per Unit ({currencySymbol})
                     </th>
                   </tr>
@@ -1742,40 +1882,41 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <tbody>
                   {bottomData.rows.map((item, index) => (
                     <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
-                        <span className="inline-flex max-w-[220px] items-center truncate" title={item.product_name}>
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs whitespace-normal break-words align-top">
+                        <span title={item.product_name} className="block">
                           {item.product_name || "-"}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.profit}
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.profitMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.salesMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                         {item.unit_wise_profitability}
                       </td>
                     </tr>
                   ))}
 
-                  <tr className="bg-gray-200 font-semibold">
-                    <td className="border border-gray-300 px-2 py-2 text-left text-[clamp(12px,0.729vw,16px)]">
+                  <tr className="bg-[#EFEFEF] font-semibold">
+                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
                       <strong>Total</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{bottomData.totals.profit}</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{bottomData.totals.profitMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong>{bottomData.totals.salesMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 py-2 text-center text-[clamp(12px,0.729vw,16px)]">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
                       <strong></strong>
                     </td>
                   </tr>
@@ -1800,3 +1941,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
 };
 
 export default SKUtable;
+
+
+

@@ -431,6 +431,8 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
 
     </div>
   );
-})
+});
+
+PnlForecastChart.displayName = 'PnlForecastChart';
 
 export default PnlForecastChart;

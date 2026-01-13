@@ -1141,8 +1141,8 @@ def process_skuwise_data(user_id, country, month, year):
 
         total_expense = round(
             total_amazon_fee
-            - abs(platformfeenew_total)
-            - abs(platform_fee_inventory_storage_total),
+            + abs(platformfeenew_total)
+            + abs(platform_fee_inventory_storage_total),
             2
         )
 
@@ -2036,7 +2036,7 @@ def process_skuwise_data(user_id, country, month, year):
                 total_credits_usd          = convert_value(total_row_usd.get("net_credits", 0))
                 total_tax_usd              = convert_value(total_row_usd.get("net_taxes", 0))
 
-                total_expense_usd  = total_amazon_fee_val_usd - platform_fee_val_usd
+                total_expense_usd  = total_amazon_fee_val_usd + abs(platform_fee_val_usd)
                 otherwplatform_usd = abs(platform_fee_val_usd)
                 taxncredit_usd     = total_tax_usd  + abs(total_credits_usd)
 

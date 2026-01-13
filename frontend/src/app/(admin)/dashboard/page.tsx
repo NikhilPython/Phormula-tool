@@ -44,7 +44,8 @@ import { DateRange } from "react-date-range";
 import "react-date-range/dist/styles.css";
 import "react-date-range/dist/theme/default.css";
 import { FaCalendarAlt } from "react-icons/fa";
-import MonthsforBI from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/page";
+import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/liveBusinessClient";
+
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -55,12 +56,10 @@ const baseURL =
 // const API_URL = `${baseURL}/amazon_api/orders`;
 const FIN_MTD_TX_ENDPOINT = `${baseURL}/amazon_api/finances/mtd_transactions`;
 const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
-// const FX_ENDPOINT = `${baseURL}/currency-rate`;
+// const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
-// ✅ BI endpoint (same one your graph uses)
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 
-/** 💵 FX defaults (used until backend answers) */
 const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
 const INR_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_INR_TO_USD || "0.01128");
 const CAD_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_CAD_TO_USD || "0.74");
@@ -248,7 +247,7 @@ function RangePicker({
           // fontSize: 12,
         }}
       >
-        <FaCalendarAlt className="text-sm 2xl:text-md"/>
+        <FaCalendarAlt className="text-sm 2xl:text-md" />
         {selectedStartDay && selectedEndDay
           ? `Day ${selectedStartDay} – ${selectedEndDay}`
           : "Select Date Range"}
@@ -485,100 +484,70 @@ export default function DashboardPage() {
   const [cadToUsd, setCadToUsd] = useState(CAD_TO_USD_ENV);
   const [fxLoading, setFxLoading] = useState(false);
 
-  const fetchFxRates = useCallback(async () => {
-    try {
-      setFxLoading(true);
+type CurrencyRateRow = {
+  conversion_rate: number;
+  country: string;
+  month: string;
+  selected_currency: string;
+  user_currency: string;
+  year: number;
+};
 
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      };
-      if (token) (headers as any).Authorization = `Bearer ${token}`;
+const fetchFxRates = useCallback(async () => {
+  try {
+    setFxLoading(true);
 
-      const { monthName, year } = getISTYearMonth();
-      const month = monthName.toLowerCase();
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-      const commonBody = {
-        month,
-        year,
-        fetch_if_missing: true,
-        seed_all: true,
-      };
+    const headers: HeadersInit = { Accept: "application/json" };
+    if (token) (headers as any).Authorization = `Bearer ${token}`;
 
-      const [ukRes, inrRes, cadRes] = await Promise.all([
-        fetch(FX_ENDPOINT, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            ...commonBody,
-            user_currency: "gbp",
-            country: "uk",
-            selected_currency: "usd",
-          }),
-        }),
-        fetch(FX_ENDPOINT, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            ...commonBody,
-            user_currency: "inr",
-            country: "india",
-            selected_currency: "usd",
-          }),
-        }),
-        fetch(FX_ENDPOINT, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            ...commonBody,
-            user_currency: "cad",
-            country: "ca",
-            selected_currency: "usd",
-          }),
-        }),
-      ]);
+    const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
+    if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
 
-      if (ukRes.ok) {
-        const json = await ukRes.json();
-        console.log("💱 GBP → USD FX response:", json);
+    const rows: CurrencyRateRow[] = await res.json();
 
-        const rate = json?.record?.conversion_rate;
-        if (json?.success && rate != null) {
-          setGbpToUsd(Number(rate));
-          console.log("✅ GBP → USD rate used:", Number(rate));
-        }
-      }
+    const { monthName, year } = getISTYearMonth();
+    const month = monthName.toLowerCase();
 
-      if (inrRes.ok) {
-        const json = await inrRes.json();
-        console.log("💱 INR → USD FX response:", json);
+    // current-month only
+    const cur = (rows || []).filter(
+      (r) =>
+        String(r.month || "").toLowerCase() === month &&
+        Number(r.year) === Number(year)
+    );
 
-        const rate = json?.record?.conversion_rate;
-        if (json?.success && rate != null) {
-          setInrToUsd(Number(rate));
-          console.log("✅ INR → USD rate used:", Number(rate));
-        }
-      }
+    // helper: find conversion for pair (from -> to)
+    const getRate = (from: string, to: string) => {
+      const row = cur.find(
+        (r) =>
+          String(r.user_currency).toLowerCase() === from &&
+          String(r.selected_currency).toLowerCase() === to
+      );
+      const rate = Number(row?.conversion_rate);
+      return Number.isFinite(rate) && rate > 0 ? rate : null;
+    };
 
-      if (cadRes.ok) {
-        const json = await cadRes.json();
-        console.log("💱 CAD → USD FX response:", json);
+    // ✅ set the three your code currently uses (from -> USD)
+    const gbpUsd = getRate("gbp", "usd");
+    const inrUsd = getRate("inr", "usd");
+    const cadUsd = getRate("cad", "usd");
 
-        const rate = json?.record?.conversion_rate;
-        if (json?.success && rate != null) {
-          setCadToUsd(Number(rate));
-          console.log("✅ CAD → USD rate used:", Number(rate));
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch FX rates", err);
-    } finally {
-      setFxLoading(false);
-    }
-  }, []);
+    if (gbpUsd != null) setGbpToUsd(gbpUsd);
+    if (inrUsd != null) setInrToUsd(inrUsd);
+    if (cadUsd != null) setCadToUsd(cadUsd);
+
+    console.log("✅ FX (current month)", { month, year, gbpUsd, inrUsd, cadUsd });
+  } catch (err) {
+    console.error("Failed to fetch FX from DB, keeping env defaults", err);
+  } finally {
+    setFxLoading(false);
+  }
+}, []);
+
 
   useEffect(() => {
     console.log("📊 FINAL FX RATES IN USE", {
@@ -1759,10 +1728,9 @@ export default function DashboardPage() {
     COGS: "#FDD36F",
     Advertisements: "#C49466",
     "Tax & Credits": "#ED9F50",
-    // "Other Charges": "#00627D",
     Others: "#3A8EA4",
-    "CM1 Profit": "#87AD12",
-    "CM2 Profit": "#7B9A6D",
+    "CM1 Profit": "#7B9A6D",
+    "CM2 Profit": "#B8C78C",
 
   };
 
@@ -2144,9 +2112,22 @@ export default function DashboardPage() {
       ? ((stats_mtdHome - stats_lastMtdHome) / stats_lastMtdHome) * 100
       : 0;
 
+  const getDaysInMonthIST = () => {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    return new Date(ist.getFullYear(), ist.getMonth() + 1, 0).getDate(); // 28..31
+  };
+
+  const todayIST = getDayOfMonthIST();        // D
+  const daysInMonthIST = getDaysInMonthIST(); // N
+
+  const proratedTargetToDate = (daysInMonthIST > 0)
+    ? (todayIST / daysInMonthIST) * stats_targetHome  // x
+    : 0;
+
   const stats_targetTrendPct =
-    stats_lastMonthTotalHome > 0
-      ? ((stats_targetHome - stats_lastMonthTotalHome) / stats_lastMonthTotalHome) * 100
+    stats_targetHome > 0
+      ? ((proratedTargetToDate - stats_mtdHome) / stats_targetHome) * 100
       : 0;
 
   return (
@@ -2289,10 +2270,9 @@ export default function DashboardPage() {
                       loading={loading || shopifyLoading || biLoading}
                       formatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
-                      className="border-[#FF5C5C] bg-[#FF5C5C26]"
+                      className="border-[#B75A5A] bg-[#B75A5A4D]"
                     />
 
-                    {/* ✅ GLOBAL: Cost of Ads (uses BI totals when rangeActive) */}
                     <AmazonStatCard
                       label="Cost of Ads"
                       current={
@@ -2335,7 +2315,7 @@ export default function DashboardPage() {
                       loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
                       formatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
-                      className="border-[#A78BFA] bg-[#A78BFA26]"
+                      className="border-[#C49466] bg-[#C494664D]"
                     />
 
                     <AmazonStatCard
@@ -2384,7 +2364,7 @@ export default function DashboardPage() {
                       loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
                       formatter={fmtPct2}
                       bottomLabel={prevLabel}
-                      className="border-[#10B981] bg-[#10B98126]"
+                      className="border-[#3A8EA4] bg-[#3A8EA44D]"
                     />
 
 
@@ -2418,7 +2398,7 @@ export default function DashboardPage() {
                       loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
                       formatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
-                      className="border-[#2DA49A] bg-[#2DA49A26]"
+                      className="border-[#B8C78C] bg-[#B8C78C4D]"
                     />
 
 
@@ -2460,14 +2440,21 @@ export default function DashboardPage() {
 
             {/* AMAZON SECTION */}
             {hasAmazonCard && (
-              <div className="flex flex-col lg:flex-1 gap-4">
+              <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-6">
                 {/* Amazon KPI Box */}
                 <div className="w-full rounded-2xl border bg-white p-3 2xl:p-5 shadow-sm">
                   <div className="mb-3 lg:mb-2 2xl:mb-4 flex flex-row gap-3 items-start md:items-start md:justify-between">
                     <div className="flex flex-col flex-1 min-w-0">
                       <div className="flex flex-wrap items-baseline gap-2">
                         <PageBreadcrumb pageTitle="Amazon" variant="page" align="left" />
+
+                        {countryName !== "global" && (
+                          <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                            {countryName.toUpperCase()}
+                          </span>
+                        )}
                       </div>
+
 
                     </div>
 
@@ -2567,7 +2554,7 @@ export default function DashboardPage() {
                       loading={loading || biLoading}
                       formatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
-                      className="border-[#FF5C5C] bg-[#FF5C5C26]"
+                      className="border-[#B75A5A] bg-[#B75A5A4D]"
                     />
 
                     <AmazonStatCard
@@ -2611,7 +2598,7 @@ export default function DashboardPage() {
                       loading={loading || (useBiForAmazonCards ? biLoading : false)}
                       formatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
-                      className="border-[#A78BFA] bg-[#A78BFA26]"
+                      className="border-[#C49466] bg-[#C494664D]"
                     />
 
                     <AmazonStatCard
@@ -2660,7 +2647,7 @@ export default function DashboardPage() {
                       loading={loading || (useBiForAmazonCards ? biLoading : false)}
                       formatter={fmtPct2}
                       bottomLabel={prevLabel}
-                      className="border-[#10B981] bg-[#10B98126]"
+                      className="border-[#3A8EA4] bg-[#3A8EA44D]"
                     />
 
 
@@ -2694,7 +2681,7 @@ export default function DashboardPage() {
                       loading={loading || (useBiCm2 ? biLoading : false)}
                       formatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
-                      className="border-[#2DA49A] bg-[#2DA49A26]"
+                      className="border-[#B8C78C] bg-[#B8C78C4D]"
                     />
 
                     <AmazonStatCard
@@ -2820,7 +2807,7 @@ export default function DashboardPage() {
                         loading={shopifyLoading}
                         formatter={formatDisplayAmount}
                         bottomLabel={prevLabel}
-                        className="border-[#FF5C5C] bg-[#FF5C5C26]"
+                        className="border-[#B75A5A] bg-[#B75A5A4D]"
                       />
                     </div>
                   ) : (
@@ -2851,17 +2838,14 @@ export default function DashboardPage() {
                 targetTrendPct={stats_targetTrendPct}
                 currentReimbursement={reimbursementHome.current}
                 previousReimbursement={reimbursementHome.previous}
-                targetHome={stats_targetHome}
               />
             </div>
 
             <div className="w-full lg:sticky lg:top-4 2xl:top-6">
               <SalesTargetCard
                 data={targetData}
-                regions={regions}
-                value={targetRegion}
-                onChange={setTargetRegion}
-                hideTabs={isCountryMode}
+                // onChange={setTargetRegion}
+                // hideTabs={isCountryMode}
                 homeCurrency={displayCurrency}
                 convertToHomeCurrency={identityConvert}
                 formatHomeK={formatDisplayK}
@@ -2905,7 +2889,7 @@ export default function DashboardPage() {
         <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
           {showLiveBI && (
             <div className="w-full max-w-full min-w-0">
-              <MonthsforBI
+              <LiveBusinessClient
                 countryName={countryName}
                 ranged="MTD"
                 month={currMonthName.toLowerCase()}
@@ -2927,14 +2911,22 @@ export default function DashboardPage() {
             >
 
               <div className="mb-3 flex items-center justify-between">
-                <div className="text-sm text-gray-500">
-                  <PageBreadcrumb
-                    pageTitle="Amazon"
-                    align="left"
-                    textSize="2xl"
-                    variant="page"
-                  />
+                <div className="text-sm text-charcoal-500">
+                  <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
+                    <PageBreadcrumb
+                      pageTitle="MTD P&L - Amazon"
+                      align="left"
+                      textSize="2xl"
+                      variant="page"
+                    />
+
+                    <span className="text-green-500 ">  {countryName.toUpperCase()}</span>
+                    <span className="text-charcoal-500 "> -</span>
+
+                    <span className=" text-green-500">  {formattedMonthYear}</span>
+                  </div>
                 </div>
+
 
                 {!isCountryMode && (
                   <div className="flex items-center gap-3">

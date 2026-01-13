@@ -2,8 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import AmazonConnect from './AmazonConnect'; // Adjust path as needed
-import ShopifyConnect from './ShopifyConnect'; // Adjust path as needed
+import AmazonConnect from '../../features/integration/AmazonConnect'; // Adjust path as needed
 
 interface ConnectModalProps {
   isOpen: boolean;
@@ -190,7 +189,7 @@ const ConnectModal: React.FC<ConnectModalProps> = ({ isOpen, onClose }) => {
         ) : selectedPlatform === 'amazon' ? (
           <AmazonConnect onClose={handleClose} />
         ) : (
-          <ShopifyConnect onClose={handleClose} />
+          ""
         )}
       </div>
     </div>

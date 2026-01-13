@@ -390,7 +390,7 @@ function convertPlainTextToMarkdown(text: string): string {
           Hi <i>{userData?.company_name?.split(' ')[0] || 'User'}!</i>
         </h1>
         <p style={{ fontFamily: "Lato, sans-serif" }} className="2xl:text-sm text-xs  mt-1 ">
-        I'm your Analytics Assistant, here to help you understand your business data, generate insights, and make informed decisions. What would you like to explore today?
+        I&apos;m your Analytics Assistant, here to help you understand your business data, generate insights, and make informed decisions. What would you like to explore today?
         </p>
       </div>
 

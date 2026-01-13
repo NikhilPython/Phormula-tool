@@ -205,11 +205,62 @@ const CircleChart: React.FC<CircleChartProps> = ({
   }, [month, year, range, selectedQuarter, countryName, normalizedHomeCurrency]);
 
   // Build chart data from summary
+  // useEffect(() => {
+  //   if (!uploadsData?.summary) {
+  //     setChartData(null);
+  //     return;
+  //   }
+  //   const s = uploadsData.summary;
+
+  //   const labels = [
+  //     "COGS",
+  //     "Amazon Fees",
+  //     "Taxes & Credits",
+  //     "Advertisement Cost",
+  //     "Other Expense",
+  //     "CM2 Profit",
+  //   ];
+
+  //   const values = [
+  //     Math.abs(s.total_cous || 0),
+  //     Math.abs(s.total_amazon_fee || 0),
+  //     Math.abs(s.taxncredit || 0),
+  //     Math.abs(s.advertising_total || 0),
+  //     Math.abs(s.otherwplatform || 0),
+  //     Math.abs(s.cm2_profit || 0),
+  //   ];
+
+  //   const colors = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
+
+  //   const next: ChartData<"pie", number[], string> = {
+  //     labels,
+  //     datasets: [
+  //       {
+  //         data: values,
+  //         backgroundColor: colors,
+
+  //         // ✅ IMPORTANT: no borders (borders are causing that white wedge)
+  //         borderWidth: 0,
+  //         borderColor: "transparent",
+
+  //         spacing: 0,
+  //         hoverOffset: 0,
+  //         offset: 0,
+  //       },
+  //     ],
+  //   };
+
+
+  //   setChartData(next);
+  // }, [uploadsData]);
+
+  // Build chart data from summary (DESC order)
   useEffect(() => {
     if (!uploadsData?.summary) {
       setChartData(null);
       return;
     }
+
     const s = uploadsData.summary;
 
     const labels = [
@@ -230,19 +281,32 @@ const CircleChart: React.FC<CircleChartProps> = ({
       Math.abs(s.cm2_profit || 0),
     ];
 
-    const colors = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
+    const colors = [
+      "#FDD36F",
+      "#B75A5A",
+      "#ED9F50",
+      "#C49466",
+      "#3A8EA4",
+      "#B8C78C",
+    ];
+
+    // ✅ sort label/value/color together by value DESC
+    const sorted = labels
+      .map((label, i) => ({
+        label,
+        value: values[i] ?? 0,
+        color: colors[i] ?? "#999999",
+      }))
+      .sort((a, b) => b.value - a.value);
 
     const next: ChartData<"pie", number[], string> = {
-      labels,
+      labels: sorted.map((x) => x.label),
       datasets: [
         {
-          data: values,
-          backgroundColor: colors,
-
-          // ✅ IMPORTANT: no borders (borders are causing that white wedge)
+          data: sorted.map((x) => x.value),
+          backgroundColor: sorted.map((x) => x.color),
           borderWidth: 0,
           borderColor: "transparent",
-
           spacing: 0,
           hoverOffset: 0,
           offset: 0,
@@ -250,9 +314,9 @@ const CircleChart: React.FC<CircleChartProps> = ({
       ],
     };
 
-
     setChartData(next);
   }, [uploadsData]);
+
 
   // Fallback dummy data when all zeros
   useEffect(() => {
@@ -384,7 +448,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
 
 
   return (
-    <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+    <div className="relative w-full rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
       {/* Heading */}
       <div className="mb-4">
         <div className="w-fit mx-auto md:mx-0">

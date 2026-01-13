@@ -250,6 +250,7 @@ const extractBullets = (md: string | null | undefined): string[] => {
     .map((l) => l.replace(/^-\s+/, "").trim())
     .filter(Boolean);
 };
+<<<<<<< HEAD
 // 👇👇 ADD IT RIGHT HERE
 const renderMarkdownInline = (text: string) => {
   // convert **bold** → <strong>
@@ -257,6 +258,13 @@ const renderMarkdownInline = (text: string) => {
   return { __html: html };
 };
 // 👆👆 END
+=======
+const renderMarkdownInline = (text: string) => {
+  // convert **bold** → <strong>
+  const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
+  return { __html: html };
+};
+>>>>>>> origin
 // Pull only bullets under "## SUMMARY" section if present; otherwise fallback to all bullets
 // --- NEW: split markdown into sections by "## " headings
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
@@ -329,10 +337,16 @@ const Section = ({
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-charcoal-600">
+      {/* <h3 className="text-sm font-semibold text-charcoal-600">
         {title}
-      </h3>
-      <ul className="list-disc pl-4 space-y-1 text-sm text-charcoal-500">
+      </h3> */}
+      <PageBreadcrumb
+        pageTitle={title}
+        variant="page"
+        align="left"
+        textSize="2xl"
+      />
+      <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-500">
         {bullets.map((b, i) => (
           <li
             key={i}
@@ -1001,7 +1015,33 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     ws: ExcelJS.Worksheet,
     model: NonNullable<SkuExportPayload["sheetModel"]>
   ) => {
+<<<<<<< HEAD
     const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
+=======
+    // const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
+
+    const {
+      columns: originalColumns,
+      extraRows,
+      headerRow,
+      signRow,
+      rows,
+      summaryRows,
+      formats,
+    } = model;
+
+    // ❌ columns to REMOVE from Excel
+    const EXCEL_EXCLUDED_COLUMNS = new Set([
+      "amazon_fee",
+      "other_transactions",
+    ]);
+
+    // ✅ final columns used ONLY for excel
+    const columns = originalColumns.filter(
+      (col) => !EXCEL_EXCLUDED_COLUMNS.has(col)
+    );
+
+>>>>>>> origin
 
     const colIndex: Record<string, number> = {};
     columns.forEach((k, i) => (colIndex[k] = i + 1)); // 1-based for ExcelJS
@@ -1015,8 +1055,57 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
 
     // ---- meta rows (in column A)
+<<<<<<< HEAD
     for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
     ws.addRow([""]); // spacer
+=======
+    // for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
+    // ws.addRow([""]); 
+
+    // ---- CUSTOM META / TOP SECTION ----
+
+    // column index where CM1 Profit Margin exists
+    const PROFIT_COL_INDEX = colIndex["profit"] || columns.length;
+
+    // 1️⃣ Title on top
+    ws.addRow(["Profit Breakup (SKU Level)"]);
+    // ws.addRow([""]); 
+
+    const capitalizeWords = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+
+    const brandName = capitalizeWords(
+      (extraRows?.[0]?.[0] || "").toString()
+    );
+
+    const companyName = capitalizeWords(
+      (extraRows?.[1]?.[0] || "").toString()
+    );
+
+
+    const companyBrandRow = new Array(columns.length).fill("");
+
+    // LEFT → COMPANY NAME
+    companyBrandRow[0] = `Company Name : ${companyName}`;
+
+    // RIGHT → BRAND NAME (above CM1 Profit Margin)
+    companyBrandRow[PROFIT_COL_INDEX - 1] = `Brand Name : ${brandName}`;
+
+    const cbRow = ws.addRow(companyBrandRow);
+    cbRow.font = { bold: false };
+
+    // ws.addRow([""]);
+
+    // 3️⃣ Currency / Country / Platform
+    for (let i = 3; i < (extraRows?.length || 0); i++) {
+      ws.addRow([extraRows?.[i]?.[0] ?? ""]);
+    }
+
+    ws.addRow([""]); 
+
+>>>>>>> origin
 
     // ---- header row
     ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
@@ -1029,6 +1118,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
     }
 
+<<<<<<< HEAD
     // spacer between table and summary
     ws.addRow([""]);
 
@@ -1046,12 +1136,82 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
 
     // ---- formatting by column key
+=======
+    ws.addRow([""]);
+
+    const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
+    const valueKey =
+      columns.includes("profit") ? "profit"
+        : columns.includes("net_taxes") ? "net_taxes"
+          : columns[columns.length - 1];
+
+    // ✅ percent-only summary labels
+    const PERCENT_SUMMARY_LABELS = new Set([
+      "CM2 Margins",
+      "TACoS (Total Advertising Cost of Sale)",
+      "Reimbursement vs CM2 Margins",
+      "Reimbursement vs Sales",
+    ]);
+
+    // ✅ rows that should keep title but BLANK value (because breakdown rows exist below)
+    const SUMMARY_NO_VALUE_LABELS = new Set([
+      "Cost of Advertisement",
+      "Other Transactions (-)",
+      "Other Transactions",
+    ]);
+
+    // ✅ store row numbers to re-apply % after column formatting
+    const percentSummaryRowNumbers: number[] = [];
+
+    // ---- summary rows (ONLY ONCE)
+    for (const sr of summaryRows || []) {
+      let label = String((sr as any)?.[labelKey] ?? "").trim();
+      let value: any = (sr as any)?.[valueKey] ?? "";
+
+      // ✅ add "(+)" prefix for reimbursement row label
+      if (label === "Reimbursement for lost Inventory") {
+        label = "Reimbursement for lost Inventory (+)";
+      }
+
+      // ✅ clean label for matching rules (so "(+)" doesn't break your sets)
+      const cleanLabel = label.replace(/^\(\+\)\s*/i, "").trim();
+
+      const isPercentRow = PERCENT_SUMMARY_LABELS.has(cleanLabel);
+
+      // ✅ UI gives percent-number like 27.37 -> Excel needs 0.2737
+      if (isPercentRow && typeof value === "number") {
+        value = value / 100;
+      }
+
+      // ✅ remove value ONLY for these parent rows (title stays)
+      if (SUMMARY_NO_VALUE_LABELS.has(cleanLabel)) {
+        value = "";
+      }
+
+      const line = new Array(columns.length).fill("");
+      line[colIndex[labelKey] - 1] = label;
+      line[colIndex[valueKey] - 1] = value;
+
+      const excelRow = ws.addRow(line);
+
+      if ((sr as any).__bold) {
+        excelRow.font = { bold: true };
+      }
+
+      if (isPercentRow) {
+        percentSummaryRowNumbers.push(excelRow.number);
+      }
+    }
+
+    // ---- formatting by column key (may overwrite numFmt)
+>>>>>>> origin
     for (const k of columns) {
       const idx = colIndex[k];
       const nf = fmtFor(k);
       if (nf) ws.getColumn(idx).numFmt = nf;
     }
 
+<<<<<<< HEAD
     // ---- make header bold
     const headerRowNumber = (extraRows?.length ?? 0) + 2; // meta + blank spacer => header sits here
     ws.getRow(headerRowNumber).font = { bold: true };
@@ -1060,6 +1220,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     ws.getRow(headerRowNumber + 1).font = { italic: true };
   };
 
+=======
+    // ✅ re-apply percent formatting AFTER column formats
+    for (const r of percentSummaryRowNumbers) {
+      ws.getRow(r).getCell(colIndex[valueKey]).numFmt = "0.00%";
+      // or "#,##0.00%" if you want comma-grouping for huge % like 1835.09%
+    }
+
+    // ---- make header bold
+    const headerRowNumber = (extraRows?.length ?? 0) + 2;
+    ws.getRow(headerRowNumber).font = { bold: true };
+
+    // ---- sign row italic
+    ws.getRow(headerRowNumber + 1).font = { italic: true };
+  };
+>>>>>>> origin
 
   const handleDownloadProfitabilityBundle = async () => {
     try {
@@ -1213,12 +1388,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
       const buffer = await wb.xlsx.writeBuffer();
+      const periodLabel = getPeriodLabelShort(); // Jan'25 / Q4'25 / 2025
+      const fileName = `P&L - Product Breakdown - ${periodLabel || String(selectedYear)}.xlsx`;
+
       saveAs(
         new Blob([buffer], {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }),
-        "Profitability_Bundle.xlsx"
+        fileName
       );
+
     } catch (e) {
       console.error("Combined export failed:", e);
     }
@@ -1235,6 +1414,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setAllDropdownsSelected(false);
     }
   }, [range, selectedMonth, selectedQuarter, selectedYear]);
+
+  useEffect(() => {
+    if (!allDropdownsSelected) return;
+
+    if (typeof window === "undefined") return;
+
+    if (window.location.hash === "#business-summary") {
+      requestAnimationFrame(() => {
+        const el = document.getElementById("business-summary");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [allDropdownsSelected]);
+
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1910,97 +2103,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       </div>
 
-
-      {/* {allDropdownsSelected && (
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-baseline gap-2">
-            <PageBreadcrumb
-              pageTitle="P&L - Amazon"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
-
-            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              {getPnLTitleParts().country}
-            </span>
-
-            {getPnLTitleParts().period ? (
-              <>
-                <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().period}
-                </span>
-              </>
-            ) : null}
-          </div>
-
-          <DownloadIconButton
-            onClick={handleDownloadProfitabilityBundle}
-            disabled={
-              !chartExportApi ||
-              !skuExportPayload ||
-              !expenseBreakdownPieBase64 ||
-              !productWiseCm1PieBase64
-            }
-          />
-        </div>
-      )} */}
-
-
-      {/* {allDropdownsSelected && range === "yearly" && selectedYear && (
-        <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
-
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-baseline gap-2">
-              <PageBreadcrumb
-                pageTitle="P&L - Amazon"
-                variant="page"
-                align="left"
-                textSize="2xl"
-              />
-
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                {getPnLTitleParts().country}
-              </span>
-
-              <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                {getPnLTitleParts().period}
-              </span>
-            </div>
-
-            <DownloadIconButton
-              onClick={handleDownloadProfitabilityBundle}
-              disabled={
-                !chartExportApi ||
-                !skuExportPayload ||
-                !expenseBreakdownPieBase64 ||
-                !productWiseCm1PieBase64
-              }
-            />
-          </div>
-
-        
-
-          <GraphPage
-            range={range}
-            selectedYear={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportApiReady={setChartExportApi}
-            onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-          />
-        </div>
-      )} */}
-
-
       {/* Charts & Tables */}
       {range === "monthly" && selectedMonth && selectedYear && (
         <>
-          <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
             {/* Heading INSIDE border */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
@@ -2050,14 +2156,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
           {allDropdownsSelected && (
-            <AiSingleInsightCard
-              loading={aiPanelLoading}
-              error={aiPanelError}
-              summaryBullets={aiPanel?.summaryBullets ?? []}
-              recommendationBullets={aiPanel?.recommendationBullets ?? []}
-              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-              inventoryBullets={aiPanel?.inventoryBullets ?? []}
-            />
+            <div id="business-summary" className="scroll-mt-[80px]">
+              <AiSingleInsightCard
+                loading={aiPanelLoading}
+                error={aiPanelError}
+                summaryBullets={aiPanel?.summaryBullets ?? []}
+                recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              />
+            </div>
           )}
 
           <div className="flex flex-wrap justify-between gap-6 md:gap-4 mb-4">
@@ -2096,7 +2204,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
         <>
-          <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
             {/* Heading INSIDE border */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
@@ -2147,14 +2255,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
           {allDropdownsSelected && (
-            <AiSingleInsightCard
-              loading={aiPanelLoading}
-              error={aiPanelError}
-              summaryBullets={aiPanel?.summaryBullets ?? []}
-              recommendationBullets={aiPanel?.recommendationBullets ?? []}
-              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-              inventoryBullets={aiPanel?.inventoryBullets ?? []}
-            />
+            <div id="business-summary" className="scroll-mt-[80px]">
+              <AiSingleInsightCard
+                loading={aiPanelLoading}
+                error={aiPanelError}
+                summaryBullets={aiPanel?.summaryBullets ?? []}
+                recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              />
+            </div>
           )}
 
           <div className="flex flex-wrap justify-between gap-6 md:gap-4">
@@ -2194,7 +2304,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       {allDropdownsSelected && range === "yearly" && selectedYear && (
         <>
           {/* Graph + header card */}
-          <div className="w-full rounded-xl border border-gray-300 bg-white p-4 sm:p-5 space-y-4">
+          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
                 <PageBreadcrumb
@@ -2239,17 +2349,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
           {allDropdownsSelected && (
-            <AiSingleInsightCard
-              loading={aiPanelLoading}
-              error={aiPanelError}
-              summaryBullets={aiPanel?.summaryBullets ?? []}
-              recommendationBullets={aiPanel?.recommendationBullets ?? []}
-              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-              inventoryBullets={aiPanel?.inventoryBullets ?? []}
-            />
+            <div id="business-summary" className="scroll-mt-[80px]">
+              <AiSingleInsightCard
+                loading={aiPanelLoading}
+                error={aiPanelError}
+                summaryBullets={aiPanel?.summaryBullets ?? []}
+                recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              />
+            </div>
           )}
 
-          {/* ✅ Pie charts (needed for download button + yearly UI parity) */}
           <div className="flex flex-wrap justify-between gap-6 md:gap-4">
             <div className="flex-1 min-w-[300px]">
               <CircleChart
@@ -2272,7 +2383,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           </div>
 
-          {/* ✅ SKU table (needed for yearly UI + skuExportPayload) */}
           <SKUtable
             range={range}
             year={selectedYear}
@@ -2283,55 +2393,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           />
         </>
       )}
-
-
-      {/* {range === "yearly" && selectedYear && (
-        <>
-          <GraphPage
-            range={range}
-            selectedYear={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportApiReady={setChartExportApi}
-            onNoDataChange={(noData) => {
-              console.log("🔥 [Yearly] GraphPage → onNoDataChange:", noData);
-              setShowNoDataOverlay(noData);
-            }}
-          />
-
-          {renderAiPanel()}
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <CircleChart
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setExpenseBreakdownPieBase64}
-              />
-            </div>
-            <div className="flex-1 min-w-[300px]">
-              <CMchartofsku
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setProductWiseCm1PieBase64}
-              />
-            </div>
-          </div>
-          <SKUtable
-            range={range}
-            year={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportPayloadChange={setSkuExportPayload}
-          />
-
-        </>
-      )} */}
 
       {showNoDataOverlay && (
         <div

@@ -341,8 +341,8 @@ def process_global_monthly_skuwise_data(user_id, country, year, month):
                 # total_expense = total_amazon_fee - (subscription + storage)  (same logic you had)
                 total_expense_val = round(
                     total_amazon_fee_val
-                    - abs(platformfeenew_total)
-                    - abs(platform_fee_inventory_storage_total),
+                    + abs(platformfeenew_total)
+                    + abs(platform_fee_inventory_storage_total),
                     2
                 )
                 otherwplatform_val = abs(platform_fee_val)

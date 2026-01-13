@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import UniqueConstraint, Index
 from sqlalchemy import Numeric
-
+from sqlalchemy import JSON
 
 # ------------------------------------------------- SuperAdmin Models -------------------------------------------------
 
@@ -61,8 +61,8 @@ class User(db.Model):
     is_google_user = db.Column(db.Boolean, default=False)
     is_verified = db.Column(db.Boolean, default=False)
     homeCurrency = db.Column(db.String(50), nullable=True)
-    tax_id = db.Column(db.String(100), nullable=True)
-    address = db.Column(db.Text, nullable=True)
+    tax_id = db.Column(JSON, nullable=True)
+    address = db.Column(JSON, nullable=True)
     token_name = db.Column(db.String(50), unique=True, nullable=False, index=True)  # Uncommented this line
 
 
