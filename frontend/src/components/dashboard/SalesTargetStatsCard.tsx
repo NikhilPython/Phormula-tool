@@ -102,7 +102,7 @@ export default function SalesTargetStatsCard({
       </div>
 
       <div className="pt-4 flex-1">
-        <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 text-sm h-full">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 text-sm h-full">
           {[
             { title: "Today", value: formatHomeK(todayHome), helper: "\u00A0" },
             { title: "MTD Sales", value: formatHomeK(mtdHome), helper: "\u00A0" },

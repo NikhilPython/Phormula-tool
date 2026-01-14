@@ -355,14 +355,14 @@ const sliceByDayRange = (
 
 
 export default function DashboardPage() {
- const router = useRouter();
+  const router = useRouter();
 
   useEffect(() => {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
     if (!token) {
-      router.replace("/signin"); 
+      router.replace("/signin");
     }
   }, [router]);
 
@@ -1123,9 +1123,12 @@ export default function DashboardPage() {
   const safeDeltaPct = (current: number, previous: number) => {
     const c = Number(current) || 0;
     const p = Number(previous) || 0;
+
     if (!p) return null;
-    return ((c - p) / p) * 100;
+
+    return ((c - p) / Math.abs(p)) * 100;
   };
+
 
 
 
