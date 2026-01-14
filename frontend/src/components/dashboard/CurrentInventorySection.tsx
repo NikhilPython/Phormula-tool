@@ -12,7 +12,7 @@ import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { exportCurrentInventoryExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 
 const baseURL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://13.126.252.94:5000";
 
 type InventoryRow = Record<string, string | number>;
 

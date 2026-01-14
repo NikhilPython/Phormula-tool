@@ -2,14 +2,14 @@
 "use client";
 
 export const API = {
-  history: "http://127.0.0.1:5000/upload_history2",
-  tableOverview: "http://127.0.0.1:5000/upload_table",
-  tableSku: "http://127.0.0.1:5000/upload_table_sku",
+  history: `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history2`,
+  tableOverview: `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_table`,
+  tableSku: `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_table_sku`,
   charts: {
-    line: "http://127.0.0.1:5000/charts/line",
-    cm2: "http://127.0.0.1:5000/charts/cm2",
-    bar: "http://127.0.0.1:5000/charts/bar",
-    pie: "http://127.0.0.1:5000/charts/pie",
+    line: `${process.env.NEXT_PUBLIC_API_BASE_URL}/charts/line`,
+    cm2: `${process.env.NEXT_PUBLIC_API_BASE_URL}/charts/cm2`,
+    bar: `${process.env.NEXT_PUBLIC_API_BASE_URL}/charts/bar`,
+    pie: `${process.env.NEXT_PUBLIC_API_BASE_URL}/charts/pie`,
   },
 };
 

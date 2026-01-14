@@ -252,7 +252,7 @@ const urlYear = (params?.year as string) || '';
         const yearValue = date.getFullYear();
         try {
           const response = await fetch(
-            `http://127.0.0.1:5000/api/Pnlforecast/previous_months?month=${monthName}&year=${yearValue}&country=${countryName}&period_type=monthly`,
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/previous_months?month=${monthName}&year=${yearValue}&country=${countryName}&period_type=monthly`,
             {
               method: 'GET',
               headers: {
@@ -340,8 +340,8 @@ const urlYear = (params?.year as string) || '';
         const previousData = await fetchPreviousMonthsData();
         const endpoint =
           countryName.toLowerCase() === 'global'
-            ? `http://127.0.0.1:5000/api/Pnlforecast/global?month=${month}&year=${year}`
-            : `http://127.0.0.1:5000/api/Pnlforecast?country=${countryName}&month=${month}&year=${year}`;
+            ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/global?month=${month}&year=${year}`
+            : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast?country=${countryName}&month=${month}&year=${year}`;
 
         const response = await fetch(endpoint, {
           method: 'GET',
@@ -398,7 +398,7 @@ const urlYear = (params?.year as string) || '';
               const excelBlob = new Blob([excelBuffer], { type: 'application/octet-stream' });
               const formData = new FormData();
               formData.append('file', excelBlob, 'PNL_Forecast.xlsx');
-              await fetch('http://127.0.0.1:5000/api/save_pnl_forecast', {
+              await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/save_pnl_forecast`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` },
                 body: formData,
@@ -452,7 +452,7 @@ const urlYear = (params?.year as string) || '';
     formData.append('year', year);
     formData.append('country', countryName);
     try {
-      await fetch('http://127.0.0.1:5000/api/save_pnl_forecast', {
+      await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/save_pnl_forecast`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` },
         body: formData,

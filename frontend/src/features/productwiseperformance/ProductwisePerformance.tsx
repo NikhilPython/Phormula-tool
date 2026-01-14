@@ -246,7 +246,7 @@ const handleViewBusinessInsights = async () => {
       payload.product_name = identifier;
     }
 
-    const res = await fetch("http://localhost:5000/ProductwiseGrowthAI", {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwiseGrowthAI`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -525,7 +525,7 @@ const handleViewBusinessInsights = async () => {
         payload.month = selectedMonth;
       }
 
-      const res = await fetch("http://localhost:5000/ProductwisePerformance", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

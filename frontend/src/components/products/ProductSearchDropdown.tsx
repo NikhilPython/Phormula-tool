@@ -267,7 +267,7 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
       setAllLoading(true);
       setLoadError(null);
 
-      const res = await fetch("http://localhost:5000/Product_names", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/Product_names`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${authToken ?? ""}`,
@@ -306,7 +306,7 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
       setSearchLoading(true);
       try {
         const res = await fetch(
-          `http://localhost:5000/Product_search?query=${encodeURIComponent(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/Product_search?query=${encodeURIComponent(
             searchQuery
           )}`,
           {

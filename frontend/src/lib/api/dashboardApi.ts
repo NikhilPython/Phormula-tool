@@ -24,7 +24,7 @@ const buildParams = (obj: Record<string, any>) => {
 const baseUrl =
   process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") ||
   process.env.FLASK_API_ORIGIN?.replace(/\/$/, "") ||
-  "http://127.0.0.1:5000";
+  "http://13.126.252.94:5000";
 
 /** —— Types —— */
 export type Summary = {

@@ -113,7 +113,7 @@ export default function CurrentInventoryPage({ params }: PageParams) {
     setInfoMessage('');
 
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:5000';
+      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://13.126.252.94:5000';
 
       // ✅ send start_date=end_date=last day so start_date=1 never happens
       const url =

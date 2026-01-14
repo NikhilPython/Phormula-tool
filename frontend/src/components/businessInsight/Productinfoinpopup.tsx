@@ -120,7 +120,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
     setSearchLoading(true);
     try {
-      const response = await fetch(`http://localhost:5000/Product_search?query=${encodeURIComponent(query)}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/Product_search?query=${encodeURIComponent(query)}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -215,7 +215,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       console.log('Sending request:', requestPayload);
 
       // Make API call to backend
-      const response = await fetch(`http://localhost:5000/ProductwisePerformance`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

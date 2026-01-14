@@ -192,8 +192,8 @@ export default function InputCostPage({ params }: Params) {
         return;
       }
 
-      const res = await fetch(
-        `http://127.0.0.1:5000/amazon_api/inventory/ledger-summary` +
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/inventory/ledger-summary` +
         `?start_date=${lastDate}&end_date=${lastDate}&store_in_db=true`,
         {
           headers: {
@@ -345,7 +345,7 @@ export default function InputCostPage({ params }: Params) {
     const token = localStorage.getItem('jwtToken');
     if (!token) return;
 
-    const res = await fetch('http://127.0.0.1:5000/skuprice', {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/skuprice`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -359,7 +359,7 @@ export default function InputCostPage({ params }: Params) {
     const token = localStorage.getItem('jwtToken');
     if (!token) return;
 
-    const res = await fetch('http://127.0.0.1:5000/currency-rates', {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/currency-rates`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -375,7 +375,7 @@ export default function InputCostPage({ params }: Params) {
     if (!token) return;
 
     const res = await fetch(
-      `http://127.0.0.1:5000/asp-data?country=${countryName}&month=${monthParam}&year=${yearParam}`,
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/asp-data?country=${countryName}&month=${monthParam}&year=${yearParam}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
 
@@ -391,10 +391,10 @@ export default function InputCostPage({ params }: Params) {
     const token = localStorage.getItem('jwtToken');
     if (!token) return;
 
-    const res = await fetch(
-      'http://127.0.0.1:5000/amazon_api/inventory/aged/columns?latest=1',
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/inventory/aged/columns?latest=1`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
 
     const json = await res.json();
     const rows = Array.isArray(json?.data) ? json.data : [];
@@ -434,7 +434,7 @@ export default function InputCostPage({ params }: Params) {
       return;
     }
     try {
-      const response = await fetch('http://127.0.0.1:5000/updatePrices', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/updatePrices`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
