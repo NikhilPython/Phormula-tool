@@ -12,6 +12,8 @@ import pandas as pd
 from app.models.user_models import HistoricAISummary
 from app.utils.formulas_utils import safe_num
 from app import db
+from openai import OpenAIError
+
 
 
 
@@ -335,65 +337,6 @@ def build_inventory_alerts(df: pd.DataFrame) -> dict:
 
 
 
-
-
-
-
-# def compare_sku_metrics(current: dict, previous: dict) -> dict:
-#     output = {}
-
-#     all_skus = set(current.keys()) | set(previous.keys())
-
-#     for sku in all_skus:
-#         curr = current.get(sku, {})
-#         prev = previous.get(sku, {})
-
-#         sku_out = {}
-
-#         # ---------------- ADDITIVE METRICS ----------------
-#         for metric in METRIC_COLUMNS:
-#             if metric not in curr and metric not in prev:
-#                 continue
-
-#             try:
-#                 new = float(curr.get(metric, 0.0) or 0.0)
-#                 old = float(prev.get(metric, 0.0) or 0.0)
-#             except (TypeError, ValueError):
-#                 continue
-
-#             delta = new - old
-#             pct = (delta / old * 100) if old != 0 else None
-
-#             sku_out[metric] = {
-#                 "current": round(new, 2),
-#                 "previous": round(old, 2),
-#                 "delta": round(delta, 2),
-#                 "delta_pct": round(pct, 2) if pct is not None else None
-#             }
-
-#         # ---------------- PERCENTAGE METRICS ----------------
-#         for metric in PERCENTAGE_COLUMNS:
-#             if metric not in curr and metric not in prev:
-#                 continue
-
-#             try:
-#                 new = float(curr.get(metric))
-#                 old = float(prev.get(metric))
-#             except (TypeError, ValueError):
-#                 continue
-
-#             delta = new - old
-
-#             sku_out[metric] = {
-#                 "current": round(new, 2),
-#                 "previous": round(old, 2),
-#                 "delta": round(delta, 2),   # ✅ percentage-point change
-#                 "delta_pct": None           # ❌ intentionally skipped
-#             }
-
-#         output[sku] = sku_out
-
-#     return output
 def compare_sku_metrics(current: dict, previous: dict) -> dict:
     output = {}
 
@@ -693,9 +636,10 @@ def generate_ai_summary(payload, allow_recommendations):
             "allow_recommendations": allow_recommendations
         },
         "user_context": {
-        "currency_symbol": "£" if payload.get("country") == "uk" else "$" if payload.get("country") == "us" else ""
+            "currency_symbol": "£" if payload.get("country") == "uk"
+            else "$" if payload.get("country") == "us"
+            else ""
         },
-
         "overall_mom": payload["mom"],
         "overall_yoy": payload.get("yoy"),
         "sku_mom": payload.get("sku_mom"),
@@ -704,20 +648,49 @@ def generate_ai_summary(payload, allow_recommendations):
         "inventory_alerts": payload.get("inventory_alerts"),
     }
 
-    response = openai_client.chat.completions.create(
-    model="gpt-4.1",
-    messages=[
-        {"role": "system", "content": AI_SYSTEM_PROMPT},
-        {"role": "user", "content": json.dumps(user_prompt, separators=(",", ":"))}
-    ],
-    temperature=0.3,
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {"role": "system", "content": AI_SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(user_prompt, separators=(",", ":"))}
+            ],
+            temperature=0.3,
+        )
 
-    )
+        ai_text = response.choices[0].message.content.strip()
 
+    except OpenAIError as e:
+        # 🔴 Covers quota exceeded, billing issues, invalid API key, etc.
+        print("[AI ERROR]", str(e))
 
-    ai_text = response.choices[0].message.content.strip()
+        friendly_message = (
+            "## SUMMARY\n"
+            "- AI insights are temporarily unavailable due to account limits.\n"
+            "- Please contact us at **care@phormula.io** to continue using AI summaries.\n"
+        )
 
-    # split summary vs recommendations
+        return {
+            "summary": friendly_message,
+            "recommendations": None
+        }
+
+    except Exception as e:
+        # 🔴 Catch-all safety net
+        print("[UNEXPECTED AI ERROR]", str(e))
+
+        friendly_message = (
+            "## SUMMARY\n"
+            "- AI insights could not be generated at the moment.\n"
+            "- Please try again later or contact **care@phormula.io**.\n"
+        )
+
+        return {
+            "summary": friendly_message,
+            "recommendations": None
+        }
+
+    # ---------------- NORMAL FLOW ----------------
     summary = ai_text
     recommendations = None
 
@@ -730,6 +703,7 @@ def generate_ai_summary(payload, allow_recommendations):
         "summary": summary,
         "recommendations": recommendations
     }
+
 
 
 

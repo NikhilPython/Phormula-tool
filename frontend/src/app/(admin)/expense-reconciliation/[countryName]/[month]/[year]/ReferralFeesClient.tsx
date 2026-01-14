@@ -88,7 +88,7 @@ const overlapPlugin = {
 ChartJS.register(ArcElement, Tooltip, Legend, overlapPlugin);
 
 /* ===================== ENV ===================== */
-const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://13.126.252.94:5000";
+const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
 
 /* ===================== Types ===================== */
 type ReferralRow = Partial<{
