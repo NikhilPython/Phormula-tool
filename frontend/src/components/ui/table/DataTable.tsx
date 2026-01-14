@@ -207,7 +207,7 @@ export default function DataTable<T extends Row>({
                   // ✅ wrap on small screens
                   "whitespace-normal break-words leading-snug",
                   // ✅ on large screens, don’t wrap + let it expand naturally
-                  "lg:whitespace-nowrap",
+                  "2xl:whitespace-nowrap",
                   col.headerClassName,
                   col.onHeaderClick && "cursor-pointer select-none"
                 )}

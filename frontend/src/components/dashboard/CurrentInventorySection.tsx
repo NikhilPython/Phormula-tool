@@ -2831,8 +2831,8 @@ export default function CurrentInventorySection({
           {invError}
         </div>
       ) : (
-        <div className="mt-2 flex-1 w-full max-w-full overflow-x-auto">
-          <div className="min-w-max [&_table]:w-auto">
+        <div className="mt-2 flex-1 w-full max-w-full overflow-x-auto lg:overflow-x-hidden">
+          <div className="w-full min-w-0 [&_table]:w-full">
             <DataTable
               columns={columns}
               data={tableRows}
