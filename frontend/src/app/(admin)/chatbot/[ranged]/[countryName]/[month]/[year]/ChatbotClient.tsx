@@ -45,7 +45,7 @@ type ParsedAI = {
 
 
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://13.126.252.94:5000'
 const getAuthToken = () => (typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null)
 
 // Strip common Markdown artifacts (bullets, bold/italics/code/strikethrough)

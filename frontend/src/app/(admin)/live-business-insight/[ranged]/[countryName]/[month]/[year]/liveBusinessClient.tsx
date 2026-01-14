@@ -129,7 +129,7 @@ interface ApiResponse {
 // =========================
 // Config
 // =========================
-const API_BASE = 'http://127.0.0.1:5000';
+const API_BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 
 const STORAGE_KEY = 'live_bi_insight_data';
 const INSIGHTS_KEY = 'live_bi_sku_insights';
@@ -1076,7 +1076,7 @@ export default function LiveBusinessClient({
       }
       if (redWords.includes(lower)) {
         return (
-          <span key={idx} style={{ color: '#dc2626', fontWeight: 600 }}>
+          <span key={idx} style={{ color: '#FF5C5C', fontWeight: 600 }}>
             {part}
           </span>
         );
@@ -1347,7 +1347,7 @@ export default function LiveBusinessClient({
       out.push({
         type: 'num',
         value: `${Number(num).toFixed(2)}${suffix}`,
-        color: isIncrease ? '#5EA68E' : '#dc2626',
+        color: isIncrease ? '#5EA68E' : '#FF5C5C',
       });
 
       lastIndex = end;
@@ -1704,7 +1704,7 @@ export default function LiveBusinessClient({
 
     let color = "#414042";
     if (val > 5) color = "#5EA68E";
-    else if (val < -5) color = "#dc2626";
+    else if (val < -5) color = "#FF5C5C";
 
     // ✅ keep icon space even for 0
     return <GrowthCell val={val} color={color} showArrow={val !== 0} />;
@@ -2238,7 +2238,7 @@ export default function LiveBusinessClient({
                   </span>
 
                   <span className="inline-flex items-center gap-2">
-                    <span className="inline-flex items-center gap-2 text-[#DC2626] font-bold">
+                    <span className="inline-flex items-center gap-2 text-[#FF5C5C] font-bold">
                       <FaArrowDown className="text-[10px] 2xl:text-xs" /> Negative growth
                     </span>
                   </span>

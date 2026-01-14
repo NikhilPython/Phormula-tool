@@ -50,17 +50,19 @@ export default function UserDropdown() {
 
 // UserDropdown.tsx
 
-const handleLogout = async () => {
-  await dispatch(logout());
+const handleLogout = () => {
+  dispatch(logout());
 
-// 💣 Clear all client-side cached auth/onboarding state
   if (typeof window !== "undefined") {
-    localStorage.clear();
+    // localStorage.clear() mat karo — sirf token hatao
+    localStorage.removeItem("jwtToken");
     sessionStorage.clear();
   }
 
   closeDropdown();
-  router.push("/signin");
+
+  // ✅ Hard redirect (no blank, no stuck route)
+  window.location.href = "/signin";
 };
 
 

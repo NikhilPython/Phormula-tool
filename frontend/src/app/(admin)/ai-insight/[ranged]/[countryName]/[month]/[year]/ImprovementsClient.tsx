@@ -24,13 +24,11 @@ import {
 } from "chart.js";
 import introJs from 'intro.js';
 import 'intro.js/introjs.css';
-
-
-
+import DataTable, { ColumnDef, Row } from '@/components/ui/table/DataTable';
+import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
+import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
-
-
 
 // =========================
 // Types/Interfaces
@@ -113,7 +111,7 @@ interface ApiResponse {
 // =========================
 // Config
 // =========================
-const API_BASE = 'http://127.0.0.1:5000';
+const API_BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 
 type TabKey = 'top_80_skus' | 'new_or_reviving_skus' | 'other_skus' | 'all_skus';
 
@@ -2199,7 +2197,7 @@ const MonthsforBI: React.FC = () => {
 
       if (greenWords.includes(lower)) {
         return (
-          <span key={idx} style={{ color: '#16a34a', fontWeight: 600 }}>
+          <span key={idx} style={{ color: '#5EA68E', fontWeight: 600 }}>
             {part}
           </span>
         );
@@ -2207,7 +2205,7 @@ const MonthsforBI: React.FC = () => {
 
       if (redWords.includes(lower)) {
         return (
-          <span key={idx} style={{ color: '#dc2626', fontWeight: 600 }}>
+          <span key={idx} style={{ color: '#FF5C5C', fontWeight: 600 }}>
             {part}
           </span>
         );
@@ -2300,7 +2298,7 @@ const MonthsforBI: React.FC = () => {
           >
             {(isList || sec === 'Summary') && (
               <strong
-                className="insight-section-title"
+                className="insight-section-title ext-xs 2xl:text-sm"
                 style={{ display: 'block', marginBottom: 6 }}
               >
                 {sec}
@@ -2328,11 +2326,12 @@ const MonthsforBI: React.FC = () => {
                           marginTop: 10,
                           marginBottom: 4,
                         }}
+                        className='text-xs 2xl:text-sm'
                       >
                         <span
                           style={{
                             fontWeight: 700,
-                            fontSize: 14,
+                            // fontSize: 14,
                             color: '#374151',
                             borderLeft: '3px solid #60a68e',
                             paddingLeft: 8,
@@ -2348,12 +2347,12 @@ const MonthsforBI: React.FC = () => {
                   return (
                     <li
                       key={i}
-                      className="insight-list-item"
                       style={{
                         marginBottom: 4,
                         lineHeight: 1.6,
-                        fontSize: 13,
+                        // fontSize: 13,
                       }}
+                      className='insight-list-item text-xs 2xl:text-sm'
                     >
                       {highlightInsightText(trimmed)}
                     </li>
@@ -2483,6 +2482,7 @@ const MonthsforBI: React.FC = () => {
   };
 
 
+
   const currentTabData = React.useMemo(() => {
     // ✅ full dataset for active tab (your real source)
     const fullCurrent = (categorizedGrowth?.[activeTab] || []) as SkuItem[];
@@ -2545,6 +2545,226 @@ const MonthsforBI: React.FC = () => {
 
     return [...top5, others];
   }, [categorizedGrowth, activeTab, expandAllSkusOthers]);
+
+  type TableRow = Row & {
+    __isTotal?: boolean;
+  };
+
+  const buildTableRows = React.useMemo<TableRow[]>(() => {
+    const rows = (currentTabData || []) as any[];
+
+    const tableRows: TableRow[] = rows.map((item, idx) => {
+      const isOthers =
+        activeTab === "all_skus" &&
+        String(item?.product_name ?? "").toLowerCase().trim() === "others";
+
+      return {
+        sno: idx + 1,
+        product_name:
+          String(item.product_name).trim() === "0" ? (item.sku || "N/A") : item.product_name,
+
+        sales_mix:
+          item["Sales Mix (Month2)"] != null
+            ? `${Number(item["Sales Mix (Month2)"]).toFixed(2)}%`
+            : "N/A",
+
+        sales_mix_change: item["Sales Mix Change"],
+
+        unit_growth: item["Unit Growth"],
+        asp_growth: item["ASP Growth"],
+        net_sales_growth: item["Net Sales Growth"],
+        cm1_profit_impact: item["CM1 Profit Impact"],
+        profit_per_unit: item["Profit Per Unit"],
+
+        ai: item, // keep full item for render()
+
+        __isOthers: isOthers,
+      };
+    });
+
+    // ✅ Total row (same as your tfoot logic but as a row)
+    if ((categorizedGrowth?.[activeTab] as any[])?.length) {
+      const rawRows = (categorizedGrowth[activeTab] || []) as any[];
+
+      const sum = (k: string) => rawRows.reduce((s, r) => s + Number(r?.[k] ?? 0), 0);
+
+      const pct = (m1: number, m2: number) => (m1 === 0 ? 0 : ((m2 - m1) / m1) * 100);
+
+      const totalSalesMixSum = rawRows.reduce(
+        (s, r) => s + Number(r?.["Sales Mix (Month2)"] ?? 0),
+        0
+      );
+      const rounded = Number(totalSalesMixSum.toFixed(2));
+      const fixed = Math.abs(rounded - 100) < 0.05 ? 100 : rounded;
+
+      const totalCells = {
+        // for growth columns, store number only; render will format
+        sales_mix_change:
+          activeTab !== "new_or_reviving_skus" ? 0 : undefined, // you were showing 0 placeholder
+
+        unit_growth: pct(sum("total_quantity_month1"), sum("total_quantity_month2")),
+        asp_growth: pct(sum("asp_month1"), sum("asp_month2")),
+        net_sales_growth: pct(sum("net_sales_month1"), sum("net_sales_month2")),
+        cm1_profit_impact: pct(
+          sum("unit_wise_profitability_month1"),
+          sum("unit_wise_profitability_month2")
+        ),
+        profit_per_unit: pct(sum("profit_month1"), sum("profit_month2")),
+      };
+
+      tableRows.push({
+        sno: "",
+        product_name: "Total",
+        sales_mix: `${fixed.toFixed(2)}%`,
+        ...totalCells,
+        __isTotal: true,
+      });
+    }
+
+    return tableRows;
+  }, [currentTabData, categorizedGrowth, activeTab]);
+
+  const renderGrowthCell = (growth: any) => {
+    // growth can be GrowthCategory {category,value} OR a number (for total row)
+    if (growth == null) return "N/A";
+
+    // Total row sends number; normal rows send {category,value}
+    const isObj = typeof growth === "object" && "value" in growth;
+    const val = Number(isObj ? growth.value : growth);
+
+    if (!Number.isFinite(val)) return "N/A";
+
+    const sign = val > 0 ? "+" : "";
+    const text = `${sign}${val.toFixed(2)}%`;
+
+    // classify like your UI:
+    const category = isObj ? growth.category : val >= 5 ? "High Growth" : val < 0 ? "Negative Growth" : "Low Growth";
+
+    if (category === "High Growth") {
+      return (
+        <span className="flex items-center justify-center gap-2 w-full font-semibold text-[#5EA68E]">
+          <span className="w-4 flex justify-center shrink-0">
+            <FaArrowUp size={12} />
+          </span>
+          <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">{text}</span>
+        </span>
+      );
+    }
+
+    if (category === "Negative Growth") {
+      return (
+        <span className="flex items-center justify-center gap-2 w-full font-semibold text-[#FF5C5C]">
+          <span className="w-4 flex justify-center shrink-0">
+            <FaArrowDown size={12} />
+          </span>
+          <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">{text}</span>
+        </span>
+      );
+    }
+
+    return (
+      <span className="flex items-center justify-center gap-2 w-full font-semibold text-[#414042]">
+        <span className="w-4 flex justify-center shrink-0">
+          {val > 0 ? <FaArrowUp size={12} /> : val < 0 ? <FaArrowDown size={12} /> : null}
+        </span>
+        <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">{text}</span>
+      </span>
+    );
+  };
+
+  const columns = React.useMemo<ColumnDef<TableRow>[]>(() => {
+    const showInsight = Object.keys(skuInsights).length > 0;
+
+    const cols: ColumnDef<TableRow>[] = [
+      { key: "sno", header: "S.No.", width: "60px" },
+
+      {
+        key: "product_name",
+        header: "Product Name",
+        width: "260px",
+        cellClassName: "text-left",
+        render: (row, value) => (
+          <span className={row.__isTotal ? "font-bold" : ""}>{value}</span>
+        ),
+      },
+
+      {
+        key: "sales_mix",
+        header: `Sales Mix (${month2Label || "Month 2"})`,
+        width: "150px",
+      },
+    ];
+
+    if (activeTab !== "new_or_reviving_skus") {
+      cols.push({
+        key: "sales_mix_change",
+        header: "Sales Mix Change (%)",
+        width: "170px",
+        render: (row, value) => renderGrowthCell(value),
+      });
+    }
+
+    cols.push(
+      { key: "unit_growth", header: "Unit Growth (%)", width: "150px", render: (row, v) => renderGrowthCell(v) },
+      { key: "asp_growth", header: "ASP Growth (%)", width: "150px", render: (row, v) => renderGrowthCell(v) },
+      { key: "net_sales_growth", header: "Net Sales Growth (%)", width: "170px", render: (row, v) => renderGrowthCell(v) },
+      { key: "cm1_profit_impact", header: "CM1 Profit Impact (%)", width: "190px", render: (row, v) => renderGrowthCell(v) },
+      {
+        key: "profit_per_unit",
+        header: "CM1 Profit Per Unit (%)",
+        width: "200px",
+        render: (row, v) => renderGrowthCell(v),
+      }
+    );
+
+    if (showInsight) {
+      cols.push({
+        key: "ai",
+        header: "AI Insight",
+        width: "140px",
+        render: (row, value) => {
+          // Total row -> blank
+          if (row.__isTotal) return "";
+
+          // Others row -> expand
+          if ((row as any).__isOthers) {
+            return (
+              <button
+                className="font-semibold underline text-[#414042]"
+                onClick={() => setExpandAllSkusOthers(true)}
+              >
+                Expand SKUs
+              </button>
+            );
+          }
+
+          const item = value as any;
+          const entry = getInsightForItem(item);
+
+          if (!entry) return <em style={{ color: "#888" }}>--</em>;
+
+          return (
+            <button
+              className="font-semibold underline text-[#414042]"
+              onClick={() => {
+                setSelectedSku(entry[0]);
+                setModalOpen(true);
+                setFbType(null);
+                setFbText("");
+                setFbSuccess(false);
+              }}
+            >
+              View Insights
+            </button>
+          );
+        },
+      });
+    }
+
+    return cols;
+  }, [activeTab, month2Label, skuInsights, expandAllSkusOthers, currentTabData]);
+
+
 
 
   const formatCountryLabel = (country: string) => {
@@ -2639,7 +2859,7 @@ const MonthsforBI: React.FC = () => {
 
   /* ✅ NEW: selected month label */
   .month-dot.selected .month-label{
-    color:#16a34a;
+    color:#5EA68E;
     font-weight:600;
   }
 
@@ -2707,7 +2927,7 @@ const MonthsforBI: React.FC = () => {
   .theadc{ background:#5EA68E; color:#f8edcf; }
   .tablec{ width:100%; border-collapse:collapse;  table-layout: fixed; }
   .tablec td, .tablec th{ border:1px solid #414042; padding:10px 8px; text-align:center;  white-space: nowrap;  text-overflow: ellipsis; vertical-align: middle; }
-  .insight-section-title{ font-size:15px; color:#414042; }
+  .insight-section-title{  color:#414042; }
   .insight-list{ margin: 6px 0 10px 20px; padding:0; }
   .insight-list-item{ line-height:1.6; }
   .insight-paragraphs p{ margin:4px 0; line-height:1.6; }
@@ -2746,7 +2966,7 @@ const MonthsforBI: React.FC = () => {
   gap: 6px;
 }
 .sku-zero{
-  color: #dc2626;
+  color: #FF5C5C;
   font-weight: 700;
 }
 .sku-zero-tooltip{
@@ -2803,7 +3023,7 @@ const MonthsforBI: React.FC = () => {
 }
 
 .month-dot.selected .dot {
-  background: #16a34a;
+  background: #5EA68E;
   box-shadow: 0 0 0 6px rgba(22,163,74,0.25);
 }
 
@@ -3071,7 +3291,7 @@ const MonthsforBI: React.FC = () => {
         {(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).some(
           (k) => (categorizedGrowth[k] || []).length > 0
         ) && (
-            <div className='border border-gray-200 rounded-xl p-4 mt-6 w-full bg-white'>
+            <div className='border border-gray-200 rounded-xl p-4 mt-6 w-full bg-[#D9D9D933]'>
               <div className='flex xl:flex-row flex-col lg:justify-between justify-start xl:items-center items-start '>
                 <div className='flex 2xl:flex-row flex-col justify-between  2xl:items-center  items-start w-full xl:gap-0 gap-3'>
                   <h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] text-nowrap">SKU Analysis MTD</h2>
@@ -3154,7 +3374,7 @@ const MonthsforBI: React.FC = () => {
                         {loadingInsight ? "Generating..." : "AI Insights"}
                       </button>
 
-                      <button
+                      {/* <button
                         onClick={() => {
                           const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
                           const allRows = getAllSkusForExport();
@@ -3174,8 +3394,13 @@ const MonthsforBI: React.FC = () => {
                         }}
                       >
                         <IoDownload size={27} color="#414042" />
-                      </button>
+                      </button> */}
 
+                      <DownloadIconButton onClick={() => {
+                        const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
+                        const allRows = getAllSkusForExport();
+                        exportToExcel(allRows, file);
+                      }} />
 
                     </div>
 
@@ -3186,7 +3411,7 @@ const MonthsforBI: React.FC = () => {
               </div>
 
               <div className="table-wrapper pt-4">
-                <table className="tablec w-full border-collapse md:text-sm text-xs 2xl:min-w-full xl:min-w-[1000px]">
+                {/* <table className="tablec w-full border-collapse md:text-sm text-xs 2xl:min-w-full xl:min-w-[1000px]">
                   <thead className="theadc">
                     <tr >
                       <th className='px-1 !w-[50px]'>S.No.</th>
@@ -3226,12 +3451,9 @@ const MonthsforBI: React.FC = () => {
                               ---
                             </td>
 
-                            {/* Sales Mix (Month2) */}
                             <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
 
-                            {/* ✅ Sales Mix Change column is NOT shown for new_or_reviving_skus */}
 
-                            {/* Growth columns */}
                             <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
                             <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
                             <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
@@ -3418,7 +3640,6 @@ const MonthsforBI: React.FC = () => {
                         <strong>Total</strong>
                       </td>
 
-                      {/* Sales Mix */}
                       <td className="border border-[#414042] px-2 py-2.5 text-center font-bold">
                         {(() => {
                           const rows = (categorizedGrowth[activeTab] || []) as any[];
@@ -3526,7 +3747,21 @@ const MonthsforBI: React.FC = () => {
                     </tr>
                   </tfoot>
 
-                </table>
+                </table> */}
+                <div className="pt-4">
+                  <DataTable<TableRow>
+                    columns={columns}
+                    data={buildTableRows}
+                    stickyHeader
+                    zebra
+                    paginate
+                    pageSize={10}
+                    maxHeight="60vh"
+                    loading={false}
+                    headerMaxWidth={140}
+                    rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-bold" : "")}
+                  />
+                </div>
 
 
               </div>
@@ -3576,7 +3811,6 @@ const MonthsforBI: React.FC = () => {
 
 
 
-      {/* Insight Modal */}
       {(() => {
         if (!modalOpen || !selectedSku) return null;
 
@@ -3608,20 +3842,29 @@ const MonthsforBI: React.FC = () => {
               }}
             >
               {/* Header */}
+             
               <div
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                   marginBottom: 8,
                 }}
               >
-                <h2 style={{ margin: 0, fontSize: 18 }}>
-                  AI Insight for{' '}
-                  <span style={{ color: '#60a68e' }}>
-                    {insightData.product_name || selectedSku}
-                  </span>
-                </h2>
+                <PageBreadcrumb
+                  variant="page"
+                  align="left"
+                  textSize="2xl"
+                  className='text-base sm:text-xl lg:text-lg 2xl:text-2xl'
+                  pageTitle={
+                    <>
+                      AI Insight for{" "}
+                      <span style={{ color: "#60a68e" }}>
+                        {insightData.product_name || selectedSku}
+                      </span>
+                    </>
+                  }
+                />
 
                 <IconButton
                   size="small"

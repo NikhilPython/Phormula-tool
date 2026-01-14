@@ -5,6 +5,7 @@ export type UploadHistory = {
 };
 
 export const uploadsApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (build) => ({
     getUploadHistory: build.query<UploadHistory, void>({
       query: () => ({ url: "/upload_history", method: "GET" }),

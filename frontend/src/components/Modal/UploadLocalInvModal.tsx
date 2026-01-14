@@ -70,7 +70,7 @@ export default function UploadLocalInvModal({
       formData.append('country', countryName);
 
       const response = await axios.post(
-        'http://127.0.0.1:5000/purchase_order',
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/purchase_order`,
         formData,
         {
           headers: {

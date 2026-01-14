@@ -264,7 +264,7 @@ const defaultMetricState = {
     searchParams.set("period_type", requestPeriodType);
 
     const res = await fetch(
-      `http://127.0.0.1:5000/cashflow?${searchParams.toString()}`,
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/cashflow?${searchParams.toString()}`,
       {
         method: "GET",
         headers: {
@@ -468,7 +468,7 @@ const previousLabel =
         return;
       }
       try {
-        const res = await fetch("http://127.0.0.1:5000/get_user_data", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/get_user_data`, {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
         });

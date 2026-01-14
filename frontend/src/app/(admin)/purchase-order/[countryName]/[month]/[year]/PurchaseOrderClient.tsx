@@ -103,7 +103,7 @@ export default function PurchaseOrderPage() {
     setError('');
     try {
       const res = await fetch(
-        `http://127.0.0.1:5000/getDispatchfile2?country=${countryName}&month=${month.toLowerCase()}&year=${year}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile2?country=${countryName}&month=${month.toLowerCase()}&year=${year}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       if (!res.ok) {
@@ -142,14 +142,14 @@ export default function PurchaseOrderPage() {
     setError('');
     try {
       let res = await fetch(
-        `http://127.0.0.1:5000/getGlobalDispatchfile?month=${month.toLowerCase()}&year=${year}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/getGlobalDispatchfile?month=${month.toLowerCase()}&year=${year}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       if (!res.ok) {
         if (res.status === 404) {
           // generate then display
           res = await fetch(
-            `http://127.0.0.1:5000/global_purchase_order?month=${month}&year=${year}`,
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/global_purchase_order?month=${month}&year=${year}`,
             { headers: { Authorization: `Bearer ${token}` } },
           );
           if (!res.ok) {

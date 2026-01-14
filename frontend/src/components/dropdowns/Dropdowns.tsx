@@ -554,7 +554,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           ? localStorage.getItem("jwtToken")
           : null;
 
-      const url = new URL("http://127.0.0.1:5000/upload_history2");
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history2`);
       url.searchParams.set("range", rangeType);
       url.searchParams.set("month", monthVal);
       url.searchParams.set("quarter", quarterVal);
@@ -633,7 +633,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           ? localStorage.getItem("jwtToken")
           : null;
 
-      const url = new URL("http://127.0.0.1:5000/summary");
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/summary`);
       url.searchParams.set("country", countryName);
       url.searchParams.set("period", rangeType);
       url.searchParams.set("timeline", String(timeline));
@@ -999,7 +999,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     companyBrandRow[0] = `Company Name : ${companyName}`;
 
     // RIGHT → BRAND NAME (above CM1 Profit Margin)
-    companyBrandRow[PROFIT_COL_INDEX - 1] = `Brand Name : ${brandName}`;
+    companyBrandRow[PROFIT_COL_INDEX - 1] = `${brandName}`;
 
     const cbRow = ws.addRow(companyBrandRow);
     cbRow.font = { bold: false };

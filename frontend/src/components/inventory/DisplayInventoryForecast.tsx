@@ -381,7 +381,7 @@ const chartOptions = useMemo(
         if (!token) return;
 
         const resp = await fetch(
-          `http://127.0.0.1:5000/api/forecast_monthrange?country=${encodeURIComponent(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/forecast_monthrange?country=${encodeURIComponent(
             countryName.toLowerCase()
           )}`,
           { method: 'GET', headers: { Authorization: `Bearer ${token}` } }

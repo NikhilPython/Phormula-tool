@@ -4,7 +4,7 @@ import Button from "@/components/ui/button/Button";
 import React, { useEffect, useCallback } from "react";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://13.126.252.94:5000";
 
 const ICONS = {
   back: "/BackArrow.png",

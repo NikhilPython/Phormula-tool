@@ -894,7 +894,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     (async () => {
       try {
-        const res = await fetch("http://127.0.0.1:5000/get_user_data", {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/get_user_data`, {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
@@ -931,7 +931,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           ? `skuwisemonthly_${userid}_${countryName}_${(month || "").toLowerCase()}${year}_table`
           : `skuwisemonthly_${userid}_${countryName.toLowerCase()}_${(month || "").toLowerCase()}${year}`;
 
-      const url = new URL(`http://127.0.0.1:5000/skutableprofit/${skuwiseFileName}`);
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`);
       url.searchParams.set("country", countryName);
       url.searchParams.set("month", (month || "").toLowerCase());
       url.searchParams.set("year", String(year));
@@ -942,7 +942,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     if (range === "quarterly") {
       const backendQuarter = quarterMapping[quarter] || "";
-      const url = new URL("http://127.0.0.1:5000/quarterlyskutable");
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/quarterlyskutable`);
       url.searchParams.set("quarter", backendQuarter);
       url.searchParams.set("country", countryName);
       url.searchParams.set("year", String(year));
@@ -953,7 +953,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     }
 
     // yearly
-    const url = new URL("http://127.0.0.1:5000/YearlySKU");
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/YearlySKU`);
     url.searchParams.set("country", countryName);
     url.searchParams.set("year", String(year));
 
