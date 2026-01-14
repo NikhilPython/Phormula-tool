@@ -22,7 +22,6 @@ import {
   getPrevMonthShortLabel,
   getISTDayInfo,
 } from "@/lib/dashboard/date";
-
 import {
   fmtGBP,
   fmtUSD,
@@ -31,15 +30,11 @@ import {
   fmtInt,
   toNumberSafe,
 } from "@/lib/dashboard/format";
-
 import type { RegionKey, RegionMetrics } from "@/lib/dashboard/types";
-
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { usePlatform } from "@/components/context/PlatformContext";
 import type { PlatformId } from "@/lib/utils/platforms";
 import LiveBiLineGraph from "@/components/businessInsight/LiveBiLineChartPanel";
-
-// ✅ moved range picker deps here
 import { DateRange } from "react-date-range";
 import "react-date-range/dist/styles.css";
 import "react-date-range/dist/theme/default.css";
@@ -495,69 +490,69 @@ export default function DashboardPage() {
   const [cadToUsd, setCadToUsd] = useState(CAD_TO_USD_ENV);
   const [fxLoading, setFxLoading] = useState(false);
 
-type CurrencyRateRow = {
-  conversion_rate: number;
-  country: string;
-  month: string;
-  selected_currency: string;
-  user_currency: string;
-  year: number;
-};
+  type CurrencyRateRow = {
+    conversion_rate: number;
+    country: string;
+    month: string;
+    selected_currency: string;
+    user_currency: string;
+    year: number;
+  };
 
-const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
+  const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
-const fetchFxRates = useCallback(async () => {
-  try {
-    setFxLoading(true);
+  const fetchFxRates = useCallback(async () => {
+    try {
+      setFxLoading(true);
 
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-    const headers: HeadersInit = { Accept: "application/json" };
-    if (token) (headers as any).Authorization = `Bearer ${token}`;
+      const headers: HeadersInit = { Accept: "application/json" };
+      if (token) (headers as any).Authorization = `Bearer ${token}`;
 
-    const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
-    if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
+      const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
+      if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
 
-    const rows: CurrencyRateRow[] = await res.json();
+      const rows: CurrencyRateRow[] = await res.json();
 
-    const { monthName, year } = getISTYearMonth();
-    const month = monthName.toLowerCase();
+      const { monthName, year } = getISTYearMonth();
+      const month = monthName.toLowerCase();
 
-    // current-month only
-    const cur = (rows || []).filter(
-      (r) =>
-        String(r.month || "").toLowerCase() === month &&
-        Number(r.year) === Number(year)
-    );
-
-    // helper: find conversion for pair (from -> to)
-    const getRate = (from: string, to: string) => {
-      const row = cur.find(
+      // current-month only
+      const cur = (rows || []).filter(
         (r) =>
-          String(r.user_currency).toLowerCase() === from &&
-          String(r.selected_currency).toLowerCase() === to
+          String(r.month || "").toLowerCase() === month &&
+          Number(r.year) === Number(year)
       );
-      const rate = Number(row?.conversion_rate);
-      return Number.isFinite(rate) && rate > 0 ? rate : null;
-    };
 
-    // ✅ set the three your code currently uses (from -> USD)
-    const gbpUsd = getRate("gbp", "usd");
-    const inrUsd = getRate("inr", "usd");
-    const cadUsd = getRate("cad", "usd");
+      // helper: find conversion for pair (from -> to)
+      const getRate = (from: string, to: string) => {
+        const row = cur.find(
+          (r) =>
+            String(r.user_currency).toLowerCase() === from &&
+            String(r.selected_currency).toLowerCase() === to
+        );
+        const rate = Number(row?.conversion_rate);
+        return Number.isFinite(rate) && rate > 0 ? rate : null;
+      };
 
-    if (gbpUsd != null) setGbpToUsd(gbpUsd);
-    if (inrUsd != null) setInrToUsd(inrUsd);
-    if (cadUsd != null) setCadToUsd(cadUsd);
+      // ✅ set the three your code currently uses (from -> USD)
+      const gbpUsd = getRate("gbp", "usd");
+      const inrUsd = getRate("inr", "usd");
+      const cadUsd = getRate("cad", "usd");
 
-    console.log("✅ FX (current month)", { month, year, gbpUsd, inrUsd, cadUsd });
-  } catch (err) {
-    console.error("Failed to fetch FX from DB, keeping env defaults", err);
-  } finally {
-    setFxLoading(false);
-  }
-}, []);
+      if (gbpUsd != null) setGbpToUsd(gbpUsd);
+      if (inrUsd != null) setInrToUsd(inrUsd);
+      if (cadUsd != null) setCadToUsd(cadUsd);
+
+      console.log("✅ FX (current month)", { month, year, gbpUsd, inrUsd, cadUsd });
+    } catch (err) {
+      console.error("Failed to fetch FX from DB, keeping env defaults", err);
+    } finally {
+      setFxLoading(false);
+    }
+  }, []);
 
 
   useEffect(() => {
@@ -1733,6 +1728,78 @@ const fetchFxRates = useCallback(async () => {
   const labels = chartItems.map((i) => i.label);
   const values = chartItems.map((i) => Number(i.raw ?? 0));
 
+
+  const prevValues = useMemo(() => {
+    const getPrev = (label: string) => {
+      // map label -> previous raw value (same currency basis as current raw)
+      switch (label) {
+        case "Net Sales":
+          return globalUseBi
+            ? (biCardKpis.prev.netSales ?? 0)
+            : convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency);
+
+        case "COGS":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.cogs ?? 0),
+            amazonDataCurrency
+          );
+
+        case "Amazon Fees":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.amazon_fees ?? 0),
+            amazonDataCurrency
+          );
+
+        case "Tax & Credits":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.tax_and_credits ?? 0),
+            amazonDataCurrency
+          );
+
+        case "Advertisements":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0),
+            amazonDataCurrency
+          );
+
+        case "Others":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.platform_fee ?? 0),
+            amazonDataCurrency
+          );
+
+        case "CM1 Profit":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.profit ?? 0),
+            amazonDataCurrency
+          );
+
+        case "CM2 Profit":
+          return globalUseBi
+            ? (cm2Ready ? convertToDisplayCurrency(biAlignedTotals?.previous_cm2_profit ?? 0, biSourceCurrency) : 0)
+            : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency);
+
+        default:
+          return 0;
+      }
+    };
+
+    return labels.map(getPrev);
+  }, [
+    labels,
+    data?.previous_period?.totals,
+    prev.netSales,
+    prev.cm2Profit,
+    amazonDataCurrency,
+    convertToDisplayCurrency,
+    globalUseBi,
+    biCardKpis,
+    cm2Ready,
+    biAlignedTotals,
+    biSourceCurrency,
+  ]);
+
+
   const colorMapping: Record<string, string> = {
     "Net Sales": "#75BBDA",
     "Amazon Fees": "#B75A5A",
@@ -2138,7 +2205,7 @@ const fetchFxRates = useCallback(async () => {
 
   const stats_targetTrendPct =
     stats_targetHome > 0
-      ? ((proratedTargetToDate - stats_mtdHome) / stats_targetHome) * 100
+      ? ((stats_mtdHome - proratedTargetToDate) / stats_targetHome) * 100
       : 0;
 
   return (
@@ -2864,6 +2931,7 @@ const fetchFxRates = useCallback(async () => {
                 targetHome={stats_targetHome}
                 mtdHome={stats_mtdHome}
                 lastMonthTotalHome={stats_lastMonthTotalHome}
+                lastMonthToDateHome={stats_lastMtdHome}
                 currentReimbursement={reimbursementHome.current}
                 previousReimbursement={reimbursementHome.previous}
               />
@@ -2960,6 +3028,7 @@ const fetchFxRates = useCallback(async () => {
                     currencySymbol={currencySymbol}
                     labels={labels}
                     values={values}
+                    prevValues={prevValues}
                     colors={colors}
                     loading={loading}
                     allValuesZero={allValuesZero}

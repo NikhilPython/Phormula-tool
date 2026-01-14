@@ -166,12 +166,11 @@ export default function DataTable<T extends Row>({
       .join(" ");
   };
 
-  // ✅ If a column has width, use it, else use headerMaxWidth
-  const thStyle = (col: ColumnDef<T>): React.CSSProperties => {
-    const w = col.width ? col.width : `${headerMaxWidth}px`;
-    // With table-fixed, width is respected. maxWidth helps wrapping if widths are not strict.
-    return { width: w, maxWidth: w };
+  const thStyle = (col: ColumnDef<T>): React.CSSProperties | undefined => {
+    if (!col.width) return undefined; // ✅ don't force widths globally
+    return { width: col.width, maxWidth: col.width };
   };
+
 
   return (
     <div
@@ -186,10 +185,12 @@ export default function DataTable<T extends Row>({
     >
       <table
         className={clsx(
-          "w-full table-fixed border-collapse text-[10px] 2xl:text-xs text-slate-700",
+          "w-full border-collapse text-[10px] 2xl:text-xs text-slate-700",
+          "table-fixed lg:table-auto", // ✅ fixed on small (wrap), auto on large (full width)
           tableClassName
         )}
       >
+
         <thead
           className={clsx(
             "bg-[#5EA68E] text-yellow-200 font-bold",
@@ -203,18 +204,28 @@ export default function DataTable<T extends Row>({
                 onClick={col.onHeaderClick}
                 className={clsx(
                   "border border-gray-300 px-2 py-2 text-center align-middle",
-                  // ✅ allow wrapping
+                  // ✅ wrap on small screens
                   "whitespace-normal break-words leading-snug",
-                  // optional pointer behavior
+                  // ✅ on large screens, don’t wrap + let it expand naturally
+                  "lg:whitespace-nowrap",
                   col.headerClassName,
                   col.onHeaderClick && "cursor-pointer select-none"
                 )}
                 style={thStyle(col)}
+
               >
-                {/* ✅ clamp header to max 2 lines */}
-                <div className="mx-auto max-w-full overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">
+                <div
+                  className={clsx(
+                    "mx-auto max-w-full overflow-hidden text-ellipsis",
+                    // clamp to 2 lines on small screens
+                    "[display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]",
+                    // on large screens show full header in one line
+                    "lg:[display:block] lg:[-webkit-line-clamp:unset] lg:overflow-visible"
+                  )}
+                >
                   {formatHeader(col.header)}
                 </div>
+
               </th>
 
             ))}
