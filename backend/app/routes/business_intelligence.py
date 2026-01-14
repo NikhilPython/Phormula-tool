@@ -12,6 +12,8 @@ from datetime import date
 from calendar import month_name
 from calendar import month_name, month_abbr
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from openai import OpenAIError
+
 
 
 # Load environment variables
@@ -899,11 +901,32 @@ Data:
                     'key_used': key,  # Debug info
                     'is_global': is_global  # Debug info
                 }
-            except Exception as e:
+            except OpenAIError as e:
+                # 🔴 CREDIT / BILLING / QUOTA ERROR
+                print("[AI BILLING ERROR]", e)
+
                 return key, {
                     'sku': sku,
                     'product_name': product_name,
-                    'insight': f"Error generating insight: {str(e)}",
+                    'insight': (
+                        "AI insights are temporarily unavailable due to account limits. "
+                        "Please contact us at care@phormula.io."
+                    ),
+                    'key_used': key,
+                    'is_global': is_global
+                }
+
+            except Exception as e:
+                # 🟡 NON-BILLING FAILURE
+                print("[AI ERROR] Insight generation failed:", e)
+
+                return key, {
+                    'sku': sku,
+                    'product_name': product_name,
+                    'insight': (
+                        "AI insight could not be generated at the moment. "
+                        "Please try again later."
+                    ),
                     'key_used': key,
                     'is_global': is_global
                 }
