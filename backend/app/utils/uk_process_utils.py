@@ -993,7 +993,7 @@ def process_skuwise_data(user_id, country, month, year):
            
         )
 
-        print("\n[TAX DEBUG][process_skuwise_data] SKU-wise breakdown")
+        
 
         debug_cols = [
             "sku",
@@ -1007,16 +1007,7 @@ def process_skuwise_data(user_id, country, month, year):
             "net_tax",
         ]
 
-        print(
-            sku_grouped[debug_cols]
-            .fillna(0)
-            .sort_values("sku")
-            .to_string(index=False)
-        )
-
-        print("\n[TAX DEBUG][process_skuwise_data] TOTALS")
-        for c in debug_cols[1:]:
-            print(f"{c}: {sku_grouped[c].sum():.2f}")
+ 
 
 
         
@@ -1036,26 +1027,6 @@ def process_skuwise_data(user_id, country, month, year):
         for c in ["Net Sales", "Net Credits", "Net Taxes", "amazon_fee", "cost_of_unit_sold"]:
             sku_grouped[c] = pd.to_numeric(sku_grouped[c], errors="coerce").fillna(0.0)
 
-        print("\n[PROFIT CROSS-CHECK] ===== INPUT COMPONENTS (SKU-WISE) =====")
-
-        print(
-            sku_grouped[[
-                "sku",
-                "Net Sales",
-                "Net Credits",
-                "Net Taxes",
-                "amazon_fee",
-                "cost_of_unit_sold"
-            ]].to_string(index=False)
-        )
-
-        print("\n[PROFIT CROSS-CHECK] ----- TOTAL INPUT SUMS -----")
-        print("TOTAL Net Sales       :", sku_grouped["Net Sales"].sum())
-        print("TOTAL Net Credits     :", sku_grouped["Net Credits"].sum())
-        print("TOTAL Net Taxes       :", sku_grouped["Net Taxes"].sum())
-        print("TOTAL Amazon Fee      :", sku_grouped["amazon_fee"].sum())
-        print("TOTAL Cost of Sold    :", sku_grouped["cost_of_unit_sold"].sum())
-    
 
         # Compute profit SKU-wise
         sku_grouped["profit"] = (
@@ -1066,22 +1037,7 @@ def process_skuwise_data(user_id, country, month, year):
             - sku_grouped["cost_of_unit_sold"]
         )
         # ------------------------------------------------------
-        print("\n[PROFIT CROSS-CHECK] ===== PROFIT RESULT (SKU-WISE) =====")
-
-        print(
-            sku_grouped[[
-                "sku",
-                "profit"
-            ]].to_string(index=False)
-        )
-
-        print("\n[PROFIT CROSS-CHECK] ----- TOTAL PROFIT -----")
-        print("TOTAL PROFIT :", sku_grouped["profit"].sum())
-
-        print("[PROFIT CROSS-CHECK] ===== END =====\n")
-
         
-
         debug_cols = [
             "sku",
             "Net Sales",

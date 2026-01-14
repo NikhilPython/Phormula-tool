@@ -250,21 +250,11 @@ const extractBullets = (md: string | null | undefined): string[] => {
     .map((l) => l.replace(/^-\s+/, "").trim())
     .filter(Boolean);
 };
-<<<<<<< HEAD
-// 👇👇 ADD IT RIGHT HERE
-const renderMarkdownInline = (text: string) => {
-  // convert **bold** → <strong>
-  const html = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-  return { __html: html };
-};
-// 👆👆 END
-=======
 const renderMarkdownInline = (text: string) => {
   // convert **bold** → <strong>
   const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
   return { __html: html };
 };
->>>>>>> origin
 // Pull only bullets under "## SUMMARY" section if present; otherwise fallback to all bullets
 // --- NEW: split markdown into sections by "## " headings
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
@@ -616,66 +606,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
 
-  // const fetchAiSummary = async (rangeType: RangeType) => {
-  //   // only fetch when the selection is valid for the current range
-  //   if (!countryName || !rangeType || !selectedYear) return;
-
-  //   const timeline =
-  //     rangeType === "monthly"
-  //       ? monthNameToNumber(selectedMonth)
-  //       : rangeType === "quarterly"
-  //         ? selectedQuarter
-  //         : "ALL";
-
-  //   if (rangeType === "monthly" && !timeline) return;
-  //   if (rangeType === "quarterly" && !selectedQuarter) return;
-
-  //   setAiPanelLoading(true);
-  //   setAiPanelError(null);
-
-  //   try {
-  //     const token =
-  //       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-
-  //     const url = new URL("http://127.0.0.1:5000/summary");
-  //     url.searchParams.set("country", countryName);
-  //     url.searchParams.set("period", rangeType);
-  //     url.searchParams.set("timeline", String(timeline));
-  //     url.searchParams.set("year", String(selectedYear));
-
-  //     const res = await fetch(url.toString(), {
-  //       method: "GET",
-  //       headers: token ? { Authorization: `Bearer ${token}` } : {},
-  //       cache: "no-store",
-  //     });
-
-  //     if (!res.ok) {
-  //       const err = await res.json().catch(() => ({}));
-  //       setAiPanel(null);
-  //       setAiPanelError(String(err?.error ?? res.statusText));
-  //       return;
-  //     }
-
-  //     const data: AiSummaryResponse = await res.json();
-
-  //     const { summaryBullets, skuInsightsBullets } = extractSummaryAndSkuBullets(data.summary);
-  //     const { recommendationBullets, inventoryBullets } = extractRecoAndInventoryBullets(data.recommendations);
-
-  //     setAiPanel({
-  //       summaryBullets,
-  //       skuInsightsBullets,
-  //       recommendationBullets,
-  //       inventoryBullets,
-  //       rawSummary: data.summary ?? null,
-  //       rawRecommendations: data.recommendations ?? null,
-  //     });
-  //   } catch (e: any) {
-  //     setAiPanel(null);
-  //     setAiPanelError(e?.message || "Failed to fetch AI summary");
-  //   } finally {
-  //     setAiPanelLoading(false);
-  //   }
-  // };
+  
 
   const fetchAiSummary = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
@@ -790,22 +721,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
-  // Initialize range & selections from incoming params
-  // useEffect(() => {
-  //   if (ranged === "QTD") {
-  //     setRange("quarterly");
-  //     const q = getQuarterFromMonth(month);
-  //     setSelectedQuarter(q); // Quarter | ""
-  //     setSelectedYear(year);
-  //   } else if (ranged === "MTD") {
-  //     setRange("monthly");
-  //     setSelectedMonth(month);
-  //     setSelectedYear(year);
-  //   } else if (ranged === "YTD") {
-  //     setRange("yearly");
-  //     setSelectedYear(year);
-  //   }
-  // }, [ranged, month, year]);
+  
 
   useEffect(() => {
     // ✅ Always open yearly by default
@@ -1015,9 +931,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     ws: ExcelJS.Worksheet,
     model: NonNullable<SkuExportPayload["sheetModel"]>
   ) => {
-<<<<<<< HEAD
-    const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
-=======
     // const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
 
     const {
@@ -1041,7 +954,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       (col) => !EXCEL_EXCLUDED_COLUMNS.has(col)
     );
 
->>>>>>> origin
 
     const colIndex: Record<string, number> = {};
     columns.forEach((k, i) => (colIndex[k] = i + 1)); // 1-based for ExcelJS
@@ -1055,10 +967,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
 
     // ---- meta rows (in column A)
-<<<<<<< HEAD
-    for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
-    ws.addRow([""]); // spacer
-=======
     // for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
     // ws.addRow([""]); 
 
@@ -1105,7 +1013,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     ws.addRow([""]); 
 
->>>>>>> origin
 
     // ---- header row
     ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
@@ -1118,25 +1025,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
     }
 
-<<<<<<< HEAD
-    // spacer between table and summary
-    ws.addRow([""]);
-
-    // ---- summary rows
-    // If model uses { product_name, net_taxes } like your current model,
-    // keep label in product_name col and value in net_taxes col.
-    const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
-    const valueKey = columns.includes("net_taxes") ? "net_taxes" : columns[columns.length - 1];
-
-    for (const sr of summaryRows || []) {
-      const line = new Array(columns.length).fill("");
-      line[colIndex[labelKey] - 1] = (sr as any)?.[labelKey] ?? "";
-      line[colIndex[valueKey] - 1] = (sr as any)?.[valueKey] ?? "";
-      ws.addRow(line);
-    }
-
-    // ---- formatting by column key
-=======
     ws.addRow([""]);
 
     const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
@@ -1204,23 +1092,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
 
     // ---- formatting by column key (may overwrite numFmt)
->>>>>>> origin
     for (const k of columns) {
       const idx = colIndex[k];
       const nf = fmtFor(k);
       if (nf) ws.getColumn(idx).numFmt = nf;
     }
 
-<<<<<<< HEAD
-    // ---- make header bold
-    const headerRowNumber = (extraRows?.length ?? 0) + 2; // meta + blank spacer => header sits here
-    ws.getRow(headerRowNumber).font = { bold: true };
-
-    // ---- make sign row a bit muted (optional)
-    ws.getRow(headerRowNumber + 1).font = { italic: true };
-  };
-
-=======
     // ✅ re-apply percent formatting AFTER column formats
     for (const r of percentSummaryRowNumbers) {
       ws.getRow(r).getCell(colIndex[valueKey]).numFmt = "0.00%";
@@ -1234,7 +1111,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     // ---- sign row italic
     ws.getRow(headerRowNumber + 1).font = { italic: true };
   };
->>>>>>> origin
 
   const handleDownloadProfitabilityBundle = async () => {
     try {
