@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import * as XLSX from 'xlsx';
+import * as XLSX from "xlsx-js-style";
 import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
 import { IoDownload } from 'react-icons/io5';
@@ -16,6 +16,7 @@ import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
 import SegmentedToggle from '@/components/ui/SegmentedToggle';
 import { AiButton } from '@/components/ui/button/AiButton';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
+import { useGetUserDataQuery } from '@/lib/api/profileApi';
 
 
 type MonthsforBIProps = {
@@ -163,7 +164,11 @@ const getAbbr = (m?: string) => {
   return m.slice(0, 3);
 };
 
-
+const capitalizeWords = (value: string) =>
+  (value || "")
+    .toString()
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 
 // =========================
 // Main Component
@@ -176,6 +181,8 @@ export default function LiveBusinessClient({
   year,
   initialData,
 }: MonthsforBIProps) {
+  const { data: userData } = useGetUserDataQuery();
+
   const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>(
     {
       top_80_skus: [],
@@ -591,12 +598,143 @@ export default function LiveBusinessClient({
   };
 
 
+  // ---------- TOP SECTION HELPERS (add above exportToExcel) ----------
 
+
+  const buildTopAoA = ({
+    headerCount,
+    title,
+    companyName,
+    brandName,
+    profitColIndex1Based,
+    extraLines = [],
+  }: {
+    headerCount: number;
+    title: string;
+    companyName: string;
+    brandName: string;
+    profitColIndex1Based: number; // Excel-style 1-based
+    extraLines?: string[];
+  }) => {
+    const aoa: any[][] = [];
+
+    // Row 1: Title
+    const titleRow = new Array(headerCount).fill("");
+    titleRow[0] = title || "";
+    aoa.push(titleRow);
+
+    // Row 2: Company left + Brand right (anchored near profit column)
+    const companyBrandRow = new Array(headerCount).fill("");
+    companyBrandRow[0] = `Company Name : ${companyName || ""}`;
+
+    const profit0Based = Math.max(0, profitColIndex1Based - 1);
+    companyBrandRow[Math.min(headerCount - 1, profit0Based)] = `${brandName || ""}`;
+    aoa.push(companyBrandRow);
+
+    // Row 3+: extra lines (Currency/Country/Platform etc.)
+    for (const line of extraLines) {
+      const r = new Array(headerCount).fill("");
+      r[0] = line;
+      aoa.push(r);
+    }
+
+    // blank row
+    aoa.push(new Array(headerCount).fill(""));
+
+    return aoa;
+  };
+
+  const applyTopStyles = (
+    ws: XLSX.WorkSheet,
+    headerCount: number,
+    profitColIndex1Based: number
+  ) => {
+    ws["!merges"] = ws["!merges"] || [];
+
+
+
+    // Row heights (make room for 4 lines)
+    ws["!rows"] = ws["!rows"] || [];
+    ws["!rows"][0] = { hpt: 18 };
+    ws["!rows"][1] = { hpt: 18 };
+
+
+    // Company/brand row alignment
+    for (let c = 0; c < headerCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 1, c });
+      if (!ws[addr]) continue;
+      ws[addr].s = {
+        font: { bold: false, sz: 11 },
+        alignment: { horizontal: c === 0 ? "left" : "right", vertical: "center" },
+      };
+    }
+
+    // Brand cell stronger
+    const profit0Based = Math.max(0, profitColIndex1Based - 1);
+    const brandAddr = XLSX.utils.encode_cell({
+      r: 1,
+      c: Math.min(headerCount - 1, profit0Based),
+    });
+    if (ws[brandAddr]) {
+      ws[brandAddr].s = {
+        font: { bold: false, sz: 11 },
+        alignment: { horizontal: "right", vertical: "center" },
+      };
+    }
+
+    // Row heights
+    ws["!rows"] = ws["!rows"] || [];
+    ws["!rows"][0] = { hpt: 24 };
+    ws["!rows"][1] = { hpt: 18 };
+  };
+
+
+  // ---------- Excel Header Values (from userData) ----------
+  const companyNameForExcel = capitalizeWords(userData?.company_name || "");
+  const brandNameForExcel = capitalizeWords(userData?.brand_name || "");
+
+  // ---------- Currency helpers ----------
+  const countryToCurrencyCode = (country: string) => {
+    const c = (country || "").toLowerCase();
+    if (c === "uk") return "GBP";
+    if (c === "us") return "USD";
+    if (c === "ca") return "CAD";
+    if (c === "eu") return "EUR";
+    // add more if needed
+    return ""; // unknown
+  };
+
+  const currencyCodeToSymbol = (code: string) => {
+    const c = (code || "").toUpperCase();
+    if (c === "USD") return "$";
+    if (c === "GBP") return "£";
+    if (c === "EUR") return "€";
+    if (c === "CAD") return "C$";
+    if (c === "AUD") return "A$";
+    if (c === "INR") return "₹";
+    if (c === "AED") return "د.إ";
+    if (c === "SAR") return "﷼";
+    return c; // fallback: show code if symbol unknown
+  };
+
+  const getCurrencySymbolForExcel = () => {
+    const isGlobal = (countryName || "").toLowerCase() === "global";
+
+    // your profile field (adjust the key if your API uses a different name)
+    const homeCode =
+      (userData as any)?.homeCurrency ||
+      (userData as any)?.home_currency ||
+      "";
+
+    const countryCode = countryToCurrencyCode(countryName);
+
+    const codeToUse = isGlobal ? homeCode : countryCode || homeCode;
+    return currencyCodeToSymbol(codeToUse);
+  };
 
   // =========================
   // Export to Excel
   // =========================
-
 
   const exportToExcel = (rows: SkuItem[], filename = 'export.xlsx') => {
     // ✅ IMPORTANT: backend fields are tied to month1(old) / month2(new). Keep fixed mapping.
@@ -668,6 +806,38 @@ export default function LiveBusinessClient({
       `CM1 Unit Profit ${oldAbbr}`,
       'Change in CM1 Unit Profit (%age)',
     ];
+
+    // ---------- TOP BLOCK CONFIG (add right after headerOrder) ----------
+    const PROFIT_COL_INDEX_1_BASED = (() => {
+      // anchor brand above "CM1 Profit %age(" column if exists, else last column
+      const idx0 = headerOrder.findIndex((h) =>
+        String(h).toLowerCase().includes("cm1 profit %age")
+      );
+      return (idx0 >= 0 ? idx0 : headerOrder.length - 1) + 1;
+    })();
+
+    const currencySymbol = getCurrencySymbolForExcel();
+
+    const topExtraLines = [
+      `Country : ${titleCountry}`,
+      `Platform : Amazon`,
+      `Currency : ${currencySymbol}`,
+      `Period : ${prevShort || ""} vs ${currShort || ""}`,
+    ];
+
+
+    const excelTitle = `Amazon ${titleCountry} - SKU Analysis - MTD ${titleMonth}`;
+
+    const topAoA = buildTopAoA({
+      headerCount: headerOrder.length,
+      title: excelTitle,
+      companyName: companyNameForExcel,
+      brandName: brandNameForExcel,
+      profitColIndex1Based: PROFIT_COL_INDEX_1_BASED,
+      extraLines: topExtraLines,
+    });
+
+    const WS1_HEADER_ROW_INDEX = topAoA.length;
 
     /**
      * ✅ Percent formatting:
@@ -884,10 +1054,33 @@ export default function LiveBusinessClient({
     // -------------------------
     const formattedAll = formatRowsWithTotals(cleanRows);
 
-    const ws1 = XLSX.utils.json_to_sheet(formattedAll, { header: headerOrder });
-    XLSX.utils.sheet_add_aoa(ws1, [headerOrder], { origin: 'A1' });
-    addPercentToPercentColumns(ws1, [0]);
-    ws1['!freeze'] = { xSplit: 0, ySplit: 1 };
+    // const ws1 = XLSX.utils.json_to_sheet(formattedAll, { header: headerOrder });
+    // XLSX.utils.sheet_add_aoa(ws1, [headerOrder], { origin: 'A1' });
+    // addPercentToPercentColumns(ws1, [0]);
+    // ws1['!freeze'] = { xSplit: 0, ySplit: 1 };
+
+    // ---------- Sheet 1 with TOP BLOCK ----------
+    const bodyAoA1 = formattedAll.map((obj) =>
+      headerOrder.map((h) => (obj as any)[h] ?? null)
+    );
+
+    const sheet1AoA = [
+      ...topAoA,
+      headerOrder,     // table header
+      ...bodyAoA1,     // table body
+    ];
+
+    const ws1 = XLSX.utils.aoa_to_sheet(sheet1AoA);
+
+    // percent formatting should use the correct header row index
+    addPercentToPercentColumns(ws1, [WS1_HEADER_ROW_INDEX]);
+
+    // freeze under header
+    ws1["!freeze"] = { xSplit: 0, ySplit: WS1_HEADER_ROW_INDEX + 1 };
+
+    // apply top styles
+    applyTopStyles(ws1, headerOrder.length, PROFIT_COL_INDEX_1_BASED);
+
 
     // -------------------------
     // Sheet 2: SKU Split (3 sections + ✅ only Grand Total row)
@@ -943,8 +1136,12 @@ export default function LiveBusinessClient({
       aoa.push(grandTotalRow);
     }
 
-    const ws2 = XLSX.utils.aoa_to_sheet(aoa);
-    ws2['!freeze'] = { xSplit: 0, ySplit: 2 };
+    const ws2 = XLSX.utils.aoa_to_sheet([...topAoA, ...aoa]);
+    applyTopStyles(ws2, headerOrder.length, PROFIT_COL_INDEX_1_BASED);
+
+    // ws2['!freeze'] = { xSplit: 0, ySplit: 2 };
+    ws2["!freeze"] = { xSplit: 0, ySplit: topAoA.length + 2 };
+
 
     // ✅ apply percent formatting for EVERY repeated header row (3 sections + grand total)
     // In SKU Split, each table header row is the row where col A is "SKU".
@@ -2190,7 +2387,7 @@ export default function LiveBusinessClient({
                       <IoDownload size={27} />
                     </button> */}
 
-                    <DownloadIconButton onClick={() => {
+                    {/* <DownloadIconButton onClick={() => {
                       const prevShortName = prevShort || 'Prev';
                       const currShortName = currShort || 'Curr';
                       const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
@@ -2204,7 +2401,25 @@ export default function LiveBusinessClient({
     hover:shadow-lg
     active:translate-y-0
     active:shadow-md
-  "/>
+  "/> */}
+
+                    <DownloadIconButton
+                      onClick={() => {
+                        if (!userData) {
+                          // optionally show toast instead of return
+                          setError("User profile not loaded yet. Please try again.");
+                          return;
+                        }
+
+                        const prevShortName = prevShort || "Prev";
+                        const currShortName = currShort || "Curr";
+                        const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
+                        const allRows = getAllSkusForExport();
+                        exportToExcel(allRows, file);
+                      }}
+                      className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                    />
+
                   </div>
                 </div>
               </div>

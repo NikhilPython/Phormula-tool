@@ -28,7 +28,7 @@ type Props = {
   targetHome?: number;
   mtdHome?: number;
   lastMonthTotalHome?: number;
-
+  lastMonthToDateHome?: number;
   // ✅ NEW: Dec target in HOME currency (parent wins). Optional.
   decTargetHome?: number;
 
@@ -55,6 +55,7 @@ export default function SalesTargetCard({
   targetHome,
   mtdHome,
   lastMonthTotalHome,
+  lastMonthToDateHome,
   decTargetHome,
   currentReimbursement,
   previousReimbursement,
@@ -107,6 +108,17 @@ export default function SalesTargetCard({
       ? decTargetHome
       : computedDecTargetHome;
 
+  const computedLastMonthToDateHome = convertToHomeCurrency(
+    data.lastMonthToDateUSD ?? 0,
+    homeCurrency
+  );
+
+  const lastMonthToDateHomeResolved =
+    typeof lastMonthToDateHome === "number" && Number.isFinite(lastMonthToDateHome)
+      ? lastMonthToDateHome
+      : computedLastMonthToDateHome;
+
+
   // ---- Gauge ratios (all in HOME currency) ----
   // const ratio =
   //   targetHomeResolved > 0 ? mtdHomeResolved / targetHomeResolved : 0;
@@ -155,27 +167,21 @@ export default function SalesTargetCard({
   const targetVal = Math.max(0, Number(targetHomeResolved) || 0);
   const prevVal = Math.max(0, Number(lastMonthTotalHomeResolved) || 0);
 
-  // ✅ shared max for normalization
   const gaugeMax = Math.max(mtdVal, targetVal, prevVal, 1);
 
-  // normalized [0..1]
   const mtdNorm = mtdVal / gaugeMax;
   const targetNorm = targetVal / gaugeMax;
   const prevNorm = prevVal / gaugeMax;
 
-  // draw (clamped)
   const greenDraw = Math.min(Math.max(mtdNorm, 0), 1);     // MTD
   const decDraw = Math.min(Math.max(targetNorm, 0), 1);    // Target
   const orangeDraw = Math.min(Math.max(prevNorm, 0), 1);   // Prev month sale
 
-  // degrees
   const toDeg_MTD = 180 * greenDraw;
   const toDeg_DecTarget = 180 * decDraw;
   const toDeg_Orange = 180 * orangeDraw;
 
-  // ✅ Target achieved should still be mtd / target (not mtd / gaugeMax)
   const pctDisplay = targetVal > 0 ? (mtdVal / targetVal) * 100 : 0;
-
 
   const { todayDay } = getISTDayInfo();
   const todayHomeComputed =
@@ -192,7 +198,7 @@ export default function SalesTargetCard({
 
   // Gauge sizing
   const size = 220;
-  const strokeMain = 10; // green
+  const strokeMain = 8; // green
   const strokeDec = 5;   // grey
   const strokeLast = 5;  // orange
 
@@ -237,6 +243,17 @@ export default function SalesTargetCard({
   const knobYellow = toXYRadius(toDeg_Orange, rLastMTD);
   const knobDec = toXYRadius(toDeg_DecTarget, rDecTarget);
 
+  const prevToDateVal = Math.max(0, Number(lastMonthToDateHomeResolved) || 0);
+  const prevToDateNorm = prevToDateVal / gaugeMax;
+  const toDeg_PrevToDate = 180 * Math.min(Math.max(prevToDateNorm, 0), 1);
+
+  const knobPrevToDate = toXYRadius(toDeg_PrevToDate, rLastMTD);
+
+  const radialDeg =
+    (Math.atan2(knobPrevToDate.y - size / 2, knobPrevToDate.x - cx) * 180) / Math.PI;
+
+  const markerDeg = radialDeg + 90;
+
   // Tooltip
   const TOOLTIP_WIDTH = 70;
 
@@ -280,10 +297,9 @@ export default function SalesTargetCard({
     `MTD Sale: ${formatHomeK(mtdHomeResolved)} (${pctDisplay.toFixed(1)}%)`,
     `Target: ${formatHomeK(targetHomeResolved)}`,
     `${prevLabel} Sale: ${formatHomeK(lastMonthTotalHomeResolved)}`,
+    `Last month by today: ${formatHomeK(lastMonthToDateHomeResolved)}`,
   ];
 
-  // const decTipTitle = "December Target";
-  // const decTipLines = [`Dec Target: ${formatHomeK(decTargetHomeResolved)}`];
 
   // Reimbursement labels
   const reimbNowLabel = new Intl.DateTimeFormat("en-US", {
@@ -318,7 +334,7 @@ export default function SalesTargetCard({
   const fmtPct = (v: number) => `${v.toFixed(2)}%`;
 
   const formatWithCurrencySpace = (value: number) => {
-    const s = String(formatHomeK(value)).trim(); 
+    const s = String(formatHomeK(value)).trim();
 
     // handle sign
     let sign = "";
@@ -329,16 +345,12 @@ export default function SalesTargetCard({
       rest = rest.slice(1).trim();
     }
 
-    // remove existing currency symbol
     if (rest.startsWith(homeCurrencySymbol)) {
       rest = rest.slice(homeCurrencySymbol.length).trim();
     }
 
-    // ✅ sign before currency
     return `${sign}${homeCurrencySymbol}${rest}`;
   };
-
-
 
   const showReimbDelta =
     typeof reimbursementDeltaPct === "number" &&
@@ -379,7 +391,7 @@ export default function SalesTargetCard({
         <div
           ref={wrapRef}
           className="relative"
-          style={{ width: size, height: size / 2 }}
+          style={{ width: size, height: size / 2, overflow: "visible" }} // ✅ ADD THIS
           onMouseMove={moveTip}
           onMouseLeave={hideTip}
         >
@@ -388,6 +400,8 @@ export default function SalesTargetCard({
             width={size}
             height={size / 2}
             viewBox={`0 0 ${size} ${size / 2}`}
+            style={{ overflow: "visible" }}   // ✅ ADD THIS
+            overflow="visible"               // ✅ ADD THIS (Safari-safe)
           >
             {/* Orange arc (Prev month sale reference) */}
             <path
@@ -397,6 +411,21 @@ export default function SalesTargetCard({
               stroke="#9CA3AF"
               strokeWidth={strokeLast}
               strokeLinecap="round"
+              onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
+              onMouseLeave={hideTip}
+            />
+
+            {/* ✅ Red rectangular marker, perpendicular to arc (radial) */}
+            <rect
+              x={knobPrevToDate.x - 2}
+              y={knobPrevToDate.y - 8}
+              width={4}
+              height={16}
+              rx={1}
+              fill="#FF5C5C"
+              stroke="#ffffff"
+              strokeWidth={1.5}
+              transform={`rotate(${markerDeg}, ${knobPrevToDate.x}, ${knobPrevToDate.y})`}
               onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
               onMouseLeave={hideTip}
             />
@@ -452,10 +481,10 @@ export default function SalesTargetCard({
             <circle
               cx={knobGreen.x}
               cy={knobGreen.y}
-              r={10}
+              r={7}
               fill="#ED9F50"
               stroke="#ecfdf3"
-              strokeWidth={4}
+              strokeWidth={2}
               onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
               onMouseLeave={hideTip}
             />

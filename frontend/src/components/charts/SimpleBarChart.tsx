@@ -1,6 +1,107 @@
+// "use client";
+
+// import React, { useEffect, useRef } from "react";
+// import "@/lib/chartSetup";
+// import {
+//   Chart as ChartJS,
+//   CategoryScale,
+//   LinearScale,
+//   BarElement,
+//   Tooltip,
+//   Legend,
+//   Title as ChartTitle,
+// } from "chart.js";
+// import { Bar } from "react-chartjs-2";
+
+// ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, ChartTitle);
+
+// type SimpleBarChartProps = {
+//   labels: string[];
+//   values: number[];
+//   colors?: string[];
+//   xTitle?: string;
+//   yTitle?: string;
+// };
+
+// const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
+//   labels,
+//   values,
+//   colors = [],
+//   xTitle,
+//   yTitle,
+// }) => {
+//   const chartRef = useRef<any>(null);
+
+//   const data = {
+//     labels,
+//     datasets: [
+//       {
+//         label: xTitle || "",
+//         data: values,
+//         backgroundColor: colors.length ? colors : "#75BBDA",
+//         borderRadius: 4,
+//         borderWidth: 0,
+//       },
+//     ],
+//   };
+
+//   const options = {
+//     responsive: true,
+//     maintainAspectRatio: false,
+
+//     plugins: {
+//       legend: {
+//         display: false,
+//       },
+//       tooltip: {
+//         callbacks: {
+//           label: (context: any) => {
+//             const v = context.raw ?? 0;
+//             return `${yTitle || "Value"}: ${v.toLocaleString()}`;
+//           },
+//         },
+//       },
+//       title: {
+//         display: false,
+//       },
+//     },
+
+//     scales: {
+//       x: {
+//         title: {
+//           display: Boolean(xTitle),
+//           text: xTitle,
+//         },
+//         ticks: {
+//           maxRotation: 0,
+//         },
+//       },
+//       y: {
+//         beginAtZero: true,
+//         title: {
+//           display: Boolean(yTitle),
+//           text: yTitle,
+//         },
+//       },
+//     },
+//   };
+
+//   return (
+//     <div className="relative w-full h-full">
+//       <Bar ref={chartRef} data={data} options={options} />
+//     </div>
+//   );
+// };
+
+// export default SimpleBarChart;
+
+
+
+
+
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
 import "@/lib/chartSetup";
 import {
   Chart as ChartJS,
@@ -17,8 +118,20 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, ChartT
 
 type SimpleBarChartProps = {
   labels: string[];
+
+  // ✅ Current month (existing)
   values: number[];
+
+  // ✅ Previous month till date (NEW)
+  prevValues?: number[];
+
+  // existing
   colors?: string[];
+
+  // ✅ optional labels for legend/tooltip
+  currentLabel?: string; // default: "MTD"
+  prevLabel?: string;    // default: "Last month till date"
+
   xTitle?: string;
   yTitle?: string;
 };
@@ -26,38 +139,66 @@ type SimpleBarChartProps = {
 const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
   labels,
   values,
+  prevValues = [],
   colors = [],
+  currentLabel = "MTD",
+  prevLabel = "Last month till date",
   xTitle,
   yTitle,
 }) => {
   const chartRef = useRef<any>(null);
 
+  const hasPrev = Array.isArray(prevValues) && prevValues.length === labels.length;
+
+  // ✅ color helpers
+  const currentColors = colors.length ? colors : "#75BBDA";
+  const prevColors = "#9CA3AF"; // grey for last month bars
+
   const data = {
     labels,
     datasets: [
       {
-        label: xTitle || "",
+        label: currentLabel,
         data: values,
-        backgroundColor: colors.length ? colors : "#75BBDA",
+        backgroundColor: currentColors,
         borderRadius: 4,
         borderWidth: 0,
+        barPercentage: 0.9,
+        categoryPercentage: 0.7,
       },
+      ...(hasPrev
+        ? [
+            {
+              label: prevLabel,
+              data: prevValues,
+              backgroundColor: prevColors,
+              borderRadius: 4,
+              borderWidth: 0,
+              barPercentage: 0.9,
+              categoryPercentage: 0.7,
+            },
+          ]
+        : []),
     ],
   };
 
-  const options = {
+  const options: any = {
     responsive: true,
     maintainAspectRatio: false,
 
     plugins: {
       legend: {
-        display: false,
+        display: hasPrev, // ✅ show legend only when comparison exists
+        position: "top",
       },
       tooltip: {
         callbacks: {
           label: (context: any) => {
-            const v = context.raw ?? 0;
-            return `${yTitle || "Value"}: ${v.toLocaleString()}`;
+            const v = Number(context.raw ?? 0);
+            const dsLabel = context.dataset?.label || "";
+            // yTitle usually like: "Amount ($)" — so keep that as prefix
+            const prefix = yTitle ? `${dsLabel} - ${yTitle}` : dsLabel || "Value";
+            return `${prefix}: ${v.toLocaleString()}`;
           },
         },
       },
@@ -68,6 +209,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
 
     scales: {
       x: {
+        stacked: false,
         title: {
           display: Boolean(xTitle),
           text: xTitle,
@@ -77,6 +219,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
         },
       },
       y: {
+        stacked: false,
         beginAtZero: true,
         title: {
           display: Boolean(yTitle),

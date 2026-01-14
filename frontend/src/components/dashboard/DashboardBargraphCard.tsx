@@ -10,6 +10,7 @@ type DashboardBargraphCardProps = {
 
   labels: string[];
   values: number[];
+  prevValues: number[];
   colors?: string[];
 
   loading: boolean;
@@ -22,11 +23,12 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   currencySymbol,
   labels,
   values,
+  prevValues,
   colors,
   loading,
   allValuesZero = false,
 }) => {
-    const titleCountry = useMemo(() => {
+  const titleCountry = useMemo(() => {
     const c = (countryName || "").toLowerCase();
     if (!c) return "";
     if (c === "global") return "Global";
@@ -56,13 +58,25 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
               </div>
             </div>
           ) : (
+            // <SimpleBarChart
+            //   labels={labels}
+            //   values={values}
+            //   colors={colors}
+            //   // xTitle={formattedMonthYear}
+            //   yTitle={`Amount (${currencySymbol})`}
+            // />
+
             <SimpleBarChart
               labels={labels}
               values={values}
+              prevValues={prevValues} 
               colors={colors}
-              // xTitle={formattedMonthYear}
+              currentLabel="MTD"
+              prevLabel="Last month till date"
               yTitle={`Amount (${currencySymbol})`}
             />
+
+
           )}
         </div>
       </div>
