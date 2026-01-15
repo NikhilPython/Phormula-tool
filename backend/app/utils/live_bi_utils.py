@@ -775,6 +775,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
             | d.str.contains(r"\bcoupon\b", na=False)
         ) & (~ignore)
 
+
         # Platform fee bucket
         is_platform_fee = (
             (t.str.contains("servicefee", na=False) | d.str.contains(r"\bfee\b", na=False))
@@ -988,20 +989,22 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         )
 
         is_ads = (
-            t.str.contains(
-                r"productadspayment|sellerdealpayment|dealperformanceevent",
-                na=False
-            )
+            # Product Ads payments
+            t.str.contains(r"productadspayment", na=False)
+
+            # Deal-related ads
             | d.str.contains(
-                r"productadspayment|sellerdealcomplete|dealperformanceevent",
+                r"dealperformanceevent|dealparticipationevent",
                 na=False
             )
+
+            # Coupon-related ads
             | d.str.contains(
-                r"couponparticipationevent|couponperformanceevent|dealperformanceevent",
+                r"couponparticipationevent|couponperformanceevent",
                 na=False
             )
-            | d.str.contains(r"\bcoupon\b", na=False)
         ) & (~ignore)
+
 
 
         is_platform_fee = (
@@ -1394,7 +1397,7 @@ summary_numeric_fields = [
     "quantity",
     "net_sales",
     "profit",
-    "unit_wise_profitability"
+    
 ]
 
 
@@ -1437,6 +1440,24 @@ def compute_total_asp(rows):
 
     # ❌ no rounding here
     return total_sales / total_qty
+
+def compute_total_unit_profitability(rows):
+    total_qty = 0.0
+    total_profit = 0.0
+
+    for r in rows:
+        q = safe_float_local(r.get("quantity"))
+        p = safe_float_local(r.get("profit"))
+
+        if q and p is not None:
+            total_qty += q
+            total_profit += p
+
+    if total_qty == 0:
+        return None
+
+    return total_profit / total_qty
+
 
 
 def describe_movement(pct):

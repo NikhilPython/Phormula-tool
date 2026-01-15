@@ -11,7 +11,7 @@ import json
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.utils.live_bi_utils import (build_inventory_signals, compute_total_asp, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months,round_numeric_values,totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
+from app.utils.live_bi_utils import (build_inventory_signals, compute_total_asp, compute_total_unit_profitability, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months,round_numeric_values,totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
                                      compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 
@@ -358,6 +358,10 @@ def live_mtd_vs_previous():
         curr_totals = aggregate_totals(curr_data)
         prev_totals["total_asp"] = compute_total_asp(prev_data_aligned)
         curr_totals["total_asp"] = compute_total_asp(curr_data)
+
+        # ✅ FIX
+        prev_totals["unit_wise_profitability"] = compute_total_unit_profitability(prev_data_aligned)
+        curr_totals["unit_wise_profitability"] = compute_total_unit_profitability(curr_data)
 
         sku_context = build_sku_context(growth_data, max_items=5)
         estimated_storage_cost_next_month = fetch_estimated_storage_cost_next_month(user_id)
