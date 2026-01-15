@@ -361,7 +361,7 @@ def fetch_estimated_storage_cost_next_month(user_id: int) -> float:
 def _clean_inventory_sku(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["sku"] = df["sku"].astype(str).str.strip()
-    df.loc[df["sku"].str.lower().isin(["", "none", "nan", "null"]), "sku"] = None
+    df.loc[df["sku"].str.lower().isin(["", "none", "nan", "null", "0"]), "sku"] = None
     return df.dropna(subset=["sku"])
 
 def fetch_last_30_days_units(user_id: int, country: str, as_of: date = None) -> pd.DataFrame:
@@ -988,11 +988,21 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         )
 
         is_ads = (
-            t.str.contains(r"productadspayment|sellerdealpayment", na=False)
-            | d.str.contains(r"productadspayment|sellerdealcomplete", na=False)
-            | d.str.contains(r"couponparticipationevent|couponperformanceevent", na=False)
+            t.str.contains(
+                r"productadspayment|sellerdealpayment|dealperformanceevent",
+                na=False
+            )
+            | d.str.contains(
+                r"productadspayment|sellerdealcomplete|dealperformanceevent",
+                na=False
+            )
+            | d.str.contains(
+                r"couponparticipationevent|couponperformanceevent|dealperformanceevent",
+                na=False
+            )
             | d.str.contains(r"\bcoupon\b", na=False)
         ) & (~ignore)
+
 
         is_platform_fee = (
             (t.str.contains("servicefee", na=False) | d.str.contains(r"\bfee\b", na=False))
@@ -1384,7 +1394,6 @@ summary_numeric_fields = [
     "quantity",
     "net_sales",
     "profit",
-    "asp",
     "unit_wise_profitability"
 ]
 
@@ -1410,6 +1419,24 @@ def pct_change(prev, curr):
     if prev is None or prev == 0:
         return None
     return round(((curr - prev) / prev) * 100.0, 1)
+
+def compute_total_asp(rows):
+    total_qty = 0.0
+    total_sales = 0.0
+
+    for r in rows:
+        q = safe_float_local(r.get("quantity"))
+        s = safe_float_local(r.get("net_sales"))
+
+        if q and s is not None:
+            total_qty += q
+            total_sales += s
+
+    if total_qty == 0:
+        return None
+
+    # ❌ no rounding here
+    return total_sales / total_qty
 
 
 def describe_movement(pct):
@@ -1765,8 +1792,8 @@ def build_ai_summary(
     prof_prev = safe0(prev_totals.get("profit"))
     prof_curr = safe0(curr_totals.get("profit"))
 
-    asp_prev_idx = safe0(prev_totals.get("asp"))
-    asp_curr_idx = safe0(curr_totals.get("asp"))
+    asp_prev = safe_float_local(prev_totals.get("total_asp"))
+    asp_curr = safe_float_local(curr_totals.get("total_asp"))
 
     up_prev_idx = safe0(prev_totals.get("unit_wise_profitability"))
     up_curr_idx = safe0(curr_totals.get("unit_wise_profitability"))
@@ -1774,7 +1801,7 @@ def build_ai_summary(
     qty_pct = pct_change(qty_prev, qty_curr)
     sales_pct = pct_change(sales_prev, sales_curr)
     prof_pct = pct_change(prof_prev, prof_curr)
-    asp_pct = pct_change(asp_prev_idx, asp_curr_idx)
+    asp_pct = pct_change(asp_prev, asp_curr)
     up_pct = pct_change(up_prev_idx, up_curr_idx)
 
     # -------------------------------
@@ -1846,7 +1873,7 @@ def build_ai_summary(
                 "quantity_total": qty_prev,
                 "net_sales_total": sales_prev,
                 "profit_total": prof_prev,
-                "asp_sum_index": asp_prev_idx,
+                "total_asp": asp_prev,
                 "unit_profit_sum_index": up_prev_idx,
             },
             "current": {
@@ -1854,7 +1881,7 @@ def build_ai_summary(
                 "quantity_total": qty_curr,
                 "net_sales_total": sales_curr,
                 "profit_total": prof_curr,
-                "asp_sum_index": asp_curr_idx,
+                "total_asp": asp_curr,
                 "unit_profit_sum_index": up_curr_idx,
             },
         },
@@ -1862,7 +1889,7 @@ def build_ai_summary(
             "quantity_pct": qty_pct,
             "net_sales_pct": sales_pct,
             "profit_pct": prof_pct,
-            "asp_index_pct": asp_pct,
+            "asp_pct": asp_pct,
             "unit_profit_index_pct": up_pct,
         },
         "portfolio": {
@@ -1916,7 +1943,7 @@ def build_ai_summary(
 You are a senior ecommerce business analyst.
 
 You receive JSON containing:
-- Overall totals and % change for units, net sales, profit, ASP index and unit profit index
+- Overall totals and % change for units, net sales, CM1 profit, Total ASP and Unit Profitability 
 - SKU tables in sku_tables.top_80_skus and sku_tables.new_reviving_skus including product_name and SKU-wise metrics
 - inventory_signals keyed by SKU
 - selling_costs.platform_fees.pct_change
@@ -1932,16 +1959,16 @@ inventory_signals[sku] may include:
 
 GOAL
 Produce:
-1) A short overall business summary (3–5 bullets)
+1) A short overall business summary (3-5 bullets)
 2) Exactly {max_actions} detailed SKU-wise recommendations.
 
 
 ====================
-SUMMARY (3–5 bullets)
+SUMMARY (3-5 bullets)
 ====================
-Write 3–5 short bullets describing, in simple language:
-- How overall units, sales and profit moved (using quantity_pct, net_sales_pct, profit_pct)
-- Any big change in ASP or unit profit (asp_index_pct, unit_profit_index_pct)
+Write 3-5 short bullets describing, in simple language:
+- How overall units, sales and CM1 profit moved (using quantity_pct, net_sales_pct, profit_pct)
+- Any big change in ASP or unit profit (asp_pct, unit_profit_index_pct)
 - Whether performance is coming more from volume, pricing, or a few big SKUs
 - Platform fees % change (selling_costs.platform_fees.pct_change) AND estimated platform fees for next month (estimated_platform_fees_next_month)
 - Advertising cost % change (selling_costs.advertising_cost.pct_change) AND ROAS change (roas.change)
@@ -1951,9 +1978,9 @@ IMPORTANT (SUMMARY ONLY):
 - Include EXACTLY ONE bullet that mentions platform fees % change AND estimated platform fees for next month together.
 - Include EXACTLY ONE separate bullet that mentions advertising cost % change AND ROAS change together.
 - Mention % change for platform fees and advertising cost individually.
-- Mention ROAS change as current minus previous (use +/- points, not % growth).
+- Mention ROAS change as current minus previous (use +/- percents, not % growth).
 - Do NOT merge platform fees and advertising into the same bullet.
-- Use absolute comparison only (up/down %, +/- points for ROAS).
+- Use absolute comparison only (up/down %, +/- percents for ROAS).
 - Do NOT mention costs or ROAS anywhere in SKU actions.
 - Use the currency.symbol provided in the JSON for all monetary values.
 - Never infer or guess the currency from country names.

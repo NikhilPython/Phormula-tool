@@ -2339,30 +2339,7 @@ export default function LiveBusinessClient({
 
 
                   <div className="flex gap-3">
-                    {/* <button
-                      onClick={analyzeSkus}
-                      disabled={!hasAnySkus}
-                      className="
-    bg-custom-effect text-[#F8EDCE]
-    rounded-sm xl:px-4 px-3
-    text-nowrap flex items-center gap-1 justify-end
-
-    transition-all duration-200 ease-out
-    hover:-translate-y-[2px]
-    hover:shadow-lg
-    active:translate-y-0
-    active:shadow-md
-
-    disabled:opacity-50
-    disabled:cursor-not-allowed
-    disabled:transform-none
-    disabled:shadow-none
-  "
-                      style={{ boxShadow: '0px 4px 4px 0px #00000040' }}
-                    >
-                      <BsStars style={{ fontSize: '12px', color: '#F8EDCE' }} />
-                      {loadingInsight ? 'Generating...' : 'AI Insights'}
-                    </button> */}
+                   
 
                     <AiButton onClick={analyzeSkus}
                       disabled={
@@ -2373,35 +2350,7 @@ export default function LiveBusinessClient({
                       } >  {loadingInsight ? "Generating..." : "AI Insights"}</AiButton>
 
 
-                    {/* <button
-                      onClick={() => {
-                        const prevShortName = prevShort || 'Prev';
-                        const currShortName = currShort || 'Curr';
-                        const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
-                        const allRows = getAllSkusForExport();
-                        exportToExcel(allRows, file);
-                      }}
-                      className="bg-white border border-[#8B8585] px-1 rounded-sm"
-                      style={{ boxShadow: '0px 4px 4px 0px #00000040' }}
-                    >
-                      <IoDownload size={27} />
-                    </button> */}
-
-                    {/* <DownloadIconButton onClick={() => {
-                      const prevShortName = prevShort || 'Prev';
-                      const currShortName = currShort || 'Curr';
-                      const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
-                      const allRows = getAllSkusForExport();
-                      exportToExcel(allRows, file);
-                    }}
-                      className="
-    
-    transition-all duration-200 ease-out
-    hover:-translate-y-[2px]
-    hover:shadow-lg
-    active:translate-y-0
-    active:shadow-md
-  "/> */}
+                   
 
                     <DownloadIconButton
                       onClick={() => {
