@@ -406,7 +406,7 @@ const options: ChartOptions<"pie"> = {
     },
   },
   layout: {
-    padding: { top: 18, bottom: 18, left: 18, right: 52 },
+    padding: 10,
   },
   animation: { duration: 0 },
   maintainAspectRatio: false,
@@ -429,7 +429,7 @@ const options: ChartOptions<"pie"> = {
 
 
   return (
-    <div className="relative w-full rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
+   <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
       {/* Heading */}
       <div className="mb-4">
         <div className="w-fit mx-auto md:mx-0">
@@ -464,11 +464,11 @@ const options: ChartOptions<"pie"> = {
             className={[
               "mx-auto",
               "w-full",
-              "max-w-[260px] sm:max-w-[320px] md:max-w-[420px] lg:max-w-[520px]",
+              "max-w-[360px] sm:max-w-[460px] md:max-w-[600px] lg:max-w-[720px]",
               "relative",
             ].join(" ")}
           >
-            <div className="relative h-[260px] sm:h-[300px] md:h-[340px] lg:h-[380px]">
+            <div className="relative h-[240px] sm:h-[280px] md:h-[320px] lg:h-[360px]">
               {/* <Pie data={chartData} options={options} /> */}
               <Pie ref={chartRef} data={chartData} options={options} />
             </div>

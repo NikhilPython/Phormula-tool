@@ -27,6 +27,7 @@ import type { ProfitChartExportApi, SkuExportPayload } from "@/lib/utils/exportT
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import MonthEndBusinessSummaryCard from "./MonthEndBusinessSummaryCard";
 import RecommendationsCard from "./RecommendationsCard";
+import PerformanceTrendChart from "./PerformanceTrendChart";
 
 
 
@@ -384,7 +385,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   }
 
   return (
-    <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-6">
+    <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
       <Section
         title="Month-end Business Summary"
         bullets={summaryBullets}
@@ -1012,7 +1013,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       ws.addRow([extraRows?.[i]?.[0] ?? ""]);
     }
 
-    ws.addRow([""]); 
+    ws.addRow([""]);
 
 
     // ---- header row
@@ -1979,9 +1980,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       {/* Charts & Tables */}
       {range === "monthly" && selectedMonth && selectedYear && (
         <>
-          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
-            {/* Heading INSIDE border */}
-            <div className="flex items-center justify-between gap-3">
+          {/* <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4"> */}
+          {/* Heading INSIDE border */}
+          {/* <div className="flex items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
                 <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
 
@@ -2008,11 +2009,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   !productWiseCm1PieBase64
                 }
               />
-            </div>
+            </div> */}
 
 
-            {/* Graph */}
-            <Bargraph
+
+          {/* <Bargraph
               range={range}
               selectedMonth={selectedMonth}
               selectedYear={selectedYear}
@@ -2024,8 +2025,79 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 console.log("🔥 [Monthly] Bargraph → onNoDataChange:", noData);
                 setShowNoDataOverlay(noData);
               }}
-            />
+            /> */}
+
+
+          <div className="w-full rounded-xl space-y-4">
+            {/* Two separate sections */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+              {/* LEFT card */}
+              <div className="rounded-xl border border-gray-300 bg-white p-4">
+                <div className="h-[50vh]">
+                  <PerformanceTrendChart
+                    range={range}
+                    month={selectedMonth}
+                    year={selectedYear}
+                    countryName={initialCountryName}
+                    homeCurrency={globalHomeCurrency}
+                    currencySymbol={currencySymbol} 
+                  />
+                </div>
+              </div>
+
+              {/* RIGHT card */}
+              <div className="rounded-xl border border-gray-300 bg-white p-4 space-y-3 min-h-0">
+
+                {/* ✅ PNL heading now belongs to RIGHT card only */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-baseline gap-2">
+                    <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
+
+                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                      {getPnLTitleParts().country}
+                    </span>
+
+                    {getPnLTitleParts().period ? (
+                      <>
+                        <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
+                        <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                          {getPnLTitleParts().period}
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+
+                  <DownloadIconButton
+                    onClick={handleDownloadProfitabilityBundle}
+                    disabled={
+                      !chartExportApi ||
+                      !skuExportPayload ||
+                      !expenseBreakdownPieBase64 ||
+                      !productWiseCm1PieBase64
+                    }
+                  />
+                </div>
+
+                {/* ✅ Right graph area height = (card height - heading) */}
+                <div className="h-[calc(50vh-56px)] min-h-0">
+                  <Bargraph
+                    range={range}
+                    selectedMonth={selectedMonth}
+                    selectedYear={selectedYear}
+                    countryName={initialCountryName}
+                    homeCurrency={globalHomeCurrency}
+                    hideDownloadButton
+                    onExportApiReady={setChartExportApi}
+                    onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                  />
+                </div>
+              </div>
+
+            </div>
           </div>
+
+          {/* </div> */}
 
 
           {allDropdownsSelected && (
@@ -2075,10 +2147,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </>
       )}
 
-      {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
+      {/* {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
         <>
           <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
-            {/* Heading INSIDE border */}
+         
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
                 <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
@@ -2109,8 +2181,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
 
 
-
-            {/* Graph */}
             <GraphPage
               range={range}
               selectedQuarter={selectedQuarter}
@@ -2172,11 +2242,133 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             onExportPayloadChange={setSkuExportPayload}
           />
         </>
+      )} */}
+
+      {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
+        <>
+          <div className="w-full rounded-xl space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* LEFT card */}
+              <div className="rounded-xl border border-gray-300 bg-white p-4">
+                <div className="h-[50vh]">
+                  <PerformanceTrendChart
+                    range={range}
+                    quarter={selectedQuarter}   // ✅ make sure component supports this prop
+                    year={selectedYear}
+                    countryName={initialCountryName}
+                    homeCurrency={globalHomeCurrency}
+                    currencySymbol={currencySymbol} 
+                  />
+                </div>
+              </div>
+
+              {/* RIGHT card */}
+              <div className="rounded-xl border border-gray-300 bg-white p-4 space-y-3 min-h-0">
+                {/* ✅ PNL heading inside right */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-baseline gap-2">
+                    <PageBreadcrumb
+                      pageTitle="P&L - Amazon"
+                      variant="page"
+                      align="left"
+                      textSize="2xl"
+                    />
+
+                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                      {getPnLTitleParts().country}
+                    </span>
+
+                    {getPnLTitleParts().period ? (
+                      <>
+                        <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                          -
+                        </span>
+                        <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                          {getPnLTitleParts().period}
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+
+                  <DownloadIconButton
+                    onClick={handleDownloadProfitabilityBundle}
+                    disabled={
+                      !chartExportApi ||
+                      !skuExportPayload ||
+                      !expenseBreakdownPieBase64 ||
+                      !productWiseCm1PieBase64
+                    }
+                  />
+                </div>
+
+                {/* ✅ Graph area height */}
+                <div className="h-[calc(50vh-56px)] min-h-0">
+                  <GraphPage
+                    range={range}
+                    selectedQuarter={selectedQuarter}
+                    selectedYear={selectedYear}
+                    countryName={initialCountryName}
+                    homeCurrency={globalHomeCurrency}
+                    hideDownloadButton
+                    onExportApiReady={setChartExportApi}
+                    onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {allDropdownsSelected && (
+            <div id="business-summary" className="scroll-mt-[80px]">
+              <AiSingleInsightCard
+                loading={aiPanelLoading}
+                error={aiPanelError}
+                summaryBullets={aiPanel?.summaryBullets ?? []}
+                recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              />
+            </div>
+          )}
+
+          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
+            <div className="flex-1 min-w-[300px]">
+              <CircleChart
+                range={range}
+                selectedQuarter={selectedQuarter}
+                year={selectedYear}
+                countryName={initialCountryName}
+                homeCurrency={globalHomeCurrency}
+                onExportBase64Ready={setExpenseBreakdownPieBase64}
+              />
+            </div>
+            <div className="flex-1 min-w-[300px]">
+              <CMchartofsku
+                range={range}
+                selectedQuarter={selectedQuarter}
+                year={selectedYear}
+                countryName={initialCountryName}
+                homeCurrency={globalHomeCurrency}
+                onExportBase64Ready={setProductWiseCm1PieBase64}
+              />
+            </div>
+          </div>
+
+          <SKUtable
+            range={range}
+            quarter={selectedQuarter}
+            year={selectedYear}
+            countryName={initialCountryName}
+            homeCurrency={globalHomeCurrency}
+            hideDownloadButton
+            onExportPayloadChange={setSkuExportPayload}
+          />
+        </>
       )}
 
-      {allDropdownsSelected && range === "yearly" && selectedYear && (
+
+      {/* {allDropdownsSelected && range === "yearly" && selectedYear && (
         <>
-          {/* Graph + header card */}
           <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
@@ -2265,7 +2457,123 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             onExportPayloadChange={setSkuExportPayload}
           />
         </>
+      )} */}
+
+      {allDropdownsSelected && range === "yearly" && selectedYear && (
+        <>
+          <div className="w-full rounded-xl space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* LEFT card */}
+              <div className="rounded-xl border border-gray-300 bg-white p-4">
+                <div className="h-[50vh]">
+                  <PerformanceTrendChart
+                    range={range}
+                    year={selectedYear}
+                    countryName={initialCountryName}
+                    homeCurrency={globalHomeCurrency}
+                    currencySymbol={currencySymbol} 
+                  />
+                </div>
+              </div>
+
+              {/* RIGHT card */}
+              <div className="rounded-xl border border-gray-300 bg-white p-4 space-y-3 min-h-0">
+                {/* ✅ PNL heading inside right */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-baseline gap-2">
+                    <PageBreadcrumb
+                      pageTitle="P&L - Amazon"
+                      variant="page"
+                      align="left"
+                      textSize="2xl"
+                    />
+
+                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                      {getPnLTitleParts().country}
+                    </span>
+
+                    <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                      -
+                    </span>
+
+                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                      {getPnLTitleParts().period}
+                    </span>
+                  </div>
+
+                  <DownloadIconButton
+                    onClick={handleDownloadProfitabilityBundle}
+                    disabled={
+                      !chartExportApi ||
+                      !skuExportPayload ||
+                      !expenseBreakdownPieBase64 ||
+                      !productWiseCm1PieBase64
+                    }
+                  />
+                </div>
+
+                {/* ✅ Graph area height */}
+                <div className="h-[calc(50vh-56px)] min-h-0">
+                  <GraphPage
+                    range={range}
+                    selectedYear={selectedYear}
+                    countryName={initialCountryName}
+                    homeCurrency={globalHomeCurrency}
+                    hideDownloadButton
+                    onExportApiReady={setChartExportApi}
+                    onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {allDropdownsSelected && (
+            <div id="business-summary" className="scroll-mt-[80px]">
+              <AiSingleInsightCard
+                loading={aiPanelLoading}
+                error={aiPanelError}
+                summaryBullets={aiPanel?.summaryBullets ?? []}
+                recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              />
+            </div>
+          )}
+
+          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
+            <div className="flex-1 min-w-[300px]">
+              <CircleChart
+                range={range}
+                year={selectedYear}
+                countryName={initialCountryName}
+                homeCurrency={globalHomeCurrency}
+                onExportBase64Ready={setExpenseBreakdownPieBase64}
+              />
+            </div>
+
+            <div className="flex-1 min-w-[300px]">
+              <CMchartofsku
+                range={range}
+                year={selectedYear}
+                countryName={initialCountryName}
+                homeCurrency={globalHomeCurrency}
+                onExportBase64Ready={setProductWiseCm1PieBase64}
+              />
+            </div>
+          </div>
+
+          <SKUtable
+            range={range}
+            year={selectedYear}
+            countryName={initialCountryName}
+            homeCurrency={globalHomeCurrency}
+            hideDownloadButton
+            onExportPayloadChange={setSkuExportPayload}
+          />
+        </>
       )}
+
 
       {showNoDataOverlay && (
         <div

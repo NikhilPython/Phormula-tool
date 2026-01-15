@@ -259,7 +259,7 @@ const Bargraph: React.FC<BargraphProps> = ({
   };
 
   const metricMapping: Record<
-    | "Sales"
+    | "Net Sales"
     | "COGS"
     | "Amazon Fees"
     | "Taxes & Credits"
@@ -269,7 +269,7 @@ const Bargraph: React.FC<BargraphProps> = ({
     | "CM2 Profit",
     keyof UploadRow
   > = {
-    Sales: "total_sales",
+    "Net Sales": "total_sales",
     COGS: "total_cous",
     "Amazon Fees": "total_amazon_fee",
     "Taxes & Credits": "taxncredit",
@@ -280,7 +280,7 @@ const Bargraph: React.FC<BargraphProps> = ({
   };
 
   const colorMapping: Record<
-    | "Sales"
+    | "Net Sales"
     | "COGS"
     | "Amazon Fees"
     | "Taxes & Credits"
@@ -290,7 +290,7 @@ const Bargraph: React.FC<BargraphProps> = ({
     | "CM2 Profit",
     string
   > = {
-    Sales: "#75BBDA",
+     "Net Sales": "#75BBDA",
     COGS: "#FDD36F",
     "Amazon Fees": "#B75A5A",
     "Advertising Cost": "#C49466",
@@ -301,7 +301,7 @@ const Bargraph: React.FC<BargraphProps> = ({
   };
 
   const preferredOrder = [
-    "Sales",
+    "Net Sales",
     "COGS",
     "Amazon Fees",
     "Taxes & Credits",
@@ -336,7 +336,7 @@ const Bargraph: React.FC<BargraphProps> = ({
           .map(([key]) => {
             switch (key) {
               case "sales":
-                return "Sales";
+                return "Net Sales";
               case "total_cous":
                 return "COGS";
               case "AmazonExpense":
@@ -396,7 +396,7 @@ const Bargraph: React.FC<BargraphProps> = ({
                 tooltipItems[0]?.label ?? "",
               label: (context: TooltipItem<"bar">) => {
                 const value = Number(context.raw ?? 0);
-                const salesIndex = labels.findIndex((l) => l === "Sales");
+                const salesIndex = labels.findIndex((l) => l === "Net Sales");
                 const salesValue =
                   salesIndex >= 0
                     ? Number((chartData.datasets[0].data as number[])[salesIndex] ?? 1)
@@ -414,7 +414,7 @@ const Bargraph: React.FC<BargraphProps> = ({
         scales: {
           x: {
             ticks: { callback: (_value, index) => String(labels[index] ?? "") },
-            title: { display: true, text: formattedMonthYear },
+            // title: { display: true, text: formattedMonthYear },
           },
           y: {
             title: { display: true, text: `Amount (${currencySymbol})` },
@@ -437,7 +437,7 @@ const Bargraph: React.FC<BargraphProps> = ({
           ws.addRow(["Metric", " ", `Amount (${currencySymbol})`]);
 
           const signs: Record<(typeof preferredOrder)[number], string> = {
-            Sales: "(+)",
+            "Net Sales": "(+)",
             COGS: "(-)",
             "Amazon Fees": "(-)",
             "Taxes & Credits": "(+)",
@@ -504,44 +504,47 @@ const Bargraph: React.FC<BargraphProps> = ({
     onNoDataChange?.(!loading && allValuesZero);
   }, [onNoDataChange, allValuesZero, loading]);
 
-  return (
-    <div className="relative w-full rounded-xl bg-[#D9D9D933] p-4 sm:p-5">
-      <div className={allValuesZero && !loading ? "opacity-30 pointer-events-none" : "opacity-100"}>
-        {!hideDownloadButton && (
-          <div className="flex justify-end mb-2">
-            <DownloadIconButton onClick={exportToExcel} />
-          </div>
-        )}
-
-
-        <div className="mt-4 w-full h-[46vh] sm:h-[48vh] md:h-[50vh] transition-opacity duration-300">
-          {loading ? (
-            <div className="flex h-full items-center justify-center">
-              <Loader
-                src="/infinity-unscreen.gif"
-                size={150}
-                transparent
-                roundedClass="rounded-full"
-                backgroundClass="bg-transparent"
-                respectReducedMotion
-              />
-            </div>
-          ) : (
-            chartData.datasets.length > 0 && (
-              <Bar
-                // ✅ Capture chart instance for Excel export
-                ref={(instance) => {
-                  chartRef.current = (instance as any) ?? null;
-                }}
-                data={chartData}
-                options={chartOptions}
-              />
-            )
-          )}
+ return (
+  <div className="relative w-full h-full min-h-0">
+    <div
+      className={`h-full min-h-0 ${
+        allValuesZero && !loading ? "opacity-30 pointer-events-none" : "opacity-100"
+      }`}
+    >
+      {!hideDownloadButton && (
+        <div className="flex justify-end mb-2">
+          <DownloadIconButton onClick={exportToExcel} />
         </div>
+      )}
+
+      <div className="w-full h-full min-h-0">
+        {loading ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader
+              src="/infinity-unscreen.gif"
+              size={150}
+              transparent
+              roundedClass="rounded-full"
+              backgroundClass="bg-transparent"
+              respectReducedMotion
+            />
+          </div>
+        ) : (
+          chartData.datasets.length > 0 && (
+            <Bar
+              ref={(instance) => {
+                chartRef.current = (instance as any) ?? null;
+              }}
+              data={chartData}
+              options={chartOptions}
+            />
+          )
+        )}
       </div>
     </div>
-  );
+  </div>
+);
+
 };
 
 export default Bargraph;

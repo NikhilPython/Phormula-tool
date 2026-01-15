@@ -359,8 +359,10 @@ export default function LiveBusinessClient({
       Object.entries(fieldMap).forEach(([backendKey, frontKey]) => {
         if (row[backendKey] != null) clone[frontKey] = row[backendKey];
       });
+
       // ✅ keep UI working (your table uses Sales Growth, Excel uses Net Sales Growth)
-      if (clone['Net Sales Growth'] && !clone['Sales Growth']) {
+      // Handles 0 correctly
+      if (clone['Net Sales Growth'] != null && clone['Sales Growth'] == null) {
         clone['Sales Growth'] = clone['Net Sales Growth'];
       }
 
@@ -687,6 +689,15 @@ export default function LiveBusinessClient({
     ws["!rows"][0] = { hpt: 24 };
     ws["!rows"][1] = { hpt: 18 };
   };
+
+
+  const isTotalLikeRow = (r: any) => {
+    const name = String(r?.product_name || "").toLowerCase().trim();
+    return name === "total" || name.includes("total (top 80");
+  };
+
+  const cleanSkuRows = (rows: SkuItem[] = []) => rows.filter((r) => !isTotalLikeRow(r));
+
 
 
   // ---------- Excel Header Values (from userData) ----------
@@ -1282,6 +1293,9 @@ export default function LiveBusinessClient({
     });
   };
 
+  const asGrowth = (v: number | null): GrowthCategory | undefined =>
+    v == null ? undefined : { value: v, category: "" };
+
   const renderFormattedInsight = (raw: string) => {
     if (!raw) return null;
 
@@ -1675,11 +1689,13 @@ export default function LiveBusinessClient({
 
   const allSkuRows = categorizedGrowth
     ? [
-      ...(categorizedGrowth.top_80_skus || []),
-      ...(categorizedGrowth.new_or_reviving_skus || []),
-      ...(categorizedGrowth.other_skus || []),
+      ...cleanSkuRows(categorizedGrowth.top_80_skus || []),
+      ...cleanSkuRows(categorizedGrowth.new_or_reviving_skus || []),
+      ...cleanSkuRows(categorizedGrowth.other_skus || []),
     ]
     : [];
+
+
 
   const [showAllSkus, setShowAllSkus] = useState(false);
 
@@ -1791,20 +1807,31 @@ export default function LiveBusinessClient({
     let profit = 0;
     let aspWeighted = 0;
     let unitProfitWeighted = 0;
-    let salesMix = 0;
+
+    // ✅ compute sales mix ONCE (and correctly)
+    const totalNetSalesAll = allSkuRows.reduce(
+      (s, r: any) => s + Number(r?.net_sales_month2 ?? r?.net_sales_curr ?? r?.net_sales ?? 0),
+      0
+    );
+
+    const segmentNetSales = currentTabData.reduce(
+      (s, r: any) => s + Number(r?.net_sales_month2 ?? r?.net_sales_curr ?? r?.net_sales ?? 0),
+      0
+    );
+
+    const salesMix = totalNetSalesAll > 0 ? (segmentNetSales / totalNetSalesAll) * 100 : 0;
 
     currentTabData.forEach((r) => {
-      const q = Number(r.quantity ?? 0);
-      const ns = Number(r.net_sales ?? 0);
-      const p = Number(r.profit ?? 0);
-      const aspVal = Number(r.asp ?? 0);
-      const upVal = Number(r.unit_wise_profitability ?? 0);
-      const mixVal = Number(r['Sales Mix (Month2)'] ?? 0);
+      const q = Number(r.quantity ?? 0) || 0;
+      const ns = Number(r.net_sales ?? 0) || 0;
+      const p = Number(r.profit ?? 0) || 0;
+
+      const aspVal = Number(r.asp ?? 0) || 0;
+      const upVal = Number(r.unit_wise_profitability ?? 0) || 0;
 
       quantity += q;
       net_sales += ns;
       profit += p;
-      salesMix += mixVal;
 
       aspWeighted += aspVal * q;
       unitProfitWeighted += upVal * q;
@@ -1822,6 +1849,7 @@ export default function LiveBusinessClient({
       profit,
     };
   })();
+
 
   const prevShort = getShortPeriodLabel(periods?.previous?.label);
   const currShort = getShortPeriodLabel(periods?.current_mtd?.label);
@@ -2046,10 +2074,14 @@ export default function LiveBusinessClient({
     const rows: BIGridRow[] = (rowsToRender || []).map((item, idx) => {
 
 
+      const mixVal =
+        (item as any)['Sales Mix (Month2)'] ??
+        (item as any).sales_mix_month2 ??
+        (item as any).sales_mix_curr ??
+        (item as any).sales_mix ??
+        null;
 
-
-      const salesMix =
-        item['Sales Mix (Month2)'] != null ? `${Number(item['Sales Mix (Month2)']).toFixed(2)}%` : 'N/A';
+      const salesMix = mixVal != null ? `${Number(mixVal).toFixed(2)}%` : "N/A";
 
       return {
         sNo: idx + 1,
@@ -2152,7 +2184,47 @@ export default function LiveBusinessClient({
       });
 
     }
+    const pct = (prev: number, curr: number) => {
+      if (!prev || prev === 0 || curr == null) return null;
+      return ((curr - prev) / prev) * 100;
+    };
 
+    const pickFirstNumber = (r: any, keys: string[]) => {
+      for (const k of keys) {
+        const v = r?.[k];
+        if (v != null && v !== "" && !Number.isNaN(Number(v))) return Number(v);
+      }
+      return null; // important: null means "not available"
+    };
+
+    const sum = (rows: any[], keys: string[]) =>
+      rows.reduce((acc, r) => acc + Number(pickFirstNumber(r, keys) ?? 0), 0);
+
+    const pickPrevNumber = (r: any, keys: string[]) => {
+      for (const k of keys) {
+        const v = r?.[k];
+        if (v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v))) {
+          return Number(v);
+        }
+      }
+      return null; // null = missing prev
+    };
+
+    const pickCurrNumber = (r: any, keys: string[]) => {
+      for (const k of keys) {
+        const v = r?.[k];
+        if (v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v))) {
+          return Number(v);
+        }
+      }
+      return null;
+    };
+
+    const sumPrevOnly = (rows: any[], keys: string[]) =>
+      rows.reduce((acc, r) => acc + Number(pickPrevNumber(r, keys) ?? 0), 0);
+
+    const sumCurrOnly = (rows: any[], keys: string[]) =>
+      rows.reduce((acc, r) => acc + Number(pickCurrNumber(r, keys) ?? 0), 0);
 
     // TOTAL row appended
     const isAll = activeTab === 'all_skus';
@@ -2173,59 +2245,70 @@ export default function LiveBusinessClient({
       sNo: '',
       product: 'Total',
       salesMix: totalSalesMix,
-      ...(activeTab === 'all_skus'
+
+      ...(activeTab === "all_skus"
         ? (() => {
-          const all = allSkuRows;
+          // Use allSkuRows so totals are correct even when UI shows only 5 + "Others"
+          const rows = allSkuRows;
 
-          const sum = (keyPrev: string, keyCurr: string) => {
-            let prev = 0;
-            let curr = 0;
-            all.forEach((r) => {
-              prev += Number((r as any)[keyPrev] ?? 0);
-              curr += Number((r as any)[keyCurr] ?? 0);
-            });
-            return { prev, curr };
-          };
+          // ✅ PREVIOUS: ONLY previous keys (no current fallback)
+          const qtyPrev = sumPrevOnly(rows, ["quantity_month1", "quantity_prev"]);
+          const nsPrev = sumPrevOnly(rows, ["net_sales_month1", "net_sales_prev"]);
+          const profitPrev = sumPrevOnly(rows, ["profit_month1", "profit_prev"]);
 
-          const qty = sum('quantity_month1', 'quantity_month2');
-          const sales = sum('net_sales_month1', 'net_sales_month2');
-          const profit = sum('profit_month1', 'profit_month2');
+          // ✅ CURRENT: current keys + allowed generic current fallbacks
+          const qtyCurr = sumCurrOnly(rows, ["quantity_month2", "quantity_curr", "quantity"]);
+          const nsCurr = sumCurrOnly(rows, ["net_sales_month2", "net_sales_curr", "net_sales"]);
+          const profitCurr = sumCurrOnly(rows, ["profit_month2", "profit_curr", "profit"]);
 
-          const aspPrev = qty.prev ? sales.prev / qty.prev : 0;
-          const aspCurr = qty.curr ? sales.curr / qty.curr : 0;
+          // ✅ ASP must be weighted: ΣNetSales / ΣQty
+          const aspPrev = qtyPrev > 0 ? nsPrev / qtyPrev : null;
+          const aspCurr = qtyCurr > 0 ? nsCurr / qtyCurr : null;
+
+          // ✅ Unit profitability must be weighted: ΣProfit / ΣQty
+          const unitProfitPrev = qtyPrev > 0 ? profitPrev / qtyPrev : null;
+          const unitProfitCurr = qtyCurr > 0 ? profitCurr / qtyCurr : null;
+
+          // pct already exists in your scope; keep it
+          const unitGrowthPct = pct(qtyPrev, qtyCurr);
+          const aspGrowthPct = aspPrev != null && aspCurr != null ? pct(aspPrev, aspCurr) : null;
+          const salesGrowthPct = pct(nsPrev, nsCurr);
+          const unitProfitGrowthPct =
+            unitProfitPrev != null && unitProfitCurr != null
+              ? pct(unitProfitPrev, unitProfitCurr)
+              : null;
+
+          const profitGrowthPct = pct(profitPrev, profitCurr);
 
           return {
-            unit: renderGrowthOrNA(makeGrowth(qty.prev, qty.curr)),
-            asp: renderGrowthOrNA(makeGrowth(aspPrev, aspCurr)),
-            sales: renderGrowthOrNA(makeGrowth(sales.prev, sales.curr)),
-            mixChange: '0.00%',
-            unitProfit: renderGrowthOrNA(
-              makeGrowth(
-                profit.prev / (qty.prev || 1),
-                profit.curr / (qty.curr || 1)
-              )
-            ),
-            profit: renderGrowthOrNA(makeGrowth(profit.prev, profit.curr)),
+            unit: renderGrowthOrNA(asGrowth(unitGrowthPct)),
+            asp: renderGrowthOrNA(asGrowth(aspGrowthPct)),
+            sales: renderGrowthOrNA(asGrowth(salesGrowthPct)),
+
+            // Total mix is always 100% if there are sales; change is 0
+            mixChange: renderGrowthOrNA(asGrowth(0)),
+
+            unitProfit: renderGrowthOrNA(asGrowth(unitProfitGrowthPct)),
+            profit: renderGrowthOrNA(asGrowth(profitGrowthPct)),
           };
         })()
-
-        : activeTab !== 'new_or_reviving_skus'
+        : activeTab !== "new_or_reviving_skus"
           ? {
-            unit: renderGrowthOrNA(segmentTotal?.['Unit Growth']),
-            asp: renderGrowthOrNA(segmentTotal?.['ASP Growth']),
-            sales: renderGrowthOrNA(segmentTotal?.['Sales Growth']),
-            mixChange: renderGrowthOrNA(segmentTotal?.['Sales Mix Change']),
-            unitProfit: renderGrowthOrNA(segmentTotal?.['Profit Per Unit']),
-            profit: renderGrowthOrNA(segmentTotal?.['CM1 Profit Impact']),
+            unit: renderGrowthOrNA(segmentTotal?.["Unit Growth"]),
+            asp: renderGrowthOrNA(segmentTotal?.["ASP Growth"]),
+            sales: renderGrowthOrNA(segmentTotal?.["Sales Growth"]),
+            mixChange: renderGrowthOrNA(segmentTotal?.["Sales Mix Change"]),
+            unitProfit: renderGrowthOrNA(segmentTotal?.["Profit Per Unit"]),
+            profit: renderGrowthOrNA(segmentTotal?.["CM1 Profit Impact"]),
           }
           : {
-            unit: '-',
-            asp: '-',
-            sales: '-',
-            unitProfit: '-',
-            profit: '-',
-          }
-      ),
+            unit: "-",
+            asp: "-",
+            sales: "-",
+            unitProfit: "-",
+            profit: "-",
+          })
+      ,
       ...(Object.keys(skuInsights).length > 0 ? { ai: '' } : {}),
     };
 
@@ -2238,7 +2321,11 @@ export default function LiveBusinessClient({
     segmentTotal,
     manualTotalsForAll,
     manualTotalsForNewRev,
+    showAllSkus,
+    allSkuRows,
+    currentTabData,
   ]);
+
 
   const rowClassNameForDataTable = (row: BIGridRow) => {
     if (row.__isTotal) {

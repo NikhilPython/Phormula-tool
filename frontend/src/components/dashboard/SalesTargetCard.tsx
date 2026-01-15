@@ -356,6 +356,8 @@ export default function SalesTargetCard({
     typeof reimbursementDeltaPct === "number" &&
     !Number.isNaN(reimbursementDeltaPct);
 
+  const extraBottom = 30;
+
   return (
     <div className="rounded-2xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-[#D9D9D933]">
       {/* Legend */}
@@ -384,6 +386,14 @@ export default function SalesTargetCard({
           />
           <span className="text-gray-600">{prevLabel} Sale</span>
         </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className="h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: "#C03030" }}
+          />
+          <span className="text-gray-600">{prevLabel} MTD</span>
+        </div>
       </div>
 
       {/* Gauge */}
@@ -391,18 +401,19 @@ export default function SalesTargetCard({
         <div
           ref={wrapRef}
           className="relative"
-          style={{ width: size, height: size / 2, overflow: "visible" }} // ✅ ADD THIS
+          style={{ width: size, height: size / 2 + extraBottom, overflow: "visible" }}
           onMouseMove={moveTip}
           onMouseLeave={hideTip}
         >
 
           <svg
             width={size}
-            height={size / 2}
-            viewBox={`0 0 ${size} ${size / 2}`}
-            style={{ overflow: "visible" }}   // ✅ ADD THIS
-            overflow="visible"               // ✅ ADD THIS (Safari-safe)
+            height={size / 2 + extraBottom}
+            viewBox={`0 0 ${size} ${size / 2 + extraBottom}`}
+            style={{ overflow: "visible" }}
+            overflow="visible"
           >
+
             {/* Orange arc (Prev month sale reference) */}
             <path
               d={arcPath(fullFrom, toDeg_Orange, rLastMTD)}
@@ -416,11 +427,11 @@ export default function SalesTargetCard({
             />
 
             {/* ✅ Red rectangular marker, perpendicular to arc (radial) */}
-            <rect
+            {/* <rect
               x={knobPrevToDate.x - 2}
               y={knobPrevToDate.y - 8}
-              width={4}
-              height={16}
+              width={6}
+              height={8}
               rx={1}
               fill="#FF5C5C"
               stroke="#ffffff"
@@ -428,7 +439,17 @@ export default function SalesTargetCard({
               transform={`rotate(${markerDeg}, ${knobPrevToDate.x}, ${knobPrevToDate.y})`}
               onMouseEnter={(e) => showTip(e, tipTitle, tipLines)}
               onMouseLeave={hideTip}
+            /> */}
+
+            <circle
+              cx={knobPrevToDate.x}
+              cy={knobPrevToDate.y}
+              r={4}
+              fill="#C03030"
+              stroke="#ffffff"
+              strokeWidth={2}
             />
+
 
             {/* Dec target arc */}
             <path
