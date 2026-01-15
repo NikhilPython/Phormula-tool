@@ -2408,6 +2408,7 @@ def previous_month_mtd_range(now_utc: datetime) -> tuple[date, date]:
 
 
 
+
 def _safe_sql_identifier_table(name: str) -> str:
     """
     Allow only safe SQL identifiers for table names.
@@ -2428,25 +2429,14 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     Return:
       sku_metrics: list (per-SKU metrics)
       prev_totals: {
-        "quantity": float,
-        "gross_sales": float,      # sum(product_sales)
-        "net_sales": float,        # product_sales + promotional_rebates
-        "profit": float,           # sum of sku_metrics profit
-        "asp": float,              # net_sales / quantity
-        "profit_percentage": float # profit / net_sales * 100
-        "platform_fee": float,     # NEW
-        "advertising_fees": float, # NEW
-        "cm2_profit": float        # NEW (profit - advertising - platform)
+        quantity, gross_sales, net_sales, profit, asp,
+        profit_percentage, platform_fee, advertising_fees, cm2_profit,
+        previous_net_reimbursement,
+        cogs, amazon_fee, tax_and_credits
       }
       daily_series: list of {date, quantity, net_sales} (optional for chart)
-
-    Notes:
-      - prev_start/prev_end are dates (no time). Query uses [start, end+1day) timestamps.
-      - gross_sales = sum(product_sales)
-      - net_sales = product_sales + promotional_rebates
-      - profit total = sum of profit in sku_metrics (since sku_metrics already calculates profit per SKU)
-      - platform_fee/advertising_fees derived from df via uk_platform_fee/uk_advertising (if those cols exist)
     """
+
     table_name = construct_prev_table_name(
         user_id=user_id,
         country=country,
@@ -2487,6 +2477,10 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 "platform_fee": 0.0,
                 "advertising_fees": 0.0,
                 "cm2_profit": 0.0,
+                "previous_net_reimbursement": 0.0,
+                "cogs": 0.0,
+                "amazon_fee": 0.0,
+                "tax_and_credits": 0.0,
             }, []
 
         df = pd.DataFrame(rows, columns=result.keys())
@@ -2501,10 +2495,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     # -------------------------
     quantity_total = float(safe_num(df.get("quantity", 0.0)).sum())
 
-    # gross_sales_total = float(safe_num(df.get("product_sales", 0.0)).sum())
-    # promo_rebates_total = float(safe_num(df.get("promotional_rebates", 0.0)).sum())
-
-    # net_sales_total = gross_sales_total + promo_rebates_total
+    # Build series (your existing logic)
     ps   = safe_num(df.get("product_sales", 0.0))
     pst  = safe_num(df.get("product_sales_tax", 0.0))
     pc   = safe_num(df.get("postage_credits", 0.0))
@@ -2514,23 +2505,54 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     pr   = safe_num(df.get("promotional_rebates", 0.0))
     prt  = safe_num(df.get("promotional_rebates_tax", 0.0))
 
+    mft  = safe_num(df.get("marketplace_facilitator_tax", 0.0))  # ✅ for tax_and_credits
+
     # ✅ gross_sales same as live MTD
     gross_sales_total = float((ps + pst + pc + gwc + sct + gwt - pr - prt).sum())
 
     # ✅ net_sales stays as you had it (product_sales + promotional_rebates)
     net_sales_total = float((ps + pr).sum())
 
-
     # Profit total from sku_metrics (keeps your current logic)
     profit_total = sum(float(x.get("profit", 0.0) or 0.0) for x in sku_metrics)
 
     asp = (net_sales_total / quantity_total) if quantity_total else 0.0
-    
 
     # -------------------------
-    # Platform + Advertising totals (NEW)
+    # ✅ NEW: COGS (cost_of_unit_sold * quantity)
     # -------------------------
-    # Ensure required columns exist for these helpers
+    unit_cost = safe_num(df.get("cost_of_unit_sold", 0.0))
+    cogs_total = float((unit_cost).sum())
+
+    # -------------------------
+    # ✅ NEW: Amazon fee (selling_fees + fba_fees) with signs preserved
+    # -------------------------
+    selling_fees_total = float(safe_num(df.get("selling_fees", 0.0)).sum())
+    fba_fees_total = float(safe_num(df.get("fba_fees", 0.0)).sum())
+    amazon_fee_total = float(selling_fees_total - fba_fees_total)  # keeps negatives
+
+    # -------------------------
+    # ✅ NEW: Tax and credits (your exact definition)
+    # -------------------------
+    postage_credits_total = float(pc.sum())
+    gift_wrap_credits_total = float(gwc.sum())
+    product_sales_tax_total = float(pst.sum())
+    shipping_credits_tax_total = float(sct.sum())
+    promotional_rebates_tax_total = float(prt.sum())
+    marketplace_facilitator_tax_total = float(mft.sum())
+
+    tax_and_credits_total = (
+        postage_credits_total
+        + gift_wrap_credits_total
+        + product_sales_tax_total
+        + shipping_credits_tax_total
+        + promotional_rebates_tax_total
+        + marketplace_facilitator_tax_total
+    )
+
+    # -------------------------
+    # Platform + Advertising totals (existing)
+    # -------------------------
     for col, default in [
         ("description", ""),
         ("total", 0.0),
@@ -2552,6 +2574,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
 
     cm2_profit = float(profit_total) - advertising_fee_total - platform_fee_total
     profit_percentage = (cm2_profit / net_sales_total * 100) if net_sales_total else 0.0
+
     previous_net_reimbursement = compute_net_reimbursement_from_df(df)
 
     prev_totals = {
@@ -2560,14 +2583,18 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         "net_sales": round(net_sales_total, 2),
         "profit": round(profit_total, 2),
         "asp": round(asp, 2),
-        "profit_percentage": round(profit_percentage, 2),
 
-        # ✅ NEW
         "platform_fee": round(platform_fee_total, 2),
         "advertising_fees": round(advertising_fee_total, 2),
         "cm2_profit": round(cm2_profit, 2),
-        # ✅ NEW
+        "profit_percentage": round(profit_percentage, 2),
+
         "previous_net_reimbursement": round(previous_net_reimbursement, 2),
+
+        # ✅ NEW fields
+        "cogs": round(cogs_total, 2),
+        "amazon_fees": round(amazon_fee_total, 2),
+        "tax_and_credits": round(tax_and_credits_total, 2),
     }
 
     # -------------------------
