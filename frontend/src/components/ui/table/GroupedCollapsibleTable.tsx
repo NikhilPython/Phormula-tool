@@ -125,7 +125,7 @@ export default function GroupedCollapsibleTable<RowT>({
   getSignForCol,
   toggleGroupByColKey,
   onVisibleColCountChange,
-  tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042] text-[10px] 2xl:text-xs ",
+  tableClassName = "min-w-[800px] w-full table-auto border-collapse bg-white text-[#414042] text-[10px] 2xl:text-xs ",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   summary

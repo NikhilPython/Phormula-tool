@@ -386,6 +386,14 @@ export default function SalesTargetCard({
           />
           <span className="text-gray-600">{prevLabel} Sale</span>
         </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className="h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: "#C03030" }}
+          />
+          <span className="text-gray-600">{prevLabel} MTD</span>
+        </div>
       </div>
 
       {/* Gauge */}

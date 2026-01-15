@@ -1540,7 +1540,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   return (
     <>
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+      <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
             {/* <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" /> */}
@@ -1777,7 +1777,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       </div>
 
       {/* Top & Bottom tables */}
-      <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
           {/* Top 5 */}
           <div className="flex-1 min-w-0">

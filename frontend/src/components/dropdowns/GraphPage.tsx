@@ -627,19 +627,19 @@ const GraphPage: React.FC<GraphPageProps> = ({
   };
 
   useEffect(() => {
-  onExportApiReady?.({
-    getChartBase64,
-    title: `Profitability - ${periodInfo}`,
-    currencySymbol,
-  });
-}, [onExportApiReady, periodInfo, currencySymbol]);
+    onExportApiReady?.({
+      getChartBase64,
+      title: `Profitability - ${periodInfo}`,
+      currencySymbol,
+    });
+  }, [onExportApiReady, periodInfo, currencySymbol]);
 
 
   return (
-    // <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
-    <div className="relative w-full">  
-    {loading ? (
-        <div className="flex h-[260px] md:h-[320px] items-center justify-center">
+    <div className="relative w-full h-full min-h-0">
+      {loading ? (
+        <div className="flex h-full items-center justify-center">
+
           <Loader
             src="/infinity-unscreen.gif"
             size={150}
@@ -651,33 +651,18 @@ const GraphPage: React.FC<GraphPageProps> = ({
         </div>
       ) : (
         <div className={allValuesZero ? "opacity-30 pointer-events-none" : "opacity-100"}>
-          {/* <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
-              <PageBreadcrumb
-                pageTitle="Profitability"
-                variant="page"
-                align="left"
-                textSize="2xl"
-              />
-            </div>
-
-            <div className="flex justify-center sm:justify-end">
-              {!hideDownloadButton && <DownloadIconButton onClick={exportToExcel} />}
-            </div>
-
-          </div> */}
-
           {/* Metric toggles */}
           <div
-            className={[
-              "mt-3 sm:mt-4",
-              "flex flex-wrap items-center justify-center",
-              "gap-3 sm:gap-4 md:gap-5",
-              "w-full mx-auto",
-              allValuesZero ? "opacity-30" : "opacity-100",
-              "transition-opacity duration-300",
-            ].join(" ")}
-          >
+  className={[
+    "mt-5 sm:mt-6 mb-4 sm:mb-6",
+    "flex flex-wrap items-center justify-between",
+    "gap-3 ",
+    "w-full mx-auto",
+    allValuesZero ? "opacity-30" : "opacity-100",
+    "transition-opacity duration-300",
+  ].join(" ")}
+>
+
             {[
               { name: "sales", label: "Net Sales", color: "#75BBDA" },
               { name: "total_cous", label: "COGS", color: "#FDD36F" },
@@ -697,7 +682,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
                     "shrink-0",
                     "flex items-center gap-1 sm:gap-1.5",
                     "font-semibold select-none whitespace-nowrap",
-                    "text-[9px] sm:text[10px] md:text-[11px] lg:text-xs xl:text-sm",
+                    "text-[10px] 2xl:text-xs",
                     "text-charcoal-500",
                     allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
                   ].join(" ")}
@@ -727,16 +712,10 @@ const GraphPage: React.FC<GraphPageProps> = ({
           </div>
 
           {/* Chart */}
-          <div className="relative mt-2 sm:mt-3">
-            <div
-              className={`flex w-full items-center justify-center
-                h-[320px] sm:h-[360px] md:h-[400px] lg:h-[420px]
-                transition-opacity duration-300
-                ${allValuesZero ? "opacity-30" : "opacity-100"}`}
-            >
+          <div className="flex-1 min-h-0 mt-2 sm:mt-3 relative">
+            <div className="absolute inset-0">
               {datasets.length > 0 && (
                 <Line
-                  // ✅ Capture chart instance for Excel export
                   ref={(instance) => {
                     chartRef.current = (instance as any) ?? null;
                   }}
@@ -757,13 +736,10 @@ const GraphPage: React.FC<GraphPageProps> = ({
                           label: (tooltipItem: any) => {
                             const displayLabel = (tooltipItem.dataset.label as string) || "";
                             const value = tooltipItem.raw as number;
-                            return `${displayLabel}: ${currencySymbol} ${value.toLocaleString(
-                              undefined,
-                              {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              }
-                            )}`;
+                            return `${displayLabel}: ${currencySymbol} ${value.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}`;
                           },
                         },
                       },
@@ -776,8 +752,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
                           minRotation: 0,
                           maxRotation: 0,
                           autoSkip: formattedLabels.length > 6,
-                          maxTicksLimit:
-                            formattedLabels.length > 0 ? formattedLabels.length : 12,
+                          maxTicksLimit: formattedLabels.length > 0 ? formattedLabels.length : 12,
                           callback: (_v, idx) => String(formattedLabels[idx] ?? ""),
                         },
                       },
@@ -791,15 +766,8 @@ const GraphPage: React.FC<GraphPageProps> = ({
                 />
               )}
             </div>
-
-            {noMetricSelected && (
-              <ModalMsg
-                show={showModal}
-                onClose={() => setShowModal(false)}
-                message="At least one metric must be selected to display the graph."
-              />
-            )}
           </div>
+
 
           {fetchError && (
             <p className="mt-3 text-center text-sm text-red-600">Error: {fetchError}</p>

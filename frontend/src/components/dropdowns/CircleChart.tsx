@@ -438,7 +438,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
       },
     },
     layout: {
-      padding: 18,
+      padding: 10,
     },
     animation: {
       duration: 0,
@@ -448,7 +448,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
 
 
   return (
-    <div className="relative w-full rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
+    <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
       {/* Heading */}
       <div className="mb-4">
         <div className="w-fit mx-auto md:mx-0">
@@ -476,11 +476,13 @@ const CircleChart: React.FC<CircleChartProps> = ({
             className={[
               "mx-auto",
               "w-full",
-              "max-w-[260px] sm:max-w-[320px] md:max-w-[420px] lg:max-w-[520px]",
+              "max-w-[360px] sm:max-w-[460px] md:max-w-[600px] lg:max-w-[720px]",
               "relative",
             ].join(" ")}
           >
-            <div className="relative h-[260px] sm:h-[300px] md:h-[340px] lg:h-[380px]">
+            <div className="relative h-[240px] sm:h-[280px] md:h-[320px] lg:h-[360px]">
+
+
               {/* <Pie data={displayChartData} options={options} /> */}
               <Pie ref={chartRef} data={displayChartData} options={options} />
             </div>
