@@ -390,7 +390,7 @@ export default function SalesTargetCard({
         <div className="flex items-center gap-2">
           <span
             className="h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: "#C03030" }}
+            style={{ backgroundColor: "#B75A5A" }}
           />
           <span className="text-gray-600">{prevLabel} MTD</span>
         </div>
@@ -445,7 +445,7 @@ export default function SalesTargetCard({
               cx={knobPrevToDate.x}
               cy={knobPrevToDate.y}
               r={4}
-              fill="#C03030"
+              fill="#B75A5A"
               stroke="#ffffff"
               strokeWidth={2}
             />

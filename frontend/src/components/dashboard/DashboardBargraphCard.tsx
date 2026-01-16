@@ -17,6 +17,8 @@ type DashboardBargraphCardProps = {
   allValuesZero?: boolean;
 };
 
+
+
 const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   countryName,
   formattedMonthYear,
@@ -38,6 +40,14 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   const titleMonth = useMemo(() => {
     return (formattedMonthYear || "").trim();
   }, [formattedMonthYear]);
+
+  const prevColors = useMemo(() => {
+  if (!colors || colors.length !== labels.length) return [];
+
+  // Add ~50% opacity to each hex color: #RRGGBB -> #RRGGBB80
+  return colors.map((c) => (c.startsWith("#") && c.length === 7 ? `${c}4D` : c));
+}, [colors, labels.length]);
+
 
   return (
     <div className="relative w-full rounded-xl">
@@ -71,6 +81,7 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
               values={values}
               prevValues={prevValues} 
               colors={colors}
+              prevColors={prevColors}
               currentLabel="MTD"
               prevLabel="Last month till date"
               yTitle={`Amount (${currencySymbol})`}

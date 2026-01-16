@@ -29,9 +29,22 @@ export default function UserDropdown() {
     }
   }, [userFromStore, userFromApi, dispatch]);
 
-  console.log(userFromStore)
-
-
+  useEffect(() => {
+    if (!userFromStore && typeof window !== "undefined") {
+      const brand = localStorage.getItem("brandName");
+      const company = localStorage.getItem("companyName");
+  
+      if (brand || company) {
+        dispatch(
+          setUser({
+            brand_name: brand || undefined,
+            company_name: company || undefined,
+          })
+        );
+      }
+    }
+  }, [userFromStore, dispatch]);
+  
   function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
     e.stopPropagation();
     setIsOpen((prev) => !prev);
@@ -56,6 +69,7 @@ const handleLogout = () => {
   if (typeof window !== "undefined") {
     // localStorage.clear() mat karo — sirf token hatao
     localStorage.removeItem("jwtToken");
+    localStorage.clear();
     sessionStorage.clear();
   }
 

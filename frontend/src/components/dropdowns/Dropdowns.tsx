@@ -28,6 +28,7 @@ import DownloadIconButton from "../ui/button/DownloadIconButton";
 import MonthEndBusinessSummaryCard from "./MonthEndBusinessSummaryCard";
 import RecommendationsCard from "./RecommendationsCard";
 import PerformanceTrendChart from "./PerformanceTrendChart";
+import SummaryMetricCard from "./SummaryMetricCard";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -1573,7 +1574,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   return (
-    <div ref={layoutRef} className="space-y-6 relative">
+    <div ref={layoutRef} className="space-y-3 2xl:space-y-6 relative">
 
       <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         {/* LEFT: Title + Subtitle */}
@@ -1665,7 +1666,92 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               })}%`;
 
 
-            const renderTacosComparisons = () => {
+            // const renderTacosComparisons = () => {
+            //   const yNum = Number(selectedYear);
+
+            //   const label =
+            //     range === "monthly"
+            //       ? selectedMonth && yNum
+            //         ? getPrevMonthLabel(selectedMonth, yNum)
+            //         : "Prev month"
+            //       : range === "quarterly"
+            //         ? selectedQuarter && yNum
+            //           ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+            //           : "Prev quarter"
+            //         : yNum
+            //           ? getPrevYearLabel(yNum)
+            //           : "Prev year";
+
+            //   const prevVal =
+            //     range === "monthly"
+            //       ? comparisons?.lastMonth
+            //         ? getRoas(comparisons.lastMonth)
+            //         : undefined
+            //       : range === "quarterly"
+            //         ? comparisons?.lastQuarter
+            //           ? getRoas(comparisons.lastQuarter)
+            //           : undefined
+            //         : comparisons?.lastYear
+            //           ? getRoas(comparisons.lastYear)
+            //           : undefined;
+
+            //   const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+
+            //   const delta = hasPrev ? roas - prevVal! : null;
+
+            //   const deltaColor =
+            //     typeof delta === "number"
+            //       ? delta > 0
+            //         ? "text-red-600"        // higher TACoS = worse
+            //         : delta < 0
+            //           ? "text-emerald-600"  // lower TACoS = better
+            //           : "text-gray-400"
+            //       : "text-gray-400";
+
+            //   // delta = current - prev
+            //   const arrow =
+            //     typeof delta === "number"
+            //       ? delta > 0
+            //         ? "▼" // ✅ TACoS increased (bad) -> show DOWN
+            //         : delta < 0
+            //           ? "▲" // ✅ TACoS decreased (good) -> show UP
+            //           : ""
+            //       : "";
+
+
+            //   const formatDelta = (v: number) =>
+            //     `${Math.abs(v).toLocaleString(undefined, {
+            //       minimumFractionDigits: 2,
+            //       maximumFractionDigits: 2,
+            //     })}%`;
+
+            //   return (
+            //     <div className="mt-3 space-y-1.5">
+            //       <div className="flex items-end justify-between text-charcoal-500 gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
+            //         <div className="min-w-0">
+            //           <div className="whitespace-nowrap">
+            //             {label}:
+            //           </div>
+            //           <div className="whitespace-nowrap">
+            //             {hasPrev ? formatRoas(prevVal!) : "-"}
+            //           </div>
+            //         </div>
+
+            //         <span className={`font-bold whitespace-nowrap ${deltaColor}`}>
+            //           {typeof delta === "number" ? (
+            //             <>
+            //               {arrow} {formatDelta(delta)}
+            //             </>
+            //           ) : (
+            //             "-"
+            //           )}
+            //         </span>
+            //       </div>
+            //     </div>
+            //   );
+            // };
+
+            const buildTacosComparisonRows = () => {
               const yNum = Number(selectedYear);
 
               const label =
@@ -1695,61 +1781,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       : undefined;
 
               const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-
               const delta = hasPrev ? roas - prevVal! : null;
 
-              const deltaColor =
+              const deltaClassName =
                 typeof delta === "number"
                   ? delta > 0
-                    ? "text-red-600"        // higher TACoS = worse
+                    ? "text-red-600"       // higher TACoS worse
                     : delta < 0
-                      ? "text-emerald-600"  // lower TACoS = better
+                      ? "text-emerald-600" // lower TACoS better
                       : "text-gray-400"
                   : "text-gray-400";
 
-              // delta = current - prev
               const arrow =
                 typeof delta === "number"
                   ? delta > 0
-                    ? "▼" // ✅ TACoS increased (bad) -> show DOWN
+                    ? "▼"
                     : delta < 0
-                      ? "▲" // ✅ TACoS decreased (good) -> show UP
+                      ? "▲"
                       : ""
                   : "";
 
+              const deltaText =
+                typeof delta === "number"
+                  ? `${arrow} ${Math.abs(delta).toFixed(2)}%`
+                  : "-";
 
-              const formatDelta = (v: number) =>
-                `${Math.abs(v).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}%`;
-
-              return (
-                <div className="mt-3 space-y-1.5">
-                  <div className="flex items-end justify-between text-charcoal-500 gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
-                    <div className="min-w-0">
-                      <div className="whitespace-nowrap">
-                        {label}:
-                      </div>
-                      <div className="whitespace-nowrap">
-                        {hasPrev ? formatRoas(prevVal!) : "-"}
-                      </div>
-                    </div>
-
-                    <span className={`font-bold whitespace-nowrap ${deltaColor}`}>
-                      {typeof delta === "number" ? (
-                        <>
-                          {arrow} {formatDelta(delta)}
-                        </>
-                      ) : (
-                        "-"
-                      )}
-                    </span>
-                  </div>
-                </div>
-              );
+              return [
+                {
+                  label,
+                  valueText: hasPrev ? formatRoas(prevVal!) : "-",
+                  deltaText,
+                  deltaClassName,
+                },
+              ];
             };
-
 
 
             const formatUnits = (val: number) =>
@@ -1818,7 +1883,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               if (!items.length) return null;
 
               return (
-                <div className="mt-3 space-y-2">
+                <div className="2xl:mt-3 space-y-2">
                   {items.map((item) => {
                     const hasValue = typeof item.value === "number" && !isNaN(item.value);
                     const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
@@ -1859,6 +1924,36 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 </div>
               );
             };
+
+            const buildComparisonsRows = (
+              metric: keyof Summary,
+              formatter: (val: number) => string
+            ) => {
+              const items = getComparisons(metric);
+
+              return items.map((item) => {
+                const hasValue = typeof item.value === "number" && !isNaN(item.value);
+                const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+                const deltaClassName = hasDiff
+                  ? item.diffPct! >= 0
+                    ? "text-emerald-600"
+                    : "text-red-600"
+                  : "text-gray-400";
+
+                const deltaText = hasDiff
+                  ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
+                  : "-";
+
+                return {
+                  label: item.label,
+                  valueText: hasValue ? formatter(item.value!) : "-",
+                  deltaText,
+                  deltaClassName,
+                };
+              });
+            };
+
 
             const pickNum = (obj: any, keys: string[]) => {
               for (const k of keys) {
@@ -2023,104 +2118,262 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               );
             };
 
+            const buildCm2PercentComparisonRows = () => {
+              const yNum = Number(selectedYear);
 
-            return (
-              <div
-                className={[
-                  "w-full grid gap-4",
-                  "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
-                  isSummaryZero ? "opacity-30" : "opacity-100",
-                ].join(" ")}
-              >
-                {/* Units */}
-                <div className="w-full rounded-2xl border border-[#FDD36F] bg-[#FDD36F4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">Units</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatUnits(summary.unit_sold)}
-                  </div>
-                  {renderComparisons("unit_sold", formatUnits)}
-                </div>
+              const label =
+                range === "monthly"
+                  ? selectedMonth && yNum
+                    ? getPrevMonthLabel(selectedMonth, yNum)
+                    : "Prev month"
+                  : range === "quarterly"
+                    ? selectedQuarter && yNum
+                      ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                      : "Prev quarter"
+                    : yNum
+                      ? getPrevYearLabel(yNum)
+                      : "Prev year";
 
-                <div className="w-full rounded-2xl border border-[#ED9F50] bg-[#ED9F504D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">Gross Sales</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(getGrossSales(summary))}
-                  </div>
-                  {renderGrossSalesComparisons()}
-                </div>
+              const prevVal =
+                range === "monthly"
+                  ? comparisons?.lastMonth
+                    ? getCm2Percent(comparisons.lastMonth)
+                    : undefined
+                  : range === "quarterly"
+                    ? comparisons?.lastQuarter
+                      ? getCm2Percent(comparisons.lastQuarter)
+                      : undefined
+                    : comparisons?.lastYear
+                      ? getCm2Percent(comparisons.lastYear)
+                      : undefined;
 
-                {/* Net Sales */}
-                <div className="w-full rounded-2xl border border-[#75BBDA] bg-[#75BBDA4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <span className="text-[10px] 2xl:text-xs text-charcoal-500">Net Sales</span>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(netSales)}
-                  </div>
-                  {renderComparisons("total_sales", formatMoney)}
-                </div>
+              const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+
+              const diffPct =
+                hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
+
+              const deltaClassName =
+                typeof diffPct === "number"
+                  ? diffPct >= 0
+                    ? "text-emerald-600"
+                    : "text-red-600"
+                  : "text-gray-400";
+
+              const deltaText =
+                typeof diffPct === "number"
+                  ? `${diffPct >= 0 ? "▲" : "▼"} ${Math.abs(diffPct).toFixed(1)}%`
+                  : "-";
+
+              return [
+                {
+                  label,
+                  valueText: hasPrev ? formatPercent(prevVal!) : "-",
+                  deltaText,
+                  deltaClassName,
+                },
+              ];
+            };
+
+const cards = [
+  {
+    key: "units",
+    title: "Units",
+    valueText: formatUnits(summary.unit_sold),
+    className: "border border-[#FDD36F] bg-[#FDD36F4D]",
+    comparisons: buildComparisonsRows("unit_sold", formatUnits),
+  },
+  {
+    key: "grossSales",
+    title: "Gross Sales",
+    valueText: formatMoney(getGrossSales(summary)),
+    className: "border border-[#ED9F50] bg-[#ED9F504D]",
+    comparisons: (() => {
+      // reuse your gross sales comparison logic but produce rows in same shape:
+      const items = getGrossSalesComparisons();
+      return items.map((item) => {
+        const hasValue = typeof item.value === "number" && !isNaN(item.value);
+        const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+        const deltaClassName = hasDiff
+          ? item.diffPct! >= 0
+            ? "text-emerald-600"
+            : "text-red-600"
+          : "text-gray-400";
+
+        const deltaText = hasDiff
+          ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
+          : "-";
+
+        return {
+          label: item.label,
+          valueText: hasValue ? formatMoney(item.value!) : "-",
+          deltaText,
+          deltaClassName,
+        };
+      });
+    })(),
+  },
+  {
+    key: "netSales",
+    title: "Net Sales",
+    valueText: formatMoney(netSales),
+    className: "border border-[#75BBDA] bg-[#75BBDA4D]",
+    comparisons: buildComparisonsRows("total_sales", formatMoney),
+  },
+  {
+    key: "expenses",
+    title: "Expenses",
+    valueText: formatMoney(summary.total_expense),
+    className: "border border-[#B75A5A] bg-[#B75A5A4D]",
+    comparisons: buildComparisonsRows("total_expense", formatMoney),
+  },
+  {
+    key: "ads",
+    title: "Cost of Advertisement",
+    valueText: formatMoney(costOfAds),
+    className: "border border-[#C49466] bg-[#C494664D]",
+    comparisons: buildComparisonsRows("advertising_total", formatMoney),
+  },
+  {
+    key: "tacos",
+    title: "TACoS",
+    valueText: formatRoas(roas),
+    className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
+    comparisons: buildTacosComparisonRows(),
+  },
+  {
+    key: "cm2",
+    title: "CM2 Profit",
+    valueText: formatMoney(summary.cm2_profit),
+    className: "border border-[#B8C78C] bg-[#B8C78C4D]",
+    comparisons: buildComparisonsRows("cm2_profit", formatMoney),
+  },
+  {
+    key: "cm2Pct",
+    title: "CM2 Profit %",
+    valueText: formatPercent(cm2Percent),
+    className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
+    comparisons: buildCm2PercentComparisonRows(),
+  },
+];
+
+return (
+  <div
+    className={[
+      "w-full grid gap-2 2xl:gap-3",
+      "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
+      isSummaryZero ? "opacity-30" : "opacity-100",
+    ].join(" ")}
+  >
+    {cards.map((c) => (
+      <SummaryMetricCard
+        key={c.key}
+        title={c.title}
+        valueText={c.valueText}
+        className={c.className}
+        comparisons={c.comparisons}
+      />
+    ))}
+  </div>
+);
+
+            // return (
+            //   <div
+            //     className={[
+            //       "w-full grid gap-2 2xl:gap-3",
+            //       "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
+            //       isSummaryZero ? "opacity-30" : "opacity-100",
+            //     ].join(" ")}
+            //   >
+            //     {/* Units */}
+            //     <div className="w-full rounded-2xl border border-[#FDD36F] bg-[#FDD36F4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center 2xl:mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Units</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatUnits(summary.unit_sold)}
+            //       </div>
+            //       {renderComparisons("unit_sold", formatUnits)}
+            //     </div>
+
+            //     <div className="w-full rounded-2xl border border-[#ED9F50] bg-[#ED9F504D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Gross Sales</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(getGrossSales(summary))}
+            //       </div>
+            //       {renderGrossSalesComparisons()}
+            //     </div>
+
+            //     {/* Net Sales */}
+            //     <div className="w-full rounded-2xl border border-[#75BBDA] bg-[#75BBDA4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <span className="text-[10px] 2xl:text-xs text-charcoal-500">Net Sales</span>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(netSales)}
+            //       </div>
+            //       {renderComparisons("total_sales", formatMoney)}
+            //     </div>
 
 
-                {/* Expenses */}
-                <div className="w-full rounded-2xl border border-[#B75A5A] bg-[#B75A5A4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">Expenses</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(summary.total_expense)}
-                  </div>
-                  {renderComparisons("total_expense", formatMoney)}
-                </div>
+            //     {/* Expenses */}
+            //     <div className="w-full rounded-2xl border border-[#B75A5A] bg-[#B75A5A4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Expenses</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(summary.total_expense)}
+            //       </div>
+            //       {renderComparisons("total_expense", formatMoney)}
+            //     </div>
 
-                {/* Cost of Advertisement */}
-                <div className="w-full rounded-2xl border border-[#C49466] bg-[#C494664D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">Cost of Advertisement</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(costOfAds)}
-                  </div>
-                  {renderComparisons("advertising_total", formatMoney)}
-                </div>
+            //     {/* Cost of Advertisement */}
+            //     <div className="w-full rounded-2xl border border-[#C49466] bg-[#C494664D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Cost of Advertisement</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(costOfAds)}
+            //       </div>
+            //       {renderComparisons("advertising_total", formatMoney)}
+            //     </div>
 
-                {/* ROAS */}
-                <div className="w-full rounded-2xl border border-[#3A8EA4] bg-[#3A8EA44D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">TACoS</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatRoas(roas)}
-                  </div>
+            //     {/* ROAS */}
+            //     <div className="w-full rounded-2xl border border-[#3A8EA4] bg-[#3A8EA44D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">TACoS</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatRoas(roas)}
+            //       </div>
 
-                  {renderTacosComparisons()}
-                </div>
+            //       {renderTacosComparisons()}
+            //     </div>
 
 
-                {/* CM2 Profit */}
-                <div className="w-full rounded-2xl border border-[#B8C78C] bg-[#B8C78C4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(summary.cm2_profit)}
-                  </div>
-                  {renderComparisons("cm2_profit", formatMoney)}
-                </div>
+            //     {/* CM2 Profit */}
+            //     <div className="w-full rounded-2xl border border-[#B8C78C] bg-[#B8C78C4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(summary.cm2_profit)}
+            //       </div>
+            //       {renderComparisons("cm2_profit", formatMoney)}
+            //     </div>
 
-                {/* CM2 Profit % */}
-                <div className="w-full rounded-2xl border border-[#7B9A6D] bg-[#7B9A6D4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit %</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatPercent(cm2Percent)}
-                  </div>
-                  {renderCm2PercentComparisons()}
-                </div>
-              </div>
-            );
+            //     {/* CM2 Profit % */}
+            //     <div className="w-full rounded-2xl border border-[#7B9A6D] bg-[#7B9A6D4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit %</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatPercent(cm2Percent)}
+            //       </div>
+            //       {renderCm2PercentComparisons()}
+            //     </div>
+            //   </div>
+            // );
           })()}
 
       </div>

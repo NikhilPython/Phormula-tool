@@ -419,7 +419,6 @@ const chooseIntegration = (key: Provider, origin: Origin = "page") => {
           >
             <div
               className="absolute inset-0 bg-black/40 "
-              onClick={() => setOpenAmazonFinance(false)}
             />
             <div className="relative w-full max-w-xl rounded-xl bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
               <div className="mt-3">
