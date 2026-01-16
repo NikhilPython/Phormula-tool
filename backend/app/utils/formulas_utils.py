@@ -434,11 +434,27 @@ def uk_cogs(
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
 
-    parts = ["cost_of_unit_sold"]
+    # Prefer dashboard-aligned computation when possible
+    if "price_in_gbp" in df.columns and "total_quantity" in df.columns:
+        w = df.copy()
+        if "sku" in w.columns:
+            w["sku"] = w["sku"].astype(str).str.strip()
+            w = w.loc[sku_mask(w)]
+        else:
+            return 0.0, pd.DataFrame(columns=["sku", "__metric__", "cogs"]), ["cogs"]
 
-    # -----------------------------
-    # PER-SKU (filtered)
-    # -----------------------------
+        w["price_in_gbp"] = safe_num(w["price_in_gbp"])
+        w["total_quantity"] = safe_num(w["total_quantity"])
+
+        by = w.groupby("sku", as_index=False)[["price_in_gbp", "total_quantity"]].mean()
+        by["cogs"] = (by["price_in_gbp"] * by["total_quantity"]).abs()
+        by["__metric__"] = by["cogs"]
+
+        per_sku = by[["sku", "__metric__", "cogs"]]
+        total = float(per_sku["__metric__"].sum())
+        return total, per_sku, ["cogs"]
+
+    # Fallback to old behavior
     sku_df = df.copy()
     if "sku" in sku_df.columns:
         sku_df = sku_df.loc[sku_mask(sku_df)]
@@ -449,17 +465,13 @@ def uk_cogs(
     sku_df["cost_of_unit_sold"] = safe_num(sku_df["cost_of_unit_sold"])
 
     by = agg_by(sku_df, "sku", ["cost_of_unit_sold"])
-
     if by.empty:
         return 0.0, pd.DataFrame(columns=["sku", "__metric__", "cogs"]), ["cogs"]
 
     by["cogs"] = by["cost_of_unit_sold"].abs()
     by["__metric__"] = by["cogs"]
-
     per_sku = by[["sku", "__metric__", "cogs"]]
-
     total = float(per_sku["__metric__"].sum())
-
     return total, per_sku, ["cogs"]
 
 
@@ -527,23 +539,34 @@ def uk_amazon_fee(df: pd.DataFrame, *, country: str | None = None,
 def uk_profit(
     df: pd.DataFrame,
     *,
-    country: Optional[str] = None,
-    want_breakdown: Optional[bool] = None,
+    country: str | None = None,
+    want_breakdown: bool | None = None,
+    debug: bool = True,
     **kwargs
-) -> Tuple[float, pd.DataFrame, List[str]]:
+) -> tuple[float, pd.DataFrame, list[str]]:
+    """
+    FINAL UK PROFIT (Dashboard & Excel Aligned)
 
-    # --------------------------------------------------
-    # BASE COMPONENTS (ALL ALREADY CLEANED DF)
-    # --------------------------------------------------
-    sales_total,  sales_by,  _ = uk_sales(df)
-    cogs_total,   cogs_by,   _ = uk_cogs(df)
-    fee_total,    fee_by,    _ = uk_amazon_fee(df)
-    tax_total,    tax_by,    _ = uk_tax(df)
-    credit_total, credit_by,_ = uk_credits(df)
+    Formula (SOURCE OF TRUTH):
+        profit = sales
+               - cogs
+               - amazon_fee
+               - net_taxes
+               + net_credits
+    """
 
-    # --------------------------------------------------
-    # MERGE PER SKU
-    # --------------------------------------------------
+    # -----------------------------
+    # BASE COMPONENTS
+    # -----------------------------
+    sales_total,  sales_by,  _ = uk_sales(df, country=country)
+    cogs_total,   cogs_by,   _ = uk_cogs(df, country=country)
+    fee_total,    fee_by,    _ = uk_amazon_fee(df, country=country)
+    tax_total,    tax_by,    _ = uk_tax(df, country=country)
+    credit_total, credit_by, _ = uk_credits(df, country=country)
+
+    # -----------------------------
+    # MERGE PER-SKU
+    # -----------------------------
     per = (
         sales_by[["sku", "__metric__"]]
         .rename(columns={"__metric__": "sales"})
@@ -566,58 +589,32 @@ def uk_profit(
         .fillna(0.0)
     )
 
-    # --------------------------------------------------
+    # -----------------------------
     # NUMERIC SAFETY
-    # --------------------------------------------------
-    for c in ["sales", "cogs", "amazon_fee", "net_taxes", "net_credits"]:
+    # -----------------------------
+    for c in ("sales", "cogs", "amazon_fee", "net_taxes", "net_credits"):
         per[c] = safe_num(per[c])
 
-    # --------------------------------------------------
-    # TAX & CREDITS (EXCEL STYLE)
-    # --------------------------------------------------
-    per["tex_and_credits"] = per["net_taxes"] - per["net_credits"]
-
-    # --------------------------------------------------
-    # FINAL PROFIT FORMULA (SINGLE SOURCE OF TRUTH)
-    # --------------------------------------------------
+    # -----------------------------
+    # PROFIT (PER SKU)
+    # -----------------------------
     per["__metric__"] = (
-        per["sales"]
+        per["sales"].abs()
         - per["cogs"]
         - per["amazon_fee"]
-        - per["tex_and_credits"]
+        - per["net_taxes"]
+        + per["net_credits"]
     )
 
     total = float(per["__metric__"].sum())
 
-    # --------------------------------------------------
-    # DEBUG PRINT (YOU ASKED FOR THIS)
-    # --------------------------------------------------
-    print("\n================= UK PROFIT DEBUG =================\n")
-    print("--- TOTALS ---")
-    print(f"SALES TOTAL          : {sales_total}")
-    print(f"COGS TOTAL           : {cogs_total}")
-    print(f"AMAZON FEE TOTAL     : {fee_total}")
-    print(f"NET TAXES TOTAL      : {tax_total}")
-    print(f"NET CREDITS TOTAL    : {credit_total}")
-    print(f"TAX & CREDITS TOTAL  : {tax_total - credit_total}")
-    print(f"FINAL PROFIT TOTAL   : {total}\n")
-
-    print("--- PER SKU (first 10 rows) ---")
-    print(
-        per[
-            ["sku", "sales", "cogs", "amazon_fee",
-             "net_taxes", "net_credits", "tex_and_credits", "__metric__"]
-        ].head(10)
-    )
-    print("\n==================================================\n")
-
+    
     comps = [
         "sales",
         "cogs",
         "amazon_fee",
         "net_taxes",
         "net_credits",
-        "tex_and_credits",
     ]
 
     return total, per[["sku", "__metric__", *comps]], comps
