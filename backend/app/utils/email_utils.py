@@ -207,6 +207,16 @@ def _extract_pct(text: str, pattern: str):
         return float(m.group(1))
     except Exception:
         return None
+    
+ALLOWED_PRIMARY_ACTIONS = [
+    "Check ads and visibility campaigns for this product.",
+    "Review the visibility setup for this product.",
+    "Reduce ASP slightly to improve traction.",
+    "Increase ASP slightly to strengthen margins.",
+    "Maintain current ASP and monitor performance.",
+    "Monitor performance closely for now.",
+    "Check Amazon fees or taxes for this product as profit is down despite growth.",
+]
 
 
 def parse_action_bullet_to_card(bullet: str) -> dict | None:
@@ -233,12 +243,27 @@ def parse_action_bullet_to_card(bullet: str) -> dict | None:
 
     # ---------- Inventory action (last line) ----------
     inventory_action = ""
-    for l in reversed(lines):
-        if l.strip():
+    for l in lines:
+        if l.lower().startswith("inventory:"):
             inventory_action = l.strip()
-            break
+            
+     # ---------- Primary & Secondary action (AI driven) ----------
+    primary_action = ""
+    secondary_action = ""
+
+    for l in lines:
+            clean = l.strip()
+
+            # PRIMARY action: must exactly match AI allowed sentences
+            if clean in ALLOWED_PRIMARY_ACTIONS:
+                primary_action = clean
+
+            # SECONDARY strategy (rank-first)
+            elif clean.lower().startswith("if your objective"):
+                secondary_action = clean       
 
     # ---------- Buckets ----------
+    
     pricing_action = ""
     rank_action = ""
     generic_actions = []
@@ -253,12 +278,21 @@ def parse_action_bullet_to_card(bullet: str) -> dict | None:
         elif "boost rank" in low or "current pricing setup" in low:
             rank_action = l.strip()
 
-        elif l.strip() != inventory_action:
-            description_lines.append(l.strip())
+        clean = l.strip()
 
-    raw_description = " ".join(description_lines).strip()
 
-    # ---- SENTENCE LEVEL SPLIT ----
+        if (
+            clean == inventory_action
+            or clean == primary_action
+            or clean == secondary_action
+        ):
+            continue
+
+        description_lines.append(clean)
+
+        raw_description = " ".join(description_lines).strip()
+
+            # ---- SENTENCE LEVEL SPLIT ----
     sentences = re.split(r'(?<=[.!?])\s+', raw_description)
 
     clean_sentences = []
@@ -288,17 +322,14 @@ def parse_action_bullet_to_card(bullet: str) -> dict | None:
 
     # ---------- FINAL ACTION ORDER ----------
     actions = []
-    
-    for ga in generic_actions:
-        actions.append(ga)
 
-    if pricing_action:
-        actions.append(pricing_action)
+    if primary_action:
+        actions.append(primary_action)
 
-    if rank_action:
-        actions.append(rank_action)
+    if secondary_action:
+        actions.append(secondary_action)
 
-    if inventory_action and inventory_action not in actions:
+    if inventory_action:
         actions.append(inventory_action)
 
     action = "<br/>".join(f"{i+1}. {a}" for i, a in enumerate(actions))
@@ -310,13 +341,24 @@ def parse_action_bullet_to_card(bullet: str) -> dict | None:
     units_val = _extract_pct(description, r"\bunits?\b[^%]*?by\s*([+-]?\d+(?:\.\d+)?)%")
     profit_val = _extract_pct(description, r"\bprofit(?!\s*margin)\b[^%]*?by\s*([+-]?\d+(?:\.\d+)?)%")
     sales_val = _extract_pct(description, r"\bsales\b[^%]*?by\s*([+-]?\d+(?:\.\d+)?)%")
+    
+    asp_negative = False
+
+    # Case 1: explicit numeric negative (safety)
+    if asp_val is not None and asp_val < 0:
+        asp_negative = True
+
+    # Case 2: ASP-specific language ONLY
+    elif re.search(
+        r"(decrease|decreased|decline|declined|drop|dropped|down|fell|reduced|reduction).{0,40}\basp\b"
+        r"|\basp\b.{0,40}(decrease|decreased|decline|declined|drop|dropped|down|fell|reduced|reduction)",
+        description,
+        re.I,
+    ):
+        asp_negative = True
 
     negatives = {
-        "ASP": (
-    False
-    if re.search(r"(up|increase|increased|growth).{0,30}asp|asp.{0,30}(up|increase|increased|growth)", description, re.I)
-    else _metric_is_negative(description, r"asp", asp_val)
-),
+        "ASP": asp_negative,
         "Units": (
     False
     if re.search(r"(growth|increase|increased|up).{0,30}units|units.{0,30}(growth|increase|increased|up)", description, re.I)
@@ -335,7 +377,7 @@ def parse_action_bullet_to_card(bullet: str) -> dict | None:
         return abs(x) if x is not None else 0.0
 
     metrics = {
-        "ASP": _abs_or_zero(asp_val),
+        "ASP": (-abs(asp_val) if asp_negative else (asp_val or 0.0)),
         "Units": _abs_or_zero(units_val),
         "Sales": _abs_or_zero(sales_val),
         "Sales Mix": _abs_or_zero(mix_val),
