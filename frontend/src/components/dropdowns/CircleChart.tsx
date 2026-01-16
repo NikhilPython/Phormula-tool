@@ -106,6 +106,20 @@ const CircleChart: React.FC<CircleChartProps> = ({
       : "right"
   );
 
+  const [isLaptop, setIsLaptop] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      const w = window.innerWidth;
+      // adjust range if your “laptop” definition differs
+      setIsLaptop(w >= 1024 && w < 1536); // Tailwind lg..xl
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+
   const chartRef = useRef<any>(null);
 
   const exportChartBase64 = () => {
@@ -438,7 +452,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
       },
     },
     layout: {
-      padding: 10,
+      padding: isLaptop ? 0 : 10,
     },
     animation: {
       duration: 0,
@@ -450,7 +464,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
   return (
     <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
       {/* Heading */}
-      <div className="mb-4">
+      <div className="2xl:mb-4">
         <div className="w-fit mx-auto md:mx-0">
           <PageBreadcrumb
             pageTitle={`Expense Breakup`}
@@ -476,16 +490,21 @@ const CircleChart: React.FC<CircleChartProps> = ({
             className={[
               "mx-auto",
               "w-full",
-              "max-w-[360px] sm:max-w-[460px] md:max-w-[600px] lg:max-w-[720px]",
+              "max-w-[360px] sm:max-w-[460px] md:max-w-[600px] 2xl:max-w-[720px]",
               "relative",
             ].join(" ")}
           >
-            <div className="relative h-[240px] sm:h-[280px] md:h-[320px] lg:h-[360px]">
-
-
-              {/* <Pie data={displayChartData} options={options} /> */}
-              <Pie ref={chartRef} data={displayChartData} options={options} />
+            <div
+              className={[
+                "relative",
+                "h-[240px] sm:h-[280px] md:h-[280px] 2xl:h-[360px]",
+                "flex justify-center", // center horizontally
+                isLaptop ? "items-center px-4 py-1" : "items-center", // ✅ laptop: less top, more bottom, add side padding
+              ].join(" ")}
+            >
+              <Pie className="!block" ref={chartRef} data={displayChartData} options={options} />
             </div>
+
           </div>
         ) : (
           <p className="text-center text-sm text-gray-500">

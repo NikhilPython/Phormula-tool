@@ -271,7 +271,7 @@ const AppSidebar: React.FC = () => {
       }
 
       const baseUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
+        process.env.NEXT_PUBLIC_API_BASE_URL ;
 
       const months = [
         "january", "february", "march", "april", "may", "june",
@@ -416,7 +416,7 @@ const AppSidebar: React.FC = () => {
       name: "LIVE DASHBOARD",
       icon: (
         <Image
-          src="/images/brand/business.png"
+          src="/images/brand/live.png"
           alt="Logo"
           width={18}
           height={18}
@@ -583,7 +583,7 @@ const AppSidebar: React.FC = () => {
     [pathname, currentParams]
   );
 
-  const showText = isExpanded || isHovered || isMobileOpen;
+  const showText = isExpanded || isMobileOpen;
 
   const safeSelectedPlatform =
     regionOptions.find((o) => o.value === selectedPlatform)?.value ??
@@ -603,8 +603,6 @@ const AppSidebar: React.FC = () => {
         ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
         lg:translate-x-0 font-lato
       `}
-      onMouseEnter={() => !isExpanded && setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Logo + toggle */}
       <div
@@ -630,35 +628,37 @@ const AppSidebar: React.FC = () => {
             />
           )}
         </Link>
-
-        <button
-          type="button"
-          onClick={handleToggle}
-          className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200 bg-blue-700 text-white"
-          aria-label={showText ? "Collapse sidebar" : "Expand sidebar"}
-        >
-          {showText ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M14.5 5L8.5 12L14.5 19"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M9.5 5L15.5 12L9.5 19"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          )}
-        </button>
+{isExpanded && (
+ <button
+ type="button"
+ onClick={handleToggle}
+ className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200 bg-blue-700 text-white"
+ aria-label={showText ? "Collapse sidebar" : "Expand sidebar"}
+>
+ {showText ? (
+   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+     <path
+       d="M14.5 5L8.5 12L14.5 19"
+       stroke="currentColor"
+       strokeWidth="2"
+       strokeLinecap="round"
+       strokeLinejoin="round"
+     />
+   </svg>
+ ) : (
+   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+     <path
+       d="M9.5 5L15.5 12L9.5 19"
+       stroke="currentColor"
+       strokeWidth="2"
+       strokeLinecap="round"
+       strokeLinejoin="round"
+     />
+   </svg>
+ )}
+</button>
+)}
+       
       </div>
 
       {/* Platform Select */}

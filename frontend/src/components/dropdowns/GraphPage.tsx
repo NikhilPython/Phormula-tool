@@ -685,7 +685,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
                     "shrink-0",
                     "flex items-center gap-1 sm:gap-1.5",
                     "font-semibold select-none whitespace-nowrap",
-                    "text-xs my-3",
+                    "text-[10px] 2xl:text-xs my-1 2xl:my-3",
                     "text-charcoal-500",
                     allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
                   ].join(" ")}
