@@ -332,85 +332,85 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     );
   }, [range, month, year, selectedQuarter, countryName]);
 
-const options: ChartOptions<"pie"> = {
-  responsive: true,
-  elements: {
-    arc: {
-      borderWidth: 0,
+  const options: ChartOptions<"pie"> = {
+    responsive: true,
+    elements: {
+      arc: {
+        borderWidth: 0,
+      },
     },
-  },
-  plugins: {
-    legend: {
-      position: legendPosition,
-      align: "center",
-      labels: {
-        usePointStyle: true,
+    plugins: {
+      legend: {
+        position: legendPosition,
+        align: "center",
+        labels: {
+          usePointStyle: true,
 
-        // ✅ Change legend label text color here
-        color: "#414042", // <-- change to whatever you want (e.g. "#FF0000")
+          // ✅ Change legend label text color here
+          color: "#414042", // <-- change to whatever you want (e.g. "#FF0000")
 
-        // ✅ Show ALL labels + percentage in legend
-        generateLabels: (chart) => {
-          const data = chart.data;
-          const labels = (data.labels || []) as string[];
+          // ✅ Show ALL labels + percentage in legend
+          generateLabels: (chart) => {
+            const data = chart.data;
+            const labels = (data.labels || []) as string[];
 
-          const dataset = data.datasets?.[0] as any;
-          const values = ((dataset?.data || []) as number[]).map((v) =>
-            Math.abs(Number(v || 0))
-          );
+            const dataset = data.datasets?.[0] as any;
+            const values = ((dataset?.data || []) as number[]).map((v) =>
+              Math.abs(Number(v || 0))
+            );
 
-          const total = values.reduce((a, b) => a + b, 0);
+            const total = values.reduce((a, b) => a + b, 0);
 
-          const bg = dataset?.backgroundColor as any[]; // array of colors
+            const bg = dataset?.backgroundColor as any[]; // array of colors
 
-          return labels.map((label, i) => {
-            const value = values[i] ?? 0;
+            return labels.map((label, i) => {
+              const value = values[i] ?? 0;
+              const pct = total ? (value / total) * 100 : 0;
+
+              return {
+                text: `${label} (${pct.toFixed(2)}%)`,
+                fillStyle: Array.isArray(bg) ? bg[i] : bg,
+                strokeStyle: "transparent",
+                lineWidth: 0,
+                hidden: !chart.getDataVisibility(i),
+                index: i, // ✅ important for toggling slice
+                pointStyle: "circle",
+              };
+            });
+          },
+        },
+      },
+      tooltip: {
+        enabled: !noDataFound,
+        callbacks: {
+          label: (ctx: TooltipItem<"pie">) => {
+            const value = Math.abs(Number(ctx.raw ?? 0));
+            const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
+              | { data: number[] }
+              | undefined;
+
+            const total = (ds?.data ?? []).reduce(
+              (acc, v) => acc + Math.abs(Number(v || 0)),
+              0
+            );
+
             const pct = total ? (value / total) * 100 : 0;
+            const label = ctx.label ? `${ctx.label}: ` : "";
 
-            return {
-              text: `${label} (${pct.toFixed(2)}%)`,
-              fillStyle: Array.isArray(bg) ? bg[i] : bg,
-              strokeStyle: "transparent",
-              lineWidth: 0,
-              hidden: !chart.getDataVisibility(i),
-              index: i, // ✅ important for toggling slice
-              pointStyle: "circle",
-            };
-          });
+            return `${label}${currencySymbol}${value.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })} (${pct.toFixed(2)}%)`;
+          },
         },
       },
     },
-    tooltip: {
-      enabled: !noDataFound,
-      callbacks: {
-        label: (ctx: TooltipItem<"pie">) => {
-          const value = Math.abs(Number(ctx.raw ?? 0));
-          const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
-            | { data: number[] }
-            | undefined;
-
-          const total = (ds?.data ?? []).reduce(
-            (acc, v) => acc + Math.abs(Number(v || 0)),
-            0
-          );
-
-          const pct = total ? (value / total) * 100 : 0;
-          const label = ctx.label ? `${ctx.label}: ` : "";
-
-          return `${label}${currencySymbol}${value.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })} (${pct.toFixed(2)}%)`;
-        },
-      },
+    layout: {
+      padding: 10,
     },
-  },
-  layout: {
-    padding: 10,
-  },
-  animation: { duration: 0 },
-  maintainAspectRatio: false,
-};
+    animation: { duration: 0 },
+    maintainAspectRatio: false,
+  };
 
 
   useEffect(() => {
@@ -429,7 +429,7 @@ const options: ChartOptions<"pie"> = {
 
 
   return (
-   <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+    <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
       {/* Heading */}
       <div className="mb-4">
         <div className="w-fit mx-auto md:mx-0">

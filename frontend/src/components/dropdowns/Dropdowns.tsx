@@ -64,10 +64,27 @@ type UploadHistoryResponse = {
 
 
 /* ---------------------- AI Summary Types ---------------------- */
+type PerformanceTrendSeries = {
+  label: string;          // "Dec'25"
+  net_sales: number[];    // per-sku OR per-day array (as your API gives)
+  units: number[];
+};
+
+type PerformanceTrendPayload = {
+  x: number[];            // [1..31] etc.
+  xType: string;          // "day"
+  series: PerformanceTrendSeries[];
+};
+
 type AiSummaryResponse = {
   summary?: string | null;
   recommendations?: string | null;
+
+  // ✅ NEW
+  performance_trend?: PerformanceTrendPayload;
+  performance_trend_metric?: "net_sales" | "units";
 };
+
 
 type AiPanelData = {
   summaryBullets: string[];
@@ -410,6 +427,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   );
 };
 
+type FocusedChart = "trend" | "pnl" | null;
+
 /* ---------------------- Component ---------------------- */
 const Dropdowns: React.FC<DropdownsProps> = ({
   initialRanged,
@@ -452,6 +471,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showNoDataOverlay, setShowNoDataOverlay] = useState(false);
+  const [performanceTrend, setPerformanceTrend] = useState<PerformanceTrendPayload | null>(null);
+  const [performanceTrendMetric, setPerformanceTrendMetric] = useState<"net_sales" | "units">("net_sales");
+
+  const [focusedChart, setFocusedChart] = useState<FocusedChart>(null);
+
+  const toggleFocus = (which: Exclude<FocusedChart, null>) => {
+    setFocusedChart((prev) => (prev === which ? null : which));
+  };
+
 
   // ---------------- AI Summary Panel state ----------------
   const [aiPanel, setAiPanel] = useState<AiPanelData | null>(null);
@@ -477,12 +505,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   useEffect(() => {
     setShowNoDataOverlay(false);
+    setFocusedChart(null);
     setChartExportApi(null);
     setSkuExportPayload(null);
     setExpenseBreakdownPieBase64(null);
     setProductWiseCm1PieBase64(null);
+    setPerformanceTrend(null);
   }, [range, selectedMonth, selectedQuarter, selectedYear]);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFocusedChart(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
 
   useEffect(() => {
@@ -606,67 +643,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
 
-  // const fetchAiSummary = async (rangeType: RangeType) => {
-  //   // only fetch when the selection is valid for the current range
-  //   if (!countryName || !rangeType || !selectedYear) return;
-
-  //   const timeline =
-  //     rangeType === "monthly"
-  //       ? monthNameToNumber(selectedMonth)
-  //       : rangeType === "quarterly"
-  //         ? selectedQuarter
-  //         : "ALL";
-
-  //   if (rangeType === "monthly" && !timeline) return;
-  //   if (rangeType === "quarterly" && !selectedQuarter) return;
-
-  //   setAiPanelLoading(true);
-  //   setAiPanelError(null);
-
-  //   try {
-  //     const token =
-  //       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-
-  //     const url = new URL("http://127.0.0.1:5000/summary");
-  //     url.searchParams.set("country", countryName);
-  //     url.searchParams.set("period", rangeType);
-  //     url.searchParams.set("timeline", String(timeline));
-  //     url.searchParams.set("year", String(selectedYear));
-
-  //     const res = await fetch(url.toString(), {
-  //       method: "GET",
-  //       headers: token ? { Authorization: `Bearer ${token}` } : {},
-  //       cache: "no-store",
-  //     });
-
-  //     if (!res.ok) {
-  //       const err = await res.json().catch(() => ({}));
-  //       setAiPanel(null);
-  //       setAiPanelError(String(err?.error ?? res.statusText));
-  //       return;
-  //     }
-
-  //     const data: AiSummaryResponse = await res.json();
-
-  //     const { summaryBullets, skuInsightsBullets } = extractSummaryAndSkuBullets(data.summary);
-  //     const { recommendationBullets, inventoryBullets } = extractRecoAndInventoryBullets(data.recommendations);
-
-  //     setAiPanel({
-  //       summaryBullets,
-  //       skuInsightsBullets,
-  //       recommendationBullets,
-  //       inventoryBullets,
-  //       rawSummary: data.summary ?? null,
-  //       rawRecommendations: data.recommendations ?? null,
-  //     });
-  //   } catch (e: any) {
-  //     setAiPanel(null);
-  //     setAiPanelError(e?.message || "Failed to fetch AI summary");
-  //   } finally {
-  //     setAiPanelLoading(false);
-  //   }
-  // };
-
   const fetchAiSummary = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
 
@@ -714,6 +690,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       const data: AiSummaryResponse = await res.json();
 
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
+
+      setPerformanceTrend(data.performance_trend ?? null);
+      setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
 
       const { summaryBullets, skuInsightsBullets } =
         extractSummaryAndSkuBullets(data.summary);
@@ -1511,7 +1490,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             />
 
             <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              {countryName?.toLowerCase() === "global"
+              Amazon {countryName?.toLowerCase() === "global"
                 ? "Global"
                 : countryName?.toUpperCase()}
             </span>
@@ -2052,120 +2031,123 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       {/* Charts & Tables */}
       {range === "monthly" && selectedMonth && selectedYear && (
         <>
-          {/* <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4"> */}
-          {/* Heading INSIDE border */}
-          {/* <div className="flex items-center justify-between gap-3">
-              <div className="flex items-baseline gap-2">
-                <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
-
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().country}
-                </span>
-
-                {getPnLTitleParts().period ? (
-                  <>
-                    <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().period}
-                    </span>
-                  </>
-                ) : null}
-              </div>
-
-              <DownloadIconButton
-                onClick={handleDownloadProfitabilityBundle}
-                disabled={
-                  !chartExportApi ||
-                  !skuExportPayload ||
-                  !expenseBreakdownPieBase64 ||
-                  !productWiseCm1PieBase64
-                }
-              />
-            </div> */}
-
-
-
-          {/* <Bargraph
-              range={range}
-              selectedMonth={selectedMonth}
-              selectedYear={selectedYear}
-              countryName={initialCountryName}
-              homeCurrency={globalHomeCurrency}
-              hideDownloadButton
-              onExportApiReady={setChartExportApi}
-              onNoDataChange={(noData) => {
-                console.log("🔥 [Monthly] Bargraph → onNoDataChange:", noData);
-                setShowNoDataOverlay(noData);
-              }}
-            /> */}
-
-
           <div className="w-full rounded-xl space-y-4">
             {/* Two separate sections */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
+            <div
+              className={[
+                "grid grid-cols-1 gap-4",
+                focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+              ].join(" ")}
+            >
               {/* LEFT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4">
-                <div className="h-[50vh]">
-                  <PerformanceTrendChart
-                    range={range}
-                    month={selectedMonth}
-                    year={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    currencySymbol={currencySymbol} 
-                  />
+              {(focusedChart === null || focusedChart === "trend") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    // ✅ don’t expand when clicking buttons/toggles inside the card
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+
+                    toggleFocus("trend");
+                  }}
+
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("trend");
+                  }}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
+                >
+                  <div className="h-[50vh]">
+                    <PerformanceTrendChart
+                      range={range}
+                      month={selectedMonth}
+                      year={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      currencySymbol={currencySymbol}
+                      data={performanceTrend}
+                      metric={performanceTrendMetric}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* RIGHT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4 space-y-3 min-h-0">
+              {(focusedChart === null || focusedChart === "pnl") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("pnl");
+                  }}
 
-                {/* ✅ PNL heading now belongs to RIGHT card only */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-baseline gap-2">
-                    <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
+                  onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    "min-h-0 overflow-hidden",
+                    "flex flex-col",
+                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
+                >
+                  {/* Heading */}
+                  <div className="shrink-0 flex items-center justify-between gap-3">
+                    <div className="flex items-baseline gap-2">
+                      <PageBreadcrumb pageTitle="P&L " variant="page" align="left" textSize="2xl" />
 
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().country}
-                    </span>
+                      {/* <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {getPnLTitleParts().country}
+                      </span> */}
 
-                    {getPnLTitleParts().period ? (
-                      <>
-                        <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-                        <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                          {getPnLTitleParts().period}
-                        </span>
-                      </>
-                    ) : null}
+                      {getPnLTitleParts().period ? (
+                        <>
+                          <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
+                          <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                            {getPnLTitleParts().period}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <DownloadIconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadProfitabilityBundle();
+                      }}
+                      disabled={
+                        !chartExportApi ||
+                        !skuExportPayload ||
+                        !expenseBreakdownPieBase64 ||
+                        !productWiseCm1PieBase64
+                      }
+                    />
                   </div>
 
-                  <DownloadIconButton
-                    onClick={handleDownloadProfitabilityBundle}
-                    disabled={
-                      !chartExportApi ||
-                      !skuExportPayload ||
-                      !expenseBreakdownPieBase64 ||
-                      !productWiseCm1PieBase64
-                    }
-                  />
+                  <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                    <Bargraph
+                      range={range}
+                      selectedMonth={selectedMonth}
+                      selectedYear={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      hideDownloadButton
+                      onExportApiReady={setChartExportApi}
+                      onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                    />
+                  </div>
                 </div>
-
-                {/* ✅ Right graph area height = (card height - heading) */}
-                <div className="h-[calc(50vh-56px)] min-h-0">
-                  <Bargraph
-                    range={range}
-                    selectedMonth={selectedMonth}
-                    selectedYear={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    hideDownloadButton
-                    onExportApiReady={setChartExportApi}
-                    onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                  />
-                </div>
-              </div>
-
+              )}
             </div>
           </div>
 
@@ -2319,74 +2301,126 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
         <>
           <div className="w-full rounded-xl space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* LEFT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4">
-                <div className="h-[50vh]">
-                  <PerformanceTrendChart
-                    range={range}
-                    quarter={selectedQuarter}   // ✅ make sure component supports this prop
-                    year={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    currencySymbol={currencySymbol} 
-                  />
-                </div>
-              </div>
+            <div
+              className={[
+                "grid grid-cols-1 gap-4",
+                focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+              ].join(" ")}
+            >
+              {/* LEFT card (Trend) */}
+              {(focusedChart === null || focusedChart === "trend") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    // ✅ don’t expand when clicking buttons/toggles inside the card
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
 
-              {/* RIGHT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4 space-y-3 min-h-0">
-                {/* ✅ PNL heading inside right */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-baseline gap-2">
-                    <PageBreadcrumb
-                      pageTitle="P&L - Amazon"
-                      variant="page"
-                      align="left"
-                      textSize="2xl"
+                    toggleFocus("trend");
+                  }}
+
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("trend");
+                  }}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
+                >
+                  <div className="h-[50vh]">
+                    <PerformanceTrendChart
+                      range={range}
+                      quarter={selectedQuarter}
+                      year={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      currencySymbol={currencySymbol}
+                      data={performanceTrend}
+                      metric={performanceTrendMetric}
                     />
+                  </div>
+                </div>
+              )}
 
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().country}
-                    </span>
+              {/* RIGHT card (PnL) */}
+              {(focusedChart === null || focusedChart === "pnl") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("pnl");
+                  }}
 
-                    {getPnLTitleParts().period ? (
-                      <>
-                        <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                          -
-                        </span>
-                        <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                          {getPnLTitleParts().period}
-                        </span>
-                      </>
-                    ) : null}
+                  onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    "min-h-0 overflow-hidden",
+                    "flex flex-col",
+                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                >
+                  <div className="shrink-0 flex items-center justify-between gap-3">
+                    <div className="flex items-baseline gap-2">
+                      <PageBreadcrumb
+                        pageTitle="P&L "
+                        variant="page"
+                        align="left"
+                        textSize="2xl"
+                      />
+
+                      {/* <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {getPnLTitleParts().country}
+                      </span> */}
+
+                      {getPnLTitleParts().period ? (
+                        <>
+                          <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                            -
+                          </span>
+                          <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                            {getPnLTitleParts().period}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <DownloadIconButton
+                      onClick={(e) => {
+                        e.stopPropagation(); // ✅ don’t trigger zoom
+                        handleDownloadProfitabilityBundle();
+                      }}
+                      disabled={
+                        !chartExportApi ||
+                        !skuExportPayload ||
+                        !expenseBreakdownPieBase64 ||
+                        !productWiseCm1PieBase64
+                      }
+                    />
                   </div>
 
-                  <DownloadIconButton
-                    onClick={handleDownloadProfitabilityBundle}
-                    disabled={
-                      !chartExportApi ||
-                      !skuExportPayload ||
-                      !expenseBreakdownPieBase64 ||
-                      !productWiseCm1PieBase64
-                    }
-                  />
+                  <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                    <GraphPage
+                      range={range}
+                      selectedQuarter={selectedQuarter}
+                      selectedYear={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      hideDownloadButton
+                      onExportApiReady={setChartExportApi}
+                      onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                    />
+                  </div>
                 </div>
-
-                {/* ✅ Graph area height */}
-                <div className="h-[calc(50vh-56px)] min-h-0">
-                  <GraphPage
-                    range={range}
-                    selectedQuarter={selectedQuarter}
-                    selectedYear={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    hideDownloadButton
-                    onExportApiReady={setChartExportApi}
-                    onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -2534,71 +2568,126 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       {allDropdownsSelected && range === "yearly" && selectedYear && (
         <>
           <div className="w-full rounded-xl space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* LEFT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4">
-                <div className="h-[50vh]">
-                  <PerformanceTrendChart
-                    range={range}
-                    year={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    currencySymbol={currencySymbol} 
-                  />
-                </div>
-              </div>
+            <div
+              className={[
+                "grid grid-cols-1 gap-4",
+                focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+              ].join(" ")}
+            >
+              {/* LEFT card (Trend) */}
+              {(focusedChart === null || focusedChart === "trend") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    // ✅ don’t expand when clicking buttons/toggles inside the card
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
 
-              {/* RIGHT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4 space-y-3 min-h-0">
-                {/* ✅ PNL heading inside right */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-baseline gap-2">
-                    <PageBreadcrumb
-                      pageTitle="P&L - Amazon"
-                      variant="page"
-                      align="left"
-                      textSize="2xl"
+                    toggleFocus("trend");
+                  }}
+
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("trend");
+                  }}
+
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
+                >
+                  <div className="h-[50vh]">
+                    <PerformanceTrendChart
+                      range={range}
+                      year={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      currencySymbol={currencySymbol}
+                      data={performanceTrend}
+                      metric={performanceTrendMetric}
                     />
+                  </div>
+                </div>
+              )}
 
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().country}
-                    </span>
+              {/* RIGHT card (PnL) */}
+              {(focusedChart === null || focusedChart === "pnl") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("pnl");
+                  }}
 
-                    <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      -
-                    </span>
+                  onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    "min-h-0 overflow-hidden",
+                    "flex flex-col",
+                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
+                >
+                  <div className="shrink-0 flex items-center justify-between gap-3">
+                    <div className="flex items-baseline gap-2">
+                      <PageBreadcrumb
+                        pageTitle="P&L "
+                        variant="page"
+                        align="left"
+                        textSize="2xl"
+                      />
 
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().period}
-                    </span>
+                      {/* <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {getPnLTitleParts().country}
+                      </span> */}
+
+                      <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        -
+                      </span>
+
+                      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {getPnLTitleParts().period}
+                      </span>
+                    </div>
+
+                    <DownloadIconButton
+                      onClick={(e) => {
+                        e.stopPropagation(); // ✅ don’t trigger zoom
+                        handleDownloadProfitabilityBundle();
+                      }}
+                      disabled={
+                        !chartExportApi ||
+                        !skuExportPayload ||
+                        !expenseBreakdownPieBase64 ||
+                        !productWiseCm1PieBase64
+                      }
+                    />
                   </div>
 
-                  <DownloadIconButton
-                    onClick={handleDownloadProfitabilityBundle}
-                    disabled={
-                      !chartExportApi ||
-                      !skuExportPayload ||
-                      !expenseBreakdownPieBase64 ||
-                      !productWiseCm1PieBase64
-                    }
-                  />
+                  <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                    <GraphPage
+                      range={range}
+                      selectedYear={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      hideDownloadButton
+                      onExportApiReady={setChartExportApi}
+                      onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                    />
+                  </div>
                 </div>
-
-                {/* ✅ Graph area height */}
-                <div className="h-[calc(50vh-56px)] min-h-0">
-                  <GraphPage
-                    range={range}
-                    selectedYear={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    hideDownloadButton
-                    onExportApiReady={setChartExportApi}
-                    onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </div>
+
 
           {allDropdownsSelected && (
             <div id="business-summary" className="scroll-mt-[80px]">

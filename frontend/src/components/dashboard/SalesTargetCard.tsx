@@ -397,7 +397,7 @@ export default function SalesTargetCard({
       </div>
 
       {/* Gauge */}
-      <div className="mt-5 flex flex-col items-center justify-center">
+      <div className="mt-5 2xl:mt-3 flex flex-col items-center justify-center">
         <div
           ref={wrapRef}
           className="relative"

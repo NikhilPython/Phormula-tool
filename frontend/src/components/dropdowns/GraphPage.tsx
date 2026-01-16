@@ -636,10 +636,9 @@ const GraphPage: React.FC<GraphPageProps> = ({
 
 
   return (
-    <div className="relative w-full h-full min-h-0">
+    <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
       {loading ? (
-        <div className="flex h-full items-center justify-center">
-
+        <div className="flex-1 min-h-0 flex items-center justify-center">
           <Loader
             src="/infinity-unscreen.gif"
             size={150}
@@ -650,19 +649,20 @@ const GraphPage: React.FC<GraphPageProps> = ({
           />
         </div>
       ) : (
-        <div className={allValuesZero ? "opacity-30 pointer-events-none" : "opacity-100"}>
-          {/* Metric toggles */}
-          <div
-  className={[
-    "mt-5 sm:mt-6 mb-4 sm:mb-6",
-    "flex flex-wrap items-center justify-between",
-    "gap-3 ",
-    "w-full mx-auto",
-    allValuesZero ? "opacity-30" : "opacity-100",
-    "transition-opacity duration-300",
-  ].join(" ")}
->
+        <div className={allValuesZero ? "opacity-30 pointer-events-none flex flex-col h-full min-h-0" : "flex flex-col h-full min-h-0"}>
 
+          {/* ✅ NO mt/mb here; keep it shrink-0 */}
+          <div
+            data-no-expand
+            className={[
+              "shrink-0",
+              "flex flex-wrap items-center justify-center",
+              "gap-4",
+              "w-full",
+              allValuesZero ? "opacity-30" : "opacity-100",
+              "transition-opacity duration-300",
+            ].join(" ")}
+          >
             {[
               { name: "sales", label: "Net Sales", color: "#75BBDA" },
               { name: "total_cous", label: "COGS", color: "#FDD36F" },
@@ -678,24 +678,33 @@ const GraphPage: React.FC<GraphPageProps> = ({
               return (
                 <label
                   key={name}
+                  data-no-expand
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   className={[
                     "shrink-0",
                     "flex items-center gap-1 sm:gap-1.5",
                     "font-semibold select-none whitespace-nowrap",
-                    "text-[10px] 2xl:text-xs",
+                    "text-xs my-3",
                     "text-charcoal-500",
                     allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
                   ].join(" ")}
                 >
                   <span
+                    data-no-expand
                     className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
                     style={{
                       borderColor: color,
                       backgroundColor: isChecked ? color : "white",
                       opacity: allValuesZero ? 0.6 : 1,
                     }}
-                    onClick={() => !allValuesZero && toggleMetric(name)}
+                    onMouseDown={(e) => e.stopPropagation()}   // ✅ important
+                    onClick={(e) => {
+                      e.stopPropagation();                     // ✅ important
+                      if (!allValuesZero) toggleMetric(name);
+                    }}
                   >
+
                     {isChecked && (
                       <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
                         <path
@@ -711,71 +720,69 @@ const GraphPage: React.FC<GraphPageProps> = ({
             })}
           </div>
 
-          {/* Chart */}
-          <div className="flex-1 min-h-0 mt-2 sm:mt-3 relative">
-            <div className="absolute inset-0">
-              {datasets.length > 0 && (
-                <Line
-                  ref={(instance) => {
-                    chartRef.current = (instance as any) ?? null;
-                  }}
-                  data={{ labels: formattedLabels, datasets }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                      intersect: false,
-                      mode: allValuesZero ? "nearest" : "index",
-                    },
-                    plugins: {
-                      tooltip: {
-                        enabled: !allValuesZero,
-                        mode: "index",
-                        intersect: false,
-                        callbacks: {
-                          label: (tooltipItem: any) => {
-                            const displayLabel = (tooltipItem.dataset.label as string) || "";
-                            const value = tooltipItem.raw as number;
-                            return `${displayLabel}: ${currencySymbol} ${value.toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}`;
-                          },
-                        },
-                      },
-                      legend: { display: false },
-                    },
-                    scales: {
-                      x: {
-                        title: { display: true, text: "Month" },
-                        ticks: {
-                          minRotation: 0,
-                          maxRotation: 0,
-                          autoSkip: formattedLabels.length > 6,
-                          maxTicksLimit: formattedLabels.length > 0 ? formattedLabels.length : 12,
-                          callback: (_v, idx) => String(formattedLabels[idx] ?? ""),
-                        },
-                      },
-                      y: {
-                        title: { display: true, text: `Amount (${currencySymbol})` },
-                        min: minY,
-                        ticks: { padding: 0 },
+          {/* ✅ chart takes the remaining height */}
+          <div className="flex-1 min-h-0 w-full pt-4">
+            <Line
+              ref={(instance) => {
+                chartRef.current = (instance as any) ?? null;
+              }}
+              data={{ labels: formattedLabels, datasets }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: 0 }, // ✅ helps prevent weird overdraw
+                interaction: {
+                  intersect: false,
+                  mode: allValuesZero ? "nearest" : "index",
+                },
+                plugins: {
+                  tooltip: {
+                    enabled: !allValuesZero,
+                    mode: "index",
+                    intersect: false,
+                    callbacks: {
+                      label: (tooltipItem: any) => {
+                        const displayLabel = (tooltipItem.dataset.label as string) || "";
+                        const value = tooltipItem.raw as number;
+                        return `${displayLabel}: ${currencySymbol} ${value.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}`;
                       },
                     },
-                  }}
-                />
-              )}
-            </div>
+                  },
+                  legend: { display: false },
+                },
+                scales: {
+                  x: {
+                    title: { display: true, text: "Month" },
+                    ticks: {
+                      minRotation: 0,
+                      maxRotation: 0,
+                      autoSkip: formattedLabels.length > 6,
+                      maxTicksLimit: formattedLabels.length > 0 ? formattedLabels.length : 12,
+                      callback: (_v, idx) => String(formattedLabels[idx] ?? ""),
+                    },
+                  },
+                  y: {
+                    title: { display: true, text: `Amount (${currencySymbol})` },
+                    min: minY,
+                    ticks: { padding: 0 },
+                  },
+                },
+              }}
+              style={{ width: "100%", height: "100%" }} // ✅ force fit
+            />
           </div>
 
-
           {fetchError && (
-            <p className="mt-3 text-center text-sm text-red-600">Error: {fetchError}</p>
+            <p className="shrink-0 mt-2 text-center text-sm text-red-600">Error: {fetchError}</p>
           )}
         </div>
       )}
     </div>
   );
+
 };
 
 export default GraphPage;
