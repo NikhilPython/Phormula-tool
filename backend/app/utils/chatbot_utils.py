@@ -1886,30 +1886,21 @@ class FormulaEngine:
 
    
     def _profit(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Profit entrypoint aligned with _sales/_tax/_credits structure.
-
-        - UK: Uses centralized sales/tax/credits; RE-CALCULATES amazon_fee locally:
-            amazon_fee_total = abs(sum(fba_fees + selling_fees)) over valid SKUs only,
-            with a single abs at the end (not per component). Profit is then:
-            |Sales| + |Credits| − |Taxes| − amazon_fee_total − |COGS|.
-            Per-SKU profit computed similarly for breakdowns.
-        - US: Local per-SKU build (unchanged).
-        """
-        print(f"[TRACE][FE] FormulaEngine._profit CALLED rows={len(df)} "
-            f"country={ctx.get('country')} want_breakdown={ctx.get('want_breakdown')}")
+        print(
+            f"[TRACE][FE] FormulaEngine._profit CALLED rows={len(df)} "
+            f"country={ctx.get('country')} want_breakdown={ctx.get('want_breakdown')}"
+        )
         import pandas as pd
 
         is_us = self._is_us(ctx, df)
 
-        # ---------- UK → centralized components + local Amazon-fee recalc ----------
+        # ---------- UK → use centralized uk_profit() ----------
         if not is_us:
-            # Region/SKU-scoped view
             df_region = self._df_for_region(df, ctx)
             if df_region is None:
                 df_region = pd.DataFrame()
 
-            # Keep only valid SKUs
+            # Keep only valid SKUs (same rules you already use)
             dfk = df_region.copy()
             dfk["sku"] = dfk.get("sku", "").astype(str).str.strip()
             dfk = dfk[
@@ -1919,118 +1910,46 @@ class FormulaEngine:
                 & (dfk["sku"].str.lower() != "none")
             ]
 
-            # Ensure numeric columns exist & are numeric
-            for col in ["fba_fees", "selling_fees", "cost_of_unit_sold"]:
-                if col not in dfk.columns:
-                    dfk[col] = 0.0
-                dfk[col] = self._safe_num(dfk[col])
-
-            # --- Centralized component helpers (authoritative for these) ---
-            # NOTE: we do NOT use centralized amazon_fee; we recalc locally per your rule
-            sales_total,   sales_by_sku,   _ = uk_sales(dfk)
-            tax_total,     tax_by_sku,     _ = uk_tax(dfk)
-            credits_total, credits_by_sku, _ = uk_credits(dfk)
-
-            # --- Local Amazon Fee Recalculation (your rule) ---
-            # amazon_fee_total = abs(sum(fba_fees + selling_fees))  (single abs at end)
-            amazon_fee_total = abs(dfk["fba_fees"].sum() + dfk["selling_fees"].sum())
-
-            # Per-SKU amazon fee (use abs on the per-sku combined value, not per component)
-            fee_by_sku = (
-                dfk.groupby("sku", dropna=True)[["fba_fees", "selling_fees"]]
-                .sum()
-                .reset_index()
+            # Let the centralized formula compute profit
+            total, per_sku_df, comps = uk_profit(
+                dfk,
+                country=ctx.get("country"),
+                want_breakdown=bool(ctx.get("want_breakdown")),
             )
-            fee_by_sku["amazon_fee"] = (fee_by_sku["fba_fees"] + fee_by_sku["selling_fees"]).abs()
-            fee_by_sku = fee_by_sku[["sku", "amazon_fee"]]
+            total = float(total)
 
-            # --- COGS (|cost_of_unit_sold|) ---
-            cost_by_sku = (
-                dfk.groupby("sku", dropna=True)["cost_of_unit_sold"]
-                .sum()
-                .abs()
-                .reset_index()
-            ).rename(columns={"cost_of_unit_sold": "cost"})
-            cost_total = float(cost_by_sku["cost"].sum()) if not cost_by_sku.empty else 0.0
-
-            # --- Build per-SKU frame from components ---
-            # Normalize component frames and merge
-            def _pick(df_, name):
-                if isinstance(df_, pd.DataFrame) and not df_.empty and "__metric__" in df_.columns and "sku" in df_.columns:
-                    out = df_[["sku", "__metric__"]].copy()
-                    out = out.rename(columns={"__metric__": name})
-                    out[name] = self._safe_num(out[name])
-                    out["sku"] = out["sku"].astype(str)
-                    return out
-                return pd.DataFrame(columns=["sku", name])
-
-            sales_per_sku   = _pick(sales_by_sku,   "sales")
-            credits_per_sku = _pick(credits_by_sku, "credits")
-            taxes_per_sku   = _pick(tax_by_sku,     "taxes")
-
-            per_sku = (
-                pd.DataFrame({"sku": dfk["sku"].unique()})
-                .merge(sales_per_sku,   on="sku", how="left")
-                .merge(credits_per_sku, on="sku", how="left")
-                .merge(taxes_per_sku,   on="sku", how="left")
-                .merge(fee_by_sku,      on="sku", how="left")
-                .merge(cost_by_sku,     on="sku", how="left")
-            ).fillna(0.0)
-
-            # Profit per SKU:
-            # |Sales| + |Credits| − |Taxes| − amazon_fee (local) − |COGS|
-            for col in ["sales", "credits", "taxes", "amazon_fee", "cost"]:
-                per_sku[col] = self._safe_num(per_sku[col])
-
-            per_sku["__metric__"] = (
-                per_sku["sales"].abs()
-                + per_sku["credits"].abs()
-                - per_sku["taxes"]
-                - per_sku["amazon_fee"]
-                - per_sku["cost"].abs()
-            )
-
-            total = float(per_sku["__metric__"].sum())
-
-            # Debug prints to verify parity with your pipeline
-            print("[DEBUG][profit][UK-local] components (totals):")
-            print(f"  sales_total        = {float(sales_total):12,.2f}")
-            print(f"  credits_total      = {float(credits_total):12,.2f}")
-            print(f"  taxes_total        = {float(tax_total):12,.2f}")
-            print(f"  amazon_fee_total   = {float(amazon_fee_total):12,.2f}")
-            print(f"  cost_total         = {float(cost_total):12,.2f}")
-            print(f"  profit_total       = {float(total):12,.2f}")
-
-            # Build output table(s)
+            # If you only want the single total row
             if not ctx.get("want_breakdown"):
                 table = self._total_only_table("profit", total)
             else:
                 # Optional product roll-up
                 sku2prod = self._sku_to_product(dfk)
-                if not sku2prod.empty and "product_name" in sku2prod.columns:
+                if (
+                    isinstance(sku2prod, pd.DataFrame)
+                    and not sku2prod.empty
+                    and "sku" in sku2prod.columns
+                    and "product_name" in sku2prod.columns
+                ):
                     per_prod = (
-                        per_sku.merge(sku2prod, on="sku", how="left")
-                            .groupby("product_name", dropna=True)
-                            [["sales", "credits", "taxes", "amazon_fee", "cost", "__metric__"]]
-                            .sum().reset_index()
+                        per_sku_df.merge(sku2prod, on="sku", how="left")
+                        .groupby("product_name", dropna=True)[["__metric__", *comps]]
+                        .sum()
+                        .reset_index()
                     )
                 else:
-                    per_prod = pd.DataFrame(
-                        columns=["product_name", "__metric__", "sales", "credits", "taxes", "amazon_fee", "cost"]
-                    )
+                    per_prod = pd.DataFrame(columns=["product_name", "__metric__", *comps])
 
                 table = self._final_table(
                     "profit",
                     total,
-                    per_sku[["sku", "__metric__", "sales", "credits", "taxes", "amazon_fee", "cost"]],
-                    per_prod[["product_name", "__metric__", "sales", "credits", "taxes", "amazon_fee", "cost"]],
-                    ["sales", "credits", "taxes", "amazon_fee", "cost"],
+                    per_sku_df[["sku", "__metric__", *comps]],
+                    per_prod[["product_name", "__metric__", *comps]],
+                    comps,
                 )
 
             expl = (
-                "UK profit computed with centralized sales/taxes/credits, "
-                "local Amazon fee = abs(sum(fba_fees + selling_fees)) over valid SKUs, "
-                "and profit = |Sales| + |Credits| − |Taxes| − AmazonFee − |COGS|."
+                "UK profit computed via centralized uk_profit() formula file: "
+                "profit = sales − cogs − amazon_fee − (net_taxes − net_credits)."
             )
             return {"result": self._sr(total), "explanation": expl, "table_df": table}
 

@@ -627,16 +627,14 @@ Rules:
 - Actions should be driven by SKU-level behavior OR clear overall trends
 - Do NOT restate metrics
 - Do NOT include generic advice
-- Inventory risks SHOULD be preferentially handled here when they impact profitability, cost, or future loss.
-- Inventory actions must be phrased as business actions, not operational alerts.
-- Do NOT list inventory SKU-by-SKU unless it materially affects CM1 profit trajectory.
+
 
 Examples of valid actions:
 - Reduce ASP slightly on low-margin SKUs showing unit decline.
 - Monitor pricing on fast-growing SKUs to protect margin.
 - Review ad spend on SKUs where CM1 profit declined despite sales growth.
 - Investigate negative CM1 profit drivers for SKUs showing rising volume but declining profitability to prevent margin erosion.
-- Address aged or unfulfillable inventory exposure on low-performing SKUs to limit storage and risk.
+
 
 ---
 
@@ -647,12 +645,17 @@ IMPORTANT INVENTORY OUTPUT RULES:
 - This section should be used ONLY when inventory risk cannot be clearly expressed as a recommendation.
 - Prefer summarizing inventory risk in RECOMMENDATIONS when possible.
 - Keep this section minimal (0–2 bullets preferred).
+- Inventory risks SHOULD be preferentially handled here when they impact profitability, cost, or future loss.
+- Inventory actions must be phrased as business actions, not operational alerts.
+- Do NOT list inventory SKU-by-SKU unless it materially affects CM1 profit trajectory.
+
 
 - Use bullets
 - One SKU per bullet
 - Start each bullet with **Inventory – Product name**
 - Mention the issue and the consequence (cost, risk, or blockage)
 - Do NOT suggest pricing or ad actions here
+- Address aged or unfulfillable inventory exposure on low-performing SKUs to limit storage and risk.
 
 ---
 
