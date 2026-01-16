@@ -577,10 +577,10 @@ OUTPUT FORMAT (MARKDOWN ONLY)
 ## SUMMARY
 (4–6 bullets ONLY)
 
-- Summarize overall movement in **net units sold, net sales, and profit**
+- Summarize overall movement in **net units sold, net sales, and CM1 profit**
   (Use MoM for monthly/quarterly periods, YoY for yearly periods)
 - Clearly state whether growth/decline is **volume-led, cost-led, or margin-led**
-- Call out **major overall cost drivers** if they materially impacted profit
+- Call out **major overall cost drivers** if they materially impacted CM1 profit
 - Include ACOS movement (percentage-point change) if ACOS data exists
 - If both MoM and YoY exist (non-yearly only), include exactly 1 bullet comparing MoM vs YoY trend
 - Use short bullets, no sub-bullets, no paragraphs
@@ -592,7 +592,7 @@ OUTPUT FORMAT (MARKDOWN ONLY)
 
 Each bullet must:
 - Start with **Product name**
-- Mention **key Product-level metrics only** (units sold, net sales, profit, ASP)
+- Mention **key Product-level metrics only** (units sold, net sales, CM1 profit, ASP)
 - Clearly state direction (up/down/flat)
 - If Product is New / Reviving, explicitly label it:
   **“(New / Reviving SKU)”**
@@ -622,13 +622,13 @@ Rules:
 - Do NOT include generic advice
 - Inventory risks SHOULD be preferentially handled here when they impact profitability, cost, or future loss.
 - Inventory actions must be phrased as business actions, not operational alerts.
-- Do NOT list inventory SKU-by-SKU unless it materially affects profit trajectory.
+- Do NOT list inventory SKU-by-SKU unless it materially affects CM1 profit trajectory.
 
 Examples of valid actions:
 - Reduce ASP slightly on low-margin SKUs showing unit decline.
 - Monitor pricing on fast-growing SKUs to protect margin.
-- Review ad spend on SKUs where profit declined despite sales growth.
-- Investigate negative profit drivers for SKUs showing rising volume but declining profitability to prevent margin erosion.
+- Review ad spend on SKUs where CM1 profit declined despite sales growth.
+- Investigate negative CM1 profit drivers for SKUs showing rising volume but declining profitability to prevent margin erosion.
 - Address aged or unfulfillable inventory exposure on low-performing SKUs to limit storage and write-off risk.
 
 ---
