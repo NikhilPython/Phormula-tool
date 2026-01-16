@@ -28,9 +28,14 @@ const authSlice = createSlice({
         localStorage.setItem("jwtToken", action.payload.token);
       }
     },
-    setUser(state, action: PayloadAction<User | null>) {
-      state.user = action.payload;
+    setUser(state, action: PayloadAction<Partial<User> | null>) {
+      if (action.payload === null) {
+        state.user = null;
+      } else {
+        state.user = { ...(state.user ?? {}), ...action.payload };
+      }
     },
+
     setAuthLoading(state) {
       state.status = "loading";
       state.error = undefined;

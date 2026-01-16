@@ -1,13 +1,19 @@
 import { baseApi } from "./baseApi";
 
 export type User = {
-  id?: string;
+  id?: number;
+  name?: string;              // ✅ add this
   email?: string;
-  company_name?: string;
+  phone_number?: string;
   brand_name?: string;
-  onboarding_complete?: boolean;
-  // add other fields you return
+  company_name?: string;
+  annual_sales_range?: string;
+  homeCurrency?: string;
+  target_sales?: number | null;
+  tax_id?: any;
+  address?: any;
 };
+
 
 type UploadHistoryRes = { uploads: Array<any> };
 
