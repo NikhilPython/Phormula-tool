@@ -63,7 +63,7 @@ import React from "react";
 import { IoDownload } from "react-icons/io5";
 
 interface DownloadIconButtonProps {
-  onClick?: () => void;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
   disabled?: boolean;
   className?: string;        // button class
   iconClassName?: string;    // icon class ✅

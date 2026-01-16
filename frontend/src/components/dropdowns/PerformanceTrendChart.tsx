@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import dynamic from "next/dynamic";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import SegmentedToggle from "../ui/SegmentedToggle";
+import type { TrendChartExportApi } from "@/lib/utils/exportTypes";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -26,6 +27,12 @@ type PerformanceTrendPayload = {
 };
 
 type PerformanceTrendChartProps = {
+  range?: "monthly" | "quarterly" | "yearly" | "";
+  month?: string;
+  quarter?: string;
+  year?: string;
+  countryName?: string;
+  homeCurrency?: string;
   data?: PerformanceTrendPayload | null;
   metric?: "net_sales" | "units";
   loading?: boolean;
@@ -33,6 +40,7 @@ type PerformanceTrendChartProps = {
   selectedStartDay?: number | null;
   selectedEndDay?: number | null;
   currencySymbol?: string;
+  onExportApiReady?: (api: TrendChartExportApi | null) => void;
 };
 
 const MONTH_ABBR_TO_IDX: Record<string, number> = {
@@ -107,6 +115,8 @@ const parseMonthLabel = (label: string): { year: number; monthIdx: number } | nu
 
 const daysInMonth = (year: number, monthIdx: number) => new Date(year, monthIdx + 1, 0).getDate();
 
+const isYearLabel = (label: string) => /^\d{4}$/.test((label || "").trim());
+
 const buildRecencyColorMap = (names: string[]) => {
   const parsed = names
     .map((name) => ({ name, parsed: parseLabelKey(name) }))
@@ -121,6 +131,22 @@ const buildRecencyColorMap = (names: string[]) => {
   const mostRecent = parsed.reduce((a, b) => (b.parsed.key > a.parsed.key ? b : a));
   const mostKey = mostRecent.parsed.key;
 
+  // ✅ YEAR MODE: only Orange (selected) + Grey (previous). No Green.
+  const yearMode = parsed.every((p) => isYearLabel(p.name));
+  if (yearMode) {
+    const map: Record<string, string> = {};
+    names.forEach((n) => (map[n] = GREY));
+
+    map[mostRecent.name] = ORANGE;
+
+    const prevYearKey = mostKey - 100; // previous year
+    const prevYear = parsed.find((p) => p.parsed.key === prevYearKey);
+    if (prevYear) map[prevYear.name] = GREY; // explicitly grey (not green)
+
+    return map;
+  }
+
+  // existing behavior for month/quarter (keeps "same last year" green)
   const sameLastYearKey = mostKey - 100;
   const sameLastYear = parsed.find((p) => p.parsed.key === sameLastYearKey);
 
@@ -137,6 +163,7 @@ const buildRecencyColorMap = (names: string[]) => {
 
   return map;
 };
+
 
 type SeriesKind = "daily" | "monthly";
 
@@ -219,9 +246,9 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
     const parsed = seriesArr
       .map((s) => ({ s, q: parseQuarterLabel(s.label) }))
       .filter((x) => x.q != null) as Array<{
-      s: PerformanceTrendSeries;
-      q: NonNullable<ReturnType<typeof parseQuarterLabel>>;
-    }>;
+        s: PerformanceTrendSeries;
+        q: NonNullable<ReturnType<typeof parseQuarterLabel>>;
+      }>;
 
     const most = parsed.sort((a, b) => b.q.key - a.q.key)[0]?.s ?? seriesArr[0];
 
@@ -298,8 +325,36 @@ const LiveLineChart: React.FC<{
   currencySymbol?: string;
   selectedStartDay?: number | null;
   selectedEndDay?: number | null;
-}> = ({ xAxisData, series, metric, currencySymbol, selectedStartDay, selectedEndDay }) => {
+  onExportApiReady?: (api: TrendChartExportApi | null) => void;
+}> = ({ xAxisData, series, metric, currencySymbol, selectedStartDay, selectedEndDay, onExportApiReady }) => {
+  const chartRef = useRef<any>(null);
+  const echartsInstanceRef = useRef<any>(null);
   const isDaily = series[0]?.kind === "daily";
+
+  useEffect(() => {
+    if (!onExportApiReady) return;
+
+    const api: TrendChartExportApi = {
+      title: "Performance Trend",
+      getChartBase64: () => {
+        try {
+          const inst = echartsInstanceRef.current;
+          if (!inst) return null;
+          return inst.getDataURL({
+            type: "png",
+            pixelRatio: 2,
+            backgroundColor: "#FFFFFF",
+          });
+        } catch {
+          return null;
+        }
+      },
+    };
+
+    onExportApiReady(api);
+    return () => onExportApiReady(null);
+  }, [onExportApiReady]);
+
 
   const isNumericAxis = useMemo(
     () => xAxisData.length > 0 && xAxisData.every((x) => !isNaN(Number(x))),
@@ -383,8 +438,8 @@ const LiveLineChart: React.FC<{
             val == null
               ? "-"
               : metric === "net_sales"
-              ? `${currencySymbol ?? ""}${Number(val).toFixed(2)}`
-              : `${Number(val)}`;
+                ? `${currencySymbol ?? ""}${Number(val).toFixed(2)}`
+                : `${Number(val)}`;
           return `${p.marker}${p.seriesName} <b>${shown}</b>`;
         });
 
@@ -462,7 +517,19 @@ const LiveLineChart: React.FC<{
     }),
   };
 
-  return <ReactECharts option={option} style={{ width: "100%", height: "100%" }} />;
+  return (
+    <div style={{ width: "100%", height: "100%" }}>
+      <ReactECharts
+        option={option}
+        style={{ width: "100%", height: "100%" }}
+        opts={{ renderer: "canvas" }}
+        onChartReady={(instance) => {
+          echartsInstanceRef.current = instance;
+        }}
+      />
+    </div>
+  );
+
 };
 
 export default function PerformanceTrendChart(props: PerformanceTrendChartProps) {
@@ -481,6 +548,9 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
     if (!props.data?.series?.length) return { xAxis: [], series: [] as GenericSeries[] };
     return mapBackendTrendToSeries(props.data);
   }, [props.data]);
+
+
+
 
   return (
     <div className="w-full h-full flex flex-col">
@@ -518,11 +588,12 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
             currencySymbol={props.currencySymbol}
             selectedStartDay={props.selectedStartDay}
             selectedEndDay={props.selectedEndDay}
+            onExportApiReady={props.onExportApiReady}
           />
         )}
 
         {!loading && !error && mapped.series.length === 0 && (
-          <div className="text-sm text-gray-500">No trend data</div>
+          <div className="text-sm text-gray-500">Loading...</div>
         )}
       </div>
     </div>
