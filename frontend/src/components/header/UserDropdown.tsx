@@ -17,11 +17,16 @@ export default function UserDropdown() {
   const dispatch = useAppDispatch();
   const router = useRouter();
 
-  const { user: userFromStore, token } = useAppSelector((s:any) => s.auth);
+  const { user: userFromStore, token } = useAppSelector((s: any) => s.auth);
 
   const { data: userFromApi } = useGetUserQuery(undefined, {
-    skip: !!userFromStore || !token,
+    skip: !token,
   });
+
+  useEffect(() => {
+    if (userFromApi) dispatch(setUser(userFromApi));
+  }, [userFromApi, dispatch]);
+
 
   useEffect(() => {
     if (!userFromStore && userFromApi) {
@@ -29,8 +34,23 @@ export default function UserDropdown() {
     }
   }, [userFromStore, userFromApi, dispatch]);
 
-  console.log(userFromStore)
+  useEffect(() => {
+    if (!userFromStore && typeof window !== "undefined") {
+      const brand = localStorage.getItem("brandName");
+      const company = localStorage.getItem("companyName");
+      const name = localStorage.getItem("name");
 
+      if (brand || company) {
+        dispatch(
+          setUser({
+            brand_name: brand || undefined,
+            company_name: company || undefined,
+            name: name || undefined,
+          })
+        );
+      }
+    }
+  }, [userFromStore, dispatch]);
 
   function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
     e.stopPropagation();
@@ -48,22 +68,23 @@ export default function UserDropdown() {
   //   router.push("/signin");
   // };
 
-// UserDropdown.tsx
+  // UserDropdown.tsx
 
-const handleLogout = () => {
-  dispatch(logout());
+  const handleLogout = () => {
+    dispatch(logout());
 
-  if (typeof window !== "undefined") {
-    // localStorage.clear() mat karo — sirf token hatao
-    localStorage.removeItem("jwtToken");
-    sessionStorage.clear();
-  }
+    if (typeof window !== "undefined") {
+      // localStorage.clear() mat karo — sirf token hatao
+      localStorage.removeItem("jwtToken");
+      localStorage.clear();
+      sessionStorage.clear();
+    }
 
-  closeDropdown();
+    closeDropdown();
 
-  // ✅ Hard redirect (no blank, no stuck route)
-  window.location.href = "/signin";
-};
+    // ✅ Hard redirect (no blank, no stuck route)
+    window.location.href = "/signin";
+  };
 
 
   return (
@@ -76,12 +97,11 @@ const handleLogout = () => {
           <Image width={44} height={44} src="/images/user/owner.jpg" alt="User" />
         </span> */}
 
-        <span className="block mr-1 font-normal text-xs lg:text-sm 2xl:text-base">Welcome, <span className="font-bold italic ">{userFromStore?.brand_name}!</span></span>
+        <span className="block mr-1 font-normal text-xs lg:text-sm 2xl:text-base">Welcome, <span className="font-bold italic ">{userFromStore?.name}!</span></span>
 
         <svg
-          className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
+          className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""
+            }`}
           width="18"
           height="20"
           viewBox="0 0 18 20"
@@ -105,7 +125,8 @@ const handleLogout = () => {
       >
         <div>
           <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
-           {userFromStore?.brand_name}
+            {userFromStore?.name || userFromStore?.brand_name || "User"}
+
           </span>
           <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
             {userFromStore?.email}
@@ -123,7 +144,7 @@ const handleLogout = () => {
               Edit profile
             </DropdownItem>
           </li>
-          
+
           <li>
             <DropdownItem
               onItemClick={closeDropdown}

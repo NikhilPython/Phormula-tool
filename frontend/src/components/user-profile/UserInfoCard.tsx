@@ -22,6 +22,8 @@ import { FaPlus } from "react-icons/fa6";
 import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataTable";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { useSelector } from "react-redux";
+import { useAppDispatch } from "@/lib/hooks";
+import { setUser } from "@/lib/features/auth/authSlice";
 
 const safeJson = (val: any) => {
   try {
@@ -34,6 +36,7 @@ const safeJson = (val: any) => {
 };
 
 type FormState = {
+  name: string;
   brand_name: string;
   company_name: string;
   annual_sales_range: string;
@@ -189,7 +192,7 @@ function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
 
 
 export default function UserInfoCard() {
-
+  const dispatch = useAppDispatch();
   const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
   const [ratesLoading, setRatesLoading] = useState(false);
   const { isOpen, openModal, closeModal } = useModal();
@@ -318,6 +321,7 @@ export default function UserInfoCard() {
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
 
   const [form, setForm] = useState<FormState>({
+    name: "",
     brand_name: "",
     company_name: "",
     annual_sales_range: "",
@@ -420,6 +424,7 @@ export default function UserInfoCard() {
     const addr = (data as any)?.address ?? {};
 
     setForm({
+      name: (data as any)?.name ?? "",
       brand_name: data.brand_name ?? "",
       company_name: data.company_name ?? "",
       annual_sales_range: data.annual_sales_range ?? "",
@@ -463,6 +468,7 @@ export default function UserInfoCard() {
   const buildPayloadBySection = () => {
     if (activeSection === "personal") {
       return {
+        name: form.name,
         phone_number: form.phone_number,
       };
     }
@@ -499,6 +505,7 @@ export default function UserInfoCard() {
     try {
       const payload = buildPayloadBySection();
       await updateProfile(payload as any).unwrap();
+      dispatch(setUser(payload as any));
       closeModal();
     } catch (err: any) {
       console.error(err);
@@ -572,7 +579,7 @@ export default function UserInfoCard() {
               }
               action={
                 <button
-                  onClick={() => openSection("targets")}
+                  onClick={() => openSection("personal")}
                   className="
       inline-flex items-center justify-center
       h-9 w-9
@@ -586,6 +593,7 @@ export default function UserInfoCard() {
               }
             >
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <InfoItem label="Name" value={show((data as any)?.name)} />
                 <InfoItem label="Email" value={show(data?.email)} />
                 <InfoItem label="Phone" value={show(data?.phone_number)} />
                 <InfoItem
@@ -811,6 +819,15 @@ export default function UserInfoCard() {
                   {/* PERSONAL */}
                   {activeSection === "personal" && (
                     <>
+                      <div className="col-span-2 lg:col-span-1">
+                        <Label>Name</Label>
+                        <Input
+                          type="text"
+                          value={form.name}
+                          onChange={handleInput("name")}
+                        />
+                      </div>
+
                       <div className="col-span-2 lg:col-span-1">
                         <Label>Email (read-only)</Label>
                         <Input type="text" value={form.email} disabled />

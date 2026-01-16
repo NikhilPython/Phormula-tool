@@ -33,7 +33,6 @@ export default function SalesTargetStatsCard({
   value,
   onChange,
   hideTabs,
-
   homeCurrency,
   formatHomeK,
   todayHome,
@@ -121,7 +120,7 @@ export default function SalesTargetStatsCard({
           ].map((t) => (
             <div
               key={t.title}
-              className="rounded-xl 2xl:p-3 text-center h-full flex flex-col items-center justify-start"
+              className="rounded-xl 2xl:p-1.5 text-center h-full flex flex-col items-center justify-start"
             >
               <div className="text-charcoal-500 whitespace-nowrap leading-none  text-[10px] 2xl:text-xs">{t.title}</div>
               <div className="mt-2 text-sm 2xl:text-lg font-semibold whitespace-nowrap leading-none">{t.value}</div>

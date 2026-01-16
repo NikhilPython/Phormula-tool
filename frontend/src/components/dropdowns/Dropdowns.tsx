@@ -23,13 +23,12 @@ import Loader from "@/components/loader/Loader";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import type { ProfitChartExportApi, SkuExportPayload } from "@/lib/utils/exportTypes";
+import type { ProfitChartExportApi, SkuExportPayload, TrendChartExportApi } from "@/lib/utils/exportTypes";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import MonthEndBusinessSummaryCard from "./MonthEndBusinessSummaryCard";
 import RecommendationsCard from "./RecommendationsCard";
 import PerformanceTrendChart from "./PerformanceTrendChart";
-
-
+import SummaryMetricCard from "./SummaryMetricCard";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -64,10 +63,27 @@ type UploadHistoryResponse = {
 
 
 /* ---------------------- AI Summary Types ---------------------- */
+type PerformanceTrendSeries = {
+  label: string;          // "Dec'25"
+  net_sales: number[];    // per-sku OR per-day array (as your API gives)
+  units: number[];
+};
+
+type PerformanceTrendPayload = {
+  x: number[];            // [1..31] etc.
+  xType: string;          // "day"
+  series: PerformanceTrendSeries[];
+};
+
 type AiSummaryResponse = {
   summary?: string | null;
   recommendations?: string | null;
+
+  // ✅ NEW
+  performance_trend?: PerformanceTrendPayload;
+  performance_trend_metric?: "net_sales" | "units";
 };
+
 
 type AiPanelData = {
   summaryBullets: string[];
@@ -252,7 +268,11 @@ const extractBullets = (md: string | null | undefined): string[] => {
     .filter(Boolean);
 };
 const renderMarkdownInline = (text: string) => {
+<<<<<<< HEAD
   const html = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+=======
+  const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
+>>>>>>> origin
   return { __html: html };
 };
 
@@ -412,6 +432,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   );
 };
 
+type FocusedChart = "trend" | "pnl" | null;
+
 /* ---------------------- Component ---------------------- */
 const Dropdowns: React.FC<DropdownsProps> = ({
   initialRanged,
@@ -454,6 +476,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showNoDataOverlay, setShowNoDataOverlay] = useState(false);
+  const [performanceTrend, setPerformanceTrend] = useState<PerformanceTrendPayload | null>(null);
+  const [performanceTrendMetric, setPerformanceTrendMetric] = useState<"net_sales" | "units">("net_sales");
+  const [performanceTrendBase64, setPerformanceTrendBase64] = useState<string | null>(null);
+  const [trendExportApi, setTrendExportApi] = useState<TrendChartExportApi | null>(null);
+  const [focusedChart, setFocusedChart] = useState<FocusedChart>(null);
+
+  const toggleFocus = (which: Exclude<FocusedChart, null>) => {
+    setFocusedChart((prev) => (prev === which ? null : which));
+  };
+
 
   // ---------------- AI Summary Panel state ----------------
   const [aiPanel, setAiPanel] = useState<AiPanelData | null>(null);
@@ -479,12 +511,23 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   useEffect(() => {
     setShowNoDataOverlay(false);
+    setFocusedChart(null);
     setChartExportApi(null);
     setSkuExportPayload(null);
     setExpenseBreakdownPieBase64(null);
     setProductWiseCm1PieBase64(null);
+    setPerformanceTrend(null);
+    setPerformanceTrendBase64(null);
+    setTrendExportApi(null);
   }, [range, selectedMonth, selectedQuarter, selectedYear]);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFocusedChart(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
 
   useEffect(() => {
@@ -608,8 +651,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
 
+<<<<<<< HEAD
   
 
+=======
+>>>>>>> origin
   const fetchAiSummary = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
 
@@ -658,6 +704,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
 
+      setPerformanceTrend(data.performance_trend ?? null);
+      setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
+
       const { summaryBullets, skuInsightsBullets } =
         extractSummaryAndSkuBullets(data.summary);
       const { recommendationBullets, inventoryBullets } =
@@ -685,8 +734,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
 
-
-  // month comes in as lowercase from PeriodFiltersTable ("january", etc.)
   const handleMonthChange = (v: string) => {
     setSelectedMonth(v);
 
@@ -723,15 +770,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
+<<<<<<< HEAD
   
 
+=======
+>>>>>>> origin
   useEffect(() => {
-    // ✅ Always open yearly by default
     setRange("yearly");
     setSelectedMonth("");
     setSelectedQuarter("");
 
-    // ✅ Default yearly year based on your historic rule
     const y = computeDefaultYearlyYear();
     setSelectedYear(y);
   }, []);
@@ -1243,22 +1291,139 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       let rowCursor = 1;
 
-      rowCursor = await addChartBlock(
+      const addTwoChartRow = async (
+        ws: ExcelJS.Worksheet,
+        wb: ExcelJS.Workbook,
+        left: { title: string; base64: string | null | undefined; width?: number },
+        right: { title: string; base64: string | null | undefined; width?: number },
+        startRow: number,
+        options?: {
+          leftCol?: number;      // 1-based
+          rightCol?: number;     // 1-based
+          pad?: number;
+          bgCols?: number;
+          gapRowsAfter?: number;
+          scale?: number;
+          skipCrop?: boolean;
+        }
+      ): Promise<number> => {
+        const leftCol = options?.leftCol ?? 1;
+        const rightCol = options?.rightCol ?? 16; // around mid-sheet
+        const pad = options?.pad ?? 2;
+        const bgCols = options?.bgCols ?? 30;
+        const gapRowsAfter = options?.gapRowsAfter ?? 2;
+        const scale = options?.scale ?? 2;
+        const skipCrop = options?.skipCrop ?? false;
+
+        // ---- Titles (same row)
+        ws.getRow(startRow).getCell(leftCol).value = left.title;
+        ws.getRow(startRow).getCell(leftCol).font = { bold: true, size: 14 };
+
+        ws.getRow(startRow).getCell(rightCol).value = right.title;
+        ws.getRow(startRow).getCell(rightCol).font = { bold: true, size: 14 };
+
+        // spacer row
+        ws.getRow(startRow + 1).getCell(1).value = "";
+
+        // helper: insert single chart at a column
+        const insertAt = async (base64: string | null | undefined, col: number, targetW: number) => {
+          if (!base64) return { finalH: 0, chartRows: 0 };
+
+          const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
+          if (!raw || raw.length < 5000) return { finalH: 0, chartRows: 0 };
+
+          let imgForJpeg = base64;
+
+          if (!skipCrop) {
+            const cropped = await cropPngBase64WithSize(base64, pad, {
+              whiteThreshold: 254,
+              minContentRatio: 0.0015,
+            });
+            imgForJpeg = `data:image/png;base64,${cropped.base64}`;
+          }
+
+          const jpeg = await toJpegBase64(imgForJpeg, 0.98, { scale, bg: "#FFFFFF" });
+
+          const finalW = targetW;
+          const finalH = Math.round((finalW * jpeg.h) / jpeg.w);
+          const chartRows = Math.ceil(finalH / 18) + 2;
+
+          const imageId = wb.addImage({ base64: jpeg.base64, extension: "jpeg" });
+
+          ws.addImage(imageId, {
+            tl: { col: col - 1, row: startRow + 1 }, // ExcelJS uses 0-based col/row in tl
+            ext: { width: finalW, height: finalH },
+            editAs: "oneCell",
+          });
+
+          return { finalH, chartRows };
+        };
+
+        // widths for each chart in a 2-col layout
+        const leftW = left.width ?? 520;
+        const rightW = right.width ?? 520;
+
+        const leftPlaced = await insertAt(left.base64, leftCol, leftW);
+        const rightPlaced = await insertAt(right.base64, rightCol, rightW);
+
+        const maxRows = Math.max(leftPlaced.chartRows, rightPlaced.chartRows, 10);
+
+        // ---- White background block for the whole row area
+        const bgStart = startRow + 1;
+        const bgEnd = bgStart + maxRows;
+
+        for (let r = bgStart; r <= bgEnd; r++) {
+          for (let c = 1; c <= bgCols; c++) {
+            ws.getRow(r).getCell(c).fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFFFFFFF" },
+            };
+          }
+        }
+
+        return bgEnd + gapRowsAfter;
+      };
+
+
+      // Row 1: Trend + PnL
+      rowCursor = await addTwoChartRow(
         wsGraphs,
         wb,
-        chartExportApi?.title || "Profitability Chart",
-        chartExportApi?.getChartBase64?.(),
+        {
+          title: trendExportApi?.title || "Performance Trend",
+          base64: trendExportApi?.getChartBase64?.(),
+          width: 520,
+        },
+        {
+          title: chartExportApi?.title || "Profitability Chart",
+          base64: chartExportApi?.getChartBase64?.(),
+          width: 520,
+        },
         rowCursor,
-        { width: 1000, pad: 2, bgCols: 30 }
+        { leftCol: 1, rightCol: 16, bgCols: 30, pad: 2, scale: 2 }
       );
 
-      rowCursor = await addChartBlock(wsGraphs, wb, "Expense Breakdown (Pie Chart)", expenseBreakdownPieBase64, rowCursor,
-        { width: 650, bgCols: 30, scale: 2, skipCrop: true } // ✅
+      // Row 2: Pie1 + Pie2
+      rowCursor = await addTwoChartRow(
+        wsGraphs,
+        wb,
+        {
+          title: "Expense Breakdown (Pie Chart)",
+          base64: expenseBreakdownPieBase64,
+          width: 520,
+        },
+        {
+          title: "Product Wise CM1 Breakdown (Pie Chart)",
+          base64: productWiseCm1PieBase64,
+          width: 520,
+        },
+        rowCursor,
+        { leftCol: 1, rightCol: 16, bgCols: 30, pad: 2, scale: 2, skipCrop: true }
       );
 
-      rowCursor = await addChartBlock(wsGraphs, wb, "Product Wise CM1 Breakdown (Pie Chart)", productWiseCm1PieBase64, rowCursor,
-        { width: 650, bgCols: 30, scale: 2, skipCrop: true } // ✅
-      );
+
+
 
 
       const buffer = await wb.xlsx.writeBuffer();
@@ -1425,7 +1590,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   return (
-    <div ref={layoutRef} className="space-y-6 relative">
+    <div ref={layoutRef} className="space-y-3 2xl:space-y-6 relative">
 
       <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         {/* LEFT: Title + Subtitle */}
@@ -1439,7 +1604,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             />
 
             <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              {countryName?.toLowerCase() === "global"
+              Amazon {countryName?.toLowerCase() === "global"
                 ? "Global"
                 : countryName?.toUpperCase()}
             </span>
@@ -1517,7 +1682,92 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               })}%`;
 
 
-            const renderTacosComparisons = () => {
+            // const renderTacosComparisons = () => {
+            //   const yNum = Number(selectedYear);
+
+            //   const label =
+            //     range === "monthly"
+            //       ? selectedMonth && yNum
+            //         ? getPrevMonthLabel(selectedMonth, yNum)
+            //         : "Prev month"
+            //       : range === "quarterly"
+            //         ? selectedQuarter && yNum
+            //           ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+            //           : "Prev quarter"
+            //         : yNum
+            //           ? getPrevYearLabel(yNum)
+            //           : "Prev year";
+
+            //   const prevVal =
+            //     range === "monthly"
+            //       ? comparisons?.lastMonth
+            //         ? getRoas(comparisons.lastMonth)
+            //         : undefined
+            //       : range === "quarterly"
+            //         ? comparisons?.lastQuarter
+            //           ? getRoas(comparisons.lastQuarter)
+            //           : undefined
+            //         : comparisons?.lastYear
+            //           ? getRoas(comparisons.lastYear)
+            //           : undefined;
+
+            //   const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+
+            //   const delta = hasPrev ? roas - prevVal! : null;
+
+            //   const deltaColor =
+            //     typeof delta === "number"
+            //       ? delta > 0
+            //         ? "text-red-600"        // higher TACoS = worse
+            //         : delta < 0
+            //           ? "text-emerald-600"  // lower TACoS = better
+            //           : "text-gray-400"
+            //       : "text-gray-400";
+
+            //   // delta = current - prev
+            //   const arrow =
+            //     typeof delta === "number"
+            //       ? delta > 0
+            //         ? "▼" // ✅ TACoS increased (bad) -> show DOWN
+            //         : delta < 0
+            //           ? "▲" // ✅ TACoS decreased (good) -> show UP
+            //           : ""
+            //       : "";
+
+
+            //   const formatDelta = (v: number) =>
+            //     `${Math.abs(v).toLocaleString(undefined, {
+            //       minimumFractionDigits: 2,
+            //       maximumFractionDigits: 2,
+            //     })}%`;
+
+            //   return (
+            //     <div className="mt-3 space-y-1.5">
+            //       <div className="flex items-end justify-between text-charcoal-500 gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
+            //         <div className="min-w-0">
+            //           <div className="whitespace-nowrap">
+            //             {label}:
+            //           </div>
+            //           <div className="whitespace-nowrap">
+            //             {hasPrev ? formatRoas(prevVal!) : "-"}
+            //           </div>
+            //         </div>
+
+            //         <span className={`font-bold whitespace-nowrap ${deltaColor}`}>
+            //           {typeof delta === "number" ? (
+            //             <>
+            //               {arrow} {formatDelta(delta)}
+            //             </>
+            //           ) : (
+            //             "-"
+            //           )}
+            //         </span>
+            //       </div>
+            //     </div>
+            //   );
+            // };
+
+            const buildTacosComparisonRows = () => {
               const yNum = Number(selectedYear);
 
               const label =
@@ -1547,61 +1797,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       : undefined;
 
               const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-
               const delta = hasPrev ? roas - prevVal! : null;
 
-              const deltaColor =
+              const deltaClassName =
                 typeof delta === "number"
                   ? delta > 0
-                    ? "text-red-600"        // higher TACoS = worse
+                    ? "text-red-600"       // higher TACoS worse
                     : delta < 0
-                      ? "text-emerald-600"  // lower TACoS = better
+                      ? "text-emerald-600" // lower TACoS better
                       : "text-gray-400"
                   : "text-gray-400";
 
-              // delta = current - prev
               const arrow =
                 typeof delta === "number"
                   ? delta > 0
-                    ? "▼" // ✅ TACoS increased (bad) -> show DOWN
+                    ? "▼"
                     : delta < 0
-                      ? "▲" // ✅ TACoS decreased (good) -> show UP
+                      ? "▲"
                       : ""
                   : "";
 
+              const deltaText =
+                typeof delta === "number"
+                  ? `${arrow} ${Math.abs(delta).toFixed(2)}%`
+                  : "-";
 
-              const formatDelta = (v: number) =>
-                `${Math.abs(v).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}%`;
-
-              return (
-                <div className="mt-3 space-y-1.5">
-                  <div className="flex items-end justify-between text-charcoal-500 gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
-                    <div className="min-w-0">
-                      <div className="whitespace-nowrap">
-                        {label}:
-                      </div>
-                      <div className="whitespace-nowrap">
-                        {hasPrev ? formatRoas(prevVal!) : "-"}
-                      </div>
-                    </div>
-
-                    <span className={`font-bold whitespace-nowrap ${deltaColor}`}>
-                      {typeof delta === "number" ? (
-                        <>
-                          {arrow} {formatDelta(delta)}
-                        </>
-                      ) : (
-                        "-"
-                      )}
-                    </span>
-                  </div>
-                </div>
-              );
+              return [
+                {
+                  label,
+                  valueText: hasPrev ? formatRoas(prevVal!) : "-",
+                  deltaText,
+                  deltaClassName,
+                },
+              ];
             };
-
 
 
             const formatUnits = (val: number) =>
@@ -1670,7 +1899,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               if (!items.length) return null;
 
               return (
-                <div className="mt-3 space-y-2">
+                <div className="2xl:mt-3 space-y-2">
                   {items.map((item) => {
                     const hasValue = typeof item.value === "number" && !isNaN(item.value);
                     const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
@@ -1711,6 +1940,36 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 </div>
               );
             };
+
+            const buildComparisonsRows = (
+              metric: keyof Summary,
+              formatter: (val: number) => string
+            ) => {
+              const items = getComparisons(metric);
+
+              return items.map((item) => {
+                const hasValue = typeof item.value === "number" && !isNaN(item.value);
+                const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+                const deltaClassName = hasDiff
+                  ? item.diffPct! >= 0
+                    ? "text-emerald-600"
+                    : "text-red-600"
+                  : "text-gray-400";
+
+                const deltaText = hasDiff
+                  ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
+                  : "-";
+
+                return {
+                  label: item.label,
+                  valueText: hasValue ? formatter(item.value!) : "-",
+                  deltaText,
+                  deltaClassName,
+                };
+              });
+            };
+
 
             const pickNum = (obj: any, keys: string[]) => {
               for (const k of keys) {
@@ -1875,104 +2134,262 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               );
             };
 
+            const buildCm2PercentComparisonRows = () => {
+              const yNum = Number(selectedYear);
 
-            return (
-              <div
-                className={[
-                  "w-full grid gap-4",
-                  "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
-                  isSummaryZero ? "opacity-30" : "opacity-100",
-                ].join(" ")}
-              >
-                {/* Units */}
-                <div className="w-full rounded-2xl border border-[#FDD36F] bg-[#FDD36F4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">Units</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatUnits(summary.unit_sold)}
-                  </div>
-                  {renderComparisons("unit_sold", formatUnits)}
-                </div>
+              const label =
+                range === "monthly"
+                  ? selectedMonth && yNum
+                    ? getPrevMonthLabel(selectedMonth, yNum)
+                    : "Prev month"
+                  : range === "quarterly"
+                    ? selectedQuarter && yNum
+                      ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                      : "Prev quarter"
+                    : yNum
+                      ? getPrevYearLabel(yNum)
+                      : "Prev year";
 
-                <div className="w-full rounded-2xl border border-[#ED9F50] bg-[#ED9F504D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">Gross Sales</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(getGrossSales(summary))}
-                  </div>
-                  {renderGrossSalesComparisons()}
-                </div>
+              const prevVal =
+                range === "monthly"
+                  ? comparisons?.lastMonth
+                    ? getCm2Percent(comparisons.lastMonth)
+                    : undefined
+                  : range === "quarterly"
+                    ? comparisons?.lastQuarter
+                      ? getCm2Percent(comparisons.lastQuarter)
+                      : undefined
+                    : comparisons?.lastYear
+                      ? getCm2Percent(comparisons.lastYear)
+                      : undefined;
 
-                {/* Net Sales */}
-                <div className="w-full rounded-2xl border border-[#75BBDA] bg-[#75BBDA4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <span className="text-[10px] 2xl:text-xs text-charcoal-500">Net Sales</span>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(netSales)}
-                  </div>
-                  {renderComparisons("total_sales", formatMoney)}
-                </div>
+              const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+
+              const diffPct =
+                hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
+
+              const deltaClassName =
+                typeof diffPct === "number"
+                  ? diffPct >= 0
+                    ? "text-emerald-600"
+                    : "text-red-600"
+                  : "text-gray-400";
+
+              const deltaText =
+                typeof diffPct === "number"
+                  ? `${diffPct >= 0 ? "▲" : "▼"} ${Math.abs(diffPct).toFixed(1)}%`
+                  : "-";
+
+              return [
+                {
+                  label,
+                  valueText: hasPrev ? formatPercent(prevVal!) : "-",
+                  deltaText,
+                  deltaClassName,
+                },
+              ];
+            };
+
+const cards = [
+  {
+    key: "units",
+    title: "Units",
+    valueText: formatUnits(summary.unit_sold),
+    className: "border border-[#FDD36F] bg-[#FDD36F4D]",
+    comparisons: buildComparisonsRows("unit_sold", formatUnits),
+  },
+  {
+    key: "grossSales",
+    title: "Gross Sales",
+    valueText: formatMoney(getGrossSales(summary)),
+    className: "border border-[#ED9F50] bg-[#ED9F504D]",
+    comparisons: (() => {
+      // reuse your gross sales comparison logic but produce rows in same shape:
+      const items = getGrossSalesComparisons();
+      return items.map((item) => {
+        const hasValue = typeof item.value === "number" && !isNaN(item.value);
+        const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+        const deltaClassName = hasDiff
+          ? item.diffPct! >= 0
+            ? "text-emerald-600"
+            : "text-red-600"
+          : "text-gray-400";
+
+        const deltaText = hasDiff
+          ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
+          : "-";
+
+        return {
+          label: item.label,
+          valueText: hasValue ? formatMoney(item.value!) : "-",
+          deltaText,
+          deltaClassName,
+        };
+      });
+    })(),
+  },
+  {
+    key: "netSales",
+    title: "Net Sales",
+    valueText: formatMoney(netSales),
+    className: "border border-[#75BBDA] bg-[#75BBDA4D]",
+    comparisons: buildComparisonsRows("total_sales", formatMoney),
+  },
+  {
+    key: "expenses",
+    title: "Expenses",
+    valueText: formatMoney(summary.total_expense),
+    className: "border border-[#B75A5A] bg-[#B75A5A4D]",
+    comparisons: buildComparisonsRows("total_expense", formatMoney),
+  },
+  {
+    key: "ads",
+    title: "Cost of Advertisement",
+    valueText: formatMoney(costOfAds),
+    className: "border border-[#C49466] bg-[#C494664D]",
+    comparisons: buildComparisonsRows("advertising_total", formatMoney),
+  },
+  {
+    key: "tacos",
+    title: "TACoS",
+    valueText: formatRoas(roas),
+    className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
+    comparisons: buildTacosComparisonRows(),
+  },
+  {
+    key: "cm2",
+    title: "CM2 Profit",
+    valueText: formatMoney(summary.cm2_profit),
+    className: "border border-[#B8C78C] bg-[#B8C78C4D]",
+    comparisons: buildComparisonsRows("cm2_profit", formatMoney),
+  },
+  {
+    key: "cm2Pct",
+    title: "CM2 Profit %",
+    valueText: formatPercent(cm2Percent),
+    className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
+    comparisons: buildCm2PercentComparisonRows(),
+  },
+];
+
+return (
+  <div
+    className={[
+      "w-full grid gap-2 2xl:gap-3",
+      "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
+      isSummaryZero ? "opacity-30" : "opacity-100",
+    ].join(" ")}
+  >
+    {cards.map((c) => (
+      <SummaryMetricCard
+        key={c.key}
+        title={c.title}
+        valueText={c.valueText}
+        className={c.className}
+        comparisons={c.comparisons}
+      />
+    ))}
+  </div>
+);
+
+            // return (
+            //   <div
+            //     className={[
+            //       "w-full grid gap-2 2xl:gap-3",
+            //       "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
+            //       isSummaryZero ? "opacity-30" : "opacity-100",
+            //     ].join(" ")}
+            //   >
+            //     {/* Units */}
+            //     <div className="w-full rounded-2xl border border-[#FDD36F] bg-[#FDD36F4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center 2xl:mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Units</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatUnits(summary.unit_sold)}
+            //       </div>
+            //       {renderComparisons("unit_sold", formatUnits)}
+            //     </div>
+
+            //     <div className="w-full rounded-2xl border border-[#ED9F50] bg-[#ED9F504D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Gross Sales</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(getGrossSales(summary))}
+            //       </div>
+            //       {renderGrossSalesComparisons()}
+            //     </div>
+
+            //     {/* Net Sales */}
+            //     <div className="w-full rounded-2xl border border-[#75BBDA] bg-[#75BBDA4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <span className="text-[10px] 2xl:text-xs text-charcoal-500">Net Sales</span>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(netSales)}
+            //       </div>
+            //       {renderComparisons("total_sales", formatMoney)}
+            //     </div>
 
 
-                {/* Expenses */}
-                <div className="w-full rounded-2xl border border-[#B75A5A] bg-[#B75A5A4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">Expenses</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(summary.total_expense)}
-                  </div>
-                  {renderComparisons("total_expense", formatMoney)}
-                </div>
+            //     {/* Expenses */}
+            //     <div className="w-full rounded-2xl border border-[#B75A5A] bg-[#B75A5A4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Expenses</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(summary.total_expense)}
+            //       </div>
+            //       {renderComparisons("total_expense", formatMoney)}
+            //     </div>
 
-                {/* Cost of Advertisement */}
-                <div className="w-full rounded-2xl border border-[#C49466] bg-[#C494664D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">Cost of Advertisement</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(costOfAds)}
-                  </div>
-                  {renderComparisons("advertising_total", formatMoney)}
-                </div>
+            //     {/* Cost of Advertisement */}
+            //     <div className="w-full rounded-2xl border border-[#C49466] bg-[#C494664D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Cost of Advertisement</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(costOfAds)}
+            //       </div>
+            //       {renderComparisons("advertising_total", formatMoney)}
+            //     </div>
 
-                {/* ROAS */}
-                <div className="w-full rounded-2xl border border-[#3A8EA4] bg-[#3A8EA44D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">TACoS</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatRoas(roas)}
-                  </div>
+            //     {/* ROAS */}
+            //     <div className="w-full rounded-2xl border border-[#3A8EA4] bg-[#3A8EA44D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">TACoS</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatRoas(roas)}
+            //       </div>
 
-                  {renderTacosComparisons()}
-                </div>
+            //       {renderTacosComparisons()}
+            //     </div>
 
 
-                {/* CM2 Profit */}
-                <div className="w-full rounded-2xl border border-[#B8C78C] bg-[#B8C78C4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatMoney(summary.cm2_profit)}
-                  </div>
-                  {renderComparisons("cm2_profit", formatMoney)}
-                </div>
+            //     {/* CM2 Profit */}
+            //     <div className="w-full rounded-2xl border border-[#B8C78C] bg-[#B8C78C4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatMoney(summary.cm2_profit)}
+            //       </div>
+            //       {renderComparisons("cm2_profit", formatMoney)}
+            //     </div>
 
-                {/* CM2 Profit % */}
-                <div className="w-full rounded-2xl border border-[#7B9A6D] bg-[#7B9A6D4D] shadow-sm px-4 py-3 flex flex-col justify-between">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit %</span>
-                  </div>
-                  <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-                    {formatPercent(cm2Percent)}
-                  </div>
-                  {renderCm2PercentComparisons()}
-                </div>
-              </div>
-            );
+            //     {/* CM2 Profit % */}
+            //     <div className="w-full rounded-2xl border border-[#7B9A6D] bg-[#7B9A6D4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
+            //       <div className="flex justify-between items-center mb-2">
+            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit %</span>
+            //       </div>
+            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
+            //         {formatPercent(cm2Percent)}
+            //       </div>
+            //       {renderCm2PercentComparisons()}
+            //     </div>
+            //   </div>
+            // );
           })()}
 
       </div>
@@ -1980,120 +2397,126 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       {/* Charts & Tables */}
       {range === "monthly" && selectedMonth && selectedYear && (
         <>
-          {/* <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4"> */}
-          {/* Heading INSIDE border */}
-          {/* <div className="flex items-center justify-between gap-3">
-              <div className="flex items-baseline gap-2">
-                <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
-
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().country}
-                </span>
-
-                {getPnLTitleParts().period ? (
-                  <>
-                    <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().period}
-                    </span>
-                  </>
-                ) : null}
-              </div>
-
-              <DownloadIconButton
-                onClick={handleDownloadProfitabilityBundle}
-                disabled={
-                  !chartExportApi ||
-                  !skuExportPayload ||
-                  !expenseBreakdownPieBase64 ||
-                  !productWiseCm1PieBase64
-                }
-              />
-            </div> */}
-
-
-
-          {/* <Bargraph
-              range={range}
-              selectedMonth={selectedMonth}
-              selectedYear={selectedYear}
-              countryName={initialCountryName}
-              homeCurrency={globalHomeCurrency}
-              hideDownloadButton
-              onExportApiReady={setChartExportApi}
-              onNoDataChange={(noData) => {
-                console.log("🔥 [Monthly] Bargraph → onNoDataChange:", noData);
-                setShowNoDataOverlay(noData);
-              }}
-            /> */}
-
-
           <div className="w-full rounded-xl space-y-4">
             {/* Two separate sections */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
+            <div
+              className={[
+                "grid grid-cols-1 gap-4",
+                focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+              ].join(" ")}
+            >
               {/* LEFT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4">
-                <div className="h-[50vh]">
-                  <PerformanceTrendChart
-                    range={range}
-                    month={selectedMonth}
-                    year={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    currencySymbol={currencySymbol} 
-                  />
+              {(focusedChart === null || focusedChart === "trend") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    // ✅ don’t expand when clicking buttons/toggles inside the card
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+
+                    toggleFocus("trend");
+                  }}
+
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("trend");
+                  }}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
+                >
+                  <div className="h-[50vh]">
+                    <PerformanceTrendChart
+                      range={range}
+                      month={selectedMonth}
+                      year={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      currencySymbol={currencySymbol}
+                      data={performanceTrend}
+                      metric={performanceTrendMetric}
+                      onExportApiReady={setTrendExportApi}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* RIGHT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4 space-y-3 min-h-0">
+              {(focusedChart === null || focusedChart === "pnl") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("pnl");
+                  }}
 
-                {/* ✅ PNL heading now belongs to RIGHT card only */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-baseline gap-2">
-                    <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
+                  onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    "min-h-0 overflow-hidden",
+                    "flex flex-col",
+                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
+                >
+                  {/* Heading */}
+                  <div className="shrink-0 flex items-center justify-between gap-3">
+                    <div className="flex items-baseline gap-2">
+                      <PageBreadcrumb pageTitle="P&L " variant="page" align="left" textSize="2xl" />
 
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().country}
-                    </span>
+                      {/* <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {getPnLTitleParts().country}
+                      </span> */}
 
-                    {getPnLTitleParts().period ? (
-                      <>
-                        <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-                        <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                          {getPnLTitleParts().period}
-                        </span>
-                      </>
-                    ) : null}
+                      {getPnLTitleParts().period ? (
+                        <>
+                          <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
+                          <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                            {getPnLTitleParts().period}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <DownloadIconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadProfitabilityBundle();
+                      }}
+                      disabled={
+                        !trendExportApi ||              // ✅ ADD
+                        !chartExportApi ||
+                        !skuExportPayload ||
+                        !expenseBreakdownPieBase64 ||
+                        !productWiseCm1PieBase64
+                      }
+
+                    />
                   </div>
 
-                  <DownloadIconButton
-                    onClick={handleDownloadProfitabilityBundle}
-                    disabled={
-                      !chartExportApi ||
-                      !skuExportPayload ||
-                      !expenseBreakdownPieBase64 ||
-                      !productWiseCm1PieBase64
-                    }
-                  />
+                  <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                    <Bargraph
+                      range={range}
+                      selectedMonth={selectedMonth}
+                      selectedYear={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      hideDownloadButton
+                      onExportApiReady={setChartExportApi}
+                      onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                    />
+                  </div>
                 </div>
-
-                {/* ✅ Right graph area height = (card height - heading) */}
-                <div className="h-[calc(50vh-56px)] min-h-0">
-                  <Bargraph
-                    range={range}
-                    selectedMonth={selectedMonth}
-                    selectedYear={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    hideDownloadButton
-                    onExportApiReady={setChartExportApi}
-                    onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                  />
-                </div>
-              </div>
-
+              )}
             </div>
           </div>
 
@@ -2147,174 +2570,132 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </>
       )}
 
-      {/* {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
-        <>
-          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
-         
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-baseline gap-2">
-                <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
-
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().country}
-                </span>
-
-                {getPnLTitleParts().period ? (
-                  <>
-                    <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().period}
-                    </span>
-                  </>
-                ) : null}
-              </div>
-
-              <DownloadIconButton
-                onClick={handleDownloadProfitabilityBundle}
-                disabled={
-                  !chartExportApi ||
-                  !skuExportPayload ||
-                  !expenseBreakdownPieBase64 ||
-                  !productWiseCm1PieBase64
-                }
-              />
-            </div>
-
-
-            <GraphPage
-              range={range}
-              selectedQuarter={selectedQuarter}
-              selectedYear={selectedYear}
-              countryName={initialCountryName}
-              homeCurrency={globalHomeCurrency}
-              hideDownloadButton
-              onExportApiReady={setChartExportApi}
-              onNoDataChange={(noData) => {
-                console.log("🔥 [Quarterly] GraphPage → onNoDataChange:", noData);
-                setShowNoDataOverlay(noData);
-              }}
-            />
-          </div>
-
-
-          {allDropdownsSelected && (
-            <div id="business-summary" className="scroll-mt-[80px]">
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-              />
-            </div>
-          )}
-
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <CircleChart
-                range={range}
-                selectedQuarter={selectedQuarter}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setExpenseBreakdownPieBase64}
-              />
-            </div>
-            <div className="flex-1 min-w-[300px]">
-              <CMchartofsku
-                range={range}
-                selectedQuarter={selectedQuarter}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setProductWiseCm1PieBase64}
-              />
-            </div>
-          </div>
-          <SKUtable
-            range={range}
-            quarter={selectedQuarter}
-            year={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportPayloadChange={setSkuExportPayload}
-          />
-        </>
-      )} */}
-
       {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
         <>
           <div className="w-full rounded-xl space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* LEFT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4">
-                <div className="h-[50vh]">
-                  <PerformanceTrendChart
-                    range={range}
-                    quarter={selectedQuarter}   // ✅ make sure component supports this prop
-                    year={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    currencySymbol={currencySymbol} 
-                  />
-                </div>
-              </div>
+            <div
+              className={[
+                "grid grid-cols-1 gap-4",
+                focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+              ].join(" ")}
+            >
+              {/* LEFT card (Trend) */}
+              {(focusedChart === null || focusedChart === "trend") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    // ✅ don’t expand when clicking buttons/toggles inside the card
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
 
-              {/* RIGHT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4 space-y-3 min-h-0">
-                {/* ✅ PNL heading inside right */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-baseline gap-2">
-                    <PageBreadcrumb
-                      pageTitle="P&L - Amazon"
-                      variant="page"
-                      align="left"
-                      textSize="2xl"
+                    toggleFocus("trend");
+                  }}
+
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("trend");
+                  }}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
+                >
+                  <div className="h-[50vh]">
+                    <PerformanceTrendChart
+                      range={range}
+                      quarter={selectedQuarter}
+                      year={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      currencySymbol={currencySymbol}
+                      data={performanceTrend}
+                      metric={performanceTrendMetric}
+                      onExportApiReady={setTrendExportApi}
                     />
+                  </div>
+                </div>
+              )}
 
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().country}
-                    </span>
+              {/* RIGHT card (PnL) */}
+              {(focusedChart === null || focusedChart === "pnl") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("pnl");
+                  }}
 
-                    {getPnLTitleParts().period ? (
-                      <>
-                        <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                          -
-                        </span>
-                        <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                          {getPnLTitleParts().period}
-                        </span>
-                      </>
-                    ) : null}
+                  onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    "min-h-0 overflow-hidden",
+                    "flex flex-col",
+                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                >
+                  <div className="shrink-0 flex items-center justify-between gap-3">
+                    <div className="flex items-baseline gap-2">
+                      <PageBreadcrumb
+                        pageTitle="P&L "
+                        variant="page"
+                        align="left"
+                        textSize="2xl"
+                      />
+
+                      {/* <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {getPnLTitleParts().country}
+                      </span> */}
+
+                      {getPnLTitleParts().period ? (
+                        <>
+                          <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                            -
+                          </span>
+                          <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                            {getPnLTitleParts().period}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <DownloadIconButton
+                      onClick={(e) => {
+                        e.stopPropagation(); // ✅ don’t trigger zoom
+                        handleDownloadProfitabilityBundle();
+                      }}
+                      disabled={
+                        !trendExportApi ||              // ✅ ADD
+                        !chartExportApi ||
+                        !skuExportPayload ||
+                        !expenseBreakdownPieBase64 ||
+                        !productWiseCm1PieBase64
+                      }
+
+                    />
                   </div>
 
-                  <DownloadIconButton
-                    onClick={handleDownloadProfitabilityBundle}
-                    disabled={
-                      !chartExportApi ||
-                      !skuExportPayload ||
-                      !expenseBreakdownPieBase64 ||
-                      !productWiseCm1PieBase64
-                    }
-                  />
+                  <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                    <GraphPage
+                      range={range}
+                      selectedQuarter={selectedQuarter}
+                      selectedYear={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      hideDownloadButton
+                      onExportApiReady={setChartExportApi}
+                      onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                    />
+                  </div>
                 </div>
-
-                {/* ✅ Graph area height */}
-                <div className="h-[calc(50vh-56px)] min-h-0">
-                  <GraphPage
-                    range={range}
-                    selectedQuarter={selectedQuarter}
-                    selectedYear={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    hideDownloadButton
-                    onExportApiReady={setChartExportApi}
-                    onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -2366,167 +2747,132 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </>
       )}
 
-
-      {/* {allDropdownsSelected && range === "yearly" && selectedYear && (
-        <>
-          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-baseline gap-2">
-                <PageBreadcrumb
-                  pageTitle="P&L - Amazon"
-                  variant="page"
-                  align="left"
-                  textSize="2xl"
-                />
-
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().country}
-                </span>
-
-                <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().period}
-                </span>
-              </div>
-
-              <DownloadIconButton
-                onClick={handleDownloadProfitabilityBundle}
-                disabled={
-                  !chartExportApi ||
-                  !skuExportPayload ||
-                  !expenseBreakdownPieBase64 ||
-                  !productWiseCm1PieBase64
-                }
-              />
-            </div>
-
-            <GraphPage
-              range={range}
-              selectedYear={selectedYear}
-              countryName={initialCountryName}
-              homeCurrency={globalHomeCurrency}
-              hideDownloadButton
-              onExportApiReady={setChartExportApi}
-              onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-            />
-          </div>
-
-
-          {allDropdownsSelected && (
-            <div id="business-summary" className="scroll-mt-[80px]">
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-              />
-            </div>
-          )}
-
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <CircleChart
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setExpenseBreakdownPieBase64}
-              />
-            </div>
-
-            <div className="flex-1 min-w-[300px]">
-              <CMchartofsku
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setProductWiseCm1PieBase64}
-              />
-            </div>
-          </div>
-
-          <SKUtable
-            range={range}
-            year={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportPayloadChange={setSkuExportPayload}
-          />
-        </>
-      )} */}
-
       {allDropdownsSelected && range === "yearly" && selectedYear && (
         <>
           <div className="w-full rounded-xl space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* LEFT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4">
-                <div className="h-[50vh]">
-                  <PerformanceTrendChart
-                    range={range}
-                    year={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    currencySymbol={currencySymbol} 
-                  />
-                </div>
-              </div>
+            <div
+              className={[
+                "grid grid-cols-1 gap-4",
+                focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+              ].join(" ")}
+            >
+              {/* LEFT card (Trend) */}
+              {(focusedChart === null || focusedChart === "trend") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    // ✅ don’t expand when clicking buttons/toggles inside the card
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
 
-              {/* RIGHT card */}
-              <div className="rounded-xl border border-gray-300 bg-white p-4 space-y-3 min-h-0">
-                {/* ✅ PNL heading inside right */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-baseline gap-2">
-                    <PageBreadcrumb
-                      pageTitle="P&L - Amazon"
-                      variant="page"
-                      align="left"
-                      textSize="2xl"
+                    toggleFocus("trend");
+                  }}
+
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("trend");
+                  }}
+
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
+                >
+                  <div className="h-[50vh]">
+                    <PerformanceTrendChart
+                      range={range}
+                      year={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      currencySymbol={currencySymbol}
+                      data={performanceTrend}
+                      metric={performanceTrendMetric}
+                      onExportApiReady={setTrendExportApi}
                     />
+                  </div>
+                </div>
+              )}
 
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().country}
-                    </span>
+              {/* RIGHT card (PnL) */}
+              {(focusedChart === null || focusedChart === "pnl") && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    const t = e.target as HTMLElement;
+                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                    toggleFocus("pnl");
+                  }}
 
-                    <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      -
-                    </span>
+                  onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
+                  className={[
+                    "rounded-xl border border-gray-300 bg-white p-4",
+                    "cursor-zoom-in select-none",
+                    "min-h-0 overflow-hidden",
+                    "flex flex-col",
+                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                  ].join(" ")}
+                  title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
+                >
+                  <div className="shrink-0 flex items-center justify-between gap-3">
+                    <div className="flex items-baseline gap-2">
+                      <PageBreadcrumb
+                        pageTitle="P&L "
+                        variant="page"
+                        align="left"
+                        textSize="2xl"
+                      />
 
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().period}
-                    </span>
+                      {/* <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {getPnLTitleParts().country}
+                      </span> */}
+
+                      <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        -
+                      </span>
+
+                      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {getPnLTitleParts().period}
+                      </span>
+                    </div>
+
+                    <DownloadIconButton
+                      onClick={(e) => {
+                        e.stopPropagation(); // ✅ don’t trigger zoom
+                        handleDownloadProfitabilityBundle();
+                      }}
+                      disabled={
+                        !trendExportApi ||              // ✅ ADD
+                        !chartExportApi ||
+                        !skuExportPayload ||
+                        !expenseBreakdownPieBase64 ||
+                        !productWiseCm1PieBase64
+                      }
+
+                    />
                   </div>
 
-                  <DownloadIconButton
-                    onClick={handleDownloadProfitabilityBundle}
-                    disabled={
-                      !chartExportApi ||
-                      !skuExportPayload ||
-                      !expenseBreakdownPieBase64 ||
-                      !productWiseCm1PieBase64
-                    }
-                  />
+                  <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                    <GraphPage
+                      range={range}
+                      selectedYear={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      hideDownloadButton
+                      onExportApiReady={setChartExportApi}
+                      onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                    />
+                  </div>
                 </div>
-
-                {/* ✅ Graph area height */}
-                <div className="h-[calc(50vh-56px)] min-h-0">
-                  <GraphPage
-                    range={range}
-                    selectedYear={selectedYear}
-                    countryName={initialCountryName}
-                    homeCurrency={globalHomeCurrency}
-                    hideDownloadButton
-                    onExportApiReady={setChartExportApi}
-                    onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </div>
+
 
           {allDropdownsSelected && (
             <div id="business-summary" className="scroll-mt-[80px]">

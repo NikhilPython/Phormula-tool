@@ -390,14 +390,14 @@ export default function SalesTargetCard({
         <div className="flex items-center gap-2">
           <span
             className="h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: "#C03030" }}
+            style={{ backgroundColor: "#B75A5A" }}
           />
           <span className="text-gray-600">{prevLabel} MTD</span>
         </div>
       </div>
 
       {/* Gauge */}
-      <div className="mt-5 flex flex-col items-center justify-center">
+      <div className="mt-5 2xl:mt-3 flex flex-col items-center justify-center">
         <div
           ref={wrapRef}
           className="relative"
@@ -445,7 +445,7 @@ export default function SalesTargetCard({
               cx={knobPrevToDate.x}
               cy={knobPrevToDate.y}
               r={4}
-              fill="#C03030"
+              fill="#B75A5A"
               stroke="#ffffff"
               strokeWidth={2}
             />

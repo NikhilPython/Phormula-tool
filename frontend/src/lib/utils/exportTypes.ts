@@ -36,3 +36,11 @@ export type SkuExportPayload = {
   countryName: string;
   sheetModel?: SkuSheetModel;
 };
+
+
+
+
+export type TrendChartExportApi = {
+  getChartBase64: () => string | null;
+  title: string;
+};

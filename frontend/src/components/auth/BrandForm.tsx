@@ -10,10 +10,16 @@ import { ChevronLeftIcon } from "@/icons";
 import { useLazyGetUserDataQuery } from "@/lib/api/profileApi";
 import { useSubmitSelectFormMutation } from "@/lib/api/onboardingApi";
 import Button from "../ui/button/Button";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { setUser } from "@/lib/features/auth/authSlice";
 
 export default function BrandForm() {
   const router = useRouter();
   const search = useSearchParams();
+
+  const dispatch = useAppDispatch();
+const userFromStore = useAppSelector((s: any) => s.auth.user);
+
   const forceOnboard = search.get("onboard") === "1";
 
   const [companyName, setCompanyName] = useState("");
@@ -88,6 +94,14 @@ export default function BrandForm() {
     // Persist locally (for later steps / reuse)
     localStorage.setItem("companyName", company);
     localStorage.setItem("brandName", brand);
+
+    dispatch(
+      setUser({
+        ...userFromStore,
+        company_name: company,
+        brand_name: brand,
+      })
+    );
 
     // Prepare payload (reuse local storage values for countries/currency)
     const selected = JSON.parse(localStorage.getItem("selectedCountries") || "[]") as string[];

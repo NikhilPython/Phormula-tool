@@ -18,7 +18,11 @@ from app import mail
 from calendar import month_name
 from dotenv import load_dotenv
 from datetime import datetime
+<<<<<<< HEAD
 from app.utils.formulas_utils import uk_sales, uk_tax, uk_credits, uk_amazon_fee, uk_profit,uk_platform_fee, uk_advertising, uk_tax_and_credits
+=======
+from app.utils.formulas_utils import uk_sales, uk_tax, uk_credits, uk_amazon_fee,uk_platform_fee, uk_advertising
+>>>>>>> origin
 import warnings
 import re
 warnings.filterwarnings("ignore") 
@@ -472,17 +476,17 @@ def process_skuwise_data(user_id, country, month, year):
         df["type"] = df.get("type", "").astype(str).str.strip()
 
         refund_mask = df["type"].str.contains("refund", case=False, na=False)
-        df_refund_kw = df.loc[refund_mask].copy()
+        df_non_refund = df.loc[refund_mask].copy()
         df_non_refund = df.loc[~refund_mask].copy()
 
         # ---------- 1) newrefundsales (refund keyword rows only) ----------
         refund_sales_cols = ["product_sales"]
         for c in refund_sales_cols:
-            if c not in df_refund_kw.columns:
-                df_refund_kw[c] = 0.0
+            if c not in df_non_refund.columns:
+                df_non_refund[c] = 0.0
 
         newrefundsales_df = (
-            df_refund_kw.groupby("sku", as_index=False)[refund_sales_cols].sum()
+            df_non_refund.groupby("sku", as_index=False)[refund_sales_cols].sum()
         )
 
         newrefundsales_df["newrefundsales"] = (
@@ -516,30 +520,30 @@ def process_skuwise_data(user_id, country, month, year):
         df["type"] = df.get("type", "").astype(str).str.strip()
 
         refund_mask = df["type"].str.contains("refund", case=False, na=False)
-        df_refund_kw   = df.loc[refund_mask].copy()
+        df_non_refund   = df.loc[refund_mask].copy()
         df_non_refund  = df.loc[~refund_mask].copy()
 
         
 
-        # ---------- 3) digital_transaction_tax (NON-refund rows only) ----------
-        # formula you gave, but for non-refund rows
-        non_refund_digital_cols = ["product_sales_tax", "shipping_credits", "shipping_credits_tax", "promotional_rebates_tax"]
-        for c in non_refund_digital_cols:
-            if c not in df_refund_kw.columns:
-                df_refund_kw[c] = 0.0
+        # # ---------- 3) digital_transaction_tax (NON-refund rows only) ----------
+        # # formula you gave, but for non-refund rows
+        # non_refund_digital_cols = ["product_sales_tax", "shipping_credits", "shipping_credits_tax", "promotional_rebates_tax"]
+        # for c in non_refund_digital_cols:
+        #     if c not in df_non_refund.columns:
+        #         df_non_refund[c] = 0.0
 
-        digital_tax_non_refund_df = (
-            df_refund_kw.groupby("sku", as_index=False)[non_refund_digital_cols].sum()
-        )
+        # digital_tax_non_refund_df = (
+        #     df_non_refund.groupby("sku", as_index=False)[non_refund_digital_cols].sum()
+        # )
 
-        digital_tax_non_refund_df["digital_transaction_tax"] = (
-            pd.to_numeric(digital_tax_non_refund_df["product_sales_tax"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(digital_tax_non_refund_df["shipping_credits"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(digital_tax_non_refund_df["shipping_credits_tax"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(digital_tax_non_refund_df["promotional_rebates_tax"], errors="coerce").fillna(0.0)
-        )
+        # digital_tax_non_refund_df["digital_transaction_tax"] = (
+        #     pd.to_numeric(digital_tax_non_refund_df["product_sales_tax"], errors="coerce").fillna(0.0)
+        #     + pd.to_numeric(digital_tax_non_refund_df["shipping_credits"], errors="coerce").fillna(0.0)
+        #     + pd.to_numeric(digital_tax_non_refund_df["shipping_credits_tax"], errors="coerce").fillna(0.0)
+        #     + pd.to_numeric(digital_tax_non_refund_df["promotional_rebates_tax"], errors="coerce").fillna(0.0)
+        # )
 
-        digital_tax_non_refund_df = digital_tax_non_refund_df[["sku", "digital_transaction_tax"]]
+        # digital_tax_non_refund_df = digital_tax_non_refund_df[["sku", "digital_transaction_tax"]]
 
         
         
@@ -657,7 +661,7 @@ def process_skuwise_data(user_id, country, month, year):
         refund_mask = df["type"].str.contains("refund", case=False, na=False)
 
         # split
-        df_refund_kw   = df.loc[refund_mask].copy()
+        df_non_refund   = df.loc[refund_mask].copy()
         df_non_refund  = df.loc[~refund_mask].copy()
 
         
@@ -673,11 +677,11 @@ def process_skuwise_data(user_id, country, month, year):
 
         # 2) net_tax + digital_transaction_tax
       
-        sku_grouped = sku_grouped.merge(digital_tax_non_refund_df, on="sku", how="left")
-        sku_grouped["digital_transaction_tax"] = pd.to_numeric(
-            sku_grouped.get("digital_transaction_tax", 0),
-            errors="coerce"
-        ).fillna(0.0)
+        # sku_grouped = sku_grouped.merge(digital_tax_non_refund_df, on="sku", how="left")
+        # sku_grouped["digital_transaction_tax"] = pd.to_numeric(
+        #     sku_grouped.get("digital_transaction_tax", 0),
+        #     errors="coerce"
+        # ).fillna(0.0)
 
         
 
@@ -720,12 +724,13 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped["selling_fees"] -= 2 * sku_grouped["refund_selling_fees"]
 
         # ---------------------------------------------------------------------
-        # SHARED UK formulas for Net Sales / Net Taxes / Net Credits / Fees / Profit
+        # SHARED UK formulas for Net Sales / Net Taxes / net_credits / Fees / Profit
         # ---------------------------------------------------------------------
         
         sales_total, sales_by_sku, _ = uk_sales(df)
         fee_total,   fees_by_sku,  _ = uk_amazon_fee(df_base)
         # TAX ONLY (needed everywhere later)
+<<<<<<< HEAD
         tax_total, tax_by_sku, _ = uk_tax(df_base)
 
         if not tax_by_sku.empty:
@@ -739,8 +744,15 @@ def process_skuwise_data(user_id, country, month, year):
 
         tax_credit_total, tax_credit_by_sku, _ = uk_tax_and_credits(df_base)
         profit_total, profit_by_sku, _ = uk_profit(df_base)
+=======
+        df_tax = df_base.copy()
+        df_tax["type"] = df_tax.get("type", "").astype(str)
+        df_tax = df_tax.loc[~df_tax["type"].str.contains("refund", case=False, na=False)].copy()
+>>>>>>> origin
 
+        tax_total, tax_by_sku, tax_parts = uk_tax(df_tax)
 
+<<<<<<< HEAD
 
         # ---------------- REFUND METRICS USING SAME FORMULAS ----------------
         # refund_sales_total, refund_sales_by_sku, _ = uk_sales(df_refund) if not df_refund.empty else (0, pd.DataFrame(), None)
@@ -751,25 +763,26 @@ def process_skuwise_data(user_id, country, month, year):
 
         # Merge refund tax
         if not refund_tax_by_sku.empty:
+=======
+        if not tax_by_sku.empty:
+>>>>>>> origin
             sku_grouped = sku_grouped.merge(
-                refund_tax_by_sku[["sku", "__metric__"]].rename(columns={"__metric__": "sales_tax_refund"}),
+                tax_by_sku[["sku", "__metric__"]].rename(columns={"__metric__": "net_taxes"}),
                 on="sku", how="left"
             )
         else:
-            sku_grouped["sales_tax_refund"] = 0.0
-        
+            sku_grouped["net_taxes"] = 0.0
+
+
+
+        sku_grouped["sales_tax_refund"] = 0.0
+
         sku_grouped["sales_tax_refund"] = pd.to_numeric(
             sku_grouped["sales_tax_refund"], errors="coerce"
         ).fillna(0) * 0.5
 
-        # Merge refund credit
-        if not refund_cred_by_sku.empty:
-            sku_grouped = sku_grouped.merge(
-                refund_cred_by_sku[["sku", "__metric__"]].rename(columns={"__metric__": "sales_credit_refund"}),
-                on="sku", how="left"
-            )
-        else:
-            sku_grouped["sales_credit_refund"] = 0.0
+        
+        sku_grouped["sales_credit_refund"] = 0.0
 
         # refund_rebate = promotional_rebates for Refund rows sku wise
         refund_rebate_df = (
@@ -781,7 +794,6 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped = sku_grouped.merge(refund_rebate_df, on="sku", how="left")
         sku_grouped["refund_rebate"] = pd.to_numeric(sku_grouped["refund_rebate"], errors="coerce").fillna(0.0)
 
-        # Final gross sales = net_sales - refund_sales
         
 
 
@@ -828,15 +840,55 @@ def process_skuwise_data(user_id, country, month, year):
 
       
 
+<<<<<<< HEAD
         credits_total, credits_by_sku, _ = uk_credits(df_base)
+=======
+        credits_total, credits_by_sku, credit_parts = uk_credits(df)
+>>>>>>> origin
 
         if not credits_by_sku.empty:
             sku_grouped = sku_grouped.merge(
-                credits_by_sku[["sku", "__metric__"]].rename(columns={"__metric__": "Net Credits"}),
-                on="sku", how="left"
+                credits_by_sku[["sku", "__metric__"]]
+                .rename(columns={"__metric__": "net_credits"}),
+                on="sku",
+                how="left"
             )
         else:
-            sku_grouped["Net Credits"] = 0.0
+            sku_grouped["net_credits"] = 0.0
+
+        sku_grouped["net_credits"] = pd.to_numeric(
+            sku_grouped.get("net_credits", 0),
+            errors="coerce"
+        ).fillna(0.0)
+
+        # ============================================================
+        # 🔥 FINAL PROFIT (REPLACES uk_profit COMPLETELY)
+        # ============================================================
+
+        sales_total   = float(sales_total)
+        fee_total     = float(fee_total)
+        tax_total     = abs(float(tax_total))
+        credits_total = float(credits_total)
+
+        # COGS already computed earlier:
+        # sku_grouped["cost_of_unit_sold"] = price_in_gbp * total_quantity
+        cogs_total = float(
+            pd.to_numeric(sku_grouped["cost_of_unit_sold"], errors="coerce")
+            .fillna(0.0)
+            .sum()
+        )
+
+        uk_profit_final = (
+            sales_total
+            - fee_total
+            - tax_total
+            + credits_total
+            - cogs_total
+        )
+
+        
+
+
 
         if not fees_by_sku.empty:
             sku_grouped = sku_grouped.merge(
@@ -873,7 +925,7 @@ def process_skuwise_data(user_id, country, month, year):
         else:
             sku_grouped["advertising_total"] = 0.0
 
-        for _col in ["Net Sales", "Net Credits", "amazon_fee",  "platform_fee", "advertising_total"]:
+        for _col in ["Net Sales", "net_credits", "amazon_fee",  "platform_fee", "advertising_total"]:
             if _col in sku_grouped.columns:
                 sku_grouped[_col] = pd.to_numeric(sku_grouped[_col], errors="coerce").fillna(0.0)
 
@@ -967,6 +1019,7 @@ def process_skuwise_data(user_id, country, month, year):
                 sku_grouped[_c] = 0.0
             sku_grouped[_c] = pd.to_numeric(sku_grouped[_c], errors="coerce").fillna(0.0)
 
+<<<<<<< HEAD
         tax_credit_total, tax_credit_by_sku, _ = uk_tax_and_credits(df_base)
 
         if not tax_credit_by_sku.empty:
@@ -1017,6 +1070,31 @@ def process_skuwise_data(user_id, country, month, year):
         ]
 
         
+=======
+
+        sku_grouped["tex_and_credits"] = (
+            pd.to_numeric(sku_grouped["net_taxes"], errors="coerce").fillna(0)
+            - pd.to_numeric(sku_grouped["net_credits"], errors="coerce").fillna(0)
+        )
+
+
+        # ---------------- PROFIT (FINAL, SKU-WISE) ----------------
+
+        for col in ["Net Sales", "amazon_fee", "net_taxes", "net_credits", "cost_of_unit_sold"]:
+            if col not in sku_grouped.columns:
+                sku_grouped[col] = 0.0
+            sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0)
+
+        sku_grouped["profit"] = (
+            sku_grouped["Net Sales"]
+            - sku_grouped["amazon_fee"]
+            - sku_grouped["net_taxes"]
+            + sku_grouped["net_credits"]
+            - sku_grouped["cost_of_unit_sold"]
+        )
+        
+
+>>>>>>> origin
 
         total_profit = abs(sku_grouped["profit"].sum())
         total_Previous_profit = abs(sku_grouped["previous_profit"].sum())
@@ -1054,7 +1132,11 @@ def process_skuwise_data(user_id, country, month, year):
         total_cous = abs(sku_grouped["cost_of_unit_sold"].sum())
 
         # === EXPENSE BREAKDOWN ===
+<<<<<<< HEAD
         total_net_credits = abs(sku_grouped["Net Credits"].sum())
+=======
+        total_net_credits = abs(sku_grouped["net_credits"].sum())
+>>>>>>> origin
         total_net_taxes = abs(sku_grouped["net_taxes"].sum())
         total_fba_fees = abs(sku_grouped["fba_fees"].sum())
         total_selling_fees = abs(sku_grouped["selling_fees"].sum())
@@ -1084,7 +1166,11 @@ def process_skuwise_data(user_id, country, month, year):
 
         # ------------------ FIXED TOTAL ROW BUILD (DEDUP + UNIQUE COLUMNS) ------------------
         extra_cols_for_total = [
+<<<<<<< HEAD
             "Net Sales", "net_taxes", "Net Credits", "profit", "amazon_fee",
+=======
+            "Net Sales", "net_taxes", "net_credits", "profit", "amazon_fee",
+>>>>>>> origin
             "sales_mix", "previous_sales_mix", "sales_mix_percentage",
             "profit_mix", "previous_profit_mix",
             "unit_sales_analysis", "unit_asp_analysis", "amazon_fee_increase",
@@ -1171,12 +1257,22 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["return_quantity"] = int(float(sum_row.get("return_quantity", 0) or 0))
         sum_row["total_quantity"]  = int(float(sum_row.get("total_quantity", 0) or 0))
         sum_row["misc_transaction"] = float(misc_transaction_total)
+<<<<<<< HEAD
         tax_credit_total, _, _ = uk_tax_and_credits(df_base)
         sum_row["tex_and_credits"] = float(tax_credit_total)
 
 
+=======
+        sum_row["tex_and_credits"] = (
+            float(sum_row.get("net_taxes", 0))
+            - float(sum_row.get("net_credits", 0))
+        )
+>>>>>>> origin
 
-        sum_row["digital_transaction_tax"] = int(float(sum_row.get("digital_transaction_tax", 0) or 0))
+
+
+
+        # sum_row["digital_transaction_tax"] = int(float(sum_row.get("digital_transaction_tax", 0) or 0))
 
 
 
@@ -1239,7 +1335,7 @@ def process_skuwise_data(user_id, country, month, year):
         ) * 100  if prev_net_sales_total != 0 else 0
 
         sum_row["text_credit_change"] = (
-            (float(sum_row.get("Net Credits", 0) or 0) + float(sum_row.get("profit", 0) or 0)) /
+            (float(sum_row.get("net_credits", 0) or 0) + float(sum_row.get("profit", 0) or 0)) /
             net_sales_total
         ) if net_sales_total != 0 else 0
 
@@ -1280,7 +1376,11 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped.rename(columns={
             "Net Sales": "net_sales",
             "profit%": "profit_percentage",
+<<<<<<< HEAD
             "Net Credits": "net_credits"
+=======
+            "net_credits": "net_credits"
+>>>>>>> origin
         }, inplace=True)
 
 
@@ -2044,7 +2144,11 @@ def process_skuwise_data(user_id, country, month, year):
 
 
         return (total_cous, total_amazon_fee, cm2_profit, abs(rembursement_fee), abs(platform_fee),
+<<<<<<< HEAD
                 total_expense, total_profit_final, total_fba_fees, total_advertising, tax_credit_total,
+=======
+                total_expense, total_profit_final, total_fba_fees, total_advertising, sum_row["tex_and_credits"],
+>>>>>>> origin
                 reimbursement_vs_sales, cm2_margins, acos, rembursment_vs_cm2_margins, total_sales, total_quantity, total_product_sales)
 
     except Exception as e:

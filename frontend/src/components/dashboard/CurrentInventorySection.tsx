@@ -2164,13 +2164,14 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Loader from "@/components/loader/Loader";
 import type { RegionKey } from "@/lib/dashboard/types";
 import DataTable, { ColumnDef } from "../ui/table/DataTable";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import { saveAs } from "file-saver";
+import { useGetUserDataQuery } from "@/lib/api/profileApi";
 
 const baseURL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
@@ -2327,6 +2328,130 @@ const normalizeExportRows = (rows: InventoryRow[]) => {
   });
 };
 
+const capitalizeWords = (value: string) =>
+  (value || "")
+    .toString()
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const getAbbr = (m?: string) => (m ? m.slice(0, 3) : "");
+
+const buildTopAoA = ({
+  headerCount,
+  title,
+  companyName,
+  brandName,
+  brandAnchorColIndex1Based,
+  extraLines = [],
+}: {
+  headerCount: number;
+  title: string;
+  companyName: string;
+  brandName: string;
+  brandAnchorColIndex1Based: number;
+  extraLines?: string[];
+}) => {
+  const aoa: any[][] = [];
+
+  // Row 1: Title
+  const titleRow = new Array(headerCount).fill("");
+  titleRow[0] = title || "";
+  aoa.push(titleRow);
+
+  // Row 2: Company + Brand (brand aligned to an anchor col)
+  const companyBrandRow = new Array(headerCount).fill("");
+  companyBrandRow[0] = `Company Name : ${companyName || ""}`;
+
+  const anchor0 = Math.max(0, brandAnchorColIndex1Based - 1);
+  companyBrandRow[Math.min(headerCount - 1, anchor0)] = `${brandName || ""}`;
+  aoa.push(companyBrandRow);
+
+  // Row 3+: extra lines
+  for (const line of extraLines) {
+    const r = new Array(headerCount).fill("");
+    r[0] = line;
+    aoa.push(r);
+  }
+
+  // spacer
+  aoa.push(new Array(headerCount).fill(""));
+  return aoa;
+};
+
+const applyTopStyles = (
+  ws: XLSX.WorkSheet,
+  headerCount: number,
+  brandAnchorColIndex1Based: number
+) => {
+  ws["!merges"] = ws["!merges"] || [];
+  ws["!rows"] = ws["!rows"] || [];
+
+  // Optional row heights (can keep or remove)
+  ws["!rows"][0] = { hpt: 18 };
+  ws["!rows"][1] = { hpt: 18 };
+
+  // ✅ ONLY merge title row — NO styling
+  ws["!merges"].push({
+    s: { r: 0, c: 0 },
+    e: { r: 0, c: headerCount - 1 },
+  });
+
+  // Company name (normal, left)
+  const companyAddr = XLSX.utils.encode_cell({ r: 1, c: 0 });
+  if (ws[companyAddr]) {
+    ws[companyAddr].s = {
+      alignment: { horizontal: "left", vertical: "center" },
+    };
+  }
+
+  // Brand name (right aligned only)
+  const anchor0 = Math.max(0, brandAnchorColIndex1Based - 1);
+  const brandAddr = XLSX.utils.encode_cell({
+    r: 1,
+    c: Math.min(headerCount - 1, anchor0),
+  });
+  if (ws[brandAddr]) {
+    ws[brandAddr].s = {
+      alignment: { horizontal: "right", vertical: "center" },
+    };
+  }
+};
+
+
+const CURRENCY_SYMBOL_BY_CODE: Record<string, string> = {
+  USD: "$",
+  GBP: "£",
+  EUR: "€",
+  INR: "₹",
+  CAD: "C$",
+  AUD: "A$",
+  SGD: "S$",
+  AED: "د.إ",
+};
+
+const getCurrencyForCountryPage = (countryLower: string) => {
+  const c = (countryLower || "").toLowerCase();
+  if (c === "uk") return { code: "GBP", symbol: "£" };
+  if (c === "us") return { code: "USD", symbol: "$" };
+  if (c === "ca") return { code: "CAD", symbol: "C$" };
+  return { code: "", symbol: "" };
+};
+
+const getCurrencyDisplay = (countryLower: string, homeCurrencyCode: string) => {
+  const c = (countryLower || "").toLowerCase();
+
+  // Global -> show user's home currency
+  if (c === "global") {
+    const code = String(homeCurrencyCode || "").toUpperCase();
+    const symbol = CURRENCY_SYMBOL_BY_CODE[code] || code || "";
+    return { code, symbol };
+  }
+
+  // Country page -> fixed currency for that country
+  return getCurrencyForCountryPage(c);
+};
+
+
 /* ===================== COMPONENT ===================== */
 
 export default function CurrentInventorySection({
@@ -2350,6 +2475,16 @@ export default function CurrentInventorySection({
     const { monthName, year } = getISTYearMonth();
     return { month: monthName.toLowerCase(), year: String(year) };
   }, []);
+
+  const { data: userData } = useGetUserDataQuery();
+
+  const homeCurrencyCodeForExcel = useMemo(
+    () =>
+      (userData as any)?.homeCurrency ||
+      (userData as any)?.home_currency ||
+      "",
+    [userData]
+  );
 
   const getCurrentInventoryEndpoint = useCallback(() => {
     return inventoryCountry === "global"
@@ -2484,6 +2619,44 @@ export default function CurrentInventorySection({
 
   /* ===================== DOWNLOAD EXCEL (FULL DATA) ===================== */
 
+  // const downloadInventoryExcel = useCallback(() => {
+  //   if (!invRows?.length) return;
+
+  //   // export ALL rows except empty rows + backend totals
+  //   const rowsToExport = invRows.filter((r) => {
+  //     const name = String(r["Product Name"] ?? "").trim();
+  //     const sku = String(r["SKU"] ?? "").trim();
+  //     if (!name && !sku) return false;
+  //     if (isInventoryTotalRow(r)) return false;
+  //     return true;
+  //   });
+
+  //   if (!rowsToExport.length) return;
+
+  //   // ✅ normalize headers: remove synced_at, rename, strip hyphens
+  //   const cleanedRows = normalizeExportRows(rowsToExport);
+
+  //   const wb = XLSX.utils.book_new();
+  //   const ws = XLSX.utils.json_to_sheet(cleanedRows, { skipHeader: false });
+
+  //   // auto column widths
+  //   const headers = Object.keys(cleanedRows[0] || {});
+  //   ws["!cols"] = headers.map((h) => ({
+  //     wch: Math.min(Math.max(h.length + 2, 12), 48),
+  //   }));
+
+  //   XLSX.utils.book_append_sheet(wb, ws, "Current Inventory");
+
+  //   const fileName = `Current-Inventory_${inventoryCountry.toUpperCase()}_${invMonthYear.month}_${invMonthYear.year}.xlsx`;
+
+  //   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  //   const blob = new Blob([out], {
+  //     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  //   });
+
+  //   saveAs(blob, fileName);
+  // }, [invRows, inventoryCountry, invMonthYear]);
+
   const downloadInventoryExcel = useCallback(() => {
     if (!invRows?.length) return;
 
@@ -2498,29 +2671,92 @@ export default function CurrentInventorySection({
 
     if (!rowsToExport.length) return;
 
-    // ✅ normalize headers: remove synced_at, rename, strip hyphens
+    // ✅ normalize headers
     const cleanedRows = normalizeExportRows(rowsToExport);
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(cleanedRows, { skipHeader: false });
+    // Country label
+    const displayCountry =
+      inventoryCountry.toLowerCase() === "global"
+        ? "Global"
+        : inventoryCountry.toUpperCase();
 
-    // auto column widths
-    const headers = Object.keys(cleanedRows[0] || {});
-    ws["!cols"] = headers.map((h) => ({
-      wch: Math.min(Math.max(h.length + 2, 12), 48),
+    const abbr = invMonthYear.month.slice(0, 3);
+    const yy = invMonthYear.year.slice(2);
+    const periodLabel = `${abbr.charAt(0).toUpperCase()}${abbr.slice(1)}'${yy}`;
+
+
+
+    // Pull from user profile (if you have it on this page)
+    // If you don’t have userData here, hardcode "" for now.
+    const companyNameForExcel = capitalizeWords((userData as any)?.company_name || "");
+    const brandNameForExcel = capitalizeWords((userData as any)?.brand_name || "");
+    const homeCurrencyCodeForExcel =
+      (userData as any)?.homeCurrency || (userData as any)?.home_currency || "";
+
+    // ✅ currency should be page-specific; global uses home currency
+    const { code: currencyCode, symbol: currencySymbol } = getCurrencyDisplay(
+      inventoryCountry,
+      homeCurrencyCodeForExcel
+    );
+
+
+    // Sheet column order (from cleanedRows keys)
+    const headerOrder = Object.keys(cleanedRows[0] || {});
+    const headerCount = headerOrder.length;
+
+    // Anchor brand near the last column (safe default)
+    const BRAND_ANCHOR_COL_1_BASED = Math.max(1, headerCount);
+
+    const topAoA = buildTopAoA({
+      headerCount,
+      title: `Amazon ${displayCountry} - Current Inventory - ${periodLabel}`,
+      companyName: companyNameForExcel,
+      brandName: brandNameForExcel,
+      brandAnchorColIndex1Based: BRAND_ANCHOR_COL_1_BASED,
+      extraLines: [
+        `Country : ${displayCountry}`,
+        `Platform : Amazon`,
+        `Currency : ${currencySymbol}`,
+        `Period : ${periodLabel}`,
+      ],
+
+    });
+
+    // Build body AOA using headerOrder (ensures stable col order)
+    const bodyAoA = cleanedRows.map((obj) => headerOrder.map((h) => obj?.[h] ?? ""));
+
+    // Final AOA = top + header + body
+    const sheetAoA = [...topAoA, headerOrder, ...bodyAoA];
+
+    const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+
+    // Header row index shifted by top block
+    const HEADER_ROW_INDEX = topAoA.length;
+
+    // Freeze under the table header
+    (ws as any)["!freeze"] = { xSplit: 0, ySplit: HEADER_ROW_INDEX + 1 };
+
+    // Column widths
+    ws["!cols"] = headerOrder.map((h) => ({
+      wch: Math.min(Math.max(String(h).length + 2, 12), 48),
     }));
 
+    // Apply top styles + merges
+    applyTopStyles(ws, headerCount, BRAND_ANCHOR_COL_1_BASED);
+
+    const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Current Inventory");
 
-    const fileName = `Current-Inventory_${inventoryCountry.toUpperCase()}_${invMonthYear.month}_${invMonthYear.year}.xlsx`;
-
+    const fileName = `Current-Inventory_${displayCountry}_${invMonthYear.month}_${invMonthYear.year}.xlsx`;
     const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+
     const blob = new Blob([out], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
 
     saveAs(blob, fileName);
-  }, [invRows, inventoryCountry, invMonthYear]);
+  }, [invRows, inventoryCountry, invMonthYear, userData]);
+
 
   /* -------- Transform backend rows → UI rows for DataTable -------- */
 
@@ -2831,7 +3067,7 @@ export default function CurrentInventorySection({
           {invError}
         </div>
       ) : (
-        <div className="mt-2 flex-1 w-full max-w-full overflow-x-auto lg:overflow-x-hidden">
+        <div className="mt-2 rounded-xl flex-1 w-full max-w-full overflow-x-auto lg:overflow-x-hidden">
           <div className="w-full min-w-0 [&_table]:w-full">
             <DataTable
               columns={columns}

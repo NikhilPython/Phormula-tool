@@ -1,231 +1,436 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import dynamic from "next/dynamic";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import SegmentedToggle from "../ui/SegmentedToggle";
+import type { TrendChartExportApi } from "@/lib/utils/exportTypes";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
-type ChartMetric = "net_sales" | "quantity";
+type ChartMetric = "net_sales" | "units";
 
-type DailyPoint = {
-  date: string; // YYYY-MM-DD (kept for your future mapping)
-  quantity?: number;
-  net_sales?: number;
+type TrendBucket = Record<string, number>;
+type TrendBucketOrArray = TrendBucket | number[];
+
+type PerformanceTrendSeries = {
+  label: string; // "Q4'25" OR "Dec'25" OR "2025"
+  // backend can send arrays for daily (monthly filter), or buckets for other modes
+  net_sales: TrendBucketOrArray;
+  units: TrendBucketOrArray;
 };
 
-type DailySeries = {
-  previous: DailyPoint[];
-  current_mtd: DailyPoint[];
-};
-
-type PeriodInfo = {
-  label: string;
-  start_date: string;
-  end_date: string;
+type PerformanceTrendPayload = {
+  x: Array<string | number>; // for your new daily payload, x = [1..31]
+  xType: "day" | "month" | "year" | string;
+  series: PerformanceTrendSeries[];
 };
 
 type PerformanceTrendChartProps = {
-  // ✅ later you will map these from Dropdowns page / API
-  dailySeries?: DailySeries | null;
-  periods?: {
-    previous?: PeriodInfo;
-    current_mtd?: PeriodInfo;
-  } | null;
-
-  loading?: boolean;
-  error?: string | null;
-
-  selectedStartDay?: number | null;
-  selectedEndDay?: number | null;
-
-  currencySymbol?: string;
-  range?: "monthly" | "quarterly" | "yearly";
+  range?: "monthly" | "quarterly" | "yearly" | "";
   month?: string;
-  quarter?: "Q1" | "Q2" | "Q3" | "Q4";
-  year?: number | string;
+  quarter?: string;
+  year?: string;
   countryName?: string;
   homeCurrency?: string;
+  data?: PerformanceTrendPayload | null;
+  metric?: "net_sales" | "units";
+  loading?: boolean;
+  error?: string | null;
+  selectedStartDay?: number | null;
+  selectedEndDay?: number | null;
+  currencySymbol?: string;
+  onExportApiReady?: (api: TrendChartExportApi | null) => void;
 };
 
-/* =========================
-   Helpers: month / quarter
-========================= */
-
-const MONTHS = [
-  "january",
-  "february",
-  "march",
-  "april",
-  "may",
-  "june",
-  "july",
-  "august",
-  "september",
-  "october",
-  "november",
-  "december",
-] as const;
-
-const monthToIndex = (m?: string) => {
-  const mm = (m || "").toLowerCase();
-  return MONTHS.indexOf(mm as any);
+const MONTH_ABBR_TO_IDX: Record<string, number> = {
+  jan: 0,
+  feb: 1,
+  mar: 2,
+  apr: 3,
+  may: 4,
+  jun: 5,
+  jul: 6,
+  aug: 7,
+  sep: 8,
+  oct: 9,
+  nov: 10,
+  dec: 11,
 };
-
-const monthLabelShort = (year: number, monthIdx: number) => {
-  const short = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][monthIdx];
-  return `${short}'${String(year).slice(-2)}`;
-};
-
-const monthIdxToNumber = (idx: number) => idx + 1;
-
-const prevMonth = (year: number, monthIdx: number) => {
-  if (monthIdx === 0) return { year: year - 1, monthIdx: 11 };
-  return { year, monthIdx: monthIdx - 1 };
-};
-
-const QUARTERS: Array<"Q1" | "Q2" | "Q3" | "Q4"> = ["Q1", "Q2", "Q3", "Q4"];
-
-const prevQuarter = (year: number, q: "Q1" | "Q2" | "Q3" | "Q4") => {
-  const idx = QUARTERS.indexOf(q);
-  const prevIdx = (idx - 1 + 4) % 4;
-  return { year: idx === 0 ? year - 1 : year, quarter: QUARTERS[prevIdx] };
-};
-
-const quarterToMonths = (q: "Q1" | "Q2" | "Q3" | "Q4") => {
-  switch (q) {
-    case "Q1":
-      return [0, 1, 2];
-    case "Q2":
-      return [3, 4, 5];
-    case "Q3":
-      return [6, 7, 8];
-    case "Q4":
-      return [9, 10, 11];
-  }
-};
-
-const quarterLabelShort = (q: "Q1" | "Q2" | "Q3" | "Q4", year: number) => `${q}'${String(year).slice(-2)}`;
 
 const clampDay = (d: number) => Math.max(1, Math.min(31, d));
 
-/* =========================
-   Dummy series types
-========================= */
+const ORANGE = "#ED9F50";
+const GREY = "#CECBC7";
+const GREEN = "#97A95F";
+
+/** "Q4'25" => {year:2025, q:4, key:202504} */
+const parseQuarterLabel = (label: string) => {
+  const m = (label || "").trim().match(/^Q([1-4])'(\d{2})$/i);
+  if (!m) return null;
+  const q = Number(m[1]);
+  const year = 2000 + Number(m[2]);
+  return { year, q, key: year * 100 + q };
+};
+
+/** Supports: "Dec'25", "Q4'25", "2025" */
+const parseLabelKey = (label: string): { key: number } | null => {
+  const s = (label || "").trim();
+
+  if (/^\d{4}$/.test(s)) {
+    const y = Number(s);
+    return { key: y * 100 };
+  }
+
+  const q = parseQuarterLabel(s);
+  if (q) return { key: q.key };
+
+  const mm = s.match(/^([A-Za-z]{3})'(\d{2})$/);
+  if (mm) {
+    const mon = mm[1].toLowerCase();
+    const yy = Number(mm[2]);
+    const year = 2000 + yy;
+    const mi = MONTH_ABBR_TO_IDX[mon];
+    if (mi == null) return null;
+    return { key: year * 100 + (mi + 1) };
+  }
+
+  return null;
+};
+
+const parseMonthLabel = (label: string): { year: number; monthIdx: number } | null => {
+  const s = (label || "").trim();
+  const mm = s.match(/^([A-Za-z]{3})'(\d{2})$/);
+  if (!mm) return null;
+
+  const mon = mm[1].toLowerCase();
+  const yy = Number(mm[2]);
+  const year = 2000 + yy;
+
+  const monthIdx = MONTH_ABBR_TO_IDX[mon];
+  if (monthIdx == null) return null;
+
+  return { year, monthIdx };
+};
+
+const daysInMonth = (year: number, monthIdx: number) => new Date(year, monthIdx + 1, 0).getDate();
+
+const isYearLabel = (label: string) => /^\d{4}$/.test((label || "").trim());
+
+const buildRecencyColorMap = (names: string[]) => {
+  const parsed = names
+    .map((name) => ({ name, parsed: parseLabelKey(name) }))
+    .filter((x) => x.parsed != null) as Array<{ name: string; parsed: { key: number } }>;
+
+  if (!parsed.length) {
+    const map: Record<string, string> = {};
+    names.forEach((n, i) => (map[n] = [ORANGE, GREY, GREEN][i] ?? GREY));
+    return map;
+  }
+
+  const mostRecent = parsed.reduce((a, b) => (b.parsed.key > a.parsed.key ? b : a));
+  const mostKey = mostRecent.parsed.key;
+
+  // ✅ YEAR MODE: only Orange (selected) + Grey (previous). No Green.
+  const yearMode = parsed.every((p) => isYearLabel(p.name));
+  if (yearMode) {
+    const map: Record<string, string> = {};
+    names.forEach((n) => (map[n] = GREY));
+
+    map[mostRecent.name] = ORANGE;
+
+    const prevYearKey = mostKey - 100; // previous year
+    const prevYear = parsed.find((p) => p.parsed.key === prevYearKey);
+    if (prevYear) map[prevYear.name] = GREY; // explicitly grey (not green)
+
+    return map;
+  }
+
+  // existing behavior for month/quarter (keeps "same last year" green)
+  const sameLastYearKey = mostKey - 100;
+  const sameLastYear = parsed.find((p) => p.parsed.key === sameLastYearKey);
+
+  const previous = parsed
+    .filter((p) => p.parsed.key < mostKey && p.name !== sameLastYear?.name)
+    .sort((a, b) => b.parsed.key - a.parsed.key)[0];
+
+  const map: Record<string, string> = {};
+  names.forEach((n) => (map[n] = GREY));
+
+  map[mostRecent.name] = ORANGE;
+  if (previous) map[previous.name] = GREY;
+  if (sameLastYear) map[sameLastYear.name] = GREEN;
+
+  return map;
+};
+
 
 type SeriesKind = "daily" | "monthly";
 
 type GenericPoint = {
-  x: string; // day "1..31" OR month label "Jan'25"
-  quantity?: number;
-  net_sales?: number;
+  x: string;
+  units?: number | null;
+  net_sales?: number | null;
 };
 
 type GenericSeries = {
   name: string;
   kind: SeriesKind;
   points: GenericPoint[];
+  monthLen?: number | null; // used for daily compare view
 };
 
-/* =========================
-   Dummy generators
-   (replace later with API mapping)
-========================= */
+const sortKeysForX = (keys: string[]) => {
+  const allAreMonthAbbr = keys.every((k) => MONTH_ABBR_TO_IDX[k.toLowerCase()] != null);
+  if (allAreMonthAbbr) {
+    return [...keys].sort(
+      (a, b) => (MONTH_ABBR_TO_IDX[a.toLowerCase()] ?? 99) - (MONTH_ABBR_TO_IDX[b.toLowerCase()] ?? 99)
+    );
+  }
 
-const makeDummyDaily = (year: number, month: number, name: string): GenericSeries => {
-  const mm = String(month).padStart(2, "0");
-  const days = Array.from({ length: 31 }, (_, i) => i + 1);
+  const allAreNumbers = keys.every((k) => !isNaN(Number(k)));
+  if (allAreNumbers) return [...keys].sort((a, b) => Number(a) - Number(b));
 
-  const points: GenericPoint[] = days.map((d) => {
-    const dd = String(d).padStart(2, "0");
-    // smooth-ish patterns
-    const baseSales = 1200 + Math.sin(d / 4) * 180 + Math.random() * 60 + (month % 2 ? 120 : 0);
-    const baseQty = 90 + Math.sin(d / 5) * 10 + Math.random() * 3 + (month % 2 ? 6 : 0);
+  return [...keys].sort((a, b) => a.localeCompare(b));
+};
 
-    return {
-      x: String(d),
-      // date kept for future mapping (not used in dummy chart)
-      net_sales: Number(baseSales.toFixed(2)),
-      quantity: Math.max(0, Math.round(baseQty)),
-    };
+const isQuarterlyPayload = (trend: PerformanceTrendPayload) => {
+  if (String(trend.xType || "").toLowerCase() !== "month") return false;
+  const quarterCount = (trend.series || []).filter((s) => !!parseQuarterLabel(s.label)).length;
+  return quarterCount >= 2; // enough signal
+};
+
+const isNumberArray = (v: any): v is number[] => Array.isArray(v);
+
+const getMinNumericX = (xAxis: string[]) => {
+  const nums = xAxis.map((v) => Number(v)).filter((n) => !isNaN(n));
+  if (!nums.length) return null;
+  return Math.min(...nums);
+};
+
+const getValueForX = (
+  bucketOrArr: TrendBucketOrArray | undefined,
+  xKey: string,
+  dayIndexBase: 0 | 1
+): number | null => {
+  if (bucketOrArr == null) return null;
+
+  // Array style: day number -> index
+  if (isNumberArray(bucketOrArr)) {
+    const dayNum = Number(xKey);
+    if (isNaN(dayNum)) return null;
+    const idx = dayNum - dayIndexBase; // base=1 => day 1 -> idx 0
+    if (idx < 0 || idx >= bucketOrArr.length) return null;
+    const v = bucketOrArr[idx];
+    return typeof v === "number" ? v : null;
+  }
+
+  // Object/bucket style
+  const v = (bucketOrArr as TrendBucket)[xKey];
+  return typeof v === "number" ? v : null;
+};
+
+/**
+ * Mapper:
+ * - Supports daily arrays + x=[1..N] (monthly filter response)
+ * - Still supports old object/bucket payloads
+ * - Keeps quarterly alignment logic (bucket-based)
+ */
+const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: string[]; series: GenericSeries[] } => {
+  const xType = String(trend.xType || "").toLowerCase();
+  const kind: SeriesKind = xType === "day" ? "daily" : "monthly";
+  const seriesArr = trend.series || [];
+
+  // Quarterly alignment mode (bucket/object style)
+  if (isQuarterlyPayload(trend)) {
+    const parsed = seriesArr
+      .map((s) => ({ s, q: parseQuarterLabel(s.label) }))
+      .filter((x) => x.q != null) as Array<{
+        s: PerformanceTrendSeries;
+        q: NonNullable<ReturnType<typeof parseQuarterLabel>>;
+      }>;
+
+    const most = parsed.sort((a, b) => b.q.key - a.q.key)[0]?.s ?? seriesArr[0];
+
+    const mostBucket = (most.net_sales || most.units || {}) as TrendBucket;
+    const xAxis = sortKeysForX(Object.keys(mostBucket));
+
+    const outSeries: GenericSeries[] = seriesArr.map((s) => {
+      const bucket = (s.net_sales || s.units || {}) as TrendBucket;
+      const keys = sortKeysForX(Object.keys(bucket));
+
+      const points: GenericPoint[] = xAxis.map((xLabel, idx) => {
+        const k = keys[idx];
+        const ns = s.net_sales as any;
+        const un = s.units as any;
+        return {
+          x: xLabel,
+          net_sales: typeof ns?.[k] === "number" ? ns[k] : null,
+          units: typeof un?.[k] === "number" ? un[k] : null,
+        };
+      });
+
+      return { name: s.label, kind, points };
+    });
+
+    return { xAxis, series: outSeries };
+  }
+
+  // Non-quarterly
+  // Prefer trend.x (daily payload)
+  let xAxis: string[] = [];
+  if (trend.x?.length) {
+    xAxis = trend.x.map((v) => String(v));
+  } else {
+    // fallback union keys (old bucket format)
+    const set = new Set<string>();
+    for (const s of seriesArr) {
+      const ns = s.net_sales as any;
+      const un = s.units as any;
+
+      if (ns && !Array.isArray(ns)) Object.keys(ns).forEach((k) => set.add(k));
+      if (un && !Array.isArray(un)) Object.keys(un).forEach((k) => set.add(k));
+    }
+    xAxis = sortKeysForX(Array.from(set));
+  }
+
+  // For daily arrays, decide if x starts at 0 or 1
+  const minX = xType === "day" ? getMinNumericX(xAxis) : null;
+  const dayIndexBase: 0 | 1 = minX === 0 ? 0 : 1;
+
+  const outSeries: GenericSeries[] = seriesArr.map((s) => {
+    const ns = s.net_sales as TrendBucketOrArray | undefined;
+    const un = s.units as TrendBucketOrArray | undefined;
+
+    // monthLen based on series label like "Feb'25" (only used for daily)
+    const m = xType === "day" ? parseMonthLabel(s.label) : null;
+    const monthLen = m ? daysInMonth(m.year, m.monthIdx) : null;
+
+    const points: GenericPoint[] = xAxis.map((x) => ({
+      x,
+      net_sales: getValueForX(ns, x, dayIndexBase),
+      units: getValueForX(un, x, dayIndexBase),
+    }));
+
+    return { name: s.label, kind, points, monthLen };
   });
 
-  // keep a reference to date format in case you need later
-  void mm; // no-op (prevents unused warning if you later remove date usage)
-
-  return { name, kind: "daily", points };
+  return { xAxis, series: outSeries };
 };
-
-const makeDummyMonthlyTotals = (year: number, name: string): GenericSeries => {
-  const points: GenericPoint[] = Array.from({ length: 12 }, (_, idx) => {
-    const baseSales = 7000 + Math.sin((idx + 1) / 2) * 900 + Math.random() * 200;
-    const baseQty = 600 + Math.sin((idx + 1) / 2) * 60 + Math.random() * 20;
-
-    return {
-      x: monthLabelShort(year, idx),
-      net_sales: Number(baseSales.toFixed(2)),
-      quantity: Math.max(0, Math.round(baseQty)),
-    };
-  });
-
-  return { name, kind: "monthly", points };
-};
-
-const makeDummyQuarterTotals = (year: number, q: "Q1" | "Q2" | "Q3" | "Q4", name: string): GenericSeries => {
-  const months = quarterToMonths(q);
-
-  const points: GenericPoint[] = months.map((idx) => {
-    const baseSales = 7000 + Math.sin((idx + 1) / 2) * 900 + Math.random() * 200;
-    const baseQty = 600 + Math.sin((idx + 1) / 2) * 60 + Math.random() * 20;
-
-    return {
-      x: monthLabelShort(year, idx),
-      net_sales: Number(baseSales.toFixed(2)),
-      quantity: Math.max(0, Math.round(baseQty)),
-    };
-  });
-
-  return { name, kind: "monthly", points };
-};
-
-/* =========================
-   Chart Component (multi-series)
-========================= */
 
 const LiveLineChart: React.FC<{
+  xAxisData: string[];
   series: GenericSeries[];
   metric: ChartMetric;
   currencySymbol?: string;
   selectedStartDay?: number | null;
   selectedEndDay?: number | null;
-}> = ({ series, metric, currencySymbol, selectedStartDay, selectedEndDay }) => {
+  onExportApiReady?: (api: TrendChartExportApi | null) => void;
+}> = ({ xAxisData, series, metric, currencySymbol, selectedStartDay, selectedEndDay, onExportApiReady }) => {
+  const chartRef = useRef<any>(null);
+  const echartsInstanceRef = useRef<any>(null);
   const isDaily = series[0]?.kind === "daily";
 
-  // Use selected day range only in daily view
+  useEffect(() => {
+    if (!onExportApiReady) return;
+
+    const api: TrendChartExportApi = {
+      title: "Performance Trend",
+      getChartBase64: () => {
+        try {
+          const inst = echartsInstanceRef.current;
+          if (!inst) return null;
+          return inst.getDataURL({
+            type: "png",
+            pixelRatio: 2,
+            backgroundColor: "#FFFFFF",
+          });
+        } catch {
+          return null;
+        }
+      },
+    };
+
+    onExportApiReady(api);
+    return () => onExportApiReady(null);
+  }, [onExportApiReady]);
+
+
+  const isNumericAxis = useMemo(
+    () => xAxisData.length > 0 && xAxisData.every((x) => !isNaN(Number(x))),
+    [xAxisData]
+  );
+
+  // if backend ever sends 0-based days, we display +1; if it sends 1-based, shift is 0
+  const hasZeroBasedDays = useMemo(
+    () => isDaily && isNumericAxis && xAxisData.some((x) => Number(x) === 0),
+    [isDaily, isNumericAxis, xAxisData]
+  );
+
+  const displayDayShift = hasZeroBasedDays ? 1 : 0;
+
+  // ✅ Use MAX days across all compared months (so Jan => 31 shows fully)
+  const maxDisplayDay = useMemo(() => {
+    if (!isDaily) return null;
+
+    const lens = series
+      .map((s) => s.monthLen)
+      .filter((n): n is number => typeof n === "number" && !isNaN(n));
+
+    if (lens.length) return Math.max(...lens);
+
+    // fallback: infer from axis
+    const nums = xAxisData.map((x) => Number(x)).filter((n) => !isNaN(n));
+    if (!nums.length) return null;
+    return Math.max(...nums) + displayDayShift;
+  }, [isDaily, series, xAxisData, displayDayShift]);
+
+  // Crop axis so it never shows beyond maxDisplayDay
+  const renderXAxis = useMemo(() => {
+    if (!isDaily || maxDisplayDay == null) return xAxisData;
+
+    return xAxisData.filter((x) => {
+      const n = Number(x);
+      if (isNaN(n)) return true;
+      return n + displayDayShift <= maxDisplayDay;
+    });
+  }, [xAxisData, isDaily, maxDisplayDay, displayDayShift]);
+
   const rangeActive = isDaily && selectedStartDay != null && selectedEndDay != null;
-  const s = rangeActive ? clampDay(Math.min(selectedStartDay!, selectedEndDay!)) : null;
-  const e = rangeActive ? clampDay(Math.max(selectedStartDay!, selectedEndDay!)) : null;
+  const startDay = rangeActive ? clampDay(Math.min(selectedStartDay!, selectedEndDay!)) : null;
+  const endDay = rangeActive ? clampDay(Math.max(selectedStartDay!, selectedEndDay!)) : null;
 
-  const xAxisAll = series[0]?.points.map((p) => p.x) ?? [];
+  // Range filter uses UI days 1..N; if backend is 0-based, map uiDay -> backendDay
+  const filteredXAxis = useMemo(() => {
+    if (!rangeActive || startDay == null || endDay == null) return renderXAxis;
 
-  // Filter X axis for day range
-  const xAxisData = useMemo(() => {
-    if (!rangeActive || s == null || e == null) return xAxisAll;
-    const keep = new Set(Array.from({ length: e - s + 1 }, (_, i) => String(s + i)));
-    return xAxisAll.filter((x) => keep.has(x));
-  }, [rangeActive, s, e, xAxisAll]);
+    const keep = new Set(
+      Array.from({ length: endDay - startDay + 1 }, (_, i) => {
+        const uiDay = startDay + i;
+        const backendDay = uiDay - displayDayShift; // 0-based => ui 1 -> backend 0
+        return String(backendDay);
+      })
+    );
+
+    return renderXAxis.filter((x) => keep.has(String(x)));
+  }, [rangeActive, startDay, endDay, renderXAxis, displayDayShift]);
 
   const yAxisName =
     metric === "net_sales" ? (currencySymbol ? `Sales (${currencySymbol})` : "Sales") : "Units";
 
+  const colorMap = useMemo(() => buildRecencyColorMap(series.map((s) => s.name)), [series]);
+
   const option = {
-    color: ["#CECBC7", "#ED9F50", "#97A95F"], 
     tooltip: {
       trigger: "axis",
       formatter: (params: any) => {
-        const x = params?.[0]?.axisValue ?? "";
-        const header = isDaily ? `Day ${x}` : x;
+        const rawX = params?.[0]?.axisValue ?? "";
+        const shownX =
+          isDaily && isNumericAxis && !isNaN(Number(rawX))
+            ? String(Number(rawX) + displayDayShift)
+            : String(rawX);
+
+        const header = isDaily ? `Day ${shownX}` : shownX;
 
         const lines = (params || []).map((p: any) => {
           const val = p.data;
@@ -233,42 +438,44 @@ const LiveLineChart: React.FC<{
             val == null
               ? "-"
               : metric === "net_sales"
-              ? `${currencySymbol ?? ""}${Number(val).toFixed(2)}`
-              : `${Number(val)}`;
-
+                ? `${currencySymbol ?? ""}${Number(val).toFixed(2)}`
+                : `${Number(val)}`;
           return `${p.marker}${p.seriesName} <b>${shown}</b>`;
         });
 
         return [header, ...lines].join("<br/>");
       },
     },
-  legend: {
-  top: 10,
-  left: "left",
-  orient: "horizontal",
-
-  icon: "rect",          // already correct
-  itemWidth: 12,         // 👈 square width
-  itemHeight: 12,        // 👈 square height
-  itemGap: 14,           // spacing between legend items
-
-  textStyle: {
-    fontSize: 12,
-    color: "#6B7280",
-    padding: [0, 6, 0, 6],
-  },
-
-  data: series.map((s) => s.name),
-},
-
+    legend: {
+      top: 10,
+      left: "left",
+      orient: "horizontal",
+      icon: "rect",
+      itemWidth: 12,
+      itemHeight: 12,
+      itemGap: 14,
+      textStyle: {
+        fontSize: 12,
+        color: "#6B7280",
+        padding: [0, 6, 0, 6],
+      },
+      data: series.map((s) => s.name),
+    },
     grid: { left: 46, right: 16, top: 62, bottom: 44 },
     xAxis: {
       type: "category",
-      data: xAxisData,
+      data: filteredXAxis,
       boundaryGap: false,
       name: isDaily ? "Days" : "Month",
       nameLocation: "middle",
       nameGap: 25,
+      axisLabel: {
+        formatter: (value: string) => {
+          if (!isDaily || !isNumericAxis) return String(value);
+          const n = Number(value);
+          return isNaN(n) ? String(value) : String(n + displayDayShift);
+        },
+      },
     },
     yAxis: {
       type: "value",
@@ -276,104 +483,92 @@ const LiveLineChart: React.FC<{
       nameLocation: "middle",
       nameGap: 40,
     },
-    series: series.map((s) => {
-      // align points to xAxisData
-      const mapByX = new Map(s.points.map((p) => [p.x, p] as const));
-      const aligned = xAxisData.map((x) => mapByX.get(x));
+
+    // ✅ IMPORTANT: series must be here (NOT option.data)
+    series: series.map((ser) => {
+      const mapByX = new Map(ser.points.map((p) => [p.x, p] as const));
+      const aligned = filteredXAxis.map((x) => mapByX.get(x));
+      const lineColor = colorMap[ser.name] ?? GREY;
 
       return {
-        name: s.name,
+        name: ser.name,
         type: "line",
         smooth: true,
         showSymbol: false,
-        data: aligned.map((p) =>
-          metric === "quantity" ? (p?.quantity ?? null) : (p?.net_sales ?? null)
-        ),
+        connectNulls: false,
+        lineStyle: { color: lineColor, width: 2 },
+        itemStyle: { color: lineColor },
+
+        // ✅ don't plot beyond this month's length (Feb stops at 28, Jan continues to 31)
+        data: aligned.map((p, idx) => {
+          const xRaw = filteredXAxis[idx];
+          const uiDay =
+            isDaily && isNumericAxis && !isNaN(Number(xRaw))
+              ? Number(xRaw) + displayDayShift
+              : null;
+
+          if (isDaily && uiDay != null && ser.monthLen != null && uiDay > ser.monthLen) {
+            return null;
+          }
+
+          return metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
+        }),
       };
     }),
   };
 
   return (
-    <div className="w-full h-full">
-      <ReactECharts option={option} style={{ width: "100%", height: "100%" }} />
+    <div style={{ width: "100%", height: "100%" }}>
+      <ReactECharts
+        option={option}
+        style={{ width: "100%", height: "100%" }}
+        opts={{ renderer: "canvas" }}
+        onChartReady={(instance) => {
+          echartsInstanceRef.current = instance;
+        }}
+      />
     </div>
   );
-};
 
-/* =========================
-   Main Component
-========================= */
+};
 
 export default function PerformanceTrendChart(props: PerformanceTrendChartProps) {
   const [chartMetric, setChartMetric] = useState<ChartMetric>("net_sales");
 
-  const yearNum = Number(props.year ?? new Date().getFullYear());
-  const range = props.range ?? "monthly";
-
-  // ✅ COMPARISONS:
-  // Monthly: selected month + prev month + same month last year
-  // Quarterly: selected quarter + prev quarter + same quarter last year
-  // Yearly: selected year + previous year
-  const seriesList: GenericSeries[] = useMemo(() => {
-    if (range === "monthly") {
-      const mIdx = monthToIndex(props.month);
-      const safeIdx = mIdx >= 0 ? mIdx : 11; // fallback Dec
-      const monthNum = monthIdxToNumber(safeIdx);
-
-      const currName = monthLabelShort(yearNum, safeIdx);
-
-      const pm = prevMonth(yearNum, safeIdx);
-      const prevName = monthLabelShort(pm.year, pm.monthIdx);
-
-      const lastYearName = monthLabelShort(yearNum - 1, safeIdx);
-
-      return [
-        makeDummyDaily(yearNum, monthNum, currName),
-        makeDummyDaily(pm.year, monthIdxToNumber(pm.monthIdx), prevName),
-        makeDummyDaily(yearNum - 1, monthNum, lastYearName),
-      ];
+  useEffect(() => {
+    if (props.metric === "net_sales" || props.metric === "units") {
+      setChartMetric(props.metric);
     }
-
-    if (range === "quarterly") {
-      const q = props.quarter ?? "Q4";
-
-      const currName = quarterLabelShort(q, yearNum);
-
-      const pq = prevQuarter(yearNum, q);
-      const prevName = quarterLabelShort(pq.quarter, pq.year);
-
-      const lastYearName = quarterLabelShort(q, yearNum - 1);
-
-      return [
-        makeDummyQuarterTotals(yearNum, q, currName),
-        makeDummyQuarterTotals(pq.year, pq.quarter, prevName),
-        makeDummyQuarterTotals(yearNum - 1, q, lastYearName),
-      ];
-    }
-
-    // yearly
-    return [
-      makeDummyMonthlyTotals(yearNum, String(yearNum)),
-      makeDummyMonthlyTotals(yearNum - 1, String(yearNum - 1)),
-    ];
-  }, [range, props.month, props.quarter, yearNum]);
+  }, [props.metric]);
 
   const loading = props.loading ?? false;
   const error = props.error ?? null;
 
+  const mapped = useMemo(() => {
+    if (!props.data?.series?.length) return { xAxis: [], series: [] as GenericSeries[] };
+    return mapBackendTrendToSeries(props.data);
+  }, [props.data]);
+
+
+
+
   return (
     <div className="w-full h-full flex flex-col">
-      {/* Header */}
       <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-3">
         <PageBreadcrumb pageTitle="Performance Trend" variant="page" textSize="2xl" />
 
-        <div className="w-full md:w-auto">
+        <div
+          className="w-full md:w-auto"
+          data-no-expand
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
           <SegmentedToggle<ChartMetric>
             value={chartMetric}
             onChange={setChartMetric}
             options={[
               { value: "net_sales", label: "Net Sales" },
-              { value: "quantity", label: "Units" },
+              { value: "units", label: "Units" },
             ]}
             textSizeClass="text-xs"
             className="border-[#D9D9D9E5] bg-white"
@@ -381,19 +576,24 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
         </div>
       </div>
 
-      {/* Chart area (fills remaining height) */}
-      <div className="flex-1 min-h-0 mt-4">
+      <div className="flex-1 min-h-0">
         {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
         {error && <div className="text-sm text-red-500">{error}</div>}
 
-        {!loading && !error && (
+        {!loading && !error && mapped.series.length > 0 && (
           <LiveLineChart
-            series={seriesList}
+            xAxisData={mapped.xAxis}
+            series={mapped.series}
             metric={chartMetric}
             currencySymbol={props.currencySymbol}
             selectedStartDay={props.selectedStartDay}
             selectedEndDay={props.selectedEndDay}
+            onExportApiReady={props.onExportApiReady}
           />
+        )}
+
+        {!loading && !error && mapped.series.length === 0 && (
+          <div className="text-sm text-gray-500">Loading...</div>
         )}
       </div>
     </div>

@@ -98,6 +98,20 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       : "right"
   );
 
+  const [isLaptop, setIsLaptop] = useState(false);
+
+  useEffect(() => {
+    const check = () => {
+      const w = window.innerWidth;
+      // adjust range if your “laptop” definition differs
+      setIsLaptop(w >= 1024 && w < 1536); // Tailwind lg..xl
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+
   const chartRef = useRef<any>(null);
 
   const exportChartBase64 = () => {
@@ -332,85 +346,85 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     );
   }, [range, month, year, selectedQuarter, countryName]);
 
-const options: ChartOptions<"pie"> = {
-  responsive: true,
-  elements: {
-    arc: {
-      borderWidth: 0,
+  const options: ChartOptions<"pie"> = {
+    responsive: true,
+    elements: {
+      arc: {
+        borderWidth: 0,
+      },
     },
-  },
-  plugins: {
-    legend: {
-      position: legendPosition,
-      align: "center",
-      labels: {
-        usePointStyle: true,
+    plugins: {
+      legend: {
+        position: legendPosition,
+        align: "center",
+        labels: {
+          usePointStyle: true,
 
-        // ✅ Change legend label text color here
-        color: "#414042", // <-- change to whatever you want (e.g. "#FF0000")
+          // ✅ Change legend label text color here
+          color: "#414042", // <-- change to whatever you want (e.g. "#FF0000")
 
-        // ✅ Show ALL labels + percentage in legend
-        generateLabels: (chart) => {
-          const data = chart.data;
-          const labels = (data.labels || []) as string[];
+          // ✅ Show ALL labels + percentage in legend
+          generateLabels: (chart) => {
+            const data = chart.data;
+            const labels = (data.labels || []) as string[];
 
-          const dataset = data.datasets?.[0] as any;
-          const values = ((dataset?.data || []) as number[]).map((v) =>
-            Math.abs(Number(v || 0))
-          );
+            const dataset = data.datasets?.[0] as any;
+            const values = ((dataset?.data || []) as number[]).map((v) =>
+              Math.abs(Number(v || 0))
+            );
 
-          const total = values.reduce((a, b) => a + b, 0);
+            const total = values.reduce((a, b) => a + b, 0);
 
-          const bg = dataset?.backgroundColor as any[]; // array of colors
+            const bg = dataset?.backgroundColor as any[]; // array of colors
 
-          return labels.map((label, i) => {
-            const value = values[i] ?? 0;
+            return labels.map((label, i) => {
+              const value = values[i] ?? 0;
+              const pct = total ? (value / total) * 100 : 0;
+
+              return {
+                text: `${label} (${pct.toFixed(2)}%)`,
+                fillStyle: Array.isArray(bg) ? bg[i] : bg,
+                strokeStyle: "transparent",
+                lineWidth: 0,
+                hidden: !chart.getDataVisibility(i),
+                index: i, // ✅ important for toggling slice
+                pointStyle: "circle",
+              };
+            });
+          },
+        },
+      },
+      tooltip: {
+        enabled: !noDataFound,
+        callbacks: {
+          label: (ctx: TooltipItem<"pie">) => {
+            const value = Math.abs(Number(ctx.raw ?? 0));
+            const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
+              | { data: number[] }
+              | undefined;
+
+            const total = (ds?.data ?? []).reduce(
+              (acc, v) => acc + Math.abs(Number(v || 0)),
+              0
+            );
+
             const pct = total ? (value / total) * 100 : 0;
+            const label = ctx.label ? `${ctx.label}: ` : "";
 
-            return {
-              text: `${label} (${pct.toFixed(2)}%)`,
-              fillStyle: Array.isArray(bg) ? bg[i] : bg,
-              strokeStyle: "transparent",
-              lineWidth: 0,
-              hidden: !chart.getDataVisibility(i),
-              index: i, // ✅ important for toggling slice
-              pointStyle: "circle",
-            };
-          });
+            return `${label}${currencySymbol}${value.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })} (${pct.toFixed(2)}%)`;
+          },
         },
       },
     },
-    tooltip: {
-      enabled: !noDataFound,
-      callbacks: {
-        label: (ctx: TooltipItem<"pie">) => {
-          const value = Math.abs(Number(ctx.raw ?? 0));
-          const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
-            | { data: number[] }
-            | undefined;
-
-          const total = (ds?.data ?? []).reduce(
-            (acc, v) => acc + Math.abs(Number(v || 0)),
-            0
-          );
-
-          const pct = total ? (value / total) * 100 : 0;
-          const label = ctx.label ? `${ctx.label}: ` : "";
-
-          return `${label}${currencySymbol}${value.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })} (${pct.toFixed(2)}%)`;
-        },
-      },
+    layout: {
+       padding: isLaptop ? 0 : 10,
     },
-  },
-  layout: {
-    padding: 10,
-  },
-  animation: { duration: 0 },
-  maintainAspectRatio: false,
-};
+    animation: { duration: 0 },
+    maintainAspectRatio: false,
+  };
 
 
   useEffect(() => {
@@ -429,9 +443,9 @@ const options: ChartOptions<"pie"> = {
 
 
   return (
-   <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+    <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
       {/* Heading */}
-      <div className="mb-4">
+      <div className="2xl:mb-4">
         <div className="w-fit mx-auto md:mx-0">
           <PageBreadcrumb
             pageTitle={`CM1 Breakup`}
@@ -464,13 +478,20 @@ const options: ChartOptions<"pie"> = {
             className={[
               "mx-auto",
               "w-full",
-              "max-w-[360px] sm:max-w-[460px] md:max-w-[600px] lg:max-w-[720px]",
+              "max-w-[360px] sm:max-w-[460px] md:max-w-[600px] 2xl:max-w-[720px]",
               "relative",
             ].join(" ")}
           >
-            <div className="relative h-[240px] sm:h-[280px] md:h-[320px] lg:h-[360px]">
+            <div
+              className={[
+                "relative",
+                "h-[240px] sm:h-[280px] md:h-[280px] 2xl:h-[360px]",
+                "flex justify-center", // center horizontally
+             isLaptop ? "items-center px-4 py-1" : "items-center", 
+              ].join(" ")}
+            >
               {/* <Pie data={chartData} options={options} /> */}
-              <Pie ref={chartRef} data={chartData} options={options} />
+              <Pie className="!block" ref={chartRef} data={chartData} options={options} />
             </div>
           </div>
         )}

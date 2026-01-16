@@ -140,6 +140,43 @@ def _normalize_sku_col(df: pd.DataFrame) -> pd.DataFrame:
         df.rename(columns={"SKU": "sku"}, inplace=True)
     return df
 
+TOTAL_LABELS = {"total", "grand total", "overall", "all"}
+
+def _split_total_row(df: pd.DataFrame):
+    """
+    Returns: (detail_rows_df, total_row_df_or_empty)
+    """
+    if df.empty:
+        return df, pd.DataFrame()
+
+    df = _normalize_sku_col(df.copy())
+
+    if "sku" not in df.columns:
+        return df, pd.DataFrame()
+
+    sku_norm = df["sku"].astype(str).str.strip().str.lower()
+    is_total = sku_norm.isin(TOTAL_LABELS)
+
+    df_total = df[is_total].copy()
+    df_detail = df[~is_total].copy()
+
+    # if multiple total rows exist, keep just 1 to avoid double count
+    if not df_total.empty:
+        df_total = df_total.head(1)
+
+    return df_detail, df_total
+
+
+def _total_value(df_total: pd.DataFrame, col: str):
+    """
+    Returns float value from total row column if present else None
+    """
+    if df_total.empty or col not in df_total.columns:
+        return None
+    return float(pd.to_numeric(df_total[col], errors="coerce").fillna(0).iloc[0])
+
+
+
 METRIC_COLUMNS = {
     "quantity",
     "return_quantity",
@@ -470,13 +507,13 @@ METRIC INTERPRETATION RULES (CRITICAL):
 - The following metrics DO NOT have product-level meaning and must be treated as OVERALL ONLY:
   platform_fee, platformfeenew, platform_fee_inventory_storage,
   visible_ads, dealsvouchar_ads, advertising_total,
-  cm2_profit, cm2_profit_percentage, acos
+  cm2_profit, cm2_profit_percentage, acos, misc_transaction
 - Never attribute the above metrics to individual SKUs in insights or actions.
 
 ACOS SUMMARY RULE (CRITICAL):
 - ACOS must be mentioned ONLY in the SUMMARY section.
 - Treat ACOS strictly as an OVERALL efficiency metric.
-- Describe ACOS movement using percentage points (e.g., "ACOS increased by 2.4 points").
+- Describe ACOS movement using percentage (e.g., "ACOS increased by 2.4 percentage").
 - Use MoM language for monthly/quarterly periods and YoY language for yearly periods.
 - Do NOT describe ACOS as growth or decline in percentage terms.
 - Do NOT mention ACOS in PRODUCT INSIGHTS, RECOMMENDATIONS, or INVENTORY sections.
@@ -493,6 +530,20 @@ REIMBURSEMENT LOGIC:
 - lost_total represents reimbursements received from Amazon for lost inventory.
 - Treat this as cost recovery or credit.
 - Do NOT describe lost_total as a loss or negative event.
+
+REIMBURSEMENT SUMMARY RULE (CRITICAL):
+- If inventory_lost is present and > 0, include exactly 1 bullet in ## SUMMARY stating:
+  "Reimbursements for lost inventory: <currency_symbol><inventory_lost> received."
+- Do NOT treat this as a negative cost or loss.
+- Do NOT mention reimbursements in PRODUCT INSIGHTS.
+
+MISC TRANSACTION RULE (CRITICAL):
+- misc_transaction represents miscellaneous/unallocated transactions that do not have SKU/product breakdown.
+- If misc_transaction exists and its current value is non-zero, include exactly 1 bullet in ## SUMMARY:
+  "Miscellaneous transactions: <currency_symbol><misc_transaction_current>."
+- Do NOT mention misc_transaction in PRODUCT INSIGHTS (because it is not SKU-level).
+
+
 
 SPECIAL PRODUCT LOGIC:
 - If a Product appears in MoM data but NOT in YoY data, treat it as a **New / Reviving SKU**
@@ -533,10 +584,10 @@ OUTPUT FORMAT (MARKDOWN ONLY)
 ## SUMMARY
 (4–6 bullets ONLY)
 
-- Summarize overall movement in **net units sold, net sales, and profit**
+- Summarize overall movement in **net units sold, net sales, and CM1 profit**
   (Use MoM for monthly/quarterly periods, YoY for yearly periods)
 - Clearly state whether growth/decline is **volume-led, cost-led, or margin-led**
-- Call out **major overall cost drivers** if they materially impacted profit
+- Call out **major overall cost drivers** if they materially impacted CM1 profit
 - Include ACOS movement (percentage-point change) if ACOS data exists
 - If both MoM and YoY exist (non-yearly only), include exactly 1 bullet comparing MoM vs YoY trend
 - Use short bullets, no sub-bullets, no paragraphs
@@ -548,7 +599,7 @@ OUTPUT FORMAT (MARKDOWN ONLY)
 
 Each bullet must:
 - Start with **Product name**
-- Mention **key Product-level metrics only** (units sold, net sales, profit, ASP)
+- Mention **key Product-level metrics only** (units sold, net sales, CM1 profit, ASP)
 - Clearly state direction (up/down/flat)
 - If Product is New / Reviving, explicitly label it:
   **“(New / Reviving SKU)”**
@@ -576,16 +627,14 @@ Rules:
 - Actions should be driven by SKU-level behavior OR clear overall trends
 - Do NOT restate metrics
 - Do NOT include generic advice
-- Inventory risks SHOULD be preferentially handled here when they impact profitability, cost, or future loss.
-- Inventory actions must be phrased as business actions, not operational alerts.
-- Do NOT list inventory SKU-by-SKU unless it materially affects profit trajectory.
+
 
 Examples of valid actions:
 - Reduce ASP slightly on low-margin SKUs showing unit decline.
 - Monitor pricing on fast-growing SKUs to protect margin.
-- Review ad spend on SKUs where profit declined despite sales growth.
-- Investigate negative profit drivers for SKUs showing rising volume but declining profitability to prevent margin erosion.
-- Address aged or unfulfillable inventory exposure on low-performing SKUs to limit storage and write-off risk.
+- Review ad spend on SKUs where CM1 profit declined despite sales growth.
+- Investigate negative CM1 profit drivers for SKUs showing rising volume but declining profitability to prevent margin erosion.
+
 
 ---
 
@@ -596,12 +645,17 @@ IMPORTANT INVENTORY OUTPUT RULES:
 - This section should be used ONLY when inventory risk cannot be clearly expressed as a recommendation.
 - Prefer summarizing inventory risk in RECOMMENDATIONS when possible.
 - Keep this section minimal (0–2 bullets preferred).
+- Inventory risks SHOULD be preferentially handled here when they impact profitability, cost, or future loss.
+- Inventory actions must be phrased as business actions, not operational alerts.
+- Do NOT list inventory SKU-by-SKU unless it materially affects CM1 profit trajectory.
+
 
 - Use bullets
 - One SKU per bullet
 - Start each bullet with **Inventory – Product name**
 - Mention the issue and the consequence (cost, risk, or blockage)
 - Do NOT suggest pricing or ad actions here
+- Address aged or unfulfillable inventory exposure on low-performing SKUs to limit storage and risk.
 
 ---
 
@@ -731,22 +785,42 @@ def get_or_create_summary(
 
     # ---------------- CURRENT PERIOD ----------------
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
+    df_current_detail, df_current_total = _split_total_row(df_current)
 
+    # 1) Build overall metrics from DETAIL rows (prevents double counting TOTAL)
     current = {}
-    if not df_current.empty:
-        for col in get_metric_columns(df_current):
+    if not df_current_detail.empty:
+        for col in get_metric_columns(df_current_detail):
             current[col.lower()] = round(
-                float(pd.to_numeric(df_current[col], errors="coerce").fillna(0).sum()), 2
+                float(pd.to_numeric(df_current_detail[col], errors="coerce").fillna(0).sum()), 2
             )
-    print("METRICS USED:", list(current.keys()))
-    sku_current = compute_sku_precalc(df_current)
 
-    inventory_lost = 0
-    if not df_current.empty:
-        for col in ["lost_total"]:
-            if col in df_current.columns:
-                inventory_lost = int(pd.to_numeric(df_current[col], errors="coerce").fillna(0).sum())
-                break
+    # 2) Override overall-only metrics from TOTAL row (because detail rows may be zero)
+    for c in [
+        "platform_fee",
+        "platformfeenew",
+        "platform_fee_inventory_storage",
+        "advertising_total",
+        "acos",
+        "cm2_profit",
+        "misc_transaction",
+    ]:
+        v = _total_value(df_current_total, c)
+        if v is not None:
+            current[c] = round(v, 2)
+
+    print("METRICS USED:", list(current.keys()))
+
+    # 3) SKU breakdown MUST use DETAIL rows only (exclude TOTAL row)
+    sku_current = compute_sku_precalc(df_current_detail)
+
+    # 4) Reimbursements: take from TOTAL row if available, else detail sum
+    lost_total_val = _total_value(df_current_total, "lost_total")
+    if lost_total_val is None:
+        inventory_lost = round(abs(current.get("lost_total", 0.0)), 2)
+    else:
+        inventory_lost = round(abs(lost_total_val), 2)
+
 
     inventory_alerts = {}
 
@@ -764,18 +838,34 @@ def get_or_create_summary(
     (p_period, p_timeline, p_year), yoy_key = resolve_comparison(period, timeline, year)
 
     df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
+    df_prev_detail, df_prev_total = _split_total_row(df_prev)
 
     prev = {}
-    if not df_prev.empty:
-        for col in get_metric_columns(df_prev):
+    if not df_prev_detail.empty:
+        for col in get_metric_columns(df_prev_detail):
             prev[col.lower()] = round(
-                float(pd.to_numeric(df_prev[col], errors="coerce").fillna(0).sum()), 2
+                float(pd.to_numeric(df_prev_detail[col], errors="coerce").fillna(0).sum()), 2
             )
+
+    # override overall-only metrics from TOTAL row
+    for c in [
+        "platform_fee",
+        "platformfeenew",
+        "platform_fee_inventory_storage",
+        "advertising_total",
+        "acos",
+        "cm2_profit",
+        "misc_transaction",
+    ]:
+        v = _total_value(df_prev_total, c)
+        if v is not None:
+            prev[c] = round(v, 2)
 
     mom = compare_metrics(current, prev)
 
-    sku_prev = compute_sku_precalc(df_prev)
+    sku_prev = compute_sku_precalc(df_prev_detail)
     sku_mom = compare_sku_metrics(sku_current, sku_prev)
+
 
     # ---------------- YOY (SAFE) ----------------
     yoy = None
@@ -786,23 +876,45 @@ def get_or_create_summary(
         df_yoy = fetch_precalc_table(user_id, country, y_period, y_timeline, y_year)
 
         if not df_yoy.empty:
-            yoy_base = {}
-            for col in get_metric_columns(df_yoy):
-                yoy_base[col.lower()] = round(
-                    float(pd.to_numeric(df_yoy[col], errors="coerce").fillna(0).sum()), 2
-                )
+            # 1) split total vs detail
+            df_yoy_detail, df_yoy_total = _split_total_row(df_yoy)
 
+            # 2) build yoy_base from DETAIL rows (prevents double count from TOTAL row)
+            yoy_base = {}
+            if not df_yoy_detail.empty:
+                for col in get_metric_columns(df_yoy_detail):
+                    yoy_base[col.lower()] = round(
+                        float(pd.to_numeric(df_yoy_detail[col], errors="coerce").fillna(0).sum()), 2
+                    )
+
+            # 3) override overall-only metrics from TOTAL row (because detail rows may be zero)
+            for c in [
+                "platform_fee",
+                "platformfeenew",
+                "platform_fee_inventory_storage",
+                "advertising_total",
+                "acos",
+                "cm2_profit",
+                "misc_transaction",
+            ]:
+                v = _total_value(df_yoy_total, c)
+                if v is not None:
+                    yoy_base[c] = round(v, 2)
+
+            # 4) overall YoY compare
             yoy = compare_metrics(current, yoy_base)
 
+            # 5) SKU YoY compare must use DETAIL rows only (exclude total row)
             sku_yoy = compare_sku_metrics(
                 sku_current,
-                compute_sku_precalc(df_yoy)
+                compute_sku_precalc(df_yoy_detail)
             )
 
     # ---- everything below stays same (debug/ai/save/return) ----
 
     ai_payload = {
         "period": f"{period} {timeline} {year}",
+        "country": str(country).lower(),
         "mom": mom,
         "yoy": yoy,
         "inventory_lost": inventory_lost,

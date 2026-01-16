@@ -1418,10 +1418,15 @@ def aggregate_totals(rows, fields=None):
     return totals
 
 
-def pct_change(prev, curr):
+# def pct_change(prev, curr):
+#     if prev is None or prev == 0:
+#         return None
+#     return round(((curr - prev) / prev) * 100.0, 1)
+
+def pct_change(prev, curr, ndigits=2):
     if prev is None or prev == 0:
         return None
-    return round(((curr - prev) / prev) * 100.0, 1)
+    return round(((curr - prev) / prev) * 100.0, ndigits)
 
 def compute_total_asp(rows):
     total_qty = 0.0
@@ -1460,9 +1465,30 @@ def compute_total_unit_profitability(rows):
 
 
 
-def describe_movement(pct):
+# def describe_movement(pct):
+#     """
+#     Turn a % into a human phrase like 'up 4.2%' / 'strongly down 18.3%' / 'roughly flat'
+#     """
+#     if pct is None:
+#         return "roughly flat"
+
+#     abs_v = abs(pct)
+#     if abs_v < 1:
+#         return "roughly flat"
+
+#     direction = "up" if pct > 0 else "down"
+#     if abs_v < 5:
+#         intensity = ""
+#     elif abs_v < 15:
+#         intensity = "moderately "
+#     else:
+#         intensity = "strongly "
+
+#     return f"{intensity}{direction} {abs_v:.1f}%"
+
+def describe_movement(pct, ndigits=2):
     """
-    Turn a % into a human phrase like 'up 4.2%' / 'strongly down 18.3%' / 'roughly flat'
+    ex: "down 3.00%" / "up 1.25%" / "roughly flat"
     """
     if pct is None:
         return "roughly flat"
@@ -1472,14 +1498,8 @@ def describe_movement(pct):
         return "roughly flat"
 
     direction = "up" if pct > 0 else "down"
-    if abs_v < 5:
-        intensity = ""
-    elif abs_v < 15:
-        intensity = "moderately "
-    else:
-        intensity = "strongly "
+    return f"{direction} {abs_v:.{ndigits}f}%"
 
-    return f"{intensity}{direction} {abs_v:.1f}%"
 
 
 def _build_rule_based_summary(prev_totals, curr_totals, top_80_skus, new_reviving,
@@ -1784,6 +1804,619 @@ def safe_json_load(s: str) -> dict:
         raise
 
 
+# def build_ai_summary(
+#     prev_totals,
+#     curr_totals,
+#     top_80_skus,
+#     new_reviving,
+#     prev_label,
+#     curr_label,
+#     sku_context=None,
+#     inventory_signals=None,   # ✅ NEW (but optional)
+#     prev_fee_totals=None,     # ✅ NEW
+#     curr_fee_totals=None,
+#     estimated_storage_cost_next_month=0.0,
+#     currency=None,  # ✅ NEW
+
+# ):
+#     def safe0(x):
+#         v = safe_float_local(x)
+#         return v if v is not None else 0.0
+
+#     # Overall numeric values
+#     qty_prev = safe0(prev_totals.get("quantity"))
+#     qty_curr = safe0(curr_totals.get("quantity"))
+
+#     sales_prev = safe0(prev_totals.get("net_sales"))
+#     sales_curr = safe0(curr_totals.get("net_sales"))
+
+#     prof_prev = safe0(prev_totals.get("profit"))
+#     prof_curr = safe0(curr_totals.get("profit"))
+
+#     asp_prev = safe_float_local(prev_totals.get("total_asp"))
+#     asp_curr = safe_float_local(curr_totals.get("total_asp"))
+
+#     up_prev_idx = safe0(prev_totals.get("unit_wise_profitability"))
+#     up_curr_idx = safe0(curr_totals.get("unit_wise_profitability"))
+
+#     qty_pct = pct_change(qty_prev, qty_curr)
+#     sales_pct = pct_change(sales_prev, sales_curr)
+#     prof_pct = pct_change(prof_prev, prof_curr)
+#     asp_pct = pct_change(asp_prev, asp_curr)
+#     up_pct = pct_change(up_prev_idx, up_curr_idx)
+
+#     # -------------------------------
+#     # Platform fees + Advertising (SUMMARY ONLY)
+#     # -------------------------------
+#     pf_prev = safe_float_local((prev_fee_totals or {}).get("platform_fee"))
+#     pf_curr = safe_float_local((curr_fee_totals or {}).get("platform_fee"))
+
+#     ad_prev = safe_float_local((prev_fee_totals or {}).get("advertising"))
+#     ad_curr = safe_float_local((curr_fee_totals or {}).get("advertising"))
+
+#     total_cost_prev = (pf_prev or 0.0) + (ad_prev or 0.0)
+#     total_cost_curr = (pf_curr or 0.0) + (ad_curr or 0.0)
+
+#     cost_pct = pct_change(total_cost_prev, total_cost_curr)
+#     pf_pct = pct_change(pf_prev, pf_curr)
+#     ad_pct = pct_change(ad_prev, ad_curr)
+
+#     # -------------------------------
+
+#     # -------------------------------
+#     # ROAS (SUMMARY ONLY)
+#     # ROAS = (Advertising Cost / Net Sales) * 100
+#     # -------------------------------
+#     # def calc_roas(ad_cost, net_sales):
+#     #     ad_cost = safe_float_local(ad_cost)
+#     #     net_sales = safe_float_local(net_sales)
+#     #     if not ad_cost or not net_sales:
+#     #         return 0.0
+#     #     return round((ad_cost / net_sales) * 100.0, 2)
+
+#     def calc_roas(ad_cost, net_sales):
+#         ad_cost = safe_float_local(ad_cost)
+#         net_sales = safe_float_local(net_sales)
+#         if not ad_cost or not net_sales:
+#             return 0.0
+#         return round((ad_cost / net_sales) * 100.0, 2)
+
+#     roas_prev = calc_roas(ad_prev, sales_prev)
+#     roas_curr = calc_roas(ad_curr, sales_curr)
+#     roas_change = round(roas_curr - roas_prev, 2)
+#     # -------------------------------
+
+#     if sku_context is None:
+#         sku_context = {
+#             "fast_growing_profitable": [],
+#             "declining_high_mix": [],
+#             "flat_but_large": [],
+#         }
+
+#     # ===============================
+#     # DETERMINE MAX ACTION COUNT (DATA-DRIVEN)
+#     # ===============================
+#     eligible_products = set()
+
+#     for row in top_80_skus or []:
+#         name = row.get("product_name")
+#         if name and "total" not in name.lower():
+#             eligible_products.add(name.strip())
+
+#     for row in new_reviving or []:
+#         name = row.get("product_name")
+#         if name and "total" not in name.lower():
+#             eligible_products.add(name.strip())
+
+#     max_actions = min(5, len(eligible_products))
+    
+
+#     # ===============================
+#     # PAYLOAD (unchanged)
+#     # ===============================
+#     payload = {
+#         "periods": {
+#             "previous": {
+#                 "label": prev_label,
+#                 "quantity_total": qty_prev,
+#                 "net_sales_total": sales_prev,
+#                 "profit_total": prof_prev,
+#                 "total_asp": asp_prev,
+#                 "unit_profit_sum_index": up_prev_idx,
+#             },
+#             "current": {
+#                 "label": curr_label,
+#                 "quantity_total": qty_curr,
+#                 "net_sales_total": sales_curr,
+#                 "profit_total": prof_curr,
+#                 "total_asp": asp_curr,
+#                 "unit_profit_sum_index": up_curr_idx,
+#             },
+#         },
+#         "pct_changes": {
+#             "quantity_pct": qty_pct,
+#             "net_sales_pct": sales_pct,
+#             "profit_pct": prof_pct,
+#             "asp_pct": asp_pct,
+#             "unit_profit_index_pct": up_pct,
+#         },
+#         "portfolio": {
+#             "top_80_skus_count": len(top_80_skus),
+#             "new_reviving_skus_count": len(new_reviving),
+#         },
+#         "sku_context": sku_context,
+#         "sku_tables": {
+#             "top_80_skus": top_80_skus,
+#             "new_reviving_skus": new_reviving,
+#         },
+#         "inventory_signals": inventory_signals or {},
+#         "selling_costs": {
+#             "platform_fees": {
+#                 "previous": pf_prev or 0.0,
+#                 "current": pf_curr or 0.0,
+#                 "pct_change": pf_pct,
+#             },
+#             "advertising_cost": {
+#                 "previous": ad_prev or 0.0,
+#                 "current": ad_curr or 0.0,
+#                 "pct_change": ad_pct,
+#             },
+#             "total": {
+#                 "previous": total_cost_prev,
+#                 "current": total_cost_curr,
+#                 "pct_change": cost_pct,
+#             },
+
+#         },
+#         "roas": {
+#     "previous": roas_prev,
+#     "current": roas_curr,
+#     "change": roas_change,
+# },
+# "estimated_platform_fees_next_month": estimated_storage_cost_next_month,
+# "currency": {
+#     "code": currency.get("code"),
+#     "symbol": currency.get("symbol"),
+# },
+
+
+#     }
+
+#     data_block = json.dumps(payload, indent=2)
+
+#     # ===============================
+#     # PROMPT (ONLY ACTIONS FIXED)
+#     # ===============================
+#     prompt = f"""
+# You are a senior ecommerce business analyst.
+
+# You receive JSON containing:
+# - Overall totals and % change for units, net sales, CM1 profit, Total ASP and Unit Profitability 
+# - SKU tables in sku_tables.top_80_skus and sku_tables.new_reviving_skus including product_name and SKU-wise metrics
+# - inventory_signals keyed by SKU
+# - selling_costs.platform_fees.pct_change
+# - selling_costs.advertising_cost.pct_change
+# - roas.previous, roas.current, roas.change
+# - estimated_platform_fees_next_month
+
+# inventory_signals[sku] may include:
+# - low_cover (boolean)
+# - overaged (boolean)
+# - aged_units (number, optional)
+# - amazon_recommendation (string or null)
+
+# GOAL
+# Produce:
+# 1) A short overall business summary (3-5 bullets)
+# 2) Exactly {max_actions} detailed SKU-wise recommendations.
+
+
+# ====================
+# SUMMARY (3-5 bullets)
+# ====================
+# Write 3-5 short bullets describing, in simple language:
+# - How overall units, sales and CM1 profit moved (using quantity_pct, net_sales_pct, profit_pct)
+# - Any big change in ASP or unit profit (asp_pct, unit_profit_index_pct)
+# - Whether performance is coming more from volume, pricing, or a few big SKUs
+# - Platform fees % change (selling_costs.platform_fees.pct_change) AND estimated platform fees for next month (estimated_platform_fees_next_month)
+# - Advertising cost % change (selling_costs.advertising_cost.pct_change) AND ROAS change (roas.change)
+
+
+# IMPORTANT (SUMMARY ONLY):
+# - Include EXACTLY ONE bullet that mentions platform fees % change AND estimated platform fees for next month together.
+# - Include EXACTLY ONE separate bullet that mentions advertising cost % change AND ROAS change together.
+# - Mention % change for platform fees and advertising cost individually.
+# - Mention ROAS change as current minus previous (use +/- percents, not % growth).
+# - Do NOT merge platform fees and advertising into the same bullet.
+# - Use absolute comparison only (up/down %, +/- percents for ROAS).
+# - Do NOT mention costs or ROAS anywhere in SKU actions.
+# - Use the currency.symbol provided in the JSON for all monetary values.
+# - Never infer or guess the currency from country names.
+# - Do not use any currency symbol other than the one provided.
+
+
+
+# ====================
+# ACTIONS (exactly {max_actions})
+# ====================
+
+# Pick SKUs only from:
+# - sku_tables.top_80_skus
+# - sku_tables.new_reviving_skus
+
+# Return EXACTLY {max_actions} action bullets.
+
+
+# ✅ EACH action bullet MUST follow this exact layout with line breaks:
+
+# Line 1: "Product name - <product_name>"
+# Line 2-3: One paragraph of exactly 2 sentences (metrics + causal chain + mix)
+# Line 4: (blank line)
+# Line 5: One PRIMARY action sentence ONLY
+# Line 6 (OPTIONAL): One SECONDARY strategy sentence ONLY IF a clear trade-off exists (rank vs margin)
+# Line 7 (OPTIONAL): ONE inventory alert sentence ONLY IF inventory_signals[sku] indicate an issue
+
+
+# So the action_bullet string must look like:
+# Product name - Classic
+
+# The increase in ASP by 13.27% resulted in a dip in units by 25.91%, which also resulted in sales falling by 16.08%. The sales mix is down by 15.93%, reducing its contribution, and profit is up by 10.74%.
+
+# Reduce ASP slightly to improve traction.
+# If your objective is to boost rank, you may continue with the current pricing setup but monitor performance closely.
+# Inventory: Initiate inventory replenishment as current cover is below lead time.
+
+# -----------------------------
+# Metrics paragraph rules (Line 2-3)
+# -----------------------------
+# - Exactly 2 sentences.
+
+# - Sentence 1: Use ONLY the SKU metrics for ASP, Units and Sales (where values exist).
+#   Use the same flow as the original causal chain, but adjust tone only in this special case:
+#   - Default tone:
+#     "The increase/decrease in ASP by X% resulted in a dip/growth in units by Y%, which also resulted in sales falling/increasing by Z%."
+#   - If ASP, Units, and Sales are ALL negative (all down), do NOT imply ASP caused units. Use this co-movement tone instead:
+#     "There is a decrease in ASP by X% and also a dip in units by Y%, which resulted in sales falling by Z%."
+
+# - Sentence 2: Must mention Sales Mix Change (%) if available (up or down) in the same original style:
+#   "The sales mix is up/down by M%, increasing/reducing its contribution."
+#   If profitability metrics are available for that SKU, append ONLY ONE of them to the SAME sentence without breaking flow and without using "while/since/because":
+#   Prefer in this order:
+#   1) Profit (%)
+#   2) Profit Per Unit (%)
+#   Append as:
+#   ", and profit is up/down by A%."
+#   OR ", and profit per unit is up/down by B%."
+#   (If profitability metric is not available, skip it.)
+
+# - Do NOT invent numbers and do NOT add extra reasons.
+
+
+# RULE PRECEDENCE (CRITICAL):
+# - Visibility INVALIDATION RULE overrides ALL other rules.
+# - If a visibility action is invalidated, it must NEVER be selected,
+#   even if other rules suggest or allow it.
+
+# -----------------------------
+# ACTION DECISION RULES (CRITICAL)
+# -----------------------------
+
+# PRICE EXHAUSTION OVERRIDE (CRITICAL):
+# - If ASP is DOWN by more than 10%
+#   AND Units are DOWN (negative growth) by more than 60%,
+#   THEN pricing has already failed to revive demand.
+# - In this case:
+#   ❌ Do NOT recommend any ASP increase or decrease.
+#   ❌ Ignore the PRICING PRIORITY RULE.
+#   ✅ Use ONLY:
+#      - "Review the visibility setup for this product."
+
+
+# PRICING PRIORITY RULE:
+# - If absolute ASP change is greater than 10% (increase or decrease),
+#   pricing must be treated as the PRIMARY driver.
+# - In such cases:
+#   ❌ Do NOT recommend ads or visibility actions.
+#   ✅ Prefer ASP-related actions or monitoring actions.
+
+# MARGIN PROTECTION RULE:
+# - If units are up but profit is down,
+#   do NOT suggest further ASP reduction.
+# - Prefer:
+#   - "Increase ASP slightly to strengthen margins."
+ 
+
+# PRICE RESISTANCE RULE:
+# - If ASP is up AND units and sales are both down,
+#   interpret this as price resistance.
+# - Do NOT attribute decline to ads or visibility.
+# - Prefer ASP reduction or monitoring actions.
+
+# VISIBILITY INVALIDATION RULE (CRITICAL):
+# - If Units are UP (positive growth),
+#   ❌ Visibility-related actions are INVALID and must NOT be selected.
+# - This includes:
+#   - "Check ads and visibility campaigns for this product."
+#   - "Review the visibility setup for this product."
+
+
+# ADS / VISIBILITY ELIGIBILITY RULE:
+# - Ads or visibility actions may be suggested ONLY IF:
+#   - ASP change is within ±5%
+#   AND
+#   - Units and sales are down.
+
+# GROWTH STABILITY RULE:
+# - If units, sales, and profit are all growing strongly (>30%),
+#   prefer:
+#   - "Maintain current ASP and monitor performance."
+
+# SECONDARY STRATEGY RULE (MANDATORY, RANK-ONLY):
+
+# - A SECONDARY strategy sentence MUST be included IF AND ONLY IF:
+#   - Units are UP (positive unit growth)
+#   AND
+#   - ASP and Units are moving in opposite directions
+#   AND
+#   - SKU-level Profit (%) is NEGATIVE.
+
+# - If any of the above conditions are NOT met, DO NOT add a secondary strategy sentence.
+
+# - When the rule is triggered, use ONLY this sentence:
+#   "If your objective is to boost rank, you may continue with the current pricing setup but monitor performance closely."
+
+# IMPORTANT CLARIFICATION:
+# - The PRIMARY action (Line 5) represents the default, margin-optimal recommendation.
+# - The SECONDARY strategy (Line 6) represents an alternative rank-first option and MAY contradict the primary action.
+# - Do NOT weaken or neutralize the primary action to make it consistent with the secondary strategy.
+
+# -----------------------------
+# Inventory alert rules (Line 7 ONLY, OPTIONAL)
+# -----------------------------
+# - NEVER create a separate bullet for inventory.
+# - Inventory sentence must start with "Inventory:".
+# - If no inventory issue exists, DO NOT add Line 7.
+# - Do NOT repeat product name.
+# - Do NOT mention inventory anywhere else.
+
+# -----------------------------
+# Allowed action sentences (Line 5 only)
+# -----------------------------
+# Use exactly ONE of these sentences, verbatim:
+# - "Check ads and visibility campaigns for this product."
+# - "Review the visibility setup for this product."
+# - "Reduce ASP slightly to improve traction."
+# - "Increase ASP slightly to strengthen margins."
+# - "Maintain current ASP and monitor performance."
+# - "Monitor performance closely for now."
+# - "Check Amazon fees or taxes for this product as profit is down despite growth."
+
+# -----------------------------
+# Allowed secondary strategy sentences (Line 6 only, OPTIONAL)
+# -----------------------------
+# Use exactly ONE of these sentences, verbatim:
+# - "If your objective is to boost rank, you may continue with the current pricing setup but monitor performance closely."
+
+# -----------------------------
+# Allowed inventory alerts (Line 7 only, OPTIONAL)
+# -----------------------------
+# - "Inventory: Initiate inventory replenishment as current cover is below lead time."
+# - "Inventory: Push promotions or ads to clear around <aged_units> units of aged inventory and reduce storage costs."
+# - "Inventory: Amazon has flagged this SKU for inventory optimization; review the recommendation in Seller Central."
+
+# Ignore:
+# - Any row where product_name is "Total" or contains "Total".
+
+# OUTPUT FORMAT
+# Return ONLY valid JSON:
+
+# {{
+#   "summary_bullets": [...],
+#   "action_bullets": ["...", "...", "...", "...", "..."]
+# }}
+
+# DATA
+# {data_block}
+# """
+
+#     try:
+#         ai_response = oa_client.chat.completions.create(
+#             model="gpt-4o",
+#             messages=[
+#                 {
+#                     "role": "system",
+#                     "content": (
+#                         "Return only valid JSON. "
+#                         "You are a senior ecommerce analyst. "
+#                         "Return only valid JSON with summary_bullets and action_bullets. "
+#                         "Each action_bullet must follow the exact layout: "
+#                         "Product name line, blank line, 2-sentence metrics paragraph, blank line, "
+#                         "one primary action line, optional secondary strategy line, optional inventory line."
+#                     ),
+#                 },
+#                 {"role": "user", "content": prompt},
+#             ],
+#             max_tokens=900,
+#             temperature=0,
+#             response_format={"type": "json_object"},
+#         )
+
+#         parsed = json.loads(ai_response.choices[0].message.content.strip())
+        
+#         def _fix_action_bullet_format(s: str) -> str:
+#             """
+#             Ensures:
+#             - Metrics stay together
+#             - Primary action first
+#             - Secondary strategy next (if any)
+#             - Inventory always last
+#             """
+
+#             if not s:
+#                 return s
+
+#             # Normalize Inventory line
+#             s = s.replace(".Inventory:", ".\n\nInventory:")
+#             s = s.replace("Inventory:", "\n\nInventory:")
+
+#             lines = [l.strip() for l in s.split("\n") if l.strip()]
+#             if not lines:
+#                 return s
+
+#             product = lines[0]
+#             rest = lines[1:]
+
+#             inventory = [
+#                 l for l in rest
+#                 if l.lower().startswith("inventory")
+#             ]
+
+#             primary_action = [
+#                 l for l in rest
+#                 if l.lower().startswith(
+#                     ("check ", "review ", "reduce ", "increase ", "maintain ", "monitor ")
+#                 )
+#             ]
+
+#             secondary_action = [
+#                 l for l in rest
+#                 if l.lower().startswith(
+#                     ("if your objective", "if maintaining")
+#                 )
+#             ]
+
+#             metrics = [
+#                 l for l in rest
+#                 if l not in inventory
+#                 and l not in primary_action
+#                 and l not in secondary_action
+#             ]
+
+#             final_lines = [product, ""]
+
+#             if metrics:
+#                 final_lines.append(" ".join(metrics))
+#                 final_lines.append("")
+
+#             if primary_action:
+#                 final_lines.append(primary_action[0])
+
+#             if secondary_action:
+#                 final_lines.append(secondary_action[0])
+
+#             if inventory:
+#                 final_lines.append(inventory[0])
+
+#             return "\n".join(final_lines)
+
+
+#         # ===============================
+#         # ENFORCE UNIQUE PRODUCTS + MAX ACTIONS
+#         # ===============================
+#         unique_actions = []
+#         seen_products = set()
+
+#         for b in parsed.get("action_bullets", []):
+#             text = str(b)
+#             first_line = text.split("\n")[0].strip().lower()
+
+#             if first_line in seen_products:
+#                 continue
+
+#             seen_products.add(first_line)
+#             unique_actions.append(_fix_action_bullet_format(text))
+
+#             if len(unique_actions) == max_actions:
+#                 break
+
+#         return {
+#             "summary_bullets": [
+#                 str(b).strip()
+#                 for b in parsed.get("summary_bullets", [])
+#             ][:5],
+#             "action_bullets": unique_actions,
+#         }
+
+
+#     except OpenAIError as e:
+#         # 🔴 CREDIT / BILLING / QUOTA ERROR → NO FALLBACK
+#         print("[AI BILLING ERROR]", e)
+
+#         return {
+#             "summary_bullets": [
+#                 "AI insights are temporarily unavailable.",
+#                 "Please contact us at care@phormula.io for assistance."
+#             ],
+#             "action_bullets": []
+#         }
+
+#     except Exception as e:
+#         # 🟡 NON-BILLING FAILURE → USE FALLBACK
+#         print("[AI ERROR] Falling back to rule-based summary:", e)
+
+#     # ===============================
+#     # FALLBACK (NON-BILLING ONLY)
+#     # ===============================
+#     fallback_summary = _build_rule_based_summary(
+#         prev_totals,
+#         curr_totals,
+#         top_80_skus,
+#         new_reviving,
+#         prev_label,
+#         curr_label,
+#     )
+
+#     fallback_actions = [
+#         "Product name - Key SKUs\n\nUnits and sales have softened this period. The sales mix has also weakened, reducing contribution.\n\nReview the visibility setup for this product.",
+#         "Product name - Key SKUs\n\nPricing changes appear to be impacting volume and sales movement. The sales mix change indicates shifting contribution.\n\nMaintain current ASP and monitor performance.",
+#         "Product name - Key SKUs\n\nSome high-mix SKUs show volume decline impacting sales outcomes. The sales mix has moved down, reducing contribution.\n\nCheck ads and visibility campaigns for this product.",
+#         "Product name - Key SKUs\n\nProfitability is improving even where sales are softer across some SKUs. The sales mix change shows contribution movement.\n\nMonitor performance closely for now.",
+#         "Product name - Key SKUs\n\nA few SKUs may need pricing support to improve traction. The sales mix indicates contribution shifts.\n\nReduce ASP slightly to improve traction.",
+#     ]
+
+#     return {
+#         "summary_bullets": fallback_summary,
+#         "action_bullets": fallback_actions[:5],
+#     }
+
+def safe0(x):
+    v = safe_float_local(x)
+    return v if v is not None else 0.0
+def pct_change_2(prev, curr):
+    prev = safe_float_local(prev)
+    curr = safe_float_local(curr)
+    if prev is None or prev == 0:
+        return None
+    return round(((curr - prev) / prev) * 100.0, 2)
+def _fmt_int(x):
+    x = safe_float_local(x)
+    if x is None:
+        x = 0
+    return f"{int(round(x))}"
+def _fmt_money(x, symbol, decimals=2):
+    x = safe_float_local(x)
+    if x is None:
+        x = 0.0
+    return f"{symbol}{x:,.{decimals}f}"
+def _dir_word_simple(p):
+    if p is None:
+        return "moved"
+    return "increased" if p > 0 else "decreased"
+
+def _overall_3_bullets(qty_prev, qty_curr, sales_prev, sales_curr, prof_prev, prof_curr, qty_pct, sales_pct, prof_pct, symbol):
+    uq = _dir_word_simple(qty_pct)
+    us = _dir_word_simple(sales_pct)
+    up = _dir_word_simple(prof_pct)
+    qp = f"{abs(qty_pct):.2f}%" if qty_pct is not None else "0.00%"
+    sp = f"{abs(sales_pct):.2f}%" if sales_pct is not None else "0.00%"
+    pp = f"{abs(prof_pct):.2f}%" if prof_pct is not None else "0.00%"
+    return [
+        f"Overall units {uq} from {_fmt_int(qty_prev)} to {_fmt_int(qty_curr)} by {qp}.",
+        f"Net sales {us} from {_fmt_money(sales_prev, symbol)} to {_fmt_money(sales_curr, symbol)} by {sp}.",
+        f"CM1 profit {up} from {_fmt_money(prof_prev, symbol)} to {_fmt_money(prof_curr, symbol)} by {pp}.",
+    ]
+
+
 def build_ai_summary(
     prev_totals,
     curr_totals,
@@ -1792,16 +2425,13 @@ def build_ai_summary(
     prev_label,
     curr_label,
     sku_context=None,
-    inventory_signals=None,   # ✅ NEW (but optional)
-    prev_fee_totals=None,     # ✅ NEW
+    inventory_signals=None,
+    prev_fee_totals=None,
     curr_fee_totals=None,
     estimated_storage_cost_next_month=0.0,
-    currency=None,  # ✅ NEW
-
+    currency=None,
 ):
-    def safe0(x):
-        v = safe_float_local(x)
-        return v if v is not None else 0.0
+    
 
     # Overall numeric values
     qty_prev = safe0(prev_totals.get("quantity"))
@@ -1819,11 +2449,11 @@ def build_ai_summary(
     up_prev_idx = safe0(prev_totals.get("unit_wise_profitability"))
     up_curr_idx = safe0(curr_totals.get("unit_wise_profitability"))
 
-    qty_pct = pct_change(qty_prev, qty_curr)
-    sales_pct = pct_change(sales_prev, sales_curr)
-    prof_pct = pct_change(prof_prev, prof_curr)
-    asp_pct = pct_change(asp_prev, asp_curr)
-    up_pct = pct_change(up_prev_idx, up_curr_idx)
+    qty_pct   = pct_change_2(qty_prev, qty_curr)
+    sales_pct = pct_change_2(sales_prev, sales_curr)
+    prof_pct  = pct_change_2(prof_prev, prof_curr)
+    asp_pct   = pct_change_2(asp_prev, asp_curr)
+    up_pct    = pct_change_2(up_prev_idx, up_curr_idx)
 
     # -------------------------------
     # Platform fees + Advertising (SUMMARY ONLY)
@@ -1837,9 +2467,10 @@ def build_ai_summary(
     total_cost_prev = (pf_prev or 0.0) + (ad_prev or 0.0)
     total_cost_curr = (pf_curr or 0.0) + (ad_curr or 0.0)
 
-    cost_pct = pct_change(total_cost_prev, total_cost_curr)
-    pf_pct = pct_change(pf_prev, pf_curr)
-    ad_pct = pct_change(ad_prev, ad_curr)
+    cost_pct = pct_change_2(total_cost_prev, total_cost_curr)
+    pf_pct   = pct_change_2(pf_prev, pf_curr)
+    ad_pct   = pct_change_2(ad_prev, ad_curr)
+
 
     # -------------------------------
 
@@ -1847,6 +2478,13 @@ def build_ai_summary(
     # ROAS (SUMMARY ONLY)
     # ROAS = (Advertising Cost / Net Sales) * 100
     # -------------------------------
+    # def calc_roas(ad_cost, net_sales):
+    #     ad_cost = safe_float_local(ad_cost)
+    #     net_sales = safe_float_local(net_sales)
+    #     if not ad_cost or not net_sales:
+    #         return 0.0
+    #     return round((ad_cost / net_sales) * 100.0, 2)
+
     def calc_roas(ad_cost, net_sales):
         ad_cost = safe_float_local(ad_cost)
         net_sales = safe_float_local(net_sales)
@@ -2215,20 +2853,11 @@ DATA
         )
 
         parsed = json.loads(ai_response.choices[0].message.content.strip())
-        
-        def _fix_action_bullet_format(s: str) -> str:
-            """
-            Ensures:
-            - Metrics stay together
-            - Primary action first
-            - Secondary strategy next (if any)
-            - Inventory always last
-            """
 
+        def _fix_action_bullet_format(s: str) -> str:
             if not s:
                 return s
 
-            # Normalize Inventory line
             s = s.replace(".Inventory:", ".\n\nInventory:")
             s = s.replace("Inventory:", "\n\nInventory:")
 
@@ -2239,10 +2868,7 @@ DATA
             product = lines[0]
             rest = lines[1:]
 
-            inventory = [
-                l for l in rest
-                if l.lower().startswith("inventory")
-            ]
+            inventory = [l for l in rest if l.lower().startswith("inventory")]
 
             primary_action = [
                 l for l in rest
@@ -2253,9 +2879,7 @@ DATA
 
             secondary_action = [
                 l for l in rest
-                if l.lower().startswith(
-                    ("if your objective", "if maintaining")
-                )
+                if l.lower().startswith(("if your objective", "if maintaining"))
             ]
 
             metrics = [
@@ -2282,39 +2906,52 @@ DATA
 
             return "\n".join(final_lines)
 
-
-        # ===============================
-        # ENFORCE UNIQUE PRODUCTS + MAX ACTIONS
-        # ===============================
+        # -------------------------------
+        # ✅ Enforce unique products + max actions (unchanged)
+        # -------------------------------
         unique_actions = []
         seen_products = set()
 
         for b in parsed.get("action_bullets", []):
-            text = str(b)
-            first_line = text.split("\n")[0].strip().lower()
-
+            text_b = str(b)
+            first_line = text_b.split("\n")[0].strip().lower()
             if first_line in seen_products:
                 continue
-
             seen_products.add(first_line)
-            unique_actions.append(_fix_action_bullet_format(text))
-
+            unique_actions.append(_fix_action_bullet_format(text_b))
             if len(unique_actions) == max_actions:
                 break
 
+        # -------------------------------
+        # ✅ SUMMARY OVERRIDE: split overall into 3 bullets
+        # -------------------------------
+        ai_bullets = [
+            str(b).strip()
+            for b in parsed.get("summary_bullets", [])
+            if str(b).strip()
+        ]
+
+        symbol = (currency or {}).get("symbol") or ""
+        overall_bullets = _overall_3_bullets(
+            qty_prev, qty_curr,
+            sales_prev, sales_curr,
+            prof_prev, prof_curr,
+            qty_pct, sales_pct, prof_pct,
+            symbol
+        )
+
+        # drop AI's first bullet (usually the combined overall line)
+        rest = ai_bullets[1:] if len(ai_bullets) > 0 else []
+
+        final_summary = (overall_bullets + rest)[:6]
+
         return {
-            "summary_bullets": [
-                str(b).strip()
-                for b in parsed.get("summary_bullets", [])
-            ][:5],
+            "summary_bullets": final_summary,
             "action_bullets": unique_actions,
         }
 
-
     except OpenAIError as e:
-        # 🔴 CREDIT / BILLING / QUOTA ERROR → NO FALLBACK
         print("[AI BILLING ERROR]", e)
-
         return {
             "summary_bullets": [
                 "AI insights are temporarily unavailable.",
@@ -2324,12 +2961,11 @@ DATA
         }
 
     except Exception as e:
-        # 🟡 NON-BILLING FAILURE → USE FALLBACK
         print("[AI ERROR] Falling back to rule-based summary:", e)
 
-    # ===============================
-    # FALLBACK (NON-BILLING ONLY)
-    # ===============================
+    # -------------------------------
+    # FALLBACK (non-billing)
+    # -------------------------------
     fallback_summary = _build_rule_based_summary(
         prev_totals,
         curr_totals,
@@ -2338,6 +2974,9 @@ DATA
         prev_label,
         curr_label,
     )
+
+    # ✅ also enforce 3-bullet overall in fallback
+    fallback_summary = (_overall_3_bullets(qty_pct, sales_pct, prof_pct) + fallback_summary[1:])[:6]
 
     fallback_actions = [
         "Product name - Key SKUs\n\nUnits and sales have softened this period. The sales mix has also weakened, reducing contribution.\n\nReview the visibility setup for this product.",
@@ -2351,6 +2990,7 @@ DATA
         "summary_bullets": fallback_summary,
         "action_bullets": fallback_actions[:5],
     }
+
 
 
 #-----------------------------------------------------------------------------

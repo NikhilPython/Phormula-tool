@@ -148,17 +148,233 @@ def uk_tax(
     want_breakdown: Optional[bool] = None,
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
+<<<<<<< HEAD
+=======
+    """
+    UK Digital Tax (NON-REFUND ONLY)
+
+    Includes:
+      - product_sales_tax
+      - shipping_credits_tax
+      - giftwrap_credits_tax
+      - promotional_rebates_tax
+      - marketplace_facilitator_tax
+
+    Excludes:
+      - ALL refund rows (hard filtered)
+
+    Notes:
+      - No abs()
+      - Excel-style signs preserved
+      - Safe even if caller passes dirty DF
+    """
+>>>>>>> origin
 
     parts = [
         "product_sales_tax",
         "shipping_credits_tax",
         "giftwrap_credits_tax",
         "promotional_rebates_tax",
+<<<<<<< HEAD
     ]
 
     # ---- TOTAL (all rows) ----
     total = float(sum(safe_num(df.get(c, 0.0)).sum() for c in parts))
 
+=======
+        "marketplace_facilitator_tax",
+    ]
+
+    # --------------------------------------------------
+    # HARD FILTER: REMOVE REFUND ROWS (NON-NEGOTIABLE)
+    # --------------------------------------------------
+    if "type" in df.columns:
+        type_str = (
+            df["type"]
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+        )
+        df_base = df.loc[~type_str.str.contains("refund", na=False)].copy()
+    else:
+        df_base = df.copy()
+
+    # --------------------------------------------------
+    # ENSURE NUMERIC COLUMNS EXIST
+    # --------------------------------------------------
+    for c in parts:
+        if c not in df_base.columns:
+            df_base[c] = 0.0
+        df_base[c] = pd.to_numeric(df_base[c], errors="coerce").fillna(0.0)
+
+    # --------------------------------------------------
+    # TOTAL (Excel-style, NO abs)
+    # --------------------------------------------------
+    total = float(sum(df_base[c].sum() for c in parts))
+
+    # --------------------------------------------------
+    # PER-SKU BREAKDOWN
+    # --------------------------------------------------
+    if "sku" not in df_base.columns:
+        return total, pd.DataFrame(columns=["sku", "__metric__", *parts]), parts
+
+    df_base["sku"] = df_base["sku"].astype(str).str.strip()
+    df_base = df_base[df_base["sku"].ne("") & df_base["sku"].ne("0")]
+
+    by = (
+        df_base
+        .groupby("sku", as_index=False)[parts]
+        .sum()
+    )
+
+    if by.empty:
+        return total, pd.DataFrame(columns=["sku", "__metric__", *parts]), parts
+
+    by["__metric__"] = by[parts].sum(axis=1)
+
+    return total, by[["sku", "__metric__", *parts]], parts
+
+
+def uk_credits(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = None,
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+    """
+    UK Credits (NET, Excel-matching)
+
+    Formula:
+      net_credits = non_refund_credits - abs(refund_credits)
+
+    Columns used:
+      - postage_credits
+      - gift_wrap_credits
+
+    Behaviour:
+      - Refund rows are included ONLY to subtract their magnitude
+      - Final output matches Excel total exactly (e.g. 363.97)
+    """
+
+    parts = [
+        "postage_credits",
+        "gift_wrap_credits",
+    ]
+
+    # ------------------------------------------------------------------
+    # Normalize type column
+    # ------------------------------------------------------------------
+    type_str = (
+        df.get("type", "")
+        .astype(str)
+        .str.strip()
+        .str.casefold()
+    )
+
+    refund_mask = type_str.str.contains("refund", na=False)
+
+    # ------------------------------------------------------------------
+    # NON-REFUND credits (as-is)
+    # ------------------------------------------------------------------
+    df_non_refund = df.loc[~refund_mask].copy()
+
+    non_refund_total = float(
+        sum(
+            safe_num(df_non_refund.get(c, 0.0)).sum()
+            for c in parts
+        )
+    )
+
+    # ------------------------------------------------------------------
+    # REFUND credits (negative → subtract ABS)
+    # ------------------------------------------------------------------
+    df_refund = df.loc[refund_mask].copy()
+
+    refund_total = float(
+        sum(
+            safe_num(df_refund.get(c, 0.0)).sum()
+            for c in parts
+        )
+    )
+
+    # refund_total is negative → subtract its magnitude
+    total = non_refund_total - abs(refund_total)
+
+    # ------------------------------------------------------------------
+    # PER-SKU BREAKDOWN (NET)
+    # ------------------------------------------------------------------
+    sku_col = "sku"
+    if sku_col not in df.columns:
+        return total, pd.DataFrame(columns=["sku", "__metric__", *parts]), parts
+
+    # Non-refund SKU credits
+    non_refund_by = (
+        df_non_refund
+        .groupby("sku", as_index=False)[parts]
+        .sum()
+    )
+
+    # Refund SKU credits
+    refund_by = (
+        df_refund
+        .groupby("sku", as_index=False)[parts]
+        .sum()
+    )
+
+    # Merge & compute net per SKU
+    by = non_refund_by.merge(
+        refund_by,
+        on="sku",
+        how="outer",
+        suffixes=("_non_refund", "_refund")
+    ).fillna(0.0)
+
+    by["__metric__"] = (
+        by["postage_credits_non_refund"]
+        + by["gift_wrap_credits_non_refund"]
+        - (
+            by["postage_credits_refund"].abs()
+            + by["gift_wrap_credits_refund"].abs()
+        )
+    )
+
+    # Optional: expose clean component columns
+    by["postage_credits"] = (
+        by["postage_credits_non_refund"]
+        - by["postage_credits_refund"].abs()
+    )
+    by["gift_wrap_credits"] = (
+        by["gift_wrap_credits_non_refund"]
+        - by["gift_wrap_credits_refund"].abs()
+    )
+
+    return total, by[["sku", "__metric__", *parts]], parts
+
+
+def uk_gross_sales(
+    df: pd.DataFrame,
+    *,
+    country: Optional[str] = None,
+    want_breakdown: Optional[bool] = None,
+    **kwargs
+) -> Tuple[float, pd.DataFrame, List[str]]:
+
+    parts = [
+        "product_sales",
+        "product_sales_tax",
+        "postage_credits",
+        "gift_wrap_credits",
+        "shipping_credits_tax",
+        "giftwrap_credits_tax",
+        "promotional_rebates",
+        "promotional_rebates_tax",
+    ]
+
+    # ---- TOTAL (all rows) ----
+    total = float(sum(safe_num(df.get(c, 0.0)).sum() for c in parts))
+
+>>>>>>> origin
     # ---- PER SKU ----
     sku_df = df.copy()
     if "sku" in sku_df.columns:
@@ -174,8 +390,12 @@ def uk_tax(
     return total, by[["sku", "__metric__", *parts]], parts
 
 
+<<<<<<< HEAD
 # Credits (UK) = postage_credits + gift_wrap_credits
 def uk_credits(
+=======
+def uk_tax_and_credits(
+>>>>>>> origin
     df: pd.DataFrame,
     *,
     country: Optional[str] = None,
@@ -184,6 +404,7 @@ def uk_credits(
 ) -> Tuple[float, pd.DataFrame, List[str]]:
 
     parts = [
+<<<<<<< HEAD
         "postage_credits",
         "gift_wrap_credits",
     ]
@@ -258,6 +479,26 @@ def uk_gross_sales(
     total = float(sum(safe_num(df.get(c, 0.0)).sum() for c in parts))
 
     # ---- PER SKU ----
+=======
+        "product_sales_tax",
+        "postage_credits",
+        "gift_wrap_credits",
+        "giftwrap_credits_tax",
+        "shipping_credits_tax",
+        "promotional_rebates_tax",
+    ]
+
+    # -----------------------------
+    # TOTAL (ALL ROWS, UK SCOPE)
+    # -----------------------------
+    total = float(
+        sum(safe_num(df.get(c, 0.0)).sum() for c in parts)
+    )
+
+    # -----------------------------
+    # PER-SKU BREAKDOWN
+    # -----------------------------
+>>>>>>> origin
     sku_df = df.copy()
     if "sku" in sku_df.columns:
         sku_df = sku_df.loc[sku_mask(sku_df)]
@@ -265,10 +506,15 @@ def uk_gross_sales(
     by = agg_by(sku_df, "sku", parts)
 
     if by.empty:
-        return 0.0, pd.DataFrame(columns=["sku", "__metric__", *parts]), parts
+        return (
+            0.0,
+            pd.DataFrame(columns=["sku", "__metric__", *parts]),
+            parts,
+        )
 
     by["__metric__"] = by[parts].sum(axis=1)
 
+<<<<<<< HEAD
     return total, by[["sku", "__metric__", *parts]], parts
 
 
@@ -314,6 +560,8 @@ def uk_tax_and_credits(
 
     by["__metric__"] = by[parts].sum(axis=1)
 
+=======
+>>>>>>> origin
     per_sku = by[["sku", "__metric__", *parts]]
 
     return total, per_sku, parts
@@ -327,11 +575,35 @@ def uk_cogs(
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
 
+<<<<<<< HEAD
     parts = ["cost_of_unit_sold"]
 
     # -----------------------------
     # PER-SKU (filtered)
     # -----------------------------
+=======
+    # Prefer dashboard-aligned computation when possible
+    if "price_in_gbp" in df.columns and "total_quantity" in df.columns:
+        w = df.copy()
+        if "sku" in w.columns:
+            w["sku"] = w["sku"].astype(str).str.strip()
+            w = w.loc[sku_mask(w)]
+        else:
+            return 0.0, pd.DataFrame(columns=["sku", "__metric__", "cogs"]), ["cogs"]
+
+        w["price_in_gbp"] = safe_num(w["price_in_gbp"])
+        w["total_quantity"] = safe_num(w["total_quantity"])
+
+        by = w.groupby("sku", as_index=False)[["price_in_gbp", "total_quantity"]].mean()
+        by["cogs"] = (by["price_in_gbp"] * by["total_quantity"]).abs()
+        by["__metric__"] = by["cogs"]
+
+        per_sku = by[["sku", "__metric__", "cogs"]]
+        total = float(per_sku["__metric__"].sum())
+        return total, per_sku, ["cogs"]
+
+    # Fallback to old behavior
+>>>>>>> origin
     sku_df = df.copy()
     if "sku" in sku_df.columns:
         sku_df = sku_df.loc[sku_mask(sku_df)]
@@ -342,17 +614,25 @@ def uk_cogs(
     sku_df["cost_of_unit_sold"] = safe_num(sku_df["cost_of_unit_sold"])
 
     by = agg_by(sku_df, "sku", ["cost_of_unit_sold"])
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin
     if by.empty:
         return 0.0, pd.DataFrame(columns=["sku", "__metric__", "cogs"]), ["cogs"]
 
     by["cogs"] = by["cost_of_unit_sold"].abs()
     by["__metric__"] = by["cogs"]
+<<<<<<< HEAD
 
     per_sku = by[["sku", "__metric__", "cogs"]]
 
     total = float(per_sku["__metric__"].sum())
 
+=======
+    per_sku = by[["sku", "__metric__", "cogs"]]
+    total = float(per_sku["__metric__"].sum())
+>>>>>>> origin
     return total, per_sku, ["cogs"]
 
 
@@ -422,6 +702,7 @@ def uk_profit(
     *,
     country: str | None = None,
     want_breakdown: bool | None = None,
+<<<<<<< HEAD
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
 
@@ -441,10 +722,36 @@ def uk_profit(
         df, country=country, want_breakdown=want_breakdown, **kwargs
     )
 
+=======
+    debug: bool = True,
+    **kwargs
+) -> tuple[float, pd.DataFrame, list[str]]:
+    """
+    FINAL UK PROFIT (Dashboard & Excel Aligned)
+
+    Formula (SOURCE OF TRUTH):
+        profit = sales
+               - cogs
+               - amazon_fee
+               - net_taxes
+               + net_credits
+    """
+
+    # -----------------------------
+    # BASE COMPONENTS
+    # -----------------------------
+    sales_total,  sales_by,  _ = uk_sales(df, country=country)
+    cogs_total,   cogs_by,   _ = uk_cogs(df, country=country)
+    fee_total,    fee_by,    _ = uk_amazon_fee(df, country=country)
+    tax_total,    tax_by,    _ = uk_tax(df, country=country)
+    credit_total, credit_by, _ = uk_credits(df, country=country)
+
+>>>>>>> origin
     # -----------------------------
     # MERGE PER-SKU
     # -----------------------------
     per = (
+<<<<<<< HEAD
         (sales_by[["sku", "__metric__"]]
          .rename(columns={"__metric__": "sales"})
          if not sales_by.empty else pd.DataFrame(columns=["sku", "sales"]))
@@ -466,29 +773,73 @@ def uk_profit(
             if not tax_credits_by.empty else pd.DataFrame(columns=["sku", "tax_and_credits"]),
             on="sku", how="outer"
         )
+=======
+        sales_by[["sku", "__metric__"]]
+        .rename(columns={"__metric__": "sales"})
+        .merge(
+            cogs_by[["sku", "__metric__"]].rename(columns={"__metric__": "cogs"}),
+            on="sku", how="outer"
+        )
+        .merge(
+            fee_by[["sku", "__metric__"]].rename(columns={"__metric__": "amazon_fee"}),
+            on="sku", how="outer"
+        )
+        .merge(
+            tax_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_taxes"}),
+            on="sku", how="outer"
+        )
+        .merge(
+            credit_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_credits"}),
+            on="sku", how="outer"
+        )
+>>>>>>> origin
         .fillna(0.0)
     )
 
     # -----------------------------
     # NUMERIC SAFETY
     # -----------------------------
+<<<<<<< HEAD
     for c in ("sales", "cogs", "amazon_fee", "tax_and_credits"):
         if c in per.columns:
             per[c] = safe_num(per[c])
 
     # -----------------------------
     # FINAL PROFIT
+=======
+    for c in ("sales", "cogs", "amazon_fee", "net_taxes", "net_credits"):
+        per[c] = safe_num(per[c])
+
+    # -----------------------------
+    # PROFIT (PER SKU)
+>>>>>>> origin
     # -----------------------------
     per["__metric__"] = (
         per["sales"].abs()
         - per["cogs"]
         - per["amazon_fee"]
+<<<<<<< HEAD
         - per["tax_and_credits"]
+=======
+        - per["net_taxes"]
+        + per["net_credits"]
+>>>>>>> origin
     )
 
     total = float(per["__metric__"].sum())
 
+<<<<<<< HEAD
     comps = ["sales", "cogs", "amazon_fee", "tax_and_credits"]
+=======
+    
+    comps = [
+        "sales",
+        "cogs",
+        "amazon_fee",
+        "net_taxes",
+        "net_credits",
+    ]
+>>>>>>> origin
 
     return total, per[["sku", "__metric__", *comps]], comps
 
