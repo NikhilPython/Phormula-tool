@@ -540,7 +540,7 @@ REIMBURSEMENT SUMMARY RULE (CRITICAL):
 MISC TRANSACTION RULE (CRITICAL):
 - misc_transaction represents miscellaneous/unallocated transactions that do not have SKU/product breakdown.
 - If misc_transaction exists and its current value is non-zero, include exactly 1 bullet in ## SUMMARY:
-  "Miscellaneous transactions (no SKU breakdown): <currency_symbol><misc_transaction_current>."
+  "Miscellaneous transactions: <currency_symbol><misc_transaction_current>."
 - Do NOT mention misc_transaction in PRODUCT INSIGHTS (because it is not SKU-level).
 
 
