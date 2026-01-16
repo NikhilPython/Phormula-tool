@@ -2,6 +2,7 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 import os  # adjust import if path differs
 from app.utils.formulas_utils import uk_sales
+import calendar
 
 
 
@@ -102,7 +103,6 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
     if not table_exists(conn, table):
         return None
 
-    # 🔐 SELECT * intentionally for safety & future-proofing
     q = f"""
         SELECT *
         FROM {table}
@@ -129,7 +129,7 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
 
     rows = []
     for day, g in df.groupby("__day__", sort=True):
-        # ✅ Centralized net sales logic
+        # Centralized net sales logic
         net_sales_total, _, _ = uk_sales(g)
 
         units_total = float(g["__ship_qty__"].sum())
@@ -140,17 +140,33 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
             "units": units_total
         })
 
+    # Even if no rows (no activity), still return full month with zeros
+    last_day = calendar.monthrange(year, month)[1]
+    full_days = list(range(1, last_day + 1))
+
     if not rows:
-        return None
+        return {
+            "xType": "day",
+            "x": full_days,
+            "net_sales": [0.0] * len(full_days),
+            "units": [0.0] * len(full_days),
+        }
 
     out = pd.DataFrame(rows)
     out["day_num"] = pd.to_datetime(out["day"]).dt.day
 
+    # Create maps and pad missing days with 0
+    ns_map = dict(zip(out["day_num"].tolist(), out["net_sales"].tolist()))
+    un_map = dict(zip(out["day_num"].tolist(), out["units"].tolist()))
+
+    net_sales_full = [float(ns_map.get(d, 0.0)) for d in full_days]
+    units_full = [float(un_map.get(d, 0.0)) for d in full_days]
+
     return {
         "xType": "day",
-        "x": out["day_num"].tolist(),
-        "net_sales": out["net_sales"].tolist(),
-        "units": out["units"].tolist(),
+        "x": full_days,
+        "net_sales": net_sales_full,
+        "units": units_full,
     }
 
 def fetch_month_totals(conn, user_id, country, month, year):
@@ -211,6 +227,48 @@ def fetch_monthwise_series(conn, user_id, country, months, year):
 
 # ---------- MAIN FUNCTION ----------
 
+# def get_performance_trend(user_id, country, period, timeline, year):
+#     targets = build_targets(period, timeline, year)
+
+#     result = {
+#         "xType": None,
+#         "x": [],          # only used for monthly daily chart
+#         "series": []
+#     }
+
+#     with phormula_engine.connect() as conn:
+#         for t in targets:
+#             if t["type"] == "monthly":
+#                 data = fetch_monthly_daily(conn, user_id, country, t["month"], t["year"])
+
+#             elif t["type"] == "quarterly":
+#                 months = QUARTER_MONTHS[t["quarter"]]
+#                 data = fetch_monthwise_series(conn, user_id, country, months, t["year"])
+
+#             else:  # yearly
+#                 data = fetch_monthwise_series(conn, user_id, country, range(1, 13), t["year"])
+
+#             if not data:
+#                 continue
+
+#             # Set xType once
+#             if result["xType"] is None:
+#                 result["xType"] = data["xType"]
+
+#             # ✅ Only monthly needs x-axis list (days 1..N)
+#             if data["xType"] == "day" and not result["x"]:
+#                 result["x"] = data["x"]
+
+#             result["series"].append({
+#                 "label": t["label"],
+#                 "net_sales": data["net_sales"],  # for month charts: this is a dict {"Feb": 123}
+#                 "units": data["units"],          # for month charts: dict {"Feb": 45}
+#             })
+
+#     if result["xType"] is None:
+#         result["xType"] = "day" if period == "monthly" else "month"
+
+#     return result
 def get_performance_trend(user_id, country, period, timeline, year):
     targets = build_targets(period, timeline, year)
 
@@ -220,36 +278,63 @@ def get_performance_trend(user_id, country, period, timeline, year):
         "series": []
     }
 
+    period_norm = period.lower().strip()
+
     with phormula_engine.connect() as conn:
+        # ✅ For monthly: force a common x-axis = 1..max_days among the compared months
+        max_days = None
+        if period_norm == "monthly":
+            days = []
+            for t in targets:
+                if t.get("type") == "monthly":
+                    days.append(calendar.monthrange(t["year"], t["month"])[1])
+
+            if days:
+                max_days = max(days)
+                result["xType"] = "day"
+                result["x"] = list(range(1, max_days + 1))
+
         for t in targets:
+            data = None
+
             if t["type"] == "monthly":
                 data = fetch_monthly_daily(conn, user_id, country, t["month"], t["year"])
+
+                if not data:
+                    continue
+
+                # ✅ Pad this month's series to max_days so nothing gets truncated
+                if max_days is not None:
+                    pad_len = max_days - len(data.get("x", []))
+                    if pad_len > 0:
+                        data["net_sales"] = list(data["net_sales"]) + [0.0] * pad_len
+                        data["units"] = list(data["units"]) + [0.0] * pad_len
 
             elif t["type"] == "quarterly":
                 months = QUARTER_MONTHS[t["quarter"]]
                 data = fetch_monthwise_series(conn, user_id, country, months, t["year"])
+                if not data:
+                    continue
 
             else:  # yearly
                 data = fetch_monthwise_series(conn, user_id, country, range(1, 13), t["year"])
+                if not data:
+                    continue
 
-            if not data:
-                continue
-
-            # Set xType once
+            # Set xType once (quarterly/yearly path)
             if result["xType"] is None:
                 result["xType"] = data["xType"]
 
-            # ✅ Only monthly needs x-axis list (days 1..N)
-            if data["xType"] == "day" and not result["x"]:
-                result["x"] = data["x"]
+            # ✅ For monthly: we already set result["x"] above, don’t overwrite it
+            # ✅ For other types: no x list needed
 
             result["series"].append({
                 "label": t["label"],
-                "net_sales": data["net_sales"],  # for month charts: this is a dict {"Feb": 123}
-                "units": data["units"],          # for month charts: dict {"Feb": 45}
+                "net_sales": data["net_sales"],
+                "units": data["units"],
             })
 
     if result["xType"] is None:
-        result["xType"] = "day" if period == "monthly" else "month"
+        result["xType"] = "day" if period_norm == "monthly" else "month"
 
     return result
