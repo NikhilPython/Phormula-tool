@@ -320,6 +320,7 @@ def get_user_data():
         return jsonify({'error': 'User not found'}), 404
 
     return jsonify({
+         'name': user.name,
         'company_name': user.company_name,
         'brand_name': user.brand_name,
         'email': user.email,
@@ -591,6 +592,7 @@ def profileupdate():
     data = request.get_json(silent=True) or {}
 
     # ---------- SAFE FIELD UPDATES ----------
+    user.name = data.get('name', user.name) 
     user.email = data.get('email', user.email)
     user.phone_number = data.get('phone_number', user.phone_number)
     user.annual_sales_range = data.get('annual_sales_range', user.annual_sales_range)
