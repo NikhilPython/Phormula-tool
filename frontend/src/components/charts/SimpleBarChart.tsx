@@ -42,7 +42,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
 
   // ✅ color helpers
   const currentColors = colors.length ? colors : "#75BBDA";
-  const prevColors = "#9CA3AF"; // grey for last month bars
+  const prevColors = "#D9D9D9"; // grey for last month bars
 
   const data = {
     labels,
