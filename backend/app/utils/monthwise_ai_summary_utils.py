@@ -507,13 +507,13 @@ METRIC INTERPRETATION RULES (CRITICAL):
 - The following metrics DO NOT have product-level meaning and must be treated as OVERALL ONLY:
   platform_fee, platformfeenew, platform_fee_inventory_storage,
   visible_ads, dealsvouchar_ads, advertising_total,
-  cm2_profit, cm2_profit_percentage, acos
+  cm2_profit, cm2_profit_percentage, acos, misc_transaction
 - Never attribute the above metrics to individual SKUs in insights or actions.
 
 ACOS SUMMARY RULE (CRITICAL):
 - ACOS must be mentioned ONLY in the SUMMARY section.
 - Treat ACOS strictly as an OVERALL efficiency metric.
-- Describe ACOS movement using percentage points (e.g., "ACOS increased by 2.4 points").
+- Describe ACOS movement using percentage (e.g., "ACOS increased by 2.4 percentage").
 - Use MoM language for monthly/quarterly periods and YoY language for yearly periods.
 - Do NOT describe ACOS as growth or decline in percentage terms.
 - Do NOT mention ACOS in PRODUCT INSIGHTS, RECOMMENDATIONS, or INVENTORY sections.
@@ -536,6 +536,13 @@ REIMBURSEMENT SUMMARY RULE (CRITICAL):
   "Reimbursements for lost inventory: <currency_symbol><inventory_lost> received."
 - Do NOT treat this as a negative cost or loss.
 - Do NOT mention reimbursements in PRODUCT INSIGHTS.
+
+MISC TRANSACTION RULE (CRITICAL):
+- misc_transaction represents miscellaneous/unallocated transactions that do not have SKU/product breakdown.
+- If misc_transaction exists and its current value is non-zero, include exactly 1 bullet in ## SUMMARY:
+  "Miscellaneous transactions (no SKU breakdown): <currency_symbol><misc_transaction_current>."
+- Do NOT mention misc_transaction in PRODUCT INSIGHTS (because it is not SKU-level).
+
 
 
 SPECIAL PRODUCT LOGIC:
@@ -629,7 +636,7 @@ Examples of valid actions:
 - Monitor pricing on fast-growing SKUs to protect margin.
 - Review ad spend on SKUs where CM1 profit declined despite sales growth.
 - Investigate negative CM1 profit drivers for SKUs showing rising volume but declining profitability to prevent margin erosion.
-- Address aged or unfulfillable inventory exposure on low-performing SKUs to limit storage and write-off risk.
+- Address aged or unfulfillable inventory exposure on low-performing SKUs to limit storage and risk.
 
 ---
 
@@ -793,6 +800,7 @@ def get_or_create_summary(
         "advertising_total",
         "acos",
         "cm2_profit",
+        "misc_transaction",
     ]:
         v = _total_value(df_current_total, c)
         if v is not None:
@@ -844,6 +852,7 @@ def get_or_create_summary(
         "advertising_total",
         "acos",
         "cm2_profit",
+        "misc_transaction",
     ]:
         v = _total_value(df_prev_total, c)
         if v is not None:
@@ -883,6 +892,7 @@ def get_or_create_summary(
                 "advertising_total",
                 "acos",
                 "cm2_profit",
+                "misc_transaction",
             ]:
                 v = _total_value(df_yoy_total, c)
                 if v is not None:
@@ -901,6 +911,7 @@ def get_or_create_summary(
 
     ai_payload = {
         "period": f"{period} {timeline} {year}",
+        "country": str(country).lower(),
         "mom": mom,
         "yoy": yoy,
         "inventory_lost": inventory_lost,

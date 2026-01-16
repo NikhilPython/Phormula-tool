@@ -267,7 +267,6 @@ const extractBullets = (md: string | null | undefined): string[] => {
     .filter(Boolean);
 };
 const renderMarkdownInline = (text: string) => {
-  // convert **bold** → <strong>
   const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
   return { __html: html };
 };
