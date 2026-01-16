@@ -140,6 +140,43 @@ def _normalize_sku_col(df: pd.DataFrame) -> pd.DataFrame:
         df.rename(columns={"SKU": "sku"}, inplace=True)
     return df
 
+TOTAL_LABELS = {"total", "grand total", "overall", "all"}
+
+def _split_total_row(df: pd.DataFrame):
+    """
+    Returns: (detail_rows_df, total_row_df_or_empty)
+    """
+    if df.empty:
+        return df, pd.DataFrame()
+
+    df = _normalize_sku_col(df.copy())
+
+    if "sku" not in df.columns:
+        return df, pd.DataFrame()
+
+    sku_norm = df["sku"].astype(str).str.strip().str.lower()
+    is_total = sku_norm.isin(TOTAL_LABELS)
+
+    df_total = df[is_total].copy()
+    df_detail = df[~is_total].copy()
+
+    # if multiple total rows exist, keep just 1 to avoid double count
+    if not df_total.empty:
+        df_total = df_total.head(1)
+
+    return df_detail, df_total
+
+
+def _total_value(df_total: pd.DataFrame, col: str):
+    """
+    Returns float value from total row column if present else None
+    """
+    if df_total.empty or col not in df_total.columns:
+        return None
+    return float(pd.to_numeric(df_total[col], errors="coerce").fillna(0).iloc[0])
+
+
+
 METRIC_COLUMNS = {
     "quantity",
     "return_quantity",
@@ -494,6 +531,13 @@ REIMBURSEMENT LOGIC:
 - Treat this as cost recovery or credit.
 - Do NOT describe lost_total as a loss or negative event.
 
+REIMBURSEMENT SUMMARY RULE (CRITICAL):
+- If inventory_lost is present and > 0, include exactly 1 bullet in ## SUMMARY stating:
+  "Reimbursements for lost inventory: <currency_symbol><inventory_lost> received."
+- Do NOT treat this as a negative cost or loss.
+- Do NOT mention reimbursements in PRODUCT INSIGHTS.
+
+
 SPECIAL PRODUCT LOGIC:
 - If a Product appears in MoM data but NOT in YoY data, treat it as a **New / Reviving SKU**
 - Explicitly call this out in insights or actions
@@ -731,22 +775,41 @@ def get_or_create_summary(
 
     # ---------------- CURRENT PERIOD ----------------
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
+    df_current_detail, df_current_total = _split_total_row(df_current)
 
+    # 1) Build overall metrics from DETAIL rows (prevents double counting TOTAL)
     current = {}
-    if not df_current.empty:
-        for col in get_metric_columns(df_current):
+    if not df_current_detail.empty:
+        for col in get_metric_columns(df_current_detail):
             current[col.lower()] = round(
-                float(pd.to_numeric(df_current[col], errors="coerce").fillna(0).sum()), 2
+                float(pd.to_numeric(df_current_detail[col], errors="coerce").fillna(0).sum()), 2
             )
-    print("METRICS USED:", list(current.keys()))
-    sku_current = compute_sku_precalc(df_current)
 
-    inventory_lost = 0
-    if not df_current.empty:
-        for col in ["lost_total"]:
-            if col in df_current.columns:
-                inventory_lost = int(pd.to_numeric(df_current[col], errors="coerce").fillna(0).sum())
-                break
+    # 2) Override overall-only metrics from TOTAL row (because detail rows may be zero)
+    for c in [
+        "platform_fee",
+        "platformfeenew",
+        "platform_fee_inventory_storage",
+        "advertising_total",
+        "acos",
+        "cm2_profit",
+    ]:
+        v = _total_value(df_current_total, c)
+        if v is not None:
+            current[c] = round(v, 2)
+
+    print("METRICS USED:", list(current.keys()))
+
+    # 3) SKU breakdown MUST use DETAIL rows only (exclude TOTAL row)
+    sku_current = compute_sku_precalc(df_current_detail)
+
+    # 4) Reimbursements: take from TOTAL row if available, else detail sum
+    lost_total_val = _total_value(df_current_total, "lost_total")
+    if lost_total_val is None:
+        inventory_lost = round(abs(current.get("lost_total", 0.0)), 2)
+    else:
+        inventory_lost = round(abs(lost_total_val), 2)
+
 
     inventory_alerts = {}
 
@@ -764,18 +827,33 @@ def get_or_create_summary(
     (p_period, p_timeline, p_year), yoy_key = resolve_comparison(period, timeline, year)
 
     df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
+    df_prev_detail, df_prev_total = _split_total_row(df_prev)
 
     prev = {}
-    if not df_prev.empty:
-        for col in get_metric_columns(df_prev):
+    if not df_prev_detail.empty:
+        for col in get_metric_columns(df_prev_detail):
             prev[col.lower()] = round(
-                float(pd.to_numeric(df_prev[col], errors="coerce").fillna(0).sum()), 2
+                float(pd.to_numeric(df_prev_detail[col], errors="coerce").fillna(0).sum()), 2
             )
+
+    # override overall-only metrics from TOTAL row
+    for c in [
+        "platform_fee",
+        "platformfeenew",
+        "platform_fee_inventory_storage",
+        "advertising_total",
+        "acos",
+        "cm2_profit",
+    ]:
+        v = _total_value(df_prev_total, c)
+        if v is not None:
+            prev[c] = round(v, 2)
 
     mom = compare_metrics(current, prev)
 
-    sku_prev = compute_sku_precalc(df_prev)
+    sku_prev = compute_sku_precalc(df_prev_detail)
     sku_mom = compare_sku_metrics(sku_current, sku_prev)
+
 
     # ---------------- YOY (SAFE) ----------------
     yoy = None
@@ -786,17 +864,37 @@ def get_or_create_summary(
         df_yoy = fetch_precalc_table(user_id, country, y_period, y_timeline, y_year)
 
         if not df_yoy.empty:
-            yoy_base = {}
-            for col in get_metric_columns(df_yoy):
-                yoy_base[col.lower()] = round(
-                    float(pd.to_numeric(df_yoy[col], errors="coerce").fillna(0).sum()), 2
-                )
+            # 1) split total vs detail
+            df_yoy_detail, df_yoy_total = _split_total_row(df_yoy)
 
+            # 2) build yoy_base from DETAIL rows (prevents double count from TOTAL row)
+            yoy_base = {}
+            if not df_yoy_detail.empty:
+                for col in get_metric_columns(df_yoy_detail):
+                    yoy_base[col.lower()] = round(
+                        float(pd.to_numeric(df_yoy_detail[col], errors="coerce").fillna(0).sum()), 2
+                    )
+
+            # 3) override overall-only metrics from TOTAL row (because detail rows may be zero)
+            for c in [
+                "platform_fee",
+                "platformfeenew",
+                "platform_fee_inventory_storage",
+                "advertising_total",
+                "acos",
+                "cm2_profit",
+            ]:
+                v = _total_value(df_yoy_total, c)
+                if v is not None:
+                    yoy_base[c] = round(v, 2)
+
+            # 4) overall YoY compare
             yoy = compare_metrics(current, yoy_base)
 
+            # 5) SKU YoY compare must use DETAIL rows only (exclude total row)
             sku_yoy = compare_sku_metrics(
                 sku_current,
-                compute_sku_precalc(df_yoy)
+                compute_sku_precalc(df_yoy_detail)
             )
 
     # ---- everything below stays same (debug/ai/save/return) ----
