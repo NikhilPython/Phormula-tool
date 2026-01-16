@@ -1296,6 +1296,7 @@ class FormulaEngine:
 
 
      # ---------- country-aware components (patched US logic to match reference) ----------
+    
     def _credits_components(self, df: pd.DataFrame, ctx: Dict[str, Any]) -> Tuple[float, pd.DataFrame, pd.DataFrame, List[str]]:
         """
         US ONLY helper for credits.
