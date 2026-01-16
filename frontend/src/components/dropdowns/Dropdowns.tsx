@@ -23,13 +23,11 @@ import Loader from "@/components/loader/Loader";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-import type { ProfitChartExportApi, SkuExportPayload } from "@/lib/utils/exportTypes";
+import type { ProfitChartExportApi, SkuExportPayload, TrendChartExportApi } from "@/lib/utils/exportTypes";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import MonthEndBusinessSummaryCard from "./MonthEndBusinessSummaryCard";
 import RecommendationsCard from "./RecommendationsCard";
 import PerformanceTrendChart from "./PerformanceTrendChart";
-
-
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -473,7 +471,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [showNoDataOverlay, setShowNoDataOverlay] = useState(false);
   const [performanceTrend, setPerformanceTrend] = useState<PerformanceTrendPayload | null>(null);
   const [performanceTrendMetric, setPerformanceTrendMetric] = useState<"net_sales" | "units">("net_sales");
-
+  const [performanceTrendBase64, setPerformanceTrendBase64] = useState<string | null>(null);
+  const [trendExportApi, setTrendExportApi] = useState<TrendChartExportApi | null>(null);
   const [focusedChart, setFocusedChart] = useState<FocusedChart>(null);
 
   const toggleFocus = (which: Exclude<FocusedChart, null>) => {
@@ -511,6 +510,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setExpenseBreakdownPieBase64(null);
     setProductWiseCm1PieBase64(null);
     setPerformanceTrend(null);
+    setPerformanceTrendBase64(null);
+    setTrendExportApi(null);
   }, [range, selectedMonth, selectedQuarter, selectedYear]);
 
   useEffect(() => {
@@ -721,8 +722,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
 
-
-  // month comes in as lowercase from PeriodFiltersTable ("january", etc.)
   const handleMonthChange = (v: string) => {
     setSelectedMonth(v);
 
@@ -759,30 +758,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
-  // Initialize range & selections from incoming params
-  // useEffect(() => {
-  //   if (ranged === "QTD") {
-  //     setRange("quarterly");
-  //     const q = getQuarterFromMonth(month);
-  //     setSelectedQuarter(q); // Quarter | ""
-  //     setSelectedYear(year);
-  //   } else if (ranged === "MTD") {
-  //     setRange("monthly");
-  //     setSelectedMonth(month);
-  //     setSelectedYear(year);
-  //   } else if (ranged === "YTD") {
-  //     setRange("yearly");
-  //     setSelectedYear(year);
-  //   }
-  // }, [ranged, month, year]);
-
   useEffect(() => {
-    // ✅ Always open yearly by default
     setRange("yearly");
     setSelectedMonth("");
     setSelectedQuarter("");
 
-    // ✅ Default yearly year based on your historic rule
     const y = computeDefaultYearlyYear();
     setSelectedYear(y);
   }, []);
@@ -1294,22 +1274,139 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       let rowCursor = 1;
 
-      rowCursor = await addChartBlock(
+      const addTwoChartRow = async (
+        ws: ExcelJS.Worksheet,
+        wb: ExcelJS.Workbook,
+        left: { title: string; base64: string | null | undefined; width?: number },
+        right: { title: string; base64: string | null | undefined; width?: number },
+        startRow: number,
+        options?: {
+          leftCol?: number;      // 1-based
+          rightCol?: number;     // 1-based
+          pad?: number;
+          bgCols?: number;
+          gapRowsAfter?: number;
+          scale?: number;
+          skipCrop?: boolean;
+        }
+      ): Promise<number> => {
+        const leftCol = options?.leftCol ?? 1;
+        const rightCol = options?.rightCol ?? 16; // around mid-sheet
+        const pad = options?.pad ?? 2;
+        const bgCols = options?.bgCols ?? 30;
+        const gapRowsAfter = options?.gapRowsAfter ?? 2;
+        const scale = options?.scale ?? 2;
+        const skipCrop = options?.skipCrop ?? false;
+
+        // ---- Titles (same row)
+        ws.getRow(startRow).getCell(leftCol).value = left.title;
+        ws.getRow(startRow).getCell(leftCol).font = { bold: true, size: 14 };
+
+        ws.getRow(startRow).getCell(rightCol).value = right.title;
+        ws.getRow(startRow).getCell(rightCol).font = { bold: true, size: 14 };
+
+        // spacer row
+        ws.getRow(startRow + 1).getCell(1).value = "";
+
+        // helper: insert single chart at a column
+        const insertAt = async (base64: string | null | undefined, col: number, targetW: number) => {
+          if (!base64) return { finalH: 0, chartRows: 0 };
+
+          const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
+          if (!raw || raw.length < 5000) return { finalH: 0, chartRows: 0 };
+
+          let imgForJpeg = base64;
+
+          if (!skipCrop) {
+            const cropped = await cropPngBase64WithSize(base64, pad, {
+              whiteThreshold: 254,
+              minContentRatio: 0.0015,
+            });
+            imgForJpeg = `data:image/png;base64,${cropped.base64}`;
+          }
+
+          const jpeg = await toJpegBase64(imgForJpeg, 0.98, { scale, bg: "#FFFFFF" });
+
+          const finalW = targetW;
+          const finalH = Math.round((finalW * jpeg.h) / jpeg.w);
+          const chartRows = Math.ceil(finalH / 18) + 2;
+
+          const imageId = wb.addImage({ base64: jpeg.base64, extension: "jpeg" });
+
+          ws.addImage(imageId, {
+            tl: { col: col - 1, row: startRow + 1 }, // ExcelJS uses 0-based col/row in tl
+            ext: { width: finalW, height: finalH },
+            editAs: "oneCell",
+          });
+
+          return { finalH, chartRows };
+        };
+
+        // widths for each chart in a 2-col layout
+        const leftW = left.width ?? 520;
+        const rightW = right.width ?? 520;
+
+        const leftPlaced = await insertAt(left.base64, leftCol, leftW);
+        const rightPlaced = await insertAt(right.base64, rightCol, rightW);
+
+        const maxRows = Math.max(leftPlaced.chartRows, rightPlaced.chartRows, 10);
+
+        // ---- White background block for the whole row area
+        const bgStart = startRow + 1;
+        const bgEnd = bgStart + maxRows;
+
+        for (let r = bgStart; r <= bgEnd; r++) {
+          for (let c = 1; c <= bgCols; c++) {
+            ws.getRow(r).getCell(c).fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFFFFFFF" },
+            };
+          }
+        }
+
+        return bgEnd + gapRowsAfter;
+      };
+
+
+      // Row 1: Trend + PnL
+      rowCursor = await addTwoChartRow(
         wsGraphs,
         wb,
-        chartExportApi?.title || "Profitability Chart",
-        chartExportApi?.getChartBase64?.(),
+        {
+          title: trendExportApi?.title || "Performance Trend",
+          base64: trendExportApi?.getChartBase64?.(),
+          width: 520,
+        },
+        {
+          title: chartExportApi?.title || "Profitability Chart",
+          base64: chartExportApi?.getChartBase64?.(),
+          width: 520,
+        },
         rowCursor,
-        { width: 1000, pad: 2, bgCols: 30 }
+        { leftCol: 1, rightCol: 16, bgCols: 30, pad: 2, scale: 2 }
       );
 
-      rowCursor = await addChartBlock(wsGraphs, wb, "Expense Breakdown (Pie Chart)", expenseBreakdownPieBase64, rowCursor,
-        { width: 650, bgCols: 30, scale: 2, skipCrop: true } // ✅
+      // Row 2: Pie1 + Pie2
+      rowCursor = await addTwoChartRow(
+        wsGraphs,
+        wb,
+        {
+          title: "Expense Breakdown (Pie Chart)",
+          base64: expenseBreakdownPieBase64,
+          width: 520,
+        },
+        {
+          title: "Product Wise CM1 Breakdown (Pie Chart)",
+          base64: productWiseCm1PieBase64,
+          width: 520,
+        },
+        rowCursor,
+        { leftCol: 1, rightCol: 16, bgCols: 30, pad: 2, scale: 2, skipCrop: true }
       );
 
-      rowCursor = await addChartBlock(wsGraphs, wb, "Product Wise CM1 Breakdown (Pie Chart)", productWiseCm1PieBase64, rowCursor,
-        { width: 650, bgCols: 30, scale: 2, skipCrop: true } // ✅
-      );
+
+
 
 
       const buffer = await wb.xlsx.writeBuffer();
@@ -2075,6 +2172,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       currencySymbol={currencySymbol}
                       data={performanceTrend}
                       metric={performanceTrendMetric}
+                      onExportApiReady={setTrendExportApi}
                     />
                   </div>
                 </div>
@@ -2126,11 +2224,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         handleDownloadProfitabilityBundle();
                       }}
                       disabled={
+                        !trendExportApi ||              // ✅ ADD
                         !chartExportApi ||
                         !skuExportPayload ||
                         !expenseBreakdownPieBase64 ||
                         !productWiseCm1PieBase64
                       }
+
                     />
                   </div>
 
@@ -2201,103 +2301,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </>
       )}
 
-      {/* {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
-        <>
-          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
-         
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-baseline gap-2">
-                <PageBreadcrumb pageTitle="P&L - Amazon" variant="page" align="left" textSize="2xl" />
-
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().country}
-                </span>
-
-                {getPnLTitleParts().period ? (
-                  <>
-                    <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-                    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {getPnLTitleParts().period}
-                    </span>
-                  </>
-                ) : null}
-              </div>
-
-              <DownloadIconButton
-                onClick={handleDownloadProfitabilityBundle}
-                disabled={
-                  !chartExportApi ||
-                  !skuExportPayload ||
-                  !expenseBreakdownPieBase64 ||
-                  !productWiseCm1PieBase64
-                }
-              />
-            </div>
-
-
-            <GraphPage
-              range={range}
-              selectedQuarter={selectedQuarter}
-              selectedYear={selectedYear}
-              countryName={initialCountryName}
-              homeCurrency={globalHomeCurrency}
-              hideDownloadButton
-              onExportApiReady={setChartExportApi}
-              onNoDataChange={(noData) => {
-                console.log("🔥 [Quarterly] GraphPage → onNoDataChange:", noData);
-                setShowNoDataOverlay(noData);
-              }}
-            />
-          </div>
-
-
-          {allDropdownsSelected && (
-            <div id="business-summary" className="scroll-mt-[80px]">
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-              />
-            </div>
-          )}
-
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <CircleChart
-                range={range}
-                selectedQuarter={selectedQuarter}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setExpenseBreakdownPieBase64}
-              />
-            </div>
-            <div className="flex-1 min-w-[300px]">
-              <CMchartofsku
-                range={range}
-                selectedQuarter={selectedQuarter}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setProductWiseCm1PieBase64}
-              />
-            </div>
-          </div>
-          <SKUtable
-            range={range}
-            quarter={selectedQuarter}
-            year={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportPayloadChange={setSkuExportPayload}
-          />
-        </>
-      )} */}
-
       {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
         <>
           <div className="w-full rounded-xl space-y-4">
@@ -2343,6 +2346,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       currencySymbol={currencySymbol}
                       data={performanceTrend}
                       metric={performanceTrendMetric}
+                      onExportApiReady={setTrendExportApi}
                     />
                   </div>
                 </div>
@@ -2399,11 +2403,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         handleDownloadProfitabilityBundle();
                       }}
                       disabled={
+                        !trendExportApi ||              // ✅ ADD
                         !chartExportApi ||
                         !skuExportPayload ||
                         !expenseBreakdownPieBase64 ||
                         !productWiseCm1PieBase64
                       }
+
                     />
                   </div>
 
@@ -2472,99 +2478,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </>
       )}
 
-
-      {/* {allDropdownsSelected && range === "yearly" && selectedYear && (
-        <>
-          <div className="w-full rounded-xl border border-gray-300 bg-[#D9D9D933] p-4 sm:p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-baseline gap-2">
-                <PageBreadcrumb
-                  pageTitle="P&L - Amazon"
-                  variant="page"
-                  align="left"
-                  textSize="2xl"
-                />
-
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().country}
-                </span>
-
-                <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {getPnLTitleParts().period}
-                </span>
-              </div>
-
-              <DownloadIconButton
-                onClick={handleDownloadProfitabilityBundle}
-                disabled={
-                  !chartExportApi ||
-                  !skuExportPayload ||
-                  !expenseBreakdownPieBase64 ||
-                  !productWiseCm1PieBase64
-                }
-              />
-            </div>
-
-            <GraphPage
-              range={range}
-              selectedYear={selectedYear}
-              countryName={initialCountryName}
-              homeCurrency={globalHomeCurrency}
-              hideDownloadButton
-              onExportApiReady={setChartExportApi}
-              onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-            />
-          </div>
-
-
-          {allDropdownsSelected && (
-            <div id="business-summary" className="scroll-mt-[80px]">
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-              />
-            </div>
-          )}
-
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <CircleChart
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setExpenseBreakdownPieBase64}
-              />
-            </div>
-
-            <div className="flex-1 min-w-[300px]">
-              <CMchartofsku
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setProductWiseCm1PieBase64}
-              />
-            </div>
-          </div>
-
-          <SKUtable
-            range={range}
-            year={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton
-            onExportPayloadChange={setSkuExportPayload}
-          />
-        </>
-      )} */}
-
       {allDropdownsSelected && range === "yearly" && selectedYear && (
         <>
           <div className="w-full rounded-xl space-y-4">
@@ -2610,6 +2523,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       currencySymbol={currencySymbol}
                       data={performanceTrend}
                       metric={performanceTrendMetric}
+                      onExportApiReady={setTrendExportApi}
                     />
                   </div>
                 </div>
@@ -2664,11 +2578,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         handleDownloadProfitabilityBundle();
                       }}
                       disabled={
+                        !trendExportApi ||              // ✅ ADD
                         !chartExportApi ||
                         !skuExportPayload ||
                         !expenseBreakdownPieBase64 ||
                         !productWiseCm1PieBase64
                       }
+
                     />
                   </div>
 
