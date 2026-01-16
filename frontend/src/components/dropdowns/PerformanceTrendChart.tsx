@@ -593,7 +593,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
         )}
 
         {!loading && !error && mapped.series.length === 0 && (
-          <div className="text-sm text-gray-500">No trend data</div>
+          <div className="text-sm text-gray-500">Loading...</div>
         )}
       </div>
     </div>
