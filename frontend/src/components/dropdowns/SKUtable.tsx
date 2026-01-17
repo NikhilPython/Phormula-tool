@@ -105,6 +105,7 @@ type Totals = {
   other_transactions: number;
   platform_fee: number;
   inventory_storage_fees: number;
+  misc_transaction: number;
   reimbursement_lost_inventory_amount: number;
   reimbursement_lost_inventory_units?: number;
   shipment_charges: number;
@@ -266,6 +267,7 @@ function computeTotalsFromLastRow(rows: TableRow[]): Totals {
     other_transactions: toNumber(lastRow.platform_fee),
     platform_fee: platformFees,
     inventory_storage_fees: inventoryStorageFees,
+    misc_transaction: toNumber(lastRow.misc_transaction),
     reimbursement_lost_inventory_amount:
       toNumber(lastRow.reimbursement_lost_inventory_amount) || 0,
     reimbursement_lost_inventory_units: reimbursementUnits,
@@ -307,6 +309,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     other_transactions: 0,
     platform_fee: 0,
     inventory_storage_fees: 0,
+    misc_transaction: 0,
     reimbursement_lost_inventory_amount: 0,
     reimbursement_lost_inventory_units: 0,
     shipment_charges: 0,
@@ -498,7 +501,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     },
     {
       id: "amazon_breakdown",
-      label: "Amazon Fees",
+      label: "Marketplace Fees",
       collapsedCols: [],
       expandedCols: [
         { key: "selling_fees", label: "Selling Fees", align: "center" as const },
@@ -512,7 +515,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       expandedCols: [
         { key: "net_taxes", label: "Net Taxes", align: "center" as const },
         { key: "net_credits", label: "Net Credits", align: "center" as const },
-        { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+        // { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
       ],
     },
     {
@@ -533,7 +536,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { key: "net_sales", label: "Net Sales", align: "center" },
       { key: "cost_of_unit_sold", label: "COGS", align: "center" },
       { key: "net_units_sold", label: "Net Units Sold", align: "center" },
-      { key: "amazon_fee", label: "Amazon Fees", align: "center" },
+      { key: "amazon_fee", label: "Marketplace Fees", align: "center" },
       { key: "other_transactions", label: "Other Transactions", align: "center" },
       { key: "profit", label: "CM1 Profit Margin", align: "center" },
     ],
@@ -566,7 +569,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
       { key: "selling_fees", label: "Selling Fees", align: "center" as const },
       { key: "fba_fees", label: "FBA Fees", align: "center" as const },
-      { key: "amazon_fee", label: "Amazon Fees", align: "center" as const },
+      { key: "amazon_fee", label: "Marketplace Fees", align: "center" as const },
 
       { key: "net_taxes", label: "Net Taxes", align: "center" as const },
       { key: "net_credits", label: "Net Credits", align: "center" as const },
@@ -643,7 +646,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "cost_of_unit_sold",   // COGS (-)
         "selling_fees",        // Selling Fees (-)
         "fba_fees",            // FBA Fees (-)
-        "amazon_fee",          // Amazon Fees (-)
+        "amazon_fee",          // Platform Fees (-)
 
         "promotional_rebates", // Promotions (-)
         "platformfeenew",
@@ -1069,23 +1072,104 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
 
   /* --------- Top/Bottom helpers --------- */
+  // const getTop5Profitable = useCallback(
+  //   (data: TableRow[]) => {
+  //     const rows = data.slice(0, -1);
+  //     const top5 = [...rows].sort((a, b) => (b.profit || 0) - (a.profit || 0)).slice(0, 5);
+
+  //     const totalProfit = top5.reduce((s, r) => s + (r.profit || 0), 0);
+  //     const totalProfitMix = top5.reduce((s, r) => s + (r.profit_mix || 0), 0);
+  //     const totalSalesMix = top5.reduce((s, r) => s + (r.sales_mix || 0), 0);
+  //     const totalUnitWise = top5.reduce((s, r) => s + (r.unit_wise_profitability || 0), 0);
+
+  //     const formatted = top5.map((item) => ({
+  //       product_name: getDisplayProductNameFromRow(item),
+  //       profit: (item.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  //       profitMix: (item.profit_mix || 0).toFixed(2),
+  //       salesMix: (item.sales_mix || 0).toFixed(2),
+  //       unit_wise_profitability: (item.unit_wise_profitability || 0).toFixed(2),
+  //     }));
+
+  //     return {
+  //       rows: formatted,
+  //       totals: {
+  //         profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  //         profitMix: totalProfitMix.toFixed(2),
+  //         salesMix: totalSalesMix.toFixed(2),
+  //         unit_wise_profitability: totalUnitWise.toFixed(2),
+  //       },
+  //     };
+  //   },
+  //   [getDisplayProductNameFromRow]
+  // );
+
+  // const getBottom5Profitable = useCallback(
+  //   (data: TableRow[]) => {
+  //     const rows = data.slice(0, -1);
+  //     const bottom5 = [...rows].sort((a, b) => (a.profit || 0) - (b.profit || 0)).slice(0, 5);
+
+  //     const totalProfit = bottom5.reduce((s, r) => s + (r.profit || 0), 0);
+  //     const totalProfitMix = bottom5.reduce((s, r) => s + (r.profit_mix || 0), 0);
+  //     const totalSalesMix = bottom5.reduce((s, r) => s + (r.sales_mix || 0), 0);
+  //     const totalUnitWise = bottom5.reduce((s, r) => s + (r.unit_wise_profitability || 0), 0);
+
+  //     const formatted = bottom5.map((item) => ({
+  //       product_name: getDisplayProductNameFromRow(item),
+  //       profit: (item.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  //       profitMix: (item.profit_mix || 0).toFixed(2),
+  //       salesMix: (item.sales_mix || 0).toFixed(2),
+  //       unit_wise_profitability: (item.unit_wise_profitability || 0).toFixed(2),
+  //     }));
+
+  //     return {
+  //       rows: formatted,
+  //       totals: {
+  //         profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  //         profitMix: totalProfitMix.toFixed(2),
+  //         salesMix: totalSalesMix.toFixed(2),
+  //         unit_wise_profitability: totalUnitWise.toFixed(2),
+  //       },
+  //     };
+  //   },
+  //   [getDisplayProductNameFromRow]
+  // );
+
+
   const getTop5Profitable = useCallback(
     (data: TableRow[]) => {
-      const rows = data.slice(0, -1);
+      const rows = data.slice(0, -1); // exclude Total row
       const top5 = [...rows].sort((a, b) => (b.profit || 0) - (a.profit || 0)).slice(0, 5);
 
       const totalProfit = top5.reduce((s, r) => s + (r.profit || 0), 0);
       const totalProfitMix = top5.reduce((s, r) => s + (r.profit_mix || 0), 0);
       const totalSalesMix = top5.reduce((s, r) => s + (r.sales_mix || 0), 0);
-      const totalUnitWise = top5.reduce((s, r) => s + (r.unit_wise_profitability || 0), 0);
 
-      const formatted = top5.map((item) => ({
-        product_name: getDisplayProductNameFromRow(item),
-        profit: (item.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        profitMix: (item.profit_mix || 0).toFixed(2),
-        salesMix: (item.sales_mix || 0).toFixed(2),
-        unit_wise_profitability: (item.unit_wise_profitability || 0).toFixed(2),
-      }));
+      // ✅ avg CM1 across top5 = total CM1 profit / total net units sold
+      const totalNetUnits = top5.reduce((s, r) => s + (r.net_units_sold || 0), 0);
+      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+
+      const formatted = top5.map((item) => {
+        const netUnits = item.net_units_sold || 0;
+
+        // ✅ per-row CM1 per unit
+        const cm1PerUnit = netUnits > 0 ? (item.profit || 0) / netUnits : 0;
+
+        return {
+          product_name: getDisplayProductNameFromRow(item),
+          profit: (item.profit || 0).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+          profitMix: (item.profit_mix || 0).toFixed(2),
+          salesMix: (item.sales_mix || 0).toFixed(2),
+
+          // ✅ SHOW THIS IN TABLE ROWS
+          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+        };
+      });
 
       return {
         rows: formatted,
@@ -1093,7 +1177,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
           profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           profitMix: totalProfitMix.toFixed(2),
           salesMix: totalSalesMix.toFixed(2),
-          unit_wise_profitability: totalUnitWise.toFixed(2),
+
+          // ✅ SHOW THIS IN TOTAL ROW (average of the 5)
+          avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         },
       };
     },
@@ -1102,21 +1188,39 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const getBottom5Profitable = useCallback(
     (data: TableRow[]) => {
-      const rows = data.slice(0, -1);
+      const rows = data.slice(0, -1); // exclude Total row
       const bottom5 = [...rows].sort((a, b) => (a.profit || 0) - (b.profit || 0)).slice(0, 5);
 
       const totalProfit = bottom5.reduce((s, r) => s + (r.profit || 0), 0);
       const totalProfitMix = bottom5.reduce((s, r) => s + (r.profit_mix || 0), 0);
       const totalSalesMix = bottom5.reduce((s, r) => s + (r.sales_mix || 0), 0);
-      const totalUnitWise = bottom5.reduce((s, r) => s + (r.unit_wise_profitability || 0), 0);
 
-      const formatted = bottom5.map((item) => ({
-        product_name: getDisplayProductNameFromRow(item),
-        profit: (item.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        profitMix: (item.profit_mix || 0).toFixed(2),
-        salesMix: (item.sales_mix || 0).toFixed(2),
-        unit_wise_profitability: (item.unit_wise_profitability || 0).toFixed(2),
-      }));
+      // ✅ avg CM1 across bottom5 = total CM1 profit / total net units sold
+      const totalNetUnits = bottom5.reduce((s, r) => s + (r.net_units_sold || 0), 0);
+      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+
+      const formatted = bottom5.map((item) => {
+        const netUnits = item.net_units_sold || 0;
+
+        // ✅ per-row CM1 per unit
+        const cm1PerUnit = netUnits > 0 ? (item.profit || 0) / netUnits : 0;
+
+        return {
+          product_name: getDisplayProductNameFromRow(item),
+          profit: (item.profit || 0).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+          profitMix: (item.profit_mix || 0).toFixed(2),
+          salesMix: (item.sales_mix || 0).toFixed(2),
+
+          // ✅ SHOW THIS IN TABLE ROWS
+          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+        };
+      });
 
       return {
         rows: formatted,
@@ -1124,12 +1228,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
           profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           profitMix: totalProfitMix.toFixed(2),
           salesMix: totalSalesMix.toFixed(2),
-          unit_wise_profitability: totalUnitWise.toFixed(2),
+
+          // ✅ SHOW THIS IN TOTAL ROW (average of the 5)
+          avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         },
       };
     },
     [getDisplayProductNameFromRow]
   );
+
 
   const topData = useMemo(() => getTop5Profitable(tableData), [tableData, getTop5Profitable]);
   const bottomData = useMemo(() => getBottom5Profitable(tableData), [tableData, getBottom5Profitable]);
@@ -1706,13 +1813,18 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       children: [
                         {
                           id: "other_1",
-                          label: <>Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                          label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
                           midValue: formatValue(totals.platform_fee, "platform_fee"),
                         },
                         {
                           id: "other_2",
                           label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
                           midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
+                        },
+                        {
+                          id: "other_misc",
+                          label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
+                          midValue: formatValue(totals.misc_transaction, "misc_transaction"),
                         },
                         {
                           id: "other_3",
@@ -1825,7 +1937,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         {item.salesMix}%
                       </td>
                       <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                        {item.unit_wise_profitability}
+                        {item.cm1_per_unit}
                       </td>
                     </tr>
                   ))}
@@ -1844,7 +1956,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       <strong>{topData.totals.salesMix}%</strong>
                     </td>
                     <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                      <strong></strong>
+                      <strong>{topData.totals.avg_cm1}</strong>
                     </td>
                   </tr>
                 </tbody>
@@ -1898,7 +2010,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         {item.salesMix}%
                       </td>
                       <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                        {item.unit_wise_profitability}
+                        {item.cm1_per_unit}
+
                       </td>
                     </tr>
                   ))}
@@ -1917,7 +2030,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       <strong>{bottomData.totals.salesMix}%</strong>
                     </td>
                     <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
-                      <strong></strong>
+                      <strong>{bottomData.totals.avg_cm1}</strong>
                     </td>
                   </tr>
                 </tbody>

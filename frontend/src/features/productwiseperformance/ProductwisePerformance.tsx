@@ -361,7 +361,7 @@ const handleViewBusinessInsights = async () => {
 
 
   // ---------- controls ----------
-  const [range, setRange] = useState<Range>("quarterly");
+  const [range, setRange] = useState<Range>("yearly");
 
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
     if (monthParam) return monthParam.toLowerCase();
@@ -439,6 +439,22 @@ const handleViewBusinessInsights = async () => {
     () => Array.from({ length: 2 }, (_, i) => new Date().getFullYear() - i),
     []
   );
+
+  // ✅ default to YEARLY + set default year once
+useEffect(() => {
+  // force yearly only once (in case URL param set etc.)
+  setRange("yearly");
+
+  // if year not selected, pick latest available
+  if (selectedYear === "" && years?.length) {
+    setSelectedYear(Math.max(...years));
+  }
+
+  // optional: also seed quarter/month empty
+  setSelectedMonth("");
+  setSelectedQuarter("Q1");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   const isProductSelected = !!productname;
   const hasYear = selectedYear !== "" && selectedYear !== undefined;

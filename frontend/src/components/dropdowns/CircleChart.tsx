@@ -268,7 +268,6 @@ const CircleChart: React.FC<CircleChartProps> = ({
   //   setChartData(next);
   // }, [uploadsData]);
 
-  // Build chart data from summary (DESC order)
   useEffect(() => {
     if (!uploadsData?.summary) {
       setChartData(null);
@@ -277,48 +276,19 @@ const CircleChart: React.FC<CircleChartProps> = ({
 
     const s = uploadsData.summary;
 
-    const labels = [
-      "COGS",
-      "Amazon Fees",
-      "Taxes & Credits",
-      "Advertisement Cost",
-      "Other Expense",
-      "CM2 Profit",
-    ];
-
-    const values = [
-      Math.abs(s.total_cous || 0),
-      Math.abs(s.total_amazon_fee || 0),
-      Math.abs(s.taxncredit || 0),
-      Math.abs(s.advertising_total || 0),
-      Math.abs(s.otherwplatform || 0),
-      Math.abs(s.cm2_profit || 0),
-    ];
-
-    const colors = [
-      "#FDD36F",
-      "#B75A5A",
-      "#ED9F50",
-      "#C49466",
-      "#3A8EA4",
-      "#B8C78C",
-    ];
-
-    // ✅ sort label/value/color together by value DESC
-    const sorted = labels
-      .map((label, i) => ({
-        label,
-        value: values[i] ?? 0,
-        color: colors[i] ?? "#999999",
-      }))
-      .sort((a, b) => b.value - a.value);
-
     const next: ChartData<"pie", number[], string> = {
-      labels: sorted.map((x) => x.label),
+      labels: ["COGS", "Amazon Fees", "Tax and credits", "Ads", "Others", "CM2 Profit"],
       datasets: [
         {
-          data: sorted.map((x) => x.value),
-          backgroundColor: sorted.map((x) => x.color),
+          data: [
+            Math.abs(s.total_cous || 0),
+            Math.abs(s.total_amazon_fee || 0),
+            Math.abs(s.taxncredit || 0),
+            Math.abs(s.advertising_total || 0),
+            Math.abs(s.otherwplatform || 0),
+            Math.abs(s.cm2_profit || 0),
+          ],
+          backgroundColor: ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"],
           borderWidth: 0,
           borderColor: "transparent",
           spacing: 0,
@@ -332,7 +302,6 @@ const CircleChart: React.FC<CircleChartProps> = ({
   }, [uploadsData]);
 
 
-  // Fallback dummy data when all zeros
   useEffect(() => {
     if (!chartData || !chartData.labels || !chartData.datasets?.[0]?.data) {
       setAllValuesZero(false);
@@ -379,13 +348,11 @@ const CircleChart: React.FC<CircleChartProps> = ({
     return () => clearTimeout(t);
   }, [displayChartData, onExportBase64Ready]);
 
-  const options: ChartOptions<"pie"> = {
+  const isSmallScreen = legendPosition === "bottom"; // since you already switch at <768
+
+  const options = useMemo<ChartOptions<"pie">>(() => ({
     responsive: true,
-    elements: {
-      arc: {
-        borderWidth: 0,
-      },
-    },
+    elements: { arc: { borderWidth: 0 } },
     plugins: {
       legend: {
         position: legendPosition,
@@ -393,7 +360,14 @@ const CircleChart: React.FC<CircleChartProps> = ({
         labels: {
           usePointStyle: true,
 
-          // ✅ one legend item per slice + percentage
+          // ✅ legend text color
+          color: "#DC2626", // test with red first
+
+          // ✅ 12 desktop, 10 mobile
+          font: {
+            size: isSmallScreen ? 10 : 12,
+          },
+
           generateLabels: (chart) => {
             const data = chart.data;
             const labels = (data.labels || []) as string[];
@@ -403,63 +377,31 @@ const CircleChart: React.FC<CircleChartProps> = ({
               Math.abs(Number(v || 0))
             );
             const total = rawValues.reduce((a, b) => a + b, 0);
-
-            const bg = dataset?.backgroundColor as any[]; // array of colors
+            const bg = dataset?.backgroundColor as any[];
 
             return labels.map((label, i) => {
               const value = rawValues[i] ?? 0;
               const pct = total ? (value / total) * 100 : 0;
-
-              // Chart.js uses this to toggle slice visibility
-              const hidden = !chart.getDataVisibility(i);
 
               return {
                 text: `${label} (${pct.toFixed(2)}%)`,
                 fillStyle: Array.isArray(bg) ? bg[i] : bg,
                 strokeStyle: "transparent",
                 lineWidth: 0,
-                hidden,
-                index: i, // IMPORTANT for toggling
+                hidden: !chart.getDataVisibility(i),
+                index: i,
                 pointStyle: "circle",
               };
             });
           },
         },
       },
-
-      tooltip: {
-        callbacks: {
-          label: (ctx) => {
-            const value = Math.abs(Number(ctx.raw ?? 0));
-            const dataset = ctx.chart.data.datasets?.[ctx.datasetIndex] as
-              | { data: number[] }
-              | undefined;
-
-            const total = (dataset?.data ?? []).reduce(
-              (acc, v) => acc + Math.abs(Number(v || 0)),
-              0
-            );
-
-            const pct = total ? (value / total) * 100 : 0;
-            const label = ctx.label ? `${ctx.label}: ` : "";
-
-            return `${label}${currencySymbol}${value.toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })} (${pct.toFixed(2)}%)`;
-          },
-        },
-      },
+      tooltip: { /* keep your tooltip */ },
     },
-    layout: {
-      padding: isLaptop ? 0 : 10,
-    },
-    animation: {
-      duration: 0,
-    },
+    layout: { padding: isLaptop ? 0 : 10 },
+    animation: { duration: 0 },
     maintainAspectRatio: false,
-  };
-
+  }), [legendPosition, isLaptop, currencySymbol]);
 
   return (
     <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
@@ -502,7 +444,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
                 isLaptop ? "items-center px-4 py-1" : "items-center", // ✅ laptop: less top, more bottom, add side padding
               ].join(" ")}
             >
-              <Pie className="!block" ref={chartRef} data={displayChartData} options={options} />
+              <Pie className="!block" ref={chartRef} data={displayChartData} options={options} redraw/>
             </div>
 
           </div>

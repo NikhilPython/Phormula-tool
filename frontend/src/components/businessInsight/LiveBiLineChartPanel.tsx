@@ -115,7 +115,7 @@ const LiveLineChart: React.FC<{
         ? currencySymbol
           ? `Sales (${currencySymbol})`
           : "Sales"
-        : "Units";
+        : "Units (in nos.)";
 
 
 
@@ -191,7 +191,7 @@ const LiveLineChart: React.FC<{
         type: "category",
         data: allDays.map(String),
         boundaryGap: false,
-        name: "Days",
+        // name: "Days",
         nameLocation: "middle",
         nameGap: xNameGap,
         axisLabel: { fontSize: axisFontSize },

@@ -37,6 +37,7 @@ user_bp = Blueprint('user', __name__)
 def register():
     try:
         data = request.get_json()
+        name = data.get('name')
         email = data['email']
         password = data['password']
         phone_number = data['phone_number']
@@ -54,6 +55,7 @@ def register():
 
         # Register new user with token_name
         new_user = User(
+            name=name,
             email=email, 
             password=hashed_password, 
             phone_number=phone_number,

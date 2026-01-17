@@ -803,6 +803,27 @@ export default function DashboardPage() {
   }, [platform, amazonConnections]);
 
 
+
+  const renderMoneyWithPerUnit = (amount: number, units: number, fmt: (v: number) => string) => {
+    const totalText = fmt(amount);
+
+    if (!units) return <span>{totalText}</span>;
+
+    const perUnit = amount / units;
+    const perUnitText = fmt(perUnit);
+
+    return (
+      <>
+        <span>{totalText}</span>
+        <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+          ({perUnitText}/unit)
+        </span>
+      </>
+    );
+  };
+
+
+
   /* ===================== SHOPIFY STORE INFO ===================== */
   useEffect(() => {
     const fetchShopifyStore = async () => {
@@ -1940,6 +1961,9 @@ export default function DashboardPage() {
   const useBiForAmazonCards =
     showLiveBI && rangeActive && (isCountryMode || platform === "global");
 
+  const unitsToUse = useBiForAmazonCards ? (biCardKpis.curr.units ?? 0) : toNumberSafe(totals?.quantity ?? 0);
+
+
 
   /* ===================== ✅ GLOBAL CARD: prev/current + deltas ===================== */
 
@@ -2677,7 +2701,7 @@ export default function DashboardPage() {
                           : amazonAdsDeltaPct
                       }
                       loading={loading || (useBiForAmazonCards ? biLoading : false)}
-                      formatter={formatDisplayAmount}
+                      formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
                       bottomLabel={prevLabel}
                       className="border-[#C49466] bg-[#C494664D]"
                     />
@@ -2760,7 +2784,7 @@ export default function DashboardPage() {
                           : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0) // ✅ MTD Transactions delta
                       }
                       loading={loading || (useBiCm2 ? biLoading : false)}
-                      formatter={formatDisplayAmount}
+                      formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
                       bottomLabel={prevLabel}
                       className="border-[#B8C78C] bg-[#B8C78C4D]"
                     />
@@ -2996,16 +3020,16 @@ export default function DashboardPage() {
                 <div className="text-sm text-charcoal-500">
                   <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
                     <PageBreadcrumb
-                      pageTitle="MTD P&L - Amazon"
+                      pageTitle="MTD P&L"
                       align="left"
                       textSize="2xl"
                       variant="page"
                     />
 
-                    <span className="text-green-500 ">  {countryName.toUpperCase()}</span>
+                    {/* <span className="text-green-500 ">  {countryName.toUpperCase()}</span>
                     <span className="text-charcoal-500 "> -</span>
 
-                    <span className=" text-green-500">  {formattedMonthYear}</span>
+                    <span className=" text-green-500">  {formattedMonthYear}</span> */}
                   </div>
                 </div>
 

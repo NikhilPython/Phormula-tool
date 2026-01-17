@@ -360,8 +360,11 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         labels: {
           usePointStyle: true,
 
-          // ✅ Change legend label text color here
-          color: "#414042", // <-- change to whatever you want (e.g. "#FF0000")
+          
+          color: "#ff0000", 
+          font: {
+             size: typeof window !== "undefined" && window.innerWidth < 768 ? 10 : 12,
+          },
 
           // ✅ Show ALL labels + percentage in legend
           generateLabels: (chart) => {

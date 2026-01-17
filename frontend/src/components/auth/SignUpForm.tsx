@@ -55,6 +55,7 @@ export default function SignUpForm() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // form fields
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneRaw, setPhoneRaw] = useState("");
   const [password, setPassword] = useState("");
@@ -65,6 +66,7 @@ export default function SignUpForm() {
 
   // "touched" for showing validation messages nicely
   const [touched, setTouched] = useState({
+    name: false,
     email: false,
     phone: false,
     password: false,
@@ -85,6 +87,13 @@ export default function SignUpForm() {
     if (!emailRegex.test(email.trim())) return "Enter a valid email (must include @)";
     return "";
   }, [email, touched.email]);
+
+  const nameError = useMemo(() => {
+    if (!touched.name) return "";
+    if (!name.trim()) return "Name is required";
+    if (name.trim().length < 2) return "Name must be at least 2 characters";
+    return "";
+  }, [name, touched.name]);
 
   // ------------------------
   // Phone validation (digits only + country wise length)
@@ -153,8 +162,10 @@ export default function SignUpForm() {
   }, [password, confirm]);
 
   const canSubmit =
+    !nameError &&               // ✅ NEW
     !emailError &&
     !phoneError &&
+    name.trim() &&              // ✅ NEW
     email.trim() &&
     hasValidPhoneNumber &&
     password &&
@@ -163,18 +174,19 @@ export default function SignUpForm() {
     passwordErrors.filter((e) => e !== "Passwords do not match").length === 0 &&
     confirm === password;
 
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTouched((p) => ({ ...p, email: true, phone: true, password: true, confirm: true }));
     if (isLoading || !canSubmit) return;
 
     try {
-      const localDigits = phoneDigitsOnly; // only digits
+      const localDigits = phoneDigitsOnly; 
       const dialDigits = phoneDialCode.replace(/\D/g, "");
       const fullPhone = `+${dialDigits}${localDigits}`;
       const formatted = formatPhoneNumber(fullPhone);
-
       await registerUser({
+        name: name.trim(),
         email: email.trim(),
         password,
         phone_number: formatted,
@@ -186,21 +198,21 @@ export default function SignUpForm() {
   };
 
   const serverErrorMessage = (() => {
-  const msg =
-    (regError as any)?.data?.message ||
-    (regError as any)?.error ||
-    "";
+    const msg =
+      (regError as any)?.data?.message ||
+      (regError as any)?.error ||
+      "";
 
-  if (msg.toLowerCase().includes("already")) {
-    return "Account already exists. Please sign in.";
-  }
+    if (msg.toLowerCase().includes("already")) {
+      return "Account already exists. Please sign in.";
+    }
 
-  return msg;
-})();
+    return msg;
+  })();
 
   const showPasswordTooltip =
-  (touched.password || password.length > 0) &&
-  passwordRules.some((r) => !r.ok);
+    (touched.password || password.length > 0) &&
+    passwordRules.some((r) => !r.ok);
 
   return (
     <div className="flex flex-col flex-1 lg:w-1/2 w-full overflow-y-auto no-scrollbar relative">
@@ -218,28 +230,56 @@ export default function SignUpForm() {
           <div>
             <form onSubmit={onSubmit} noValidate>
               <div className="xl:space-y-3 space-y-2">
-                {/* Email */}
-                <div>
-                  <Label>
-                    Email<span className="text-error-500">*</span>
-                  </Label>
-                  <Input
-                    type="email"
-                    id="email"
-                    name="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onBlur={() => setTouched((p) => ({ ...p, email: true }))}
-                    autoComplete="email"
-                    required
-                  />
-                  {emailError && (
-                    <p className="mt-1.5 text-xs text-red-500" aria-live="polite">
-                      {emailError}
-                    </p>
-                  )}
+
+                {/* Name + Email */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Name */}
+                  <div>
+                    <Label>
+                      Name<span className="text-error-500">*</span>
+                    </Label>
+                    <Input
+                      type="text"
+                      id="name"
+                      name="name"
+                      placeholder="Enter your full name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      onBlur={() => setTouched((p) => ({ ...p, name: true }))}
+                      autoComplete="name"
+                      required
+                    />
+                    {nameError && (
+                      <p className="mt-1.5 text-xs text-red-500" aria-live="polite">
+                        {nameError}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <Label>
+                      Email<span className="text-error-500">*</span>
+                    </Label>
+                    <Input
+                      type="email"
+                      id="email"
+                      name="email"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      onBlur={() => setTouched((p) => ({ ...p, email: true }))}
+                      autoComplete="email"
+                      required
+                    />
+                    {emailError && (
+                      <p className="mt-1.5 text-xs text-red-500" aria-live="polite">
+                        {emailError}
+                      </p>
+                    )}
+                  </div>
                 </div>
+
 
                 {/* Phone */}
                 <div>
@@ -251,15 +291,15 @@ export default function SignUpForm() {
                       countries={ALL_COUNTRIES}
                       placeholder="Enter phone number"
                       onChange={(value, meta) => {
-  const digits = String(value || "").replace(/\D/g, "");
-  setPhoneRaw(digits);
-  setPhoneDialCode(meta?.dialCode || "");
-  setPhoneMeta({
-    dialCode: meta?.dialCode || "",
-    iso2: meta?.country?.code,
-  });
-  setTouched((p) => ({ ...p, phone: true })); // 👈 IMPORTANT
-}}
+                        const digits = String(value || "").replace(/\D/g, "");
+                        setPhoneRaw(digits);
+                        setPhoneDialCode(meta?.dialCode || "");
+                        setPhoneMeta({
+                          dialCode: meta?.dialCode || "",
+                          iso2: meta?.country?.code,
+                        });
+                        setTouched((p) => ({ ...p, phone: true })); // 👈 IMPORTANT
+                      }}
                       onBlur={() => setTouched((p) => ({ ...p, phone: true }))}
                     />
                   </div>
@@ -302,38 +342,37 @@ export default function SignUpForm() {
                     </button>
 
                     {/* Tooltip (chat-bubble style) */}
-                   {showPasswordTooltip && (
-  <div className="absolute right-0 top-[calc(100%+8px)] z-40">
-    <div className="relative min-w-[210px] rounded-lg border bg-[#EDEDED] px-3 py-2 shadow-md">
-      <div className="text-xs font-medium text-gray-800 mb-1">
-        Password must have -
-      </div>
+                    {showPasswordTooltip && (
+                      <div className="absolute right-0 top-[calc(100%+8px)] z-40">
+                        <div className="relative min-w-[210px] rounded-lg border bg-[#EDEDED] px-3 py-2 shadow-md">
+                          <div className="text-xs font-medium text-gray-800 mb-1">
+                            Password must have -
+                          </div>
 
-      <ul className="space-y-1">
-        {passwordRules.map((r) => (
-          <li key={r.label} className="flex items-center gap-2 text-xs">
-            <span
-              className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${
-                r.ok
-                  ? "border-green-500 text-green-600"
-                  : "border-red-500 text-red-600"
-              }`}
-              aria-hidden="true"
-            >
-              {r.ok ? "✓" : "×"}
-            </span>
-            <span className={r.ok ? "text-gray-800" : "text-gray-700"}>
-              {r.label}
-            </span>
-          </li>
-        ))}
-      </ul>
+                          <ul className="space-y-1">
+                            {passwordRules.map((r) => (
+                              <li key={r.label} className="flex items-center gap-2 text-xs">
+                                <span
+                                  className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${r.ok
+                                    ? "border-green-500 text-green-600"
+                                    : "border-red-500 text-red-600"
+                                    }`}
+                                  aria-hidden="true"
+                                >
+                                  {r.ok ? "✓" : "×"}
+                                </span>
+                                <span className={r.ok ? "text-gray-800" : "text-gray-700"}>
+                                  {r.label}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
 
-      {/* arrow (top-right pointing to input) */}
-      <div className="absolute right-4 top-[-6px] h-3 w-3 rotate-45 border-l border-t bg-[#EDEDED]" />
-    </div>
-  </div>
-)}
+                          {/* arrow (top-right pointing to input) */}
+                          <div className="absolute right-4 top-[-6px] h-3 w-3 rotate-45 border-l border-t bg-[#EDEDED]" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -348,9 +387,9 @@ export default function SignUpForm() {
                       type={showConfirm ? "text" : "password"}
                       value={confirm}
                       onChange={(e) => {
-                      setConfirm(e.target.value);
-                       setTouched((p) => ({ ...p, confirm: true }));
-           }}
+                        setConfirm(e.target.value);
+                        setTouched((p) => ({ ...p, confirm: true }));
+                      }}
                       onBlur={() => setTouched((p) => ({ ...p, confirm: true }))}
                       autoComplete="new-password"
                       required

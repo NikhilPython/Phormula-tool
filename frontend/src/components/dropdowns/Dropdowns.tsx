@@ -1574,43 +1574,44 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   return (
     <div ref={layoutRef} className="space-y-3 2xl:space-y-6 relative">
-
       <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        {/* LEFT: Title + Subtitle */}
-        <div className="flex flex-col leading-tight w-full md:w-auto">
-          <div className="flex items-baseline gap-2">
-            <PageBreadcrumb
-              pageTitle="Financial Metrics -"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
+        <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          {/* LEFT: Title + Subtitle */}
+          <div className="flex flex-col leading-tight w-full md:w-auto">
+            <div className="flex items-baseline gap-2">
+              <PageBreadcrumb
+                pageTitle="Financial Metrics -"
+                variant="page"
+                align="left"
+                textSize="2xl"
+              />
 
-            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              Amazon {countryName?.toLowerCase() === "global"
-                ? "Global"
-                : countryName?.toUpperCase()}
-            </span>
+              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                Amazon {countryName?.toLowerCase() === "global"
+                  ? "Global"
+                  : countryName?.toUpperCase()}
+              </span>
+            </div>
+
+            <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+              Track your profitability and key metrics
+            </p>
           </div>
 
-          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-            Track your profitability and key metrics
-          </p>
-        </div>
-
-        {/* RIGHT: Filters */}
-        <div className="flex w-full md:w-auto justify-start md:justify-end">
-          <PeriodFiltersTable
-            range={range === "" ? "yearly" : (range as "monthly" | "quarterly" | "yearly")}
-            selectedMonth={selectedMonth}
-            selectedQuarter={selectedQuarter || ""}
-            selectedYear={selectedYear}
-            yearOptions={yearOptions}
-            onRangeChange={handleRangeChange}
-            onMonthChange={handleMonthChange}
-            onQuarterChange={handleQuarterChange}
-            onYearChange={handleYearChange}
-          />
+          {/* RIGHT: Filters */}
+          <div className="flex w-full md:w-auto justify-start md:justify-end">
+            <PeriodFiltersTable
+              range={range === "" ? "yearly" : (range as "monthly" | "quarterly" | "yearly")}
+              selectedMonth={selectedMonth}
+              selectedQuarter={selectedQuarter || ""}
+              selectedYear={selectedYear}
+              yearOptions={yearOptions}
+              onRangeChange={handleRangeChange}
+              onMonthChange={handleMonthChange}
+              onQuarterChange={handleQuarterChange}
+              onYearChange={handleYearChange}
+            />
+          </div>
         </div>
       </div>
 
@@ -1818,6 +1819,46 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
             const formatUnits = (val: number) =>
               val.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+            const safeDiv = (num: number, den: number) => (den > 0 ? num / den : 0);
+
+            const formatMoneyPerUnit = (total: number, units: number) => {
+              const perUnit = safeDiv(total, units);
+
+              const totalText = formatMoney(total);
+              const perUnitText = formatMoney(perUnit);
+
+              // If no units, show dash (avoid misleading /unit)
+              if (!units) return `${totalText} (-/unit)`;
+
+              return `${totalText} (${perUnitText}/unit)`;
+            };
+
+            const renderMoneyWithPerUnit = (total: number, units: number) => {
+              const totalText = formatMoney(total);
+
+              if (!units) {
+                return <span>{totalText}</span>;
+              }
+
+              const perUnit = total / units;
+              const perUnitText = formatMoney(perUnit);
+
+              return (
+                <div className="flex items-baseline gap-1 leading-tight">
+                  {/* Main value */}
+                  <span className="text-sm 2xl:text-lg font-semibold">
+                    {totalText}
+                  </span>
+
+                  {/* Per-unit (smaller, muted) */}
+                  <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+                    ({perUnitText}/unit)
+                  </span>
+                </div>
+              );
+
+            };
 
             const formatPercent = (val: number) =>
               `${val.toLocaleString(undefined, {
@@ -2173,108 +2214,109 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               ];
             };
 
-const cards = [
-  {
-    key: "units",
-    title: "Units",
-    valueText: formatUnits(summary.unit_sold),
-    className: "border border-[#FDD36F] bg-[#FDD36F4D]",
-    comparisons: buildComparisonsRows("unit_sold", formatUnits),
-  },
-  {
-    key: "grossSales",
-    title: "Gross Sales",
-    valueText: formatMoney(getGrossSales(summary)),
-    className: "border border-[#ED9F50] bg-[#ED9F504D]",
-    comparisons: (() => {
-      // reuse your gross sales comparison logic but produce rows in same shape:
-      const items = getGrossSalesComparisons();
-      return items.map((item) => {
-        const hasValue = typeof item.value === "number" && !isNaN(item.value);
-        const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+            const cards = [
+              {
+                key: "units",
+                title: "Units",
+                value: formatUnits(summary.unit_sold),
+                className: "border border-[#FDD36F] bg-[#FDD36F4D]",
+                comparisons: buildComparisonsRows("unit_sold", formatUnits),
+              },
+              {
+                key: "grossSales",
+                title: "Gross Sales",
+                value: formatMoney(getGrossSales(summary)),
+                className: "border border-[#ED9F50] bg-[#ED9F504D]",
+                comparisons: (() => {
+                  // reuse your gross sales comparison logic but produce rows in same shape:
+                  const items = getGrossSalesComparisons();
+                  return items.map((item) => {
+                    const hasValue = typeof item.value === "number" && !isNaN(item.value);
+                    const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
 
-        const deltaClassName = hasDiff
-          ? item.diffPct! >= 0
-            ? "text-emerald-600"
-            : "text-red-600"
-          : "text-gray-400";
+                    const deltaClassName = hasDiff
+                      ? item.diffPct! >= 0
+                        ? "text-emerald-600"
+                        : "text-red-600"
+                      : "text-gray-400";
 
-        const deltaText = hasDiff
-          ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
-          : "-";
+                    const deltaText = hasDiff
+                      ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
+                      : "-";
 
-        return {
-          label: item.label,
-          valueText: hasValue ? formatMoney(item.value!) : "-",
-          deltaText,
-          deltaClassName,
-        };
-      });
-    })(),
-  },
-  {
-    key: "netSales",
-    title: "Net Sales",
-    valueText: formatMoney(netSales),
-    className: "border border-[#75BBDA] bg-[#75BBDA4D]",
-    comparisons: buildComparisonsRows("total_sales", formatMoney),
-  },
-  {
-    key: "expenses",
-    title: "Expenses",
-    valueText: formatMoney(summary.total_expense),
-    className: "border border-[#B75A5A] bg-[#B75A5A4D]",
-    comparisons: buildComparisonsRows("total_expense", formatMoney),
-  },
-  {
-    key: "ads",
-    title: "Cost of Advertisement",
-    valueText: formatMoney(costOfAds),
-    className: "border border-[#C49466] bg-[#C494664D]",
-    comparisons: buildComparisonsRows("advertising_total", formatMoney),
-  },
-  {
-    key: "tacos",
-    title: "TACoS",
-    valueText: formatRoas(roas),
-    className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
-    comparisons: buildTacosComparisonRows(),
-  },
-  {
-    key: "cm2",
-    title: "CM2 Profit",
-    valueText: formatMoney(summary.cm2_profit),
-    className: "border border-[#B8C78C] bg-[#B8C78C4D]",
-    comparisons: buildComparisonsRows("cm2_profit", formatMoney),
-  },
-  {
-    key: "cm2Pct",
-    title: "CM2 Profit %",
-    valueText: formatPercent(cm2Percent),
-    className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
-    comparisons: buildCm2PercentComparisonRows(),
-  },
-];
+                    return {
+                      label: item.label,
+                      valueText: hasValue ? formatMoney(item.value!) : "-",
+                      deltaText,
+                      deltaClassName,
+                    };
+                  });
+                })(),
+              },
+              {
+                key: "netSales",
+                title: "Net Sales",
+                value: formatMoney(netSales),
+                className: "border border-[#75BBDA] bg-[#75BBDA4D]",
+                comparisons: buildComparisonsRows("total_sales", formatMoney),
+              },
+              {
+                key: "expenses",
+                title: "Platform Expenses",
+                value: renderMoneyWithPerUnit(summary.total_expense, summary.unit_sold),
+                className: "border border-[#B75A5A] bg-[#B75A5A4D]",
+                comparisons: buildComparisonsRows("total_expense", formatMoney),
+              },
+              {
+                key: "ads",
+                title: "Cost of Advertisement",
+                value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
+                className: "border border-[#C49466] bg-[#C494664D]",
+                comparisons: buildComparisonsRows("advertising_total", formatMoney),
+              },
 
-return (
-  <div
-    className={[
-      "w-full grid gap-2 2xl:gap-3",
-      "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
-      isSummaryZero ? "opacity-30" : "opacity-100",
-    ].join(" ")}
-  >
-    {cards.map((c) => (
-      <SummaryMetricCard
-        key={c.key}
-        title={c.title}
-        valueText={c.valueText}
-        className={c.className}
-        comparisons={c.comparisons}
-      />
-    ))}
-  </div>
-);
+              {
+                key: "tacos",
+                title: "TACoS",
+                value: formatRoas(roas),
+                className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
+                comparisons: buildTacosComparisonRows(),
+              },
+              {
+                key: "cm2",
+                title: "CM2 Profit",
+                value: renderMoneyWithPerUnit(summary.cm2_profit, summary.unit_sold),
+                className: "border border-[#B8C78C] bg-[#B8C78C4D]",
+                comparisons: buildComparisonsRows("cm2_profit", formatMoney),
+              },
+              {
+                key: "cm2Pct",
+                title: "CM2 Profit %",
+                value: formatPercent(cm2Percent),
+                className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
+                comparisons: buildCm2PercentComparisonRows(),
+              },
+            ];
+
+            return (
+              <div
+                className={[
+                  "w-full grid gap-2 2xl:gap-3",
+                  "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
+                  isSummaryZero ? "opacity-30" : "opacity-100",
+                ].join(" ")}
+              >
+                {cards.map((c) => (
+                  <SummaryMetricCard
+                    key={c.key}
+                    title={c.title}
+                    value={c.value}
+                    className={c.className}
+                    comparisons={c.comparisons}
+                  />
+                ))}
+              </div>
+            );
 
             // return (
             //   <div
@@ -2460,14 +2502,14 @@ return (
                         {getPnLTitleParts().country}
                       </span> */}
 
-                      {getPnLTitleParts().period ? (
+                      {/* {getPnLTitleParts().period ? (
                         <>
                           <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
                           <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
                             {getPnLTitleParts().period}
                           </span>
                         </>
-                      ) : null}
+                      ) : null} */}
                     </div>
 
                     <DownloadIconButton
@@ -2637,7 +2679,7 @@ return (
                         {getPnLTitleParts().country}
                       </span> */}
 
-                      {getPnLTitleParts().period ? (
+                      {/* {getPnLTitleParts().period ? (
                         <>
                           <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
                             -
@@ -2646,7 +2688,7 @@ return (
                             {getPnLTitleParts().period}
                           </span>
                         </>
-                      ) : null}
+                      ) : null} */}
                     </div>
 
                     <DownloadIconButton
@@ -2815,13 +2857,13 @@ return (
                         {getPnLTitleParts().country}
                       </span> */}
 
-                      <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                      {/* <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
                         -
                       </span>
 
                       <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
                         {getPnLTitleParts().period}
-                      </span>
+                      </span> */}
                     </div>
 
                     <DownloadIconButton

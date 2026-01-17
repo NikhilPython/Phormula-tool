@@ -108,7 +108,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
       x: {
         stacked: false,
         grid: {
-          display: false, // ✅ remove vertical grid lines
+          display: true, // ✅ remove vertical grid lines
           drawBorder: false,
         },
         title: {
@@ -123,7 +123,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
         stacked: false,
         beginAtZero: true,
         grid: {
-          display: false, // ✅ remove horizontal grid lines
+          display: true, // ✅ remove horizontal grid lines
           drawBorder: false,
         },
         title: {

@@ -2401,18 +2401,18 @@ export default function LiveBusinessClient({
               <div className="flex flex-col 2xl:flex-row gap-4  xl:items-left xl:justify-between">
                 {/* <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" /> */}
                 <div className="flex flex-wrap items-baseline gap-2 font-bold ">
-                  <PageBreadcrumb
+                  {/* <PageBreadcrumb
                     pageTitle={`Amazon`}
                     variant="page"
                     align="left"
                   />
-                  <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-[#5EA68E]">{titleCountry}</span>
+                  <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-[#5EA68E]">{titleCountry}</span> */}
                   <PageBreadcrumb
-                    pageTitle={`- SKU Analysis - MTD`}
+                    pageTitle={`SKU Analysis MTD`}
                     variant="page"
                     align="left"
                   />
-                  <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-[#5EA68E]">{titleMonth}</span>
+                  {/* <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-[#5EA68E]">{titleMonth}</span> */}
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-between">

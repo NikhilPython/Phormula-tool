@@ -416,7 +416,7 @@ const LiveLineChart: React.FC<{
   }, [rangeActive, startDay, endDay, renderXAxis, displayDayShift]);
 
   const yAxisName =
-    metric === "net_sales" ? (currencySymbol ? `Sales (${currencySymbol})` : "Sales") : "Units";
+    metric === "net_sales" ? (currencySymbol ? `(${currencySymbol})` : "Sales") : "Units (in nos.)";
 
   const colorMap = useMemo(() => buildRecencyColorMap(series.map((s) => s.name)), [series]);
 
@@ -466,7 +466,7 @@ const LiveLineChart: React.FC<{
       type: "category",
       data: filteredXAxis,
       boundaryGap: false,
-      name: isDaily ? "Days" : "Month",
+      // name: isDaily ? "Days" : "Month",
       nameLocation: "middle",
       nameGap: 25,
       axisLabel: {

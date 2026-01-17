@@ -203,7 +203,6 @@ const GraphPage: React.FC<GraphPageProps> = ({
 
         const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`);
 
-        // optional: keep sending it (backend might use it later)
         if (isGlobalPage && normalizedHomeCurrency) {
           url.searchParams.set("homeCurrency", normalizedHomeCurrency);
         }
@@ -230,14 +229,11 @@ const GraphPage: React.FC<GraphPageProps> = ({
 
             if (isGlobalPage) {
               if (isUsd) {
-                // ✅ USD global supports BOTH legacy + converted
                 return itemCountry === "global" || itemCountry === "global_usd";
               }
-              // ✅ Non-USD global currencies
               return itemCountry === `global_${normalizedHomeCurrency}`;
             }
 
-            // ✅ Normal country pages (UK, US, etc.)
             return itemCountry === countryName.toLowerCase();
           });
 
@@ -457,14 +453,22 @@ const GraphPage: React.FC<GraphPageProps> = ({
     onNoDataChange?.(isAllZero);
   }, [isAllZero, onNoDataChange]);
 
+  // const formattedLabels = useMemo(() => {
+  //   return rawLabels.map((label) => {
+  //     const [m, y] = label.trim().split(" ");
+  //     const mm = convertToAbbreviatedMonth(m);
+  //     const yy = (y ?? "").slice(-2);
+  //     return `${mm}\u00A0'${yy}`;
+  //   });
+  // }, [rawLabels]);
+
   const formattedLabels = useMemo(() => {
-    return rawLabels.map((label) => {
-      const [m, y] = label.trim().split(" ");
-      const mm = convertToAbbreviatedMonth(m);
-      const yy = (y ?? "").slice(-2);
-      return `${mm}\u00A0'${yy}`;
-    });
-  }, [rawLabels]);
+  return rawLabels.map((label) => {
+    const [m] = label.trim().split(" ");
+    return convertToAbbreviatedMonth(m); // Jan, Feb, ...
+  });
+}, [rawLabels]);
+
 
   const allDataPoints = datasets.flatMap((d: any) => d.data as number[]);
   const minValue = allDataPoints.length ? Math.min(...allDataPoints) : 0;
@@ -755,7 +759,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
                 },
                 scales: {
                   x: {
-                    title: { display: true, text: "Month" },
+                    title: { display: true,  },
                     ticks: {
                       minRotation: 0,
                       maxRotation: 0,
@@ -765,7 +769,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
                     },
                   },
                   y: {
-                    title: { display: true, text: `Amount (${currencySymbol})` },
+                    title: { display: true, text: `(${currencySymbol})` },
                     min: minY,
                     ticks: { padding: 0 },
                   },
