@@ -21,20 +21,6 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
     
-    # # ✅ IMPROVED Session setup for chatbot memory
-    # app.config['SESSION_TYPE'] = 'filesystem'
-    # app.config['SESSION_PERMANENT'] = True
-    # app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
-    
-    # # 🔧 ADD THESE MISSING SESSION CONFIGURATIONS:
-    # app.config['SESSION_USE_SIGNER'] = True  # Sign session cookies for security
-    # app.config['SESSION_KEY_PREFIX'] = 'chatbot:'  # Namespace for session keys
-    # app.config['SESSION_FILE_DIR'] = '/tmp/flask_session'  # Explicit session directory
-    # app.config['SESSION_FILE_THRESHOLD'] = 500  # Max session files
-    
-    
-    # Initialize session AFTER setting all config
-    # Session(app)
     
     # Database configuration
     app.config['SQLALCHEMY_BINDS'] = {
@@ -94,6 +80,7 @@ def create_app():
     # from app.routes.amazon_live_api_routes import amazon_live_api_bp
     from app.routes.live_data_bi_routes import live_data_bi_bp
     from app.routes.monthwise_ai_summary_routes import summary_bp
+    from app.routes.advertisement_api_routes import advertisement_api_routes_bp
     
      # Register the new fee_preview_bp
    
@@ -124,6 +111,7 @@ def create_app():
     # app.register_blueprint(amazon_live_api_bp)
     app.register_blueprint(live_data_bi_bp)
     app.register_blueprint(summary_bp)
+    app.register_blueprint(advertisement_api_routes_bp)
     
     
     

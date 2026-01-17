@@ -328,6 +328,7 @@ def process_skuwise_data(user_id, country, month, year):
             "CouponParticipationEvent",
             "SellerDealComplete",
             "VineCharge",
+            "SellerPoweredCoupon",
             "DealParticipationEvent",
             "DealPerformanceEvent",
         ])
@@ -343,6 +344,8 @@ def process_skuwise_data(user_id, country, month, year):
             "FBADisposal",
             "FBAStorageBilling",
             "FBALongTermStorageBilling",
+            "INCORRECT_FEES_NON_ITEMIZED",
+            "StorageReservationBilling",
         ])
         # ================== END NEW: TOTAL-ONLY BREAKUP COLUMNS ==================
 
@@ -352,6 +355,8 @@ def process_skuwise_data(user_id, country, month, year):
             "WAREHOUSE_LOST",
             "WAREHOUSE_DAMAGE",
             "MISSING_FROM_INBOUND",
+            "MISSING_FROM_INBOUND_CLAWBACK",
+            "COMPENSATED_CLAWBACK",
         }
 
 
@@ -430,10 +435,11 @@ def process_skuwise_data(user_id, country, month, year):
             "Refund",
             "Disbursement",
             "DebtPayment",
-          
-          
-          
-            
+            "INCORRECT_FEES_NON_ITEMIZED",
+            "StorageReservationBilling",
+            "MISSING_FROM_INBOUND_CLAWBACK",
+            "COMPENSATED_CLAWBACK",
+            "SellerPoweredCoupon",
             "VineCharge", "DealParticipationEvent",
             "DealPerformanceEvent",
             
@@ -2143,6 +2149,7 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 "rembursement_fee",
                 "rembursment_vs_cm2_margins",
                 "reimbursement_vs_sales",
+                "lost_total",
                 "sales_mix",
                 "profit_mix",
                 "user_id"
@@ -2192,6 +2199,7 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                     "rembursement_fee": "sum",
                     "rembursment_vs_cm2_margins": "mean",
                     "reimbursement_vs_sales": "mean",
+                    "lost_total": "sum",
                     "sales_mix": "mean",
                     "profit_mix": "mean",
                     "user_id": "first"
@@ -2310,6 +2318,7 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
 
                         profit_mix DOUBLE PRECISION,
                         sales_mix DOUBLE PRECISION,
+                        lost_total DOUBLE PRECISION,
 
                         user_id INTEGER
                     )
@@ -2383,6 +2392,7 @@ def process_yearly_skuwise_data(user_id, country, year):
                 "rembursement_fee",
                 "rembursment_vs_cm2_margins",
                 "reimbursement_vs_sales",
+                "lost_total",
                 "sales_mix",
                 "profit_mix",
                 "user_id"
@@ -2440,6 +2450,7 @@ def process_yearly_skuwise_data(user_id, country, year):
                     "rembursement_fee": "sum",
                     "rembursment_vs_cm2_margins": "mean",
                     "reimbursement_vs_sales": "mean",
+                    "lost_total": "sum",
                     "sales_mix": "mean",
                     "profit_mix": "mean",
                     "user_id": "first", # or "sum" if you want to repeat user_id for each group
@@ -2557,6 +2568,7 @@ def process_yearly_skuwise_data(user_id, country, year):
 
                     profit_mix DOUBLE PRECISION,
                     sales_mix DOUBLE PRECISION,
+                    lost_total DOUBLE PRECISION,
 
                     user_id INTEGER
                 )
