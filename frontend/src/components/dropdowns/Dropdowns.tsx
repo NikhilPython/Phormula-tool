@@ -268,11 +268,7 @@ const extractBullets = (md: string | null | undefined): string[] => {
     .filter(Boolean);
 };
 const renderMarkdownInline = (text: string) => {
-<<<<<<< HEAD
-  const html = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-=======
   const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
->>>>>>> origin
   return { __html: html };
 };
 
@@ -651,11 +647,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
 
-<<<<<<< HEAD
-  
-
-=======
->>>>>>> origin
   const fetchAiSummary = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
 
@@ -770,11 +761,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
-<<<<<<< HEAD
-  
-
-=======
->>>>>>> origin
   useEffect(() => {
     setRange("yearly");
     setSelectedMonth("");
