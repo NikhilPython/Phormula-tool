@@ -22,7 +22,6 @@ import {
   getPrevMonthShortLabel,
   getISTDayInfo,
 } from "@/lib/dashboard/date";
-
 import {
   fmtGBP,
   fmtUSD,
@@ -31,20 +30,17 @@ import {
   fmtInt,
   toNumberSafe,
 } from "@/lib/dashboard/format";
-
 import type { RegionKey, RegionMetrics } from "@/lib/dashboard/types";
-
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { usePlatform } from "@/components/context/PlatformContext";
 import type { PlatformId } from "@/lib/utils/platforms";
 import LiveBiLineGraph from "@/components/businessInsight/LiveBiLineChartPanel";
-
-// ✅ moved range picker deps here
 import { DateRange } from "react-date-range";
 import "react-date-range/dist/styles.css";
 import "react-date-range/dist/theme/default.css";
 import { FaCalendarAlt } from "react-icons/fa";
 import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/liveBusinessClient";
+import { useRouter } from "next/navigation";
 
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
@@ -88,7 +84,7 @@ type DailyPoint = {
   date: string;
   quantity?: number;
   net_sales?: number;
-  product_sales?: number;
+  gross_sales?: number;
   profit?: number;
   cm2_profit?: number; // ✅ add
 };
@@ -359,6 +355,16 @@ const sliceByDayRange = (
 
 
 export default function DashboardPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+    if (!token) {
+      router.replace("/signin");
+    }
+  }, [router]);
 
   const { platform } = usePlatform();
   const { data: userData } = useGetUserDataQuery();
@@ -484,69 +490,69 @@ export default function DashboardPage() {
   const [cadToUsd, setCadToUsd] = useState(CAD_TO_USD_ENV);
   const [fxLoading, setFxLoading] = useState(false);
 
-type CurrencyRateRow = {
-  conversion_rate: number;
-  country: string;
-  month: string;
-  selected_currency: string;
-  user_currency: string;
-  year: number;
-};
+  type CurrencyRateRow = {
+    conversion_rate: number;
+    country: string;
+    month: string;
+    selected_currency: string;
+    user_currency: string;
+    year: number;
+  };
 
-const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
+  const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
-const fetchFxRates = useCallback(async () => {
-  try {
-    setFxLoading(true);
+  const fetchFxRates = useCallback(async () => {
+    try {
+      setFxLoading(true);
 
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-    const headers: HeadersInit = { Accept: "application/json" };
-    if (token) (headers as any).Authorization = `Bearer ${token}`;
+      const headers: HeadersInit = { Accept: "application/json" };
+      if (token) (headers as any).Authorization = `Bearer ${token}`;
 
-    const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
-    if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
+      const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
+      if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
 
-    const rows: CurrencyRateRow[] = await res.json();
+      const rows: CurrencyRateRow[] = await res.json();
 
-    const { monthName, year } = getISTYearMonth();
-    const month = monthName.toLowerCase();
+      const { monthName, year } = getISTYearMonth();
+      const month = monthName.toLowerCase();
 
-    // current-month only
-    const cur = (rows || []).filter(
-      (r) =>
-        String(r.month || "").toLowerCase() === month &&
-        Number(r.year) === Number(year)
-    );
-
-    // helper: find conversion for pair (from -> to)
-    const getRate = (from: string, to: string) => {
-      const row = cur.find(
+      // current-month only
+      const cur = (rows || []).filter(
         (r) =>
-          String(r.user_currency).toLowerCase() === from &&
-          String(r.selected_currency).toLowerCase() === to
+          String(r.month || "").toLowerCase() === month &&
+          Number(r.year) === Number(year)
       );
-      const rate = Number(row?.conversion_rate);
-      return Number.isFinite(rate) && rate > 0 ? rate : null;
-    };
 
-    // ✅ set the three your code currently uses (from -> USD)
-    const gbpUsd = getRate("gbp", "usd");
-    const inrUsd = getRate("inr", "usd");
-    const cadUsd = getRate("cad", "usd");
+      // helper: find conversion for pair (from -> to)
+      const getRate = (from: string, to: string) => {
+        const row = cur.find(
+          (r) =>
+            String(r.user_currency).toLowerCase() === from &&
+            String(r.selected_currency).toLowerCase() === to
+        );
+        const rate = Number(row?.conversion_rate);
+        return Number.isFinite(rate) && rate > 0 ? rate : null;
+      };
 
-    if (gbpUsd != null) setGbpToUsd(gbpUsd);
-    if (inrUsd != null) setInrToUsd(inrUsd);
-    if (cadUsd != null) setCadToUsd(cadUsd);
+      // ✅ set the three your code currently uses (from -> USD)
+      const gbpUsd = getRate("gbp", "usd");
+      const inrUsd = getRate("inr", "usd");
+      const cadUsd = getRate("cad", "usd");
 
-    console.log("✅ FX (current month)", { month, year, gbpUsd, inrUsd, cadUsd });
-  } catch (err) {
-    console.error("Failed to fetch FX from DB, keeping env defaults", err);
-  } finally {
-    setFxLoading(false);
-  }
-}, []);
+      if (gbpUsd != null) setGbpToUsd(gbpUsd);
+      if (inrUsd != null) setInrToUsd(inrUsd);
+      if (cadUsd != null) setCadToUsd(cadUsd);
+
+      console.log("✅ FX (current month)", { month, year, gbpUsd, inrUsd, cadUsd });
+    } catch (err) {
+      console.error("Failed to fetch FX from DB, keeping env defaults", err);
+    } finally {
+      setFxLoading(false);
+    }
+  }, []);
 
 
   useEffect(() => {
@@ -717,7 +723,7 @@ const fetchFxRates = useCallback(async () => {
     const convPoint = (p: DailyPoint): DailyPoint => ({
       ...p,
       net_sales: p.net_sales != null ? convertToDisplayCurrency(p.net_sales, biDataCurrency) : p.net_sales,
-      product_sales: p.product_sales != null ? convertToDisplayCurrency(p.product_sales, biDataCurrency) : p.product_sales,
+      gross_sales: p.gross_sales != null ? convertToDisplayCurrency(p.gross_sales, biDataCurrency) : p.gross_sales,
       profit: p.profit != null ? convertToDisplayCurrency(p.profit, biDataCurrency) : p.profit,
       cm2_profit: p.cm2_profit != null ? convertToDisplayCurrency(p.cm2_profit, biDataCurrency) : p.cm2_profit,
     });
@@ -795,6 +801,27 @@ const fetchFxRates = useCallback(async () => {
       setLoading(false);
     }
   }, [platform, amazonConnections]);
+
+
+
+  const renderMoneyWithPerUnit = (amount: number, units: number, fmt: (v: number) => string) => {
+    const totalText = fmt(amount);
+
+    if (!units) return <span>{totalText}</span>;
+
+    const perUnit = amount / units;
+    const perUnitText = fmt(perUnit);
+
+    return (
+      <>
+        <span>{totalText}</span>
+        <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+          ({perUnitText}/unit)
+        </span>
+      </>
+    );
+  };
+
 
 
   /* ===================== SHOPIFY STORE INFO ===================== */
@@ -1090,7 +1117,7 @@ const fetchFxRates = useCallback(async () => {
 
 
     const grossSalesGBP =
-      totals?.product_sales != null ? toNumberSafe(totals.product_sales) : null; // ✅ current gross
+      totals?.gross_sales != null ? toNumberSafe(totals.gross_sales) : null; // ✅ current gross
 
     const advertisingGBP =
       derived?.advertising_fees != null ? toNumberSafe(derived.advertising_fees) : 0;
@@ -1117,9 +1144,12 @@ const fetchFxRates = useCallback(async () => {
   const safeDeltaPct = (current: number, previous: number) => {
     const c = Number(current) || 0;
     const p = Number(previous) || 0;
+
     if (!p) return null;
-    return ((c - p) / p) * 100;
+
+    return ((c - p) / Math.abs(p)) * 100;
   };
+
 
 
 
@@ -1257,7 +1287,7 @@ const fetchFxRates = useCallback(async () => {
     const curr = {
       units: sum(currPts, "quantity"),
       netSales: sum(currPts, "net_sales"),
-      grossSales: sum(currPts, "product_sales"),
+      grossSales: sum(currPts, "gross_sales"),
       profit: sum(currPts, "profit"),
       cm2Profit: sum(currPts, "cm2_profit"),
     };
@@ -1265,7 +1295,7 @@ const fetchFxRates = useCallback(async () => {
     const prev = {
       units: sum(prevPts, "quantity"),
       netSales: sum(prevPts, "net_sales"),
-      grossSales: sum(prevPts, "product_sales"),
+      grossSales: sum(prevPts, "gross_sales"),
       profit: sum(prevPts, "profit"),
       cm2Profit: sum(prevPts, "cm2_profit"),
     };
@@ -1349,9 +1379,9 @@ const fetchFxRates = useCallback(async () => {
 
 
   const amazonUK_Gross_USD = useMemo(() => {
-    const grossGBP = toNumberSafe(totals?.product_sales); // ✅ current gross
+    const grossGBP = toNumberSafe(totals?.gross_sales); // ✅ current gross
     return grossGBP * gbpToUsd;
-  }, [totals?.product_sales, gbpToUsd]);
+  }, [totals?.gross_sales, gbpToUsd]);
 
 
 
@@ -1722,6 +1752,78 @@ const fetchFxRates = useCallback(async () => {
   const labels = chartItems.map((i) => i.label);
   const values = chartItems.map((i) => Number(i.raw ?? 0));
 
+
+  const prevValues = useMemo(() => {
+    const getPrev = (label: string) => {
+      // map label -> previous raw value (same currency basis as current raw)
+      switch (label) {
+        case "Net Sales":
+          return globalUseBi
+            ? (biCardKpis.prev.netSales ?? 0)
+            : convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency);
+
+        case "COGS":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.cogs ?? 0),
+            amazonDataCurrency
+          );
+
+        case "Amazon Fees":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.amazon_fees ?? 0),
+            amazonDataCurrency
+          );
+
+        case "Tax & Credits":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.tax_and_credits ?? 0),
+            amazonDataCurrency
+          );
+
+        case "Advertisements":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0),
+            amazonDataCurrency
+          );
+
+        case "Others":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.platform_fee ?? 0),
+            amazonDataCurrency
+          );
+
+        case "CM1 Profit":
+          return convertToDisplayCurrency(
+            toNumberSafe(data?.previous_period?.totals?.profit ?? 0),
+            amazonDataCurrency
+          );
+
+        case "CM2 Profit":
+          return globalUseBi
+            ? (cm2Ready ? convertToDisplayCurrency(biAlignedTotals?.previous_cm2_profit ?? 0, biSourceCurrency) : 0)
+            : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency);
+
+        default:
+          return 0;
+      }
+    };
+
+    return labels.map(getPrev);
+  }, [
+    labels,
+    data?.previous_period?.totals,
+    prev.netSales,
+    prev.cm2Profit,
+    amazonDataCurrency,
+    convertToDisplayCurrency,
+    globalUseBi,
+    biCardKpis,
+    cm2Ready,
+    biAlignedTotals,
+    biSourceCurrency,
+  ]);
+
+
   const colorMapping: Record<string, string> = {
     "Net Sales": "#75BBDA",
     "Amazon Fees": "#B75A5A",
@@ -1858,6 +1960,9 @@ const fetchFxRates = useCallback(async () => {
 
   const useBiForAmazonCards =
     showLiveBI && rangeActive && (isCountryMode || platform === "global");
+
+  const unitsToUse = useBiForAmazonCards ? (biCardKpis.curr.units ?? 0) : toNumberSafe(totals?.quantity ?? 0);
+
 
 
   /* ===================== ✅ GLOBAL CARD: prev/current + deltas ===================== */
@@ -2127,7 +2232,7 @@ const fetchFxRates = useCallback(async () => {
 
   const stats_targetTrendPct =
     stats_targetHome > 0
-      ? ((proratedTargetToDate - stats_mtdHome) / stats_targetHome) * 100
+      ? ((stats_mtdHome - proratedTargetToDate) / stats_targetHome) * 100
       : 0;
 
   return (
@@ -2596,7 +2701,7 @@ const fetchFxRates = useCallback(async () => {
                           : amazonAdsDeltaPct
                       }
                       loading={loading || (useBiForAmazonCards ? biLoading : false)}
-                      formatter={formatDisplayAmount}
+                      formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
                       bottomLabel={prevLabel}
                       className="border-[#C49466] bg-[#C494664D]"
                     />
@@ -2679,7 +2784,7 @@ const fetchFxRates = useCallback(async () => {
                           : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0) // ✅ MTD Transactions delta
                       }
                       loading={loading || (useBiCm2 ? biLoading : false)}
-                      formatter={formatDisplayAmount}
+                      formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
                       bottomLabel={prevLabel}
                       className="border-[#B8C78C] bg-[#B8C78C4D]"
                     />
@@ -2853,6 +2958,7 @@ const fetchFxRates = useCallback(async () => {
                 targetHome={stats_targetHome}
                 mtdHome={stats_mtdHome}
                 lastMonthTotalHome={stats_lastMonthTotalHome}
+                lastMonthToDateHome={stats_lastMtdHome}
                 currentReimbursement={reimbursementHome.current}
                 previousReimbursement={reimbursementHome.previous}
               />
@@ -2914,16 +3020,16 @@ const fetchFxRates = useCallback(async () => {
                 <div className="text-sm text-charcoal-500">
                   <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
                     <PageBreadcrumb
-                      pageTitle="MTD P&L - Amazon"
+                      pageTitle="MTD P&L"
                       align="left"
                       textSize="2xl"
                       variant="page"
                     />
 
-                    <span className="text-green-500 ">  {countryName.toUpperCase()}</span>
+                    {/* <span className="text-green-500 ">  {countryName.toUpperCase()}</span>
                     <span className="text-charcoal-500 "> -</span>
 
-                    <span className=" text-green-500">  {formattedMonthYear}</span>
+                    <span className=" text-green-500">  {formattedMonthYear}</span> */}
                   </div>
                 </div>
 
@@ -2949,6 +3055,7 @@ const fetchFxRates = useCallback(async () => {
                     currencySymbol={currencySymbol}
                     labels={labels}
                     values={values}
+                    prevValues={prevValues}
                     colors={colors}
                     loading={loading}
                     allValuesZero={allValuesZero}

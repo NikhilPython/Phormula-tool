@@ -390,61 +390,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return k as keyof TableRow | undefined;
   }, [tableData]);
 
-  // const buildExcelTableData = useCallback(() => {
-  //   const columnsToDisplay2 = [
-  //     "product_name",
-  //     "quantity",
-  //     "asp",
-  //     "product_sales",
-  //     "net_sales",
-  //     "cost_of_unit_sold",
-  //     "amazon_fee",
-  //     "selling_fees",
-  //     "fba_fees",
-  //     "net_credits",
-  //     "net_taxes",
-  //     "profit",
-  //     "profit_percentage",
-  //     "unit_wise_profitability",
-  //   ] as const;
-
-  //   const rowsForExcel = tableData.map((row) => {
-  //     const rowData: Record<string, string | number> = {};
-
-  //     columnsToDisplay2.forEach((column) => {
-  //       let value: any = (row as any)[column];
-
-  //       // ✅ name fallback same as UI
-  //       if (column === "product_name") value = getDisplayProductNameFromRow(row);
-
-  //       // ✅ hard mapping rules (match your current excel logic)
-  //       if (column === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
-
-  //       // ✅ quantity = Units Sold (NOT total_quantity)
-  //       if (column === "quantity") value = row.quantity ?? row.units_sold ?? 0;
-
-  //       // number formatting rules
-  //       if (typeof value === "number") {
-  //         if (Math.abs(value) < 1e-10) value = 0;
-
-  //         // keep decimals except quantity
-  //         if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
-  //       }
-
-  //       // percent stored as fraction for excel (same as you do now)
-  //       if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
-
-  //       rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
-  //     });
-
-  //     return rowData;
-  //   });
-
-  //   return { columnsToDisplay2, rowsForExcel };
-  // }, [tableData, getDisplayProductNameFromRow]);
-
-
-  const getTitle = useCallback(() => `Profit Breakup (SKU Level)`, []);
+  // const getTitle = useCallback(() => `Profit Breakup (SKU Level)`, []);
+  const getTitle = useCallback(() => `P&L Productwise Breakdown`, []);
 
   const getExtraRows = useCallback(() => {
     const formattedCountry = isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase();
@@ -469,76 +416,77 @@ const SKUtable: React.FC<SKUtableProps> = ({
     []
   );
 
-  const groups = useMemo<ColGroup<TableRow>[]>(() => ([
-    {
-      id: "sales",
-      label: "Sales",
-      collapsedCols: [],
-      expandedCols: [
-        { key: "product_sales", label: "Gross Sales", align: "center" as const },
-        { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
-        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
-      ],
-    },
+  const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
       id: "units_breakdown",
       label: "Net Units Sold",
-      collapsedCols: [],
+      collapsedCols: [{ key: "net_units_sold", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "sku", label: "SKU", align: "center" as const },
-        { key: "units_sold", label: "Units Sold", align: "center" as const },
-        { key: "return_units", label: "Return", align: "center" as const },
+        { key: "sku", label: "SKU", align: "center" },
+        { key: "units_sold", label: "Units Sold", align: "center" },
+        { key: "return_units", label: "Return", align: "center" },
+        { key: "net_units_sold", label: "Total", align: "center" },
       ],
     },
+
     {
-      id: "promotions_breakdown",
-      label: "",
-      collapsedCols: [],
+      id: "sales",
+      label: "Sales",
+      collapsedCols: [{ key: "net_sales", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "promotional_rebates", label: "Promotions", align: "center" as const },
-        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+        { key: "product_sales", label: "Gross Sales", align: "center" },
+        { key: "refund_sales", label: "Sales - Refund", align: "center" },
+        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
+        { key: "net_sales", label: "Total", align: "center" },
       ],
     },
+
     {
       id: "amazon_breakdown",
       label: "Marketplace Fees",
-      collapsedCols: [],
+      collapsedCols: [{ key: "amazon_fee", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "selling_fees", label: "Selling Fees", align: "center" as const },
-        { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+        { key: "selling_fees", label: "Selling Fees", align: "center" },
+        { key: "fba_fees", label: "FBA Fees", align: "center" },
+        { key: "amazon_fee", label: "Total", align: "center" },
       ],
     },
+
     {
       id: "other_transactions_breakdown",
       label: "Other Transactions",
-      collapsedCols: [],
+      collapsedCols: [{ key: "other_transactions", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "net_taxes", label: "Net Taxes", align: "center" as const },
-        { key: "net_credits", label: "Net Credits", align: "center" as const },
-        // { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+        { key: "net_taxes", label: "Net Taxes", align: "center" },
+        { key: "net_credits", label: "Net Credits", align: "center" },
+        { key: "other_transactions", label: "Total", align: "center" },
       ],
     },
+
     {
       id: "profit_breakdown",
       label: "CM1 Profit",
-      collapsedCols: [],
+      collapsedCols: [{ key: "profit", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
-        { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
+        { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
+        { key: "profit", label: "Total", align: "center" },
       ],
     },
-  ]), []);
+  ], []);
 
 
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
       { key: "asp", label: "ASP", align: "center" },
-      { key: "net_sales", label: "Net Sales", align: "center" },
+      // { key: "net_sales", label: "Net Sales", align: "center" },
       { key: "cost_of_unit_sold", label: "COGS", align: "center" },
-      { key: "net_units_sold", label: "Net Units Sold", align: "center" },
-      { key: "amazon_fee", label: "Marketplace Fees", align: "center" },
-      { key: "other_transactions", label: "Other Transactions", align: "center" },
-      { key: "profit", label: "CM1 Profit Margin", align: "center" },
+      { key: "promotional_rebates", label: "Promotions", align: "center" },
+      { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
+      // { key: "net_units_sold", label: "Net Units Sold", align: "center" },
+      // { key: "amazon_fee", label: "Marketplace Fees", align: "center" },
+      // { key: "other_transactions", label: "Other Transactions", align: "center" },
+      // { key: "profit", label: "CM1 Profit Margin", align: "center" },
     ],
     []
   );
@@ -1650,36 +1598,30 @@ const SKUtable: React.FC<SKUtableProps> = ({
       <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
-            {/* <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" /> */}
-            <PageBreadcrumb
+            <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" />
+            {/* <PageBreadcrumb
               pageTitle={
                 range === "monthly" ? (
                   <>
                     Monthly P&amp;L - Product Breakdown{" "}
-                    {/* <span className="text-[#5EA68E] font-bold">
-                      {convertToAbbreviatedMonth(month)}&apos;{String(year).slice(-2)}
-                    </span> */}
+                  
                   </>
                 ) : range === "quarterly" ? (
                   <>
                     Quarterly P&amp;L - Product Breakdown{" "}
-                    {/* <span className="text-[#5EA68E] font-bold">
-                      {quarter}&apos;{String(year).slice(-2)}
-                    </span> */}
+                  
                   </>
                 ) : (
                   <>
                     Yearly P&amp;L - Product Breakdown{" "}
-                    {/* <span className="text-[#5EA68E] font-bold">
-                      {year}
-                    </span> */}
+                   
                   </>
                 )
               }
               variant="page"
               align="left"
               textSize="2xl"
-            />
+            /> */}
 
             <span className="text-[#5EA68E] text-lg sm:text-2xl md:text-2xl font-bold">({currencySymbol})</span>
           </div>
@@ -1704,33 +1646,53 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 groups={groups}
 
                 singleCols={SINGLE_COLS}
+                // layout={[
+
+                //   { type: "group", id: "units_breakdown" },
+                //   { type: "single", key: "net_units_sold" },
+
+                //   { type: "single", key: "asp" },
+
+
+                //   { type: "group", id: "sales" },
+                //   { type: "single", key: "net_sales" },
+
+                //   { type: "group", id: "promotions_breakdown" },
+                //   { type: "single", key: "cost_of_unit_sold" },
+
+                //   { type: "group", id: "amazon_breakdown" },
+                //   { type: "single", key: "amazon_fee" },
+
+                //   { type: "group", id: "other_transactions_breakdown" },
+                //   { type: "single", key: "other_transactions" },
+
+                //   { type: "group", id: "profit_breakdown" },
+                //   { type: "single", key: "profit" },
+                // ]}
                 layout={[
-
                   { type: "group", id: "units_breakdown" },
-                  { type: "single", key: "net_units_sold" },
-
                   { type: "single", key: "asp" },
 
-
                   { type: "group", id: "sales" },
-                  { type: "single", key: "net_sales" },
 
-                  { type: "group", id: "promotions_breakdown" },
+                  { type: "single", key: "promotional_rebates" },
+                  { type: "single", key: "promotional_rebates_percentage" },
                   { type: "single", key: "cost_of_unit_sold" },
 
+
                   { type: "group", id: "amazon_breakdown" },
-                  { type: "single", key: "amazon_fee" },
-
                   { type: "group", id: "other_transactions_breakdown" },
-                  { type: "single", key: "other_transactions" },
-
                   { type: "group", id: "profit_breakdown" },
-                  { type: "single", key: "profit" },
                 ]}
+
+
+
+
                 initialCollapsed={{
                   units_breakdown: true,
                   sales: true,
                   promotions_breakdown: true,
+                  cogs_breakdown: true,
                   amazon_breakdown: true,
                   other_transactions_breakdown: true,
                   profit_breakdown: true,
@@ -1738,11 +1700,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 toggleGroupByColKey={{
                   net_units_sold: "units_breakdown",
                   net_sales: "sales",
-                  cost_of_unit_sold: "promotions_breakdown",
                   amazon_fee: "amazon_breakdown",
                   other_transactions: "other_transactions_breakdown",
                   profit: "profit_breakdown",
                 }}
+
                 onVisibleColCountChange={setMainColCount}
                 showSignRowInBody
                 getSignForCol={getSignForCol}

@@ -1963,6 +1963,10 @@ export default function DashboardPage() {
 
   const unitsToUse = useBiForAmazonCards ? (biCardKpis.curr.units ?? 0) : toNumberSafe(totals?.quantity ?? 0);
 
+  const moneyPerUnitFormatter = useCallback(
+    (v: number) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
+    [unitsToUse, renderMoneyWithPerUnit, formatDisplayAmount]
+  );
 
 
   /* ===================== ✅ GLOBAL CARD: prev/current + deltas ===================== */
@@ -2344,7 +2348,7 @@ export default function DashboardPage() {
 
                       deltaPct={globalUseBi ? biCardKpis.deltas.grossSales : safeDeltaPct(combinedGrossUSD, prevGlobalGrossUSD)}
                       loading={loading || shopifyLoading || biLoading}
-                      formatter={formatDisplayAmount}
+                        formatter={moneyPerUnitFormatter}
                       bottomLabel={prevLabel}
 
                       className="border-[#ED9F50] bg-[#ED9F504D]"
@@ -2358,7 +2362,7 @@ export default function DashboardPage() {
 
                       deltaPct={globalUseBi ? biCardKpis.deltas.netSales : safeDeltaPct(globalCurrNetSalesDisp, globalPrevNetSalesDisp)}
                       loading={loading || shopifyLoading || biLoading}
-                      formatter={formatDisplayAmount}
+                       formatter={moneyPerUnitFormatter}
                       bottomLabel={prevLabel}
                       className="border-[#75BBDA] bg-[#75BBDA4D]"
                     />
@@ -2614,7 +2618,7 @@ export default function DashboardPage() {
                       }
                       deltaPct={useBiForAmazonCards ? biCardKpis.deltas.grossSales : safeDeltaPct(uk.grossSalesGBP ?? 0, prev.grossSales ?? 0)}
                       loading={loading || biLoading}
-                      formatter={formatDisplayAmount}
+                      formatter={moneyPerUnitFormatter}
                       bottomLabel={prevLabel}
                       className="border-[#ED9F50] bg-[#ED9F504D]"
                     />
@@ -2633,7 +2637,7 @@ export default function DashboardPage() {
                       }
                       deltaPct={useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct}
                       loading={loading || biLoading}
-                      formatter={formatDisplayAmount}
+                       formatter={moneyPerUnitFormatter}
                       bottomLabel={prevLabel}
                       className="border-[#75BBDA] bg-[#75BBDA4D]"
                     />

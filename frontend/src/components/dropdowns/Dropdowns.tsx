@@ -2225,10 +2225,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {
                 key: "grossSales",
                 title: "Gross Sales",
-                value: formatMoney(getGrossSales(summary)),
+                value: renderMoneyWithPerUnit(getGrossSales(summary), summary.unit_sold),
                 className: "border border-[#ED9F50] bg-[#ED9F504D]",
                 comparisons: (() => {
-                  // reuse your gross sales comparison logic but produce rows in same shape:
                   const items = getGrossSalesComparisons();
                   return items.map((item) => {
                     const hasValue = typeof item.value === "number" && !isNaN(item.value);
@@ -2256,13 +2255,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {
                 key: "netSales",
                 title: "Net Sales",
-                value: formatMoney(netSales),
+                value: renderMoneyWithPerUnit(netSales, summary.unit_sold),
                 className: "border border-[#75BBDA] bg-[#75BBDA4D]",
                 comparisons: buildComparisonsRows("total_sales", formatMoney),
               },
+
               {
                 key: "expenses",
-                title: "Platform Expenses",
+                title: "Marketplace Fees",
                 value: renderMoneyWithPerUnit(summary.total_expense, summary.unit_sold),
                 className: "border border-[#B75A5A] bg-[#B75A5A4D]",
                 comparisons: buildComparisonsRows("total_expense", formatMoney),

@@ -206,17 +206,49 @@ export default function GroupedCollapsibleTable<RowT>({
 
   /* ---------------- Row 2 Headers ---------------- */
 
-  const row2LeafCols = useMemo(() => {
-    const out: LeafCol<RowT>[] = [];
+  // const row2LeafCols = useMemo(() => {
+  //   const out: LeafCol<RowT>[] = [];
+  //   for (const item of resolvedLayout) {
+  //     if (item.type !== "group") continue;
+  //     const g = groupMap.get(item.id);
+  //     if (!g) continue;
+  //     const isCollapsed = collapsed[g.id];
+  //     out.push(...(isCollapsed ? g.collapsedCols : g.expandedCols));
+  //   }
+  //   return out;
+  // }, [resolvedLayout, collapsed, groupMap]);
+
+  type Row2Cell<RowT> =
+    | { kind: "col"; col: LeafCol<RowT>; colSpan: 1 }
+    | { kind: "blank"; key: string; colSpan: number };
+
+  const anyGroupExpanded = useMemo(
+    () => groups.some((g) => collapsed[g.id] === false),
+    [groups, collapsed]
+  );
+
+  const row2Cells = useMemo<LeafCol<RowT>[]>(() => {
+    if (!anyGroupExpanded) return [];
+
+    const cols: LeafCol<RowT>[] = [];
     for (const item of resolvedLayout) {
       if (item.type !== "group") continue;
       const g = groupMap.get(item.id);
       if (!g) continue;
-      const isCollapsed = collapsed[g.id];
-      out.push(...(isCollapsed ? g.collapsedCols : g.expandedCols));
+
+      if (collapsed[g.id] === false) {
+        cols.push(...g.expandedCols);
+      }
     }
-    return out;
-  }, [resolvedLayout, collapsed, groupMap]);
+    return cols;
+  }, [anyGroupExpanded, resolvedLayout, collapsed, groupMap]);
+
+
+  // const shouldRenderHeaderRow2 = useMemo(() => {
+  //   // show row2 only when at least one group is expanded
+  //   return groups.some((g) => collapsed[g.id] === false);
+  // }, [groups, collapsed]);
+
 
   const visibleCount = visibleLeafCols.length;
   const valueCols = summary?.valueCols ?? 2;
@@ -240,7 +272,8 @@ export default function GroupedCollapsibleTable<RowT>({
           {leftCols.map((c) => (
             <th
               key={c.key}
-              rowSpan={2}
+              // rowSpan={2}
+              rowSpan={anyGroupExpanded ? 2 : 1}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
             >
               {c.label}
@@ -257,16 +290,24 @@ export default function GroupedCollapsibleTable<RowT>({
               const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
               if (cols.length === 0) return null;
 
+              const groupRowSpan = anyGroupExpanded ? (isCollapsed ? 2 : 1) : 1;
+
               return (
                 <th
                   key={g.id}
                   colSpan={cols.length}
+                  rowSpan={groupRowSpan}
                   onClick={() => toggleGroup(g.id)}
                   role="button"
                   className={`${thBase} cursor-pointer select-none text-center ${g.headerClassName || ""}`}
                   title="Click to expand/collapse"
                 >
-                  {g.label}
+                  <div className="flex items-center justify-center gap-2 min-w-0">
+                    <span className="shrink-0 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+                      {isCollapsed ? "+" : "−"}
+                    </span>
+                    <span className="min-w-0 truncate">{g.label}</span>
+                  </div>
                 </th>
               );
             }
@@ -282,7 +323,8 @@ export default function GroupedCollapsibleTable<RowT>({
             return (
               <th
                 key={c.key}
-                rowSpan={2}
+                // rowSpan={2}
+                rowSpan={anyGroupExpanded ? 2 : 1}
                 onClick={isExpandable ? () => toggleGroup(targetGroupId!) : undefined}
                 role={isExpandable ? "button" : undefined}
                 title={isExpandable ? "Click to expand/collapse" : undefined}
@@ -307,16 +349,18 @@ export default function GroupedCollapsibleTable<RowT>({
 
 
         {/* -------- Header Row 2 -------- */}
-        <tr className={headerRow2ClassName}>
-          {row2LeafCols.map((c) => (
-            <th
-              key={c.key}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
-            >
-              {c.label}
-            </th>
-          ))}
-        </tr>
+        {anyGroupExpanded && (
+          <tr className={headerRow2ClassName}>
+            {row2Cells.map((c) => (
+              <th
+                key={c.key}
+                className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+              >
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        )}
       </thead>
 
       <tbody>
