@@ -11,7 +11,7 @@ type ComparisonRow = {
 
 type SummaryMetricCardProps = {
   title: string;
-  valueText: string;
+  value: React.ReactNode;
   className?: string;     // container styles (bg/border)
   valueClassName?: string;
   comparisons?: ComparisonRow[];
@@ -19,7 +19,7 @@ type SummaryMetricCardProps = {
 
 const SummaryMetricCard: React.FC<SummaryMetricCardProps> = ({
   title,
-  valueText,
+  value,
   className = "",
   valueClassName = "",
   comparisons = [],
@@ -31,7 +31,7 @@ const SummaryMetricCard: React.FC<SummaryMetricCardProps> = ({
         className,
       ].join(" ")}
     >
-      <div className="flex justify-between items-center 2xl:mb-2">
+      <div className="flex justify-between items-center ">
         <span className="text-[10px] 2xl:text-xs text-charcoal-500">{title}</span>
       </div>
 
@@ -41,11 +41,11 @@ const SummaryMetricCard: React.FC<SummaryMetricCardProps> = ({
           valueClassName,
         ].join(" ")}
       >
-        {valueText}
+      {value}
       </div>
 
       {!!comparisons.length && (
-        <div className="2xl:mt-3 space-y-2">
+        <div className="space-y-2">
           {comparisons.map((row, idx) => (
             <div
               key={`${row.label}-${idx}`}

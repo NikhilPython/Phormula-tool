@@ -269,14 +269,6 @@ def amazon_health():
     return jsonify({"status": "healthy" if ok else "error"}), (200 if ok else 500)
 
 
-@amazon_api_bp.route("/amazon_api/debug_env", methods=["GET"])
-def debug_env():
-    return jsonify({
-        "region": amazon_client.region,
-        "marketplace_id": amazon_client.marketplace_id,
-        "api_base_url": amazon_client.api_base_url,
-        "has_refresh_token": bool(amazon_client.refresh_token),
-    })
 
 
 

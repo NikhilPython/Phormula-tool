@@ -5,6 +5,7 @@ export type LoginRes = { token: string; message?: string };
 
 // --- Register types ---
 export type RegisterReq = {
+  name: string; 
   email: string;
   password: string;
   phone_number: string;     // formatted, e.g. "+1 5551234567"

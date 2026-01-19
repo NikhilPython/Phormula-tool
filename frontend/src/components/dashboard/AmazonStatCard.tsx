@@ -9,7 +9,7 @@ export type AmazonStatCardProps = {
   current: number | null | undefined;
   previous: number | null | undefined;
   loading: boolean;
-  formatter?: (v: any) => string;
+  formatter?: (v: any) => React.ReactNode;
   bottomLabel: string;
   className?: string;
   deltaPct?: number | null;
@@ -37,9 +37,9 @@ export default function AmazonStatCard({
   const deltaToShow =
     deltaPct === undefined ? computedDelta : deltaPct == null ? null : Number(deltaPct);
 
-const visualIsUp =
-  deltaToShow != null &&
-  (inverseDelta ? deltaToShow < 0 : deltaToShow >= 0);
+  const visualIsUp =
+    deltaToShow != null &&
+    (inverseDelta ? deltaToShow < 0 : deltaToShow >= 0);
 
   const isPercentLabel = label.toLowerCase().includes("%");
   const suffix = "%";
@@ -49,7 +49,7 @@ const visualIsUp =
   if (deltaToShow != null) {
     deltaContent = (
       <>
-        <span className="mr-0.5">{visualIsUp  ? "▲" : "▼"}</span>
+        <span className="mr-0.5">{visualIsUp ? "▲" : "▼"}</span>
         {Math.abs(deltaToShow).toFixed(2)}
         {suffix}
       </>
@@ -63,13 +63,13 @@ const visualIsUp =
   //       ? "text-emerald-600"
   //       : "text-rose-600";
 
-const goodClass = "text-emerald-600";
-const badClass = "text-red-600"; 
+  const goodClass = "text-emerald-600";
+  const badClass = "text-red-600";
 
-const deltaColor =
-  deltaToShow == null
-    ? "text-gray-400"
-    : (visualIsUp ? goodClass : badClass);
+  const deltaColor =
+    deltaToShow == null
+      ? "text-gray-400"
+      : (visualIsUp ? goodClass : badClass);
 
 
 
@@ -82,13 +82,14 @@ const deltaColor =
         {label}
       </div>
 
-      <div className="mt-1 text-sm 2xl:text-lg font-semibold leading-tight min-w-0 truncate">
+      <div className="mt-1 text-sm 2xl:text-lg font-semibold leading-tight min-w-0">
         <ValueOrSkeleton loading={loading} mode="inline" compact>
-          <span className="block min-w-0 truncate">
+          <span className="inline-flex items-baseline gap-1 min-w-0 truncate">
             {formatter(currVal)}
           </span>
         </ValueOrSkeleton>
       </div>
+
 
       {/* Bottom row */}
       <div className="mt-2 flex items-end justify-between gap-2 text-[9.5px] sm:text-[10px] 2xl:text-xs leading-tight text-charcoal-500 min-w-0">
