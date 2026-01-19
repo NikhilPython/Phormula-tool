@@ -29,6 +29,7 @@ import MonthEndBusinessSummaryCard from "./MonthEndBusinessSummaryCard";
 import RecommendationsCard from "./RecommendationsCard";
 import PerformanceTrendChart from "./PerformanceTrendChart";
 import SummaryMetricCard from "./SummaryMetricCard";
+import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -960,190 +961,190 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
-  const buildSkuWorksheetFromModel = (
-    ws: ExcelJS.Worksheet,
-    model: NonNullable<SkuExportPayload["sheetModel"]>
-  ) => {
-    // const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
+  // const buildSkuWorksheetFromModel = (
+  //   ws: ExcelJS.Worksheet,
+  //   model: NonNullable<SkuExportPayload["sheetModel"]>
+  // ) => {
+  //   // const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
 
-    const {
-      columns: originalColumns,
-      extraRows,
-      headerRow,
-      signRow,
-      rows,
-      summaryRows,
-      formats,
-    } = model;
+  //   const {
+  //     columns: originalColumns,
+  //     extraRows,
+  //     headerRow,
+  //     signRow,
+  //     rows,
+  //     summaryRows,
+  //     formats,
+  //   } = model;
 
-    // ❌ columns to REMOVE from Excel
-    const EXCEL_EXCLUDED_COLUMNS = new Set([
-      "amazon_fee",
-      "other_transactions",
-    ]);
+  //   // ❌ columns to REMOVE from Excel
+  //   const EXCEL_EXCLUDED_COLUMNS = new Set([
+  //     "amazon_fee",
+  //     "other_transactions",
+  //   ]);
 
-    // ✅ final columns used ONLY for excel
-    const columns = originalColumns.filter(
-      (col) => !EXCEL_EXCLUDED_COLUMNS.has(col)
-    );
-
-
-    const colIndex: Record<string, number> = {};
-    columns.forEach((k, i) => (colIndex[k] = i + 1)); // 1-based for ExcelJS
-
-    const fmtFor = (key: string) => {
-      const t = formats?.[key];
-      if (t === "int") return "#,##0";
-      if (t === "money") return "#,##0.00";
-      if (t === "percent") return "0.00%";
-      return undefined;
-    };
-
-    // ---- meta rows (in column A)
-    // for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
-    // ws.addRow([""]); 
-
-    // ---- CUSTOM META / TOP SECTION ----
-
-    // column index where CM1 Profit Margin exists
-    const PROFIT_COL_INDEX = colIndex["profit"] || columns.length;
-
-    // 1️⃣ Title on top
-    ws.addRow(["Profit Breakup (SKU Level)"]);
-    // ws.addRow([""]); 
-
-    const capitalizeWords = (value: string) =>
-      value
-        .toLowerCase()
-        .replace(/\b\w/g, (char) => char.toUpperCase());
-
-    const brandName = capitalizeWords(
-      (extraRows?.[0]?.[0] || "").toString()
-    );
-
-    const companyName = capitalizeWords(
-      (extraRows?.[1]?.[0] || "").toString()
-    );
+  //   // ✅ final columns used ONLY for excel
+  //   const columns = originalColumns.filter(
+  //     (col) => !EXCEL_EXCLUDED_COLUMNS.has(col)
+  //   );
 
 
-    const companyBrandRow = new Array(columns.length).fill("");
+  //   const colIndex: Record<string, number> = {};
+  //   columns.forEach((k, i) => (colIndex[k] = i + 1)); // 1-based for ExcelJS
 
-    // LEFT → COMPANY NAME
-    companyBrandRow[0] = `Company Name : ${companyName}`;
+  //   const fmtFor = (key: string) => {
+  //     const t = formats?.[key];
+  //     if (t === "int") return "#,##0";
+  //     if (t === "money") return "#,##0.00";
+  //     if (t === "percent") return "0.00%";
+  //     return undefined;
+  //   };
 
-    // RIGHT → BRAND NAME (above CM1 Profit Margin)
-    companyBrandRow[PROFIT_COL_INDEX - 1] = `${brandName}`;
+  //   // ---- meta rows (in column A)
+  //   // for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
+  //   // ws.addRow([""]); 
 
-    const cbRow = ws.addRow(companyBrandRow);
-    cbRow.font = { bold: false };
+  //   // ---- CUSTOM META / TOP SECTION ----
 
-    // ws.addRow([""]);
+  //   // column index where CM1 Profit Margin exists
+  //   const PROFIT_COL_INDEX = colIndex["profit"] || columns.length;
 
-    // 3️⃣ Currency / Country / Platform
-    for (let i = 3; i < (extraRows?.length || 0); i++) {
-      ws.addRow([extraRows?.[i]?.[0] ?? ""]);
-    }
+  //   // 1️⃣ Title on top
+  //   ws.addRow(["Profit Breakup (SKU Level)"]);
+  //   // ws.addRow([""]); 
 
-    ws.addRow([""]);
+  //   const capitalizeWords = (value: string) =>
+  //     value
+  //       .toLowerCase()
+  //       .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  //   const brandName = capitalizeWords(
+  //     (extraRows?.[0]?.[0] || "").toString()
+  //   );
+
+  //   const companyName = capitalizeWords(
+  //     (extraRows?.[1]?.[0] || "").toString()
+  //   );
 
 
-    // ---- header row
-    ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
+  //   const companyBrandRow = new Array(columns.length).fill("");
 
-    // ---- sign row (align to columns)
-    ws.addRow(columns.map((k) => signRow?.[k] ?? ""));
+  //   // LEFT → COMPANY NAME
+  //   companyBrandRow[0] = `Company Name : ${companyName}`;
 
-    // ---- table rows
-    for (const r of rows || []) {
-      ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
-    }
+  //   // RIGHT → BRAND NAME (above CM1 Profit Margin)
+  //   companyBrandRow[PROFIT_COL_INDEX - 1] = `${brandName}`;
 
-    ws.addRow([""]);
+  //   const cbRow = ws.addRow(companyBrandRow);
+  //   cbRow.font = { bold: false };
 
-    const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
-    const valueKey =
-      columns.includes("profit") ? "profit"
-        : columns.includes("net_taxes") ? "net_taxes"
-          : columns[columns.length - 1];
+  //   // ws.addRow([""]);
 
-    // ✅ percent-only summary labels
-    const PERCENT_SUMMARY_LABELS = new Set([
-      "CM2 Margins",
-      "TACoS (Total Advertising Cost of Sale)",
-      "Reimbursement vs CM2 Margins",
-      "Reimbursement vs Sales",
-    ]);
+  //   // 3️⃣ Currency / Country / Platform
+  //   for (let i = 3; i < (extraRows?.length || 0); i++) {
+  //     ws.addRow([extraRows?.[i]?.[0] ?? ""]);
+  //   }
 
-    // ✅ rows that should keep title but BLANK value (because breakdown rows exist below)
-    const SUMMARY_NO_VALUE_LABELS = new Set([
-      "Cost of Advertisement",
-      "Other Transactions (-)",
-      "Other Transactions",
-    ]);
+  //   ws.addRow([""]);
 
-    // ✅ store row numbers to re-apply % after column formatting
-    const percentSummaryRowNumbers: number[] = [];
 
-    // ---- summary rows (ONLY ONCE)
-    for (const sr of summaryRows || []) {
-      let label = String((sr as any)?.[labelKey] ?? "").trim();
-      let value: any = (sr as any)?.[valueKey] ?? "";
+  //   // ---- header row
+  //   ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
 
-      // ✅ add "(+)" prefix for reimbursement row label
-      if (label === "Reimbursement for lost Inventory") {
-        label = "Reimbursement for lost Inventory (+)";
-      }
+  //   // ---- sign row (align to columns)
+  //   ws.addRow(columns.map((k) => signRow?.[k] ?? ""));
 
-      // ✅ clean label for matching rules (so "(+)" doesn't break your sets)
-      const cleanLabel = label.replace(/^\(\+\)\s*/i, "").trim();
+  //   // ---- table rows
+  //   for (const r of rows || []) {
+  //     ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
+  //   }
 
-      const isPercentRow = PERCENT_SUMMARY_LABELS.has(cleanLabel);
+  //   ws.addRow([""]);
 
-      // ✅ UI gives percent-number like 27.37 -> Excel needs 0.2737
-      if (isPercentRow && typeof value === "number") {
-        value = value / 100;
-      }
+  //   const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
+  //   const valueKey =
+  //     columns.includes("profit") ? "profit"
+  //       : columns.includes("net_taxes") ? "net_taxes"
+  //         : columns[columns.length - 1];
 
-      // ✅ remove value ONLY for these parent rows (title stays)
-      if (SUMMARY_NO_VALUE_LABELS.has(cleanLabel)) {
-        value = "";
-      }
+  //   // ✅ percent-only summary labels
+  //   const PERCENT_SUMMARY_LABELS = new Set([
+  //     "CM2 Margins",
+  //     "TACoS (Total Advertising Cost of Sale)",
+  //     "Reimbursement vs CM2 Margins",
+  //     "Reimbursement vs Sales",
+  //   ]);
 
-      const line = new Array(columns.length).fill("");
-      line[colIndex[labelKey] - 1] = label;
-      line[colIndex[valueKey] - 1] = value;
+  //   // ✅ rows that should keep title but BLANK value (because breakdown rows exist below)
+  //   const SUMMARY_NO_VALUE_LABELS = new Set([
+  //     "Cost of Advertisement",
+  //     "Other Transactions (-)",
+  //     "Other Transactions",
+  //   ]);
 
-      const excelRow = ws.addRow(line);
+  //   // ✅ store row numbers to re-apply % after column formatting
+  //   const percentSummaryRowNumbers: number[] = [];
 
-      if ((sr as any).__bold) {
-        excelRow.font = { bold: true };
-      }
+  //   // ---- summary rows (ONLY ONCE)
+  //   for (const sr of summaryRows || []) {
+  //     let label = String((sr as any)?.[labelKey] ?? "").trim();
+  //     let value: any = (sr as any)?.[valueKey] ?? "";
 
-      if (isPercentRow) {
-        percentSummaryRowNumbers.push(excelRow.number);
-      }
-    }
+  //     // ✅ add "(+)" prefix for reimbursement row label
+  //     if (label === "Reimbursement for lost Inventory") {
+  //       label = "Reimbursement for lost Inventory (+)";
+  //     }
 
-    // ---- formatting by column key (may overwrite numFmt)
-    for (const k of columns) {
-      const idx = colIndex[k];
-      const nf = fmtFor(k);
-      if (nf) ws.getColumn(idx).numFmt = nf;
-    }
+  //     // ✅ clean label for matching rules (so "(+)" doesn't break your sets)
+  //     const cleanLabel = label.replace(/^\(\+\)\s*/i, "").trim();
 
-    // ✅ re-apply percent formatting AFTER column formats
-    for (const r of percentSummaryRowNumbers) {
-      ws.getRow(r).getCell(colIndex[valueKey]).numFmt = "0.00%";
-      // or "#,##0.00%" if you want comma-grouping for huge % like 1835.09%
-    }
+  //     const isPercentRow = PERCENT_SUMMARY_LABELS.has(cleanLabel);
 
-    // ---- make header bold
-    const headerRowNumber = (extraRows?.length ?? 0) + 2;
-    ws.getRow(headerRowNumber).font = { bold: true };
+  //     // ✅ UI gives percent-number like 27.37 -> Excel needs 0.2737
+  //     if (isPercentRow && typeof value === "number") {
+  //       value = value / 100;
+  //     }
 
-    // ---- sign row italic
-    ws.getRow(headerRowNumber + 1).font = { italic: true };
-  };
+  //     // ✅ remove value ONLY for these parent rows (title stays)
+  //     if (SUMMARY_NO_VALUE_LABELS.has(cleanLabel)) {
+  //       value = "";
+  //     }
+
+  //     const line = new Array(columns.length).fill("");
+  //     line[colIndex[labelKey] - 1] = label;
+  //     line[colIndex[valueKey] - 1] = value;
+
+  //     const excelRow = ws.addRow(line);
+
+  //     if ((sr as any).__bold) {
+  //       excelRow.font = { bold: true };
+  //     }
+
+  //     if (isPercentRow) {
+  //       percentSummaryRowNumbers.push(excelRow.number);
+  //     }
+  //   }
+
+  //   // ---- formatting by column key (may overwrite numFmt)
+  //   for (const k of columns) {
+  //     const idx = colIndex[k];
+  //     const nf = fmtFor(k);
+  //     if (nf) ws.getColumn(idx).numFmt = nf;
+  //   }
+
+  //   // ✅ re-apply percent formatting AFTER column formats
+  //   for (const r of percentSummaryRowNumbers) {
+  //     ws.getRow(r).getCell(colIndex[valueKey]).numFmt = "0.00%";
+  //     // or "#,##0.00%" if you want comma-grouping for huge % like 1835.09%
+  //   }
+
+  //   // ---- make header bold
+  //   const headerRowNumber = (extraRows?.length ?? 0) + 2;
+  //   ws.getRow(headerRowNumber).font = { bold: true };
+
+  //   // ---- sign row italic
+  //   ws.getRow(headerRowNumber + 1).font = { italic: true };
+  // };
 
   const handleDownloadProfitabilityBundle = async () => {
     try {
@@ -1424,6 +1425,33 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       console.error("Combined export failed:", e);
     }
   };
+
+  const handleDownloadSkuSheet1 = async () => {
+    try {
+      const wb = new ExcelJS.Workbook();
+      const wsSku = wb.addWorksheet("SKU Profitability");
+
+      if (skuExportPayload?.sheetModel) {
+        buildSkuWorksheetFromModel(wsSku, skuExportPayload.sheetModel);
+      } else {
+        wsSku.addRow(["SKU sheet model not available"]);
+      }
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const periodLabel = getPeriodLabelShort();
+      const fileName = `SKU-wise Profitability - ${periodLabel || String(selectedYear)}.xlsx`;
+
+      saveAs(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        fileName
+      );
+    } catch (e) {
+      console.error("SKU Sheet 1 export failed:", e);
+    }
+  };
+
 
   useEffect(() => {
     if (range === "monthly") {
@@ -2317,104 +2345,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 ))}
               </div>
             );
-
-            // return (
-            //   <div
-            //     className={[
-            //       "w-full grid gap-2 2xl:gap-3",
-            //       "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
-            //       isSummaryZero ? "opacity-30" : "opacity-100",
-            //     ].join(" ")}
-            //   >
-            //     {/* Units */}
-            //     <div className="w-full rounded-2xl border border-[#FDD36F] bg-[#FDD36F4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
-            //       <div className="flex justify-between items-center 2xl:mb-2">
-            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Units</span>
-            //       </div>
-            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-            //         {formatUnits(summary.unit_sold)}
-            //       </div>
-            //       {renderComparisons("unit_sold", formatUnits)}
-            //     </div>
-
-            //     <div className="w-full rounded-2xl border border-[#ED9F50] bg-[#ED9F504D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
-            //       <div className="flex justify-between items-center mb-2">
-            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Gross Sales</span>
-            //       </div>
-            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-            //         {formatMoney(getGrossSales(summary))}
-            //       </div>
-            //       {renderGrossSalesComparisons()}
-            //     </div>
-
-            //     {/* Net Sales */}
-            //     <div className="w-full rounded-2xl border border-[#75BBDA] bg-[#75BBDA4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
-            //       <span className="text-[10px] 2xl:text-xs text-charcoal-500">Net Sales</span>
-            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-            //         {formatMoney(netSales)}
-            //       </div>
-            //       {renderComparisons("total_sales", formatMoney)}
-            //     </div>
-
-
-            //     {/* Expenses */}
-            //     <div className="w-full rounded-2xl border border-[#B75A5A] bg-[#B75A5A4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
-            //       <div className="flex justify-between items-center mb-2">
-            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Expenses</span>
-            //       </div>
-            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-            //         {formatMoney(summary.total_expense)}
-            //       </div>
-            //       {renderComparisons("total_expense", formatMoney)}
-            //     </div>
-
-            //     {/* Cost of Advertisement */}
-            //     <div className="w-full rounded-2xl border border-[#C49466] bg-[#C494664D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
-            //       <div className="flex justify-between items-center mb-2">
-            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">Cost of Advertisement</span>
-            //       </div>
-            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-            //         {formatMoney(costOfAds)}
-            //       </div>
-            //       {renderComparisons("advertising_total", formatMoney)}
-            //     </div>
-
-            //     {/* ROAS */}
-            //     <div className="w-full rounded-2xl border border-[#3A8EA4] bg-[#3A8EA44D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
-            //       <div className="flex justify-between items-center mb-2">
-            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">TACoS</span>
-            //       </div>
-            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-            //         {formatRoas(roas)}
-            //       </div>
-
-            //       {renderTacosComparisons()}
-            //     </div>
-
-
-            //     {/* CM2 Profit */}
-            //     <div className="w-full rounded-2xl border border-[#B8C78C] bg-[#B8C78C4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
-            //       <div className="flex justify-between items-center mb-2">
-            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit</span>
-            //       </div>
-            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-            //         {formatMoney(summary.cm2_profit)}
-            //       </div>
-            //       {renderComparisons("cm2_profit", formatMoney)}
-            //     </div>
-
-            //     {/* CM2 Profit % */}
-            //     <div className="w-full rounded-2xl border border-[#7B9A6D] bg-[#7B9A6D4D] shadow-sm p-3 2xl:p-4 flex flex-col justify-between">
-            //       <div className="flex justify-between items-center mb-2">
-            //         <span className="text-[10px] 2xl:text-xs text-charcoal-500">CM2 Profit %</span>
-            //       </div>
-            //       <div className="text-sm 2xl:text-lg font-semibold text-charcoal-500 leading-tight tabular-nums">
-            //         {formatPercent(cm2Percent)}
-            //       </div>
-            //       {renderCm2PercentComparisons()}
-            //     </div>
-            //   </div>
-            // );
           })()}
 
       </div>
@@ -2436,7 +2366,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   role="button"
                   tabIndex={0}
                   onClick={(e) => {
-                    // ✅ don’t expand when clicking buttons/toggles inside the card
                     const t = e.target as HTMLElement;
                     if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
 
@@ -2589,9 +2518,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             year={selectedYear}
             countryName={initialCountryName}
             homeCurrency={globalHomeCurrency}
-            hideDownloadButton
+            hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
+             onDownload={handleDownloadSkuSheet1}
           />
+
         </>
       )}
 
@@ -2766,8 +2697,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             year={selectedYear}
             countryName={initialCountryName}
             homeCurrency={globalHomeCurrency}
-            hideDownloadButton
+            hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
+            onDownload={handleDownloadSkuSheet1}
           />
         </>
       )}
@@ -2939,8 +2871,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             year={selectedYear}
             countryName={initialCountryName}
             homeCurrency={globalHomeCurrency}
-            hideDownloadButton
+            hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
+             onDownload={handleDownloadSkuSheet1}
           />
         </>
       )}
