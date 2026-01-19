@@ -346,89 +346,188 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     );
   }, [range, month, year, selectedQuarter, countryName]);
 
-  const options: ChartOptions<"pie"> = {
-    responsive: true,
-    elements: {
-      arc: {
-        borderWidth: 0,
-      },
-    },
-    plugins: {
-      legend: {
-        position: legendPosition,
-        align: "center",
-        labels: {
-          usePointStyle: true,
+  // const options: ChartOptions<"pie"> = {
+  //   responsive: true,
+  //   elements: {
+  //     arc: {
+  //       borderWidth: 0,
+  //     },
+  //   },
+  //   plugins: {
+  //     legend: {
+  //       position: legendPosition,
+  //       align: "center",
+  //       labels: {
+  //         usePointStyle: true,
 
-          
-          color: "#ff0000", 
-          font: {
-             size: typeof window !== "undefined" && window.innerWidth < 768 ? 10 : 12,
-          },
 
-          // ✅ Show ALL labels + percentage in legend
-          generateLabels: (chart) => {
-            const data = chart.data;
-            const labels = (data.labels || []) as string[];
+  //         color: "#ff0000", 
+  //         font: {
+  //            size: typeof window !== "undefined" && window.innerWidth < 768 ? 10 : 12,
+  //         },
 
-            const dataset = data.datasets?.[0] as any;
-            const values = ((dataset?.data || []) as number[]).map((v) =>
-              Math.abs(Number(v || 0))
-            );
+  //         // ✅ Show ALL labels + percentage in legend
+  //         generateLabels: (chart) => {
+  //           const data = chart.data;
+  //           const labels = (data.labels || []) as string[];
 
-            const total = values.reduce((a, b) => a + b, 0);
+  //           const dataset = data.datasets?.[0] as any;
+  //           const values = ((dataset?.data || []) as number[]).map((v) =>
+  //             Math.abs(Number(v || 0))
+  //           );
 
-            const bg = dataset?.backgroundColor as any[]; // array of colors
+  //           const total = values.reduce((a, b) => a + b, 0);
 
-            return labels.map((label, i) => {
-              const value = values[i] ?? 0;
-              const pct = total ? (value / total) * 100 : 0;
+  //           const bg = dataset?.backgroundColor as any[]; // array of colors
 
-              return {
-                text: `${label} (${pct.toFixed(2)}%)`,
-                fillStyle: Array.isArray(bg) ? bg[i] : bg,
-                strokeStyle: "transparent",
-                lineWidth: 0,
-                hidden: !chart.getDataVisibility(i),
-                index: i, // ✅ important for toggling slice
-                pointStyle: "circle",
-              };
-            });
-          },
+  //           return labels.map((label, i) => {
+  //             const value = values[i] ?? 0;
+  //             const pct = total ? (value / total) * 100 : 0;
+
+  //             return {
+  //               text: `${label} (${pct.toFixed(2)}%)`,
+  //               fillStyle: Array.isArray(bg) ? bg[i] : bg,
+  //               strokeStyle: "transparent",
+  //               lineWidth: 0,
+  //               hidden: !chart.getDataVisibility(i),
+  //               index: i, // ✅ important for toggling slice
+  //               pointStyle: "circle",
+  //             };
+  //           });
+  //         },
+  //       },
+  //     },
+  //     tooltip: {
+  //       enabled: !noDataFound,
+  //       callbacks: {
+  //         label: (ctx: TooltipItem<"pie">) => {
+  //           const value = Math.abs(Number(ctx.raw ?? 0));
+  //           const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
+  //             | { data: number[] }
+  //             | undefined;
+
+  //           const total = (ds?.data ?? []).reduce(
+  //             (acc, v) => acc + Math.abs(Number(v || 0)),
+  //             0
+  //           );
+
+  //           const pct = total ? (value / total) * 100 : 0;
+  //           const label = ctx.label ? `${ctx.label}: ` : "";
+
+  //           return `${label}${currencySymbol}${value.toLocaleString(undefined, {
+  //             minimumFractionDigits: 2,
+  //             maximumFractionDigits: 2,
+  //           })} (${pct.toFixed(2)}%)`;
+  //         },
+  //       },
+  //     },
+  //   },
+  //   layout: {
+  //      padding: isLaptop ? 0 : 10,
+  //   },
+  //   animation: { duration: 0 },
+  //   maintainAspectRatio: false,
+  // };
+
+ const options: ChartOptions<"pie"> = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 0 },
+
+  elements: {
+    arc: { borderWidth: 0 },
+  },
+
+  layout: {
+    padding: isLaptop ? 0 : 10,
+  },
+
+  plugins: {
+    legend: {
+      position: legendPosition,
+      align: "center",
+
+      // ✅ HARD fix: cap how much horizontal space legend can take on laptop
+      // try 160–220 depending on your layout; 160 makes pie biggest
+      maxWidth: isLaptop ? 170 : undefined,
+
+      labels: {
+        usePointStyle: true,
+        color: "#ff0000",
+
+        // ✅ reduce legend footprint
+        boxWidth: isLaptop ? 10 : 12,
+        padding: isLaptop ? 6 : 12,
+
+        font: {
+          size: typeof window !== "undefined" && window.innerWidth < 768 ? 10 : 12,
         },
-      },
-      tooltip: {
-        enabled: !noDataFound,
-        callbacks: {
-          label: (ctx: TooltipItem<"pie">) => {
-            const value = Math.abs(Number(ctx.raw ?? 0));
-            const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
-              | { data: number[] }
-              | undefined;
 
-            const total = (ds?.data ?? []).reduce(
-              (acc, v) => acc + Math.abs(Number(v || 0)),
-              0
-            );
+        // ✅ Truncate long names so legend width doesn't expand
+        generateLabels: (chart) => {
+          const data = chart.data;
+          const labels = (data.labels || []) as string[];
 
+          const dataset = data.datasets?.[0] as any;
+          const values = ((dataset?.data || []) as number[]).map((v) =>
+            Math.abs(Number(v || 0))
+          );
+
+          const total = values.reduce((a, b) => a + b, 0);
+          const bg = dataset?.backgroundColor as any[];
+
+          const truncate = (s: string, n: number) =>
+            s.length > n ? s.slice(0, n - 1) + "…" : s;
+
+          // laptop: keep labels short so legend stays narrow
+          const maxChars = isLaptop ? 14 : 999;
+
+          return labels.map((label, i) => {
+            const value = values[i] ?? 0;
             const pct = total ? (value / total) * 100 : 0;
-            const label = ctx.label ? `${ctx.label}: ` : "";
 
-            return `${label}${currencySymbol}${value.toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })} (${pct.toFixed(2)}%)`;
-          },
+            const safeLabel = truncate(label, maxChars);
+
+            return {
+              text: `${safeLabel} (${pct.toFixed(2)}%)`,
+              fillStyle: Array.isArray(bg) ? bg[i] : bg,
+              strokeStyle: "transparent",
+              lineWidth: 0,
+              hidden: !chart.getDataVisibility(i),
+              index: i,
+              pointStyle: "circle",
+            };
+          });
         },
       },
     },
-    layout: {
-       padding: isLaptop ? 0 : 10,
-    },
-    animation: { duration: 0 },
-    maintainAspectRatio: false,
-  };
 
+    tooltip: {
+      enabled: !noDataFound,
+      callbacks: {
+        label: (ctx: TooltipItem<"pie">) => {
+          const value = Math.abs(Number(ctx.raw ?? 0));
+          const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
+            | { data: number[] }
+            | undefined;
+
+          const total = (ds?.data ?? []).reduce(
+            (acc, v) => acc + Math.abs(Number(v || 0)),
+            0
+          );
+
+          const pct = total ? (value / total) * 100 : 0;
+          const label = ctx.label ? `${ctx.label}: ` : "";
+
+          return `${label}${currencySymbol}${value.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })} (${pct.toFixed(2)}%)`;
+        },
+      },
+    },
+  },
+};
 
   useEffect(() => {
     if (!chartData || loading || error) {
@@ -490,7 +589,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                 "relative",
                 "h-[240px] sm:h-[280px] md:h-[280px] 2xl:h-[360px]",
                 "flex justify-center", // center horizontally
-             isLaptop ? "items-center px-4 py-1" : "items-center", 
+                isLaptop ? "items-center px-4 py-1" : "items-center",
               ].join(" ")}
             >
               {/* <Pie data={chartData} options={options} /> */}
