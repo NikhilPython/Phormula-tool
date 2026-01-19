@@ -417,7 +417,7 @@ export default function DashboardPage() {
 
 
   const brandName = useSelector(
-    (state: RootState) => state.auth.user?.brand_name
+    (state) => (state as RootState).auth.user?.brand_name
   );
 
 

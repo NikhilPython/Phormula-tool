@@ -133,8 +133,11 @@ export default function Cm1ProfitBreakdownPie({
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 0 },
-            radius: "100%",              // ✅ smaller pie
-            layout: { padding: 8 },     // ✅ breathing room
+            radius: isLaptop ? "90%" : "100%",
+            layout: {
+                padding: isLaptop ? 4 : 8,
+            },
+
             elements: { arc: { borderWidth: 0, hoverOffset: 4 } },
             plugins: {
                 legend: {
@@ -143,13 +146,11 @@ export default function Cm1ProfitBreakdownPie({
                     labels: {
                         usePointStyle: true,
 
-                        // ✅ increase spacing between items
-                        padding: isLaptop ? 18 : 22,   // controls vertical + horizontal gap
-                        boxWidth: isLaptop ? 10 : 12,
-
-                        // ✅ responsive font size
+                        padding: isLaptop ? 12 : 22,
+                        boxWidth: isLaptop ? 8 : 12,
                         font: {
-                            size: isLaptop ? 10 : 12,
+                            size: isLaptop ? 9 : 12,
+                            weight: 500,
                         },
 
                         color: "#334155",

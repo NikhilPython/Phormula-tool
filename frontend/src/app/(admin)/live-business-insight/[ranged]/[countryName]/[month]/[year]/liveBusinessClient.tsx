@@ -743,19 +743,98 @@ export default function LiveBusinessClient({
     return currencyCodeToSymbol(codeToUse);
   };
 
+  const parseISODateSafe = (iso?: string) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const formatRangeLabel = (p?: PeriodInfo) => {
+    const s = parseISODateSafe(p?.start_date);
+    const e = parseISODateSafe(p?.end_date);
+    if (!s || !e) return "";
+
+    const sm = s.toLocaleString("en-US", { month: "short" });
+    const em = e.toLocaleString("en-US", { month: "short" });
+
+    const sd = s.getDate();
+    const ed = e.getDate();
+
+    const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear();
+
+    // Most MTD cases: "Jan 1-19"
+    if (sameMonth) return `${sm} ${sd}-${ed}`;
+
+    // Spans months within same year: "Dec 25-Jan 19"
+    const sameYear = s.getFullYear() === e.getFullYear();
+    if (sameYear) return `${sm} ${sd}-${em} ${ed}`;
+
+    // Spans years: "Dec 25, 2025-Jan 19, 2026"
+    return `${sm} ${sd}, ${s.getFullYear()}-${em} ${ed}, ${e.getFullYear()}`;
+  };
+
+  const applyBoldRow = (ws: XLSX.WorkSheet, rowIndex: number) => {
+    const ref = ws["!ref"];
+    if (!ref) return;
+    const range = XLSX.utils.decode_range(ref);
+
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: rowIndex, c: C });
+      const cell = ws[addr];
+      if (!cell) continue;
+
+      ws[addr] = {
+        ...cell,
+        s: {
+          ...(cell.s || {}),
+          font: { ...((cell.s as any)?.font || {}), bold: true },
+        },
+      };
+    }
+  };
+
+  const boldHeaderRows = (ws: XLSX.WorkSheet, headerRows: number[]) => {
+    headerRows.forEach((r) => applyBoldRow(ws, r));
+  };
+
+  const boldTotalRowsByProductColumn = (
+    ws: XLSX.WorkSheet,
+    productColIndex0Based: number = 1,  // col B by default
+    totalLabels: string[] = ["total", "grand total", "others"]
+  ) => {
+    const ref = ws["!ref"];
+    if (!ref) return;
+    const range = XLSX.utils.decode_range(ref);
+
+    for (let R = range.s.r; R <= range.e.r; R++) {
+      const productAddr = XLSX.utils.encode_cell({ r: R, c: productColIndex0Based });
+      const v = String(ws[productAddr]?.v ?? "").trim().toLowerCase();
+      if (!v) continue;
+
+      if (totalLabels.includes(v)) {
+        applyBoldRow(ws, R);
+      }
+    }
+  };
+
+
   // =========================
   // Export to Excel
   // =========================
 
   const exportToExcel = (rows: SkuItem[], filename = 'export.xlsx') => {
     // ✅ IMPORTANT: backend fields are tied to month1(old) / month2(new). Keep fixed mapping.
-    const newMonth = currPeriod.month;
-    const newYear = currPeriod.year;
-    const oldMonth = prevPeriod.month;
-    const oldYear = prevPeriod.year;
+    // const newMonth = currPeriod.month;
+    // const newYear = currPeriod.year;
+    // const oldMonth = prevPeriod.month;
+    // const oldYear = prevPeriod.year;
 
-    const newAbbr = `${getAbbr(newMonth)}'${String(newYear).slice(2)}`;
-    const oldAbbr = `${getAbbr(oldMonth)}'${String(oldYear).slice(2)}`;
+    // const newLbl = `${getAbbr(newMonth)}'${String(newYear).slice(2)}`;
+    // const oldLbl = `${getAbbr(oldMonth)}'${String(oldYear).slice(2)}`;
+
+    const newLbl = formatRangeLabel(periods?.current_mtd) || currPeriod.month;   // e.g. "Jan 1-19"
+    const oldLbl = formatRangeLabel(periods?.previous) || prevPeriod.month;      // e.g. "Dec 1-19"
+
 
     // 1) remove any existing total rows coming from API/data
     const cleanRows = (rows || []).filter((r) => {
@@ -783,40 +862,41 @@ export default function LiveBusinessClient({
 
     // ✅ EXACT column order (NEW month first, then OLD month)
     const headerOrder = [
-      'SKU',
-      'Product',
+      "SKU",
+      "Product",
 
-      `Qty ${newAbbr}`,
-      `Qty ${oldAbbr}`,
-      'Change in Qty (%age)',
+      `Qty ${newLbl}`,
+      `Qty ${oldLbl}`,
+      "Change in Qty (%age)",
 
-      `Gross Sales ${newAbbr}`,
-      `Gross Sales ${oldAbbr}`,
-      'Change in Gross Sales (%age)',
+      `Gross Sales ${newLbl}`,
+      `Gross Sales ${oldLbl}`,
+      "Change in Gross Sales (%age)",
 
-      `Net Sales ${newAbbr}`,
-      `Net Sales ${oldAbbr}`,
-      'Change in Net Sales (%age)',
+      `Net Sales ${newLbl}`,
+      `Net Sales ${oldLbl}`,
+      "Change in Net Sales (%age)",
 
-      `ASP ${newAbbr}`,
-      `ASP ${oldAbbr}`,
-      'Change in ASP (%age)',
+      `ASP ${newLbl}`,
+      `ASP ${oldLbl}`,
+      "Change in ASP (%age)",
 
-      `Sales Mix ${newAbbr}`,
-      `Sales Mix ${oldAbbr}`,
-      'Change in Sales Mix (%age)',
+      `Sales Mix ${newLbl}`,
+      `Sales Mix ${oldLbl}`,
+      "Change in Sales Mix (%age)",
 
-      `CM1 Profit ${newAbbr}`,
-      `CM1 Profit ${oldAbbr}`,
-      'Change in CM1 Profit',
+      `CM1 Profit ${newLbl}`,
+      `CM1 Profit ${oldLbl}`,
+      "Change in CM1 Profit",
 
-      `CM1 Profit %age(${newAbbr})`,
-      `CM1 Profit %age(${oldAbbr})`,
+      `CM1 Profit %age(${newLbl})`,
+      `CM1 Profit %age(${oldLbl})`,
 
-      `CM1 Unit Profit ${newAbbr}`,
-      `CM1 Unit Profit ${oldAbbr}`,
-      'Change in CM1 Unit Profit (%age)',
+      `CM1 Unit Profit ${newLbl}`,
+      `CM1 Unit Profit ${oldLbl}`,
+      "Change in CM1 Unit Profit (%age)",
     ];
+
 
     // ---------- TOP BLOCK CONFIG (add right after headerOrder) ----------
     const PROFIT_COL_INDEX_1_BASED = (() => {
@@ -943,37 +1023,37 @@ export default function LiveBusinessClient({
           SKU: row.sku || '',
           Product: row.product_name || '',
 
-          [`Qty ${newAbbr}`]: qtyNew ?? null,
-          [`Qty ${oldAbbr}`]: qtyOld ?? null,
+          [`Qty ${newLbl}`]: qtyNew ?? null,
+          [`Qty ${oldLbl}`]: qtyOld ?? null,
           'Change in Qty (%age)': unitGrowth?.value ?? null,
 
-          [`Gross Sales ${newAbbr}`]: gsNew ?? null,
-          [`Gross Sales ${oldAbbr}`]: gsOld ?? null,
+          [`Gross Sales ${newLbl}`]: gsNew ?? null,
+          [`Gross Sales ${oldLbl}`]: gsOld ?? null,
           'Change in Gross Sales (%age)': grossSalesGrowth?.value ?? null,
 
-          [`Net Sales ${newAbbr}`]: nsNew ?? null,
-          [`Net Sales ${oldAbbr}`]: nsOld ?? null,
+          [`Net Sales ${newLbl}`]: nsNew ?? null,
+          [`Net Sales ${oldLbl}`]: nsOld ?? null,
           'Change in Net Sales (%age)': netSalesGrowth?.value ?? null,
 
-          [`ASP ${newAbbr}`]: round2(aspNew ?? null),
-          [`ASP ${oldAbbr}`]: round2(aspOld ?? null),
+          [`ASP ${newLbl}`]: round2(aspNew ?? null),
+          [`ASP ${oldLbl}`]: round2(aspOld ?? null),
           'Change in ASP (%age)': aspGrowth?.value ?? null,
 
-          [`Sales Mix ${newAbbr}`]: mixNew ?? null,
-          [`Sales Mix ${oldAbbr}`]: mixOld ?? null,
+          [`Sales Mix ${newLbl}`]: mixNew ?? null,
+          [`Sales Mix ${oldLbl}`]: mixOld ?? null,
 
           // ✅ FIX: compute change from recomputed mixes (keeps columns consistent)
           'Change in Sales Mix (%age)': mixOld != null && mixNew != null ? mixNew - mixOld : null,
 
-          [`CM1 Profit ${newAbbr}`]: cm1New ?? null,
-          [`CM1 Profit ${oldAbbr}`]: cm1Old ?? null,
+          [`CM1 Profit ${newLbl}`]: cm1New ?? null,
+          [`CM1 Profit ${oldLbl}`]: cm1Old ?? null,
           'Change in CM1 Profit': cm1New != null && cm1Old != null ? Number(cm1New) - Number(cm1Old) : null,
 
-          [`CM1 Profit %age(${newAbbr})`]: cm1PctNew ?? null,
-          [`CM1 Profit %age(${oldAbbr})`]: cm1PctOld ?? null,
+          [`CM1 Profit %age(${newLbl})`]: cm1PctNew ?? null,
+          [`CM1 Profit %age(${oldLbl})`]: cm1PctOld ?? null,
 
-          [`CM1 Unit Profit ${newAbbr}`]: upNew ?? null,
-          [`CM1 Unit Profit ${oldAbbr}`]: upOld ?? null,
+          [`CM1 Unit Profit ${newLbl}`]: upNew ?? null,
+          [`CM1 Unit Profit ${oldLbl}`]: upOld ?? null,
           'Change in CM1 Unit Profit (%age)': unitProfitGrowth?.value ?? null,
         };
       });
@@ -1023,35 +1103,35 @@ export default function LiveBusinessClient({
         SKU: '',
         Product: 'Total',
 
-        [`Qty ${newAbbr}`]: totals.qtyNew,
-        [`Qty ${oldAbbr}`]: totals.qtyOld,
+        [`Qty ${newLbl}`]: totals.qtyNew,
+        [`Qty ${oldLbl}`]: totals.qtyOld,
         'Change in Qty (%age)': pct(totals.qtyOld, totals.qtyNew),
 
-        [`Gross Sales ${newAbbr}`]: totals.gsNew,
-        [`Gross Sales ${oldAbbr}`]: totals.gsOld,
+        [`Gross Sales ${newLbl}`]: totals.gsNew,
+        [`Gross Sales ${oldLbl}`]: totals.gsOld,
         'Change in Gross Sales (%age)': pct(totals.gsOld, totals.gsNew),
 
-        [`Net Sales ${newAbbr}`]: totals.nsNew,
-        [`Net Sales ${oldAbbr}`]: totals.nsOld,
+        [`Net Sales ${newLbl}`]: totals.nsNew,
+        [`Net Sales ${oldLbl}`]: totals.nsOld,
         'Change in Net Sales (%age)': pct(totals.nsOld, totals.nsNew),
 
-        [`ASP ${newAbbr}`]: totalAspNew,
-        [`ASP ${oldAbbr}`]: totalAspOld,
+        [`ASP ${newLbl}`]: totalAspNew,
+        [`ASP ${oldLbl}`]: totalAspOld,
         'Change in ASP (%age)': totalAspOld != null && totalAspNew != null ? pct(totalAspOld, totalAspNew) : null,
 
-        [`Sales Mix ${newAbbr}`]: totalSalesMixNew,
-        [`Sales Mix ${oldAbbr}`]: totalSalesMixOld,
+        [`Sales Mix ${newLbl}`]: totalSalesMixNew,
+        [`Sales Mix ${oldLbl}`]: totalSalesMixOld,
         'Change in Sales Mix (%age)': totalSalesMixChange,
 
-        [`CM1 Profit ${newAbbr}`]: totals.cm1New,
-        [`CM1 Profit ${oldAbbr}`]: totals.cm1Old,
+        [`CM1 Profit ${newLbl}`]: totals.cm1New,
+        [`CM1 Profit ${oldLbl}`]: totals.cm1Old,
         'Change in CM1 Profit': totals.cm1New - totals.cm1Old,
 
-        [`CM1 Profit %age(${newAbbr})`]: totalCm1PctNew,
-        [`CM1 Profit %age(${oldAbbr})`]: totalCm1PctOld,
+        [`CM1 Profit %age(${newLbl})`]: totalCm1PctNew,
+        [`CM1 Profit %age(${oldLbl})`]: totalCm1PctOld,
 
-        [`CM1 Unit Profit ${newAbbr}`]: totals.upNew,
-        [`CM1 Unit Profit ${oldAbbr}`]: totals.upOld,
+        [`CM1 Unit Profit ${newLbl}`]: totals.upNew,
+        [`CM1 Unit Profit ${oldLbl}`]: totals.upOld,
         'Change in CM1 Unit Profit (%age)': pct(totals.upOld, totals.upNew),
       });
 
@@ -1091,6 +1171,12 @@ export default function LiveBusinessClient({
 
     // apply top styles
     applyTopStyles(ws1, headerOrder.length, PROFIT_COL_INDEX_1_BASED);
+
+    // ✅ BOLD: header row (table headings)
+    boldHeaderRows(ws1, [WS1_HEADER_ROW_INDEX]);
+
+    // ✅ BOLD: total rows (Product col B == "Total")
+    boldTotalRowsByProductColumn(ws1, 1, ["total", "others", "grand total"]);
 
 
     // -------------------------
@@ -1171,6 +1257,26 @@ export default function LiveBusinessClient({
 
     const ws2HeaderRows = findHeaderRows(ws2);
     addPercentToPercentColumns(ws2, ws2HeaderRows);
+
+    boldHeaderRows(ws2, ws2HeaderRows);
+
+    // Bold totals across sections: "Total", and also "Grand Total" title row if you want
+    boldTotalRowsByProductColumn(ws2, 1, ["total"]);
+
+    // Optional: also bold the "Grand Total" title row (it’s in column A, not Product column)
+    // If you want this too, scan col A for "Grand Total":
+    const boldRowsByColValue = (ws: XLSX.WorkSheet, colIndex0: number, labels: string[]) => {
+      const ref = ws["!ref"];
+      if (!ref) return;
+      const range = XLSX.utils.decode_range(ref);
+      const set = new Set(labels.map(s => s.toLowerCase()));
+      for (let R = range.s.r; R <= range.e.r; R++) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: colIndex0 });
+        const v = String(ws[addr]?.v ?? "").trim().toLowerCase();
+        if (set.has(v)) applyBoldRow(ws, R);
+      }
+    };
+    boldRowsByColValue(ws2, 0, ["Grand Total"]);
 
     // -------------------------
     // Build workbook with 2 sheets
