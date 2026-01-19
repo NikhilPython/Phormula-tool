@@ -230,7 +230,7 @@ const LiveLineChart: React.FC<{
     return (
       <ReactECharts
         option={option}
-        style={{ width: "100%", height: isCompactView ? 220 : 260 }}
+        style={{ width: "100%", height: isCompactView ? 244 : 260 }}
       />
     );
   };

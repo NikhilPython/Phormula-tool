@@ -348,60 +348,162 @@ const CircleChart: React.FC<CircleChartProps> = ({
     return () => clearTimeout(t);
   }, [displayChartData, onExportBase64Ready]);
 
-  const isSmallScreen = legendPosition === "bottom"; // since you already switch at <768
+  // const isSmallScreen = legendPosition === "bottom"; // since you already switch at <768
 
-  const options = useMemo<ChartOptions<"pie">>(() => ({
-    responsive: true,
-    elements: { arc: { borderWidth: 0 } },
-    plugins: {
-      legend: {
-        position: legendPosition,
-        align: "center",
-        labels: {
-          usePointStyle: true,
+  // const options = useMemo<ChartOptions<"pie">>(() => ({
+  //   responsive: true,
+  //   elements: { arc: { borderWidth: 0 } },
+  //   plugins: {
+  //     legend: {
+  //       position: legendPosition,
+  //       align: "center",
+  //       labels: {
+  //         usePointStyle: true,
 
-          // ✅ legend text color
-          color: "#DC2626", // test with red first
+  //         // ✅ legend text color
+  //         color: "#DC2626", // test with red first
 
-          // ✅ 12 desktop, 10 mobile
-          font: {
-            size: isSmallScreen ? 10 : 12,
+  //         // ✅ 12 desktop, 10 mobile
+  //         font: {
+  //           size: isSmallScreen ? 10 : 12,
+  //         },
+
+  //         generateLabels: (chart) => {
+  //           const data = chart.data;
+  //           const labels = (data.labels || []) as string[];
+
+  //           const dataset = data.datasets?.[0] as any;
+  //           const rawValues = ((dataset?.data || []) as number[]).map((v) =>
+  //             Math.abs(Number(v || 0))
+  //           );
+  //           const total = rawValues.reduce((a, b) => a + b, 0);
+  //           const bg = dataset?.backgroundColor as any[];
+
+  //           return labels.map((label, i) => {
+  //             const value = rawValues[i] ?? 0;
+  //             const pct = total ? (value / total) * 100 : 0;
+
+  //             return {
+  //               text: `${label} (${pct.toFixed(2)}%)`,
+  //               fillStyle: Array.isArray(bg) ? bg[i] : bg,
+  //               strokeStyle: "transparent",
+  //               lineWidth: 0,
+  //               hidden: !chart.getDataVisibility(i),
+  //               index: i,
+  //               pointStyle: "circle",
+  //             };
+  //           });
+  //         },
+  //       },
+  //     },
+  //     tooltip: { /* keep your tooltip */ },
+  //   },
+  //   layout: { padding: isLaptop ? 0 : 10 },
+  //   animation: { duration: 0 },
+  //   maintainAspectRatio: false,
+  // }), [legendPosition, isLaptop, currencySymbol]);
+
+  const options = useMemo<ChartOptions<"pie">>(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 0 },
+
+      // ✅ same as CMchartofsku (controls pie size vs legend space)
+      radius: isLaptop ? "91%" : "100%",
+
+      elements: {
+        arc: {
+          borderWidth: 0,
+          hoverOffset: 4,
+        },
+      },
+
+      layout: {
+        padding: isLaptop ? 0 : 10,
+      },
+
+      plugins: {
+        legend: {
+          position: legendPosition,
+          align: "center",
+
+          // ✅ same legend width behavior
+          maxWidth: isLaptop ? 260 : undefined,
+
+          labels: {
+            usePointStyle: true,
+            color: "#DC2626",
+
+            boxWidth: isLaptop ? 10 : 12,
+            padding: isLaptop ? 10 : 12,
+
+            font: {
+              size: isLaptop ? 10 : 12,
+            },
+
+            generateLabels: (chart) => {
+              const data = chart.data;
+              const labels = (data.labels || []) as string[];
+
+              const dataset = data.datasets?.[0] as any;
+              const values = ((dataset?.data || []) as number[]).map((v) =>
+                Math.abs(Number(v || 0))
+              );
+
+              const total = values.reduce((a, b) => a + b, 0);
+              const bg = dataset?.backgroundColor as any[];
+
+              const truncate = (s: string) =>
+                isLaptop && s.length > 24 ? s.slice(0, 22) + "…" : s;
+
+              return labels.map((label, i) => {
+                const value = values[i] ?? 0;
+                const pct = total ? (value / total) * 100 : 0;
+
+                return {
+                  text: `${truncate(label)} (${pct.toFixed(2)}%)`,
+                  fillStyle: Array.isArray(bg) ? bg[i] : bg,
+                  strokeStyle: "transparent",
+                  lineWidth: 0,
+                  hidden: !chart.getDataVisibility(i),
+                  index: i,
+                  pointStyle: "circle",
+                };
+              });
+            },
           },
+        },
 
-          generateLabels: (chart) => {
-            const data = chart.data;
-            const labels = (data.labels || []) as string[];
+        tooltip: {
+          // ✅ mimic CMchartofsku behavior
+          enabled: !allValuesZero,
+          callbacks: {
+            label: (ctx: TooltipItem<"pie">) => {
+              const value = Math.abs(Number(ctx.raw ?? 0));
+              const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
+                | { data: number[] }
+                | undefined;
 
-            const dataset = data.datasets?.[0] as any;
-            const rawValues = ((dataset?.data || []) as number[]).map((v) =>
-              Math.abs(Number(v || 0))
-            );
-            const total = rawValues.reduce((a, b) => a + b, 0);
-            const bg = dataset?.backgroundColor as any[];
+              const total = (ds?.data ?? []).reduce(
+                (acc, v) => acc + Math.abs(Number(v || 0)),
+                0
+              );
 
-            return labels.map((label, i) => {
-              const value = rawValues[i] ?? 0;
               const pct = total ? (value / total) * 100 : 0;
+              const label = ctx.label ? `${ctx.label}: ` : "";
 
-              return {
-                text: `${label} (${pct.toFixed(2)}%)`,
-                fillStyle: Array.isArray(bg) ? bg[i] : bg,
-                strokeStyle: "transparent",
-                lineWidth: 0,
-                hidden: !chart.getDataVisibility(i),
-                index: i,
-                pointStyle: "circle",
-              };
-            });
+              return `${label}${currencySymbol}${value.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })} (${pct.toFixed(2)}%)`;
+            },
           },
         },
       },
-      tooltip: { /* keep your tooltip */ },
-    },
-    layout: { padding: isLaptop ? 0 : 10 },
-    animation: { duration: 0 },
-    maintainAspectRatio: false,
-  }), [legendPosition, isLaptop, currencySymbol]);
+    };
+  }, [legendPosition, isLaptop, currencySymbol, allValuesZero]);
+
 
   return (
     <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
@@ -444,7 +546,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
                 isLaptop ? "items-center px-4 py-1" : "items-center", // ✅ laptop: less top, more bottom, add side padding
               ].join(" ")}
             >
-              <Pie className="!block" ref={chartRef} data={displayChartData} options={options} redraw/>
+              <Pie className="!block" ref={chartRef} data={displayChartData} options={options} redraw />
             </div>
 
           </div>

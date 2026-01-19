@@ -73,19 +73,19 @@ export default function SalesTargetStatsCard({
       <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
         <div className="flex items-center gap-1">
           <PageBreadcrumb
-            pageTitle="Sales Metrics -"
+            pageTitle="Sales Metrics"
             textSize="2xl"
             variant="page"
             align="center"
           />
 
-          <span className="text-green-500 text-base sm:text-xl lg:text-lg 2xl:text-2xl ">
+          {/* <span className="text-green-500 text-base sm:text-xl lg:text-lg 2xl:text-2xl ">
             {monthYearLabel}
           </span>
 
           <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl">
             MTD
-          </span>
+          </span> */}
         </div>
 
 
@@ -115,7 +115,7 @@ export default function SalesTargetStatsCard({
             {
               title: "Target Trend",
               value: `${targetTrendPct >= 0 ? "+" : ""}${targetTrendPct.toFixed(2)}%`,
-              helper: `Target vs MTD Trend`,
+              helper: `MTD vs Target`,
             },
           ].map((t) => (
             <div

@@ -429,105 +429,111 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   //   maintainAspectRatio: false,
   // };
 
- const options: ChartOptions<"pie"> = {
-  responsive: true,
-  maintainAspectRatio: false,
-  animation: { duration: 0 },
+  const options: ChartOptions<"pie"> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 0 },
 
-  elements: {
-    arc: { borderWidth: 0 },
-  },
+    // ✅ make the pie slightly smaller (more room for labels)
+    // Chart.js supports this for pie/doughnut charts
+    radius: isLaptop ? "94%" : "100%",
 
-  layout: {
-    padding: isLaptop ? 0 : 10,
-  },
+    elements: {
+      arc: {
+        borderWidth: 0,
+        hoverOffset: 4,
+      },
+    },
 
-  plugins: {
-    legend: {
-      position: legendPosition,
-      align: "center",
+    layout: {
+      padding: isLaptop ? 0 : 10,
+    },
 
-      // ✅ HARD fix: cap how much horizontal space legend can take on laptop
-      // try 160–220 depending on your layout; 160 makes pie biggest
-      maxWidth: isLaptop ? 170 : undefined,
+    plugins: {
+      legend: {
+        position: legendPosition,
+        align: "center",
 
-      labels: {
-        usePointStyle: true,
-        color: "#ff0000",
+        // ✅ give legend enough space so labels don't struggle
+        // (bigger legend width => smaller pie, more readable labels)
+        maxWidth: isLaptop ? 260 : undefined,
 
-        // ✅ reduce legend footprint
-        boxWidth: isLaptop ? 10 : 12,
-        padding: isLaptop ? 6 : 12,
+        labels: {
+          usePointStyle: true,
 
-        font: {
-          size: typeof window !== "undefined" && window.innerWidth < 768 ? 10 : 12,
+          // ✅ match CircleChart red
+          color: "#DC2626",
+
+          // ✅ tighter legend so it fits cleanly like earlier
+          boxWidth: isLaptop ? 10 : 12,
+          padding: isLaptop ? 10 : 12,
+
+          // ✅ slightly smaller on laptop so all labels fit
+          font: {
+            size: isLaptop ? 10 : 12,
+          },
+
+          generateLabels: (chart) => {
+            const data = chart.data;
+            const labels = (data.labels || []) as string[];
+
+            const dataset = data.datasets?.[0] as any;
+            const values = ((dataset?.data || []) as number[]).map((v) =>
+              Math.abs(Number(v || 0))
+            );
+
+            const total = values.reduce((a, b) => a + b, 0);
+            const bg = dataset?.backgroundColor as any[];
+
+            // ✅ light truncation only when needed (keeps your “earlier” look)
+            const truncate = (s: string) =>
+              isLaptop && s.length > 24 ? s.slice(0, 22) + "…" : s;
+
+            return labels.map((label, i) => {
+              const value = values[i] ?? 0;
+              const pct = total ? (value / total) * 100 : 0;
+
+              return {
+                text: `${truncate(label)} (${pct.toFixed(2)}%)`, // ✅ same as CircleChart
+                fillStyle: Array.isArray(bg) ? bg[i] : bg,
+                strokeStyle: "transparent",
+                lineWidth: 0,
+                hidden: !chart.getDataVisibility(i),
+                index: i,
+                pointStyle: "circle",
+              };
+            });
+          },
         },
+      },
 
-        // ✅ Truncate long names so legend width doesn't expand
-        generateLabels: (chart) => {
-          const data = chart.data;
-          const labels = (data.labels || []) as string[];
+      tooltip: {
+        enabled: !noDataFound,
+        callbacks: {
+          label: (ctx: TooltipItem<"pie">) => {
+            const value = Math.abs(Number(ctx.raw ?? 0));
+            const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
+              | { data: number[] }
+              | undefined;
 
-          const dataset = data.datasets?.[0] as any;
-          const values = ((dataset?.data || []) as number[]).map((v) =>
-            Math.abs(Number(v || 0))
-          );
+            const total = (ds?.data ?? []).reduce(
+              (acc, v) => acc + Math.abs(Number(v || 0)),
+              0
+            );
 
-          const total = values.reduce((a, b) => a + b, 0);
-          const bg = dataset?.backgroundColor as any[];
-
-          const truncate = (s: string, n: number) =>
-            s.length > n ? s.slice(0, n - 1) + "…" : s;
-
-          // laptop: keep labels short so legend stays narrow
-          const maxChars = isLaptop ? 14 : 999;
-
-          return labels.map((label, i) => {
-            const value = values[i] ?? 0;
             const pct = total ? (value / total) * 100 : 0;
+            const label = ctx.label ? `${ctx.label}: ` : "";
 
-            const safeLabel = truncate(label, maxChars);
-
-            return {
-              text: `${safeLabel} (${pct.toFixed(2)}%)`,
-              fillStyle: Array.isArray(bg) ? bg[i] : bg,
-              strokeStyle: "transparent",
-              lineWidth: 0,
-              hidden: !chart.getDataVisibility(i),
-              index: i,
-              pointStyle: "circle",
-            };
-          });
+            return `${label}${currencySymbol}${value.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })} (${pct.toFixed(2)}%)`;
+          },
         },
       },
     },
+  };
 
-    tooltip: {
-      enabled: !noDataFound,
-      callbacks: {
-        label: (ctx: TooltipItem<"pie">) => {
-          const value = Math.abs(Number(ctx.raw ?? 0));
-          const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
-            | { data: number[] }
-            | undefined;
-
-          const total = (ds?.data ?? []).reduce(
-            (acc, v) => acc + Math.abs(Number(v || 0)),
-            0
-          );
-
-          const pct = total ? (value / total) * 100 : 0;
-          const label = ctx.label ? `${ctx.label}: ` : "";
-
-          return `${label}${currencySymbol}${value.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })} (${pct.toFixed(2)}%)`;
-        },
-      },
-    },
-  },
-};
 
   useEffect(() => {
     if (!chartData || loading || error) {

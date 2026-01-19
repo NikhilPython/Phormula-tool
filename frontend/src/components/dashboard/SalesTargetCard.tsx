@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   getISTDayInfo,
   getPrevMonthShortLabel,
@@ -64,14 +64,22 @@ export default function SalesTargetCard({
 
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
 
-  /**
-   * IMPORTANT:
-   * In your current parent, RegionMetrics values are ALREADY in display/home currency
-   * even though the fields are named "*USD".
-   *
-   * To avoid double conversion, we convert from homeCurrency.
-   * If convertToHomeCurrency is identityConvert, this is safe either way.
-   */
+
+
+  const [extraBottom, setExtraBottom] = useState(20);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1536px)"); // Tailwind 2xl
+
+    const update = () => {
+      setExtraBottom(mq.matches ? 20 : 8);
+    };
+
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
   const computedMtdHome = convertToHomeCurrency(data.mtdUSD ?? 0, homeCurrency);
   const computedLastMonthTotalHome = convertToHomeCurrency(
     data.lastMonthTotalUSD ?? 0,
@@ -191,7 +199,16 @@ export default function SalesTargetCard({
         ? mtdHomeResolved / todayDay
         : 0;
 
-  // (todayHomeComputed currently unused in your JSX; keep if you plan to show it)
+  const now = new Date();
+  const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+  // If you want “month completed so far” including today:
+  const monthCompletedPct =
+    totalDaysInMonth > 0 ? (todayDay / totalDaysInMonth) * 100 : 0;
+
+  // Compare (positive means you're ahead of pace)
+  const paceDeltaPct = pctDisplay - monthCompletedPct;
+
 
   const prevLabel = getPrevMonthShortLabel();
   const thisMonthLabel = getThisMonthShortLabel();
@@ -356,12 +373,12 @@ export default function SalesTargetCard({
     typeof reimbursementDeltaPct === "number" &&
     !Number.isNaN(reimbursementDeltaPct);
 
-  const extraBottom = 30;
+
 
   return (
     <div className="rounded-2xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-[#D9D9D933]">
       {/* Legend */}
-      <div className="mt-2 2xl:mt-3 flex items-center justify-center gap-6 text-[10px] 2xl:text-xs">
+      <div className="mt-2 2xl:mt-2 flex items-center justify-center gap-6 text-[10px] 2xl:text-xs">
         <div className="flex items-center gap-2">
           <span
             className="h-2.5 w-2.5 rounded-sm"
@@ -397,7 +414,7 @@ export default function SalesTargetCard({
       </div>
 
       {/* Gauge */}
-      <div className="mt-5 2xl:mt-3 flex flex-col items-center justify-center">
+      <div className="mt-3 2xl:mt-4 flex flex-col items-center justify-center">
         <div
           ref={wrapRef}
           className="relative"
@@ -538,15 +555,23 @@ export default function SalesTargetCard({
         <div className="mt-1 2xl:mt-2 text-center">
           <div className="text-3xl font-semibold">{pctDisplay.toFixed(1)}%</div>
           <div className="text-[10px] 2xl:text-xs text-gray-500">Target Achieved</div>
-          {/* <div className="text-xs text-gray-600 mt-1">
-            Target:{" "}
-            <span className="font-medium">{formatHomeK(targetHomeResolved)}</span>
-          </div> */}
+          <div className="mt-1 text-[10px] 2xl:text-xs text-gray-500">
+            <span className=" text-green-500 font-bold">{monthCompletedPct.toFixed(1)}%</span> of Month Completed vs {" "}
+            <span className=" text-green-500 font-bold">{pctDisplay.toFixed(1)}%</span> of Target Achieved
+            {/* <span
+              className={`ml-2 font-medium ${paceDeltaPct >= 0 ? "text-green-700" : "text-rose-700"
+                }`}
+            >
+              ({paceDeltaPct >= 0 ? "+" : "-"}
+              {Math.abs(paceDeltaPct).toFixed(1)}% pace)
+            </span> */}
+          </div>
+
         </div>
       </div>
 
       {/* Reimbursement Section */}
-      <div className="mt-1 2xl:mt-4 p-3 ">
+      <div className="mt-3 2xl:mt-3 px-3 py-2 2xl:py-3 ">
         <div className="flex items-center justify-center gap-2">
           <div className="text-[10px] 2xl:text-xs text-gray-500">
             Monthly Reimbursement
@@ -566,7 +591,7 @@ export default function SalesTargetCard({
           )}
         </div>
 
-        <div className="mt-3">
+        <div className="mt-2">
           <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
             <span className="text-gray-600">
               {toApostropheLabel(reimbNowLabel)}{' '}
@@ -587,7 +612,7 @@ export default function SalesTargetCard({
           </div>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-2">
           <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
             <span className="text-gray-600">
               {toApostropheLabel(reimbPrevLabel)}{' '}

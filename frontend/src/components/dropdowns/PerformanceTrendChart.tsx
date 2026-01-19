@@ -171,6 +171,7 @@ type GenericPoint = {
   x: string;
   units?: number | null;
   net_sales?: number | null;
+  monthLabel?: string | null;
 };
 
 type GenericSeries = {
@@ -241,39 +242,36 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
   const kind: SeriesKind = xType === "day" ? "daily" : "monthly";
   const seriesArr = trend.series || [];
 
-  // Quarterly alignment mode (bucket/object style)
+  // Quarterly alignment mode (bucket/object style) — ✅ position-based (Month 1..3)
   if (isQuarterlyPayload(trend)) {
-    const parsed = seriesArr
-      .map((s) => ({ s, q: parseQuarterLabel(s.label) }))
-      .filter((x) => x.q != null) as Array<{
-        s: PerformanceTrendSeries;
-        q: NonNullable<ReturnType<typeof parseQuarterLabel>>;
-      }>;
-
-    const most = parsed.sort((a, b) => b.q.key - a.q.key)[0]?.s ?? seriesArr[0];
-
-    const mostBucket = (most.net_sales || most.units || {}) as TrendBucket;
-    const xAxis = sortKeysForX(Object.keys(mostBucket));
+    const outXAxis = ["1", "2", "3"]; // positions (we'll render "Month 1" in axisLabel)
 
     const outSeries: GenericSeries[] = seriesArr.map((s) => {
       const bucket = (s.net_sales || s.units || {}) as TrendBucket;
+
+      // Sort the months inside this quarter for THIS series (Oct,Nov,Dec etc.)
       const keys = sortKeysForX(Object.keys(bucket));
 
-      const points: GenericPoint[] = xAxis.map((xLabel, idx) => {
-        const k = keys[idx];
+      const points: GenericPoint[] = outXAxis.map((pos, idx) => {
+        const k = keys[idx]; // month key for this series at position idx
+
         const ns = s.net_sales as any;
         const un = s.units as any;
+
         return {
-          x: xLabel,
+          x: pos, // "1" | "2" | "3"
           net_sales: typeof ns?.[k] === "number" ? ns[k] : null,
           units: typeof un?.[k] === "number" ? un[k] : null,
-        };
+
+          // store the real month label for tooltip
+          monthLabel: k ?? null,
+        } as any;
       });
 
       return { name: s.label, kind, points };
     });
 
-    return { xAxis, series: outSeries };
+    return { xAxis: outXAxis, series: outSeries };
   }
 
   // Non-quarterly
@@ -330,6 +328,14 @@ const LiveLineChart: React.FC<{
   const chartRef = useRef<any>(null);
   const echartsInstanceRef = useRef<any>(null);
   const isDaily = series[0]?.kind === "daily";
+
+  const isQuarterCompare = useMemo(() => {
+    return (
+      !isDaily &&
+      xAxisData.length === 3 &&
+      xAxisData.every((x) => ["1", "2", "3"].includes(String(x)))
+    );
+  }, [isDaily, xAxisData]);
 
   useEffect(() => {
     if (!onExportApiReady) return;
@@ -425,26 +431,43 @@ const LiveLineChart: React.FC<{
       trigger: "axis",
       formatter: (params: any) => {
         const rawX = params?.[0]?.axisValue ?? "";
-        const shownX =
-          isDaily && isNumericAxis && !isNaN(Number(rawX))
-            ? String(Number(rawX) + displayDayShift)
+
+        // header
+        const header = isQuarterCompare
+          ? `Month ${rawX}`
+          : isDaily && isNumericAxis && !isNaN(Number(rawX))
+            ? `Day ${Number(rawX) + displayDayShift}`
             : String(rawX);
 
-        const header = isDaily ? `Day ${shownX}` : shownX;
-
         const lines = (params || []).map((p: any) => {
-          const val = p.data;
+          // IMPORTANT: because we return { value, monthLabel } for quarterly
+          const valObj = p?.data;
+          const value =
+            valObj == null
+              ? null
+              : typeof valObj === "object" && "value" in valObj
+                ? valObj.value
+                : valObj;
+
+          const monthLabel =
+            typeof valObj === "object" && valObj?.monthLabel ? String(valObj.monthLabel) : null;
+
           const shown =
-            val == null
+            value == null
               ? "-"
               : metric === "net_sales"
-                ? `${currencySymbol ?? ""}${Number(val).toFixed(2)}`
-                : `${Number(val)}`;
-          return `${p.marker}${p.seriesName} <b>${shown}</b>`;
+                ? `${currencySymbol ?? ""}${Number(value).toFixed(2)}`
+                : `${Number(value)}`;
+
+          const suffix =
+            isQuarterCompare && monthLabel ? ` <span style="color:#6B7280">(${monthLabel})</span>` : "";
+
+          return `${p.marker}${p.seriesName}${suffix} <b>${shown}</b>`;
         });
 
         return [header, ...lines].join("<br/>");
       },
+
     },
     legend: {
       top: 10,
@@ -471,6 +494,10 @@ const LiveLineChart: React.FC<{
       nameGap: 25,
       axisLabel: {
         formatter: (value: string) => {
+          // ✅ Quarter compare mode
+          if (isQuarterCompare) return `Month ${value}`;
+
+          // existing daily behavior
           if (!isDaily || !isNumericAxis) return String(value);
           const n = Number(value);
           return isNaN(n) ? String(value) : String(n + displayDayShift);
@@ -511,7 +538,15 @@ const LiveLineChart: React.FC<{
             return null;
           }
 
-          return metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
+          const v = metric === "units" ? (p?.units ?? null) : (p?.net_sales ?? null);
+
+          // keep monthLabel for tooltip (quarter compare)
+          if (p && (p as any).monthLabel != null) {
+            return v == null ? null : { value: v, monthLabel: (p as any).monthLabel };
+          }
+
+          return v;
+
         }),
       };
     }),
