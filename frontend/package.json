@@ -30,6 +30,7 @@
     "echarts-for-react": "^3.0.5",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
+    "firebase": "^12.8.0",
     "flatpickr": "^4.6.13",
     "intro.js": "^8.3.2",
     "jwt-decode": "^4.0.0",

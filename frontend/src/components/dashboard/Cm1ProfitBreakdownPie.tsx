@@ -270,13 +270,10 @@ export default function Cm1ProfitBreakdownPie({
 
                                 return {
                                     // ✅ your 2-line legend format stays the same
-                                    text: [
-                                        label,
-                                        `${currencySymbol}${value.toLocaleString(undefined, {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                        })} (${pct.toFixed(2)}%)`,
-                                    ],
+                                    text: `${label}\n${currencySymbol}${value.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    })} (${pct.toFixed(2)}%)`,
                                     fillStyle: bg[i],
                                     strokeStyle: "transparent",
                                     hidden: !chart.getDataVisibility(i),

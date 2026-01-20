@@ -164,116 +164,191 @@ def reset_password(token):
 
 
 
+# @user_bp.route('/google_register', methods=['POST'])
+# def google_register():
+#     try:
+#         data = request.get_json()
+#         if data is None:
+#             return jsonify({'success': False, 'message': 'Invalid input'}), 400
+            
+#         email = data.get('email')
+#         if not email:
+#             return jsonify({'success': False, 'message': 'Email is required'}), 400
+            
+#         phone_number = data.get('phone_number', "0000000000")
+#         password = data.get('password', "default_password")
+
+#         # Check if user already exists
+#         existing_user = User.query.filter_by(email=email).first()
+#         if existing_user:
+#             if existing_user.is_google_user:
+#                 # User exists and is already a Google user, log them in
+#                 token = generate_token(existing_user.id)
+#                 session['user_id'] = existing_user.id
+#                 return jsonify({'success': True, 'message': 'Google user login successful', 'token': token})
+#             else:
+#                 # User exists but not as Google user
+#                 return jsonify({'success': False, 'message': 'Email already exists with regular account. Please use regular login.'}), 409
+
+#         # Generate token_name for new user
+#         random_token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+#         token_name = f"user_{random_token}"
+
+#         # Hash the password
+#         password_hash = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
+
+#         # Register new Google user
+#         new_user = User(
+#             email=email, 
+#             phone_number=phone_number, 
+#             password=password_hash, 
+#             is_google_user=True,
+#             is_verified=True,  # Google users are pre-verified
+#             token_name=token_name
+#         )
+#         db.session.add(new_user)
+#         db.session.commit()
+
+#         # Generate token and set session
+#         auth_token = generate_token(new_user.id)
+#         session['user_id'] = new_user.id
+
+#         # Optional: Send welcome email (verification not needed for Google users)
+#         try:
+#             verification_link = f'http://127.0.0.1:5000/dashboard'  # Direct to dashboard
+#             send_welcome_and_verification_emails(email, verification_link)
+#         except Exception as e:
+#             print(f"Failed to send welcome email to {email}: {e}")
+#             # Don't fail registration if email fails
+
+#         return jsonify({
+#             'success': True, 
+#             'message': 'Google user registered successfully', 
+#             'token': auth_token,
+#             'show_country_selection': True,
+#             'user_id': new_user.id,
+#             'token_name': token_name
+#         })
+
+#     except Exception as e:
+#         db.session.rollback()
+#         print(f"Google registration error: {str(e)}")
+#         return jsonify({'success': False, 'message': 'Server error during Google registration', 'error': str(e)}), 500
+
+
+# @user_bp.route('/google_login', methods=['POST'])
+# def google_login():
+#     try:
+#         data = request.get_json()
+#         if data is None:
+#             return jsonify({'success': False, 'message': 'Invalid input'}), 400
+            
+#         email = data.get('email')
+#         if not email:
+#             return jsonify({'success': False, 'message': 'Email is required'}), 400
+
+#         user = User.query.filter_by(email=email).first()
+        
+#         if not user:
+#             # No user found - they need to register first
+#             return jsonify({'success': False, 'message': 'No account found. Please register first.'}), 404
+        
+#         if not user.is_google_user:
+#             # User exists but not as Google user
+#             return jsonify({'success': False, 'message': 'Please log in using your email and password.'}), 401
+            
+#         # User exists and is a Google user
+#         if not user.is_verified:
+#             # This shouldn't happen for Google users, but just in case
+#             user.is_verified = True
+#             db.session.commit()
+            
+#         # Generate token and set session
+#         token = generate_token(user.id)
+#         session['user_id'] = user.id
+        
+#         return jsonify({'success': True, 'message': 'Google login successful', 'token': token})
+        
+#     except Exception as e:
+#         print(f"Google login error: {str(e)}")
+#         return jsonify({'success': False, 'message': 'Server error during Google login', 'error': str(e)}), 500
+
+
 @user_bp.route('/google_register', methods=['POST'])
 def google_register():
     try:
-        data = request.get_json()
-        if data is None:
-            return jsonify({'success': False, 'message': 'Invalid input'}), 400
-            
+        data = request.get_json(silent=True) or {}
+
         email = data.get('email')
+        name = data.get('name')  # ✅ NEW
+
         if not email:
             return jsonify({'success': False, 'message': 'Email is required'}), 400
-            
-        phone_number = data.get('phone_number', "0000000000")
+
+        # ✅ set phone to None if you don't want dummy numbers
+        phone_number = data.get('phone_number',"0000000000")  # None if not provided
+
         password = data.get('password', "default_password")
 
-        # Check if user already exists
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
-            if existing_user.is_google_user:
-                # User exists and is already a Google user, log them in
-                token = generate_token(existing_user.id)
-                session['user_id'] = existing_user.id
-                return jsonify({'success': True, 'message': 'Google user login successful', 'token': token})
-            else:
-                # User exists but not as Google user
-                return jsonify({'success': False, 'message': 'Email already exists with regular account. Please use regular login.'}), 409
+        user = User.query.filter_by(email=email).first()
 
-        # Generate token_name for new user
-        random_token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
-        token_name = f"user_{random_token}"
+        if user and not user.is_google_user:
+            return jsonify({
+                'success': False,
+                'message': 'Email already exists with regular account. Please use regular login.'
+            }), 409
 
-        # Hash the password
-        password_hash = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
+        created = False
 
-        # Register new Google user
-        new_user = User(
-            email=email, 
-            phone_number=phone_number, 
-            password=password_hash, 
-            is_google_user=True,
-            is_verified=True,  # Google users are pre-verified
-            token_name=token_name
-        )
-        db.session.add(new_user)
-        db.session.commit()
+        if not user:
+            random_token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+            token_name = f"user_{random_token}"
 
-        # Generate token and set session
-        auth_token = generate_token(new_user.id)
-        session['user_id'] = new_user.id
+            password_hash = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
 
-        # Optional: Send welcome email (verification not needed for Google users)
-        try:
-            verification_link = f'http://127.0.0.1:5000/dashboard'  # Direct to dashboard
-            send_welcome_and_verification_emails(email, verification_link)
-        except Exception as e:
-            print(f"Failed to send welcome email to {email}: {e}")
-            # Don't fail registration if email fails
+            user = User(
+                email=email,
+                name=name,              # ✅ NEW
+                phone_number=phone_number,  # ✅ None allowed
+                password=password_hash,
+                is_google_user=True,
+                is_verified=True,
+                token_name=token_name
+            )
+            db.session.add(user)
+            db.session.commit()
+            created = True
+
+            try:
+                verification_link = 'http://127.0.0.1:5000/dashboard'
+                send_welcome_and_verification_emails(email, verification_link)
+            except Exception as e:
+                print(f"Failed to send welcome email to {email}: {e}")
+
+        # ✅ backfill name for existing google users if empty
+        if user and user.is_google_user and name and (not getattr(user, "name", None)):
+            user.name = name
+            db.session.commit()
+
+        if not user.is_verified:
+            user.is_verified = True
+            db.session.commit()
+
+        token = generate_token(user.id)
+        session['user_id'] = user.id
 
         return jsonify({
-            'success': True, 
-            'message': 'Google user registered successfully', 
-            'token': auth_token,
-            'show_country_selection': True,
-            'user_id': new_user.id,
-            'token_name': token_name
-        })
+            'success': True,
+            'message': 'Google login successful' if not created else 'Google user registered successfully',
+            'token': token,
+            'user_id': user.id,
+            'show_country_selection': True if created else False
+        }), 200
 
     except Exception as e:
         db.session.rollback()
         print(f"Google registration error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Server error during Google registration', 'error': str(e)}), 500
-
-
-@user_bp.route('/google_login', methods=['POST'])
-def google_login():
-    try:
-        data = request.get_json()
-        if data is None:
-            return jsonify({'success': False, 'message': 'Invalid input'}), 400
-            
-        email = data.get('email')
-        if not email:
-            return jsonify({'success': False, 'message': 'Email is required'}), 400
-
-        user = User.query.filter_by(email=email).first()
-        
-        if not user:
-            # No user found - they need to register first
-            return jsonify({'success': False, 'message': 'No account found. Please register first.'}), 404
-        
-        if not user.is_google_user:
-            # User exists but not as Google user
-            return jsonify({'success': False, 'message': 'Please log in using your email and password.'}), 401
-            
-        # User exists and is a Google user
-        if not user.is_verified:
-            # This shouldn't happen for Google users, but just in case
-            user.is_verified = True
-            db.session.commit()
-            
-        # Generate token and set session
-        token = generate_token(user.id)
-        session['user_id'] = user.id
-        
-        return jsonify({'success': True, 'message': 'Google login successful', 'token': token})
-        
-    except Exception as e:
-        print(f"Google login error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Server error during Google login', 'error': str(e)}), 500
-
-
+        return jsonify({'success': False, 'message': 'Server error during Google auth', 'error': str(e)}), 500
 
 
 @user_bp.route('/resend_verification', methods=['POST'])
