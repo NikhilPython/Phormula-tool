@@ -186,24 +186,15 @@ function RangePicker({
   onClear: () => void;
   onCloseReset: () => void;
 }) {
-
-  // ✅ LOCK CALENDAR TO CURRENT MONTH ONLY
   const today = new Date();
-  // const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  // const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
 
-  // month boundaries
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-
-  // max selectable date = min(yesterday, month end)
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   const maxSelectableDate = yesterday < monthEnd ? yesterday : monthEnd;
 
   const [shownDate, setShownDate] = useState<Date>(monthStart);
-
   const [showCalendar, setShowCalendar] = useState(false);
 
   const [calendarRange, setCalendarRange] = useState<any>([
@@ -212,6 +203,37 @@ function RangePicker({
 
   const [pendingStartDay, setPendingStartDay] = useState<number | null>(null);
   const [pendingEndDay, setPendingEndDay] = useState<number | null>(null);
+
+  // ✅ ADD THIS REF
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  // ✅ ADD THIS EFFECT (outside click closes)
+  useEffect(() => {
+    if (!showCalendar) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const el = wrapperRef.current;
+      if (!el) return;
+
+      // if clicked outside the RangePicker wrapper → close
+      if (!el.contains(e.target as Node)) {
+        setShowCalendar(false);
+
+        // choose ONE behavior:
+        // A) just close (keep current pending selection)
+        // return;
+
+        // B) close + reset (your requested behaviour sounds like reset)
+        setCalendarRange([{ startDate: null, endDate: null, key: "selection" }]);
+        setPendingStartDay(null);
+        setPendingEndDay(null);
+        onCloseReset();
+      }
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [showCalendar, onCloseReset]);
 
   const handleCalendarChange = (ranges: any) => {
     const range = ranges.selection;
@@ -247,7 +269,8 @@ function RangePicker({
   };
 
   return (
-    <div className="relative">
+    // ✅ attach the ref here
+    <div ref={wrapperRef} className="relative">
       <button
         type="button"
         onClick={() => setShowCalendar((s) => !s)}
@@ -257,7 +280,6 @@ function RangePicker({
           borderRadius: 8,
           border: "1px solid #D9D9D9E5",
           backgroundColor: "#ffffff",
-          // fontSize: 12,
         }}
       >
         <FaCalendarAlt className="text-sm 2xl:text-md" />
@@ -280,51 +302,23 @@ function RangePicker({
             minWidth: 320,
           }}
         >
-          {/* <DateRange
-            ranges={calendarRange}
-            onChange={handleCalendarChange}
-            moveRangeOnFirstSelection={false}
-            showMonthAndYearPickers={false}
-            rangeColors={["#5EA68E"]}
-          /> */}
-
-          {/* <DateRange
-            ranges={calendarRange}
-            onChange={handleCalendarChange}
-            moveRangeOnFirstSelection={false}
-            showMonthAndYearPickers={false}
-            rangeColors={["#5EA68E"]}
-            minDate={monthStart}
-            maxDate={monthEnd}
-            shownDate={shownDate}
-            onShownDateChange={() => {
-              setShownDate(monthStart);
-            }}
-          /> */}
-
           <DateRange
             ranges={calendarRange}
             onChange={handleCalendarChange}
             moveRangeOnFirstSelection={false}
             showMonthAndYearPickers={false}
             rangeColors={["#5EA68E"]}
-
             minDate={monthStart}
             maxDate={maxSelectableDate}
-
             shownDate={shownDate}
-            onShownDateChange={() => {
-              setShownDate(monthStart);
-            }}
+            onShownDateChange={() => setShownDate(monthStart)}
           />
 
           <style jsx global>{`
-  /* Remove left/right month navigation arrows */
-  .rdrNextPrevButton {
-    display: none !important;
-  }
-`}</style>
-
+            .rdrNextPrevButton {
+              display: none !important;
+            }
+          `}</style>
 
           <div className="flex justify-between mt-2 gap-2">
             <button
@@ -352,7 +346,6 @@ function RangePicker({
                 type="button"
                 onClick={closeAndReset}
                 className="text-xs px-2 py-1 rounded text-charcoal-500 border border-charcoal-500"
-              // style={{ background: "#5EA68E" }}
               >
                 Close
               </button>
@@ -363,7 +356,6 @@ function RangePicker({
     </div>
   );
 }
-
 
 
 const sliceByDayRange = (

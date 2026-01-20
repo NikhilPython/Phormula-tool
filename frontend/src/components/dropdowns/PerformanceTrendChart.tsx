@@ -506,10 +506,17 @@ const LiveLineChart: React.FC<{
     },
     yAxis: {
       type: "value",
-      name: yAxisName,
+      name: yAxisName,              // "(£)"
       nameLocation: "middle",
-      nameGap: 40,
+      nameGap: 16,                  // was 40  ✅ closer to axis
+      nameTextStyle: {
+        padding: [0, 0, 0, 0],       // ✅ no extra padding
+      },
+      axisLabel: {
+        margin: 4,                  // ✅ reduces space between axis and numbers
+      },
     },
+
 
     // ✅ IMPORTANT: series must be here (NOT option.data)
     series: series.map((ser) => {
@@ -552,18 +559,51 @@ const LiveLineChart: React.FC<{
     }),
   };
 
+  // return (
+  //   <div style={{ width: "100%", height: "100%" }}>
+  //     <ReactECharts
+  //       option={option}
+  //       style={{ width: "100%", height: "100%" }}
+  //       opts={{ renderer: "canvas" }}
+  //       onChartReady={(instance) => {
+  //         echartsInstanceRef.current = instance;
+  //       }}
+  //     />
+  //   </div>
+  // );
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver(() => {
+      try {
+        echartsInstanceRef.current?.resize();
+      } catch { }
+    });
+
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+
   return (
-    <div style={{ width: "100%", height: "100%" }}>
+    <div ref={containerRef} style={{ width: "100%", height: "100%" }}>
       <ReactECharts
         option={option}
         style={{ width: "100%", height: "100%" }}
         opts={{ renderer: "canvas" }}
         onChartReady={(instance) => {
           echartsInstanceRef.current = instance;
+          // one immediate resize helps too
+          try { instance.resize(); } catch { }
         }}
       />
     </div>
   );
+
 
 };
 
@@ -588,7 +628,8 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
 
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full min-h-0 flex flex-col">
+
       <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-3">
         <PageBreadcrumb pageTitle="Performance Trend" variant="page" textSize="2xl" />
 
@@ -611,7 +652,8 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
+      {/* <div className="mt-2 h-[280px] md:h-[320px] lg:h-[320px] 2xl:h-[480px] overflow-hidden"> */}
+      <div className="mt-2 flex-1 min-h-0 overflow-hidden">
         {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
         {error && <div className="text-sm text-red-500">{error}</div>}
 
@@ -631,6 +673,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
           <div className="text-sm text-gray-500">Loading...</div>
         )}
       </div>
+
     </div>
   );
 }
