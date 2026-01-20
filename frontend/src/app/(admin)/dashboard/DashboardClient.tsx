@@ -49,8 +49,11 @@ type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 type Cm1PieSlice = {
   name: string;
   value: number;
+  prevValue: number;
   pct: number;
+  deltaPct: number | null;
 };
+
 
 /* ===================== ENV & ENDPOINTS ===================== */
 const baseURL =
@@ -667,54 +670,91 @@ export default function DashboardPage() {
 
 
 
-  const cm1ProfitPieData = useMemo(() => {
-    const cg = liveBiPayload?.categorized_growth;
-    if (!cg) return [];
+const cm1ProfitPieData = useMemo(() => {
+  const cg = liveBiPayload?.categorized_growth;
+  if (!cg) return [];
 
-    const all = [
-      ...(cg?.top_80_skus ?? []),
-      ...(cg?.other_skus ?? []),
-      ...(cg?.new_or_reviving_skus ?? []),
-    ];
+  const all = [
+    ...(cg?.top_80_skus ?? []),
+    ...(cg?.other_skus ?? []),
+    ...(cg?.new_or_reviving_skus ?? []),
+  ];
 
-    const map = new Map<string, number>();
-    for (const r of all) {
-      const name = String(r?.product_name ?? "Unknown").trim() || "Unknown";
-      const profit = convertToDisplayCurrency(Number(r?.profit_curr ?? 0), biSourceCurrency);
+  // ✅ accumulate current + previous profits per product
+  const currMap = new Map<string, number>();
+  const prevMap = new Map<string, number>();
 
-      if (profit <= 0) continue;
-      map.set(name, (map.get(name) ?? 0) + profit);
-    }
+  for (const r of all) {
+    const name = String(r?.product_name ?? "Unknown").trim() || "Unknown";
 
-    const items = Array.from(map.entries())
-      .map(([name, profit]) => ({ name, profit }))
-      .sort((a, b) => b.profit - a.profit);
+    // ✅ current month CM1 profit (what you already use)
+    const currProfit = convertToDisplayCurrency(
+      Number(r?.profit_curr ?? 0),
+      biSourceCurrency
+    );
 
-    const total = items.reduce((s, x) => s + x.profit, 0);
-    if (total <= 0) return [];
+    // ✅ previous month CM1 profit (adjust this field name if your API differs)
+    const prevProfitRaw =
+      r?.profit_prev ??
+      r?.profit_prev_month ??
+      r?.profit_previous ??
+      0;
 
-    const topN = 5;
-    const top = items.slice(0, topN);
-    const rest = items.slice(topN);
-    const others = rest.reduce((s, x) => s + x.profit, 0);
+    const prevProfit = convertToDisplayCurrency(
+      Number(prevProfitRaw ?? 0),
+      biSourceCurrency
+    );
 
-    const slices = top.map((x) => ({
-      name: x.name,
-      value: x.profit,
-      pct: (x.profit / total) * 100,
-    }));
+    // keep only meaningful slices (you can tweak this rule)
+    if (currProfit <= 0 && prevProfit <= 0) continue;
 
-    if (others > 0) {
-      slices.push({
-        name: "Others",
-        value: others,
-        pct: (others / total) * 100,
-      });
-    }
+    currMap.set(name, (currMap.get(name) ?? 0) + currProfit);
+    prevMap.set(name, (prevMap.get(name) ?? 0) + prevProfit);
+  }
 
-    return slices;
-  }, [liveBiPayload, convertToDisplayCurrency, biSourceCurrency]);
+  const items = Array.from(currMap.entries())
+    .map(([name, curr]) => ({
+      name,
+      curr,
+      prev: prevMap.get(name) ?? 0,
+    }))
+    .sort((a, b) => b.curr - a.curr);
 
+  const totalCurr = items.reduce((s, x) => s + x.curr, 0);
+  if (totalCurr <= 0) return [];
+
+  const topN = 5;
+  const top = items.slice(0, topN);
+  const rest = items.slice(topN);
+
+  const othersCurr = rest.reduce((s, x) => s + x.curr, 0);
+  const othersPrev = rest.reduce((s, x) => s + x.prev, 0);
+
+  const calcDeltaPct = (curr: number, prev: number) => {
+    if (!prev) return null;
+    return ((curr - prev) / Math.abs(prev)) * 100;
+  };
+
+  const slices: Cm1PieSlice[] = top.map((x) => ({
+    name: x.name,
+    value: x.curr,
+    prevValue: x.prev,
+    pct: (x.curr / totalCurr) * 100,
+    deltaPct: calcDeltaPct(x.curr, x.prev),
+  }));
+
+  if (othersCurr > 0) {
+    slices.push({
+      name: "Others",
+      value: othersCurr,
+      prevValue: othersPrev,
+      pct: (othersCurr / totalCurr) * 100,
+      deltaPct: calcDeltaPct(othersCurr, othersPrev),
+    });
+  }
+
+  return slices;
+}, [liveBiPayload, convertToDisplayCurrency, biSourceCurrency]);
 
   /* ===================== INTEGRATION FLAGS ===================== */
   const shopifyDeriv = useMemo(() => {
@@ -1753,7 +1793,7 @@ export default function DashboardPage() {
       return [
         { label: "Net Sales", raw: sales, display: formatDisplayAmount(sales) },
         { label: "COGS", raw: cogs, display: formatDisplayAmount(cogs) },
-        { label: "Amazon Fees", raw: fees, display: formatDisplayAmount(fees) },
+        { label: "Marketplace Fees", raw: fees, display: formatDisplayAmount(fees) },
         { label: "Tax & Credits", raw: taxCredits, display: formatDisplayAmount(taxCredits) },
         { label: "CM1 Profit", raw: cm1, display: formatDisplayAmount(cm1) },
         { label: "Advertisements", raw: adv, display: formatDisplayAmount(adv) },
@@ -1770,7 +1810,7 @@ export default function DashboardPage() {
         const sales = convertToDisplayCurrency(shopifyDeriv?.netSales ?? 0, "INR");
         return [
           { label: "Net Sales", raw: sales, display: formatDisplayAmount(sales) },
-          { label: "Amazon Fees", raw: 0, display: formatDisplayAmount(0) },
+          { label: "Marketplace Fees", raw: 0, display: formatDisplayAmount(0) },
           { label: "COGS", raw: 0, display: formatDisplayAmount(0) },
           { label: "Advertisements", raw: 0, display: formatDisplayAmount(0) },
           { label: "Other Charges", raw: 0, display: formatDisplayAmount(0) },
@@ -1781,7 +1821,7 @@ export default function DashboardPage() {
       const sales = convertToDisplayCurrency(combinedUSD, "USD");
       return [
         { label: "Sales", raw: sales, display: formatDisplayAmount(sales) },
-        { label: "Amazon Fees", raw: 0, display: formatDisplayAmount(0) },
+        { label: "Marketplace Fees", raw: 0, display: formatDisplayAmount(0) },
         { label: "COGS", raw: 0, display: formatDisplayAmount(0) },
         { label: "Advertisements", raw: 0, display: formatDisplayAmount(0) },
         { label: "Other Charges", raw: 0, display: formatDisplayAmount(0) },
@@ -1794,7 +1834,7 @@ export default function DashboardPage() {
     const zero = formatDisplayAmount(0);
     return [
       { label: "Sales", raw: 0, display: zero },
-      { label: "Amazon Fees", raw: 0, display: zero },
+      { label: "Marketplace Fees", raw: 0, display: zero },
       { label: "COGS", raw: 0, display: zero },
       { label: "Advertisements", raw: 0, display: zero },
       { label: "Other Charges", raw: 0, display: zero },
@@ -1818,16 +1858,28 @@ export default function DashboardPage() {
   ]);
 
   // ✅ remove empty categories so bars don't get spaced out
-  const chartItems = useMemo(() => {
-    return (plItems || []).filter((i) => {
-      const v = Number(i?.raw ?? 0);
-      // keep only meaningful values
-      return Math.abs(v) > 1e-9;
-    });
-  }, [plItems]);
+  // const chartItems = useMemo(() => {
+  //   return (plItems || []).filter((i) => {
+  //     const v = Number(i?.raw ?? 0);
+  //     // keep only meaningful values
+  //     return Math.abs(v) > 1e-9;
+  //   });
+  // }, [plItems]);
 
-  const labels = chartItems.map((i) => i.label);
-  const values = chartItems.map((i) => Number(i.raw ?? 0));
+  // const labels = chartItems.map((i) => i.label);
+  // const values = chartItems.map((i) => Number(i.raw ?? 0));
+
+// ✅ Keep ALL categories so x-axis labels never disappear
+const chartItems = useMemo(() => plItems || [], [plItems]);
+
+const labels = useMemo(() => chartItems.map((i) => i.label), [chartItems]);
+const values = useMemo(() => chartItems.map((i) => Number(i.raw ?? 0)), [chartItems]);
+
+// If you still need "no data" detection:
+const allValuesZero = useMemo(
+  () => values.length === 0 || values.every((v) => Math.abs(v) < 1e-9),
+  [values]
+);
 
 
   const prevValues = useMemo(() => {
@@ -1845,7 +1897,7 @@ export default function DashboardPage() {
             amazonDataCurrency
           );
 
-        case "Amazon Fees":
+        case "Marketplace Fees":
           return convertToDisplayCurrency(
             toNumberSafe(data?.previous_period?.totals?.amazon_fees ?? 0),
             amazonDataCurrency
@@ -1903,7 +1955,7 @@ export default function DashboardPage() {
 
   const colorMapping: Record<string, string> = {
     "Net Sales": "#75BBDA",
-    "Amazon Fees": "#B75A5A",
+    "Marketplace Fees": "#B75A5A",
     COGS: "#FDD36F",
     Advertisements: "#C49466",
     "Tax & Credits": "#ED9F50",
@@ -1915,7 +1967,7 @@ export default function DashboardPage() {
 
   const colors = labels.map((label) => colorMapping[label] || "#75BBDA");
 
-  const allValuesZero = values.length === 0 || values.every((v) => !v || v === 0);
+  // const allValuesZero = values.length === 0 || values.every((v) => !v || v === 0);
 
 
   /* ===================== EXCEL EXPORT (USES displayCurrency symbol) ===================== */
@@ -1970,7 +2022,7 @@ export default function DashboardPage() {
 
       const signs: Record<string, string> = {
         "Net Sales": "(+)",
-        "Amazon Fees": "(-)",
+        "Marketplace Fees": "(-)",
         COGS: "(-)",
         Advertisements: "(-)",
         "Tax & Credits": "(+/-)",

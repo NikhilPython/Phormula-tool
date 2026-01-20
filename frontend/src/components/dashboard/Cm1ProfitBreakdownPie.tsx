@@ -17,10 +17,12 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
-export type Cm1PieSlice = {
+type Cm1PieSlice = {
     name: string;
-    value: number;
-    pct: number; // already computed in DashboardPage
+    value: number;     // current CM1 profit (already in display currency)
+    prevValue: number; // previous CM1 profit (same currency)
+    pct: number;       // share of current total
+    deltaPct: number | null; // % change vs previous
 };
 
 type Props = {
@@ -63,20 +65,10 @@ export default function Cm1ProfitBreakdownPie({
 
 
     // const [isLaptop, setIsLaptop] = useState(false);
-    
+
     const [isLaptop, setIsLaptop] = useState(false);
     const [isDesktop, setIsDesktop] = useState(false);
-
-    useEffect(() => {
-        const check = () => {
-            const w = window.innerWidth;
-            setIsLaptop(w >= 1024 && w < 1536);
-        };
-        check();
-        window.addEventListener("resize", check);
-        return () => window.removeEventListener("resize", check);
-    }, []);
-
+    const [legendTick, setLegendTick] = useState(0);
 
     const chartRef = useRef<any>(null);
 
@@ -149,36 +141,41 @@ export default function Cm1ProfitBreakdownPie({
     //         responsive: true,
     //         maintainAspectRatio: false,
     //         animation: { duration: 0 },
-    //         radius: isLaptop ? "90%" : "100%",
-    //         // layout: {
-    //         //     padding: isLaptop ? 4 : 8,
-    //         // },
+
+    //         // ✅ keep laptop same, increase only on desktop
+    //         radius: isLaptop ? "90%" : isDesktop ? "95%" : "100%",
+
     //         layout: {
-    //             padding: {
-    //                 top: 0,
-    //                 bottom: 0,
-    //                 left: 0,
-    //                 right: 0,
-    //             },
+    //             padding: { top: 0, bottom: 0, left: 0, right: 0 },
     //         },
 
-
     //         elements: { arc: { borderWidth: 0, hoverOffset: 4 } },
+
     //         plugins: {
     //             legend: {
-    //                 position: "right", // ✅ move legend to right
+    //                 position: "right",
     //                 align: "center",
+
+    //                 // ✅ IMPORTANT: limit legend width so pie stays big on desktop
+    //                 maxWidth: isDesktop ? 260 : isLaptop ? 220 : 240,
+
     //                 labels: {
     //                     usePointStyle: true,
     //                     pointStyle: "circle",
     //                     boxWidth: isLaptop ? 8 : 10,
     //                     boxHeight: isLaptop ? 8 : 10,
-    //                     padding: isLaptop ? 10 : 14,
+
+    //                     // ✅ keep laptop spacing small, allow a bit more on desktop
+    //                     padding: isLaptop ? 10 : isDesktop ? 16 : 14,
+
     //                     font: {
-    //                         size: isLaptop ? 10 : 12,
+    //                         // ✅ keep laptop same, slightly bigger on desktop only
+    //                         size: isLaptop ? 10 : isDesktop ? 12 : 12,
     //                         weight: 500,
     //                     },
+
     //                     color: "#414042",
+
     //                     generateLabels: (chart) => {
     //                         const labels = (chart.data.labels || []) as string[];
     //                         const dataset = chart.data.datasets?.[0] as any;
@@ -193,13 +190,11 @@ export default function Cm1ProfitBreakdownPie({
     //                             const pct = total ? (value / total) * 100 : 0;
 
     //                             return {
-    //                                 text: [
-    //                                     label,
-    //                                     `${currencySymbol}${value.toLocaleString(undefined, {
-    //                                         minimumFractionDigits: 2,
-    //                                         maximumFractionDigits: 2,
-    //                                     })} (${pct.toFixed(2)}%)`,
-    //                                 ],
+    //                                 // ✅ your 2-line legend format stays the same
+    //                                 text: `${label}\n${currencySymbol}${value.toLocaleString(undefined, {
+    //                                     minimumFractionDigits: 2,
+    //                                     maximumFractionDigits: 2,
+    //                                 })} (${pct.toFixed(2)}%)`,
     //                                 fillStyle: bg[i],
     //                                 strokeStyle: "transparent",
     //                                 hidden: !chart.getDataVisibility(i),
@@ -210,84 +205,50 @@ export default function Cm1ProfitBreakdownPie({
     //                     },
     //                 },
     //             },
-    //         }
-
+    //         },
     //     };
-    // }, [currencySymbol, noDataFound]);
+    // }, [currencySymbol, isLaptop, isDesktop]);
 
     const options = useMemo<ChartOptions<"pie">>(() => {
         return {
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 0 },
-
-            // ✅ keep laptop same, increase only on desktop
             radius: isLaptop ? "90%" : isDesktop ? "95%" : "100%",
-
-            layout: {
-                padding: { top: 0, bottom: 0, left: 0, right: 0 },
-            },
-
+            layout: { padding: { top: 0, bottom: 0, left: 0, right: 0 } },
             elements: { arc: { borderWidth: 0, hoverOffset: 4 } },
 
             plugins: {
-                legend: {
-                    position: "right",
-                    align: "center",
+                legend: { display: false }, // ✅ turn off chart legend
 
-                    // ✅ IMPORTANT: limit legend width so pie stays big on desktop
-                    maxWidth: isDesktop ? 260 : isLaptop ? 220 : 240,
+                tooltip: {
+                    callbacks: {
+                        label: (ctx: TooltipItem<"pie">) => {
+                            const i = ctx.dataIndex;
+                            const slice = data?.[i];
+                            const val = Number(ctx.raw || 0);
+                            const delta = slice?.deltaPct;
 
-                    labels: {
-                        usePointStyle: true,
-                        pointStyle: "circle",
-                        boxWidth: isLaptop ? 8 : 10,
-                        boxHeight: isLaptop ? 8 : 10,
+                            const deltaText =
+                                delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%`;
 
-                        // ✅ keep laptop spacing small, allow a bit more on desktop
-                        padding: isLaptop ? 10 : isDesktop ? 16 : 14,
-
-                        font: {
-                            // ✅ keep laptop same, slightly bigger on desktop only
-                            size: isLaptop ? 10 : isDesktop ? 12 : 12,
-                            weight: 500,
-                        },
-
-                        color: "#414042",
-
-                        generateLabels: (chart) => {
-                            const labels = (chart.data.labels || []) as string[];
-                            const dataset = chart.data.datasets?.[0] as any;
-                            const values = ((dataset?.data || []) as number[]).map(v =>
-                                Math.abs(Number(v || 0))
-                            );
-                            const total = values.reduce((a, b) => a + b, 0);
-                            const bg = dataset?.backgroundColor as any[];
-
-                            return labels.map((label, i) => {
-                                const value = values[i] ?? 0;
-                                const pct = total ? (value / total) * 100 : 0;
-
-                                return {
-                                    // ✅ your 2-line legend format stays the same
-                                    text: `${label}\n${currencySymbol}${value.toLocaleString(undefined, {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                    })} (${pct.toFixed(2)}%)`,
-                                    fillStyle: bg[i],
-                                    strokeStyle: "transparent",
-                                    hidden: !chart.getDataVisibility(i),
-                                    index: i,
-                                    pointStyle: "circle",
-                                };
-                            });
+                            // ✅ still uses your metrics
+                            return `${slice?.name ?? ctx.label}: ${currencySymbol}${val.toFixed(2)} (${(slice?.pct ?? 0).toFixed(
+                                2
+                            )}%) (${deltaText})`;
                         },
                     },
                 },
             },
         };
-    }, [currencySymbol, isLaptop, isDesktop]);
+    }, [currencySymbol, isLaptop, isDesktop, data]);
 
+    // ✅ Sync legend once chart mounts (so isVisible reads correctly)
+    useEffect(() => {
+        if (!chartData) return;
+        const t = setTimeout(() => setLegendTick((x) => x + 1), 50);
+        return () => clearTimeout(t);
+    }, [chartData]);
 
     useEffect(() => {
         if (!onExportBase64Ready) return;
@@ -311,18 +272,113 @@ export default function Cm1ProfitBreakdownPie({
                 <p className="text-center text-sm text-gray-500">No CM1 data available.</p>
             ) : (
                 // ✅ this MUST be flex-1 so chart gets height
-                <div className="flex-1 min-h-0 w-full">
-                    <div className="relative w-full h-full flex flex-col justify-center items-center">
+                // <div className="flex-1 min-h-0 w-full">
+                //     <div className="relative w-full h-full flex flex-col justify-center items-center">
 
-                        <Pie
-                            ref={chartRef}
-                            data={chartData}
-                            options={options}
-                            className="!block"
-                            style={{ width: "100%", height: "100%" }}   // ✅ important
-                        />
+                //         <Pie
+                //             ref={chartRef}
+                //             data={chartData}
+                //             options={options}
+                //             className="!block"
+                //             style={{ width: "100%", height: "100%" }}   // ✅ important
+                //         />
+                //     </div>
+                // </div>
+
+                <div className="flex-1 min-h-0 w-full">
+                    <div className="relative w-full h-full flex items-center gap-6">
+                        {/* LEFT: PIE */}
+                        <div className="flex-1 min-w-0 h-full">
+                            <Pie
+                                ref={chartRef}
+                                data={chartData}
+                                options={options}
+                                className="!block"
+                                style={{ width: "100%", height: "100%" }}
+                            />
+                        </div>
+
+                        {/* RIGHT: LEGEND (uses your data as-is) */}
+                        <div
+                            className="shrink-0 overflow-auto pr-1"
+                            style={{
+                                width: isDesktop ? 260 : isLaptop ? 220 : 240,
+                                maxHeight: "100%",
+                            }}
+                        >
+                            <div className="flex flex-col gap-4">
+                                {(data || []).map((slice, i) => {
+                                    const dot = COLORS[i % COLORS.length];
+                                    const chart = chartRef.current;
+                                    const isVisible = chart ? chart.getDataVisibility(i) : true;
+
+                                    // ✅ uses your metrics only
+                                    const value = Math.abs(Number(slice.value || 0));
+                                    const pct = Number(slice.pct || 0);
+                                    const delta = slice.deltaPct;
+
+                                    const deltaText =
+                                        delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%`;
+
+                                    const deltaClass =
+                                        delta == null ? "text-[#414042]" : delta >= 0 ? "text-green-500" : "text-red-500";
+
+                                    return (
+                                        <button
+                                            key={`${slice.name}-${i}`}
+                                            type="button"
+                                            className="text-left"
+                                            onClick={() => {
+                                                const chart = chartRef.current;
+                                                if (!chart) return;
+                                                chart.toggleDataVisibility(i);
+                                                chart.update();
+                                                setLegendTick((t) => t + 1); // ✅ forces React re-render
+                                            }}
+
+
+                                        >
+                                            <div className={`flex items-start gap-3 ${isVisible ? "opacity-100" : "opacity-40"}`}>
+
+                                                <span
+                                                    className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full"
+                                                    style={{ backgroundColor: dot }}
+                                                />
+
+                                                <div className="min-w-0">
+                                                    {/* line 1 */}
+                                                    <div
+                                                        className={`truncate font-medium ${isVisible ? "" : "line-through"}`}
+                                                        style={{ fontSize: isLaptop ? 12 : 13, color: "#414042" }}
+                                                        title={slice.name}
+                                                    >
+
+                                                        {slice.name}
+                                                    </div>
+
+                                                    {/* line 2 */}
+                                                    <div
+                                                        className="whitespace-nowrap"
+                                                        style={{ fontSize: isLaptop ? 12 : 13, color: "#414042" }}
+                                                    >
+                                                        {currencySymbol}
+                                                        {value.toLocaleString(undefined, {
+                                                            minimumFractionDigits: 2,
+                                                            maximumFractionDigits: 2,
+                                                        })}{" "}
+                                                        ({pct.toFixed(2)}%){" "}
+                                                        <span className={deltaClass}>({deltaText})</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
                 </div>
+
             )}
         </div>
     );
