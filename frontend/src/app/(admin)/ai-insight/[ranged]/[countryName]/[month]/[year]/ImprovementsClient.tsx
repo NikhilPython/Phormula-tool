@@ -3033,65 +3033,21 @@ const MonthsforBI: React.FC = () => {
 
       <div className='w-full'>
         {/* Month selectors */}
-        <h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] ">
+        <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+          <div className='mb-3'>
+<h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] ">
           Business Insights - AI Analyst&nbsp;-
           <span className="text-[#5EA68E] pl-1">
             {countryName && formatCountryLabel(countryName)}<span className="text-[#5EA68E] px-2">
-              {/* {month1 && year1 && month2 && year2
-  ? (() => {
-      const monthToIndex = (m: string) => {
-        const s = String(m).trim().toLowerCase();
-
-        // numeric month: "1".."12" or 1..12
-        const n = Number(s);
-        if (!Number.isNaN(n) && n >= 1 && n <= 12) return n - 1;
-
-        // normalize to 3-letter
-        const abbr = s.slice(0, 3);
-
-        const map: Record<string, number> = {
-          jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-          jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
-        };
-
-        return map[abbr] ?? -1; // -1 means unknown
-      };
-
-      const m1 = monthToIndex(month1);
-      const m2 = monthToIndex(month2);
-
-      const y1n = Number(year1);
-      const y2n = Number(year2);
-
-      // If month parsing failed, fallback to original order (safe)
-      if (m1 === -1 || m2 === -1 || Number.isNaN(y1n) || Number.isNaN(y2n)) {
-        const y1s = String(year1);
-        const y2s = String(year2);
-        return `(${getAbbr(month1)}'${y1s.slice(2)} vs ${getAbbr(month2)}'${y2s.slice(2)})`;
-      }
-
-      const d1 = new Date(y1n, m1, 1).getTime();
-      const d2 = new Date(y2n, m2, 1).getTime();
-
-      // NEW should come first
-      const monthNewerFirst = d2 >= d1;
-
-      const newMonth = monthNewerFirst ? month2 : month1;
-      const newYear = monthNewerFirst ? year2 : year1;
-      const oldMonth = monthNewerFirst ? month1 : month2;
-      const oldYear = monthNewerFirst ? year1 : year2;
-
-      const ny = String(newYear);
-      const oy = String(oldYear);
-
-      return `(${getAbbr(newMonth)}'${ny.slice(2)} vs ${getAbbr(oldMonth)}'${oy.slice(2)})`;
-    })()
-  : ''} */}
-
             </span>
           </span>
         </h2>
-        <p><i className="2xl:text-sm text-xs">Select the year and month for both periods to compare growth metrics.</i></p>
+         <p><i className="2xl:text-sm text-xs">Select the year and month for both periods to compare growth metrics.</i></p>
+          </div>
+
+        </div>
+        
+       
         <form onSubmit={handleSubmit} className="month-form ">
           {/* Row 1 */}
           <div className="month-row">

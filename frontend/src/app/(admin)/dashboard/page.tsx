@@ -2259,7 +2259,7 @@ export default function DashboardPage() {
         <div className="mb-2 2xl:mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col leading-tight">
             <p className="text-sm 2xl:text-lg text-charcoal-500 mb-1">
-              Let&apos;s get started,{" "}
+              Let&apos;s get startedaaaaa,{" "}
               <span className="text-green-500">{brandName}!</span>
             </p>
 

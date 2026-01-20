@@ -1615,84 +1615,60 @@ export default function ReferralFeesDashboard(): JSX.Element {
   return (
     <div className="space-y-1.5 font-sans text-charcoal-500">
 
-      <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        {/* LEFT: Title + Subtitle */}
-        <div className="flex flex-col leading-tight w-full md:w-auto">
-          <div className="flex items-baseline gap-2">
-            <PageBreadcrumb pageTitle="Expense Reconciliation -" variant="page" align="left" textSize="2xl" className="mb-0 md:mb-2" />
-            <span className="text-[#5EA68E] font-bold text-lg sm:text-2xl md:text-2xl">
-              {country.toUpperCase()}
-            </span>
-          </div>
+      <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+  <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-1 py-2 mb-2">
 
-        </div>
-
-        {/* RIGHT: Filters */}
-        <div className="flex w-full md:w-auto justify-start md:justify-end">
-          {/* <MonthYearPickerTable
-            month={month}
-            year={year}
-            yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
-            onMonthChange={(v) => {
-              setMonth(v);
-              if (v && year) setError(null);
-            }}
-            onYearChange={(v) => {
-              setYear(v);
-              if (v && month) setError(null);
-            }}
-            valueMode="lower"
-          /> */}
-
-          <PeriodFiltersTable
-            range={range}
-            selectedMonth={month}
-            selectedQuarter={selectedQuarter}
-            selectedYear={year}
-            yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
-            onRangeChange={(v) => {
-              setRange(v);
-
-              // If switching to monthly and month already exists, keep it
-              if (v === "monthly") {
-                // no-op; month stays your source of truth
-                return;
-              }
-
-              // If switching to quarterly and a quarter is already selected, derive month
-              if (v === "quarterly") {
-                const m = quarterToMonth(selectedQuarter);
-                if (m) setMonth(m);
-                return;
-              }
-
-              // If switching to yearly, you can either:
-              // A) keep month as-is (last used), or
-              // B) force a month like january to keep backend happy
-              if (v === "yearly") {
-                if (!month) setMonth("january"); // optional
-              }
-            }}
-            onMonthChange={(v) => {
-              setMonth(v);
-              if (v && year) setError(null);
-            }}
-            onQuarterChange={(q) => {
-              setSelectedQuarter(q);
-
-              // IMPORTANT: backend needs month/year, so derive a month from quarter
-              const m = quarterToMonth(q);
-              setMonth(m);
-
-              if (m && year) setError(null);
-            }}
-            onYearChange={(v) => {
-              setYear(String(v));
-              if (v && month) setError(null);
-            }}
-          />
-        </div>
+    {/* LEFT: Title */}
+    <div className="flex flex-col leading-tight w-full md:w-auto">
+      <div className="flex items-baseline gap-2">
+        <PageBreadcrumb
+          pageTitle="Expense Reconciliation -"
+          variant="page"
+          align="left"
+          textSize="2xl"
+          className="mb-0"
+        />
+        <span className="text-[#5EA68E] font-bold text-lg sm:text-2xl md:text-2xl">
+          {country.toUpperCase()}
+        </span>
       </div>
+    </div>
+
+    {/* RIGHT: Filters */}
+    <div className="flex w-full md:w-auto justify-start md:justify-end">
+      <PeriodFiltersTable
+        range={range}
+        selectedMonth={month}
+        selectedQuarter={selectedQuarter}
+        selectedYear={year}
+        yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
+        onRangeChange={(v) => {
+          setRange(v);
+          if (v === "quarterly") {
+            const m = quarterToMonth(selectedQuarter);
+            if (m) setMonth(m);
+          }
+          if (v === "yearly" && !month) setMonth("january");
+        }}
+        onMonthChange={(v) => {
+          setMonth(v);
+          if (v && year) setError(null);
+        }}
+        onQuarterChange={(q) => {
+          setSelectedQuarter(q);
+          const m = quarterToMonth(q);
+          setMonth(m);
+          if (m && year) setError(null);
+        }}
+        onYearChange={(v) => {
+          setYear(String(v));
+          if (v && month) setError(null);
+        }}
+      />
+    </div>
+
+  </div>
+</div>
 
       {loading && (
         <div className="flex flex-col items-center justify-center py-12 text-center">

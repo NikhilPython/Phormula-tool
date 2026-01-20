@@ -3297,126 +3297,11 @@ Data:
         }
 
 #-------------------------------------------------------------------------------    
-# def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
-#     """
-#     Generates inventory alerts for all SKUs based on:
-#     1) Inventory coverage ratio vs transit time
-#     2) Aged inventory buckets
-
-#     Returns:
-#       {
-#         sku: {
-#           "alert": str,
-#           "alert_type": "supply" | "ageing" | "none"
-#         }
-#       }
-#     """
-
-#     alerts = {}
-
-#     # -----------------------------------
-#     # 1) Inventory coverage ratio
-#     # -----------------------------------
-#     coverage_df = compute_inventory_coverage_ratio(user_id, country)
-#     coverage_map = {
-#         str(r["sku"]).strip(): r["inventory_coverage_ratio"]
-#         for _, r in coverage_df.iterrows()
-#         if r.get("sku") is not None
-#     }
-
-#     # -----------------------------------
-#     # 2) Transit time
-#     # -----------------------------------
-#     transit_time = None
-#     try:
-#         transit_row = fetch_transit_time(
-#             user_id=user_id,
-#             marketplace=None,
-#             country=country,
-#         )
-#         if transit_row and transit_row.get("transit_time") is not None:
-#             transit_time = float(transit_row["transit_time"])
-#     except Exception:
-#         transit_time = None
-
-#     # -----------------------------------
-#     # 3) Inventory aged data
-#     # -----------------------------------
-#     inv_df = fetch_inventory_aged_by_user(user_id)
-
-#     for _, r in inv_df.iterrows():
-#         sku = r.get("sku")
-#         if sku is None:
-#             continue
-
-#         sku = str(sku).strip()
-#         if not sku:
-#             continue
-
-#         def _num(col):
-#             v = r.get(col)
-#             return float(safe_num(v)) if v is not None else 0.0
-
-#         aged_181_270 = _num("inv-age-181-to-270-days")
-#         aged_271_365 = _num("inv-age-271-to-365-days")
-#         aged_365p    = _num("inv-age-365-plus-days")
-
-#         aged_qty = aged_181_270 + aged_271_365 + aged_365p
-#         overaged = aged_qty > 0
-
-#         coverage_ratio = coverage_map.get(sku)
-
-#         # -----------------------------------
-#         # Alert decision (STRICT priority)
-#         # -----------------------------------
-#         alert = "Ageing Inventory. Ref. AI Insights"
-#         alert_type = "none"
-
-#         # 1️⃣ Supply risk
-#         if (
-#             transit_time is not None
-#             and coverage_ratio is not None
-#             and coverage_ratio < transit_time
-#         ):
-#             alert = "Inventory coverage is below transit time.Ref. AI Insights"
-#             alert_type = "supply"
-
-#         # 2️⃣ Ageing inventory
-#         elif overaged:
-#             alert = (
-#                 "Ageing Inventory. Ref. AI Insights"
-#             )
-#             alert_type = "ageing"
-
-#         alerts[sku] = {
-#             "alert": alert,
-#             "alert_type": alert_type,
-#         }
-
-#     return alerts
-
-
-
 def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
-    """
-    Generates inventory alerts for all SKUs based on:
-    1) Inventory coverage ratio thresholds
-    2) Aged inventory buckets (unchanged)
-    3) High storage cost
-
-    Returns:
-      {
-        sku: {
-          "alert": str,
-          "alert_type": "supply" | "ageing" | "cost" | "none"
-        }
-      }
-    """
-
     alerts = {}
 
     # -----------------------------------
-    # 1) Inventory coverage ratio
+    # Coverage ratio
     # -----------------------------------
     coverage_df = compute_inventory_coverage_ratio(user_id, country)
     coverage_map = {
@@ -3426,7 +3311,7 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
     }
 
     # -----------------------------------
-    # 2) Inventory aged data
+    # Inventory aged data (DB-backed)
     # -----------------------------------
     inv_df = fetch_inventory_aged_by_user(user_id)
 
@@ -3434,55 +3319,52 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
         sku = r.get("sku")
         if not sku:
             continue
-
         sku = str(sku).strip()
 
         def _num(col):
             v = r.get(col)
-            return float(safe_num(v)) if v is not None else 0.0
+            return float(v) if v is not None else 0.0
 
-        # ---- Ageing inventory (UNCHANGED) ----
-        aged_181_270 = _num("inv-age-181-to-270-days")
-        aged_271_365 = _num("inv-age-271-to-365-days")
-        aged_365p    = _num("inv-age-365-plus-days")
-
-        aged_qty = aged_181_270 + aged_271_365 + aged_365p
+        # -----------------------------------
+        # ✅ AGEING (MATCHES DB COLUMNS)
+        # -----------------------------------
+        aged_qty = (
+            _num("inv-age-181-to-330-days")
+            + _num("inv-age-331-to-365-days")
+        )
         overaged = aged_qty > 0
 
-        # ---- Storage cost ----
-        estimated_storage_cost = _num("estimated_storage_cost")
+        # -----------------------------------
+        # ✅ STORAGE COST (MATCHES DB COLUMN)
+        # -----------------------------------
+        estimated_storage_cost = _num("estimated-storage-cost-next-month")
 
+        # -----------------------------------
+        # Coverage
+        # -----------------------------------
         coverage_ratio = coverage_map.get(sku)
 
-        alert = "Ageing Inventory. Ref. AI Insights"
+        alert = "No alert"
         alert_type = "none"
 
-        # -----------------------------------
-        # ALERT DECISION (STRICT PRIORITY)
-        # -----------------------------------
-
-        # 1️⃣ High alert (critical supply risk)
+        # 1️⃣ SUPPLY (highest priority)
         if coverage_ratio is not None and coverage_ratio <= 2:
             alert = "High alert"
             alert_type = "supply"
 
-        # 2️⃣ Send shipment
         elif coverage_ratio is not None and coverage_ratio <= 5:
             alert = "Please send shipment"
             alert_type = "supply"
 
-        # 3️⃣ Ageing inventory (only when coverage > 5)
+        # 2️⃣ HIGH STORAGE COST
+        elif estimated_storage_cost > 100:
+            alert = "High storage cost"
+            alert_type = "cost"
+
+        # 3️⃣ AGEING INVENTORY
         elif overaged:
             alert = "Ageing Inventory. Ref. AI Insights"
             alert_type = "ageing"
-
-        # 4️⃣ High storage cost (independent alert)
-        if estimated_storage_cost > 100:
-            if alert_type == "none":
-                alert = "High storage cost"
-                alert_type = "cost"
-            else:
-                alert += " | High storage cost"
 
         alerts[sku] = {
             "alert": alert,

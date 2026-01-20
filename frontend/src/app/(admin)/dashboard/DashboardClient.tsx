@@ -2317,7 +2317,7 @@ export default function DashboardPage() {
       : 0;
 
   return (
-    <div className="relative overflow-x-hidden">
+    <div className="relative w-full">
       <HashScroll offset={80} />
       {(loading || shopifyLoading) && !data && !shopify && (
         <>
@@ -2335,14 +2335,16 @@ export default function DashboardPage() {
         </>
       )}
 
-      <div className="mx-auto w-full max-w-full ">
+     
 
-        <div className="mb-2 2xl:mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col leading-tight">
-            <p className="text-sm 2xl:text-lg text-charcoal-500 mb-1">
-              Let&apos;s get started,{" "}
-              <span className="text-green-500">{brandName}!</span>
-            </p>
+        <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+  <div className="mb-2 2xl:mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+
+    <div className="flex flex-col leading-tight">
+      <p className="text-sm 2xl:text-lg text-charcoal-500 mb-1">
+        Let&apos;s get started,{" "}
+        <span className="text-green-500">{brandName}!</span>
+      </p>
 
             <div className="flex items-center gap-2">
               <PageBreadcrumb
@@ -2362,20 +2364,25 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <button
-            onClick={refreshAll}
-            disabled={loading || shopifyLoading || biLoading}
-            className={`w-full rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm active:scale-[.99] sm:w-auto ${loading || shopifyLoading || biLoading
-              ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-              : "border-gray-300 bg-white hover:bg-gray-50"
-              }`}
-          >
-            {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
-          </button>
-        </div>
+    <button
+      onClick={refreshAll}
+      disabled={loading || shopifyLoading || biLoading}
+      className={`w-full rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm sm:w-auto ${
+        loading || shopifyLoading || biLoading
+          ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+          : "border-gray-300 bg-white hover:bg-gray-50"
+      }`}
+    >
+      {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
+    </button>
+
+  </div>
+</div>
+
+
 
         {/* <div className={`grid grid-cols-12 gap-6 items-stretch`}> */}
-        <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-6 items-stretch scroll-mt-[80px]">
+        <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-6 items-stretch scroll-mt-[80px] mt-4">
 
           {/* LEFT COLUMN */}
           <div className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 lg:gap-4 2xl:gap-6 ${leftColumnHeightClass}`}>
@@ -3173,7 +3180,7 @@ export default function DashboardPage() {
           </>
         )}
       </div>
-    </div>
+    
   );
 
 
