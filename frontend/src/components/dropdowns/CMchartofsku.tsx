@@ -436,7 +436,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
     // ✅ make the pie slightly smaller (more room for labels)
     // Chart.js supports this for pie/doughnut charts
-    radius: isLaptop ? "94%" : "100%",
+    radius: "100%",
 
     elements: {
       arc: {
@@ -594,8 +594,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
               className={[
                 "relative",
                 "h-[240px] sm:h-[280px] md:h-[280px] 2xl:h-[360px]",
-                "flex justify-center", // center horizontally
-                isLaptop ? "items-center px-4 py-1" : "items-center",
+                "flex justify-center", 
+                isLaptop ? "items-center py-1" : "items-center",
               ].join(" ")}
             >
               {/* <Pie data={chartData} options={options} /> */}

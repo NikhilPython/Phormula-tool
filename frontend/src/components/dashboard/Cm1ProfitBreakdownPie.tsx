@@ -62,7 +62,10 @@ export default function Cm1ProfitBreakdownPie({
     const legendPosition: "bottom" = "bottom";
 
 
+    // const [isLaptop, setIsLaptop] = useState(false);
+    
     const [isLaptop, setIsLaptop] = useState(false);
+    const [isDesktop, setIsDesktop] = useState(false);
 
     useEffect(() => {
         const check = () => {
@@ -128,32 +131,129 @@ export default function Cm1ProfitBreakdownPie({
         };
     }, [data]);
 
+
+    useEffect(() => {
+        const check = () => {
+            const w = window.innerWidth;
+            setIsLaptop(w >= 1024 && w < 1536);
+            setIsDesktop(w >= 1536);
+        };
+        check();
+        window.addEventListener("resize", check);
+        return () => window.removeEventListener("resize", check);
+    }, []);
+
+
+    // const options = useMemo<ChartOptions<"pie">>(() => {
+    //     return {
+    //         responsive: true,
+    //         maintainAspectRatio: false,
+    //         animation: { duration: 0 },
+    //         radius: isLaptop ? "90%" : "100%",
+    //         // layout: {
+    //         //     padding: isLaptop ? 4 : 8,
+    //         // },
+    //         layout: {
+    //             padding: {
+    //                 top: 0,
+    //                 bottom: 0,
+    //                 left: 0,
+    //                 right: 0,
+    //             },
+    //         },
+
+
+    //         elements: { arc: { borderWidth: 0, hoverOffset: 4 } },
+    //         plugins: {
+    //             legend: {
+    //                 position: "right", // ✅ move legend to right
+    //                 align: "center",
+    //                 labels: {
+    //                     usePointStyle: true,
+    //                     pointStyle: "circle",
+    //                     boxWidth: isLaptop ? 8 : 10,
+    //                     boxHeight: isLaptop ? 8 : 10,
+    //                     padding: isLaptop ? 10 : 14,
+    //                     font: {
+    //                         size: isLaptop ? 10 : 12,
+    //                         weight: 500,
+    //                     },
+    //                     color: "#414042",
+    //                     generateLabels: (chart) => {
+    //                         const labels = (chart.data.labels || []) as string[];
+    //                         const dataset = chart.data.datasets?.[0] as any;
+    //                         const values = ((dataset?.data || []) as number[]).map(v =>
+    //                             Math.abs(Number(v || 0))
+    //                         );
+    //                         const total = values.reduce((a, b) => a + b, 0);
+    //                         const bg = dataset?.backgroundColor as any[];
+
+    //                         return labels.map((label, i) => {
+    //                             const value = values[i] ?? 0;
+    //                             const pct = total ? (value / total) * 100 : 0;
+
+    //                             return {
+    //                                 text: [
+    //                                     label,
+    //                                     `${currencySymbol}${value.toLocaleString(undefined, {
+    //                                         minimumFractionDigits: 2,
+    //                                         maximumFractionDigits: 2,
+    //                                     })} (${pct.toFixed(2)}%)`,
+    //                                 ],
+    //                                 fillStyle: bg[i],
+    //                                 strokeStyle: "transparent",
+    //                                 hidden: !chart.getDataVisibility(i),
+    //                                 index: i,
+    //                                 pointStyle: "circle",
+    //                             };
+    //                         });
+    //                     },
+    //                 },
+    //             },
+    //         }
+
+    //     };
+    // }, [currencySymbol, noDataFound]);
+
     const options = useMemo<ChartOptions<"pie">>(() => {
         return {
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 0 },
-            radius: isLaptop ? "90%" : "100%",
+
+            // ✅ keep laptop same, increase only on desktop
+            radius: isLaptop ? "90%" : isDesktop ? "95%" : "100%",
+
             layout: {
-                padding: isLaptop ? 4 : 8,
+                padding: { top: 0, bottom: 0, left: 0, right: 0 },
             },
 
             elements: { arc: { borderWidth: 0, hoverOffset: 4 } },
+
             plugins: {
                 legend: {
-                    position: "bottom",
+                    position: "right",
                     align: "center",
+
+                    // ✅ IMPORTANT: limit legend width so pie stays big on desktop
+                    maxWidth: isDesktop ? 260 : isLaptop ? 220 : 240,
+
                     labels: {
                         usePointStyle: true,
+                        pointStyle: "circle",
+                        boxWidth: isLaptop ? 8 : 10,
+                        boxHeight: isLaptop ? 8 : 10,
 
-                        padding: isLaptop ? 12 : 22,
-                        boxWidth: isLaptop ? 8 : 12,
+                        // ✅ keep laptop spacing small, allow a bit more on desktop
+                        padding: isLaptop ? 10 : isDesktop ? 16 : 14,
+
                         font: {
-                            size: isLaptop ? 9 : 12,
+                            // ✅ keep laptop same, slightly bigger on desktop only
+                            size: isLaptop ? 10 : isDesktop ? 12 : 12,
                             weight: 500,
                         },
 
-                        color: "#334155",
+                        color: "#414042",
 
                         generateLabels: (chart) => {
                             const labels = (chart.data.labels || []) as string[];
@@ -169,11 +269,16 @@ export default function Cm1ProfitBreakdownPie({
                                 const pct = total ? (value / total) * 100 : 0;
 
                                 return {
-                                    // ✅ KEEP the dash
-                                    text: `${label} - ${currencySymbol}${value.toLocaleString()} (${pct.toFixed(2)}%)`,
-                                    fillStyle: Array.isArray(bg) ? bg[i] : bg,
+                                    // ✅ your 2-line legend format stays the same
+                                    text: [
+                                        label,
+                                        `${currencySymbol}${value.toLocaleString(undefined, {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                        })} (${pct.toFixed(2)}%)`,
+                                    ],
+                                    fillStyle: bg[i],
                                     strokeStyle: "transparent",
-                                    lineWidth: 0,
                                     hidden: !chart.getDataVisibility(i),
                                     index: i,
                                     pointStyle: "circle",
@@ -182,27 +287,10 @@ export default function Cm1ProfitBreakdownPie({
                         },
                     },
                 },
-
-                tooltip: {
-                    enabled: !noDataFound,
-                    callbacks: {
-                        label: (ctx: TooltipItem<"pie">) => {
-                            const value = Math.abs(Number(ctx.raw ?? 0));
-                            const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as { data: number[] } | undefined;
-                            const total = (ds?.data ?? []).reduce((acc, v) => acc + Math.abs(Number(v || 0)), 0);
-                            const pct = total ? (value / total) * 100 : 0;
-
-                            const label = ctx.label ? `${ctx.label}: ` : "";
-                            return `${label}${currencySymbol}${value.toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                            })} (${pct.toFixed(2)}%)`;
-                        },
-                    },
-                },
             },
         };
-    }, [currencySymbol, noDataFound]);
+    }, [currencySymbol, isLaptop, isDesktop]);
+
 
     useEffect(() => {
         if (!onExportBase64Ready) return;
