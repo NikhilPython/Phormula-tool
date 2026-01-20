@@ -123,7 +123,7 @@ export default function AdminLayout({
 
   return (
     <AuthGuard>
-      <div className="min-h-screen xl:flex">
+      <div className="h-screen xl:flex overflow-hidden">
         <AppSidebar />
         <Backdrop />
 
@@ -133,9 +133,11 @@ export default function AdminLayout({
         >
           <AppHeader />
 
-          <div className="p-3 sm:p-4 lg:p-3 xl:p-5 border-l border-t border-gray-200">
-            {children}
-          </div>
+          <div className="flex flex-col h-[calc(100vh-64px)] overflow-y-auto">
+  <div className="p-3 sm:p-4 lg:p-3 xl:p-5 border-l border-t border-gray-200">
+    {children}
+  </div>
+</div>
         </div>
 
         <ChatbotWidget />

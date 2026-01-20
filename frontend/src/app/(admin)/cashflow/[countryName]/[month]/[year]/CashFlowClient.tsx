@@ -881,44 +881,51 @@ if (
   return (
     <div className="w-full">
       {/* Header */}
-      <div className="flex justify-between">
-<div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-  <div>
- <div className="flex flex-wrap  items-baseline gap-2 justify-center sm:justify-start">
-              <PageBreadcrumb
-                pageTitle="Cash Flow –"
-                variant="page"
-                align="left"
-                className="mt-0 md:mt-2 mb-0 md:mb-2"
-              />
-              <span className="text-[#5EA68E] font-bold text-lg text-lg 2xl:text-2xl">
-  {countryName?.toUpperCase()}
-</span>
+      <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
 
-            </div>
-            <p className="2xl:text-sm text-xs">Track cash generation from performance</p>
-  </div>
-  
-        
-      </div>
-
-      {/* Filters */}
-      <div className="mb-[2vh]">
-        <div className="flex flex-col md:flex-row items-center gap-[0.5vw]">
-          <PeriodFiltersTable
-            range={periodType}
-            selectedMonth={month.toLowerCase()}
-            selectedQuarter={selectedQuarter}
-            selectedYear={year}
-            yearOptions={years}
-            onRangeChange={handleRangeChange}
-            onMonthChange={handleMonthChange}
-            onQuarterChange={handleQuarterChange}
-            onYearChange={handleYearChange}
+    {/* LEFT: Title */}
+    <div className="mb-2 flex flex-wrap items-start gap-2">
+      <div>
+        <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
+          <PageBreadcrumb
+            pageTitle="Cash Flow –"
+            variant="page"
+            align="left"
+            className=""
           />
+
+          <span className="text-[#5EA68E] font-bold text-lg 2xl:text-2xl">
+            {countryName?.toUpperCase()}
+          </span>
         </div>
+
+        <p className="2xl:text-sm text-xs">
+          Track cash generation from performance
+        </p>
       </div>
+    </div>
+
+    {/* RIGHT: Filters */}
+    <div className="mb-2">
+      <div className="flex flex-col md:flex-row items-center gap-[0.5vw]">
+        <PeriodFiltersTable
+          range={periodType}
+          selectedMonth={month.toLowerCase()}
+          selectedQuarter={selectedQuarter}
+          selectedYear={year}
+          yearOptions={years}
+          onRangeChange={handleRangeChange}
+          onMonthChange={handleMonthChange}
+          onQuarterChange={handleQuarterChange}
+          onYearChange={handleYearChange}
+        />
       </div>
+    </div>
+
+  </div>
+</div>
+
       
 
             {/* Show alert until a valid period selection is made */}
@@ -960,7 +967,7 @@ if (
 
       {/* Results */}
       {data && (
-        <div className="flex flex-col">
+        <div className="flex flex-col mt-4">
           {/* Header + Download in one responsive row */}
           <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Left: title + period */}
