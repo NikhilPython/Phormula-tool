@@ -10,6 +10,10 @@ import PageBreadcrumb from "../common/PageBreadCrumb";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import { SkuExportPayload } from "@/lib/utils/exportTypes";
 import GroupedCollapsibleTable, { LeafCol, ColGroup } from "../ui/table/GroupedCollapsibleTable";
+import ExcelJS from "exceljs";
+import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
+import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
+
 
 /* ---------- Types ---------- */
 
@@ -24,6 +28,8 @@ type SKUtableProps = {
   homeCurrency?: string;
   onExportPayloadChange?: (payload: SkuExportPayload) => void;
   hideDownloadButton?: boolean;
+  onDownload?: () => void;
+
 };
 
 type TableRow = {
@@ -171,6 +177,29 @@ const toNumber = (v: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const isNumericKey = (k: string, v: any) => typeof v === "number" || (!isNaN(Number(v)) && v !== null && v !== "");
+
+function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
+  const out: any = { ...base };
+
+  for (const r of rows) {
+    Object.keys(r || {}).forEach((k) => {
+      const v = (r as any)[k];
+
+      // only sum numeric-ish fields
+      if (!isNumericKey(k, v)) return;
+
+      // ignore name-ish keys just in case
+      if (k === "product_name" || k === "sku") return;
+
+      out[k] = toNumber(out[k]) + toNumber(v);
+    });
+  }
+
+  return out as TableRow;
+}
+
+
 function normalizeRows(data: any[]): TableRow[] {
   return data.map((row) => {
     const productName =
@@ -295,6 +324,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   homeCurrency,
   onExportPayloadChange,
   hideDownloadButton = false,
+  onDownload,
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -390,61 +420,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return k as keyof TableRow | undefined;
   }, [tableData]);
 
-  // const buildExcelTableData = useCallback(() => {
-  //   const columnsToDisplay2 = [
-  //     "product_name",
-  //     "quantity",
-  //     "asp",
-  //     "product_sales",
-  //     "net_sales",
-  //     "cost_of_unit_sold",
-  //     "amazon_fee",
-  //     "selling_fees",
-  //     "fba_fees",
-  //     "net_credits",
-  //     "net_taxes",
-  //     "profit",
-  //     "profit_percentage",
-  //     "unit_wise_profitability",
-  //   ] as const;
-
-  //   const rowsForExcel = tableData.map((row) => {
-  //     const rowData: Record<string, string | number> = {};
-
-  //     columnsToDisplay2.forEach((column) => {
-  //       let value: any = (row as any)[column];
-
-  //       // ✅ name fallback same as UI
-  //       if (column === "product_name") value = getDisplayProductNameFromRow(row);
-
-  //       // ✅ hard mapping rules (match your current excel logic)
-  //       if (column === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
-
-  //       // ✅ quantity = Units Sold (NOT total_quantity)
-  //       if (column === "quantity") value = row.quantity ?? row.units_sold ?? 0;
-
-  //       // number formatting rules
-  //       if (typeof value === "number") {
-  //         if (Math.abs(value) < 1e-10) value = 0;
-
-  //         // keep decimals except quantity
-  //         if (column !== "product_name" && column !== "quantity") value = Number(value.toFixed(2));
-  //       }
-
-  //       // percent stored as fraction for excel (same as you do now)
-  //       if (column === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
-
-  //       rowData[column] = typeof value === "number" && isNaN(value) ? "-" : value;
-  //     });
-
-  //     return rowData;
-  //   });
-
-  //   return { columnsToDisplay2, rowsForExcel };
-  // }, [tableData, getDisplayProductNameFromRow]);
-
-
-  const getTitle = useCallback(() => `Profit Breakup (SKU Level)`, []);
+  // const getTitle = useCallback(() => `Profit Breakup (SKU Level)`, []);
+  const getTitle = useCallback(() => `P&L Productwise Breakdown`, []);
 
   const getExtraRows = useCallback(() => {
     const formattedCountry = isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase();
@@ -458,6 +435,47 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ];
   }, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
 
+  const displayRows = useMemo(() => {
+    if (!tableData?.length) return [];
+
+    const lastRow = tableData[tableData.length - 1];
+    const lastName = String((lastRow as any)?.product_name || "").trim().toLowerCase();
+    const hasTotal = lastName === "total";
+
+    const totalRow = hasTotal ? lastRow : null;
+    const productRows = hasTotal ? tableData.slice(0, -1) : [...tableData];
+
+    // 🔹 define "Top" by CM1 Profit (change if needed)
+    const sortKey: keyof TableRow = "profit";
+
+    const sorted = [...productRows].sort(
+      (a, b) => toNumber((b as any)[sortKey]) - toNumber((a as any)[sortKey])
+    );
+
+    // ✅ TOP 9
+    const top9 = sorted.slice(0, 9);
+
+    // ✅ EVERYTHING ELSE → Others
+    const rest = sorted.slice(9);
+
+    const othersRow: TableRow | null =
+      rest.length > 0
+        ? (sumRows(rest, {
+          product_name: "Others",
+          sku: "-",
+        }) as TableRow)
+        : null;
+
+    const out: TableRow[] = [...top9];
+
+    // row 10 → Others
+    if (othersRow) out.push(othersRow);
+
+    // last row → Total
+    if (totalRow) out.push(totalRow);
+
+    return out;
+  }, [tableData]);
 
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
@@ -469,76 +487,77 @@ const SKUtable: React.FC<SKUtableProps> = ({
     []
   );
 
-  const groups = useMemo<ColGroup<TableRow>[]>(() => ([
-    {
-      id: "sales",
-      label: "Sales",
-      collapsedCols: [],
-      expandedCols: [
-        { key: "product_sales", label: "Gross Sales", align: "center" as const },
-        { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
-        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
-      ],
-    },
+  const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
       id: "units_breakdown",
       label: "Net Units Sold",
-      collapsedCols: [],
+      collapsedCols: [{ key: "net_units_sold", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "sku", label: "SKU", align: "center" as const },
-        { key: "units_sold", label: "Units Sold", align: "center" as const },
-        { key: "return_units", label: "Return", align: "center" as const },
+        { key: "sku", label: "SKU", align: "center" },
+        { key: "units_sold", label: "Units Sold", align: "center" },
+        { key: "return_units", label: "Return", align: "center" },
+        { key: "net_units_sold", label: "Total", align: "center" },
       ],
     },
+
     {
-      id: "promotions_breakdown",
-      label: "",
-      collapsedCols: [],
+      id: "sales",
+      label: "Sales",
+      collapsedCols: [{ key: "net_sales", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "promotional_rebates", label: "Promotions", align: "center" as const },
-        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+        { key: "product_sales", label: "Gross Sales", align: "center" },
+        { key: "refund_sales", label: "Sales - Refund", align: "center" },
+        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
+        { key: "net_sales", label: "Total", align: "center" },
       ],
     },
+
     {
       id: "amazon_breakdown",
       label: "Marketplace Fees",
-      collapsedCols: [],
+      collapsedCols: [{ key: "amazon_fee", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "selling_fees", label: "Selling Fees", align: "center" as const },
-        { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+        { key: "selling_fees", label: "Selling Fees", align: "center" },
+        { key: "fba_fees", label: "FBA Fees", align: "center" },
+        { key: "amazon_fee", label: "Total", align: "center" },
       ],
     },
+
     {
       id: "other_transactions_breakdown",
       label: "Other Transactions",
-      collapsedCols: [],
+      collapsedCols: [{ key: "other_transactions", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "net_taxes", label: "Net Taxes", align: "center" as const },
-        { key: "net_credits", label: "Net Credits", align: "center" as const },
-        // { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+        { key: "net_taxes", label: "Net Taxes", align: "center" },
+        { key: "net_credits", label: "Net Credits", align: "center" },
+        { key: "other_transactions", label: "Total", align: "center" },
       ],
     },
+
     {
       id: "profit_breakdown",
       label: "CM1 Profit",
-      collapsedCols: [],
+      collapsedCols: [{ key: "profit", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
-        { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
+        { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
+        { key: "profit", label: "Total", align: "center" },
       ],
     },
-  ]), []);
+  ], []);
 
 
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
       { key: "asp", label: "ASP", align: "center" },
-      { key: "net_sales", label: "Net Sales", align: "center" },
+      // { key: "net_sales", label: "Net Sales", align: "center" },
       { key: "cost_of_unit_sold", label: "COGS", align: "center" },
-      { key: "net_units_sold", label: "Net Units Sold", align: "center" },
-      { key: "amazon_fee", label: "Marketplace Fees", align: "center" },
-      { key: "other_transactions", label: "Other Transactions", align: "center" },
-      { key: "profit", label: "CM1 Profit Margin", align: "center" },
+      { key: "promotional_rebates", label: "Promotions", align: "center" },
+      { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
+      // { key: "net_units_sold", label: "Net Units Sold", align: "center" },
+      // { key: "amazon_fee", label: "Marketplace Fees", align: "center" },
+      // { key: "other_transactions", label: "Other Transactions", align: "center" },
+      // { key: "profit", label: "CM1 Profit Margin", align: "center" },
     ],
     []
   );
@@ -1400,245 +1419,34 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   // ✅ FULL UPDATED FUNCTION (drop-in replace your current handleDownloadExcel)
 
-  const handleDownloadExcel = useCallback(() => {
-    const wb = XLSX.utils.book_new();
+const handleDownloadExcel = useCallback(async () => {
+  // ✅ If you already computed this in the export payload, you could reuse it.
+  // Here we build fresh to guarantee it matches current state.
+  const model = buildSkuSheetModel();
 
-    const excelCols = buildExcelColumnsFromUI(); // [{ key, label }]
-    const colKeys = excelCols.map((c) => c.key);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("SKU Profitability");
 
-    // ✅ CHANGE THIS to shift summary values to a different column
-    // Example options: "net_taxes", "net_sales", "profit", "amazon_fee", etc.
-    const SUMMARY_VALUE_KEY: string = "profit"; // <-- CHANGE HERE
+  buildSkuWorksheetFromModel(ws, model);
 
-    // helper: force ALL rows to have ALL columns (prevents shifting)
-    const rowWithAllCols = (overrides: Record<string, any> = {}) => {
-      const base: Record<string, any> = {};
-      colKeys.forEach((k) => (base[k] = ""));
-      return { ...base, ...overrides };
-    };
+  const filename =
+    range === "monthly"
+      ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
+      : range === "quarterly"
+        ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
+        : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
 
-    // Header row from UI labels
-    const headerRow = rowWithAllCols();
-    excelCols.forEach((c) => {
-      headerRow[c.key] = c.label;
-    });
+  await downloadWorkbookAsXlsx(wb, filename);
 
-    // Build data rows (same mapping rules as your UI)
-    const tableDataForExcel = tableData.map((row, rowIndex) => {
-      const rowData = rowWithAllCols();
-
-      colKeys.forEach((key) => {
-        let value: any = (row as any)[key];
-
-        // ✅ SNO: integer, blank for Total row
-        if (key === "sno") {
-          const name = getDisplayProductNameFromRow(row);
-          const isTotal = String(name).trim().toLowerCase() === "total";
-          value = isTotal ? "" : rowIndex + 1;
-        }
-
-        // Product name matches UI fallback
-        if (key === "product_name") value = getDisplayProductNameFromRow(row);
-
-        // gross_sales -> product_sales mapping
-        if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
-
-        // other_transactions mapping
-        if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
-
-        // quantity meaning units_sold (if present in col list)
-        if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
-
-        // Pre-rounding
-        if (typeof value === "number") {
-          if (Math.abs(value) < 1e-10) value = 0;
-
-          // integer-only fields
-          if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
-            value = Math.trunc(value);
-          } else {
-            value = Number(value.toFixed(2));
-          }
-        }
-
-        // profit_percentage stored as fraction for excel %
-        if (key === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
-
-        rowData[key] = typeof value === "number" && isNaN(value) ? "-" : value;
-      });
-
-      return rowData;
-    });
-
-    const extraRows = getExtraRows();
-
-    const summaryRows = [
-      rowWithAllCols({
-        product_name: "Cost of Advertisement",
-        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.advertising_total || 0)),
-      }),
-      rowWithAllCols({
-        product_name: "Visibility - Ads (-)",
-        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.visible_ads || 0)),
-      }),
-      rowWithAllCols({
-        product_name: "Visibility - Deals, Vouchers and Reviews (-)",
-        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.dealsvouchar_ads || 0)),
-      }),
-
-      ...(countryName === "us" || countryName === "global"
-        ? [
-          rowWithAllCols({
-            product_name: "Shipment Charges (-)",
-            [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.shipment_charges || 0)),
-          }),
-        ]
-        : []),
-
-      rowWithAllCols({
-        product_name: "Other Transactions (-)",
-        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.other_transactions || 0)),
-      }),
-      rowWithAllCols({
-        product_name: "Platform Fees (-)",
-        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.platform_fee || 0)),
-      }),
-      rowWithAllCols({
-        product_name: "Inventory Storage Fees (-)",
-        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.inventory_storage_fees || 0)),
-      }),
-
-      rowWithAllCols({
-        product_name: "Reimbursement for lost Inventory",
-        [SUMMARY_VALUE_KEY]: Math.abs(Number(totals.lost_total || 0)),
-      }),
-
-      rowWithAllCols({
-        product_name: "CM2 Profit/Loss",
-        [SUMMARY_VALUE_KEY]: Number(totals.cm2_profit || 0),
-      }),
-      rowWithAllCols({
-        product_name: "CM2 Margins",
-        [SUMMARY_VALUE_KEY]: Number(totals.cm2_margins || 0) / 100,
-      }),
-      rowWithAllCols({
-        product_name: "TACoS (Total Advertising Cost of Sale)",
-        [SUMMARY_VALUE_KEY]: Number(totals.acos || 0) / 100,
-      }),
-      rowWithAllCols({
-        product_name: "Reimbursement vs CM2 Margins",
-        [SUMMARY_VALUE_KEY]: Number(totals.rembursment_vs_cm2_margins || 0) / 100,
-      }),
-      rowWithAllCols({
-        product_name: "Reimbursement vs Sales",
-        [SUMMARY_VALUE_KEY]: Number(totals.reimbursement_vs_sales || 0) / 100,
-      }),
-    ];
-
-    const fullData = [
-      ...extraRows.map((row) => rowWithAllCols({ product_name: row[0] })),
-      rowWithAllCols({}), // blank line
-      headerRow,
-      ...tableDataForExcel,
-      rowWithAllCols({}), // blank line before summary
-      ...summaryRows,
-    ];
-
-    // ✅ Force column order (prevents shifting forever)
-    const ws = XLSX.utils.json_to_sheet(fullData, {
-      header: colKeys,
-      skipHeader: true,
-    });
-
-    // ---------------------------
-    // ✅ FORCE EXCEL FORMATTING (same as you already do, but now reliable)
-    // ---------------------------
-    const EXTRA_ROWS_COUNT = extraRows.length;
-    const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT; // unused but kept for clarity
-    const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;
-    const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;
-
-    const SNO_COL_INDEX = colKeys.indexOf("sno");
-
-    if (ws["!ref"]) {
-      const rng = XLSX.utils.decode_range(ws["!ref"]);
-
-      // 1) Force sno to integer
-      if (SNO_COL_INDEX >= 0) {
-        for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
-          const addr = XLSX.utils.encode_cell({ r, c: SNO_COL_INDEX });
-          const cell = ws[addr];
-          if (!cell) continue;
-          if (cell.v === "" || cell.v === null || cell.v === undefined) continue;
-
-          const n = Number(cell.v);
-          if (!Number.isFinite(n)) continue;
-
-          cell.t = "n";
-          cell.v = Math.trunc(n);
-          cell.z = "0";
-        }
-      }
-
-      // 2) Apply formats to numeric cells
-      for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
-        for (let c = 0; c <= rng.e.c; c++) {
-          const addr = XLSX.utils.encode_cell({ r, c });
-          const cell = ws[addr];
-          if (!cell) continue;
-
-          const key = colKeys[c];
-          if (!key) continue;
-
-          if (key === "sno") continue;
-          if (typeof cell.v !== "number") continue;
-
-          cell.t = "n";
-
-          // percent columns
-          if (key === "profit_percentage") cell.z = "0.00%";
-
-          // ✅ if your summary column is a percent field (like cm2_margins, acos), you can optionally format it:
-          // NOTE: those rows are already stored as /100 above, so they should be percent formatted.
-          // If SUMMARY_VALUE_KEY is "net_taxes" (money), keep money formatting.
-          if (
-            addr &&
-            (key === SUMMARY_VALUE_KEY) &&
-            ["cm2_margins", "acos", "rembursment_vs_cm2_margins", "reimbursement_vs_sales"].includes(
-              String((ws[XLSX.utils.encode_cell({ r, c: 1 })]?.v ?? "")).toLowerCase()
-            )
-          ) {
-            // optional: leave as-is; most people skip this block
-          }
-
-          if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
-          else cell.z = "0.00";
-        }
-      }
-    }
-
-    XLSX.utils.book_append_sheet(wb, ws, "SKU Profitability");
-
-    const filename =
-      range === "monthly"
-        ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
-        : range === "quarterly"
-          ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
-          : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
-
-    XLSX.writeFile(wb, filename);
-  }, [
-    tableData,
-    totals,
-    countryName,
-    getExtraRows,
-    range,
-    month,
-    yearShort,
-    quarter,
-    getDisplayProductNameFromRow,
-    buildExcelColumnsFromUI,
-  ]);
+  onDownload?.();
+}, [
+  buildSkuSheetModel,
+  range,
+  month,
+  quarter,
+  yearShort,
+  onDownload,
+]);
 
 
   /* --------- Render guards --------- */
@@ -1650,36 +1458,30 @@ const SKUtable: React.FC<SKUtableProps> = ({
       <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
-            {/* <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" /> */}
-            <PageBreadcrumb
+            <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" />
+            {/* <PageBreadcrumb
               pageTitle={
                 range === "monthly" ? (
                   <>
                     Monthly P&amp;L - Product Breakdown{" "}
-                    {/* <span className="text-[#5EA68E] font-bold">
-                      {convertToAbbreviatedMonth(month)}&apos;{String(year).slice(-2)}
-                    </span> */}
+                  
                   </>
                 ) : range === "quarterly" ? (
                   <>
                     Quarterly P&amp;L - Product Breakdown{" "}
-                    {/* <span className="text-[#5EA68E] font-bold">
-                      {quarter}&apos;{String(year).slice(-2)}
-                    </span> */}
+                  
                   </>
                 ) : (
                   <>
                     Yearly P&amp;L - Product Breakdown{" "}
-                    {/* <span className="text-[#5EA68E] font-bold">
-                      {year}
-                    </span> */}
+                   
                   </>
                 )
               }
               variant="page"
               align="left"
               textSize="2xl"
-            />
+            /> */}
 
             <span className="text-[#5EA68E] text-lg sm:text-2xl md:text-2xl font-bold">({currencySymbol})</span>
           </div>
@@ -1699,38 +1501,56 @@ const SKUtable: React.FC<SKUtableProps> = ({
           <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
             <div className="min-w-full">
               <GroupedCollapsibleTable<TableRow>
-                rows={tableData}
+                // rows={tableData}
+                rows={displayRows}
+
                 leftCols={LEFT_COLS}
                 groups={groups}
 
                 singleCols={SINGLE_COLS}
+                // layout={[
+
+                //   { type: "group", id: "units_breakdown" },
+                //   { type: "single", key: "net_units_sold" },
+
+                //   { type: "single", key: "asp" },
+
+
+                //   { type: "group", id: "sales" },
+                //   { type: "single", key: "net_sales" },
+
+                //   { type: "group", id: "promotions_breakdown" },
+                //   { type: "single", key: "cost_of_unit_sold" },
+
+                //   { type: "group", id: "amazon_breakdown" },
+                //   { type: "single", key: "amazon_fee" },
+
+                //   { type: "group", id: "other_transactions_breakdown" },
+                //   { type: "single", key: "other_transactions" },
+
+                //   { type: "group", id: "profit_breakdown" },
+                //   { type: "single", key: "profit" },
+                // ]}
                 layout={[
-
                   { type: "group", id: "units_breakdown" },
-                  { type: "single", key: "net_units_sold" },
-
                   { type: "single", key: "asp" },
 
-
                   { type: "group", id: "sales" },
-                  { type: "single", key: "net_sales" },
 
-                  { type: "group", id: "promotions_breakdown" },
+                  { type: "single", key: "promotional_rebates" },
+                  { type: "single", key: "promotional_rebates_percentage" },
                   { type: "single", key: "cost_of_unit_sold" },
 
+
                   { type: "group", id: "amazon_breakdown" },
-                  { type: "single", key: "amazon_fee" },
-
                   { type: "group", id: "other_transactions_breakdown" },
-                  { type: "single", key: "other_transactions" },
-
                   { type: "group", id: "profit_breakdown" },
-                  { type: "single", key: "profit" },
                 ]}
                 initialCollapsed={{
                   units_breakdown: true,
                   sales: true,
                   promotions_breakdown: true,
+                  cogs_breakdown: true,
                   amazon_breakdown: true,
                   other_transactions_breakdown: true,
                   profit_breakdown: true,
@@ -1738,50 +1558,59 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 toggleGroupByColKey={{
                   net_units_sold: "units_breakdown",
                   net_sales: "sales",
-                  cost_of_unit_sold: "promotions_breakdown",
                   amazon_fee: "amazon_breakdown",
                   other_transactions: "other_transactions_breakdown",
                   profit: "profit_breakdown",
                 }}
+
                 onVisibleColCountChange={setMainColCount}
                 showSignRowInBody
                 getSignForCol={getSignForCol}
                 getRowClassName={(row, index) => {
-                  const isTotalRow =
-                    String((row as any)?.product_name || "")
-                      .trim()
-                      .toLowerCase() === "total";
+                  const name = String((row as any)?.product_name || "").trim().toLowerCase();
 
-                  if (isTotalRow) {
-                    return "bg-[#EFEFEF] font-semibold";
-                  }
+                  if (name === "total") return "bg-[#EFEFEF] font-semibold";
+                  if (name === "others") return "font-semibold";
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                 }}
 
                 getValue={(row, colKey, rowIndex) => {
-                  const isLastRow = rowIndex === tableData.length - 1;
+                  const name = String((row as any)?.product_name || "").trim().toLowerCase();
+                  const isTotal = name === "total";
+                  const isOthers = name === "others";
+
+                  const isLastRow = rowIndex === displayRows.length - 1;
 
                   if (colKey === "sno") return isLastRow ? "" : rowIndex + 1;
-                  if (colKey === "sku") return (row as any).sku ?? "-";
 
                   if (colKey === "product_name") {
-                    const name = getDisplayProductNameFromRow(row);
-                    return !isLastRow ? (
-                      <span
-                        onClick={() => handleProductClick(String(name || ""))}
-                        className="inline-block max-w-[220px] cursor-pointer truncate align-middle text-[#60a68e] no-underline"
-                        title={String(name || "")}
-                      >
-                        {String(name || "-")}
-                      </span>
-                    ) : (
-                      <span className="inline-block max-w-[220px] truncate">{String(name || "-")}</span>
-                    );
+                    const displayName = getDisplayProductNameFromRow(row);
+
+                    if (!isLastRow && !isOthers && !isTotal) {
+                      return (
+                        <span
+                          onClick={() => handleProductClick(String(displayName || ""))}
+                          className="inline-block max-w-[220px] cursor-pointer truncate align-middle text-[#60a68e] no-underline"
+                          title={String(displayName || "")}
+                        >
+                          {String(displayName || "-")}
+                        </span>
+                      );
+                    }
+
+                    return <span className="inline-block max-w-[220px] truncate">{String(displayName || "-")}</span>;
+                  }
+
+                  // ✅ FIX: show SKU as text (do NOT send to formatValue)
+                  if (colKey === "sku") {
+                    if (isOthers || isTotal) return "-"; // or "" if you want blank
+                    return !isMissingName((row as any).sku) ? String((row as any).sku) : "-";
                   }
 
                   return formatValue((row as any)[colKey], colKey);
                 }}
+
                 summary={{
                   enabled: mainColCount > 0,
 
@@ -1901,19 +1730,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-green-500 font-bold text-[#f8edcf]">
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm break-words leading-snug">
                       Product Name
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
                       CM1 Profit ({currencySymbol})
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
                       Profit Mix (%)
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
                       Sales Mix (%)
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
                       CM1 Profit per Unit ({currencySymbol})
                     </th>
                   </tr>
@@ -1921,41 +1750,41 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <tbody>
                   {topData.rows.map((item, index) => (
                     <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs whitespace-normal break-words align-top">
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm whitespace-normal break-words align-top">
                         <span title={item.product_name} className="block">
                           {item.product_name || "-"}
                         </span>
                       </td>
 
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                         {item.profit}
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                         {item.profitMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                         {item.salesMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                         {item.cm1_per_unit}
                       </td>
                     </tr>
                   ))}
 
                   <tr className="bg-[#EFEFEF] font-semibold">
-                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
+                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm">
                       <strong>Total</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       <strong>{topData.totals.profit}</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       <strong>{topData.totals.profitMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       <strong>{topData.totals.salesMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       <strong>{topData.totals.avg_cm1}</strong>
                     </td>
                   </tr>
@@ -1974,19 +1803,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-[#B75A5A] font-bold text-[#f8edcf]">
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm break-words leading-snug">
                       Product Name
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
                       CM1 Profit ({currencySymbol})
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
                       Profit Mix (%)
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
                       Sales Mix (%)
                     </th>
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs break-words leading-snug">
+                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
                       CM1 Profit per Unit ({currencySymbol})
                     </th>
                   </tr>
@@ -1994,22 +1823,22 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <tbody>
                   {bottomData.rows.map((item, index) => (
                     <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs whitespace-normal break-words align-top">
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm whitespace-normal break-words align-top">
                         <span title={item.product_name} className="block">
                           {item.product_name || "-"}
                         </span>
                       </td>
 
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                         {item.profit}
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                         {item.profitMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                         {item.salesMix}%
                       </td>
-                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                      <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                         {item.cm1_per_unit}
 
                       </td>
@@ -2017,19 +1846,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   ))}
 
                   <tr className="bg-[#EFEFEF] font-semibold">
-                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-[10px] 2xl:text-xs">
+                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm">
                       <strong>Total</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       <strong>{bottomData.totals.profit}</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       <strong>{bottomData.totals.profitMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       <strong>{bottomData.totals.salesMix}%</strong>
                     </td>
-                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-[10px] 2xl:text-xs">
+                    <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       <strong>{bottomData.totals.avg_cm1}</strong>
                     </td>
                   </tr>

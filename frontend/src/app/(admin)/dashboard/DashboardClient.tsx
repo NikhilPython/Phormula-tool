@@ -41,9 +41,16 @@ import "react-date-range/dist/theme/default.css";
 import { FaCalendarAlt } from "react-icons/fa";
 import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/liveBusinessClient";
 import { useRouter } from "next/navigation";
+import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
 
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
+
+type Cm1PieSlice = {
+  name: string;
+  value: number;
+  pct: number;
+};
 
 /* ===================== ENV & ENDPOINTS ===================== */
 const baseURL =
@@ -182,8 +189,18 @@ function RangePicker({
 
   // ✅ LOCK CALENDAR TO CURRENT MONTH ONLY
   const today = new Date();
+  // const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  // const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+
+  // month boundaries
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  // max selectable date = min(yesterday, month end)
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const maxSelectableDate = yesterday < monthEnd ? yesterday : monthEnd;
 
   const [shownDate, setShownDate] = useState<Date>(monthStart);
 
@@ -271,6 +288,20 @@ function RangePicker({
             rangeColors={["#5EA68E"]}
           /> */}
 
+          {/* <DateRange
+            ranges={calendarRange}
+            onChange={handleCalendarChange}
+            moveRangeOnFirstSelection={false}
+            showMonthAndYearPickers={false}
+            rangeColors={["#5EA68E"]}
+            minDate={monthStart}
+            maxDate={monthEnd}
+            shownDate={shownDate}
+            onShownDateChange={() => {
+              setShownDate(monthStart);
+            }}
+          /> */}
+
           <DateRange
             ranges={calendarRange}
             onChange={handleCalendarChange}
@@ -278,17 +309,15 @@ function RangePicker({
             showMonthAndYearPickers={false}
             rangeColors={["#5EA68E"]}
 
-            // ✅ Only allow selecting dates from current month
             minDate={monthStart}
-            maxDate={monthEnd}
+            maxDate={maxSelectableDate}
 
-            // ✅ Always show current month (prevents switching)
             shownDate={shownDate}
             onShownDateChange={() => {
-              // snap back to the same month even if user tries to navigate
               setShownDate(monthStart);
             }}
           />
+
           <style jsx global>{`
   /* Remove left/right month navigation arrows */
   .rdrNextPrevButton {
@@ -354,6 +383,7 @@ const sliceByDayRange = (
 };
 
 
+
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -387,8 +417,10 @@ export default function DashboardPage() {
 
 
   const brandName = useSelector(
-    (state: RootState) => state.auth.user?.brand_name
+    (state) => (state as RootState).auth.user?.brand_name
   );
+
+
 
   const biCountryName = useMemo(() => {
     if (platform === "global") return "uk";
@@ -600,6 +632,8 @@ export default function DashboardPage() {
   }, [isCountryMode, forcedRegion]);
 
 
+
+
   /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
   const convertToDisplayCurrency = useCallback(
     (value: number | null | undefined, from: CurrencyCode) => {
@@ -638,6 +672,57 @@ export default function DashboardPage() {
     if (v == null) return 0;
     return convertToDisplayCurrency(Number(v) || 0, biSourceCurrency);
   }, [liveBiPayload, convertToDisplayCurrency, biSourceCurrency]);
+
+
+
+  const cm1ProfitPieData = useMemo(() => {
+    const cg = liveBiPayload?.categorized_growth;
+    if (!cg) return [];
+
+    const all = [
+      ...(cg?.top_80_skus ?? []),
+      ...(cg?.other_skus ?? []),
+      ...(cg?.new_or_reviving_skus ?? []),
+    ];
+
+    const map = new Map<string, number>();
+    for (const r of all) {
+      const name = String(r?.product_name ?? "Unknown").trim() || "Unknown";
+      const profit = convertToDisplayCurrency(Number(r?.profit_curr ?? 0), biSourceCurrency);
+
+      if (profit <= 0) continue;
+      map.set(name, (map.get(name) ?? 0) + profit);
+    }
+
+    const items = Array.from(map.entries())
+      .map(([name, profit]) => ({ name, profit }))
+      .sort((a, b) => b.profit - a.profit);
+
+    const total = items.reduce((s, x) => s + x.profit, 0);
+    if (total <= 0) return [];
+
+    const topN = 5;
+    const top = items.slice(0, topN);
+    const rest = items.slice(topN);
+    const others = rest.reduce((s, x) => s + x.profit, 0);
+
+    const slices = top.map((x) => ({
+      name: x.name,
+      value: x.profit,
+      pct: (x.profit / total) * 100,
+    }));
+
+    if (others > 0) {
+      slices.push({
+        name: "Others",
+        value: others,
+        pct: (others / total) * 100,
+      });
+    }
+
+    return slices;
+  }, [liveBiPayload, convertToDisplayCurrency, biSourceCurrency]);
+
 
   /* ===================== INTEGRATION FLAGS ===================== */
   const shopifyDeriv = useMemo(() => {
@@ -1963,6 +2048,10 @@ export default function DashboardPage() {
 
   const unitsToUse = useBiForAmazonCards ? (biCardKpis.curr.units ?? 0) : toNumberSafe(totals?.quantity ?? 0);
 
+  const moneyPerUnitFormatter = useCallback(
+    (v: number) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
+    [unitsToUse, renderMoneyWithPerUnit, formatDisplayAmount]
+  );
 
 
   /* ===================== ✅ GLOBAL CARD: prev/current + deltas ===================== */
@@ -2265,14 +2354,18 @@ export default function DashboardPage() {
 
             <div className="flex items-center gap-2">
               <PageBreadcrumb
-                pageTitle="Sales Dashboard -"
+                pageTitle="Sales Dashboard - Amazon"
                 variant="page"
                 textSize="2xl"
               // className="text-2xl font-semibold"
               />
-
+              {countryName !== "global" && (
+                <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                  {countryName.toUpperCase()}
+                </span>
+              )}
               <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-semibold text-[#5EA68E]">
-                {formattedMonthYear}
+                - {formattedMonthYear}
               </span>
             </div>
           </div>
@@ -2344,7 +2437,8 @@ export default function DashboardPage() {
 
                       deltaPct={globalUseBi ? biCardKpis.deltas.grossSales : safeDeltaPct(combinedGrossUSD, prevGlobalGrossUSD)}
                       loading={loading || shopifyLoading || biLoading}
-                      formatter={formatDisplayAmount}
+                      formatter={moneyPerUnitFormatter}
+                      previousFormatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
 
                       className="border-[#ED9F50] bg-[#ED9F504D]"
@@ -2358,7 +2452,8 @@ export default function DashboardPage() {
 
                       deltaPct={globalUseBi ? biCardKpis.deltas.netSales : safeDeltaPct(globalCurrNetSalesDisp, globalPrevNetSalesDisp)}
                       loading={loading || shopifyLoading || biLoading}
-                      formatter={formatDisplayAmount}
+                      formatter={moneyPerUnitFormatter}
+                      previousFormatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
                       className="border-[#75BBDA] bg-[#75BBDA4D]"
                     />
@@ -2419,6 +2514,7 @@ export default function DashboardPage() {
                       }
                       loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
                       formatter={formatDisplayAmount}
+                      previousFormatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
                       className="border-[#C49466] bg-[#C494664D]"
                     />
@@ -2550,7 +2646,7 @@ export default function DashboardPage() {
                 <div className="w-full rounded-2xl border bg-white p-3 2xl:p-5 shadow-sm">
                   <div className="mb-3 lg:mb-2 2xl:mb-4 flex flex-row gap-3 items-start md:items-start md:justify-between">
                     <div className="flex flex-col flex-1 min-w-0">
-                      <div className="flex flex-wrap items-baseline gap-2">
+                      {/* <div className="flex flex-wrap items-baseline gap-2">
                         <PageBreadcrumb pageTitle="Amazon" variant="page" align="left" />
 
                         {countryName !== "global" && (
@@ -2558,7 +2654,7 @@ export default function DashboardPage() {
                             {countryName.toUpperCase()}
                           </span>
                         )}
-                      </div>
+                      </div> */}
 
 
                     </div>
@@ -2614,7 +2710,8 @@ export default function DashboardPage() {
                       }
                       deltaPct={useBiForAmazonCards ? biCardKpis.deltas.grossSales : safeDeltaPct(uk.grossSalesGBP ?? 0, prev.grossSales ?? 0)}
                       loading={loading || biLoading}
-                      formatter={formatDisplayAmount}
+                      formatter={moneyPerUnitFormatter}
+                      previousFormatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
                       className="border-[#ED9F50] bg-[#ED9F504D]"
                     />
@@ -2633,7 +2730,8 @@ export default function DashboardPage() {
                       }
                       deltaPct={useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct}
                       loading={loading || biLoading}
-                      formatter={formatDisplayAmount}
+                      formatter={moneyPerUnitFormatter}
+                      previousFormatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
                       className="border-[#75BBDA] bg-[#75BBDA4D]"
                     />
@@ -2702,6 +2800,7 @@ export default function DashboardPage() {
                       }
                       loading={loading || (useBiForAmazonCards ? biLoading : false)}
                       formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
+                      previousFormatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
                       className="border-[#C49466] bg-[#C494664D]"
                     />
@@ -2785,6 +2884,7 @@ export default function DashboardPage() {
                       }
                       loading={loading || (useBiCm2 ? biLoading : false)}
                       formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
+                      previousFormatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
                       className="border-[#B8C78C] bg-[#B8C78C4D]"
                     />
@@ -3011,58 +3111,66 @@ export default function DashboardPage() {
         {hasAnyGraphData && (
           <>
             {/* <div className="mt-6 rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm"> */}
-            <div
-              id="mtd-pl"
-              className="mt-4 rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm scroll-mt-[80px]"
-            >
+            <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
 
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-sm text-charcoal-500">
-                  <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
-                    <PageBreadcrumb
-                      pageTitle="MTD P&L"
-                      align="left"
-                      textSize="2xl"
-                      variant="page"
-                    />
+                {/* LEFT: MTD P&L (Bar Graph) */}
+                <div className="rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="text-sm text-charcoal-500">
+                      <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
+                        <PageBreadcrumb
+                          pageTitle="MTD P&L"
+                          align="left"
+                          textSize="2xl"
+                          variant="page"
+                        />
+                      </div>
+                    </div>
 
-                    {/* <span className="text-green-500 ">  {countryName.toUpperCase()}</span>
-                    <span className="text-charcoal-500 "> -</span>
+                    {!isCountryMode && (
+                      <div className="flex items-center gap-3">
+                        <SegmentedToggle<RegionKey>
+                          value={graphRegion}
+                          options={graphRegions.map((r) => ({ value: r }))}
+                          onChange={setGraphRegion}
+                        />
+                        <DownloadIconButton onClick={handleDownload} />
+                      </div>
+                    )}
+                  </div>
 
-                    <span className=" text-green-500">  {formattedMonthYear}</span> */}
+                  {/* IMPORTANT: bar chart wrapper ref should stay here if you're exporting bar chart */}
+                  <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
+                    <div className="w-full max-w-full min-w-0 h-full">
+                      <DashboardBargraphCard
+                        countryName={countryNameForGraph}
+                        formattedMonthYear={formattedMonthYear}
+                        currencySymbol={currencySymbol}
+                        labels={labels}
+                        values={values}
+                        prevValues={prevValues}
+                        colors={colors}
+                        loading={loading}
+                        allValuesZero={allValuesZero}
+                      />
+                    </div>
                   </div>
                 </div>
 
-
-                {!isCountryMode && (
-                  <div className="flex items-center gap-3">
-                    <SegmentedToggle<RegionKey>
-                      value={graphRegion}
-                      options={graphRegions.map((r) => ({ value: r }))}
-                      onChange={setGraphRegion}
-                    />
-                    <DownloadIconButton onClick={handleDownload} />
-                  </div>
-                )}
-              </div>
-
-              <div ref={chartRef} className="overflow-x-hidden">
-                <div className="w-full max-w-full min-w-0">
-
-                  <DashboardBargraphCard
-                    countryName={countryNameForGraph}
-                    formattedMonthYear={formattedMonthYear}
-                    currencySymbol={currencySymbol}
-                    labels={labels}
-                    values={values}
-                    prevValues={prevValues}
-                    colors={colors}
-                    loading={loading}
-                    allValuesZero={allValuesZero}
+                {/* RIGHT: CM1 Profit Breakdown Pie */}
+                <div className="min-w-0 h-full flex flex-col">
+                  <Cm1ProfitBreakdownPie
+                    title="CM1 Profit Breakdown"
+                    data={cm1ProfitPieData}
+                    currency={displayCurrency}
+                    height={320}
                   />
                 </div>
+
               </div>
             </div>
+
 
             {amazonIntegrated && graphRegionToUse !== "Global" && (
               <div id="current-inventory" className="scroll-mt-[80px]">

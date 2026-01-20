@@ -185,7 +185,7 @@ export default function DataTable<T extends Row>({
     >
       <table
         className={clsx(
-          "w-full border-collapse text-[10px] 2xl:text-xs text-slate-700",
+          "w-full border-collapse text-xs 2xl:text-sm text-slate-700",
           "table-fixed lg:table-auto", // ✅ fixed on small (wrap), auto on large (full width)
           tableClassName
         )}

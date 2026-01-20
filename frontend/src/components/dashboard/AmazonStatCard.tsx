@@ -10,6 +10,7 @@ export type AmazonStatCardProps = {
   previous: number | null | undefined;
   loading: boolean;
   formatter?: (v: any) => React.ReactNode;
+  previousFormatter?: (v: number) => React.ReactNode;
   bottomLabel: string;
   className?: string;
   deltaPct?: number | null;
@@ -22,6 +23,7 @@ export default function AmazonStatCard({
   previous,
   loading,
   formatter = fmtGBP,
+   previousFormatter = formatter,
   bottomLabel,
   className = "",
   deltaPct,
@@ -97,7 +99,7 @@ export default function AmazonStatCard({
         <div className="flex flex-col min-w-0">
           <span className="truncate">{bottomLabel}:</span>
           <span className="font-medium truncate">
-            {previous == null ? "—" : formatter(prevVal)}
+          {previous == null ? "—" : previousFormatter(prevVal)}
           </span>
         </div>
 

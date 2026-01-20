@@ -303,7 +303,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       return (
         <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
           <PageBreadcrumb
-            pageTitle="CM1 Breakup"
+            pageTitle="CM1 Profit Breakdown"
             variant="page"
             align="left"
             textSize="2xl"
@@ -320,7 +320,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       return (
         <div className="flex gap-2">
           <PageBreadcrumb
-            pageTitle="CM1 Breakup"
+            pageTitle="CM1 Profit Breakdown"
             variant="page"
             align="left"
             textSize="2xl"
@@ -334,7 +334,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     return (
       <div className="flex gap-2">
         <PageBreadcrumb
-          pageTitle="CM1 Breakup"
+          pageTitle="CM1 Profit Breakdown"
           variant="page"
           align="left"
           textSize="2xl"
@@ -346,27 +346,133 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     );
   }, [range, month, year, selectedQuarter, countryName]);
 
+  // const options: ChartOptions<"pie"> = {
+  //   responsive: true,
+  //   elements: {
+  //     arc: {
+  //       borderWidth: 0,
+  //     },
+  //   },
+  //   plugins: {
+  //     legend: {
+  //       position: legendPosition,
+  //       align: "center",
+  //       labels: {
+  //         usePointStyle: true,
+
+
+  //         color: "#ff0000", 
+  //         font: {
+  //            size: typeof window !== "undefined" && window.innerWidth < 768 ? 10 : 12,
+  //         },
+
+  //         // ✅ Show ALL labels + percentage in legend
+  //         generateLabels: (chart) => {
+  //           const data = chart.data;
+  //           const labels = (data.labels || []) as string[];
+
+  //           const dataset = data.datasets?.[0] as any;
+  //           const values = ((dataset?.data || []) as number[]).map((v) =>
+  //             Math.abs(Number(v || 0))
+  //           );
+
+  //           const total = values.reduce((a, b) => a + b, 0);
+
+  //           const bg = dataset?.backgroundColor as any[]; // array of colors
+
+  //           return labels.map((label, i) => {
+  //             const value = values[i] ?? 0;
+  //             const pct = total ? (value / total) * 100 : 0;
+
+  //             return {
+  //               text: `${label} (${pct.toFixed(2)}%)`,
+  //               fillStyle: Array.isArray(bg) ? bg[i] : bg,
+  //               strokeStyle: "transparent",
+  //               lineWidth: 0,
+  //               hidden: !chart.getDataVisibility(i),
+  //               index: i, // ✅ important for toggling slice
+  //               pointStyle: "circle",
+  //             };
+  //           });
+  //         },
+  //       },
+  //     },
+  //     tooltip: {
+  //       enabled: !noDataFound,
+  //       callbacks: {
+  //         label: (ctx: TooltipItem<"pie">) => {
+  //           const value = Math.abs(Number(ctx.raw ?? 0));
+  //           const ds = ctx.chart.data.datasets?.[ctx.datasetIndex] as
+  //             | { data: number[] }
+  //             | undefined;
+
+  //           const total = (ds?.data ?? []).reduce(
+  //             (acc, v) => acc + Math.abs(Number(v || 0)),
+  //             0
+  //           );
+
+  //           const pct = total ? (value / total) * 100 : 0;
+  //           const label = ctx.label ? `${ctx.label}: ` : "";
+
+  //           return `${label}${currencySymbol}${value.toLocaleString(undefined, {
+  //             minimumFractionDigits: 2,
+  //             maximumFractionDigits: 2,
+  //           })} (${pct.toFixed(2)}%)`;
+  //         },
+  //       },
+  //     },
+  //   },
+  //   layout: {
+  //      padding: isLaptop ? 0 : 10,
+  //   },
+  //   animation: { duration: 0 },
+  //   maintainAspectRatio: false,
+  // };
+
   const options: ChartOptions<"pie"> = {
     responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 0 },
+
+    // ✅ make the pie slightly smaller (more room for labels)
+    // Chart.js supports this for pie/doughnut charts
+    radius: isLaptop ? "94%" : "100%",
+
     elements: {
       arc: {
         borderWidth: 0,
+        hoverOffset: 4,
       },
     },
+
+    layout: {
+      padding: isLaptop ? 0 : 10,
+    },
+
     plugins: {
       legend: {
         position: legendPosition,
         align: "center",
+
+        // ✅ give legend enough space so labels don't struggle
+        // (bigger legend width => smaller pie, more readable labels)
+        maxWidth: isLaptop ? 260 : undefined,
+
         labels: {
           usePointStyle: true,
 
-          
-          color: "#ff0000", 
+          // ✅ match CircleChart red
+          color: "#DC2626",
+
+          // ✅ tighter legend so it fits cleanly like earlier
+          boxWidth: isLaptop ? 10 : 12,
+          padding: isLaptop ? 10 : 12,
+
+          // ✅ slightly smaller on laptop so all labels fit
           font: {
-             size: typeof window !== "undefined" && window.innerWidth < 768 ? 10 : 12,
+            size: isLaptop ? 10 : 12,
           },
 
-          // ✅ Show ALL labels + percentage in legend
           generateLabels: (chart) => {
             const data = chart.data;
             const labels = (data.labels || []) as string[];
@@ -377,26 +483,30 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
             );
 
             const total = values.reduce((a, b) => a + b, 0);
+            const bg = dataset?.backgroundColor as any[];
 
-            const bg = dataset?.backgroundColor as any[]; // array of colors
+            // ✅ light truncation only when needed (keeps your “earlier” look)
+            const truncate = (s: string) =>
+              isLaptop && s.length > 24 ? s.slice(0, 22) + "…" : s;
 
             return labels.map((label, i) => {
               const value = values[i] ?? 0;
               const pct = total ? (value / total) * 100 : 0;
 
               return {
-                text: `${label} (${pct.toFixed(2)}%)`,
+                text: `${truncate(label)} (${pct.toFixed(2)}%)`, // ✅ same as CircleChart
                 fillStyle: Array.isArray(bg) ? bg[i] : bg,
                 strokeStyle: "transparent",
                 lineWidth: 0,
                 hidden: !chart.getDataVisibility(i),
-                index: i, // ✅ important for toggling slice
+                index: i,
                 pointStyle: "circle",
               };
             });
           },
         },
       },
+
       tooltip: {
         enabled: !noDataFound,
         callbacks: {
@@ -422,11 +532,6 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         },
       },
     },
-    layout: {
-       padding: isLaptop ? 0 : 10,
-    },
-    animation: { duration: 0 },
-    maintainAspectRatio: false,
   };
 
 
@@ -451,7 +556,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       <div className="2xl:mb-4">
         <div className="w-fit mx-auto md:mx-0">
           <PageBreadcrumb
-            pageTitle={`CM1 Breakup`}
+            pageTitle={`CM1 Profit Breakdown`}
             variant="page"
             align="left"
             textSize="2xl"
@@ -490,7 +595,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                 "relative",
                 "h-[240px] sm:h-[280px] md:h-[280px] 2xl:h-[360px]",
                 "flex justify-center", // center horizontally
-             isLaptop ? "items-center px-4 py-1" : "items-center", 
+                isLaptop ? "items-center px-4 py-1" : "items-center",
               ].join(" ")}
             >
               {/* <Pie data={chartData} options={options} /> */}
