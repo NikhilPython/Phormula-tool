@@ -3369,7 +3369,7 @@ Data:
 #         # -----------------------------------
 #         # Alert decision (STRICT priority)
 #         # -----------------------------------
-#         alert = "No action needed"
+#         alert = "Ageing Inventory. Ref. AI Insights"
 #         alert_type = "none"
 
 #         # 1️⃣ Supply risk
@@ -3454,7 +3454,7 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
 
         coverage_ratio = coverage_map.get(sku)
 
-        alert = "No action needed"
+        alert = "Ageing Inventory. Ref. AI Insights"
         alert_type = "none"
 
         # -----------------------------------
