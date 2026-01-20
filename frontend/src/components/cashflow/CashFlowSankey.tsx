@@ -62,6 +62,14 @@ React.useEffect(() => {
 const is2XL = screenWidth >= 1536;
 const isXL = screenWidth >= 1280 && screenWidth < 1536;
 
+const sankeyCols = {
+  label: is2XL ? 150 : isXL ? 80 : 80,
+  sign:  is2XL ? 28  : 24,
+  amount:is2XL ? 90  : isXL ? 65 : 60,
+  pct:   is2XL ? 60  : 50,
+};
+
+
   
 
   const formatNumber = (val?: number) =>
@@ -93,6 +101,13 @@ const isXL = screenWidth >= 1280 && screenWidth < 1536;
   return label;
 };
 
+const marketplaceFees =
+  (data.amazon_fee || 0) + (data.otherwplatform || 0);
+
+const prevMarketplaceFees =
+  (previous_summary?.amazon_fee || 0) +
+  (previous_summary?.otherwplatform || 0);
+
       
 
   const getChangePercent = (curr?: number, prev?: number) => {
@@ -111,11 +126,13 @@ const isXL = screenWidth >= 1280 && screenWidth < 1536;
   /* ---------- CARDS CONFIG ---------- */
 
    const perUnitCards = [
-    "Amazon Fees",
-    "Others",
-    "Cash Generated",
-    "Net Reimbursement",
-  ];
+  "Gross Sales",      // ✅ ADD
+  "Net Sales",        // ✅ ADD
+  "Marketplace Fees",
+  "Others",
+  "Cash Generated",
+  "Net Reimbursement",
+];
 
   const cards = [
     {
@@ -158,14 +175,14 @@ const isXL = screenWidth >= 1280 && screenWidth < 1536;
 },
 
     {
-      label: "Amazon Fees",
-      value: data.amazon_fee,
-      prev: previous_summary?.amazon_fee,
-      icon: <FaAmazon size={16} />,
-      bg: "bg-[#B75A5A4D]",
-      border: "border-[#B75A5A]",
-      isCurrency: true,
-    },
+  label: "Marketplace Fees",
+  value: marketplaceFees,
+  prev: prevMarketplaceFees,
+  icon: <FaAmazon size={16} />, // ya FaLayerGroup if you prefer
+  bg: "bg-[#B75A5A4D]",
+  border: "border-[#B75A5A]",
+  isCurrency: true,
+},
     {
       label: "Others",
       value: data.otherwplatform,
@@ -229,54 +246,60 @@ label: {
   show: true,
   position: "right",
   overflow: "none",
-  width: is2XL ? 310 : isXL ? 215 : 210,
+  width: is2XL ? 300 : isXL ? 215 : 210,
 formatter: (n: any) => {
   const row = rows.find(r => r.name === n.name);
   if (!row) return "";
 
   const base = data.net_sales;
-  let pct: number | undefined;
+  const pct =
+    base && base !== 0
+      ? (Math.abs(row.value) / Math.abs(base)) * 100
+      : 0;
 
-  if (base !== undefined && base !== 0) {
-  pct = (Math.abs(row.value) / Math.abs(base)) * 100;
-}
+  const showSign = row.name !== "Cash Generated";
+  const signKey = row.sign === "+" ? "signPlus" : "signMinus";
 
-  const isUp = pct !== undefined && pct >= 0;
-
-const showSign = row.name !== "Cash Generated";
-
-return (
-  `{label|${row.name}}` +
-  (showSign
-    ? `{sign${row.sign === "+" ? "Plus" : "Minus"}|(${row.sign})}`
-    : "") +
-  `{amount|${currency}${Number(n.value).toLocaleString()}}` +
-  `{pct|(${Math.abs(pct || 0).toFixed(1)}%)}`
-);
+  return (
+    `{label|${row.name}}` +
+    (showSign ? `{${signKey}|(${row.sign})}` : `{signEmpty| }`) +
+    `{amount|${currency}${Number(n.value).toFixed(2)}}` +
+    `{pct|(${pct.toFixed(1)}%)}`
+  );
 },
+
+
 rich: {
   label: {
-    width: is2XL ? 140 : isXL ? 80 : 80,
-    fontSize: is2XL ? 12 : 11,
+    width: sankeyCols.label,
     align: "left",
+    fontSize: is2XL ? 12 : 11,
     color: "#374151",
     fontWeight: 500,
   },
 
   signPlus: {
+    width: sankeyCols.sign,
+    align: "center",
     fontSize: is2XL ? 12 : 11,
-    color: "#2E7D32",
     fontWeight: 700,
+    color: "#2E7D32", // 🟢 green
   },
 
   signMinus: {
+    width: sankeyCols.sign,
+    align: "center",
     fontSize: is2XL ? 12 : 11,
-    color: "#D32F2F",
     fontWeight: 700,
+    color: "#D32F2F", // 🔴 red
+  },
+
+  signEmpty: {
+    width: sankeyCols.sign,
   },
 
   amount: {
-    width: is2XL ? 80 : isXL ? 63 : 60,
+    width: sankeyCols.amount,
     align: "right",
     fontSize: is2XL ? 12 : 11,
     fontWeight: 700,
@@ -284,13 +307,15 @@ rich: {
   },
 
   pct: {
-    width: is2XL ? 70 : isXL ? 50 : 50,
-    align: "left",
+    width: sankeyCols.pct,
+    align: "right",
     fontSize: is2XL ? 12 : 11,
-    color: "#6B7280",
     fontWeight: 600,
+    color: "#6B7280",
   },
 },
+
+
 
 },
 
