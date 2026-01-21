@@ -463,11 +463,11 @@ const GraphPage: React.FC<GraphPageProps> = ({
   // }, [rawLabels]);
 
   const formattedLabels = useMemo(() => {
-  return rawLabels.map((label) => {
-    const [m] = label.trim().split(" ");
-    return convertToAbbreviatedMonth(m); // Jan, Feb, ...
-  });
-}, [rawLabels]);
+    return rawLabels.map((label) => {
+      const [m] = label.trim().split(" ");
+      return convertToAbbreviatedMonth(m); // Jan, Feb, ...
+    });
+  }, [rawLabels]);
 
 
   const allDataPoints = datasets.flatMap((d: any) => d.data as number[]);
@@ -757,23 +757,33 @@ const GraphPage: React.FC<GraphPageProps> = ({
                   },
                   legend: { display: false },
                 },
-                scales: {
-                  x: {
-                    title: { display: true,  },
-                    ticks: {
-                      minRotation: 0,
-                      maxRotation: 0,
-                      autoSkip: formattedLabels.length > 6,
-                      maxTicksLimit: formattedLabels.length > 0 ? formattedLabels.length : 12,
-                      callback: (_v, idx) => String(formattedLabels[idx] ?? ""),
-                    },
-                  },
-                  y: {
-                    title: { display: true, text: `(${currencySymbol})` },
-                    min: minY,
-                    ticks: { padding: 0 },
-                  },
-                },
+            scales: {
+  x: {
+    grid: {
+      display: false, // ✅ removes vertical grid lines
+    },
+    border: {
+      display: false, // ✅ removes the x-axis baseline (the border line)
+    },
+    ticks: {
+      minRotation: 0,
+      maxRotation: 0,
+      autoSkip: formattedLabels.length > 6,
+      maxTicksLimit: formattedLabels.length > 0 ? formattedLabels.length : 12,
+      callback: (_v, idx) => String(formattedLabels[idx] ?? ""),
+    },
+  },
+  y: {
+    title: { display: true, text: `(${currencySymbol})` },
+    min: minY,
+    ticks: { padding: 0 },
+    // optional: remove y-axis border line too
+    border: {
+      display: false,
+    },
+  },
+}
+
               }}
               style={{ width: "100%", height: "100%" }} // ✅ force fit
             />

@@ -1604,11 +1604,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   return (
-    <div ref={layoutRef} className="space-y-3 2xl:space-y-6 relative">
-      <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          {/* LEFT: Title + Subtitle */}
-          <div className="flex flex-col leading-tight w-full md:w-auto">
+    <div
+  ref={layoutRef}
+  className="
+    space-y-3
+    2xl:space-y-6
+    relative
+  "
+>
+      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4  border-b border-gray-200 ">
+
+           {/* LEFT: Title + Subtitle */}
+          <div className="flex flex-col leading-tight w-full md:w-auto mb-5">
             <div className="flex items-baseline gap-2">
               <PageBreadcrumb
                 pageTitle="Financial Metrics -"
@@ -1644,10 +1651,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             />
           </div>
         </div>
-      </div>
 
       {/* WRAPPER: stacked layout */}
-      <div className="flex flex-col gap-5 w-full">
+      <div className="flex flex-col gap-5 w-full mt-4">
 
         {/* Summary Cards */}
         {uploadsData?.summary &&

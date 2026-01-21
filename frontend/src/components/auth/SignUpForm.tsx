@@ -15,6 +15,10 @@ import Button from "../ui/button/Button";
 import { Modal } from "../ui/modal";
 import { useRouter } from "next/navigation";
 import { ALL_COUNTRIES } from "@/lib/utils/countryCodes";
+import { auth, googleProvider } from "@/lib/firebase/firebase";
+import { signInWithPopup } from "firebase/auth";
+import { API_BASE } from "@/config/env";
+import axios from "axios";
 
 type PhoneMeta = { dialCode: string; iso2?: string };
 
@@ -181,7 +185,7 @@ export default function SignUpForm() {
     if (isLoading || !canSubmit) return;
 
     try {
-      const localDigits = phoneDigitsOnly; 
+      const localDigits = phoneDigitsOnly;
       const dialDigits = phoneDialCode.replace(/\D/g, "");
       const fullPhone = `+${dialDigits}${localDigits}`;
       const formatted = formatPhoneNumber(fullPhone);
@@ -213,6 +217,29 @@ export default function SignUpForm() {
   const showPasswordTooltip =
     (touched.password || password.length > 0) &&
     passwordRules.some((r) => !r.ok);
+
+ const onGoogleSignUp = async () => {
+  if (isLoading) return;
+
+  try {
+    const cred = await signInWithPopup(auth, googleProvider);
+    const email = cred.user.email;
+    const name = cred.user.displayName; 
+    if (!email) throw new Error("Google account did not return an email");
+
+    const { data } = await axios.post(`${API_BASE}/google_register`, { email, name });
+    if (!data?.token) throw new Error(data?.message || "No token returned from server");
+
+    router.replace("/choose-country?onboard=1");
+  } catch (err: any) {
+    const msg =
+      err?.response?.data?.message ||
+      err?.message ||
+      "Google sign-up failed. Please try again.";
+    alert(msg);
+  }
+};
+
 
   return (
     <div className="flex flex-col flex-1 lg:w-1/2 w-full overflow-y-auto no-scrollbar relative">
@@ -471,13 +498,10 @@ export default function SignUpForm() {
             <div className="mt-2 w-full border border-charcoal-500 rounded-lg xl:h-12 h-11">
               <button
                 type="button"
-                disabled
+                onClick={onGoogleSignUp}
                 className="w-full inline-flex items-center justify-center gap-3 px-4 xl:py-3 py-2
-               text-charcoal-500  rounded-lg transition-colors
-                text-md font-bold
-               dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10
-               disabled:cursor-not-allowed"
-                title="Temporarily disabled"
+    text-charcoal-500 rounded-lg transition-colors text-md font-bold
+    dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10"
               >
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   <path d="M18.7511 10.1944C18.7511 9.47495 18.6915 8.94995 18.5626 8.40552H10.1797V11.6527H15.1003C15.0011 12.4597 14.4654 13.675 13.2749 14.4916L13.2582 14.6003L15.9087 16.6126L16.0924 16.6305C17.7788 15.1041 18.7511 12.8583 18.7511 10.1944Z" fill="#4285F4" />

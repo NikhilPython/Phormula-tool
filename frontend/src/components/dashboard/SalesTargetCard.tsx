@@ -311,7 +311,7 @@ export default function SalesTargetCard({
 
   const tipTitle = "Sales Snapshot";
   const tipLines = [
-    `MTD Sale: ${formatHomeK(mtdHomeResolved)} (${pctDisplay.toFixed(1)}%)`,
+    `MTD Sale: ${formatHomeK(mtdHomeResolved)} (${pctDisplay.toFixed(2)}%)`,
     `Target: ${formatHomeK(targetHomeResolved)}`,
     `${prevLabel} Sale: ${formatHomeK(lastMonthTotalHomeResolved)}`,
     `Last month by today: ${formatHomeK(lastMonthToDateHomeResolved)}`,
@@ -553,17 +553,17 @@ export default function SalesTargetCard({
 
         {/* Percentage */}
         <div className="mt-1 2xl:mt-2 text-center">
-          <div className="text-3xl font-semibold">{pctDisplay.toFixed(1)}%</div>
+          <div className="text-3xl font-semibold">{pctDisplay.toFixed(2)}%</div>
           <div className="text-[10px] 2xl:text-xs text-gray-500">Target Achieved</div>
           <div className="mt-1 text-[10px] 2xl:text-xs text-gray-500">
-            <span className=" text-green-500 font-bold">{monthCompletedPct.toFixed(1)}%</span> of Month Completed vs {" "}
-            <span className=" text-green-500 font-bold">{pctDisplay.toFixed(1)}%</span> of Target Achieved
+            <span className=" text-green-500 font-bold">{monthCompletedPct.toFixed(2)}%</span> of Month Completed vs {" "}
+            <span className=" text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span> of Target Achieved
             {/* <span
               className={`ml-2 font-medium ${paceDeltaPct >= 0 ? "text-green-700" : "text-rose-700"
                 }`}
             >
               ({paceDeltaPct >= 0 ? "+" : "-"}
-              {Math.abs(paceDeltaPct).toFixed(1)}% pace)
+              {Math.abs(paceDeltaPct).toFixed(2)}% pace)
             </span> */}
           </div>
 

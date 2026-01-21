@@ -186,11 +186,13 @@ function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
     Object.keys(r || {}).forEach((k) => {
       const v = (r as any)[k];
 
-      // only sum numeric-ish fields
       if (!isNumericKey(k, v)) return;
 
-      // ignore name-ish keys just in case
+      // ignore name-ish keys
       if (k === "product_name" || k === "sku") return;
+
+      // ✅ do NOT sum ASP fields (we’ll compute later as net_sales / net_units_sold)
+      if (k === "asp" || k === "ASP") return;
 
       out[k] = toNumber(out[k]) + toNumber(v);
     });
@@ -198,6 +200,7 @@ function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
 
   return out as TableRow;
 }
+
 
 
 function normalizeRows(data: any[]): TableRow[] {
@@ -435,6 +438,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ];
   }, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
 
+  const computeAspFrom = (row: Partial<TableRow>) => {
+    const sales = toNumber((row as any).net_sales);
+    const units = toNumber((row as any).net_units_sold);
+    return units > 0 ? sales / units : 0;
+  };
+
+
   const displayRows = useMemo(() => {
     if (!tableData?.length) return [];
 
@@ -442,41 +452,38 @@ const SKUtable: React.FC<SKUtableProps> = ({
     const lastName = String((lastRow as any)?.product_name || "").trim().toLowerCase();
     const hasTotal = lastName === "total";
 
-    const totalRow = hasTotal ? lastRow : null;
+    // take total row if present
+    const totalRow = hasTotal ? { ...lastRow } : null;
     const productRows = hasTotal ? tableData.slice(0, -1) : [...tableData];
 
-    // 🔹 define "Top" by CM1 Profit (change if needed)
     const sortKey: keyof TableRow = "profit";
-
     const sorted = [...productRows].sort(
       (a, b) => toNumber((b as any)[sortKey]) - toNumber((a as any)[sortKey])
     );
 
-    // ✅ TOP 9
     const top9 = sorted.slice(0, 9);
-
-    // ✅ EVERYTHING ELSE → Others
     const rest = sorted.slice(9);
 
     const othersRow: TableRow | null =
       rest.length > 0
-        ? (sumRows(rest, {
-          product_name: "Others",
-          sku: "-",
-        }) as TableRow)
+        ? (sumRows(rest, { product_name: "Others", sku: "-" }) as TableRow)
         : null;
 
+    // ✅ compute ASP properly
+    if (othersRow) {
+      othersRow.asp = computeAspFrom(othersRow);
+    }
+
+    if (totalRow) {
+      totalRow.asp = computeAspFrom(totalRow);
+    }
+
     const out: TableRow[] = [...top9];
-
-    // row 10 → Others
     if (othersRow) out.push(othersRow);
-
-    // last row → Total
     if (totalRow) out.push(totalRow);
 
     return out;
   }, [tableData]);
-
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
@@ -700,7 +707,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       if (s?.text) signRow[k] = s.text;
     });
 
-    const rowsForExcel = tableData.map((row, rowIndex) => {
+    const rowsForExcel = displayRows.map((row, rowIndex) => {
       const out: Record<string, string | number> = {};
 
       colKeys.forEach((key) => {
@@ -722,6 +729,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
         // If you want quantity in excel to mean Units Sold like UI
         if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
+
+        if (key === "asp") {
+          const sales = toNumber((row as any).net_sales);
+          const units = toNumber((row as any).net_units_sold);
+          value = units > 0 ? sales / units : 0;
+        }
+
 
         if (typeof value === "number") {
           if (Math.abs(value) < 1e-10) value = 0;
@@ -806,6 +820,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       summaryValueKey: "profit",
     };
   }, [
+    displayRows,
     tableData,
     totals,
     countryName,
@@ -1419,34 +1434,34 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   // ✅ FULL UPDATED FUNCTION (drop-in replace your current handleDownloadExcel)
 
-const handleDownloadExcel = useCallback(async () => {
-  // ✅ If you already computed this in the export payload, you could reuse it.
-  // Here we build fresh to guarantee it matches current state.
-  const model = buildSkuSheetModel();
+  const handleDownloadExcel = useCallback(async () => {
+    // ✅ If you already computed this in the export payload, you could reuse it.
+    // Here we build fresh to guarantee it matches current state.
+    const model = buildSkuSheetModel();
 
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("SKU Profitability");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("SKU Profitability");
 
-  buildSkuWorksheetFromModel(ws, model);
+    buildSkuWorksheetFromModel(ws, model);
 
-  const filename =
-    range === "monthly"
-      ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
-      : range === "quarterly"
-        ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
-        : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
+    const filename =
+      range === "monthly"
+        ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
+        : range === "quarterly"
+          ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
+          : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
 
-  await downloadWorkbookAsXlsx(wb, filename);
+    await downloadWorkbookAsXlsx(wb, filename);
 
-  onDownload?.();
-}, [
-  buildSkuSheetModel,
-  range,
-  month,
-  quarter,
-  yearShort,
-  onDownload,
-]);
+    onDownload?.();
+  }, [
+    buildSkuSheetModel,
+    range,
+    month,
+    quarter,
+    yearShort,
+    onDownload,
+  ]);
 
 
   /* --------- Render guards --------- */
@@ -1587,7 +1602,17 @@ const handleDownloadExcel = useCallback(async () => {
                   if (colKey === "product_name") {
                     const displayName = getDisplayProductNameFromRow(row);
 
-                    if (!isLastRow && !isOthers && !isTotal) {
+                    // ✅ ONLY "Others" in green
+                    if (isOthers) {
+                      return (
+                        <span className="inline-block max-w-[220px] truncate font-semibold text-[#60a68e]">
+                          {displayName}
+                        </span>
+                      );
+                    }
+
+                    // clickable products
+                    if (!isLastRow && !isTotal) {
                       return (
                         <span
                           onClick={() => handleProductClick(String(displayName || ""))}
@@ -1599,7 +1624,12 @@ const handleDownloadExcel = useCallback(async () => {
                       );
                     }
 
-                    return <span className="inline-block max-w-[220px] truncate">{String(displayName || "-")}</span>;
+                    // Total row
+                    return (
+                      <span className="inline-block max-w-[220px] truncate font-semibold">
+                        {String(displayName || "-")}
+                      </span>
+                    );
                   }
 
                   // ✅ FIX: show SKU as text (do NOT send to formatValue)

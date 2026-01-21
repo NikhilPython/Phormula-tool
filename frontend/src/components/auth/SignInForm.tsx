@@ -8,13 +8,15 @@ import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-
 import { useAppDispatch, useAppSelector } from "@/lib/store";
 import { setAuthError, setAuthLoading, setCredentials, setUser } from "@/lib/features/auth/authSlice";
 import { useLoginMutation } from "@/lib/api/authApi";
 import { API_BASE } from "@/config/env";
 import ForgotPasswordModal from "./ForgotPasswordModal";
+import { auth, googleProvider } from "@/lib/firebase/firebase";
+import { signInWithPopup } from "firebase/auth";
 import axios from "axios";
+
 
 export default function SignInForm() {
   const router = useRouter();
@@ -33,7 +35,7 @@ export default function SignInForm() {
 
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
 
- 
+
 
   // Prefill from localStorage (Remember Me)
   useEffect(() => {
@@ -47,21 +49,21 @@ export default function SignInForm() {
   }, []);
 
 
- 
+
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (status === "loading" || isLoggingIn) return;
 
     dispatch(setAuthLoading());
-    
+
 
     try {
       const result = await login({ email: email.trim(), password }).unwrap();
 
       // Save token in slice & localStorage
       dispatch(setCredentials({ token: result.token }));
-      
+
 
       // Remember Me
       if (isChecked) {
@@ -83,31 +85,31 @@ export default function SignInForm() {
       if (me) dispatch(setUser(me));
 
       const hasMarketplace =
-  typeof me?.marketplace_id === "string" &&
-  me.marketplace_id.trim().length > 0;
+        typeof me?.marketplace_id === "string" &&
+        me.marketplace_id.trim().length > 0;
 
-if (!hasMarketplace) {
-  router.replace("/choose-country?onboard=1");
-  return;
-}
+      if (!hasMarketplace) {
+        router.replace("/choose-country?onboard=1");
+        return;
+      }
 
-// build country-based route
-const countryFromBackend =
-  typeof me?.country === "string" && me.country.trim().length > 0
-    ? me.country.split(",")[0]
-    : "global";
+      // build country-based route
+      const countryFromBackend =
+        typeof me?.country === "string" && me.country.trim().length > 0
+          ? me.country.split(",")[0]
+          : "global";
 
-const now = new Date();
-const currentMonth = now.toLocaleString("en-US", { month: "long" });
-const currentYear = String(now.getFullYear());
+      const now = new Date();
+      const currentMonth = now.toLocaleString("en-US", { month: "long" });
+      const currentYear = String(now.getFullYear());
 
-const profitPath = `/live-dashboard/${countryFromBackend}/${currentMonth}/${currentYear}`;
+      const profitPath = `/live-dashboard/${countryFromBackend}/${currentMonth}/${currentYear}`;
 
-router.replace(profitPath);
+      router.replace(profitPath);
 
 
-}
-     catch (err: any) {
+    }
+    catch (err: any) {
       const msg =
         err?.status === 403
           ? "Please verify your email first."
@@ -115,6 +117,57 @@ router.replace(profitPath);
       dispatch(setAuthError(msg));
     }
   };
+
+  const onGoogleSignIn = async () => {
+    if (status === "loading" || isLoggingIn) return;
+
+    dispatch(setAuthLoading());
+
+    try {
+      const cred = await signInWithPopup(auth, googleProvider);
+      const email = cred.user.email;
+      const name = cred.user.displayName; 
+      if (!email) throw new Error("Google account did not return an email");
+
+      const { data } = await axios.post(`${API_BASE}/google_register`, { email, name });
+      if (!data?.token) throw new Error(data?.message || "No token returned from server");
+
+      dispatch(setCredentials({ token: data.token }));
+
+      const me = await fetch(`${API_BASE}/get_user_data`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${data.token}` },
+      }).then(r => r.json()).catch(() => null);
+
+      if (me) dispatch(setUser(me));
+
+      const hasMarketplace =
+        typeof me?.marketplace_id === "string" && me.marketplace_id.trim().length > 0;
+
+      if (!hasMarketplace) {
+        router.replace("/choose-country?onboard=1");
+        return;
+      }
+
+      const countryFromBackend =
+        typeof me?.country === "string" && me.country.trim().length > 0
+          ? me.country.split(",")[0]
+          : "global";
+
+      const now = new Date();
+      const currentMonth = now.toLocaleString("en-US", { month: "long" });
+      const currentYear = String(now.getFullYear());
+
+      router.replace(`/live-dashboard/${countryFromBackend}/${currentMonth}/${currentYear}`);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        "Google sign-in failed. Please try again.";
+      dispatch(setAuthError(msg));
+    }
+  };
+
 
   return (
     <div className="flex flex-col  lg:w-1/2 w-full">
@@ -125,7 +178,7 @@ router.replace(profitPath);
               Welcome!
             </h1>
             <p className="text-base text-gray-500 dark:text-gray-400">
-            Please enter your login details
+              Please enter your login details
             </p>
           </div>
 
@@ -223,13 +276,10 @@ router.replace(profitPath);
           <div className="mt-2 w-full border border-charcoal-500 rounded-lg">
             <button
               type="button"
-              disabled
+              onClick={onGoogleSignIn}
               className="w-full inline-flex items-center justify-center gap-3 px-4 py-2.5
-               text-charcoal-500  rounded-lg transition-colors
-                text-md font-bold
-               dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10
-               disabled:cursor-not-allowed"
-              title="Temporarily disabled"
+    text-charcoal-500 rounded-lg transition-colors text-md font-bold
+    dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10"
             >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                 <path d="M18.7511 10.1944C18.7511 9.47495 18.6915 8.94995 18.5626 8.40552H10.1797V11.6527H15.1003C15.0011 12.4597 14.4654 13.675 13.2749 14.4916L13.2582 14.6003L15.9087 16.6126L16.0924 16.6305C17.7788 15.1041 18.7511 12.8583 18.7511 10.1944Z" fill="#4285F4" />

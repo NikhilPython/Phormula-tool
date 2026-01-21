@@ -971,59 +971,37 @@ useEffect(() => {
   return (
     <div className="w-full">
       {/* Header + filters row */}
-      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <ProductwiseHeader
-          canShowResults={canShowResults}
-          countryName={countryName}
-          productname={productname}
-          headingPeriod={getHeadingPeriod()}
-        />
+      {/* 🔒 STICKY HEADER */}
+<div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-2">
+    <ProductwiseHeader
+      canShowResults={canShowResults}
+      countryName={countryName}
+      productname={productname}
+      headingPeriod={getHeadingPeriod()}
+    />
 
-        {/* <FiltersAndSearchRow
-          range={range}
-          selectedMonth={selectedMonth}
-          selectedQuarter={selectedQuarter}
-          selectedYear={selectedYear}
-          years={years}
-          onRangeChange={setRange}
-          onMonthChange={setSelectedMonth}
-          onQuarterChange={(val) => {
-            const num = val.replace("Q", "");
-            setSelectedQuarter(num || "1");
-          }}
-          onYearChange={(val) => {
-            if (!val) {
-              setSelectedYear("");
-            } else {
-              setSelectedYear(Number(val));
-            }
-          }}
-        /> */}
+    <FiltersAndSearchRow
+      range={range}
+      selectedMonth={selectedMonth}
+      selectedQuarter={selectedQuarter}
+      selectedYear={selectedYear}
+      years={years}
+      onRangeChange={setRange}
+      onMonthChange={setSelectedMonth}
+      onQuarterChange={(val) => {
+        setSelectedQuarter(val || "Q1");
+      }}
+      onYearChange={(val) => {
+        setSelectedYear(val ? Number(val) : "");
+      }}
+    />
+  </div>
+</div>
 
-        <FiltersAndSearchRow
-          range={range}
-          selectedMonth={selectedMonth}
-          selectedQuarter={selectedQuarter}   // "Q1" | "Q2" | ...
-          selectedYear={selectedYear}
-          years={years}
-          onRangeChange={setRange}
-          onMonthChange={setSelectedMonth}
-          onQuarterChange={(val) => {
-            // val is "Q1", "Q2", etc.
-            setSelectedQuarter(val || "Q1");
-          }}
-          onYearChange={(val) => {
-            if (!val) {
-              setSelectedYear("");
-            } else {
-              setSelectedYear(Number(val));
-            }
-          }}
-        />
+{/* ⬇️ margin moved HERE */}
+<div className="mb-6 mt-5" />
 
-
-
-      </div>
 
       {!canShowResults && (
         <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">

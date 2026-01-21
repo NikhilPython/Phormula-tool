@@ -882,7 +882,9 @@ export default function LiveBusinessClient({
       "Change in ASP (%age)",
 
       `Sales Mix ${newLbl}`,
+      `Profit Mix ${newLbl}`,     // ✅ NEW
       `Sales Mix ${oldLbl}`,
+      `Profit Mix ${oldLbl}`,     // ✅ NEW
       "Change in Sales Mix (%age)",
 
       `CM1 Profit ${newLbl}`,
@@ -941,6 +943,7 @@ export default function LiveBusinessClient({
 
       const range = XLSX.utils.decode_range(ref);
       const isSalesMixHeader = (h: string) => h.trim().toLowerCase().startsWith("sales mix ");
+      const isProfitMixHeader = (h: string) => h.trim().toLowerCase().startsWith("profit mix ");
 
       for (const headerRow of headerRowIndexes) {
         if (headerRow < range.s.r || headerRow > range.e.r) continue;
@@ -949,7 +952,8 @@ export default function LiveBusinessClient({
           const headerCell = ws[XLSX.utils.encode_cell({ r: headerRow, c: C })];
           const header = String(headerCell?.v ?? "");
 
-          const shouldFormatAsPercent = header.includes("%") || isSalesMixHeader(header);
+          const shouldFormatAsPercent =
+            header.includes("%") || isSalesMixHeader(header) || isProfitMixHeader(header);
           if (!shouldFormatAsPercent) continue;
 
           for (let R = headerRow + 1; R <= range.e.r; R++) {
@@ -987,6 +991,15 @@ export default function LiveBusinessClient({
       const totalNsNew = clean.reduce((s, r) => s + num(pickNew(r, 'net_sales_month1', 'net_sales_month2')), 0);
       const totalNsOld = clean.reduce((s, r) => s + num(pickOld(r, 'net_sales_month1', 'net_sales_month2')), 0);
 
+      const totalProfitNew = clean.reduce(
+        (s, r) => s + num(pickNew(r, 'profit_month1', 'profit_month2')),
+        0
+      );
+      const totalProfitOld = clean.reduce(
+        (s, r) => s + num(pickOld(r, 'profit_month1', 'profit_month2')),
+        0
+      );
+
       const formatted = clean.map((row) => {
         const unitGrowth = row['Unit Growth'] as GrowthCategory | undefined;
         const aspGrowth = row['ASP Growth'] as GrowthCategory | undefined;
@@ -1012,6 +1025,9 @@ export default function LiveBusinessClient({
 
         const cm1Old = pickOld(row, 'profit_month1', 'profit_month2');
         const cm1New = pickNew(row, 'profit_month1', 'profit_month2');
+
+        const profitMixNew = totalProfitNew ? (num(cm1New) / totalProfitNew) * 100 : null;
+        const profitMixOld = totalProfitOld ? (num(cm1Old) / totalProfitOld) * 100 : null;
 
         const cm1PctOld = pickOld(row, 'profit_percentage_month1', 'profit_percentage_month2');
         const cm1PctNew = pickNew(row, 'profit_percentage_month1', 'profit_percentage_month2');
@@ -1040,7 +1056,10 @@ export default function LiveBusinessClient({
           'Change in ASP (%age)': aspGrowth?.value ?? null,
 
           [`Sales Mix ${newLbl}`]: mixNew ?? null,
+          [`Profit Mix ${newLbl}`]: profitMixNew ?? null,   // ✅ NEW
           [`Sales Mix ${oldLbl}`]: mixOld ?? null,
+          [`Profit Mix ${oldLbl}`]: profitMixOld ?? null,   // ✅ NEW
+
 
           // ✅ FIX: compute change from recomputed mixes (keeps columns consistent)
           'Change in Sales Mix (%age)': mixOld != null && mixNew != null ? mixNew - mixOld : null,
@@ -1095,6 +1114,9 @@ export default function LiveBusinessClient({
       const totalSalesMixOld = totalNsOld ? 100 : null;
       const totalSalesMixNew = totalNsNew ? 100 : null;
 
+      const totalProfitMixOld = totalProfitOld ? 100 : null;
+      const totalProfitMixNew = totalProfitNew ? 100 : null;
+
       // ✅ Total mix is 100% in both months (if there is sales), so change should be 0%
       const totalSalesMixChange =
         totalSalesMixOld != null && totalSalesMixNew != null ? pct(totalSalesMixOld, totalSalesMixNew) : null;
@@ -1120,7 +1142,10 @@ export default function LiveBusinessClient({
         'Change in ASP (%age)': totalAspOld != null && totalAspNew != null ? pct(totalAspOld, totalAspNew) : null,
 
         [`Sales Mix ${newLbl}`]: totalSalesMixNew,
+        [`Profit Mix ${newLbl}`]: totalProfitMixNew,   // ✅ NEW
         [`Sales Mix ${oldLbl}`]: totalSalesMixOld,
+        [`Profit Mix ${oldLbl}`]: totalProfitMixOld,   // ✅ NEW
+
         'Change in Sales Mix (%age)': totalSalesMixChange,
 
         [`CM1 Profit ${newLbl}`]: totals.cm1New,
@@ -1969,6 +1994,7 @@ export default function LiveBusinessClient({
     sNo?: number | string;
     product?: React.ReactNode;
     salesMix?: React.ReactNode;
+    profitMix?: React.ReactNode;
     unit?: React.ReactNode;
     asp?: React.ReactNode;
     sales?: React.ReactNode;
@@ -2020,7 +2046,6 @@ export default function LiveBusinessClient({
           )}
         </span>
 
-        {/* ✅ fixed number width so columns stay aligned */}
         <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
           {val === 0 ? "0.00%" : text}
         </span>
@@ -2037,7 +2062,6 @@ export default function LiveBusinessClient({
     if (val > 5) color = "#5EA68E";
     else if (val < -5) color = "#FF5C5C";
 
-    // ✅ keep icon space even for 0
     return <GrowthCell val={val} color={color} showArrow={val !== 0} />;
   };
 
@@ -2106,6 +2130,12 @@ export default function LiveBusinessClient({
         header: `Sales Mix (${month2Label.split(' ')[0] || 'Current'})`,
         width: COMMON_WIDTH,
       },
+      {
+        key: 'profitMix',
+        header: `Profit Mix (${month2Label.split(' ')[0] || 'Current'})`,
+        width: COMMON_WIDTH,
+      },
+
 
       ...(isNewRev
         ? []
@@ -2167,6 +2197,11 @@ export default function LiveBusinessClient({
       0
     );
 
+    const totalCm1ProfitMonth2 = allSkuRows.reduce(
+      (s, r: any) =>
+        s + Number(r?.profit_month2 ?? r?.profit_curr ?? r?.profit ?? 0),
+      0
+    );
 
     const totalNetSalesMonth2 =
       activeTab === 'all_skus'
@@ -2188,11 +2223,19 @@ export default function LiveBusinessClient({
         null;
 
       const salesMix = mixVal != null ? `${Number(mixVal).toFixed(2)}%` : "N/A";
+      const rowProfit =
+        Number((item as any).profit_month2 ?? (item as any).profit_curr ?? item.profit ?? 0) || 0;
+
+      const profitMix =
+        totalCm1ProfitMonth2 > 0
+          ? `${((rowProfit / totalCm1ProfitMonth2) * 100).toFixed(2)}%`
+          : "0.00%";
 
       return {
         sNo: idx + 1,
         product: item.product_name || item.sku || 'N/A',
         salesMix,
+        profitMix,
         unit: isNewRev ? renderNewRevGrowthOrDash(item['Unit Growth']) : renderGrowthOrNA(item['Unit Growth']),
         asp: isNewRev ? renderNewRevGrowthOrDash(item['ASP Growth']) : renderGrowthOrNA(item['ASP Growth']),
         sales: isNewRev ? renderNewRevGrowthOrDash(item['Sales Growth']) : renderGrowthOrNA(item['Sales Growth']),
@@ -2225,6 +2268,10 @@ export default function LiveBusinessClient({
       const qty = sum('quantity_month1', 'quantity_month2');
       const sales = sum('net_sales_month1', 'net_sales_month2');
       const profit = sum('profit_month1', 'profit_month2');
+      const othersProfitMix =
+        totalCm1ProfitMonth2 > 0
+          ? `${((profit.curr / totalCm1ProfitMonth2) * 100).toFixed(2)}%`
+          : "0.00%";
 
       const aspPrev = qty.prev ? sales.prev / qty.prev : 0;
       const aspCurr = qty.curr ? sales.curr / qty.curr : 0;
@@ -2259,6 +2306,7 @@ export default function LiveBusinessClient({
           totalNetSalesMonth2 > 0
             ? `${((othersNetSales / totalNetSalesMonth2) * 100).toFixed(2)}%`
             : '0.00%',
+        profitMix: othersProfitMix,
         unit: renderGrowthOrNA(makeGrowth(qty.prev, qty.curr)),
         asp: renderGrowthOrNA(makeGrowth(aspPrev, aspCurr)),
         sales: renderGrowthOrNA(makeGrowth(sales.prev, sales.curr)),
@@ -2345,13 +2393,18 @@ export default function LiveBusinessClient({
           ? `${manualTotalsForNewRev.salesMix.toFixed(2)}%`
           : 'N/A';
 
+    const totalProfitMix =
+      activeTab === 'all_skus'
+        ? (totalCm1ProfitMonth2 > 0 ? '100.00%' : '0.00%')
+        : 'N/A'; // or compute per segment if you want
+
 
     const totalRow: BIGridRow = {
       __isTotal: true,
       sNo: '',
       product: 'Total',
       salesMix: totalSalesMix,
-
+      profitMix: totalProfitMix,
       ...(activeTab === "all_skus"
         ? (() => {
           // Use allSkuRows so totals are correct even when UI shows only 5 + "Others"

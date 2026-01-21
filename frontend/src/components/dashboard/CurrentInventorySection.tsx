@@ -847,7 +847,7 @@ export default function CurrentInventorySection({
       },
       {
         key: "skuAsin",
-        header: "SKU/ ASIN",
+        header: "SKU",
         cellClassName: "text-center",
       },
       {
@@ -862,7 +862,7 @@ export default function CurrentInventorySection({
       },
       {
         key: "salesRank",
-        header: "Sales Rank with Movement",
+        header: "Sales Rank",
         cellClassName: "text-center",
       },
       {
