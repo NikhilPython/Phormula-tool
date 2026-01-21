@@ -817,29 +817,23 @@ export default function LiveBusinessClient({
     }
   };
 
-
   // =========================
   // Export to Excel
   // =========================
 
-  const exportToExcel = (rows: SkuItem[], filename = 'export.xlsx') => {
+  const exportToExcel = (rows: SkuItem[], filename = "export.xlsx") => {
     // ✅ IMPORTANT: backend fields are tied to month1(old) / month2(new). Keep fixed mapping.
-    // const newMonth = currPeriod.month;
-    // const newYear = currPeriod.year;
-    // const oldMonth = prevPeriod.month;
-    // const oldYear = prevPeriod.year;
-
-    // const newLbl = `${getAbbr(newMonth)}'${String(newYear).slice(2)}`;
-    // const oldLbl = `${getAbbr(oldMonth)}'${String(oldYear).slice(2)}`;
-
-    const newLbl = formatRangeLabel(periods?.current_mtd) || currPeriod.month;   // e.g. "Jan 1-19"
-    const oldLbl = formatRangeLabel(periods?.previous) || prevPeriod.month;      // e.g. "Dec 1-19"
-
+    const newLbl = formatRangeLabel(periods?.current_mtd) || currPeriod.month; // e.g. "Jan 1-19"
+    const oldLbl = formatRangeLabel(periods?.previous) || prevPeriod.month; // e.g. "Dec 1-19"
 
     // 1) remove any existing total rows coming from API/data
     const cleanRows = (rows || []).filter((r) => {
-      const name = String(r?.product_name || '').toLowerCase().trim();
-      return name !== 'total' && !name.includes('total (top 80') && name !== 'total (top 80%)';
+      const name = String(r?.product_name || "").toLowerCase().trim();
+      return (
+        name !== "total" &&
+        !name.includes("total (top 80") &&
+        name !== "total (top 80%)"
+      );
     });
 
     const num = (v: any) => {
@@ -852,11 +846,9 @@ export default function LiveBusinessClient({
       return Number.isFinite(n) ? Number(n.toFixed(2)) : null;
     };
 
-    // helper to pick month1/month2 value based on which is new/old
     // ✅ Live BI mapping is fixed: month1 = previous, month2 = current
     const pickNew = (row: any, keyMonth1: string, keyMonth2: string) => row?.[keyMonth2];
     const pickOld = (row: any, keyMonth1: string, keyMonth2: string) => row?.[keyMonth1];
-
 
     const pct = (oldV: number, newV: number) => (oldV ? ((newV - oldV) / oldV) * 100 : null);
 
@@ -882,9 +874,9 @@ export default function LiveBusinessClient({
       "Change in ASP (%age)",
 
       `Sales Mix ${newLbl}`,
-      `Profit Mix ${newLbl}`,     // ✅ NEW
+      `Profit Mix ${newLbl}`,
       `Sales Mix ${oldLbl}`,
-      `Profit Mix ${oldLbl}`,     // ✅ NEW
+      `Profit Mix ${oldLbl}`,
       "Change in Sales Mix (%age)",
 
       `CM1 Profit ${newLbl}`,
@@ -899,10 +891,8 @@ export default function LiveBusinessClient({
       "Change in CM1 Unit Profit (%age)",
     ];
 
-
-    // ---------- TOP BLOCK CONFIG (add right after headerOrder) ----------
+    // ---------- TOP BLOCK CONFIG ----------
     const PROFIT_COL_INDEX_1_BASED = (() => {
-      // anchor brand above "CM1 Profit %age(" column if exists, else last column
       const idx0 = headerOrder.findIndex((h) =>
         String(h).toLowerCase().includes("cm1 profit %age")
       );
@@ -911,13 +901,15 @@ export default function LiveBusinessClient({
 
     const currencySymbol = getCurrencySymbolForExcel();
 
+    const prevShortLocal = getShortPeriodLabel(periods?.previous?.label);
+    const currShortLocal = getShortPeriodLabel(periods?.current_mtd?.label);
+
     const topExtraLines = [
       `Country : ${titleCountry}`,
       `Platform : Amazon`,
       `Currency : ${currencySymbol}`,
-      `Period : ${prevShort || ""} vs ${currShort || ""}`,
+      `Period : ${prevShortLocal || ""} vs ${currShortLocal || ""}`,
     ];
-
 
     const excelTitle = `Amazon ${titleCountry} - SKU Analysis - MTD ${titleMonth}`;
 
@@ -934,8 +926,7 @@ export default function LiveBusinessClient({
 
     /**
      * ✅ Percent formatting:
-     * formats columns whose header contains "%" OR starts with "Sales Mix "
-     * for rows below the provided header row until it hits a blank separator row.
+     * formats columns whose header contains "%" OR starts with "Sales Mix " OR "Profit Mix "
      */
     const addPercentToPercentColumns = (ws: XLSX.WorkSheet, headerRowIndexes: number[] = [0]) => {
       const ref = ws["!ref"];
@@ -978,128 +969,153 @@ export default function LiveBusinessClient({
       }
     };
 
-    // -------------------------
-    // Shared: formatter for a section (adds a Total row at bottom)
-    // -------------------------
-    const formatRowsWithTotals = (inputRows: SkuItem[]) => {
+    // =========================
+    // ✅ FIXED: formatter for a section (adds a Total row at bottom)
+    // Profit Mix in Sheet 2 must be computed vs GRAND TOTAL (all SKUs), not section total.
+    // So we allow passing a ProfitMix denominator via opts.
+    // =========================
+    const formatRowsWithTotals = (
+      inputRows: SkuItem[],
+      opts?: { profitMixDenomNew?: number; profitMixDenomOld?: number }
+    ) => {
       const clean = (inputRows || []).filter((r) => {
-        const name = String(r?.product_name || '').toLowerCase().trim();
-        return name !== 'total' && !name.includes('total (top 80') && name !== 'total (top 80%)';
+        const name = String(r?.product_name || "").toLowerCase().trim();
+        return (
+          name !== "total" &&
+          !name.includes("total (top 80") &&
+          name !== "total (top 80%)"
+        );
       });
 
-      // ✅ FIX: compute Sales Mix from Net Sales totals (prevents totals > 100 due to rounding)
-      const totalNsNew = clean.reduce((s, r) => s + num(pickNew(r, 'net_sales_month1', 'net_sales_month2')), 0);
-      const totalNsOld = clean.reduce((s, r) => s + num(pickOld(r, 'net_sales_month1', 'net_sales_month2')), 0);
+      // ✅ Sales Mix computed from section Net Sales totals (OK for Sheet 1; your logic expects this)
+      const totalNsNew = clean.reduce(
+        (s, r) => s + num(pickNew(r, "net_sales_month1", "net_sales_month2")),
+        0
+      );
+      const totalNsOld = clean.reduce(
+        (s, r) => s + num(pickOld(r, "net_sales_month1", "net_sales_month2")),
+        0
+      );
 
-      const totalProfitNew = clean.reduce(
-        (s, r) => s + num(pickNew(r, 'profit_month1', 'profit_month2')),
+      // Section profit totals
+      const sectionProfitNew = clean.reduce(
+        (s, r) => s + num(pickNew(r, "profit_month1", "profit_month2")),
         0
       );
-      const totalProfitOld = clean.reduce(
-        (s, r) => s + num(pickOld(r, 'profit_month1', 'profit_month2')),
+      const sectionProfitOld = clean.reduce(
+        (s, r) => s + num(pickOld(r, "profit_month1", "profit_month2")),
         0
       );
+
+      // ✅ If provided (Sheet 2), use GRAND profit denominator; otherwise fallback to section totals (Sheet 1)
+      const denomProfitNew = opts?.profitMixDenomNew ?? sectionProfitNew;
+      const denomProfitOld = opts?.profitMixDenomOld ?? sectionProfitOld;
 
       const formatted = clean.map((row) => {
-        const unitGrowth = row['Unit Growth'] as GrowthCategory | undefined;
-        const aspGrowth = row['ASP Growth'] as GrowthCategory | undefined;
-        const grossSalesGrowth = row['Gross Sales Growth'] as GrowthCategory | undefined;
-        const netSalesGrowth = row['Net Sales Growth'] as GrowthCategory | undefined;
-        const unitProfitGrowth = row['Profit Per Unit'] as GrowthCategory | undefined;
+        const unitGrowth = row["Unit Growth"] as GrowthCategory | undefined;
+        const aspGrowth = row["ASP Growth"] as GrowthCategory | undefined;
+        const grossSalesGrowth = row["Gross Sales Growth"] as GrowthCategory | undefined;
+        const netSalesGrowth = row["Net Sales Growth"] as GrowthCategory | undefined;
+        const unitProfitGrowth = row["Profit Per Unit"] as GrowthCategory | undefined;
 
-        const qtyOld = pickOld(row, 'quantity_month1', 'quantity_month2');
-        const qtyNew = pickNew(row, 'quantity_month1', 'quantity_month2');
+        const qtyOld = pickOld(row, "quantity_month1", "quantity_month2");
+        const qtyNew = pickNew(row, "quantity_month1", "quantity_month2");
 
-        const gsOld = pickOld(row, 'product_sales_month1', 'product_sales_month2');
-        const gsNew = pickNew(row, 'product_sales_month1', 'product_sales_month2');
+        const gsOld = pickOld(row, "product_sales_month1", "product_sales_month2");
+        const gsNew = pickNew(row, "product_sales_month1", "product_sales_month2");
 
-        const nsOld = pickOld(row, 'net_sales_month1', 'net_sales_month2');
-        const nsNew = pickNew(row, 'net_sales_month1', 'net_sales_month2');
+        const nsOld = pickOld(row, "net_sales_month1", "net_sales_month2");
+        const nsNew = pickNew(row, "net_sales_month1", "net_sales_month2");
 
-        const aspOld = pickOld(row, 'asp_month1', 'asp_month2');
-        const aspNew = pickNew(row, 'asp_month1', 'asp_month2');
+        const aspOld = pickOld(row, "asp_month1", "asp_month2");
+        const aspNew = pickNew(row, "asp_month1", "asp_month2");
 
-        // ✅ FIX: recompute mix from Net Sales instead of using stored % (which may be rounded)
+        // ✅ Sales mix from section net sales totals
         const mixOld = totalNsOld ? (num(nsOld) / totalNsOld) * 100 : null;
         const mixNew = totalNsNew ? (num(nsNew) / totalNsNew) * 100 : null;
 
-        const cm1Old = pickOld(row, 'profit_month1', 'profit_month2');
-        const cm1New = pickNew(row, 'profit_month1', 'profit_month2');
+        const cm1Old = pickOld(row, "profit_month1", "profit_month2");
+        const cm1New = pickNew(row, "profit_month1", "profit_month2");
 
-        const profitMixNew = totalProfitNew ? (num(cm1New) / totalProfitNew) * 100 : null;
-        const profitMixOld = totalProfitOld ? (num(cm1Old) / totalProfitOld) * 100 : null;
+        // ✅ Profit mix from denom (grand in Sheet 2; section in Sheet 1)
+        const profitMixNew = denomProfitNew ? (num(cm1New) / denomProfitNew) * 100 : null;
+        const profitMixOld = denomProfitOld ? (num(cm1Old) / denomProfitOld) * 100 : null;
 
-        const cm1PctOld = pickOld(row, 'profit_percentage_month1', 'profit_percentage_month2');
-        const cm1PctNew = pickNew(row, 'profit_percentage_month1', 'profit_percentage_month2');
+        const cm1PctOld = pickOld(row, "profit_percentage_month1", "profit_percentage_month2");
+        const cm1PctNew = pickNew(row, "profit_percentage_month1", "profit_percentage_month2");
 
-        const upOld = pickOld(row, 'unit_wise_profitability_month1', 'unit_wise_profitability_month2');
-        const upNew = pickNew(row, 'unit_wise_profitability_month1', 'unit_wise_profitability_month2');
+        const upOld = pickOld(row, "unit_wise_profitability_month1", "unit_wise_profitability_month2");
+        const upNew = pickNew(row, "unit_wise_profitability_month1", "unit_wise_profitability_month2");
 
         return {
-          SKU: row.sku || '',
-          Product: row.product_name || '',
+          SKU: row.sku || "",
+          Product: row.product_name || "",
 
           [`Qty ${newLbl}`]: qtyNew ?? null,
           [`Qty ${oldLbl}`]: qtyOld ?? null,
-          'Change in Qty (%age)': unitGrowth?.value ?? null,
+          "Change in Qty (%age)": unitGrowth?.value ?? null,
 
           [`Gross Sales ${newLbl}`]: gsNew ?? null,
           [`Gross Sales ${oldLbl}`]: gsOld ?? null,
-          'Change in Gross Sales (%age)': grossSalesGrowth?.value ?? null,
+          "Change in Gross Sales (%age)": grossSalesGrowth?.value ?? null,
 
           [`Net Sales ${newLbl}`]: nsNew ?? null,
           [`Net Sales ${oldLbl}`]: nsOld ?? null,
-          'Change in Net Sales (%age)': netSalesGrowth?.value ?? null,
+          "Change in Net Sales (%age)": netSalesGrowth?.value ?? null,
 
           [`ASP ${newLbl}`]: round2(aspNew ?? null),
           [`ASP ${oldLbl}`]: round2(aspOld ?? null),
-          'Change in ASP (%age)': aspGrowth?.value ?? null,
+          "Change in ASP (%age)": aspGrowth?.value ?? null,
 
           [`Sales Mix ${newLbl}`]: mixNew ?? null,
-          [`Profit Mix ${newLbl}`]: profitMixNew ?? null,   // ✅ NEW
+          [`Profit Mix ${newLbl}`]: profitMixNew ?? null,
           [`Sales Mix ${oldLbl}`]: mixOld ?? null,
-          [`Profit Mix ${oldLbl}`]: profitMixOld ?? null,   // ✅ NEW
+          [`Profit Mix ${oldLbl}`]: profitMixOld ?? null,
 
-
-          // ✅ FIX: compute change from recomputed mixes (keeps columns consistent)
-          'Change in Sales Mix (%age)': mixOld != null && mixNew != null ? mixNew - mixOld : null,
+          "Change in Sales Mix (%age)":
+            mixOld != null && mixNew != null ? mixNew - mixOld : null,
 
           [`CM1 Profit ${newLbl}`]: cm1New ?? null,
           [`CM1 Profit ${oldLbl}`]: cm1Old ?? null,
-          'Change in CM1 Profit': cm1New != null && cm1Old != null ? Number(cm1New) - Number(cm1Old) : null,
+          "Change in CM1 Profit":
+            cm1New != null && cm1Old != null ? Number(cm1New) - Number(cm1Old) : null,
 
           [`CM1 Profit %age(${newLbl})`]: cm1PctNew ?? null,
           [`CM1 Profit %age(${oldLbl})`]: cm1PctOld ?? null,
 
           [`CM1 Unit Profit ${newLbl}`]: upNew ?? null,
           [`CM1 Unit Profit ${oldLbl}`]: upOld ?? null,
-          'Change in CM1 Unit Profit (%age)': unitProfitGrowth?.value ?? null,
+          "Change in CM1 Unit Profit (%age)": unitProfitGrowth?.value ?? null,
         };
       });
 
       // totals
       const totals = clean.reduce(
         (acc, r) => {
-          acc.qtyOld += num(pickOld(r, 'quantity_month1', 'quantity_month2'));
-          acc.qtyNew += num(pickNew(r, 'quantity_month1', 'quantity_month2'));
+          acc.qtyOld += num(pickOld(r, "quantity_month1", "quantity_month2"));
+          acc.qtyNew += num(pickNew(r, "quantity_month1", "quantity_month2"));
 
-          acc.gsOld += num(pickOld(r, 'product_sales_month1', 'product_sales_month2'));
-          acc.gsNew += num(pickNew(r, 'product_sales_month1', 'product_sales_month2'));
+          acc.gsOld += num(pickOld(r, "product_sales_month1", "product_sales_month2"));
+          acc.gsNew += num(pickNew(r, "product_sales_month1", "product_sales_month2"));
 
-          acc.nsOld += num(pickOld(r, 'net_sales_month1', 'net_sales_month2'));
-          acc.nsNew += num(pickNew(r, 'net_sales_month1', 'net_sales_month2'));
+          acc.nsOld += num(pickOld(r, "net_sales_month1", "net_sales_month2"));
+          acc.nsNew += num(pickNew(r, "net_sales_month1", "net_sales_month2"));
 
-          // ✅ FIX: do NOT sum Sales Mix % values
+          acc.cm1Old += num(pickOld(r, "profit_month1", "profit_month2"));
+          acc.cm1New += num(pickNew(r, "profit_month1", "profit_month2"));
 
-          acc.cm1Old += num(pickOld(r, 'profit_month1', 'profit_month2'));
-          acc.cm1New += num(pickNew(r, 'profit_month1', 'profit_month2'));
-
-          acc.upOld += num(pickOld(r, 'unit_wise_profitability_month1', 'unit_wise_profitability_month2'));
-          acc.upNew += num(pickNew(r, 'unit_wise_profitability_month1', 'unit_wise_profitability_month2'));
+          acc.upOld += num(pickOld(r, "unit_wise_profitability_month1", "unit_wise_profitability_month2"));
+          acc.upNew += num(pickNew(r, "unit_wise_profitability_month1", "unit_wise_profitability_month2"));
 
           return acc;
         },
-        { qtyOld: 0, qtyNew: 0, gsOld: 0, gsNew: 0, nsOld: 0, nsNew: 0, cm1Old: 0, cm1New: 0, upOld: 0, upNew: 0 }
+        {
+          qtyOld: 0, qtyNew: 0,
+          gsOld: 0, gsNew: 0,
+          nsOld: 0, nsNew: 0,
+          cm1Old: 0, cm1New: 0,
+          upOld: 0, upNew: 0,
+        }
       );
 
       const safeDiv = (a: number, b: number) => (b ? a / b : null);
@@ -1110,124 +1126,123 @@ export default function LiveBusinessClient({
       const totalCm1PctOld = profitPct(totals.cm1Old, totals.nsOld);
       const totalCm1PctNew = profitPct(totals.cm1New, totals.nsNew);
 
-      // ✅ FIX: Total Sales Mix should be exactly 100% only when there is net sales
       const totalSalesMixOld = totalNsOld ? 100 : null;
       const totalSalesMixNew = totalNsNew ? 100 : null;
 
-      const totalProfitMixOld = totalProfitOld ? 100 : null;
-      const totalProfitMixNew = totalProfitNew ? 100 : null;
+      // ✅ Profit mix totals relative to denom
+      const totalProfitMixOld = denomProfitOld ? (totals.cm1Old / denomProfitOld) * 100 : null;
+      const totalProfitMixNew = denomProfitNew ? (totals.cm1New / denomProfitNew) * 100 : null;
 
-      // ✅ Total mix is 100% in both months (if there is sales), so change should be 0%
       const totalSalesMixChange =
         totalSalesMixOld != null && totalSalesMixNew != null ? pct(totalSalesMixOld, totalSalesMixNew) : null;
 
       formatted.push({
-        SKU: '',
-        Product: 'Total',
+        SKU: "",
+        Product: "Total",
 
         [`Qty ${newLbl}`]: totals.qtyNew,
         [`Qty ${oldLbl}`]: totals.qtyOld,
-        'Change in Qty (%age)': pct(totals.qtyOld, totals.qtyNew),
+        "Change in Qty (%age)": pct(totals.qtyOld, totals.qtyNew),
 
         [`Gross Sales ${newLbl}`]: totals.gsNew,
         [`Gross Sales ${oldLbl}`]: totals.gsOld,
-        'Change in Gross Sales (%age)': pct(totals.gsOld, totals.gsNew),
+        "Change in Gross Sales (%age)": pct(totals.gsOld, totals.gsNew),
 
         [`Net Sales ${newLbl}`]: totals.nsNew,
         [`Net Sales ${oldLbl}`]: totals.nsOld,
-        'Change in Net Sales (%age)': pct(totals.nsOld, totals.nsNew),
+        "Change in Net Sales (%age)": pct(totals.nsOld, totals.nsNew),
 
         [`ASP ${newLbl}`]: totalAspNew,
         [`ASP ${oldLbl}`]: totalAspOld,
-        'Change in ASP (%age)': totalAspOld != null && totalAspNew != null ? pct(totalAspOld, totalAspNew) : null,
+        "Change in ASP (%age)":
+          totalAspOld != null && totalAspNew != null ? pct(totalAspOld, totalAspNew) : null,
 
         [`Sales Mix ${newLbl}`]: totalSalesMixNew,
-        [`Profit Mix ${newLbl}`]: totalProfitMixNew,   // ✅ NEW
+        [`Profit Mix ${newLbl}`]: totalProfitMixNew,
         [`Sales Mix ${oldLbl}`]: totalSalesMixOld,
-        [`Profit Mix ${oldLbl}`]: totalProfitMixOld,   // ✅ NEW
+        [`Profit Mix ${oldLbl}`]: totalProfitMixOld,
 
-        'Change in Sales Mix (%age)': totalSalesMixChange,
+        "Change in Sales Mix (%age)": totalSalesMixChange,
 
         [`CM1 Profit ${newLbl}`]: totals.cm1New,
         [`CM1 Profit ${oldLbl}`]: totals.cm1Old,
-        'Change in CM1 Profit': totals.cm1New - totals.cm1Old,
+        "Change in CM1 Profit": totals.cm1New - totals.cm1Old,
 
         [`CM1 Profit %age(${newLbl})`]: totalCm1PctNew,
         [`CM1 Profit %age(${oldLbl})`]: totalCm1PctOld,
 
         [`CM1 Unit Profit ${newLbl}`]: totals.upNew,
         [`CM1 Unit Profit ${oldLbl}`]: totals.upOld,
-        'Change in CM1 Unit Profit (%age)': pct(totals.upOld, totals.upNew),
+        "Change in CM1 Unit Profit (%age)": pct(totals.upOld, totals.upNew),
       });
 
       return formatted;
     };
 
-    console.log(Object.keys(categorizedGrowth.top_80_skus?.[0] || {}));
-
     // -------------------------
-    // Sheet 1: All SKUs (Growth Comparison)
+    // Sheet 1: All SKUs (Growth Comparison)  ✅ unchanged behavior
     // -------------------------
     const formattedAll = formatRowsWithTotals(cleanRows);
 
-    // const ws1 = XLSX.utils.json_to_sheet(formattedAll, { header: headerOrder });
-    // XLSX.utils.sheet_add_aoa(ws1, [headerOrder], { origin: 'A1' });
-    // addPercentToPercentColumns(ws1, [0]);
-    // ws1['!freeze'] = { xSplit: 0, ySplit: 1 };
-
-    // ---------- Sheet 1 with TOP BLOCK ----------
     const bodyAoA1 = formattedAll.map((obj) =>
       headerOrder.map((h) => (obj as any)[h] ?? null)
     );
 
-    const sheet1AoA = [
-      ...topAoA,
-      headerOrder,     // table header
-      ...bodyAoA1,     // table body
-    ];
-
+    const sheet1AoA = [...topAoA, headerOrder, ...bodyAoA1];
     const ws1 = XLSX.utils.aoa_to_sheet(sheet1AoA);
 
-    // percent formatting should use the correct header row index
     addPercentToPercentColumns(ws1, [WS1_HEADER_ROW_INDEX]);
-
-    // freeze under header
     ws1["!freeze"] = { xSplit: 0, ySplit: WS1_HEADER_ROW_INDEX + 1 };
-
-    // apply top styles
     applyTopStyles(ws1, headerOrder.length, PROFIT_COL_INDEX_1_BASED);
-
-    // ✅ BOLD: header row (table headings)
     boldHeaderRows(ws1, [WS1_HEADER_ROW_INDEX]);
-
-    // ✅ BOLD: total rows (Product col B == "Total")
     boldTotalRowsByProductColumn(ws1, 1, ["total", "others", "grand total"]);
-
 
     // -------------------------
     // Sheet 2: SKU Split (3 sections + ✅ only Grand Total row)
+    // ✅ FIX: Profit Mix must be computed vs GRAND TOTAL profit, not each section
     // -------------------------
     const splitHeader = [...headerOrder];
     const aoa: any[][] = [];
 
-    const makeSectionAoA = (sectionTitle: string, sectionRows: SkuItem[]) => {
-      const formatted = formatRowsWithTotals(sectionRows);
-
-      const body = formatted.map((obj) => {
-        const rowArr: any[] = [];
-        for (const h of headerOrder) rowArr.push((obj as any)[h] ?? null);
-        return rowArr;
-      });
-
-      const titleRow = [sectionTitle];
-      while (titleRow.length < splitHeader.length) titleRow.push('');
-
-      return { titleRow, headerRow: splitHeader, body };
-    };
-
     const top80 = categorizedGrowth.top_80_skus || [];
     const newRev = categorizedGrowth.new_or_reviving_skus || [];
     const other = categorizedGrowth.other_skus || [];
+
+    // ✅ Build all rows (without Total-like rows) for grand-denominators
+    const allRowsForMix = [...top80, ...newRev, ...other].filter((r: any) => {
+      const name = String(r?.product_name || "").toLowerCase().trim();
+      return (
+        name !== "total" &&
+        !name.includes("total (top 80") &&
+        name !== "total (top 80%)"
+      );
+    });
+
+    const grandProfitNew = allRowsForMix.reduce(
+      (s: number, r: any) => s + num(pickNew(r, "profit_month1", "profit_month2")),
+      0
+    );
+
+    const grandProfitOld = allRowsForMix.reduce(
+      (s: number, r: any) => s + num(pickOld(r, "profit_month1", "profit_month2")),
+      0
+    );
+
+    const makeSectionAoA = (sectionTitle: string, sectionRows: SkuItem[]) => {
+      const formatted = formatRowsWithTotals(sectionRows, {
+        profitMixDenomNew: grandProfitNew, // ✅ key fix
+        profitMixDenomOld: grandProfitOld, // ✅ key fix
+      });
+
+      const body = formatted.map((obj) =>
+        headerOrder.map((h) => (obj as any)[h] ?? null)
+      );
+
+      const titleRow = [sectionTitle];
+      while (titleRow.length < splitHeader.length) titleRow.push("");
+
+      return { titleRow, headerRow: splitHeader, body };
+    };
 
     const pushSection = (title: string, sectionRows: SkuItem[]) => {
       const { titleRow, headerRow, body } = makeSectionAoA(title, sectionRows);
@@ -1237,20 +1252,21 @@ export default function LiveBusinessClient({
       aoa.push([]); // blank row gap
     };
 
-    pushSection('Top 80% SKUs', top80);
-    pushSection('New/Reviving SKUs', newRev);
-    pushSection('Other SKUs', other);
+    pushSection("Top 80% SKUs", top80);
+    pushSection("New/Reviving SKUs", newRev);
+    pushSection("Other SKUs", other);
 
-    // ✅ Append Grand Total title + header + ONLY the grand total row (not full table)
+    // ✅ Append Grand Total title + header + ONLY the grand total row
     {
-      const grandTitleRow = ['Grand Total'];
-      while (grandTitleRow.length < splitHeader.length) grandTitleRow.push('');
+      const grandTitleRow = ["Grand Total"];
+      while (grandTitleRow.length < splitHeader.length) grandTitleRow.push("");
 
-      // formatRowsWithTotals adds many rows + a Total at the end.
-      // We only want the final "Total" row.
-      const grandFormatted = formatRowsWithTotals([...top80, ...newRev, ...other]);
-      const grandTotalObj = grandFormatted[grandFormatted.length - 1]; // the "Total" row
+      const grandFormatted = formatRowsWithTotals([...top80, ...newRev, ...other], {
+        profitMixDenomNew: grandProfitNew,
+        profitMixDenomOld: grandProfitOld,
+      });
 
+      const grandTotalObj = grandFormatted[grandFormatted.length - 1]; // "Total" row
       const grandTotalRow = headerOrder.map((h) => (grandTotalObj as any)?.[h] ?? null);
 
       aoa.push(grandTitleRow);
@@ -1260,13 +1276,8 @@ export default function LiveBusinessClient({
 
     const ws2 = XLSX.utils.aoa_to_sheet([...topAoA, ...aoa]);
     applyTopStyles(ws2, headerOrder.length, PROFIT_COL_INDEX_1_BASED);
-
-    // ws2['!freeze'] = { xSplit: 0, ySplit: 2 };
     ws2["!freeze"] = { xSplit: 0, ySplit: topAoA.length + 2 };
 
-
-    // ✅ apply percent formatting for EVERY repeated header row (3 sections + grand total)
-    // In SKU Split, each table header row is the row where col A is "SKU".
     const findHeaderRows = (ws: XLSX.WorkSheet) => {
       const ref = ws["!ref"];
       if (!ref) return [0];
@@ -1282,19 +1293,14 @@ export default function LiveBusinessClient({
 
     const ws2HeaderRows = findHeaderRows(ws2);
     addPercentToPercentColumns(ws2, ws2HeaderRows);
-
     boldHeaderRows(ws2, ws2HeaderRows);
-
-    // Bold totals across sections: "Total", and also "Grand Total" title row if you want
     boldTotalRowsByProductColumn(ws2, 1, ["total"]);
 
-    // Optional: also bold the "Grand Total" title row (it’s in column A, not Product column)
-    // If you want this too, scan col A for "Grand Total":
     const boldRowsByColValue = (ws: XLSX.WorkSheet, colIndex0: number, labels: string[]) => {
       const ref = ws["!ref"];
       if (!ref) return;
       const range = XLSX.utils.decode_range(ref);
-      const set = new Set(labels.map(s => s.toLowerCase()));
+      const set = new Set(labels.map((s) => s.toLowerCase()));
       for (let R = range.s.r; R <= range.e.r; R++) {
         const addr = XLSX.utils.encode_cell({ r: R, c: colIndex0 });
         const v = String(ws[addr]?.v ?? "").trim().toLowerCase();
@@ -1307,11 +1313,12 @@ export default function LiveBusinessClient({
     // Build workbook with 2 sheets
     // -------------------------
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws1, 'All SKUs');
-    XLSX.utils.book_append_sheet(wb, ws2, 'SKU Split');
+    XLSX.utils.book_append_sheet(wb, ws1, "All SKUs");
+    XLSX.utils.book_append_sheet(wb, ws2, "SKU Split");
 
     XLSX.writeFile(wb, filename);
   };
+
   // =====================
 
   // =========================
