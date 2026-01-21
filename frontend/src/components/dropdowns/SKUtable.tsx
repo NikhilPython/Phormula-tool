@@ -1567,7 +1567,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
 
                   if (name === "total") return "bg-[#EFEFEF] font-semibold";
-                  if (name === "others") return "font-semibold";
+                  if (name === "others") return "";
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                 }}
@@ -1588,7 +1588,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     // ✅ ONLY "Others" in green
                     if (isOthers) {
                       return (
-                        <span className="inline-block max-w-[220px] truncate font-semibold text-[#60a68e]">
+                        <span className="inline-block max-w-[220px] truncate text-[#60a68e]">
                           {displayName}
                         </span>
                       );

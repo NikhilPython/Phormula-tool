@@ -229,8 +229,12 @@ export default function Cm1ProfitBreakdownPie({
                             const val = Number(ctx.raw || 0);
                             const delta = slice?.deltaPct;
 
+                            const deltaSymbol =
+                                delta == null ? "—" : delta > 0 ? "▲" : delta < 0 ? "▼" : "■";
+
                             const deltaText =
-                                delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%`;
+                                delta == null ? "—" : `${deltaSymbol} ${Math.abs(delta).toFixed(2)}%`;
+
 
                             // ✅ still uses your metrics
                             return `${slice?.name ?? ctx.label}: ${currencySymbol}${val.toFixed(2)} (${(slice?.pct ?? 0).toFixed(
@@ -317,8 +321,12 @@ export default function Cm1ProfitBreakdownPie({
                                     const pct = Number(slice.pct || 0);
                                     const delta = slice.deltaPct;
 
+                                    const deltaSymbol =
+                                        delta == null ? "—" : delta > 0 ? "▲" : delta < 0 ? "▼" : "■";
+
                                     const deltaText =
-                                        delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%`;
+                                        delta == null ? "—" : `${deltaSymbol} ${Math.abs(delta).toFixed(2)}%`;
+
 
                                     const deltaClass =
                                         delta == null ? "text-[#414042]" : delta >= 0 ? "text-green-500" : "text-red-500";
@@ -348,8 +356,8 @@ export default function Cm1ProfitBreakdownPie({
                                                 <div className="min-w-0">
                                                     {/* line 1 */}
                                                     <div
-                                                        className={`truncate font-medium ${isVisible ? "" : "line-through"}`}
-                                                        style={{ fontSize: isLaptop ? 12 : 13, color: "#414042" }}
+                                                        className={`truncate ${isVisible ? "" : "line-through"}`}
+                                                        style={{ fontSize: isLaptop ? 10 : 12, color: "#414042" }}
                                                         title={slice.name}
                                                     >
 
@@ -359,7 +367,7 @@ export default function Cm1ProfitBreakdownPie({
                                                     {/* line 2 */}
                                                     <div
                                                         className="whitespace-nowrap"
-                                                        style={{ fontSize: isLaptop ? 12 : 13, color: "#414042" }}
+                                                        style={{ fontSize: isLaptop ? 10 : 12, color: "#414042" }}
                                                     >
                                                         {currencySymbol}
                                                         {value.toLocaleString(undefined, {

@@ -384,7 +384,7 @@ export default function SalesTargetCard({
             className="h-2.5 w-2.5 rounded-sm"
             style={{ backgroundColor: "#ED9F50" }}
           />
-          <span className="text-gray-600">MTD Sale</span>
+          <span className="text-charcoal-500">MTD Sale</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -393,7 +393,7 @@ export default function SalesTargetCard({
             style={{ backgroundColor: "#5EA68E" }}
 
           />
-          <span className="text-gray-600">{thisMonthLabel} Target</span>
+          <span className="text-charcoal-500">{thisMonthLabel} Target</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -401,7 +401,7 @@ export default function SalesTargetCard({
             className="h-2.5 w-2.5 rounded-sm"
             style={{ backgroundColor: "#9ca3af" }}
           />
-          <span className="text-gray-600">{prevLabel} Sale</span>
+          <span className="text-charcoal-500">{prevLabel} Sale</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -409,7 +409,7 @@ export default function SalesTargetCard({
             className="h-2.5 w-2.5 rounded-sm"
             style={{ backgroundColor: "#B75A5A" }}
           />
-          <span className="text-gray-600">{prevLabel} MTD</span>
+          <span className="text-charcoal-500">{prevLabel} MTD</span>
         </div>
       </div>
 
@@ -554,8 +554,8 @@ export default function SalesTargetCard({
         {/* Percentage */}
         <div className="mt-1 2xl:mt-2 text-center">
           <div className="text-3xl font-semibold">{pctDisplay.toFixed(2)}%</div>
-          <div className="text-[10px] 2xl:text-xs text-gray-500">Target Achieved</div>
-          <div className="mt-1 text-[10px] 2xl:text-xs text-gray-500">
+          <div className="text-[10px] 2xl:text-xs text-charcoal-500">Target Achieved</div>
+          <div className="mt-1 text-[10px] 2xl:text-xs text-charcoal-500">
             <span className=" text-green-500 font-bold">{monthCompletedPct.toFixed(2)}%</span> of Month Completed vs {" "}
             <span className=" text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span> of Target Achieved
             {/* <span
@@ -573,7 +573,7 @@ export default function SalesTargetCard({
       {/* Reimbursement Section */}
       <div className="mt-3 2xl:mt-3 px-3 py-2 2xl:py-3 ">
         <div className="flex items-center justify-center gap-2">
-          <div className="text-[10px] 2xl:text-xs text-gray-500">
+          <div className="text-[10px] 2xl:text-xs text-charcoal-500">
             Monthly Reimbursement
           </div>
 
@@ -593,12 +593,12 @@ export default function SalesTargetCard({
 
         <div className="mt-2">
           <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
-            <span className="text-gray-600">
+            <span className="text-charcoal-500">
               {toApostropheLabel(reimbNowLabel)}{' '}
             </span>
             <span className="font-semibold text-gray-900">
               {formatWithCurrencySpace(reimbNow)}{" "}
-              <span className="text-gray-500 font-medium">
+              <span className="text-charcoal-500 font-medium">
                 ({fmtPct(reimbNowSalesPct)})
               </span>
             </span>
@@ -614,12 +614,12 @@ export default function SalesTargetCard({
 
         <div className="mt-2">
           <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
-            <span className="text-gray-600">
+            <span className="text-charcoal-500">
               {toApostropheLabel(reimbPrevLabel)}{' '}
             </span>
             <span className="font-semibold text-gray-900">
               {formatWithCurrencySpace(reimbPrev)}{" "}
-              <span className="text-gray-500 font-medium">
+              <span className="text-charcoal-500 font-medium">
                 ({fmtPct(reimbPrevSalesPct)})
               </span>
             </span>
