@@ -561,16 +561,16 @@ class MonthwiseInventory(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    user_id = db.Column(db.Integer, index=True)
-    marketplace_id = db.Column(db.String(50), index=True)
+    user_id = db.Column(db.Integer, index=True, nullable=True)
+    marketplace_id = db.Column(db.String(50), index=True, nullable=False)
 
     # Report columns
-    date = db.Column(db.Date, index=True)
-    fnsku = db.Column(db.String(64), index=True)
-    asin = db.Column(db.String(64), index=True)
-    msku = db.Column(db.String(255), index=True)   # MSKU == seller SKU
+    date = db.Column(db.Date, index=True, nullable=False)
+    fnsku = db.Column(db.String(64), index=True, nullable=True)
+    asin = db.Column(db.String(64), index=True, nullable=True)
+    msku = db.Column(db.String(255), index=True, nullable=False)
     title = db.Column(db.Text)
-    disposition = db.Column(db.String(64))
+    disposition = db.Column(db.String(64), nullable=True)
     product_name = db.Column(db.String(255))
 
     starting_warehouse_balance = db.Column(db.Integer, default=0)
@@ -588,20 +588,23 @@ class MonthwiseInventory(db.Model):
     ending_warehouse_balance = db.Column(db.Integer, default=0)
     unknown_events = db.Column(db.Integer, default=0)
 
-    location = db.Column(db.String(32))  # GB, US, FC code etc.
-
+    location = db.Column(db.String(32), nullable=True)  # GB, US, FC code etc.
     synced_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     __table_args__ = (
+        # ✅ IMPORTANT: include msku + asin so rows don't overwrite
         UniqueConstraint(
+            "user_id",
+            "marketplace_id",
             "date",
-            "fnsku",
+            "msku",
+            "asin",
             "disposition",
             "location",
-            "marketplace_id",
             name="uq_monthwise_inv_key",
         ),
     )
+
 
 # --------------------------------- Order model ---------------------------------
 
