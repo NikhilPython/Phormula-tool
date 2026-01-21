@@ -2188,6 +2188,8 @@ export default function LiveBusinessClient({
     return cols;
   }, [activeTab, month2Label, skuInsights]);
 
+
+
   const tableData: BIGridRow[] = useMemo(() => {
     const isNewRev = activeTab === 'new_or_reviving_skus';
     const showAI = Object.keys(skuInsights).length > 0;
@@ -2202,6 +2204,20 @@ export default function LiveBusinessClient({
         s + Number(r?.profit_month2 ?? r?.profit_curr ?? r?.profit ?? 0),
       0
     );
+
+    const getProfitMonth2 = (r: any) =>
+      Number(r?.profit_month2 ?? r?.profit_curr ?? r?.profit ?? 0) || 0;
+
+    const tabProfitMonth2 =
+      activeTab === "all_skus"
+        ? totalCm1ProfitMonth2
+        : (rowsToRender || []).reduce((s, r: any) => s + getProfitMonth2(r), 0);
+
+    const totalProfitMix =
+      totalCm1ProfitMonth2 > 0
+        ? `${((tabProfitMonth2 / totalCm1ProfitMonth2) * 100).toFixed(2)}%`
+        : "0.00%";
+
 
     const totalNetSalesMonth2 =
       activeTab === 'all_skus'
@@ -2393,10 +2409,6 @@ export default function LiveBusinessClient({
           ? `${manualTotalsForNewRev.salesMix.toFixed(2)}%`
           : 'N/A';
 
-    const totalProfitMix =
-      activeTab === 'all_skus'
-        ? (totalCm1ProfitMonth2 > 0 ? '100.00%' : '0.00%')
-        : 'N/A'; // or compute per segment if you want
 
 
     const totalRow: BIGridRow = {

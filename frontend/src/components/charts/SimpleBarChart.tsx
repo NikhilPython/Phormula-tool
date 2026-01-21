@@ -20,7 +20,7 @@ type SimpleBarChartProps = {
   values: number[];
   prevValues?: number[];
   colors?: string[];
-  prevColors?: string[]; // ✅ add this
+  prevColors?: string[];
   currentLabel?: string;
   prevLabel?: string;
   xTitle?: string;
