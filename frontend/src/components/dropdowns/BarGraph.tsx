@@ -525,14 +525,7 @@ const Bargraph: React.FC<BargraphProps> = ({
         <div className="w-full h-full min-h-0">
           {loading ? (
             <div className="flex h-full items-center justify-center">
-              <Loader
-                src="/infinity-unscreen.gif"
-                size={150}
-                transparent
-                roundedClass="rounded-full"
-                backgroundClass="bg-transparent"
-                respectReducedMotion
-              />
+                         <Loader fullscreen transparent />
             </div>
           ) : (
             chartData.datasets.length > 0 && (

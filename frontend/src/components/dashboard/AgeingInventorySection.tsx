@@ -226,14 +226,7 @@ export default function AgeingInventorySection() {
       {/* Content */}
       {loading ? (
         <div className="py-10 flex justify-center">
-          <Loader
-            src="/infinity-unscreen.gif"
-            size={40}
-            transparent
-            roundedClass="rounded-full"
-            backgroundClass="bg-transparent"
-            respectReducedMotion
-          />
+                    <Loader fullscreen transparent />
         </div>
       ) : error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">

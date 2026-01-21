@@ -643,14 +643,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
     <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
       {loading ? (
         <div className="flex-1 min-h-0 flex items-center justify-center">
-          <Loader
-            src="/infinity-unscreen.gif"
-            size={150}
-            transparent
-            roundedClass="rounded-full"
-            backgroundClass="bg-transparent"
-            respectReducedMotion
-          />
+          <Loader fullscreen transparent />
         </div>
       ) : (
         <div className={allValuesZero ? "opacity-30 pointer-events-none flex flex-col h-full min-h-0" : "flex flex-col h-full min-h-0"}>
@@ -757,32 +750,32 @@ const GraphPage: React.FC<GraphPageProps> = ({
                   },
                   legend: { display: false },
                 },
-            scales: {
-  x: {
-    grid: {
-      display: false, // ✅ removes vertical grid lines
-    },
-    border: {
-      display: false, // ✅ removes the x-axis baseline (the border line)
-    },
-    ticks: {
-      minRotation: 0,
-      maxRotation: 0,
-      autoSkip: formattedLabels.length > 6,
-      maxTicksLimit: formattedLabels.length > 0 ? formattedLabels.length : 12,
-      callback: (_v, idx) => String(formattedLabels[idx] ?? ""),
-    },
-  },
-  y: {
-    title: { display: true, text: `(${currencySymbol})` },
-    min: minY,
-    ticks: { padding: 0 },
-    // optional: remove y-axis border line too
-    border: {
-      display: false,
-    },
-  },
-}
+                scales: {
+                  x: {
+                    grid: {
+                      display: false, // ✅ removes vertical grid lines
+                    },
+                    border: {
+                      display: false, // ✅ removes the x-axis baseline (the border line)
+                    },
+                    ticks: {
+                      minRotation: 0,
+                      maxRotation: 0,
+                      autoSkip: formattedLabels.length > 6,
+                      maxTicksLimit: formattedLabels.length > 0 ? formattedLabels.length : 12,
+                      callback: (_v, idx) => String(formattedLabels[idx] ?? ""),
+                    },
+                  },
+                  y: {
+                    title: { display: true, text: `(${currencySymbol})` },
+                    min: minY,
+                    ticks: { padding: 0 },
+                    // optional: remove y-axis border line too
+                    border: {
+                      display: false,
+                    },
+                  },
+                }
 
               }}
               style={{ width: "100%", height: "100%" }} // ✅ force fit

@@ -2533,14 +2533,7 @@ export default function LiveBusinessClient({
 
       {pageLoading ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <Loader
-            src="/infinity-unscreen.gif"
-            size={150}
-            transparent
-            roundedClass="rounded-none"
-            backgroundClass="bg-transparent"
-            respectReducedMotion
-          />
+            <Loader fullscreen transparent />
         </div>
       ) : (
         <div className="flex flex-col mt-4">
