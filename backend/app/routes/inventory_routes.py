@@ -12,11 +12,12 @@ import jwt
 import calendar
 import requests
 from dotenv import find_dotenv, load_dotenv
+from sqlalchemy.orm import load_only
 from flask import request, jsonify, Blueprint
 from sqlalchemy.dialects.postgresql import insert, insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from app import db
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from app.models.user_models import Inventory, CountryProfile, MonthwiseInventory , InventoryAged
 from app.utils.amazon_utils import amazon_client, _apply_region_and_marketplace_from_request
 from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
@@ -1263,29 +1264,155 @@ def upsert_country_profile():
         return jsonify({"error": "Database error", "detail": str(e)}), 500
     
 #------------------------------------------------------------------------------ MonthwiseInventory upsert logic --------------------------------------
+def _safe_int(v):
+    try:
+        if v is None:
+            return 0
+        s = str(v).strip()
+        if s == "":
+            return 0
+        s = s.replace(",", "")
+        return int(float(s))
+    except Exception:
+        return 0
 
-def _upsert_monthwise_inventory_rows(
-    rows: list[dict], user_id: int | None
-) -> int:
+
+def _parse_date_str(value: str) -> date:
+    """
+    Accepts:
+      - '2025-10-31'
+      - '10/31/2025'
+      - '30/11/2025'
+      - ISO like '2025-12-01T00:00:00Z'
+    """
+    value = (value or "").strip()
+    if not value:
+        raise ValueError("empty date")
+
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            pass
+
+    # ISO timestamps
+    try:
+        s2 = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(s2).date()
+    except Exception:
+        pass
+
+    raise ValueError(
+        f"Invalid date format: {value}. "
+        "Use YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, or ISO timestamp."
+    )
+
+
+def _filter_first_last_dates(rows: list[dict]) -> list[dict]:
+    """
+    Keep ONLY the first date and last date present in rows.
+    """
+    if not rows:
+        return rows
+
+    dates = sorted({r["date"] for r in rows if isinstance(r.get("date"), date)})
+    if not dates:
+        return rows
+
+    first_date, last_date = dates[0], dates[-1]
+    keep = {first_date, last_date}
+    return [r for r in rows if r.get("date") in keep]
+
+
+def _month_range(year: int, month: int) -> tuple[date, date]:
+    if not (1 <= month <= 12):
+        raise ValueError("month must be between 1 and 12")
+    if year < 2000 or year > 2100:
+        raise ValueError("year must be between 2000 and 2100")
+
+    last_dom = calendar.monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last_dom)
+
+
+def _quarter_range(year: int, quarter: int) -> tuple[date, date]:
+    if quarter not in (1, 2, 3, 4):
+        raise ValueError("quarter must be 1, 2, 3, or 4")
+    if year < 2000 or year > 2100:
+        raise ValueError("year must be between 2000 and 2100")
+
+    start_month = {1: 1, 2: 4, 3: 7, 4: 10}[quarter]
+    end_month = start_month + 2
+
+    start_date = date(year, start_month, 1)
+    end_dom = calendar.monthrange(year, end_month)[1]
+    end_date = date(year, end_month, end_dom)
+    return start_date, end_date
+
+
+def _year_range(year: int) -> tuple[date, date]:
+    if year < 2000 or year > 2100:
+        raise ValueError("year must be between 2000 and 2100")
+    return date(year, 1, 1), date(year, 12, 31)
+
+
+# =============================================================================
+# ENRICH PRODUCT NAME
+# =============================================================================
+
+def _attach_product_names_to_rows(rows: list[dict], user_id: int | None) -> None:
+    """
+    Add product_name from public.sku_{user_id}_data_table where sku_uk = msku.
+    Modifies rows in place.
+    """
+    if not rows or not user_id:
+        return
+
+    mskus = sorted({r.get("msku") for r in rows if r.get("msku")})
+    if not mskus:
+        return
+
+    sku_table = f"public.sku_{user_id}_data_table"
+    placeholders = ", ".join(f":sku{i}" for i in range(len(mskus)))
+
+    sql = text(f"""
+        SELECT sku_uk, product_name
+        FROM {sku_table}
+        WHERE sku_uk IN ({placeholders})
+    """)
+
+    params = {f"sku{i}": m for i, m in enumerate(mskus)}
+    result = db.session.execute(sql, params)
+
+    mapping = {row.sku_uk: row.product_name for row in result}
+
+    for r in rows:
+        r["product_name"] = mapping.get(r.get("msku"))
+
+
+# =============================================================================
+# UPSERT
+# =============================================================================
+
+def _upsert_monthwise_inventory_rows(rows: list[dict], user_id: int | None) -> int:
+    """
+    Upsert into MonthwiseInventory.
+    IMPORTANT: constraint uq_monthwise_inv_key must match model UniqueConstraint.
+    """
     if not rows:
         return 0
 
-    # 🔹 Enrich rows with product_name from SKU table
     _attach_product_names_to_rows(rows, user_id)
 
     for r in rows:
         r["user_id"] = user_id
 
     stmt = pg_insert(MonthwiseInventory).values(rows)
+
     stmt = stmt.on_conflict_do_update(
         constraint="uq_monthwise_inv_key",
         set_={
-            "user_id": stmt.excluded.user_id,
-            "marketplace_id": stmt.excluded.marketplace_id,
-            "msku": stmt.excluded.msku,
+            "fnsku": stmt.excluded.fnsku,
             "title": stmt.excluded.title,
-            "disposition": stmt.excluded.disposition,
-            # 🔹 ensure product_name is updated on conflict as well
             "product_name": stmt.excluded.product_name,
 
             "starting_warehouse_balance": stmt.excluded.starting_warehouse_balance,
@@ -1305,30 +1432,30 @@ def _upsert_monthwise_inventory_rows(
             "synced_at": stmt.excluded.synced_at,
         },
     )
+
     db.session.execute(stmt)
     db.session.commit()
     return len(rows)
 
 
+# =============================================================================
+# FETCH REPORT
+# =============================================================================
+
 def _fetch_ledger_summary_rows(
     mp: str,
     start_date: date,
     end_date: date,
+    time_period: str = "DAILY",   # keep DAILY so we can do first+last filtering ourselves
 ) -> list[dict]:
-    """
-    Calls Reports API for GET_LEDGER_SUMMARY_VIEW_DATA between start_date and end_date,
-    downloads & parses the TSV, and returns normalized rows ready for DB.
-    """
     body = {
         "reportType": "GET_LEDGER_SUMMARY_VIEW_DATA",
         "marketplaceIds": [mp],
         "dataStartTime": start_date.isoformat() + "T00:00:00Z",
         "dataEndTime": end_date.isoformat() + "T23:59:59Z",
-        # you can omit reportOptions and use defaults (COUNTRY + MONTHLY),
-        # or keep DAILY if it works for you:
         "reportOptions": {
             "aggregateByLocation": "COUNTRY",
-            "aggregatedByTimePeriod": "DAILY",   # or remove this line for monthly
+            "aggregatedByTimePeriod": time_period,
         },
     }
 
@@ -1340,6 +1467,12 @@ def _fetch_ledger_summary_rows(
     )
 
     if not create or create.get("error"):
+        msg = str(create)
+        if "status_code': 403" in msg or '"status_code": 403' in msg:
+            raise RuntimeError(
+                "403 Unauthorized: Access denied for GET_LEDGER_SUMMARY_VIEW_DATA. "
+                "Fix SP-API roles/permissions in Seller Central for your app."
+            )
         raise RuntimeError(f"Failed to create ledger summary report: {create}")
 
     create_payload = create.get("payload") or create
@@ -1347,10 +1480,12 @@ def _fetch_ledger_summary_rows(
     if not report_id:
         raise RuntimeError(f"Missing reportId in ledger summary response: {create}")
 
-    # --- poll until DONE ---
+    # poll
     status = None
+    meta_payload = None
     report_meta = None
-    for _ in range(60):  # up to ~10 minutes
+
+    for _ in range(60):
         report_meta = amazon_client.make_api_call(
             f"/reports/2021-06-30/reports/{report_id}", "GET", None
         )
@@ -1373,7 +1508,6 @@ def _fetch_ledger_summary_rows(
     if not doc_id:
         raise RuntimeError(f"Missing reportDocumentId in meta: {report_meta}")
 
-    # --- download report document ---
     doc = amazon_client.make_api_call(
         f"/reports/2021-06-30/documents/{doc_id}", "GET", None
     )
@@ -1392,11 +1526,8 @@ def _fetch_ledger_summary_rows(
     if doc_payload.get("compressionAlgorithm") == "GZIP":
         raw_bytes = gzip.decompress(raw_bytes)
 
-    text = raw_bytes.decode("utf-8-sig")
-    f = io.StringIO(text)
-
-    # ******** IMPORTANT: Ledger report is TAB-delimited ********
-    reader = csv.DictReader(f, delimiter="\t")
+    text_data = raw_bytes.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text_data), delimiter="\t")
 
     rows: list[dict] = []
     for r in reader:
@@ -1407,132 +1538,46 @@ def _fetch_ledger_summary_rows(
         try:
             row_date = _parse_date_str(raw_date)
         except ValueError:
-            # skip bad date rows
             continue
 
         rows.append(
             {
                 "date": row_date,
-                "fnsku": r.get("FNSKU") or r.get("FnSku") or "",
-                "asin": r.get("ASIN") or "",
-                "msku": r.get("MSKU") or "",
+                "fnsku": (r.get("FNSKU") or r.get("FnSku") or "").strip(),
+                "asin": (r.get("ASIN") or "").strip(),
+                "msku": (r.get("MSKU") or "").strip(),
                 "title": r.get("Title") or "",
-                "disposition": r.get("Disposition") or "",
+                "disposition": (r.get("Disposition") or "").strip(),
+                "location": (r.get("Location") or "").strip(),
+                "marketplace_id": mp,
+                "synced_at": datetime.utcnow(),
 
-                "starting_warehouse_balance": _safe_int(
-                    r.get("Starting Warehouse Balance")
-                ),
-                "in_transit_between_warehouses": _safe_int(
-                    r.get("In Transit Between Warehouses")
-                ),
+                "starting_warehouse_balance": _safe_int(r.get("Starting Warehouse Balance")),
+                "in_transit_between_warehouses": _safe_int(r.get("In Transit Between Warehouses")),
                 "receipts": _safe_int(r.get("Receipts")),
                 "customer_shipments": _safe_int(r.get("Customer Shipments")),
                 "customer_returns": _safe_int(r.get("Customer Returns")),
                 "vendor_returns": _safe_int(r.get("Vendor Returns")),
-                "warehouse_transfer_in_out": _safe_int(
-                    r.get("Warehouse Transfer In/Out")
-                ),
+                "warehouse_transfer_in_out": _safe_int(r.get("Warehouse Transfer In/Out")),
                 "found": _safe_int(r.get("Found")),
                 "lost": _safe_int(r.get("Lost")),
                 "damaged": _safe_int(r.get("Damaged")),
                 "disposed": _safe_int(r.get("Disposed")),
                 "other_events": _safe_int(r.get("Other Events")),
-                "ending_warehouse_balance": _safe_int(
-                    r.get("Ending Warehouse Balance")
-                ),
+                "ending_warehouse_balance": _safe_int(r.get("Ending Warehouse Balance")),
                 "unknown_events": _safe_int(r.get("Unknown Events")),
-                "location": r.get("Location") or "",
-                "marketplace_id": mp,
-                "synced_at": datetime.utcnow(),
             }
         )
-
-    logger.info("Parsed %d ledger summary rows for %s", len(rows), mp)
     return rows
 
 
-
-def _parse_date_str(value: str) -> date:
-    """
-    Accepts '2025-10-31', '10/31/2025', or '30/11/2025' and returns a date.
-    """
-    value = (value or "").strip()
-    if not value:
-        raise ValueError("empty date")
-
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(value, fmt).date()
-        except ValueError:
-            continue
-
-    raise ValueError(
-        f"Invalid date format: {value}. "
-        "Use YYYY-MM-DD, MM/DD/YYYY, or DD/MM/YYYY."
-    )
-
-from sqlalchemy import text
-
-def _attach_product_names_to_rows(rows: list[dict], user_id: int | None) -> None:
-    """
-    For all rows (ledger summary) add `product_name` by looking up
-    public.sku_{user_id}_data_table where sku_uk = msku.
-    Modifies `rows` in-place.
-    """
-    if not rows or not user_id:
-        return
-
-    # Collect unique MSKUs for this batch
-    mskus = sorted({r.get("msku") for r in rows if r.get("msku")})
-    if not mskus:
-        return
-
-    sku_table = f"public.sku_{user_id}_data_table"
-
-    # Build an IN (...) query with bound params
-    placeholders = ", ".join(f":sku{i}" for i in range(len(mskus)))
-    sql = text(f"""
-        SELECT sku_uk, product_name
-        FROM {sku_table}
-        WHERE sku_uk IN ({placeholders})
-    """)
-
-    params = {f"sku{i}": m for i, m in enumerate(mskus)}
-    result = db.session.execute(sql, params)
-
-    mapping = {row.sku_uk: row.product_name for row in result}
-
-    # Attach product_name to each row
-    for r in rows:
-        msku = r.get("msku")
-        r["product_name"] = mapping.get(msku)
-
+# =============================================================================
+# ROUTE
+# =============================================================================
 
 @inventory_bp.route("/amazon_api/inventory/ledger-summary", methods=["GET"])
 def inventory_ledger_summary():
-    """
-    Fetch Inventory Ledger Summary (GET_LEDGER_SUMMARY_VIEW_DATA).
-
-    Modes:
-
-    1) Single date snapshot:
-       - ?date=10/31/2025              (MM/DD/YYYY or YYYY-MM-DD)
-
-    2) Date range:
-       - ?start_date=10/01/2025&end_date=10/31/2025
-
-    3) Month mode (last date WITH data in that month):
-       - ?month=11&year=2025           -> fetch 2025-11-01..2025-11-30,
-                                         then keep only rows of the latest
-                                         date that has data (e.g. 11/30/2025)
-       - ?month=2025-11                -> same as above
-       - ?month=11                     -> same, using current year
-
-    Other params:
-       - marketplace_id=...
-       - store_in_db=true|false        -> default true
-    """
-    # ---- Auth (same pattern as inventory_all) ----
+    # ---- Auth ----
     auth_header = request.headers.get("Authorization")
     user_id = None
     if auth_header and auth_header.startswith("Bearer "):
@@ -1545,68 +1590,81 @@ def inventory_ledger_summary():
         except jwt.InvalidTokenError:
             return jsonify({"error": "Invalid token"}), 401
 
-    # Set region & marketplace from query / profile
     _apply_region_and_marketplace_from_request()
 
     if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
-        return jsonify(
-            {"success": False, "error": "Unsupported marketplace"}
-        ), 400
+        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
     store_in_db = request.args.get("store_in_db", "true").lower() != "false"
 
-    # ---- Date handling ----
+    # If true, filter first+last even for custom start/end range
+    keep_first_last = request.args.get("keep_first_last", "false").lower() == "true"
+
+    # ---- Params ----
     date_str = request.args.get("date")
     start_str = request.args.get("start_date")
     end_str = request.args.get("end_date")
-    month_param = request.args.get("month")  # "11" or "2025-11"
-    year_param = request.args.get("year")
 
-    is_month_mode = False  # we’ll need this later
+    month_param = request.args.get("month")      # "12" or "2025-12"
+    quarter_param = request.args.get("quarter")  # "1" or "2025-Q1"
+    year_param = request.args.get("year")        # "2025"
+
+    mode = None  # "month" | "quarter" | "year" | None
 
     try:
-        # --- Mode 3: month mode (we’ll pick last date WITH data later) ---
-        if month_param and not (date_str or start_str or end_str):
-            # Allow ?month=YYYY-MM
+        # 1) Month mode
+        if month_param and not (date_str or start_str or end_str or quarter_param):
             if "-" in month_param:
                 y_str, m_str = month_param.split("-", 1)
                 year = int(year_param or y_str)
                 month = int(m_str)
             else:
                 month = int(month_param)
-                # default to current year if year not supplied
-                year = int(year_param) if year_param is not None else datetime.utcnow().year
+                year = int(year_param) if year_param else datetime.utcnow().year
 
-            if not (1 <= month <= 12):
-                raise ValueError("month must be between 1 and 12")
-            if year < 2000 or year > 2100:
-                raise ValueError("year must be between 2000 and 2100")
+            start_date, end_date = _month_range(year, month)
+            mode = "month"
 
-            last_dom = calendar.monthrange(year, month)[1]
-            start_date = date(year, month, 1)
-            end_date = date(year, month, last_dom)
-            is_month_mode = True
+        # 2) Quarter mode
+        elif quarter_param and not (date_str or start_str or end_str or month_param):
+            # Allow "2025-Q1" or "Q1" with ?year=2025 or "1" with ?year=2025
+            qp = quarter_param.strip().upper()
 
-        # --- Mode 1: single date ---
+            if "-Q" in qp:  # "2025-Q1"
+                y_str, q_str = qp.split("-Q", 1)
+                year = int(year_param or y_str)
+                quarter = int(q_str)
+            elif qp.startswith("Q"):  # "Q1"
+                quarter = int(qp[1:])
+                year = int(year_param) if year_param else datetime.utcnow().year
+            else:  # "1"
+                quarter = int(qp)
+                year = int(year_param) if year_param else datetime.utcnow().year
+
+            start_date, end_date = _quarter_range(year, quarter)
+            mode = "quarter"
+
+        # 3) Year mode (full year) -> only when year is provided AND no other date params
+        elif year_param and not (date_str or start_str or end_str or month_param or quarter_param):
+            year = int(year_param)
+            start_date, end_date = _year_range(year)
+            mode = "year"
+
+        # 4) Single date
         elif date_str:
             start_date = end_date = _parse_date_str(date_str)
 
-        # --- Mode 2: explicit range ---
+        # 5) Explicit range
         else:
             if not (start_str and end_str):
-                return (
-                    jsonify(
-                        {
-                            "error": (
-                                "Provide either ?date=MM/DD/YYYY (or YYYY-MM-DD), "
-                                "both ?start_date= and ?end_date=, "
-                                "or use month mode with ?month= and optional ?year=."
-                            )
-                        }
-                    ),
-                    400,
-                )
+                return jsonify({
+                    "error": (
+                        "Provide either ?date=..., both ?start_date= and ?end_date=, "
+                        "or ?month=..., or ?quarter=...&year=..., or ?year=YYYY."
+                    )
+                }), 400
+
             start_date = _parse_date_str(start_str)
             end_date = _parse_date_str(end_str)
             if end_date < start_date:
@@ -1615,83 +1673,581 @@ def inventory_ledger_summary():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    # ---- Fetch report ----
+    # ---- Fetch DAILY from Amazon ----
     try:
-        rows = _fetch_ledger_summary_rows(mp, start_date, end_date)
-    except RuntimeError as e:
-        msg = str(e)
-
-        # 403: roles not allowed
-        if "status_code': 403" in msg or '"status_code": 403' in msg:
-            return jsonify({
-                "success": False,
-                "error": "Amazon SP-API returned 403 Unauthorized for "
-                         "GET_LEDGER_SUMMARY_VIEW_DATA. Your app likely does not "
-                         "have the required Amazon Fulfillment role for this "
-                         "report type. Please enable it in Seller Central and try again.",
-                "details": msg,
-            }), 403
-
-        # 429: quota exceeded
-        if "status_code': 429" in msg or '"status_code": 429' in msg:
-            return jsonify({
-                "success": False,
-                "error": "Amazon SP-API returned 429 QuotaExceeded when fetching "
-                         "the ledger report document. Please retry after some time.",
-                "details": msg,
-            }), 429
-
-        logger.exception("Failed to fetch ledger summary")
-        return jsonify({"success": False, "error": msg}), 500
+        rows = _fetch_ledger_summary_rows(mp, start_date, end_date, time_period="DAILY")
     except Exception as e:
-        logger.exception("Failed to fetch ledger summary (unexpected)")
+        logger.exception("Failed to fetch ledger summary")
         return jsonify({"success": False, "error": str(e)}), 500
 
-    # ---- Month mode: keep ONLY latest date that has data ----
-    if is_month_mode and rows:
-        latest_date = max(
-            r["date"]
-            for r in rows
-            if isinstance(r.get("date"), (date, datetime))
-        )
-        rows = [r for r in rows if r.get("date") == latest_date]
-        start_date = end_date = latest_date
+    # ---- Filter first+last for month/quarter/year OR flag ----
+    if rows and (mode in ("month", "quarter", "year") or keep_first_last):
+        rows = _filter_first_last_dates(rows)
 
-    # ---- Format dates as MM/DD/YYYY for output ----
-    display_rows: list[dict] = []
+        # update response start/end to match filtered data
+        dates = sorted({r["date"] for r in rows if isinstance(r.get("date"), date)})
+        if dates:
+            start_date, end_date = dates[0], dates[-1]
+
+    # ---- Format output ----
+    display_rows = []
     for r in rows:
-        r2 = dict(r)  # shallow copy
-        d = r2.get("date")
-        if isinstance(d, (date, datetime)):
-            r2["date"] = d.strftime("%m/%d/%Y")  # e.g. "11/30/2025"
-        # if you don't want synced_at in the JSON items, uncomment:
-        # r2.pop("synced_at", None)
+        r2 = dict(r)
+        if isinstance(r2.get("date"), date):
+            r2["date"] = r2["date"].strftime("%m/%d/%Y")
         display_rows.append(r2)
 
     out = {
         "success": True,
         "marketplace_id": mp,
+        "mode": mode or "range",
         "start_date": start_date.strftime("%m/%d/%Y"),
         "end_date": end_date.strftime("%m/%d/%Y"),
-        "count": len(rows),
+        "count": len(display_rows),
         "db": {"saved_rows": 0},
-        "items": rows,
+        "items": display_rows,
     }
 
-    # ---- Persist SP-API rows (the raw ones, not the formatted copies) ----
+    # ---- Store to DB (only filtered rows get stored) ----
     if store_in_db and rows:
         try:
-            saved = _upsert_monthwise_inventory_rows(rows, user_id)
-            out["db"]["saved_rows"] = saved
+            out["db"]["saved_rows"] = _upsert_monthwise_inventory_rows(rows, user_id)
         except Exception as e:
             logger.exception("Failed to upsert monthwise inventory")
             out["db"]["error"] = str(e)
 
     if not display_rows:
-        out["empty_message"] = (
-            "No ledger summary rows for this date range. "
-            "In month mode, this means Amazon returned no data for the month."
-        )
+        out["empty_message"] = "No ledger summary rows for this date range."
 
     return jsonify(out), 200
+
+
+# @inventory_bp.route("/amazon_api/inventory/ledger-summary/db", methods=["GET"])
+# def inventory_ledger_summary_db():
+#     """
+#     Ledger summary FROM DB (MonthwiseInventory) with disposition pivoted into 5 columns:
+#       SELLABLE, EXPIRED, DEFECTIVE, CUSTOMER_DAMAGED, WAREHOUSE_DAMAGED
+
+#     The 5 disposition columns contain ending_warehouse_balance.
+
+#     Base metrics (starting balance, receipts, shipments, etc.) are taken from the
+#     SELLABLE row when available (to avoid picking EXPIRED/DEFECTIVE rows that often have 0/1).
+#     """
+
+#     # -------------------- Auth --------------------
+#     auth_header = request.headers.get("Authorization")
+#     user_id = None
+#     if auth_header and auth_header.startswith("Bearer "):
+#         token = auth_header.split(" ")[1]
+#         try:
+#             payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+#             user_id = payload.get("user_id")
+#         except jwt.ExpiredSignatureError:
+#             return jsonify({"error": "Token has expired"}), 401
+#         except jwt.InvalidTokenError:
+#             return jsonify({"error": "Invalid token"}), 401
+
+#     if not user_id:
+#         return jsonify({"error": "Missing/invalid token"}), 401
+
+#     # -------------------- Params --------------------
+#     mp = request.args.get("marketplace_id")  # optional
+#     msku_filter = request.args.get("msku")   # optional
+#     location_filter = request.args.get("location")  # optional
+
+#     date_str = request.args.get("date")
+#     start_str = request.args.get("start_date")
+#     end_str = request.args.get("end_date")
+
+#     month_param = request.args.get("month")      # "12" or "2025-12"
+#     quarter_param = request.args.get("quarter")  # "1" or "2025-Q1" or "Q1"
+#     year_param = request.args.get("year")        # "2025"
+
+#     mode = None  # "month" | "quarter" | "year" | "range" | "single"
+
+#     # -------------------- Compute date window --------------------
+#     try:
+#         if month_param and not (date_str or start_str or end_str or quarter_param):
+#             if "-" in month_param:
+#                 y_str, m_str = month_param.split("-", 1)
+#                 year = int(year_param or y_str)
+#                 month = int(m_str)
+#             else:
+#                 month = int(month_param)
+#                 year = int(year_param) if year_param else datetime.utcnow().year
+#             start_date, end_date = _month_range(year, month)
+#             mode = "month"
+
+#         elif quarter_param and not (date_str or start_str or end_str or month_param):
+#             qp = quarter_param.strip().upper()
+#             if "-Q" in qp:
+#                 y_str, q_str = qp.split("-Q", 1)
+#                 year = int(year_param or y_str)
+#                 quarter = int(q_str)
+#             elif qp.startswith("Q"):
+#                 quarter = int(qp[1:])
+#                 year = int(year_param) if year_param else datetime.utcnow().year
+#             else:
+#                 quarter = int(qp)
+#                 year = int(year_param) if year_param else datetime.utcnow().year
+#             start_date, end_date = _quarter_range(year, quarter)
+#             mode = "quarter"
+
+#         elif year_param and not (date_str or start_str or end_str or month_param or quarter_param):
+#             year = int(year_param)
+#             start_date, end_date = _year_range(year)
+#             mode = "year"
+
+#         elif date_str:
+#             start_date = end_date = _parse_date_str(date_str)
+#             mode = "single"
+
+#         else:
+#             if not (start_str and end_str):
+#                 return jsonify({
+#                     "error": (
+#                         "Provide either ?date=..., or both ?start_date= and ?end_date=, "
+#                         "or ?month=..., or ?quarter=...&year=..., or ?year=YYYY."
+#                     )
+#                 }), 400
+
+#             start_date = _parse_date_str(start_str)
+#             end_date = _parse_date_str(end_str)
+#             if end_date < start_date:
+#                 raise ValueError("end_date cannot be before start_date")
+#             mode = "range"
+
+#     except ValueError as e:
+#         return jsonify({"error": str(e)}), 400
+
+#     # -------------------- DB Query --------------------
+#     q = (
+#         db.session.query(MonthwiseInventory)
+#         .options(
+#             load_only(
+#                 MonthwiseInventory.date,
+#                 MonthwiseInventory.msku,
+#                 MonthwiseInventory.disposition,
+#                 MonthwiseInventory.product_name,
+#                 MonthwiseInventory.marketplace_id,
+#                 MonthwiseInventory.location,
+
+#                 MonthwiseInventory.starting_warehouse_balance,
+#                 MonthwiseInventory.in_transit_between_warehouses,
+#                 MonthwiseInventory.receipts,
+#                 MonthwiseInventory.customer_shipments,
+#                 MonthwiseInventory.customer_returns,
+#                 MonthwiseInventory.vendor_returns,
+#                 MonthwiseInventory.warehouse_transfer_in_out,
+#                 MonthwiseInventory.found,
+#                 MonthwiseInventory.lost,
+#                 MonthwiseInventory.damaged,
+#                 MonthwiseInventory.disposed,
+#                 MonthwiseInventory.other_events,
+#                 MonthwiseInventory.ending_warehouse_balance,
+#             )
+#         )
+#         .filter(MonthwiseInventory.user_id == user_id)
+#         .filter(MonthwiseInventory.date >= start_date)
+#         .filter(MonthwiseInventory.date <= end_date)
+#     )
+
+#     if mp:
+#         q = q.filter(MonthwiseInventory.marketplace_id == mp)
+#     if msku_filter:
+#         q = q.filter(MonthwiseInventory.msku == msku_filter)
+#     if location_filter:
+#         q = q.filter(MonthwiseInventory.location == location_filter)
+
+#     q = q.order_by(
+#         MonthwiseInventory.date.asc(),
+#         MonthwiseInventory.msku.asc(),
+#         MonthwiseInventory.disposition.asc(),
+#     )
+
+#     rows = q.all()
+
+#     # -------------------- Pivot dispositions into 5 columns --------------------
+#     DISPOSITIONS = [
+#         "SELLABLE",
+#         "EXPIRED",
+#         "DEFECTIVE",
+#         "CUSTOMER_DAMAGED",
+#         "WAREHOUSE_DAMAGED",
+#     ]
+
+#     def _pick_base_metrics(dst: dict, src_row) -> None:
+#         """Copy base metrics from a row into dst."""
+#         dst["starting_warehouse_balance"] = int(src_row.starting_warehouse_balance or 0)
+#         dst["in_transit_between_warehouses"] = int(src_row.in_transit_between_warehouses or 0)
+#         dst["receipts"] = int(src_row.receipts or 0)
+#         dst["customer_shipments"] = int(src_row.customer_shipments or 0)
+#         dst["customer_returns"] = int(src_row.customer_returns or 0)
+#         dst["vendor_returns"] = int(src_row.vendor_returns or 0)
+#         dst["warehouse_transfer_in_out"] = int(src_row.warehouse_transfer_in_out or 0)
+#         dst["found"] = int(src_row.found or 0)
+#         dst["lost"] = int(src_row.lost or 0)
+#         dst["damaged"] = int(src_row.damaged or 0)
+#         dst["disposed"] = int(src_row.disposed or 0)
+#         dst["other_events"] = int(src_row.other_events or 0)
+
+#     grouped = {}
+
+#     for r in rows:
+#         key = (r.date, r.msku, r.product_name, r.marketplace_id, r.location)
+
+#         if key not in grouped:
+#             grouped[key] = {
+#                 "date": r.date.strftime("%Y-%m-%d"),
+#                 "msku": r.msku,
+#                 "product_name": r.product_name,
+#                 "marketplace_id": r.marketplace_id,
+#                 "location": r.location,
+
+#                 # base metrics (we'll fill these from SELLABLE if possible)
+#                 "starting_warehouse_balance": None,
+#                 "in_transit_between_warehouses": None,
+#                 "receipts": None,
+#                 "customer_shipments": None,
+#                 "customer_returns": None,
+#                 "vendor_returns": None,
+#                 "warehouse_transfer_in_out": None,
+#                 "found": None,
+#                 "lost": None,
+#                 "damaged": None,
+#                 "disposed": None,
+#                 "other_events": None,
+
+#                 # disposition pivot columns (ending_warehouse_balance)
+#                 **{d: 0 for d in DISPOSITIONS},
+
+#                 # internal helpers
+#                 "_base_set": False,
+#                 "_base_from_sellable": False,
+#             }
+
+#         g = grouped[key]
+
+#         # 1) Always pivot ending_warehouse_balance into the right disposition column
+#         disp = (r.disposition or "").strip()
+#         if disp in DISPOSITIONS:
+#             g[disp] += int(r.ending_warehouse_balance or 0)
+
+#         # -------------------- ADD DIFFERENCE COLUMN --------------------
+#         for row in grouped.values():
+#             total_ending = sum(
+#                 row[d] for d in DISPOSITIONS
+#             )
+#             row["difference"] = (
+#                 int(row["starting_warehouse_balance"] or 0) - total_ending
+#             )
+
+
+#         # 2) Set base metrics:
+#         #    - Prefer SELLABLE row
+#         #    - Otherwise set from first row as fallback
+#         if disp == "SELLABLE":
+#             _pick_base_metrics(g, r)
+#             g["_base_set"] = True
+#             g["_base_from_sellable"] = True
+#         elif not g["_base_set"]:
+#             _pick_base_metrics(g, r)
+#             g["_base_set"] = True
+
+#     # cleanup helper keys and None->0
+#     items = []
+#     for g in grouped.values():
+#         g.pop("_base_set", None)
+#         g.pop("_base_from_sellable", None)
+
+#         for k in [
+#             "starting_warehouse_balance",
+#             "in_transit_between_warehouses",
+#             "receipts",
+#             "customer_shipments",
+#             "customer_returns",
+#             "vendor_returns",
+#             "warehouse_transfer_in_out",
+#             "found",
+#             "lost",
+#             "damaged",
+#             "disposed",
+#             "other_events",
+#         ]:
+#             if g.get(k) is None:
+#                 g[k] = 0
+
+#         items.append(g)
+
+#     items.sort(key=lambda x: (x["date"], x["msku"], x.get("marketplace_id") or "", x.get("location") or ""))
+
+#     return jsonify({
+#         "success": True,
+#         "mode": mode,
+#         "marketplace_id": mp,
+#         "start_date": start_date.strftime("%Y-%m-%d"),
+#         "end_date": end_date.strftime("%Y-%m-%d"),
+#         "count": len(items),
+#         "items": items,
+#     }), 200
+
+@inventory_bp.route("/amazon_api/inventory/ledger-summary/db", methods=["GET"])
+def inventory_ledger_summary_db():
+    """
+    Ledger summary FROM DB (MonthwiseInventory) with disposition pivoted into 5 columns:
+      SELLABLE, EXPIRED, DEFECTIVE, CUSTOMER_DAMAGED, WAREHOUSE_DAMAGED
+
+    - The 5 disposition columns contain ending_warehouse_balance.
+    - Base metrics (starting balance, receipts, shipments, etc.) are taken from the SELLABLE row
+      when available (prevents picking EXPIRED/DEFECTIVE rows that can have small/zero values).
+    - Adds:
+        total_ending_warehouse_balance = sum of the 5 disposition columns
+        difference = starting_warehouse_balance - total_ending_warehouse_balance
+
+    Supports:
+      1) Month:    ?month=12&year=2025  OR ?month=2025-12
+      2) Quarter:  ?quarter=1&year=2025 OR ?quarter=2025-Q1 OR ?quarter=Q1&year=2025
+      3) Year:     ?year=2025
+      4) Range:    ?start_date=2025-12-01&end_date=2025-12-31
+      5) Single:   ?date=2025-12-31
+
+    Optional filters:
+      - marketplace_id=...
+      - msku=...
+      - location=...
+
+    NOTE:
+      - We intentionally do NOT apply ?disposition= filter, because we need all dispositions
+        to build the 5 columns.
+    """
+
+    # -------------------- Auth --------------------
+    auth_header = request.headers.get("Authorization")
+    user_id = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            user_id = payload.get("user_id")
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+
+    if not user_id:
+        return jsonify({"error": "Missing/invalid token"}), 401
+
+    # -------------------- Params --------------------
+    mp = request.args.get("marketplace_id")  # optional
+    msku_filter = request.args.get("msku")   # optional
+    location_filter = request.args.get("location")  # optional
+
+    date_str = request.args.get("date")
+    start_str = request.args.get("start_date")
+    end_str = request.args.get("end_date")
+
+    month_param = request.args.get("month")      # "12" or "2025-12"
+    quarter_param = request.args.get("quarter")  # "1" or "2025-Q1" or "Q1"
+    year_param = request.args.get("year")        # "2025"
+
+    mode = None  # "month" | "quarter" | "year" | "range" | "single"
+
+    # -------------------- Compute date window --------------------
+    try:
+        if month_param and not (date_str or start_str or end_str or quarter_param):
+            if "-" in month_param:
+                y_str, m_str = month_param.split("-", 1)
+                year = int(year_param or y_str)
+                month = int(m_str)
+            else:
+                month = int(month_param)
+                year = int(year_param) if year_param else datetime.utcnow().year
+
+            start_date, end_date = _month_range(year, month)
+            mode = "month"
+
+        elif quarter_param and not (date_str or start_str or end_str or month_param):
+            qp = quarter_param.strip().upper()
+            if "-Q" in qp:
+                y_str, q_str = qp.split("-Q", 1)
+                year = int(year_param or y_str)
+                quarter = int(q_str)
+            elif qp.startswith("Q"):
+                quarter = int(qp[1:])
+                year = int(year_param) if year_param else datetime.utcnow().year
+            else:
+                quarter = int(qp)
+                year = int(year_param) if year_param else datetime.utcnow().year
+
+            start_date, end_date = _quarter_range(year, quarter)
+            mode = "quarter"
+
+        elif year_param and not (date_str or start_str or end_str or month_param or quarter_param):
+            year = int(year_param)
+            start_date, end_date = _year_range(year)
+            mode = "year"
+
+        elif date_str:
+            start_date = end_date = _parse_date_str(date_str)
+            mode = "single"
+
+        else:
+            if not (start_str and end_str):
+                return jsonify({
+                    "error": (
+                        "Provide either ?date=..., or both ?start_date= and ?end_date=, "
+                        "or ?month=..., or ?quarter=...&year=..., or ?year=YYYY."
+                    )
+                }), 400
+
+            start_date = _parse_date_str(start_str)
+            end_date = _parse_date_str(end_str)
+            if end_date < start_date:
+                raise ValueError("end_date cannot be before start_date")
+            mode = "range"
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # -------------------- DB Query --------------------
+    q = (
+        db.session.query(MonthwiseInventory)
+        .options(
+            load_only(
+                MonthwiseInventory.date,
+                MonthwiseInventory.msku,
+                MonthwiseInventory.disposition,
+                MonthwiseInventory.product_name,
+                MonthwiseInventory.marketplace_id,
+                MonthwiseInventory.location,
+
+                MonthwiseInventory.starting_warehouse_balance,
+                MonthwiseInventory.in_transit_between_warehouses,
+                MonthwiseInventory.receipts,
+                MonthwiseInventory.customer_shipments,
+                MonthwiseInventory.customer_returns,
+                MonthwiseInventory.vendor_returns,
+                MonthwiseInventory.warehouse_transfer_in_out,
+                MonthwiseInventory.found,
+                MonthwiseInventory.lost,
+                MonthwiseInventory.damaged,
+                MonthwiseInventory.disposed,
+                MonthwiseInventory.other_events,
+                MonthwiseInventory.ending_warehouse_balance,
+            )
+        )
+        .filter(MonthwiseInventory.user_id == user_id)
+        .filter(MonthwiseInventory.date >= start_date)
+        .filter(MonthwiseInventory.date <= end_date)
+    )
+
+    if mp:
+        q = q.filter(MonthwiseInventory.marketplace_id == mp)
+    if msku_filter:
+        q = q.filter(MonthwiseInventory.msku == msku_filter)
+    if location_filter:
+        q = q.filter(MonthwiseInventory.location == location_filter)
+
+    q = q.order_by(
+        MonthwiseInventory.date.asc(),
+        MonthwiseInventory.msku.asc(),
+        MonthwiseInventory.disposition.asc(),
+    )
+
+    rows = q.all()
+
+    # -------------------- Pivot dispositions into 5 columns --------------------
+    DISPOSITIONS = [
+        "SELLABLE",
+        "EXPIRED",
+        "DEFECTIVE",
+        "CUSTOMER_DAMAGED",
+        "WAREHOUSE_DAMAGED",
+    ]
+
+    def _pick_base_metrics(dst: dict, src_row) -> None:
+        dst["starting_warehouse_balance"] = int(src_row.starting_warehouse_balance or 0)
+        dst["in_transit_between_warehouses"] = int(src_row.in_transit_between_warehouses or 0)
+        dst["receipts"] = int(src_row.receipts or 0)
+        dst["customer_shipments"] = int(src_row.customer_shipments or 0)
+        dst["customer_returns"] = int(src_row.customer_returns or 0)
+        dst["vendor_returns"] = int(src_row.vendor_returns or 0)
+        dst["warehouse_transfer_in_out"] = int(src_row.warehouse_transfer_in_out or 0)
+        dst["found"] = int(src_row.found or 0)
+        dst["lost"] = int(src_row.lost or 0)
+        dst["damaged"] = int(src_row.damaged or 0)
+        dst["disposed"] = int(src_row.disposed or 0)
+        dst["other_events"] = int(src_row.other_events or 0)
+
+    grouped = {}
+
+    for r in rows:
+        key = (r.date, r.msku, r.product_name, r.marketplace_id, r.location)
+
+        if key not in grouped:
+            grouped[key] = {
+                "date": r.date.strftime("%Y-%m-%d"),
+                "msku": r.msku,
+                "product_name": r.product_name,
+                "marketplace_id": r.marketplace_id,
+                "location": r.location,
+
+                # base metrics (filled from SELLABLE when available)
+                "starting_warehouse_balance": 0,
+                "in_transit_between_warehouses": 0,
+                "receipts": 0,
+                "customer_shipments": 0,
+                "customer_returns": 0,
+                "vendor_returns": 0,
+                "warehouse_transfer_in_out": 0,
+                "found": 0,
+                "lost": 0,
+                "damaged": 0,
+                "disposed": 0,
+                "other_events": 0,
+
+                # disposition pivot columns (ending_warehouse_balance)
+                **{d: 0 for d in DISPOSITIONS},
+
+                # internal helper
+                "_base_set": False,
+            }
+
+            # fallback: set base metrics from the first seen row
+            _pick_base_metrics(grouped[key], r)
+            grouped[key]["_base_set"] = True
+
+        g = grouped[key]
+
+        # pivot ending_warehouse_balance
+        disp = (r.disposition or "").strip()
+        if disp in DISPOSITIONS:
+            g[disp] += int(r.ending_warehouse_balance or 0)
+
+        # if SELLABLE row exists, override base metrics with SELLABLE (preferred)
+        if disp == "SELLABLE":
+            _pick_base_metrics(g, r)
+
+    # -------------------- Add totals + difference --------------------
+    items = []
+    for g in grouped.values():
+        g.pop("_base_set", None)
+
+        total_ending = sum(g[d] for d in DISPOSITIONS)
+        g["total_ending_warehouse_balance"] = total_ending
+        g["difference"] = int(g["starting_warehouse_balance"] or 0) - total_ending
+
+        items.append(g)
+
+    items.sort(key=lambda x: (x["date"], x["msku"], x.get("marketplace_id") or "", x.get("location") or ""))
+
+    return jsonify({
+        "success": True,
+        "mode": mode,
+        "marketplace_id": mp,
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "count": len(items),
+        "items": items,
+    }), 200
 

@@ -101,7 +101,7 @@ export default function SalesTargetStatsCard({
       </div>
 
       <div className="pt-4 flex-1">
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 text-sm h-full">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 text-sm h-full ">
           {[
             { title: "Today", value: formatHomeK(todayHome), helper: "\u00A0" },
             { title: "MTD Sales", value: formatHomeK(mtdHome), helper: "\u00A0" },
@@ -125,7 +125,7 @@ export default function SalesTargetStatsCard({
               <div className="text-charcoal-500 whitespace-nowrap leading-none  text-[10px] 2xl:text-xs">{t.title}</div>
               <div className="mt-2 text-sm 2xl:text-lg font-semibold whitespace-nowrap leading-none">{t.value}</div>
               <div
-                className={`mt-1 text-[10px] 2xl:text-xs leading-none ${t.helper === "\u00A0" ? "text-transparent select-none" : "text-gray-500"
+                className={`mt-1 text-[10px] text-charcoal-500 2xl:text-xs leading-none ${t.helper === "\u00A0" ? "text-transparent select-none" : "text-charcoal-500"
                   }`}
               >
                 {t.helper}

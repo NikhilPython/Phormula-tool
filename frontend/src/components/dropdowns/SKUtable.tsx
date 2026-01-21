@@ -692,143 +692,134 @@ const SKUtable: React.FC<SKUtableProps> = ({
     },
     [SIGN_PLUS, SIGN_MINUS]
   );
-  const buildSkuSheetModel = useCallback(() => {
-    const excelCols = buildExcelColumnsFromUI();
-    const colKeys = excelCols.map((c) => c.key);
+  const buildSkuSheetModel = useCallback(
+    (opts?: { allRows?: boolean }) => {
+      const excelCols = buildExcelColumnsFromUI();
+      const colKeys = excelCols.map((c) => c.key);
 
-    const headerRow: Record<string, string> = {};
-    excelCols.forEach((c) => {
-      headerRow[c.key] = c.label;
-    });
-
-    const signRow: Record<string, string> = {};
-    colKeys.forEach((k) => {
-      const s = getSignForCol(k);
-      if (s?.text) signRow[k] = s.text;
-    });
-
-    const rowsForExcel = displayRows.map((row, rowIndex) => {
-      const out: Record<string, string | number> = {};
-
-      colKeys.forEach((key) => {
-        let value: any = (row as any)[key];
-
-        if (key === "sno") {
-          const name = getDisplayProductNameFromRow(row);
-          const isTotal = String(name).trim().toLowerCase() === "total";
-          value = isTotal ? "" : rowIndex + 1;
-        }
-
-
-        // Product name fallback
-        if (key === "product_name") value = getDisplayProductNameFromRow(row);
-
-        // Mapping rules
-        if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
-        if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
-
-        // If you want quantity in excel to mean Units Sold like UI
-        if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
-
-        if (key === "asp") {
-          const sales = toNumber((row as any).net_sales);
-          const units = toNumber((row as any).net_units_sold);
-          value = units > 0 ? sales / units : 0;
-        }
-
-
-        if (typeof value === "number") {
-          if (Math.abs(value) < 1e-10) value = 0;
-
-          if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
-            value = Math.trunc(value);
-          } else {
-            value = Number(value.toFixed(2));
-          }
-
-        }
-
-        if (key === "profit_percentage" && typeof value === "number") {
-          value = Number(value) / 100;
-        }
-
-        out[key] = typeof value === "number" && isNaN(value) ? "-" : value;
+      const headerRow: Record<string, string> = {};
+      excelCols.forEach((c) => {
+        headerRow[c.key] = c.label;
       });
 
-      return out;
-    });
+      const signRow: Record<string, string> = {};
+      colKeys.forEach((k) => {
+        const s = getSignForCol(k);
+        if (s?.text) signRow[k] = s.text;
+      });
 
+      // ✅ IMPORTANT: choose rows source
+      // UI => displayRows (top9 + others + total)
+      // Excel => tableData (all SKUs + total)
+      const sourceRows = opts?.allRows ? tableData : displayRows;
 
+      const rowsForExcel = tableData.map((row, rowIndex) => {
+        const out: Record<string, string | number> = {};
 
-    type SummaryRow = Record<string, string | number> & { __bold?: number };
+        colKeys.forEach((key) => {
+          let value: any = (row as any)[key];
 
-    const summaryRows: SummaryRow[] = [
-      { product_name: "Cost of Advertisement", profit: Math.abs(Number(totals.advertising_total || 0)), __bold: 1 },
+          if (key === "sno") {
+            const name = getDisplayProductNameFromRow(row);
+            const isTotal = String(name).trim().toLowerCase() === "total";
+            value = isTotal ? "" : rowIndex + 1;
+          }
 
-      { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.visible_ads || 0)) },
+          if (key === "product_name") value = getDisplayProductNameFromRow(row);
 
-      { product_name: "Visibility - Deals, Vouchers and Reviews (-)", profit: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
+          if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
+          if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+          if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
 
-      ...(countryName === "us" || countryName === "global"
-        ? [{ product_name: "Shipment Charges (-)", profit: Math.abs(Number(totals.shipment_charges || 0)) }]
-        : []),
+          // ✅ ASP always computed properly
+          if (key === "asp") {
+            const sales = toNumber((row as any).net_sales);
+            const units = toNumber((row as any).net_units_sold);
+            value = units > 0 ? sales / units : 0;
+          }
 
-      { product_name: "Other Transactions (-)", profit: Math.abs(Number(totals.other_transactions || 0)), __bold: 1 },
+          if (typeof value === "number") {
+            if (Math.abs(value) < 1e-10) value = 0;
 
-      { product_name: "Platform Fees (-)", profit: Math.abs(Number(totals.platform_fee || 0)) },
+            if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
+              value = Math.trunc(value);
+            } else {
+              value = Number(value.toFixed(2));
+            }
+          }
 
-      { product_name: "Inventory Storage Fees (-)", profit: Math.abs(Number(totals.inventory_storage_fees || 0)) },
+          if (key === "profit_percentage" && typeof value === "number") {
+            value = Number(value) / 100;
+          }
 
-      { product_name: "Reimbursement for lost Inventory", profit: Math.abs(Number(totals.lost_total || 0)) },
+          out[key] = typeof value === "number" && isNaN(value) ? "-" : value;
+        });
 
-      { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit || 0), __bold: 1 },
+        return out;
+      });
 
-      { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: 1 },
+      // ...keep your summaryRows + formats exactly as-is...
 
-      { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0), __bold: 1 },
+      type SummaryRow = Record<string, string | number> & { __bold?: number };
 
-      { product_name: "Net Reimbursement", profit: Math.abs(Number(totals.net_reimbursement || 0)), __bold: 1 },
+      const summaryRows: SummaryRow[] = [
+        { product_name: "Cost of Advertisement", profit: Math.abs(Number(totals.advertising_total || 0)), __bold: 1 },
+        { product_name: "Visibility - Ads (-)", profit: Math.abs(Number(totals.visible_ads || 0)) },
+        { product_name: "Visibility - Deals, Vouchers and Reviews (-)", profit: Math.abs(Number(totals.dealsvouchar_ads || 0)) },
 
-      { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0), __bold: 1 },
+        ...(countryName === "us" || countryName === "global"
+          ? [{ product_name: "Shipment Charges (-)", profit: Math.abs(Number(totals.shipment_charges || 0)) }]
+          : []),
 
-      { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0), __bold: 1 },
-    ];
+        { product_name: "Other Transactions (-)", profit: Math.abs(Number(totals.other_transactions || 0)), __bold: 1 },
+        { product_name: "Platform Fees (-)", profit: Math.abs(Number(totals.platform_fee || 0)) },
+        { product_name: "Inventory Storage Fees (-)", profit: Math.abs(Number(totals.inventory_storage_fees || 0)) },
+        { product_name: "Reimbursement for lost Inventory", profit: Math.abs(Number(totals.lost_total || 0)) },
 
-    const normalizedSummaryRows =
-      summaryRows.map((r) => ({
-        ...r,
-        __bold: r.__bold ? true : undefined,
-      })) as Array<Record<string, string | number> & { __bold?: boolean }>;
+        { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit || 0), __bold: 1 },
+        { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: 1 },
+        { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0), __bold: 1 },
+        { product_name: "Net Reimbursement", profit: Math.abs(Number(totals.net_reimbursement || 0)), __bold: 1 },
+        { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0), __bold: 1 },
+        { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0), __bold: 1 },
+      ];
 
+      const normalizedSummaryRows =
+        summaryRows.map((r) => ({ ...r, __bold: r.__bold ? true : undefined })) as Array<
+          Record<string, string | number> & { __bold?: boolean }
+        >;
 
-    const formats: Record<string, "int" | "money" | "percent" | "text"> = {};
-    colKeys.forEach((k) => {
-      if (k === "product_name" || k === "sku") formats[k] = "text";
-      else if (k === "profit_percentage") formats[k] = "percent";
-      else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(k)) formats[k] = "int";
-      else formats[k] = "money";
-    });
+      const formats: Record<string, "int" | "money" | "percent" | "text"> = {};
+      colKeys.forEach((k) => {
+        if (k === "product_name" || k === "sku") formats[k] = "text";
+        else if (k === "profit_percentage") formats[k] = "percent";
+        else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(k)) formats[k] = "int";
+        else formats[k] = "money";
+      });
 
-    return {
-      columns: colKeys as readonly string[],
-      extraRows: getExtraRows(),
-      headerRow,
-      signRow,
-      rows: rowsForExcel,
-      summaryRows: normalizedSummaryRows,
-      formats,
-      summaryValueKey: "profit",
-    };
-  }, [
-    displayRows,
-    tableData,
-    totals,
-    countryName,
-    getExtraRows,
-    getDisplayProductNameFromRow,
-    buildExcelColumnsFromUI,
-    getSignForCol,
-  ]);
+      return {
+        columns: colKeys as readonly string[],
+        extraRows: getExtraRows(),
+        headerRow,
+        signRow,
+        rows: rowsForExcel,
+        summaryRows: normalizedSummaryRows,
+        formats,
+        summaryValueKey: "profit",
+      };
+    },
+    [
+      displayRows,
+      tableData,     // ✅ add this dependency
+      totals,
+      countryName,
+      getExtraRows,
+      getDisplayProductNameFromRow,
+      buildExcelColumnsFromUI,
+      getSignForCol,
+    ]
+  );
+
 
   // Period label
   const yearShort = typeof year === "string" ? year.toString().slice(-2) : String(year).slice(-2);
@@ -1435,9 +1426,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
   // ✅ FULL UPDATED FUNCTION (drop-in replace your current handleDownloadExcel)
 
   const handleDownloadExcel = useCallback(async () => {
-    // ✅ If you already computed this in the export payload, you could reuse it.
-    // Here we build fresh to guarantee it matches current state.
-    const model = buildSkuSheetModel();
+    // ✅ export ALL rows (all SKUs)
+    const model = buildSkuSheetModel({ allRows: true });
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("SKU Profitability");
@@ -1452,16 +1442,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
           : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
 
     await downloadWorkbookAsXlsx(wb, filename);
-
     onDownload?.();
-  }, [
-    buildSkuSheetModel,
-    range,
-    month,
-    quarter,
-    yearShort,
-    onDownload,
-  ]);
+  }, [buildSkuSheetModel, range, month, quarter, yearShort, onDownload]);
 
 
   /* --------- Render guards --------- */
@@ -1585,19 +1567,20 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
 
                   if (name === "total") return "bg-[#EFEFEF] font-semibold";
-                  if (name === "others") return "font-semibold";
+                  if (name === "others") return "";
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                 }}
 
                 getValue={(row, colKey, rowIndex) => {
+                  // const name = String((row as any)?.product_name || "").trim().toLowerCase();
+                  // const isTotal = name === "total";
+                  
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
                   const isTotal = name === "total";
                   const isOthers = name === "others";
+                  if (colKey === "sno") return isTotal ? "" : rowIndex + 1;
 
-                  const isLastRow = rowIndex === displayRows.length - 1;
-
-                  if (colKey === "sno") return isLastRow ? "" : rowIndex + 1;
 
                   if (colKey === "product_name") {
                     const displayName = getDisplayProductNameFromRow(row);
@@ -1605,14 +1588,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     // ✅ ONLY "Others" in green
                     if (isOthers) {
                       return (
-                        <span className="inline-block max-w-[220px] truncate font-semibold text-[#60a68e]">
+                        <span className="inline-block max-w-[220px] truncate text-[#60a68e]">
                           {displayName}
                         </span>
                       );
                     }
 
                     // clickable products
-                    if (!isLastRow && !isTotal) {
+                    if (!isTotal) {
                       return (
                         <span
                           onClick={() => handleProductClick(String(displayName || ""))}

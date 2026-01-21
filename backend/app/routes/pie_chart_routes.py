@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import io
 import base64
+from datetime import datetime
 import jwt
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
@@ -335,6 +336,251 @@ def resolve_country(country, currency):
     return country
 
 
+# @pie_chart_bp.route('/pie-chart', methods=['GET', 'POST'])
+# def generate_pie_chart():
+
+#     # ---------------- Auth ----------------
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         user_id = payload['user_id']
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     try:
+#         # ---------------- Read params (GET + POST) ----------------
+#         body = request.get_json(silent=True) or {}
+
+#         # Prefer JSON body if present, else query string
+#         country_param = (body.get('country') or request.args.get('country') or '').strip().lower()
+
+#         # ✅ IMPORTANT FIX:
+#         # Only use homeCurrency when requesting GLOBAL views
+#         currency_param = None
+#         if country_param == "global":
+#             currency_param = (body.get('homeCurrency') or request.args.get('homeCurrency') or 'USD').strip().lower()
+
+#         country = resolve_country(country_param, currency_param)
+
+#         month = (body.get('month') if request.method == 'POST' else request.args.get('month')) or body.get('month') or request.args.get('month')
+#         year = (body.get('year') if request.method == 'POST' else request.args.get('year')) or body.get('year') or request.args.get('year')
+#         quarter = (body.get('quarter') if request.method == 'POST' else request.args.get('quarter')) or body.get('quarter') or request.args.get('quarter')
+#         range_type = (body.get('range') if request.method == 'POST' else request.args.get('range')) or body.get('range') or request.args.get('range')
+
+#         table_type = (body.get('table_type') or request.args.get('table_type') or 'auto')
+#         response_format = (body.get('format') or request.args.get('format') or 'json')
+
+#         # ---------------- Validate ----------------
+#         if not user_id or not country:
+#             return jsonify({'error': 'user_id and country are required parameters'}), 400
+
+#         if year:
+#             year = str(year)
+
+#         # ---------------- Fetch data from DB ----------------
+#         df = None
+#         used_table = None
+
+#         if table_type == 'auto':
+#             table_names = generate_table_names(user_id, country, month, year, quarter, range_type)
+#             for table_name in table_names:
+#                 df = fetch_data_from_table(table_name)
+#                 if df is not None and not df.empty:
+#                     used_table = table_name
+#                     break
+#         else:
+#             table_names = get_table_name_by_type(user_id, country, table_type, month, year, quarter)
+#             if not table_names:
+#                 return jsonify({'error': 'Invalid parameters for specified table type'}), 400
+
+#             for table_name in table_names:
+#                 df = fetch_data_from_table(table_name)
+#                 if df is not None and not df.empty:
+#                     used_table = table_name
+#                     break
+
+#         if df is None or df.empty:
+#             tables_checked = (
+#                 generate_table_names(user_id, country, month, year, quarter, range_type)
+#                 if table_type == 'auto'
+#                 else get_table_name_by_type(user_id, country, table_type, month, year, quarter)
+#             )
+#             return jsonify({
+#                 'error': 'No data found in any of the available tables',
+#                 'tables_checked': tables_checked,
+#                 'parameters': {
+#                     'user_id': user_id,
+#                     'country': country,
+#                     'month': month,
+#                     'year': year,
+#                     'quarter': quarter,
+#                     'range_type': range_type
+#                 }
+#             }), 404
+
+#         # ---------------- Prepare pie data ----------------
+#         labels, values = prepare_pie_chart_data(df)
+
+#         if not labels or not values:
+#             return jsonify({'error': 'No valid data available for pie chart'}), 404
+
+#         # ---------------- Title ----------------
+#         title_parts = ["Top 5 Products by Profit"]
+
+#         if range_type == 'quarterly' or quarter:
+#             quarter_display = quarter if quarter else (month if is_quarter_format(month) else None)
+#             if quarter_display and year:
+#                 title_parts.append(f"({quarter_display} {year})")
+#         elif month and not is_quarter_format(month):
+#             if year:
+#                 title_parts.append(f"({str(month).title()} {year})")
+#             else:
+#                 title_parts.append(f"({str(month).title()})")
+#         elif year:
+#             title_parts.append(f"({year})")
+
+#         if used_table and 'global' in used_table.lower():
+#             title_parts.append("- Global")
+#         elif country:
+#             title_parts.append(f"- {country.title()}")
+
+#         title = " ".join(title_parts)
+
+#         # ---------------- Generate chart ----------------
+#         chart_base64 = create_pie_chart(labels, values, title)
+#         if not chart_base64:
+#             return jsonify({'error': 'Failed to generate chart'}), 500
+
+#         # ---------------- Response ----------------
+#         response_data = {
+#             'success': True,
+#             'data': {
+#                 'labels': labels,
+#                 'values': values,
+#                 'total_products': len(df),
+#                 'top_5_count': min(5, len(df)),
+#                 'others_count': max(0, len(df) - 5),
+#                 'total_profit': sum(values),
+#                 'table_used': used_table,
+#                 'title': title,
+#                 'is_global_data': ('global' in used_table.lower()) if used_table else False
+#             }
+#         }
+
+#         if response_format == 'image':
+#             response_data['data']['chart_image'] = f"data:image/png;base64,{chart_base64}"
+#         else:
+#             response_data['data']['chart_base64'] = chart_base64
+
+#         return jsonify(response_data), 200
+
+#     except Exception as e:
+#         return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+
+
+def _prev_month_year(month: str, year: str) -> tuple[str, str]:
+    # month can be "jan" / "January" / "12" / "2025-12" etc.
+    # In your system month is usually text (like "december") OR numeric.
+    m = str(month).strip()
+
+    # normalize month to number 1..12
+    if "-" in m:  # "2025-12"
+        y_str, m_str = m.split("-", 1)
+        year = year or y_str
+        month_num = int(m_str)
+    else:
+        try:
+            month_num = int(m)
+        except ValueError:
+            month_num = datetime.strptime(m[:3].title(), "%b").month  # "dec", "december"
+
+    y = int(year)
+    if month_num == 1:
+        return "12", str(y - 1)
+    return str(month_num - 1), str(y)
+
+
+def _prev_quarter_year(quarter: str, year: str) -> tuple[str, str]:
+    q = str(quarter).strip().upper()
+    if q.startswith("Q"):
+        qnum = int(q[1:])
+    elif "-Q" in q:
+        y_str, q_str = q.split("-Q", 1)
+        year = year or y_str
+        qnum = int(q_str)
+    else:
+        qnum = int(q)
+
+    y = int(year)
+    if qnum == 1:
+        return "Q4", str(y - 1)
+    return f"Q{qnum - 1}", str(y)
+
+
+def _prev_year(year: str) -> str:
+    return str(int(year) - 1)
+
+def _fetch_best_table_for_mode(user_id, country, month=None, year=None, quarter=None, mode=None):
+    """
+    mode: 'monthly' | 'quarterly' | 'yearly'
+    This prevents falling back to yearly when you want previous monthly/quarterly.
+    """
+    candidates = []
+
+    if mode == "monthly":
+        # Only monthly names (no quarterly, no yearly)
+        if month and year and not is_quarter_format(month):
+            candidates.append(f"skuwisemonthly_{user_id}_{country.lower()}_{str(month).lower()}{year}")
+            candidates.append(f"skuwisemonthly_{user_id}_{country.lower()}_{str(month).lower()}{year}_table")
+
+    elif mode == "quarterly":
+        # Only quarterly name
+        if quarter and year:
+            qname = get_quarter_from_quarter_param(quarter)
+            if qname:
+                candidates.append(f"{qname}_{user_id}_{country.lower()}_{year}_table")
+        elif month and year and is_quarter_format(month):
+            qname = get_quarter_from_quarter_param(month)
+            if qname:
+                candidates.append(f"{qname}_{user_id}_{country.lower()}_{year}_table")
+        elif month and year:
+            qname = get_quarter_from_month(month)
+            if qname:
+                candidates.append(f"{qname}_{user_id}_{country.lower()}_{year}_table")
+
+    elif mode == "yearly":
+        if year:
+            candidates.append(f"skuwiseyearly_{user_id}_{country.lower()}_{year}_table")
+
+    # Try in order
+    for t in candidates:
+        df = fetch_data_from_table(t)
+        if df is not None and not df.empty:
+            return df, t, candidates
+
+    return None, None, candidates
+
+def _fetch_best_table_auto(user_id, country, month=None, year=None, quarter=None, range_type=None):
+    """
+    Auto mode used for CURRENT period.
+    Tries monthly -> quarterly -> yearly (as your generate_table_names returns).
+    """
+    table_names = generate_table_names(user_id, country, month, year, quarter, range_type)
+
+    for t in table_names:
+        df = fetch_data_from_table(t)
+        if df is not None and not df.empty:
+            return df, t
+
+    return None, None
+
+
 @pie_chart_bp.route('/pie-chart', methods=['GET', 'POST'])
 def generate_pie_chart():
 
@@ -353,14 +599,10 @@ def generate_pie_chart():
         return jsonify({'error': 'Invalid token'}), 401
 
     try:
-        # ---------------- Read params (GET + POST) ----------------
         body = request.get_json(silent=True) or {}
 
-        # Prefer JSON body if present, else query string
         country_param = (body.get('country') or request.args.get('country') or '').strip().lower()
 
-        # ✅ IMPORTANT FIX:
-        # Only use homeCurrency when requesting GLOBAL views
         currency_param = None
         if country_param == "global":
             currency_param = (body.get('homeCurrency') or request.args.get('homeCurrency') or 'USD').strip().lower()
@@ -375,24 +617,22 @@ def generate_pie_chart():
         table_type = (body.get('table_type') or request.args.get('table_type') or 'auto')
         response_format = (body.get('format') or request.args.get('format') or 'json')
 
-        # ---------------- Validate ----------------
+        # ✅ NEW flag: include previous values (default true)
+        include_previous = (body.get('include_previous') or request.args.get('include_previous') or "true")
+        include_previous = str(include_previous).lower() != "false"
+
         if not user_id or not country:
             return jsonify({'error': 'user_id and country are required parameters'}), 400
 
         if year:
             year = str(year)
 
-        # ---------------- Fetch data from DB ----------------
+        # ---------------- Fetch current data ----------------
         df = None
         used_table = None
 
         if table_type == 'auto':
-            table_names = generate_table_names(user_id, country, month, year, quarter, range_type)
-            for table_name in table_names:
-                df = fetch_data_from_table(table_name)
-                if df is not None and not df.empty:
-                    used_table = table_name
-                    break
+            df, used_table = _fetch_best_table_auto(user_id, country, month, year, quarter, range_type)
         else:
             table_names = get_table_name_by_type(user_id, country, table_type, month, year, quarter)
             if not table_names:
@@ -423,11 +663,80 @@ def generate_pie_chart():
                 }
             }), 404
 
-        # ---------------- Prepare pie data ----------------
+        # ---------------- Prepare CURRENT pie data ----------------
         labels, values = prepare_pie_chart_data(df)
-
         if not labels or not values:
             return jsonify({'error': 'No valid data available for pie chart'}), 404
+
+                # ---------------- Prepare PREVIOUS pie data ----------------
+        prev_labels, prev_values = [], []
+        prev_table = None
+        prev_period_meta = None
+        prev_candidates = []
+
+        if include_previous:
+            rt = (range_type or "").strip().lower()
+
+            # QUARTERLY previous
+            if rt == "quarterly" or quarter or (month and is_quarter_format(month)):
+                if not year:
+                    return jsonify({'error': 'year is required for quarterly previous comparison'}), 400
+
+                q_display = quarter if quarter else month
+                prev_q, prev_y = _prev_quarter_year(q_display, year)
+                prev_period_meta = {"type": "quarterly", "quarter": prev_q, "year": prev_y}
+
+                prev_df, prev_table, prev_candidates = _fetch_best_table_for_mode(
+                    user_id=user_id,
+                    country=country,
+                    quarter=prev_q,
+                    year=prev_y,
+                    mode="quarterly",
+                )
+
+            # YEARLY previous
+            elif rt == "yearly" or (year and not month and not quarter):
+                if not year:
+                    return jsonify({'error': 'year is required for yearly previous comparison'}), 400
+
+                prev_y = _prev_year(year)
+                prev_period_meta = {"type": "yearly", "year": prev_y}
+
+                prev_df, prev_table, prev_candidates = _fetch_best_table_for_mode(
+                    user_id=user_id,
+                    country=country,
+                    year=prev_y,
+                    mode="yearly",
+                )
+
+            # MONTHLY previous
+            else:
+                if month and year:
+                    pm, py = _prev_month_year(month, year)
+                    prev_period_meta = {"type": "monthly", "month": pm, "year": py}
+
+                    # IMPORTANT: convert prev month number to month-name if your tables use month name
+                    # Your monthly tables are like "..._{month.lower()}{year}"
+                    # If you pass "11" it becomes "..._112025" which may not exist.
+                    # If your schema uses names like "november2025", convert numeric month -> monthname.
+                    pm_str = str(pm).strip()
+                    if pm_str.isdigit():
+                        pm_str = datetime(2000, int(pm_str), 1).strftime("%B").lower()
+
+
+                    prev_df, prev_table, prev_candidates = _fetch_best_table_for_mode(
+                        user_id=user_id,
+                        country=country,
+                        month=pm_str,
+                        year=py,
+                        mode="monthly",
+                    )
+                else:
+                    prev_df = None
+
+            if prev_df is not None and not prev_df.empty:
+                prev_labels, prev_values = prepare_pie_chart_data(prev_df)
+
 
         # ---------------- Title ----------------
         title_parts = ["Top 5 Products by Profit"]
@@ -456,6 +765,17 @@ def generate_pie_chart():
         if not chart_base64:
             return jsonify({'error': 'Failed to generate chart'}), 500
 
+        # ---------------- OPTIONAL: product-by-product comparison ----------------
+        # same_products: current top5 labels matched with previous values
+        prev_map = {k: v for k, v in zip(prev_labels, prev_values)} if prev_labels else {}
+        compare = []
+        for k, v in zip(labels, values):
+            compare.append({
+                "product": k,
+                "current_profit": v,
+                "previous_profit": prev_map.get(k, 0)
+            })
+
         # ---------------- Response ----------------
         response_data = {
             'success': True,
@@ -468,7 +788,20 @@ def generate_pie_chart():
                 'total_profit': sum(values),
                 'table_used': used_table,
                 'title': title,
-                'is_global_data': ('global' in used_table.lower()) if used_table else False
+                'is_global_data': ('global' in used_table.lower()) if used_table else False,
+
+                # ✅ NEW previous block
+                'previous': {
+                    "available": bool(prev_labels),
+                    "period": prev_period_meta,
+                    "table_used": prev_table,
+                    "labels": prev_labels,
+                    "values": prev_values,
+                    "total_profit": sum(prev_values) if prev_values else 0,
+                },
+
+                # ✅ NEW comparison block
+                "compare_top5": compare,
             }
         }
 
@@ -515,3 +848,5 @@ def get_pie_chart_image():
         return jsonify({
             'error': f'An error occurred: {str(e)}'
         }), 500
+    
+
