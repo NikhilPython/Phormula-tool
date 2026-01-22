@@ -2578,10 +2578,10 @@ export default function DashboardPage() {
 
 
       {/* <div className={`grid grid-cols-12 gap-6 items-stretch`}> */}
-      <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-6 items-stretch scroll-mt-[80px] mt-4">
+      <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-4 items-stretch scroll-mt-[80px] mt-4">
 
         {/* LEFT COLUMN */}
-        <div className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 lg:gap-4 2xl:gap-6 ${leftColumnHeightClass}`}>
+        <div className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 lg:gap-4 2xl:gap-4 ${leftColumnHeightClass}`}>
 
           {/* GLOBAL CARD */}
           {!isCountryMode && hasGlobalCard && (
@@ -2836,7 +2836,7 @@ export default function DashboardPage() {
 
           {/* AMAZON SECTION */}
           {hasAmazonCard && (
-            <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-6">
+            <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-4">
               {/* Amazon KPI Box */}
               <div className="w-full rounded-2xl border bg-white p-3 2xl:p-5 shadow-sm">
                 <div className="mb-3 lg:mb-2 2xl:mb-4 flex flex-row gap-3 items-start md:items-start md:justify-between">
@@ -3221,7 +3221,7 @@ export default function DashboardPage() {
         </div>
 
         {/* RIGHT COLUMN – Sales Target */}
-        <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex flex-col gap-4 lg:gap-4 2xl:gap-6 h-full">
+        <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex flex-col gap-4 lg:gap-4 2xl:gap-4 h-full">
           <div className="w-full">
             <SalesTargetStatsCard
               regions={regions}

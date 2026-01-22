@@ -8,7 +8,8 @@ export type Align = "left" | "center" | "right";
 
 export type LeafCol<RowT> = {
   key: string;
-  label: string;
+  label: React.ReactNode;
+    excelLabel?: string;
   align?: Align;
   tooltip?: React.ReactNode;
   thClassName?: string;
@@ -17,7 +18,7 @@ export type LeafCol<RowT> = {
 
 export type ColGroup<RowT> = {
   id: string;
-  label: string;
+  label: React.ReactNode; 
   headerClassName?: string;
   collapsedCols: LeafCol<RowT>[];
   expandedCols: LeafCol<RowT>[];
