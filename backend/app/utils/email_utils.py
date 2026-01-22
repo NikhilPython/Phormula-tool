@@ -36,7 +36,7 @@ def test_send_email():
 
 
 
-def send_welcome_and_verification_emails(email, verification_link):
+def send_welcome_and_verification_emails(email, name, verification_link):
     try:               
         welcome_msg = Message(
             'Welcome to Phormula', 
@@ -49,25 +49,107 @@ def send_welcome_and_verification_emails(email, verification_link):
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Welcome to Phormula</title>
+  <meta charset="UTF-8">
 </head>
-<body style="font-family: 'Lato', Arial, sans-serif; background-color: #f4f4f4; padding: 20px; margin: 0;">
-    <div style="max-width: 600px; margin: 0 auto; background-color: #fff; padding: 30px; border-radius: 8px; border: 2px solid#5EA68E; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);">
-        <img src="https://i.postimg.cc/43T3k86Z/logo.png" alt="Phormula Logo" style="width: 200px; height: auto; display: block; margin: 0 auto 20px;" />
-        <p style="font-size: 14px; line-height: 1.6; color: #555;">Hey {email},</p>
-        <p style="font-size: 14px; line-height: 1.6; color: #555;">Welcome to Phormula!</p>
-        <p style="font-size: 14px; line-height: 1.6; color: #555;">We are excited to have you on board. You are now part of our global community of D2C Brands.</p>
-        <p style="font-size: 14px; line-height: 1.6; color: #555;">To explore the Phormula Tool, please verify your email address by clicking the button below:</p>
-        <a href="{verification_link}" style="display: inline-block; background-color: #37455F; color: #f8edcf; padding: 8px 20px; text-align: center; text-decoration: none; font-size: 14px; border-radius: 8px; box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.2); transition: background-color 0.3s ease; cursor: pointer;">Activate My Account</a>
-        <p style="font-size: 14px; color: #777;">If you did not request this email, you can safely ignore it.</p>
-        <p style="font-size: 14px; color: #555;">If you have any questions or need assistance, feel free to reach out to our support team at <a href="mailto:care@phormula.io" style="color: #007bff;">care@phormula.io</a></p>
-        <p style="font-size: 14px; color: #555;">Best regards, <br>The Phormula Team</p>
+
+<body style="
+  margin:0;
+  padding:0;
+ background: #d1d5db; /* dark outer bg */
+  font-family: Arial, Helvetica, sans-serif;
+">
+
+  <!-- Outer wrapper -->
+  <div style="
+    padding:40px 16px;
+  ">
+
+    <!-- Card -->
+    <div style="
+      max-width:520px;
+      margin:0 auto;
+      background:#ffffff;
+      border-radius:12px;
+      padding:32px;
+      text-align:left;
+      border:1px solid #e5e7eb;
+      box-shadow:0 10px 25px rgba(0,0,0,0.15);
+    ">
+
+      <!-- Logo -->
+      <div style="
+        font-size:22px;
+        font-weight:600;
+        margin-bottom:28px;
+        color:#37455F;
+        text-align:center;
+      ">
+        Phormula
+      </div>
+
+      <p style="font-size:14px; color:#333; margin:0 0 14px;">
+        Hey {name},
+      </p>
+
+      <p style="font-size:14px; color:#333; margin:0 0 14px;">
+        Welcome to <strong>Phormula</strong>, a platform built for modern D2C brands!
+      </p>
+
+      <p style="font-size:14px; color:#555; line-height:1.6; margin:0 0 18px;">
+        We’re delighted to have you on board.
+      </p>
+
+      <p style="font-size:14px; color:#555; line-height:1.6; margin:0 0 18px;">
+        To begin your journey and securely access the Phormula experience,
+        please verify your email address by clicking the button below:
+      </p>
+
+      <!-- Centered Button -->
+      <div style="text-align:center; margin:28px 0;">
+        <a href="{verification_link}"
+           style="
+             display:inline-block;
+             background:#37455F;
+             color:#ffffff;
+             padding:12px 30px;
+             font-size:14px;
+             font-weight:600;
+             text-decoration:none;
+             border-radius:8px;
+           ">
+          Activate My Account
+        </a>
+      </div>
+
+      <p style="font-size:14px; color:#555; line-height:1.6; margin:0 0 16px;">
+        Once confirmed, you’ll unlock powerful tools and insights designed to help
+        you scale, optimize, and grow your brand with confidence.
+      </p>
+
+      <p style="font-size:13px; color:#777; margin:0 0 16px;">
+        If you did not create a Phormula account, you may safely ignore this email.
+      </p>
+
+      <p style="font-size:13px; color:#777; margin:0 0 24px;">
+        For any questions or assistance, our support team is available at
+        <a href="mailto:care@phormula.io"
+           style="color:#37455F; text-decoration:none;">
+          care@phormula.io
+        </a>
+      </p>
+
+      <p style="font-size:13px; color:#777; margin:0;">
+        Warm regards,<br>
+        The Phormula Team
+      </p>
+
     </div>
+  </div>
 </body>
 </html>
+"""
 
-        """
+
         
         # Ensure content is non-empty before sending
         if not welcome_msg.html:
@@ -110,12 +192,14 @@ def send_reset_email(to_email, reset_url):
     msg.html = html_body
     mail.send(msg)
 
-def metric_box(label, value, is_negative=False):
+def metric_box(label, value, is_negative=False, bg="#ffffff"):
     """Render one KPI box. Sign/color is controlled by is_negative."""
     color = "#d32f2f" if is_negative else "#2e7d32"
     sign = "-" if is_negative else "+"
     return f"""
-    <td style="padding:10px; background:#f9fafb; border-radius:6px; text-align:center;">
+    <td style="padding:10px; background:{bg}; border-radius:6px; text-align:center;">
+    
+    
       <div style="font-size:11px; color:#666;">{label}</div>
       <div style="font-size:16px; font-weight:bold; color:{color};">
         {sign}{abs(value):.2f}%
@@ -140,7 +224,14 @@ def _metric_is_negative(description: str, keyword_pattern: str, extracted_value:
     return bool(patt.search(description))
 
 
-def render_sku_card(sku):
+
+
+def render_sku_card(sku, idx=0):
+    
+    is_gray = idx % 2 == 0
+    card_bg = "#F3F4F6" if is_gray else "#FFFFFF"
+    inner_bg = "#FFFFFF" if is_gray else "#F3F4F6"
+    
     negatives = sku.get("negatives") or {}
     asp_neg = bool(negatives.get("ASP", False))
     units_neg = bool(negatives.get("Units", False))
@@ -153,7 +244,7 @@ def render_sku_card(sku):
       border-radius:12px;
       padding:16px;
       margin-bottom:20px;
-      background:#ffffff;
+      background:{card_bg};
     ">
       <div style="font-size:15px; font-weight:600; margin-bottom:10px;">
         {sku['product']}
@@ -161,11 +252,11 @@ def render_sku_card(sku):
 
       <table width="100%" cellspacing="8">
        <tr>
-  {metric_box("ASP Change", sku["metrics"]["ASP"], asp_neg)}
-  {metric_box("Units", sku["metrics"]["Units"], units_neg)}
-  {metric_box("Sales", sku["metrics"]["Sales"], sku["negatives"].get("Sales", False))}
-  {metric_box("Sales Mix", sku["metrics"]["Sales Mix"], mix_neg)}
-  {metric_box("Profit", sku["metrics"]["Profit"], profit_neg)}
+  {metric_box("ASP Change", sku["metrics"]["ASP"], asp_neg, inner_bg)}
+{metric_box("Units", sku["metrics"]["Units"], units_neg, inner_bg)}
+{metric_box("Sales", sku["metrics"]["Sales"], sku["negatives"].get("Sales", False), inner_bg)}
+{metric_box("Sales Mix", sku["metrics"]["Sales Mix"], mix_neg, inner_bg)}
+{metric_box("Profit", sku["metrics"]["Profit"], profit_neg, inner_bg)}
 </tr>
       </table>
 
@@ -430,11 +521,17 @@ def send_live_bi_email(
     # so the email shows the same SKU-wise card UI as the frontend.
     sku_section_html = ""
     if sku_actions:
-        sku_section_html = "".join(render_sku_card(sku) for sku in sku_actions)
+        sku_section_html = "".join(
+    render_sku_card(sku, idx)
+    for idx, sku in enumerate(sku_actions)
+)
     elif overall_actions:
         parsed_cards = parse_actions_to_cards(overall_actions)
         if parsed_cards:
-            sku_section_html = "".join(render_sku_card(sku) for sku in parsed_cards)
+            sku_section_html = "".join(
+                render_sku_card(sku, idx)
+                for idx, sku in enumerate(parsed_cards)
+            )
         else:
             # fallback: plain bullets (should be rare)
             sku_section_html = f"""
@@ -476,14 +573,54 @@ def send_live_bi_email(
           Live MTD vs Previous Period – Business Insights
         </h2>
 
-        <p style="text-align:center; font-size:13px; color:#777;">
-          Country: <strong>{country.upper()}</strong><br/>
-          Previous: {prev_label} | Current: {curr_label}
-        </p>
+       <div style="text-align:center; margin-bottom:16px;">
+  <div style="
+    font-size:18px;
+    font-weight:700;
+    color:#37455F;
+    background:#EAF3F0;
+    display:inline-block;
+    padding:6px 16px;
+    border-radius:20px;
+    margin-bottom:8px;
+  ">
+     Country: {country.upper()}
+  </div>
+
+  <div style="margin-top:10px;">
+    <span style="
+      font-size:14px;
+      font-weight:600;
+      color:#37455F;
+      background:#F3F4F6;
+      padding:4px 10px;
+      border-radius:12px;
+      margin-right:6px;
+      display:inline-block;
+    ">
+      Previous: {prev_label}
+    </span>
+
+    <span style="
+      font-size:14px;
+      font-weight:600;
+      color:#ffffff;
+      background:#37455F;
+      padding:4px 10px;
+      border-radius:12px;
+      display:inline-block;
+    ">
+      Current: {curr_label}
+    </span>
+  </div>
+</div>
+
 
         <hr style="margin:20px 0; border:none; border-top:1px solid #eee;" />
 
-        <h3 style="color:#37455F;">Overall Summary</h3>
+        <h3 style="color:#37455F; display:flex; align-items:center;">
+  📊 <span style="margin-left:8px;">Overall Summary</span>
+</h3>
         <ul style="font-size:14px; color:#555;">
           {summary_html}
         </ul>
