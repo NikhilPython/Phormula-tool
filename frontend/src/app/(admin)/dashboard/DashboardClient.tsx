@@ -2519,14 +2519,15 @@ export default function DashboardPage() {
         <>
           <div className="fixed inset-0 z-40 bg-white/70" />
           <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <Loader
-              src="/infinity-unscreen.gif"
+            {/* <Loader
+              src="/infinityNew.gif"
               label="Loading sales dashboard…"
-              size={120}
+              size={240}
               roundedClass="rounded-xl"
               backgroundClass="bg-transparent"
               respectReducedMotion
-            />
+            /> */}
+            <Loader fullscreen transparent />
           </div>
         </>
       )}
@@ -2564,8 +2565,8 @@ export default function DashboardPage() {
             onClick={refreshAll}
             disabled={loading || shopifyLoading || biLoading}
             className={`w-full rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm sm:w-auto ${loading || shopifyLoading || biLoading
-                ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                : "border-gray-300 bg-white hover:bg-gray-50"
+              ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+              : "border-gray-300 bg-white hover:bg-gray-50"
               }`}
           >
             {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}

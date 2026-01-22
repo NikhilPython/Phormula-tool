@@ -21,7 +21,7 @@ export default function ValueOrSkeleton({
     return (
       <span className="inline-flex items-center gap-1">
         {children}
-        {loading && (
+        {/* {loading && (
           <Loader
             size={compact ? 16 : 20}
             transparent
@@ -30,24 +30,24 @@ export default function ValueOrSkeleton({
             className="text-gray-400"
             forceFallback
           />
-        )}
+        )} */}
       </span>
     );
   }
 
-  if (loading) {
-    return (
-      <div className="inline-flex items-center justify-center">
-        <Loader
-          size={compact ? 28 : 36}
-          transparent
-          roundedClass="rounded-full"
-          backgroundClass="bg-transparent"
-          className="text-gray-400"
-          forceFallback
-        />
-      </div>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <div className="inline-flex items-center justify-center">
+  //       <Loader
+  //         size={compact ? 28 : 36}
+  //         transparent
+  //         roundedClass="rounded-full"
+  //         backgroundClass="bg-transparent"
+  //         className="text-gray-400"
+  //         forceFallback
+  //       />
+  //     </div>
+  //   );
+  // }
   return <>{children}</>;
 }

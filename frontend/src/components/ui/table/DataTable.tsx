@@ -108,14 +108,7 @@ export default function DataTable<T extends Row>({
         )}
         style={{ minHeight: loaderStyleHeight }}
       >
-        <Loader
-          src="/infinity-unscreen.gif"
-          size={150}
-          transparent
-          roundedClass="rounded-full"
-          backgroundClass="bg-transparent"
-          respectReducedMotion
-        />
+                   <Loader fullscreen transparent />
       </div>
     );
   }

@@ -1512,15 +1512,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   if (initialLoading) {
     return (
-      <Loader
-        src="/infinity-unscreen.gif"
-        label="Loading financial metrics…"
-        fullscreen
-        size={120}
-        roundedClass="rounded-none"
-        backgroundClass="bg-neutral-900/60"
-        respectReducedMotion
-      />
+                 <Loader fullscreen transparent />
     );
   }
 
