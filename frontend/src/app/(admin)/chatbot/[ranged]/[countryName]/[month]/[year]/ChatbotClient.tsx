@@ -387,7 +387,7 @@ function convertPlainTextToMarkdown(text: string): string {
     <div className="flex flex-col bg-white font-[Lato] chatbot-container h-full ">
       <div className="text-white bg-gradient-to-r from-[#5ea68e] to-[#37455f] rounded-t-xl message-header py-[2vw] px-[2vw] md:py-[2vw] md:px-[3.5vw] lg:py-[1vw] lg:px-[1.25vw]">
         <h1 className="2xl:text-2xl text-[18px] font-bold">
-          Hi <i>{userData?.company_name?.split(' ')[0] || 'User'}!</i>
+          Hi <i>{userData?.name || 'User'}!</i>
         </h1>
         <p style={{ fontFamily: "Lato, sans-serif" }} className="2xl:text-sm text-xs  mt-1 ">
         I&apos;m your Analytics Assistant, here to help you understand your business data, generate insights, and make informed decisions. What would you like to explore today?
