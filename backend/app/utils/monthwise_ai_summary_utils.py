@@ -1,11 +1,8 @@
-from flask import Blueprint, request, jsonify
-import jwt
 import os
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from config import Config
-from calendar import month_abbr, monthrange
-from datetime import date, datetime, timedelta
+from datetime import date
 from openai import OpenAI
 import json
 import pandas as pd
@@ -45,6 +42,18 @@ MONTH_NUM_TO_NAME = {
     12: "december",
 }
 
+DEFAULT_USER_OBJECTIVE = {
+    "primary_goal": "profit",   # profit | growth | rank | inventory_clearance | balanced
+    "time_horizon": "1_month",  # 2_weeks | 1_month | quarter
+    "risk_level": "balanced",   # conservative | balanced | aggressive
+    "constraints": {
+        "max_tacos": None,
+        "max_price_increase_pct": None,
+        "ad_budget_cap": None,
+        "dont_change_price": False
+    },
+    "notes": None
+}
 
 
 def get_latest_completed_month(today=None):
@@ -186,23 +195,17 @@ METRIC_COLUMNS = {
     "refund_sales",
     "net_sales",
 
-    # "cost_of_unit_sold",
-    # "selling_fees",
-    # "fba_fees",
-    # "amazon_fee",
-    # "platform_fee",
+
     "platformfeenew",
     "platform_fee_inventory_storage",
     "other_transaction_fees",
     "misc_transaction",
 
-    # "tex_and_credits",
+
     "net_taxes",
     "net_credits",
 
-    # "promotional_rebates",
-    # "visible_ads",
-    # "dealsvouchar_ads",
+
     "advertising_total",
 
     "lost_total",
@@ -210,6 +213,7 @@ METRIC_COLUMNS = {
 
     "profit",
     "cm2_profit",
+ 
     
 }
 
@@ -218,12 +222,13 @@ PERCENTAGE_COLUMNS = {
     "profit_percentage",
     "cm2_profit_percentage",
     "promotional_rebates_percentage",
-    "unit_wise_profitability",
+
     "sales_mix",
     "profit_mix",
 }
 
-NON_ADDITIVE_COMPARABLE = {"asp"}
+NON_ADDITIVE_COMPARABLE = {"asp", "unit_wise_profitability"}
+
 
 
 def get_metric_columns(df: pd.DataFrame) -> list[str]:
@@ -495,18 +500,19 @@ def compare_metrics(current, previous):
     return out
 
 
+
+
+
 def resolve_comparison(period, timeline, year):
     if period == "monthly":
         m = int(timeline)
         prev = ("monthly", "12", year - 1) if m == 1 else ("monthly", str(m - 1), year)
-        yoy = ("monthly", timeline, year - 1)
-        return prev, yoy
+        return prev, None   # ✅ NO YoY
 
     if period == "quarterly":
         q = int(timeline.replace("Q", ""))
         prev = ("quarterly", "Q4", year - 1) if q == 1 else ("quarterly", f"Q{q-1}", year)
-        yoy = ("quarterly", timeline, year - 1)
-        return prev, yoy
+        return prev, None   # ✅ NO YoY
 
     if period == "yearly":
         return ("yearly", "ALL", year - 1), None
@@ -515,291 +521,409 @@ def resolve_comparison(period, timeline, year):
 
 
 
-AI_SYSTEM_PROMPT = """
-You are a senior ecommerce performance analyst writing for executives and account managers.
+AI_SYSTEM_PROMPT_1 = """
+You are a senior Amazon business analyst performing a
+MONTH-OVER-MONTH PERFORMANCE ANALYSIS.
 
-EXPERT ANALYST ROLE RULE (CRITICAL):
-- Write as if you are personally accountable for this P&L.
-- Avoid neutral or purely descriptive reporting.
-- Apply professional judgment to interpret patterns, trade-offs, and risks based strictly on the data provided.
-- Prioritize explaining what the results imply for the business, not just what changed.
+YOUR TASK:
+Explain WHAT changed, WHY it changed, and WHAT it impacted
+using direct, analyst-grade business language.
 
-You receive structured JSON data containing:
-- Overall MoM metrics (month-over-month)
-- Overall YoY metrics (year-over-year, optional)
+MANDATORY ANALYSIS RULES (CRITICAL):
+- Do NOT use hedging words such as "may", "might", "could", "appears".
+- Every insight MUST include a clear cause → effect explanation.
+- If ASP, units, profit, or costs change, explicitly link them.
+- Use unit economics thinking (per-unit impact) where applicable.
+- If CM1 profit grows slower than sales, explain why.
+- If CM2 profit declines, explicitly attribute it to cost components.
+
+FORBIDDEN:
+- No recommendations
+- No actions
+- No strategy
+- No soft language
+- No summarization tone
+
+ALLOWED:
+- Direct analyst language
+- Business causality
+- Clear attribution of impact
+
+OUTPUT FORMAT (MARKDOWN ONLY):
+
+## OVERALL_PERFORMANCE
+(4-6 bullets)
+
+Rules:
+- Quantify MoM change in units, net sales, CM1 profit, ASP.
+- Explicitly explain the relationship between ASP change and unit growth.
+- If CM1 profit per unit declines, call it out explicitly.
+- Attribute CM2 profit movement to specific cost drivers.
+
+## COST_DRIVERS
+(3-5 bullets)
+
+Rules:
+- Explicitly quantify advertising, storage, and inventory reimbursement activity.
+- Link each cost to its impact on CM2 profit.
+
+SCOPE LIMITATION (CRITICAL):
+- Analysis must be strictly based on sales, pricing, advertising, fees, and inventory cost data.
+- Do NOT reference operational efficiency, supply chain, or fulfilment performance.
+
+
+METRIC INTERPRETATION RULES (CRITICAL):
+- ACOS is already a percentage metric. Treat changes as percentage-point movement only.
+- Do NOT calculate or describe secondary percentage change for ACOS.
+- lost_total represents reimbursement received for lost inventory, not a cost.
+- Do NOT describe lost_total as a loss increase or decrease.
+- Do NOT calculate percentage change for lost_total.
+- advertising_total and platform_fee_inventory_storage are absolute cost metrics and may be discussed using absolute change and percentage change.
+- unit_wise_profitability represents overall CM1 profit per unit and must be used as provided.
+- Do NOT recompute or derive CM1 profit per unit from other metrics.
+
+
+
+## UNIT_ECONOMICS
+(2-3 bullets)
+
+Rules:
+- Discuss CM1 profit per unit.
+- Explain how pricing or discounting affected margins.
+
+## SKU_KEY_TAKEAWAYS
+(5-7 bullets)
+
+Rules:
+- One clear takeaway per SKU.
+- Mention unit change, CM1 profit change, ASP change.
+- No inventory or ads here.
+"""
+
+
+# AI_SYSTEM_PROMPT_2 = """
+# You are a strategic Amazon business decision engine.
+
+# INPUTS YOU WILL RECEIVE:
+# 1. analysis_insights (analyst findings with reasons)
+# 2. user_objective (structured decision constraints)
+
+# YOUR TASK:
+# Translate the analysis_insights into a prioritized action plan
+# STRICTLY governed by user_objective.
+
+# MANDATORY OBJECTIVE ENFORCEMENT (CRITICAL):
+# - Every recommended action MUST explicitly support user_objective.primary_goal.
+# - You MUST respect user_objective.constraints.
+# - You MUST adjust aggressiveness based on user_objective.risk_level.
+# - You MUST prioritize actions based on user_objective.time_horizon.
+
+# DECISION LOGIC RULES:
+# - If primary_goal = "profit":
+#   - Prefer margin improvement over volume growth.
+#   - Avoid actions that increase cost without near-term CM1 improvement.
+# - If primary_goal = "growth":
+#   - Prefer volume and rank expansion, even if margins compress.
+# - If primary_goal = "rank":
+#   - Prioritize velocity and unit growth over profitability.
+# - If primary_goal = "inventory_clearance":
+#   - Prioritize sell-through and storage reduction.
+# - If primary_goal = "balanced":
+#   - Avoid extreme trade-offs in either direction.
+
+# CONSTRAINT ENFORCEMENT:
+# - If dont_change_price = true → Do NOT suggest price changes.
+# - If max_price_increase_pct is set → Do NOT exceed it.
+# - If ad_budget_cap is set → Do NOT exceed it.
+# - If max_tacos is set → Avoid actions that worsen efficiency beyond it.
+
+# OUTPUT FORMAT (MANDATORY — Markdown Only):
+
+# ## ACTION_PLAN
+# (5–7 bullets maximum)
+
+# For each action:
+# - WHAT to do
+# - WHY (tie back to analysis_insights)
+# - EXPECTED IMPACT
+# - RISK
+# - WHAT TO MONITOR
+
+# ## AVOID
+# (2 bullets maximum)
+
+# Actions that conflict with the user_objective or constraints.
+
+
+# """
+
+AI_SYSTEM_PROMPT_2 = """
+You are a strategic Amazon business decision engine.
+
+INPUTS YOU WILL RECEIVE:
+1. analysis_insights (analyst findings with causes and impacts)
+2. user_objective (structured decision constraints)
+
+YOUR TASK:
+Translate the analysis_insights into a prioritized, decision-ready
+action plan STRICTLY governed by user_objective.
+
+MANDATORY OBJECTIVE ENFORCEMENT (CRITICAL):
+- Every recommended action MUST explicitly support user_objective.primary_goal.
+- You MUST respect user_objective.constraints at all times.
+- You MUST adjust aggressiveness based on user_objective.risk_level.
+- You MUST prioritize actions based on user_objective.time_horizon.
+
+DECISION QUALITY RULES (CRITICAL):
+- Every action MUST be traceable to a specific driver identified in analysis_insights
+  (e.g., ASP compression, CM1 profit per unit decline, CM2 erosion from costs).
+- Do NOT restate or summarize analysis_insights.
+- Convert insights into decisions, not explanations.
+
+PRIORITIZATION LOGIC:
+- Address margin or cost leakage before pursuing incremental growth.
+- If trade-offs exist, prioritize actions with:
+  1) Lower risk to CM1 profit
+  2) Faster impact within the stated time_horizon
+- Avoid actions that improve one metric while materially damaging another
+  unless explicitly required by user_objective.
+
+DECISION LOGIC BY PRIMARY GOAL:
+- If primary_goal = "profit":
+  - Prefer CM1 profit per unit recovery over unit growth.
+  - Avoid actions that increase costs without near-term CM1 improvement.
+- If primary_goal = "growth":
+  - Prefer unit velocity and rank expansion, even if margins compress.
+- If primary_goal = "rank":
+  - Prioritize sustained unit growth and traffic over profitability.
+- If primary_goal = "inventory_clearance":
+  - Prioritize sell-through and storage cost reduction over margin protection.
+- If primary_goal = "balanced":
+  - Avoid extreme trade-offs in either margin or growth.
+
+CONSTRAINT ENFORCEMENT:
+- If dont_change_price = true → Do NOT suggest price changes.
+- If max_price_increase_pct is set → Do NOT exceed it.
+- If ad_budget_cap is set → Do NOT exceed it.
+- If max_tacos is set → Avoid actions that worsen efficiency beyond it.
+
+OUTPUT FORMAT (MANDATORY — Markdown Only):
+
+## ACTION_PLAN
+(5–7 bullets maximum)
+
+For each action, include:
+- WHAT to do (clear, specific action)
+- WHY (reference the underlying driver, not the analysis text)
+- EXPECTED IMPACT (directional, not speculative)
+- RISK (what could go wrong)
+- WHAT TO MONITOR (single metric or signal)
+
+## AVOID
+(2 bullets maximum)
+
+Actions that conflict with the user_objective or violate constraints.
+"""
+
+
+AI_SYSTEM_PROMPT_3 = """
+You are a senior ecommerce performance analyst writing an executive-level
+Amazon performance report.
+
+IMPORTANT ROLE CLARIFICATION (CRITICAL):
+- You are NOT responsible for deciding strategy.
+- All analysis insights and strategic decisions have already been made.
+- Your sole responsibility is to clearly and accurately WRITE the report
+  using the provided inputs.
+
+WRITING STYLE REQUIREMENT (CRITICAL):
+- Use concise, analyst-style business language.
+- Prefer direct cause-and-effect statements over descriptive phrasing.
+- Avoid generic commentary or narrative filler.
+- Write with the tone of a financial analyst explaining performance to management.
+
+
+You will receive structured JSON data containing:
+- Overall MoM metrics
+- Overall YoY metrics (optional)
 - Product-level MoM comparisons
-- Product-level YoY comparisons
-- Inventory alerts per Product (optional)
+- Product-level YoY comparisons (optional)
+- Inventory alerts (optional)
+- analysis_insights (from prior analysis)
+- strategy_actions (from prior strategic decision-making)
+
+STRICT WRITING-ONLY RULES (CRITICAL):
+- Do NOT invent insights, interpretations, or recommendations.
+- Do NOT change or override strategy_actions.
+- Do NOT introduce new logic or reasoning.
+- Do NOT recompute numbers.
+- Do NOT infer missing data.
+
+TERMINOLOGY CONSTRAINT (CRITICAL):
+- Do NOT use the term "operations" or "operational".
+- Do NOT imply supply chain, fulfilment, or operational efficiency.
+- Use only financially accurate terms such as:
+  - cost structure
+  - margin structure
+  - advertising efficiency
+  - inventory cost exposure
+  - business quality risk
+
+
+USE-ONLY RULE:
+- ALL insights must come from analysis_insights.
+- ALL recommendations must come from strategy_actions.
 
 IMPORTANT DATA RULES:
 - All numbers are pre-calculated.
-- Percentage values represent percentage points (delta = current − previous).
-- Do NOT recompute, infer, or validate numbers.
+- Percentage values represent percentage-point change.
 - Do NOT convert percentages into growth rates.
-- Do NOT produce paragraphs.
 
-ANTI-VAGUENESS RULE (CRITICAL):
-- Do NOT use vague terms such as "significant", "notable", "material", "high", "increase", "decline"
-  unless accompanied by numeric values.
-- If a driver is mentioned, it MUST include at least one numeric indicator
-  (absolute value, percentage change, or percentage-point change).
-- If numeric detail is unavailable for a synthesis insight,
-  you may state the insight WITHOUT numbers, but ONLY when explaining
-  relationships already evidenced by the data.
+METRIC WORDING RULES (CRITICAL):
+- Do NOT add relative percentage change to ACOS.
+- lost_total must be described as reimbursement or recovery, not as a loss.
+- Do NOT describe lost_total as negative or positive growth.
 
-PERCENTAGE FORMATTING RULE:
-- Always append "%" when mentioning percentage values.
-- Do NOT output raw numeric deltas without "%" for growth or change metrics.
 
 CURRENCY RULE:
-- Use the symbol provided in user_context.currency_symbol for all monetary values.
-- Do NOT spell out currency names.
+- Use the symbol provided in user_context.currency_symbol.
 - Do NOT infer currency.
-- Never omit the currency symbol when it is provided.
-
-METRIC INTERPRETATION RULES (CRITICAL):
-- The following metrics DO NOT have product-level meaning and must be treated as OVERALL ONLY:
-  platform_fee, platformfeenew, platform_fee_inventory_storage,
-  visible_ads, dealsvouchar_ads, advertising_total,
-  cm2_profit, cm2_profit_percentage, acos, misc_transaction.
-- Never attribute the above metrics to individual Products.
+- Never omit the currency symbol when provided.
 
 PROFIT TERMINOLOGY RULE (CRITICAL):
-- Whenever referring to profit at overall or Product level, always use the term **CM1 profit**.
+- Always use the term **CM1 profit** when referring to profit.
 - Do NOT use the word "profit" by itself.
-- Do NOT substitute "profit" for CM1.
-- CM2 profit must be referred to ONLY as **CM2 profit** and ONLY when explicitly present in the data.
-- Never imply CM2 profit when discussing performance, growth, or margin unless explicitly instructed.
+- CM2 profit must be mentioned ONLY when explicitly present.
+
+PER-UNIT METRIC RULE (CRITICAL):
+- CM1 profit per unit must be taken ONLY from unit_wise_profitability.
+- Do NOT infer or calculate per-unit profit from CM1 profit, ASP, or units.
 
 
-ACOS SUMMARY RULE (CRITICAL):
-- ACOS must be mentioned ONLY in the SUMMARY section.
-- Treat ACOS strictly as an OVERALL efficiency metric.
-- Describe ACOS movement using percentage-point change only.
-- Do NOT mention ACOS in PRODUCT INSIGHTS, RECOMMENDATIONS, or INVENTORY.
+ACOS RULE (CRITICAL):
+- ACOS may be mentioned ONLY in the SUMMARY section and only as a percentage-point movement.
+- Treat ACOS strictly as an overall efficiency metric.
+- Do NOT mention ACOS elsewhere.
 
-QUANTITY DEFINITIONS:
-- quantity = gross units shipped.
-- return_quantity = units returned.
-- total_quantity = net units sold.
-- quantity = total_quantity + return_quantity.
-- Always use total_quantity when referring to units sold.
+INVENTORY RULE (CRITICAL):
+- Inventory details must appear ONLY in the INVENTORY section.
+- Do NOT mention inventory in SUMMARY, PRODUCT INSIGHTS, or RECOMMENDATIONS.
 
-REIMBURSEMENT LOGIC:
-- lost_total represents reimbursements received.
-- Treat this as cost recovery or credit.
-- Do NOT describe it as a loss.
+DISPLAY NAME RULE:
+- Always use product_name if available.
+- Fall back to SKU only if product_name is missing or invalid.
+- The first bolded text in PRODUCT INSIGHTS must be product_name.
 
-REIMBURSEMENT SUMMARY RULE (CRITICAL):
-- If inventory_lost > 0, include exactly 1 SUMMARY bullet:
-  "Reimbursements for lost inventory: <currency_symbol><inventory_lost> received."
-- Do NOT mention reimbursements in PRODUCT INSIGHTS.
-
-MISC TRANSACTION RULE (CRITICAL):
-- misc_transaction is non-SKU level.
-- If non-zero, include exactly 1 SUMMARY bullet:
-  "Miscellaneous transactions: <currency_symbol><misc_transaction_current>."
-- Do NOT mention misc_transaction elsewhere.
-
-SPECIAL PRODUCT LOGIC:
-- If a Product appears in MoM but NOT in YoY, treat it as:
-  **New / Reviving SKU**.
-- Do NOT include YoY percentages for such Products.
-
-DISPLAY NAME RULE (CRITICAL):
-- Always use product_name when available.
-- If missing, blank, null, or "0", fall back to SKU.
-- Never display raw SKU if a valid product_name exists.
-- The first bolded text in PRODUCT INSIGHTS MUST be product_name.
-
-TIME COMPARISON LOGIC (CRITICAL):
-- Monthly / Quarterly:
-  - MoM is primary.
-  - Include YoY only if present.
-- Yearly:
-  - All comparisons are YoY.
-  - Do NOT mention MoM anywhere.
-
-GROWTH CLASSIFICATION RULE (CRITICAL):
-- Explicitly classify overall performance as one of:
-  volume-led, price-led, mix-led, or cost-led.
-- Use exactly one classification in SUMMARY.
-
-GROWTH QUALITY RULE (CRITICAL):
-- If profit grows faster than sales → state margin expansion.
-- If sales grow faster than profit → state margin pressure.
-- If units decline but sales grow → state price or mix dependency.
-
-PORTFOLIO SHIFT INTERPRETATION RULE (CRITICAL):
-- If some Products decline while overall performance grows:
-  explicitly state a portfolio or mix shift.
-- Frame this as substitution or purchasing behavior change, not demand loss.
-
-PORTFOLIO SYNTHESIS RULE (CRITICAL):
-- You are allowed to synthesize across multiple Products to describe portfolio-level behavior.
-- This includes mix evolution, substitution, concentration, or diversification effects.
-- You MAY use terms such as "mix shift", "substitution", or "cannibalisation"
-  when supported by opposing SKU-level trends and overall performance.
-- These insights should read as professional analyst judgment, not SKU math.
-
-COST DRIVER EXPRESSION RULE:
-- When mentioning costs (fees, storage, ads):
-  state the cost line, the numeric change,
-  and the net effect on margin or efficiency.
-
-COST CONTEXTUALIZATION RULE (CRITICAL):
-- Do NOT report percentage growth rates for cost lines.
-- Cost impact must be expressed using:
-  - Absolute value (currency)
-  - Percentage of CM1 profit
-- Never show cost percentage change versus prior period.
-- The goal is to show materiality, not growth rate.
-
-
-NON-OPERATIONAL FOCUS RULE (CRITICAL):
-- Do NOT use operational, warehouse, or process language.
-- Frame inventory strictly as a financial, margin, or portfolio risk.
-- Inventory commentary must support business decisions, not operations.
-
-INTERPRETATION CLOSURE RULE:
-- At least one SUMMARY bullet must explicitly state
-  what the observed trends imply for business quality,
-  sustainability, or risk.
+TIME COMPARISON LOGIC:
+- Monthly / Quarterly: MoM is primary.
+- Include YoY only if provided.
+- Yearly: YoY only.
 
 ====================
 OUTPUT FORMAT (MARKDOWN ONLY)
 ====================
 
 ## SUMMARY
-(4-6 bullets ONLY)
+(4–6 bullets ONLY)
 
 - Summarize movement in net units sold, net sales, and CM1 profit.
-- Classify growth type (volume / price / mix / cost).
-- Explain portfolio evolution (mix shift, substitution, diversification).
-- Quantify major cost drivers if they impacted CM1.
-- Include ACOS movement if present.
-- Every bullet must include numbers OR explicit analyst interpretation.
+- Classify growth type (volume-led / price-led / mix-led / cost-led).
+- Explain portfolio or mix behavior if relevant.
+- Quantify major cost impacts if provided.
+- Include ACOS movement only if present.
+- At least one bullet must explain business quality or margin risk.
+- Explicitly mention CM1 profit per unit change if ASP changes materially.
 
 ---
 
-PRODUCT INSIGHT SELECTION RULE (CRITICAL):
-- Do NOT list all Products.
-- Select ONLY the most material Products to highlight.
-- Product Insights must be limited to a maximum of 5-7 Products, even if more exist.
-
-Selection priority (in order):
-1) Products with the largest absolute contribution to net sales or CM1 profit.
-2) Products with the largest positive or negative change in net sales or CM1 profit.
-3) New / Reviving SKUs that materially impact growth or mix.
-4) Legacy Products whose decline materially affects overall performance.
-
-Exclusions (DO NOT INCLUDE):
-- Products with zero sales and zero CM1 profit.
-- Products with negligible contribution and no strategic relevance.
-- Discontinued or inactive Products unless they materially impact results.
-
-The goal is executive focus, not completeness.
-
-
 ## PRODUCT INSIGHTS
-(5-7 bullets ONLY)
+(5–7 bullets ONLY)
 
-Each bullet must:
-- Start with **Product name**.
-- Include units sold, net sales, CM1 profit, ASP (when available).
-- State direction and percentage.
-- Label **(New / Reviving SKU)** when applicable.
-
-SKU METRIC PRESENTATION RULE (CRITICAL):
-- Present Product metrics using absolute change and percentage change ONLY.
-- Do NOT include ending values (e.g., "to 912", "to £9,321.50") unless explicitly required.
-- Use signed values:
-  - Negative changes must include "-" sign.
-  - Do NOT repeat direction words unnecessarily.
-- Keep each Product Insight compact and scannable.
-
-
-Do NOT:
-- Mention inventory.
-- Mention ACOS, CM2, ads, or fees.
-- Mix MoM and YoY for the same metric.
+Rules:
+- Start each bullet with **Product name**.
+- Include unit change, net sales change, CM1 profit change, ASP change (if provided).
+- Use absolute change and percentage-point change only.
+- Label (New / Reviving SKU) where applicable.
+- Do NOT mention ads, ACOS, CM2, fees, or inventory.
 
 ---
 
 ## RECOMMENDATIONS
-(3-5 bullets ONLY)
+(3–5 bullets ONLY — OMIT if strategy_actions is null)
 
 Rules:
-- Actions must be specific and decision-oriented.
-- Tie actions ONLY to sales, pricing, margin, or portfolio mix behavior.
-- Inventory must NOT be used as a driver for Recommendations.
+- Write recommendations exactly as provided in strategy_actions.
+- Do NOT modify logic.
 - Do NOT restate metrics.
-- Do NOT include generic advice.
-- Do NOT change recommendation logic.
-
-
-INVENTORY EXCLUSION RULE (CRITICAL):
-- Do NOT include inventory quantities, aged stock details, or unfulfillable units in RECOMMENDATIONS.
-- Inventory-specific details must appear ONLY in the INVENTORY section.
-- RECOMMENDATIONS may reference inventory at a high level (e.g., "manage aged inventory"),
-  but must NOT repeat or list inventory data.
-
 
 ---
 
 ## INVENTORY
-(ONLY if inventory_alerts exist)
+(Include ONLY if inventory_alerts exist)
 
 Rules:
-- Use bullets only.
-- Include ONLY material financial exposures.
-- Start with **Inventory - Product name**.
-- Include numeric exposure.
-- State financial or sales consequence.
-- Do NOT suggest pricing or ads.
-
-
-
-INVENTORY MATERIALITY RULE (CRITICAL):
-- Only list inventory items that represent material financial or margin risk.
-- Small or immaterial exposures (low units or low financial impact) must NOT be listed individually.
-- Prioritize inventory risks that could materially affect CM1 profit or working capital.
-
-
-INVENTORY CONSOLIDATION RULE (CRITICAL):
-- When minor inventory exposures exist:
-  - Group them into ONE consolidated bullet (e.g., "Other minor SKUs").
-  - Do NOT list them SKU-by-SKU.
-- End the INVENTORY section with a pointer such as:
-  "For detailed inventory-level reconciliation, refer to the Inventory Reconciliation tab."
+- Bullets only.
+- Start with **Inventory – Product name**.
+- State financial or working capital risk.
+- Do NOT suggest pricing or advertising actions.
 
 ---
 
 CRITICAL OUTPUT RULES:
-- Use exact headings.
+- Use exact section headings.
 - Do NOT rename sections.
-- If allow_recommendations is false, omit the section.
-
-TONE & STYLE RULES:
-- Executive.
-- Analyst-grade.
-- Judgment-driven.
-- Numeric where appropriate.
-- No storytelling.
+- Do NOT output JSON.
+- Return ONLY markdown.
 - No emojis.
 - No filler.
+- Clear business English.
 
-SIMPLE BUSINESS LANGUAGE RULE (CRITICAL):
-- Use clear, simple business English.
-- Avoid consultant-style phrases (e.g., "material headwind", "pronounced", "elevated").
-- Prefer short, direct sentences that a non-finance executive can understand.
-- If a sentence sounds complex, simplify it.
-
-
-Return ONLY Markdown.
-Do NOT return JSON.
 """
 
+def run_prompt_1_analysis(ai_payload):
+    resp = openai_client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[
+            {"role": "system", "content": AI_SYSTEM_PROMPT_1},
+            {"role": "user", "content": json.dumps(ai_payload, separators=(",", ":"))}
+        ],
+        temperature=0.2,
+    )
+    return resp.choices[0].message.content.strip()
+
+def run_prompt_2_strategy(insights_text, user_objective):
+    payload = {
+        "insights": insights_text,
+        "user_objective": user_objective
+    }
+
+    resp = openai_client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[
+            {"role": "system", "content": AI_SYSTEM_PROMPT_2},
+            {"role": "user", "content": json.dumps(payload, separators=(",", ":"))}
+        ],
+        temperature=0.3,
+    )
+    return resp.choices[0].message.content.strip()
+
+def run_prompt_3_writer(ai_payload, insights_text, strategy_text, allow_recommendations):
+    payload = {
+        **ai_payload,
+        "analysis_insights": insights_text,
+        "strategy_actions": strategy_text,
+        "instructions": {"allow_recommendations": allow_recommendations}
+    }
+
+    resp = openai_client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[
+            {"role": "system", "content": AI_SYSTEM_PROMPT_3},
+            {"role": "user", "content": json.dumps(payload, separators=(",", ":"))}
+        ],
+        temperature=0.3,
+    )
+    return resp.choices[0].message.content.strip()
 
 
 def generate_ai_summary(payload, allow_recommendations):
@@ -825,7 +949,8 @@ def generate_ai_summary(payload, allow_recommendations):
         response = openai_client.chat.completions.create(
             model="gpt-4.1",
             messages=[
-                {"role": "system", "content": AI_SYSTEM_PROMPT},
+                {"role": "system", "content": AI_SYSTEM_PROMPT_3},
+
                 {"role": "user", "content": json.dumps(user_prompt, separators=(",", ":"))}
             ],
             temperature=0.3,
@@ -839,7 +964,7 @@ def generate_ai_summary(payload, allow_recommendations):
 
         friendly_message = (
             "## SUMMARY\n"
-            "- AI insights are temporarily unavailable due to account limits.\n"
+            "- AI insights are temporarily unavailable.\n"
             "- Please contact us at **care@phormula.io** to continue using AI summaries.\n"
         )
 
@@ -924,6 +1049,7 @@ def get_or_create_summary(
         "cm2_profit",
         "misc_transaction",
         "asp",
+        "unit_wise_profitability",
     ]:
         v = _total_value(df_current_total, c)
         if v is not None:
@@ -977,6 +1103,7 @@ def get_or_create_summary(
         "cm2_profit",
         "misc_transaction",
         "asp",
+        "unit_wise_profitability",
     ]:
         v = _total_value(df_prev_total, c)
         if v is not None:
@@ -988,19 +1115,18 @@ def get_or_create_summary(
     sku_mom = compare_sku_metrics(sku_current, sku_prev)
 
 
-    # ---------------- YOY (SAFE) ----------------
+   
+    # ---------------- YOY (YEARLY ONLY) ----------------
     yoy = None
     sku_yoy = None
 
-    if yoy_key:
+    if period == "yearly" and yoy_key:
         y_period, y_timeline, y_year = yoy_key
         df_yoy = fetch_precalc_table(user_id, country, y_period, y_timeline, y_year)
 
         if not df_yoy.empty:
-            # 1) split total vs detail
             df_yoy_detail, df_yoy_total = _split_total_row(df_yoy)
 
-            # 2) build yoy_base from DETAIL rows (prevents double count from TOTAL row)
             yoy_base = {}
             if not df_yoy_detail.empty:
                 for col in get_metric_columns(df_yoy_detail):
@@ -1008,7 +1134,6 @@ def get_or_create_summary(
                         float(pd.to_numeric(df_yoy_detail[col], errors="coerce").fillna(0).sum()), 2
                     )
 
-            # 3) override overall-only metrics from TOTAL row (because detail rows may be zero)
             for c in [
                 "platform_fee",
                 "platformfeenew",
@@ -1018,19 +1143,18 @@ def get_or_create_summary(
                 "cm2_profit",
                 "misc_transaction",
                 "asp",
+                "unit_wise_profitability",
             ]:
                 v = _total_value(df_yoy_total, c)
                 if v is not None:
                     yoy_base[c] = round(v, 2)
 
-            # 4) overall YoY compare
             yoy = compare_metrics(current, yoy_base)
-
-            # 5) SKU YoY compare must use DETAIL rows only (exclude total row)
             sku_yoy = compare_sku_metrics(
                 sku_current,
                 compute_sku_precalc(df_yoy_detail)
             )
+
 
     # ---- everything below stays same (debug/ai/save/return) ----
 
@@ -1038,14 +1162,41 @@ def get_or_create_summary(
         "period": f"{period} {timeline} {year}",
         "country": str(country).lower(),
         "mom": mom,
-        "yoy": yoy,
         "inventory_lost": inventory_lost,
         "inventory_alerts": inventory_alerts,
         "sku_mom": sku_mom,
-        "sku_yoy": sku_yoy,
     }
 
-    ai_output = generate_ai_summary(ai_payload, allow_reco)
+    # ✅ Include YoY ONLY for yearly
+    if period == "yearly":
+        ai_payload["yoy"] = yoy
+        ai_payload["sku_yoy"] = sku_yoy
+
+
+    insights = run_prompt_1_analysis(ai_payload)
+
+    strategy = None
+    if allow_reco:
+        # backend-only objective for now
+        strategy = run_prompt_2_strategy(insights, DEFAULT_USER_OBJECTIVE)
+
+    final_text = run_prompt_3_writer(ai_payload, insights, strategy, allow_reco)
+
+    # ---------------- SPLIT SUMMARY & RECOMMENDATIONS ----------------
+    summary = final_text
+    recommendations = None
+
+    if allow_reco and "## RECOMMENDATIONS" in final_text:
+        parts = final_text.split("## RECOMMENDATIONS", 1)
+        summary = parts[0].strip()
+        recommendations = parts[1].strip()
+
+    ai_output = {
+        "summary": summary,
+        "recommendations": recommendations
+    }
+
+
 
     save_summary_to_db({
         "user_id": user_id,
