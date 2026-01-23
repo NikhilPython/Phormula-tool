@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { jwtDecode } from "jwt-decode";
-
 import SkuMultiCountryUpload from "../ui/modal/SkuMultiCountryUpload";
 import Productinfoinpopup from "./Productinfoinpopup";
 import PageBreadcrumb from "../common/PageBreadCrumb";
@@ -13,6 +12,25 @@ import GroupedCollapsibleTable, { LeafCol, ColGroup } from "../ui/table/GroupedC
 import ExcelJS from "exceljs";
 import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
 import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
+import InfoTip from "@/components/ui/InfoTip";
+
+const TERM_DEFINITIONS: Record<string, string> = {
+  asp: "ASP (Average Selling Price) = Net Sales ÷ Net Units Sold.",
+  net_sales: "Net Sales",
+  net_taxes: "Net Taxes = total taxes charged on sales minus tax adjustments/refunds (as provided by marketplace reports).",
+  net_credits: "Net Credits = credits received from marketplace adjustments (e.g., goodwill/price adjustments) excluding reimbursements (as per reports).",
+  tex_and_credits: "Taxes & Credits = combined effect of taxes and credits applied to orders (used to reconcile from gross to net).",
+  marketplace_fees: "Marketplace Fees = total fees charged by Amazon (e.g., referral + FBA fees).",
+  amazon_fee: "Marketplace Fees = total fees charged by Amazon (e.g., referral + FBA fees).",
+  selling_fees: "Selling Fees = Amazon referral/commission and selling-related fees (non-FBA components).",
+  fba_fees: "FBA Fees = fulfillment, storage-related and FBA service fees (as mapped in reports).",
+  promotional_rebates: "Promotions = promotional rebates/discounts applied (coupons/deals) that reduce profitability.",
+  promotional_rebates_percentage: "Promotions % = Promotions ÷ Net Sales × 100.",
+  cost_of_unit_sold: "COGS = Cost of goods sold for the units sold in the period (as provided/derived).",
+  cm1_profit: "CM1 Profit = contribution margin after sales, COGS, promo, fees, taxes/credits (as per your CM1 definition).",
+  profit_percentage: "CM1 Profit % = CM1 Profit ÷ Net Sales × 100.",
+  unit_wise_profitability: "CM1 Profit Per Unit = CM1 Profit ÷ Net Units Sold.",
+};
 
 
 /* ---------- Types ---------- */
@@ -509,7 +527,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     {
       id: "sales",
-      label: "Sales",
+      // label: "Sales",
+      label: (
+        <>
+          Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
+        </>
+      ),
       collapsedCols: [{ key: "net_sales", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
         { key: "product_sales", label: "Gross Sales", align: "center" },
@@ -521,7 +544,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     {
       id: "amazon_breakdown",
-      label: "Marketplace Fees",
+      // label: "Marketplace Fees",
+       label: (
+        <>
+          Marketplace Fees <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />
+        </>
+      ),
       collapsedCols: [{ key: "amazon_fee", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
         { key: "selling_fees", label: "Selling Fees", align: "center" },
@@ -535,15 +563,33 @@ const SKUtable: React.FC<SKUtableProps> = ({
       label: "Other Transactions",
       collapsedCols: [{ key: "other_transactions", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
-        { key: "net_taxes", label: "Net Taxes", align: "center" },
-        { key: "net_credits", label: "Net Credits", align: "center" },
+        {
+          key: "net_taxes", label: (
+            <>
+              Net Taxes <InfoTip text={TERM_DEFINITIONS.net_taxes} />
+            </>
+          ),
+          align: "center",
+        },
+        {
+          key: "net_credits", label: (
+            <>
+              Net Credits <InfoTip text={TERM_DEFINITIONS.net_credits} />
+            </>
+          ), align: "center"
+        },
         { key: "other_transactions", label: "Total", align: "center" },
       ],
     },
 
     {
       id: "profit_breakdown",
-      label: "CM1 Profit",
+      // label: "CM1 Profit",
+      label: (
+        <>
+          CM1 Profit <InfoTip text={TERM_DEFINITIONS.cm1_profit} />
+        </>
+      ),
       collapsedCols: [{ key: "profit", label: "", align: "center" }], // hide "Total" on collapsed
       expandedCols: [
         { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
@@ -556,7 +602,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
-      { key: "asp", label: "ASP", align: "center" },
+      {
+        key: "asp", label: (
+          <>
+            ASP <InfoTip text={TERM_DEFINITIONS.asp} />
+          </>
+        ), align: "center"
+      },
       // { key: "net_sales", label: "Net Sales", align: "center" },
       { key: "cost_of_unit_sold", label: "COGS", align: "center" },
       { key: "promotional_rebates", label: "Promotions", align: "center" },
@@ -565,7 +617,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       // { key: "amazon_fee", label: "Marketplace Fees", align: "center" },
       // { key: "other_transactions", label: "Other Transactions", align: "center" },
       // { key: "profit", label: "CM1 Profit Margin", align: "center" },
-    ],
+    ] as LeafCol<TableRow>[],
     []
   );
 
@@ -699,7 +751,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
       const headerRow: Record<string, string> = {};
       excelCols.forEach((c) => {
-        headerRow[c.key] = c.label;
+        headerRow[c.key] = c.excelLabel ?? (typeof c.label === "string" ? c.label : c.key);
+
       });
 
       const signRow: Record<string, string> = {};
@@ -1575,7 +1628,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 getValue={(row, colKey, rowIndex) => {
                   // const name = String((row as any)?.product_name || "").trim().toLowerCase();
                   // const isTotal = name === "total";
-                  
+
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
                   const isTotal = name === "total";
                   const isOthers = name === "others";

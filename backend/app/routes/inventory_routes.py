@@ -1,16 +1,8 @@
 from __future__ import annotations
 
-import os
-import io
-import csv
-import time
-import gzip
-import logging
+import os, re, io, csv, time, gzip, logging , jwt, calendar, requests
 from datetime import datetime, date
 from typing import Optional
-import jwt
-import calendar
-import requests
 from dotenv import find_dotenv, load_dotenv
 from sqlalchemy.orm import load_only
 from flask import request, jsonify, Blueprint
@@ -21,8 +13,9 @@ from sqlalchemy import delete, text
 from app.models.user_models import Inventory, CountryProfile, MonthwiseInventory , InventoryAged
 from app.utils.amazon_utils import amazon_client, _apply_region_and_marketplace_from_request
 from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
-
 from config import Config
+from contextlib import contextmanager
+from sqlalchemy import create_engine, text
 
 # ---------------------------------------------------------------------------
 # basic config
@@ -42,6 +35,16 @@ if not db_url:
     raise RuntimeError("DATABASE_URL is not set")
 if not db_url1:
     print("[WARN] DATABASE_ADMIN_URL not set; falling back to DATABASE_URL")
+
+# ---------------------------------------------------------------------
+# AMAZON DB ENGINE (amazon_db)
+# ---------------------------------------------------------------------
+
+DATABASE_AMAZON_URL = os.getenv("DATABASE_AMAZON_URL") 
+if not DATABASE_AMAZON_URL:
+    raise RuntimeError("DATABASE_AMAZON_URL is missing in .env")
+
+amazon_engine = create_engine(DATABASE_AMAZON_URL, pool_pre_ping=True)
 
 inventory_bp = Blueprint("inventory", __name__)
 
@@ -1680,11 +1683,16 @@ def inventory_ledger_summary():
         logger.exception("Failed to fetch ledger summary")
         return jsonify({"success": False, "error": str(e)}), 500
 
-    # ---- Filter first+last for month/quarter/year OR flag ----
-    if rows and (mode in ("month", "quarter", "year") or keep_first_last):
+    # ---- Optional: Filter ONLY first+last when keep_first_last=true ----
+    if rows and keep_first_last:
         rows = _filter_first_last_dates(rows)
 
         # update response start/end to match filtered data
+        dates = sorted({r["date"] for r in rows if isinstance(r.get("date"), date)})
+        if dates:
+            start_date, end_date = dates[0], dates[-1]
+    else:
+        # keep full range; still normalize start/end based on returned data if you want
         dates = sorted({r["date"] for r in rows if isinstance(r.get("date"), date)})
         if dates:
             start_date, end_date = dates[0], dates[-1]
@@ -1721,348 +1729,986 @@ def inventory_ledger_summary():
 
     return jsonify(out), 200
 
+# ------------------------------------------------------------
+# Helper: SKU-wise MONTHLY (function only)
+# ------------------------------------------------------------
+def get_skuwise_monthly_from_db(
+    user_id: int,
+    country: str,
+    month_param: str,
+    year_param: str,
+    sku_filter: str = None,
+    product_filter: str = None,
+):
+    """
+    Reads from: public.skuwisemonthly_{user_id}_{country}_{monthName}{year}
 
-# @inventory_bp.route("/amazon_api/inventory/ledger-summary/db", methods=["GET"])
-# def inventory_ledger_summary_db():
-#     """
-#     Ledger summary FROM DB (MonthwiseInventory) with disposition pivoted into 5 columns:
-#       SELLABLE, EXPIRED, DEFECTIVE, CUSTOMER_DAMAGED, WAREHOUSE_DAMAGED
+    Supports:
+      - month=december&year=2025
+      - month=12&year=2025
+      - month=2025-12 (year inferred unless year= overrides)
 
-#     The 5 disposition columns contain ending_warehouse_balance.
+    Returns dict:
+      { success, country, month, year, table, count, items }
+    """
+    country = (country or "").strip().lower()
+    month_param = (month_param or "").strip().lower()
+    year_param = (year_param or "").strip()
 
-#     Base metrics (starting balance, receipts, shipments, etc.) are taken from the
-#     SELLABLE row when available (to avoid picking EXPIRED/DEFECTIVE rows that often have 0/1).
-#     """
+    if not country or not month_param:
+        return {"success": False, "error": "country and month are required for skuwise_monthly"}
 
-#     # -------------------- Auth --------------------
-#     auth_header = request.headers.get("Authorization")
-#     user_id = None
-#     if auth_header and auth_header.startswith("Bearer "):
-#         token = auth_header.split(" ")[1]
-#         try:
-#             payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-#             user_id = payload.get("user_id")
-#         except jwt.ExpiredSignatureError:
-#             return jsonify({"error": "Token has expired"}), 401
-#         except jwt.InvalidTokenError:
-#             return jsonify({"error": "Invalid token"}), 401
+    # ---- parse month/year ----
+    try:
+        if "-" in month_param:  # "2025-12"
+            y_str, m_str = month_param.split("-", 1)
+            year = int(year_param or y_str)
+            m_int = int(m_str)
+            month_name = datetime(year, m_int, 1).strftime("%B").lower()  # "december"
+        else:
+            if month_param.isdigit():  # "12"
+                if not year_param:
+                    return {"success": False, "error": "year is required when month is numeric (e.g. month=12&year=2025)"}
+                year = int(year_param)
+                m_int = int(month_param)
+                month_name = datetime(year, m_int, 1).strftime("%B").lower()
+            else:  # "december"
+                if not year_param:
+                    return {"success": False, "error": "year is required when month is a name (e.g. month=december&year=2025)"}
+                year = int(year_param)
+                month_name = month_param
+    except Exception:
+        return {"success": False, "error": "Invalid month/year format for skuwise_monthly"}
 
-#     if not user_id:
-#         return jsonify({"error": "Missing/invalid token"}), 401
+    # ---- validate (prevent SQL injection) ----
+    if not re.fullmatch(r"[a-z0-9_]+", country):
+        return {"success": False, "error": "Invalid country value"}
+    if not re.fullmatch(r"[a-z0-9_]+", month_name):
+        return {"success": False, "error": "Invalid month value"}
+    if year < 2000 or year > 2100:
+        return {"success": False, "error": "Invalid year"}
 
-#     # -------------------- Params --------------------
-#     mp = request.args.get("marketplace_id")  # optional
-#     msku_filter = request.args.get("msku")   # optional
-#     location_filter = request.args.get("location")  # optional
+    table_name = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"
+    full_table = f'public."{table_name}"'
 
-#     date_str = request.args.get("date")
-#     start_str = request.args.get("start_date")
-#     end_str = request.args.get("end_date")
+    # ---- optional filters ----
+    where_clauses = []
+    params = {}
 
-#     month_param = request.args.get("month")      # "12" or "2025-12"
-#     quarter_param = request.args.get("quarter")  # "1" or "2025-Q1" or "Q1"
-#     year_param = request.args.get("year")        # "2025"
+    if sku_filter:
+        where_clauses.append("sku = :sku")
+        params["sku"] = sku_filter
 
-#     mode = None  # "month" | "quarter" | "year" | "range" | "single"
+    if product_filter:
+        where_clauses.append("product_name = :product_name")
+        params["product_name"] = product_filter
 
-#     # -------------------- Compute date window --------------------
-#     try:
-#         if month_param and not (date_str or start_str or end_str or quarter_param):
-#             if "-" in month_param:
-#                 y_str, m_str = month_param.split("-", 1)
-#                 year = int(year_param or y_str)
-#                 month = int(m_str)
-#             else:
-#                 month = int(month_param)
-#                 year = int(year_param) if year_param else datetime.utcnow().year
-#             start_date, end_date = _month_range(year, month)
-#             mode = "month"
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-#         elif quarter_param and not (date_str or start_str or end_str or month_param):
-#             qp = quarter_param.strip().upper()
-#             if "-Q" in qp:
-#                 y_str, q_str = qp.split("-Q", 1)
-#                 year = int(year_param or y_str)
-#                 quarter = int(q_str)
-#             elif qp.startswith("Q"):
-#                 quarter = int(qp[1:])
-#                 year = int(year_param) if year_param else datetime.utcnow().year
-#             else:
-#                 quarter = int(qp)
-#                 year = int(year_param) if year_param else datetime.utcnow().year
-#             start_date, end_date = _quarter_range(year, quarter)
-#             mode = "quarter"
+    sql = text(f"""
+        SELECT
+            sku,
+            product_name,
+            quantity,
+            return_quantity,
+            total_quantity
+        FROM {full_table}
+        {where_sql}
+        ORDER BY id ASC
+    """)
 
-#         elif year_param and not (date_str or start_str or end_str or month_param or quarter_param):
-#             year = int(year_param)
-#             start_date, end_date = _year_range(year)
-#             mode = "year"
+    try:
+        rows = db.session.execute(sql, params).mappings().all()
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Could not read table {table_name}",
+            "details": str(e),
+        }
 
-#         elif date_str:
-#             start_date = end_date = _parse_date_str(date_str)
-#             mode = "single"
+    items = [{
+        "sku": r["sku"],
+        "product_name": r["product_name"],
+        "quantity": int(r["quantity"] or 0),
+        "return_quantity": int(r["return_quantity"] or 0),
+        "total_quantity": int(r["total_quantity"] or 0),
+    } for r in rows]
 
-#         else:
-#             if not (start_str and end_str):
-#                 return jsonify({
-#                     "error": (
-#                         "Provide either ?date=..., or both ?start_date= and ?end_date=, "
-#                         "or ?month=..., or ?quarter=...&year=..., or ?year=YYYY."
-#                     )
-#                 }), 400
-
-#             start_date = _parse_date_str(start_str)
-#             end_date = _parse_date_str(end_str)
-#             if end_date < start_date:
-#                 raise ValueError("end_date cannot be before start_date")
-#             mode = "range"
-
-#     except ValueError as e:
-#         return jsonify({"error": str(e)}), 400
-
-#     # -------------------- DB Query --------------------
-#     q = (
-#         db.session.query(MonthwiseInventory)
-#         .options(
-#             load_only(
-#                 MonthwiseInventory.date,
-#                 MonthwiseInventory.msku,
-#                 MonthwiseInventory.disposition,
-#                 MonthwiseInventory.product_name,
-#                 MonthwiseInventory.marketplace_id,
-#                 MonthwiseInventory.location,
-
-#                 MonthwiseInventory.starting_warehouse_balance,
-#                 MonthwiseInventory.in_transit_between_warehouses,
-#                 MonthwiseInventory.receipts,
-#                 MonthwiseInventory.customer_shipments,
-#                 MonthwiseInventory.customer_returns,
-#                 MonthwiseInventory.vendor_returns,
-#                 MonthwiseInventory.warehouse_transfer_in_out,
-#                 MonthwiseInventory.found,
-#                 MonthwiseInventory.lost,
-#                 MonthwiseInventory.damaged,
-#                 MonthwiseInventory.disposed,
-#                 MonthwiseInventory.other_events,
-#                 MonthwiseInventory.ending_warehouse_balance,
-#             )
-#         )
-#         .filter(MonthwiseInventory.user_id == user_id)
-#         .filter(MonthwiseInventory.date >= start_date)
-#         .filter(MonthwiseInventory.date <= end_date)
-#     )
-
-#     if mp:
-#         q = q.filter(MonthwiseInventory.marketplace_id == mp)
-#     if msku_filter:
-#         q = q.filter(MonthwiseInventory.msku == msku_filter)
-#     if location_filter:
-#         q = q.filter(MonthwiseInventory.location == location_filter)
-
-#     q = q.order_by(
-#         MonthwiseInventory.date.asc(),
-#         MonthwiseInventory.msku.asc(),
-#         MonthwiseInventory.disposition.asc(),
-#     )
-
-#     rows = q.all()
-
-#     # -------------------- Pivot dispositions into 5 columns --------------------
-#     DISPOSITIONS = [
-#         "SELLABLE",
-#         "EXPIRED",
-#         "DEFECTIVE",
-#         "CUSTOMER_DAMAGED",
-#         "WAREHOUSE_DAMAGED",
-#     ]
-
-#     def _pick_base_metrics(dst: dict, src_row) -> None:
-#         """Copy base metrics from a row into dst."""
-#         dst["starting_warehouse_balance"] = int(src_row.starting_warehouse_balance or 0)
-#         dst["in_transit_between_warehouses"] = int(src_row.in_transit_between_warehouses or 0)
-#         dst["receipts"] = int(src_row.receipts or 0)
-#         dst["customer_shipments"] = int(src_row.customer_shipments or 0)
-#         dst["customer_returns"] = int(src_row.customer_returns or 0)
-#         dst["vendor_returns"] = int(src_row.vendor_returns or 0)
-#         dst["warehouse_transfer_in_out"] = int(src_row.warehouse_transfer_in_out or 0)
-#         dst["found"] = int(src_row.found or 0)
-#         dst["lost"] = int(src_row.lost or 0)
-#         dst["damaged"] = int(src_row.damaged or 0)
-#         dst["disposed"] = int(src_row.disposed or 0)
-#         dst["other_events"] = int(src_row.other_events or 0)
-
-#     grouped = {}
-
-#     for r in rows:
-#         key = (r.date, r.msku, r.product_name, r.marketplace_id, r.location)
-
-#         if key not in grouped:
-#             grouped[key] = {
-#                 "date": r.date.strftime("%Y-%m-%d"),
-#                 "msku": r.msku,
-#                 "product_name": r.product_name,
-#                 "marketplace_id": r.marketplace_id,
-#                 "location": r.location,
-
-#                 # base metrics (we'll fill these from SELLABLE if possible)
-#                 "starting_warehouse_balance": None,
-#                 "in_transit_between_warehouses": None,
-#                 "receipts": None,
-#                 "customer_shipments": None,
-#                 "customer_returns": None,
-#                 "vendor_returns": None,
-#                 "warehouse_transfer_in_out": None,
-#                 "found": None,
-#                 "lost": None,
-#                 "damaged": None,
-#                 "disposed": None,
-#                 "other_events": None,
-
-#                 # disposition pivot columns (ending_warehouse_balance)
-#                 **{d: 0 for d in DISPOSITIONS},
-
-#                 # internal helpers
-#                 "_base_set": False,
-#                 "_base_from_sellable": False,
-#             }
-
-#         g = grouped[key]
-
-#         # 1) Always pivot ending_warehouse_balance into the right disposition column
-#         disp = (r.disposition or "").strip()
-#         if disp in DISPOSITIONS:
-#             g[disp] += int(r.ending_warehouse_balance or 0)
-
-#         # -------------------- ADD DIFFERENCE COLUMN --------------------
-#         for row in grouped.values():
-#             total_ending = sum(
-#                 row[d] for d in DISPOSITIONS
-#             )
-#             row["difference"] = (
-#                 int(row["starting_warehouse_balance"] or 0) - total_ending
-#             )
+    return {
+        "success": True,
+        "country": country,
+        "month": month_name,
+        "year": year,
+        "table": table_name,
+        "count": len(items),
+        "items": items,
+    }
 
 
-#         # 2) Set base metrics:
-#         #    - Prefer SELLABLE row
-#         #    - Otherwise set from first row as fallback
-#         if disp == "SELLABLE":
-#             _pick_base_metrics(g, r)
-#             g["_base_set"] = True
-#             g["_base_from_sellable"] = True
-#         elif not g["_base_set"]:
-#             _pick_base_metrics(g, r)
-#             g["_base_set"] = True
+# ------------------------------------------------------------
+# Helper: SKU-wise QUARTERLY (function only)
+# ------------------------------------------------------------
+def get_skuwise_quarterly_from_db(
+    user_id: int,
+    country: str,
+    quarter_param: str,
+    year_param: str,
+    sku_filter: str = None,
+    product_filter: str = None,
+):
+    """
+    Reads from: public.quarter{Q}_{user_id}_{country}_{year}_table
+      example: quarter4_1_uk_2025_table
 
-#     # cleanup helper keys and None->0
-#     items = []
-#     for g in grouped.values():
-#         g.pop("_base_set", None)
-#         g.pop("_base_from_sellable", None)
+    Supports quarter formats:
+      - quarter=4&year=2025
+      - quarter=Q4&year=2025
+      - quarter=2025-Q4  (year inferred unless year= overrides)
 
-#         for k in [
-#             "starting_warehouse_balance",
-#             "in_transit_between_warehouses",
-#             "receipts",
-#             "customer_shipments",
-#             "customer_returns",
-#             "vendor_returns",
-#             "warehouse_transfer_in_out",
-#             "found",
-#             "lost",
-#             "damaged",
-#             "disposed",
-#             "other_events",
-#         ]:
-#             if g.get(k) is None:
-#                 g[k] = 0
+    Returns dict:
+      { success, country, quarter, year, table, count, items }
+    """
+    country = (country or "").strip().lower()
+    quarter_param = (quarter_param or "").strip().upper()
+    year_param = (year_param or "").strip()
 
-#         items.append(g)
+    if not country or not quarter_param:
+        return {"success": False, "error": "country and quarter are required for skuwise_quarterly"}
 
-#     items.sort(key=lambda x: (x["date"], x["msku"], x.get("marketplace_id") or "", x.get("location") or ""))
+    # ---- parse quarter/year ----
+    try:
+        if "-Q" in quarter_param:  # "2025-Q4"
+            y_str, q_str = quarter_param.split("-Q", 1)
+            year = int(year_param or y_str)
+            quarter = int(q_str)
+        elif quarter_param.startswith("Q"):  # "Q4"
+            quarter = int(quarter_param[1:])
+            if not year_param:
+                return {"success": False, "error": "year is required when quarter is like Q4 (e.g. quarter=Q4&year=2025)"}
+            year = int(year_param)
+        else:  # "4"
+            quarter = int(quarter_param)
+            if not year_param:
+                return {"success": False, "error": "year is required when quarter is numeric (e.g. quarter=4&year=2025)"}
+            year = int(year_param)
+    except Exception:
+        return {"success": False, "error": "Invalid quarter/year format for skuwise_quarterly"}
 
-#     return jsonify({
-#         "success": True,
-#         "mode": mode,
-#         "marketplace_id": mp,
-#         "start_date": start_date.strftime("%Y-%m-%d"),
-#         "end_date": end_date.strftime("%Y-%m-%d"),
-#         "count": len(items),
-#         "items": items,
-#     }), 200
+    if quarter not in (1, 2, 3, 4):
+        return {"success": False, "error": "quarter must be 1-4"}
+
+    # ---- validate (prevent SQL injection) ----
+    if not re.fullmatch(r"[a-z0-9_]+", country):
+        return {"success": False, "error": "Invalid country value"}
+    if year < 2000 or year > 2100:
+        return {"success": False, "error": "Invalid year"}
+
+    table_name = f"quarter{quarter}_{user_id}_{country}_{year}_table"
+    full_table = f'public."{table_name}"'
+
+    # ---- optional filters ----
+    where_clauses = []
+    params = {}
+
+    if sku_filter:
+        where_clauses.append("sku = :sku")
+        params["sku"] = sku_filter
+
+    if product_filter:
+        where_clauses.append("product_name = :product_name")
+        params["product_name"] = product_filter
+
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    # NOTE: Your quarter table (screenshot) contains these extra columns; adjust if needed.
+    sql = text(f"""
+        SELECT
+            product_name,
+            sku,
+            quantity,
+            return_quantity,
+            total_quantity
+        FROM {full_table}
+        {where_sql}
+        ORDER BY product_name ASC, sku ASC
+    """)
+
+    try:
+        rows = db.session.execute(sql, params).mappings().all()
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Could not read table {table_name}",
+            "details": str(e),
+        }
+
+    items = []
+    for r in rows:
+        items.append({
+            "product_name": r.get("product_name"),
+            "sku": r.get("sku"),
+            "quantity": int(r.get("quantity") or 0),
+            "return_quantity": int(r.get("return_quantity") or 0),
+            "total_quantity": int(r.get("total_quantity") or 0),
+        })
+
+    return {
+        "success": True,
+        "country": country,
+        "quarter": quarter,
+        "year": year,
+        "table": table_name,
+        "count": len(items),
+        "items": items,
+    }
+
+
+# ------------------------------------------------------------
+# Helper: SKU-wise YEARLY (function only)
+# ------------------------------------------------------------
+def get_skuwise_yearly_from_db(
+    user_id: int,
+    country: str,
+    year_param: str,
+    sku_filter: str = None,
+    product_filter: str = None,
+):
+    """
+    Reads from: public.skuwiseyearly_{user_id}_{country}_{year}_table
+      example: skuwiseyearly_1_uk_2025_table
+
+    Returns dict:
+      { success, country, year, table, count, items }
+    """
+    country = (country or "").strip().lower()
+    year_param = (year_param or "").strip()
+
+    if not country or not year_param:
+        return {"success": False, "error": "country and year are required for skuwise_yearly"}
+
+    try:
+        year = int(year_param)
+    except Exception:
+        return {"success": False, "error": "Invalid year format for skuwise_yearly"}
+
+    # ---- validate (prevent SQL injection) ----
+    if not re.fullmatch(r"[a-z0-9_]+", country):
+        return {"success": False, "error": "Invalid country value"}
+    if year < 2000 or year > 2100:
+        return {"success": False, "error": "Invalid year"}
+
+    table_name = f"skuwiseyearly_{user_id}_{country}_{year}_table"
+    full_table = f'public."{table_name}"'
+
+    # ---- optional filters ----
+    where_clauses = []
+    params = {}
+
+    if sku_filter:
+        where_clauses.append("sku = :sku")
+        params["sku"] = sku_filter
+
+    if product_filter:
+        where_clauses.append("product_name = :product_name")
+        params["product_name"] = product_filter
+
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    # NOTE: Your yearly table (screenshot) contains these extra columns; adjust if needed.
+    sql = text(f"""
+        SELECT
+            product_name,
+            sku,
+            quantity,
+            return_quantity,
+            total_quantity
+        FROM {full_table}
+        {where_sql}
+        ORDER BY product_name ASC, sku ASC
+    """)
+
+    try:
+        rows = db.session.execute(sql, params).mappings().all()
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Could not read table {table_name}",
+            "details": str(e),
+        }
+
+    items = []
+    for r in rows:
+        items.append({
+            "product_name": r.get("product_name"),
+            "sku": r.get("sku"),
+            "quantity": int(r.get("quantity") or 0),
+            "return_quantity": int(r.get("return_quantity") or 0),
+            "total_quantity": int(r.get("total_quantity") or 0),
+        })
+
+    return {
+        "success": True,
+        "country": country,
+        "year": year,
+        "table": table_name,
+        "count": len(items),
+        "items": items,
+    }
+
+
+@contextmanager
+def amazon_conn():
+    conn = amazon_engine.connect()
+    trans = conn.begin()
+    try:
+        yield conn
+        trans.commit()
+    except Exception:
+        trans.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------
+# DATE HELPERS
+# ---------------------------------------------------------------------
+
+def _parse_date_str(value: str) -> date:
+    value = (value or "").strip()
+    if not value:
+        raise ValueError("empty date")
+
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            pass
+
+    try:
+        s2 = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(s2).date()
+    except Exception:
+        pass
+
+    raise ValueError(
+        f"Invalid date format: {value}. "
+        "Use YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY, or ISO timestamp."
+    )
+
+
+def _month_range(year: int, month: int) -> tuple[date, date]:
+    if not (1 <= month <= 12):
+        raise ValueError("month must be between 1 and 12")
+    if year < 2000 or year > 2100:
+        raise ValueError("year must be between 2000 and 2100")
+    last_dom = calendar.monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last_dom)
+
+
+def _quarter_range(year: int, quarter: int) -> tuple[date, date]:
+    if quarter not in (1, 2, 3, 4):
+        raise ValueError("quarter must be 1, 2, 3, or 4")
+    if year < 2000 or year > 2100:
+        raise ValueError("year must be between 2000 and 2100")
+    start_month = {1: 1, 2: 4, 3: 7, 4: 10}[quarter]
+    end_month = start_month + 2
+    start_date = date(year, start_month, 1)
+    end_dom = calendar.monthrange(year, end_month)[1]
+    end_date = date(year, end_month, end_dom)
+    return start_date, end_date
+
+
+def _year_range(year: int) -> tuple[date, date]:
+    if year < 2000 or year > 2100:
+        raise ValueError("year must be between 2000 and 2100")
+    return date(year, 1, 1), date(year, 12, 31)
+
+
+# ---------------------------------------------------------------------
+# AUTH (same pattern you already use)
+# ---------------------------------------------------------------------
+
+def _get_user_id_from_bearer() -> int | None:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return payload.get("user_id")
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------
+# SAFE IDENTIFIERS (for dynamic table names)
+# ---------------------------------------------------------------------
+
+def _safe_ident(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"[^a-z0-9_]", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    if not s:
+        raise ValueError("invalid identifier")
+    return s
+
+
+def _monthly_table_name(user_id: int, country: str, month: int, year: int) -> str:
+    return f"inventorymonthly_{user_id}_{_safe_ident(country)}_{month:02d}_{year}"
+
+
+def _quarterly_table_name(user_id: int, country: str, quarter: int, year: int) -> str:
+    return f"inventoryquarterly_{user_id}_{_safe_ident(country)}_q{quarter}_{year}"
+
+
+def _yearly_table_name(user_id: int, country: str, year: int) -> str:
+    return f"inventoryyearly_{user_id}_{_safe_ident(country)}_{year}"
+
+
+# ---------------------------------------------------------------------
+# SOURCE TABLE CHECK (your real table is public.monthwise_inventory)
+# ---------------------------------------------------------------------
+
+def _table_exists(conn, schema: str, table: str) -> bool:
+    q = text("""
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = :schema AND table_name = :table
+        LIMIT 1
+    """)
+    return conn.execute(q, {"schema": schema, "table": table}).first() is not None
+
+
+def _get_source_table(conn) -> str:
+    # IMPORTANT: your table (seen in pgAdmin) is monthwise_inventory
+    if _table_exists(conn, "public", "monthwise_inventory"):
+        return "public.monthwise_inventory"
+    # fallback if someone created a different name
+    if _table_exists(conn, "public", "monthwiseinventory"):
+        return "public.monthwiseinventory"
+    raise RuntimeError("Source table not found in amazon_db (expected public.monthwise_inventory)")
+
+
+# ---------------------------------------------------------------------
+# AGGREGATION (GROUP BY MSKU) + GRAND TOTAL
+# ---------------------------------------------------------------------
+
+def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date: date, end_date: date) -> list[dict]:
+    src = _get_source_table(conn)
+
+    sql = text(f"""
+        SELECT
+            mi.msku AS msku,
+            MAX(mi.product_name) AS product_name,
+
+            SUM(COALESCE(mi.receipts, 0))           AS sum_receipts,
+            SUM(COALESCE(mi.customer_shipments, 0)) AS sum_customer_shipments,
+            SUM(COALESCE(mi.customer_returns, 0))   AS sum_customer_returns,
+            SUM(COALESCE(mi.vendor_returns, 0))     AS sum_vendor_returns,
+            SUM(COALESCE(mi.found, 0))              AS sum_found,
+            SUM(COALESCE(mi.lost, 0))               AS sum_lost,
+            SUM(COALESCE(mi.damaged, 0))            AS sum_damaged,
+            SUM(COALESCE(mi.disposed, 0))           AS sum_disposed,
+
+            -- ✅ NEW columns
+            SUM(COALESCE(mi.in_transit_between_warehouses, 0)) AS sum_in_transit_between_warehouses,
+            SUM(COALESCE(mi.warehouse_transfer_in_out, 0))     AS sum_warehouse_transfer_in_out,
+            SUM(COALESCE(mi.other_events, 0))                  AS sum_other_events,
+            SUM(COALESCE(mi.unknown_events, 0))                AS sum_unknown_events,
+
+            -- ✅ FIRST DAY snapshots
+            SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'DEFECTIVE')
+                AS defective_sum_first,
+            SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'SELLABLE')
+                AS sellable_sum_first,
+            SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'WAREHOUSE_DAMAGED')
+                AS warehouse_damaged_sum_first,
+            SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'EXPIRED')
+                AS expired_sum_first,
+            SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'CUSTOMER_DAMAGED')
+                AS customer_damaged_sum_first,
+            SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'DISTRIBUTOR_DAMAGED')
+                AS distributor_damaged_sum_first,
+
+            -- ✅ LAST DAY snapshots
+            SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'DEFECTIVE')
+                AS defective_sum_last,
+            SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'SELLABLE')
+                AS sellable_sum_last,
+            SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'WAREHOUSE_DAMAGED')
+                AS warehouse_damaged_sum_last,
+            SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'EXPIRED')
+                AS expired_sum_last,
+            SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'CUSTOMER_DAMAGED')
+                AS customer_damaged_sum_last,
+            SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'DISTRIBUTOR_DAMAGED')
+                AS distributor_damaged_sum_last,
+
+            -- ✅ Derived totals
+            (
+                COALESCE(SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'SELLABLE'), 0)
+              + COALESCE(SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'DEFECTIVE'), 0)
+              + COALESCE(SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'WAREHOUSE_DAMAGED'), 0)
+              + COALESCE(SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'EXPIRED'), 0)
+              + COALESCE(SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'CUSTOMER_DAMAGED'), 0)
+              + COALESCE(SUM(COALESCE(mi.starting_warehouse_balance, 0)) FILTER (WHERE mi.date = :start_date AND mi.disposition = 'DISTRIBUTOR_DAMAGED'), 0)
+            ) AS beginning_total,
+
+            COALESCE(SUM(COALESCE(mi.receipts, 0)), 0) AS transit_total,
+
+            (
+                COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.found, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.lost, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.other_events, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0)
+            ) AS other_total,
+
+            (
+                COALESCE(SUM(COALESCE(mi.customer_shipments, 0)), 0)
+              - COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
+            ) AS sold_total,
+
+            (
+                COALESCE(SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'SELLABLE'), 0)
+              + COALESCE(SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'DEFECTIVE'), 0)
+              + COALESCE(SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'WAREHOUSE_DAMAGED'), 0)
+              + COALESCE(SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'EXPIRED'), 0)
+              + COALESCE(SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'CUSTOMER_DAMAGED'), 0)
+              + COALESCE(SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'DISTRIBUTOR_DAMAGED'), 0)
+            ) AS ending_total,
+
+            -- ✅ difference_total uses ABS(other_total) and ABS(sold_total)
+            (
+                COALESCE(
+                    SUM(COALESCE(mi.starting_warehouse_balance, 0))
+                    FILTER (
+                        WHERE mi.date = :start_date
+                          AND mi.disposition IN (
+                            'SELLABLE','DEFECTIVE','WAREHOUSE_DAMAGED',
+                            'EXPIRED','CUSTOMER_DAMAGED','DISTRIBUTOR_DAMAGED'
+                          )
+                    ),
+                0)
+                + COALESCE(SUM(COALESCE(mi.receipts, 0)), 0)
+
+                - ABS(
+                    COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.found, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.lost, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.other_events, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0)
+                )
+
+                - ABS(
+                    COALESCE(SUM(COALESCE(mi.customer_shipments, 0)), 0)
+                  - COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
+                )
+
+                - COALESCE(
+                    SUM(COALESCE(mi.ending_warehouse_balance, 0))
+                    FILTER (
+                        WHERE mi.date = :end_date
+                          AND mi.disposition IN (
+                            'SELLABLE','DEFECTIVE','WAREHOUSE_DAMAGED',
+                            'EXPIRED','CUSTOMER_DAMAGED','DISTRIBUTOR_DAMAGED'
+                          )
+                    ),
+                0)
+            ) AS difference_total
+
+        FROM {src} mi
+        WHERE mi.user_id = :user_id
+          AND mi.marketplace_id = :mp
+          AND mi.date >= :start_date
+          AND mi.date <= :end_date
+          AND mi.msku IS NOT NULL
+          AND NULLIF(TRIM(mi.msku), '') IS NOT NULL
+        GROUP BY mi.msku
+        ORDER BY mi.msku
+    """)
+
+    rows = conn.execute(sql, {
+        "user_id": user_id,
+        "mp": mp,
+        "start_date": start_date,
+        "end_date": end_date,
+    }).mappings().all()
+
+    return [dict(r) for r in rows]
+
+
+def _compute_grand_total(items: list[dict]) -> dict:
+    gt = {
+        "msku": "Grand Total",
+        "product_name": "Grand Total",
+
+        "sum_receipts": 0,
+        "sum_customer_shipments": 0,
+        "sum_customer_returns": 0,
+        "sum_vendor_returns": 0,
+        "sum_found": 0,
+        "sum_lost": 0,
+        "sum_damaged": 0,
+        "sum_disposed": 0,
+        # ✅ NEW
+        "sum_in_transit_between_warehouses": 0,
+        "sum_warehouse_transfer_in_out": 0,
+        "sum_other_events": 0,
+        "sum_unknown_events": 0,
+        "defective_sum_first": 0,
+        "defective_sum_last": 0,
+        "sellable_sum_first": 0,
+        "sellable_sum_last": 0,
+        "warehouse_damaged_sum_first": 0,
+        "warehouse_damaged_sum_last": 0,
+        "expired_sum_first": 0,
+        "expired_sum_last": 0,
+        "customer_damaged_sum_first": 0,
+        "customer_damaged_sum_last": 0,
+        "distributor_damaged_sum_first": 0,
+        "distributor_damaged_sum_last": 0,
+        # ✅ add these
+        "beginning_total": 0,
+        "transit_total": 0,
+        "other_total": 0,
+        "sold_total": 0,
+        "ending_total": 0,
+        "difference_total": 0,
+
+
+    }
+    for r in items:
+        gt["sum_receipts"] += int(r.get("sum_receipts") or 0)
+        gt["sum_customer_shipments"] += int(r.get("sum_customer_shipments") or 0)
+        gt["sum_customer_returns"] += int(r.get("sum_customer_returns") or 0)
+        gt["sum_vendor_returns"] += int(r.get("sum_vendor_returns") or 0)
+        gt["sum_found"] += int(r.get("sum_found") or 0)
+        gt["sum_lost"] += int(r.get("sum_lost") or 0)
+        gt["sum_damaged"] += int(r.get("sum_damaged") or 0)
+        gt["sum_disposed"] += int(r.get("sum_disposed") or 0)
+        # ✅ NEW
+        gt["sum_in_transit_between_warehouses"] += int(r.get("sum_in_transit_between_warehouses") or 0)
+        gt["sum_warehouse_transfer_in_out"] += int(r.get("sum_warehouse_transfer_in_out") or 0)
+        gt["sum_other_events"] += int(r.get("sum_other_events") or 0)
+        gt["sum_unknown_events"] += int(r.get("sum_unknown_events") or 0)
+        gt["defective_sum_first"] += int(r.get("defective_sum_first") or 0)
+        gt["defective_sum_last"] += int(r.get("defective_sum_last") or 0)
+        gt["sellable_sum_first"] += int(r.get("sellable_sum_first") or 0)
+        gt["sellable_sum_last"] += int(r.get("sellable_sum_last") or 0)
+        gt["warehouse_damaged_sum_first"] += int(r.get("warehouse_damaged_sum_first") or 0)
+        gt["warehouse_damaged_sum_last"] += int(r.get("warehouse_damaged_sum_last") or 0)
+        gt["expired_sum_first"] += int(r.get("expired_sum_first") or 0)
+        gt["expired_sum_last"] += int(r.get("expired_sum_last") or 0)
+        gt["customer_damaged_sum_first"] += int(r.get("customer_damaged_sum_first") or 0)
+        gt["customer_damaged_sum_last"] += int(r.get("customer_damaged_sum_last") or 0)
+        gt["distributor_damaged_sum_first"] += int(r.get("distributor_damaged_sum_first") or 0)
+        gt["distributor_damaged_sum_last"] += int(r.get("distributor_damaged_sum_last") or 0)
+        gt["beginning_total"] += int(r.get("beginning_total") or 0)
+        gt["transit_total"] += int(r.get("transit_total") or 0)
+        gt["other_total"] += int(r.get("other_total") or 0)
+        gt["sold_total"] += int(r.get("sold_total") or 0)
+        gt["ending_total"] += int(r.get("ending_total") or 0)
+        gt["difference_total"] += int(r.get("difference_total") or 0)
+
+
+    return gt
+
+
+# ---------------------------------------------------------------------
+# CREATE + UPSERT SUMMARY TABLE (and save GRAND TOTAL row also)
+# ---------------------------------------------------------------------
+
+def _ensure_inventory_summary_table_exists(conn, table_name: str) -> None:
+    conn.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS public.{table_name} (
+            id BIGSERIAL PRIMARY KEY,
+
+            msku TEXT NOT NULL UNIQUE,
+            product_name TEXT,
+
+            sum_receipts BIGINT NOT NULL DEFAULT 0,
+            sum_customer_shipments BIGINT NOT NULL DEFAULT 0,
+            sum_customer_returns BIGINT NOT NULL DEFAULT 0,
+            sum_vendor_returns BIGINT NOT NULL DEFAULT 0,
+            sum_found BIGINT NOT NULL DEFAULT 0,
+            sum_lost BIGINT NOT NULL DEFAULT 0,
+            sum_damaged BIGINT NOT NULL DEFAULT 0,
+            sum_disposed BIGINT NOT NULL DEFAULT 0,
+
+            sum_in_transit_between_warehouses BIGINT DEFAULT 0,
+            sum_warehouse_transfer_in_out BIGINT DEFAULT 0,
+            sum_other_events BIGINT DEFAULT 0,
+            sum_unknown_events BIGINT DEFAULT 0,
+
+            -- ✅ snapshots
+            defective_sum_first BIGINT DEFAULT 0,
+            defective_sum_last BIGINT DEFAULT 0,
+            sellable_sum_first BIGINT DEFAULT 0,
+            sellable_sum_last BIGINT DEFAULT 0,
+            warehouse_damaged_sum_first BIGINT DEFAULT 0,
+            warehouse_damaged_sum_last BIGINT DEFAULT 0,
+            expired_sum_first BIGINT DEFAULT 0,
+            expired_sum_last BIGINT DEFAULT 0,
+            customer_damaged_sum_first BIGINT DEFAULT 0,
+            customer_damaged_sum_last BIGINT DEFAULT 0,
+            distributor_damaged_sum_first BIGINT DEFAULT 0,
+            distributor_damaged_sum_last BIGINT DEFAULT 0,
+
+            -- ✅ derived totals
+            beginning_total BIGINT DEFAULT 0,
+            transit_total BIGINT DEFAULT 0,
+            other_total BIGINT DEFAULT 0,
+            sold_total BIGINT DEFAULT 0,
+            ending_total BIGINT DEFAULT 0,
+            difference_total BIGINT DEFAULT 0,
+
+            computed_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
+        );
+    """))
+
+    # ✅ one ALTER statement, commas between clauses, one semicolon at end
+    conn.execute(text(f"""
+        ALTER TABLE public.{table_name}
+            ADD COLUMN IF NOT EXISTS product_name TEXT,
+            ADD COLUMN IF NOT EXISTS sum_in_transit_between_warehouses BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS sum_warehouse_transfer_in_out BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS sum_other_events BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS sum_unknown_events BIGINT DEFAULT 0,
+
+            ADD COLUMN IF NOT EXISTS defective_sum_first BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS defective_sum_last BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS sellable_sum_first BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS sellable_sum_last BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS warehouse_damaged_sum_first BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS warehouse_damaged_sum_last BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS expired_sum_first BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS expired_sum_last BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS customer_damaged_sum_first BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS customer_damaged_sum_last BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS distributor_damaged_sum_first BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS distributor_damaged_sum_last BIGINT DEFAULT 0,
+
+            -- ✅ derived totals
+            ADD COLUMN IF NOT EXISTS beginning_total BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS transit_total BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS other_total BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS sold_total BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS ending_total BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS difference_total BIGINT DEFAULT 0;
+    """))
+
+
+
+def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> int:
+    if not rows:
+        return 0
+
+    upsert_sql = text(f"""
+        INSERT INTO public.{table_name} (
+            msku,
+            product_name,
+
+            sum_receipts,
+            sum_customer_shipments,
+            sum_customer_returns,
+            sum_vendor_returns,
+            sum_found,
+            sum_lost,
+            sum_damaged,
+            sum_disposed,
+
+            sum_in_transit_between_warehouses,
+            sum_warehouse_transfer_in_out,
+            sum_other_events,
+            sum_unknown_events,
+
+            defective_sum_first,
+            defective_sum_last,
+            sellable_sum_first,
+            sellable_sum_last,
+            warehouse_damaged_sum_first,
+            warehouse_damaged_sum_last,
+            expired_sum_first,
+            expired_sum_last,
+            customer_damaged_sum_first,
+            customer_damaged_sum_last,
+            distributor_damaged_sum_first,
+            distributor_damaged_sum_last,
+            beginning_total,
+            transit_total,
+            other_total,
+            sold_total,
+            ending_total,
+            difference_total,
+
+
+
+            computed_at
+        )
+        VALUES (
+            :msku,
+            :product_name,
+
+            :sum_receipts,
+            :sum_customer_shipments,
+            :sum_customer_returns,
+            :sum_vendor_returns,
+            :sum_found,
+            :sum_lost,
+            :sum_damaged,
+            :sum_disposed,
+
+            :sum_in_transit_between_warehouses,
+            :sum_warehouse_transfer_in_out,
+            :sum_other_events,
+            :sum_unknown_events,
+
+            :defective_sum_first,
+            :defective_sum_last,
+            :sellable_sum_first,
+            :sellable_sum_last,
+            :warehouse_damaged_sum_first,
+            :warehouse_damaged_sum_last,
+            :expired_sum_first,
+            :expired_sum_last,
+            :customer_damaged_sum_first,
+            :customer_damaged_sum_last,
+            :distributor_damaged_sum_first,
+            :distributor_damaged_sum_last,
+            :beginning_total,
+            :transit_total,
+            :other_total,
+            :sold_total,
+            :ending_total,
+            :difference_total,
+
+            NOW()
+        )
+        ON CONFLICT (msku) DO UPDATE SET
+            product_name = EXCLUDED.product_name,
+
+            sum_receipts = EXCLUDED.sum_receipts,
+            sum_customer_shipments = EXCLUDED.sum_customer_shipments,
+            sum_customer_returns = EXCLUDED.sum_customer_returns,
+            sum_vendor_returns = EXCLUDED.sum_vendor_returns,
+            sum_found = EXCLUDED.sum_found,
+            sum_lost = EXCLUDED.sum_lost,
+            sum_damaged = EXCLUDED.sum_damaged,
+            sum_disposed = EXCLUDED.sum_disposed,
+
+            sum_in_transit_between_warehouses = EXCLUDED.sum_in_transit_between_warehouses,
+            sum_warehouse_transfer_in_out = EXCLUDED.sum_warehouse_transfer_in_out,
+            sum_other_events = EXCLUDED.sum_other_events,
+            sum_unknown_events = EXCLUDED.sum_unknown_events,
+
+            defective_sum_first = EXCLUDED.defective_sum_first,
+            defective_sum_last  = EXCLUDED.defective_sum_last,
+            sellable_sum_first  = EXCLUDED.sellable_sum_first,
+            sellable_sum_last   = EXCLUDED.sellable_sum_last,
+            warehouse_damaged_sum_first = EXCLUDED.warehouse_damaged_sum_first,
+            warehouse_damaged_sum_last  = EXCLUDED.warehouse_damaged_sum_last,
+            expired_sum_first   = EXCLUDED.expired_sum_first,
+            expired_sum_last    = EXCLUDED.expired_sum_last,
+            customer_damaged_sum_first = EXCLUDED.customer_damaged_sum_first,
+            customer_damaged_sum_last  = EXCLUDED.customer_damaged_sum_last,
+            distributor_damaged_sum_first = EXCLUDED.distributor_damaged_sum_first,
+            distributor_damaged_sum_last  = EXCLUDED.distributor_damaged_sum_last,
+            beginning_total = EXCLUDED.beginning_total,
+            transit_total = EXCLUDED.transit_total, 
+            other_total = EXCLUDED.other_total,
+            sold_total = EXCLUDED.sold_total,   
+            ending_total = EXCLUDED.ending_total,
+            difference_total = EXCLUDED.difference_total,
+
+            computed_at = NOW();
+    """)
+
+    for r in rows:
+        conn.execute(upsert_sql, {
+            "msku": (r.get("msku") or "").strip(),
+            "product_name": (r.get("product_name") or None),
+
+            "sum_receipts": int(r.get("sum_receipts") or 0),
+            "sum_customer_shipments": int(r.get("sum_customer_shipments") or 0),
+            "sum_customer_returns": int(r.get("sum_customer_returns") or 0),
+            "sum_vendor_returns": int(r.get("sum_vendor_returns") or 0),
+            "sum_found": int(r.get("sum_found") or 0),
+            "sum_lost": int(r.get("sum_lost") or 0),
+            "sum_damaged": int(r.get("sum_damaged") or 0),
+            "sum_disposed": int(r.get("sum_disposed") or 0),
+
+            "sum_in_transit_between_warehouses": int(r.get("sum_in_transit_between_warehouses") or 0),
+            "sum_warehouse_transfer_in_out": int(r.get("sum_warehouse_transfer_in_out") or 0),
+            "sum_other_events": int(r.get("sum_other_events") or 0),
+            "sum_unknown_events": int(r.get("sum_unknown_events") or 0),
+
+            "defective_sum_first": int(r.get("defective_sum_first") or 0),
+            "defective_sum_last": int(r.get("defective_sum_last") or 0),
+            "sellable_sum_first": int(r.get("sellable_sum_first") or 0),
+            "sellable_sum_last": int(r.get("sellable_sum_last") or 0),
+            "warehouse_damaged_sum_first": int(r.get("warehouse_damaged_sum_first") or 0),
+            "warehouse_damaged_sum_last": int(r.get("warehouse_damaged_sum_last") or 0),
+            "expired_sum_first": int(r.get("expired_sum_first") or 0),
+            "expired_sum_last": int(r.get("expired_sum_last") or 0),
+            "customer_damaged_sum_first": int(r.get("customer_damaged_sum_first") or 0),
+            "customer_damaged_sum_last": int(r.get("customer_damaged_sum_last") or 0),
+            "distributor_damaged_sum_first": int(r.get("distributor_damaged_sum_first") or 0),
+            "distributor_damaged_sum_last": int(r.get("distributor_damaged_sum_last") or 0),
+            "beginning_total": int(r.get("beginning_total") or 0),
+            "transit_total": int(r.get("transit_total") or 0),
+            "other_total": int(r.get("other_total") or 0),
+            "sold_total": int(r.get("sold_total") or 0),
+            "ending_total": int(r.get("ending_total") or 0),
+            "difference_total": int(r.get("difference_total") or 0),
+
+        })
+
+    return len(rows)
+
+
+# ============================================================
+# ROUTE 1: READ amazon_db -> GROUP BY MSKU + return GRAND TOTAL
+# GET /amazon_api/inventory/ledger-summary/db?month=11&year=2025
+# ============================================================
 
 @inventory_bp.route("/amazon_api/inventory/ledger-summary/db", methods=["GET"])
 def inventory_ledger_summary_db():
-    """
-    Ledger summary FROM DB (MonthwiseInventory) with disposition pivoted into 5 columns:
-      SELLABLE, EXPIRED, DEFECTIVE, CUSTOMER_DAMAGED, WAREHOUSE_DAMAGED
-
-    - The 5 disposition columns contain ending_warehouse_balance.
-    - Base metrics (starting balance, receipts, shipments, etc.) are taken from the SELLABLE row
-      when available (prevents picking EXPIRED/DEFECTIVE rows that can have small/zero values).
-    - Adds:
-        total_ending_warehouse_balance = sum of the 5 disposition columns
-        difference = starting_warehouse_balance - total_ending_warehouse_balance
-
-    Supports:
-      1) Month:    ?month=12&year=2025  OR ?month=2025-12
-      2) Quarter:  ?quarter=1&year=2025 OR ?quarter=2025-Q1 OR ?quarter=Q1&year=2025
-      3) Year:     ?year=2025
-      4) Range:    ?start_date=2025-12-01&end_date=2025-12-31
-      5) Single:   ?date=2025-12-31
-
-    Optional filters:
-      - marketplace_id=...
-      - msku=...
-      - location=...
-
-    NOTE:
-      - We intentionally do NOT apply ?disposition= filter, because we need all dispositions
-        to build the 5 columns.
-    """
-
-    # -------------------- Auth --------------------
-    auth_header = request.headers.get("Authorization")
-    user_id = None
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.split(" ")[1]
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            user_id = payload.get("user_id")
-        except jwt.ExpiredSignatureError:
-            return jsonify({"error": "Token has expired"}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({"error": "Invalid token"}), 401
-
+    user_id = _get_user_id_from_bearer()
     if not user_id:
-        return jsonify({"error": "Missing/invalid token"}), 401
+        return jsonify({"error": "Invalid or missing token"}), 401
 
-    # -------------------- Params --------------------
-    mp = request.args.get("marketplace_id")  # optional
-    msku_filter = request.args.get("msku")   # optional
-    location_filter = request.args.get("location")  # optional
+    _apply_region_and_marketplace_from_request()
 
+    if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
+
+    mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+
+    # same date logic you use
     date_str = request.args.get("date")
     start_str = request.args.get("start_date")
     end_str = request.args.get("end_date")
+    month_param = request.args.get("month")
+    quarter_param = request.args.get("quarter")
+    year_param = request.args.get("year")
 
-    month_param = request.args.get("month")      # "12" or "2025-12"
-    quarter_param = request.args.get("quarter")  # "1" or "2025-Q1" or "Q1"
-    year_param = request.args.get("year")        # "2025"
+    mode = None
 
-    mode = None  # "month" | "quarter" | "year" | "range" | "single"
-
-    # -------------------- Compute date window --------------------
     try:
         if month_param and not (date_str or start_str or end_str or quarter_param):
-            if "-" in month_param:
+            if "-" in month_param:  # "2025-11"
                 y_str, m_str = month_param.split("-", 1)
                 year = int(year_param or y_str)
                 month = int(m_str)
             else:
                 month = int(month_param)
                 year = int(year_param) if year_param else datetime.utcnow().year
-
             start_date, end_date = _month_range(year, month)
             mode = "month"
 
@@ -2078,7 +2724,6 @@ def inventory_ledger_summary_db():
             else:
                 quarter = int(qp)
                 year = int(year_param) if year_param else datetime.utcnow().year
-
             start_date, end_date = _quarter_range(year, quarter)
             mode = "quarter"
 
@@ -2089,165 +2734,195 @@ def inventory_ledger_summary_db():
 
         elif date_str:
             start_date = end_date = _parse_date_str(date_str)
-            mode = "single"
+            mode = "date"
 
         else:
             if not (start_str and end_str):
                 return jsonify({
                     "error": (
-                        "Provide either ?date=..., or both ?start_date= and ?end_date=, "
-                        "or ?month=..., or ?quarter=...&year=..., or ?year=YYYY."
+                        "Provide either ?date=..., both ?start_date= and ?end_date=, "
+                        "or ?month=...&year=..., or ?quarter=...&year=..., or ?year=YYYY."
                     )
                 }), 400
-
             start_date = _parse_date_str(start_str)
             end_date = _parse_date_str(end_str)
             if end_date < start_date:
-                raise ValueError("end_date cannot be before start_date")
+                return jsonify({"error": "end_date cannot be before start_date"}), 400
             mode = "range"
 
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    # -------------------- DB Query --------------------
-    q = (
-        db.session.query(MonthwiseInventory)
-        .options(
-            load_only(
-                MonthwiseInventory.date,
-                MonthwiseInventory.msku,
-                MonthwiseInventory.disposition,
-                MonthwiseInventory.product_name,
-                MonthwiseInventory.marketplace_id,
-                MonthwiseInventory.location,
+    try:
+        with amazon_conn() as conn:
+            items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+            grand_total = _compute_grand_total(items)
 
-                MonthwiseInventory.starting_warehouse_balance,
-                MonthwiseInventory.in_transit_between_warehouses,
-                MonthwiseInventory.receipts,
-                MonthwiseInventory.customer_shipments,
-                MonthwiseInventory.customer_returns,
-                MonthwiseInventory.vendor_returns,
-                MonthwiseInventory.warehouse_transfer_in_out,
-                MonthwiseInventory.found,
-                MonthwiseInventory.lost,
-                MonthwiseInventory.damaged,
-                MonthwiseInventory.disposed,
-                MonthwiseInventory.other_events,
-                MonthwiseInventory.ending_warehouse_balance,
-            )
-        )
-        .filter(MonthwiseInventory.user_id == user_id)
-        .filter(MonthwiseInventory.date >= start_date)
-        .filter(MonthwiseInventory.date <= end_date)
-    )
+        # return with total last (like Excel)
+        items_with_total = items + [grand_total]
 
-    if mp:
-        q = q.filter(MonthwiseInventory.marketplace_id == mp)
-    if msku_filter:
-        q = q.filter(MonthwiseInventory.msku == msku_filter)
-    if location_filter:
-        q = q.filter(MonthwiseInventory.location == location_filter)
+        return jsonify({
+            "success": True,
+            "marketplace_id": mp,
+            "mode": mode,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "count": len(items),  # excludes Grand Total
+            "items": items_with_total,
+        }), 200
 
-    q = q.order_by(
-        MonthwiseInventory.date.asc(),
-        MonthwiseInventory.msku.asc(),
-        MonthwiseInventory.disposition.asc(),
-    )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
-    rows = q.all()
 
-    # -------------------- Pivot dispositions into 5 columns --------------------
-    DISPOSITIONS = [
-        "SELLABLE",
-        "EXPIRED",
-        "DEFECTIVE",
-        "CUSTOMER_DAMAGED",
-        "WAREHOUSE_DAMAGED",
-    ]
+# ============================================================
+# ROUTE 2: STORE MONTH SUMMARY TABLE (with GRAND TOTAL row)
+# GET /amazon_api/inventory/ledger-summary/db/store-month?country=uk&month=11&year=2025
+# ============================================================
 
-    def _pick_base_metrics(dst: dict, src_row) -> None:
-        dst["starting_warehouse_balance"] = int(src_row.starting_warehouse_balance or 0)
-        dst["in_transit_between_warehouses"] = int(src_row.in_transit_between_warehouses or 0)
-        dst["receipts"] = int(src_row.receipts or 0)
-        dst["customer_shipments"] = int(src_row.customer_shipments or 0)
-        dst["customer_returns"] = int(src_row.customer_returns or 0)
-        dst["vendor_returns"] = int(src_row.vendor_returns or 0)
-        dst["warehouse_transfer_in_out"] = int(src_row.warehouse_transfer_in_out or 0)
-        dst["found"] = int(src_row.found or 0)
-        dst["lost"] = int(src_row.lost or 0)
-        dst["damaged"] = int(src_row.damaged or 0)
-        dst["disposed"] = int(src_row.disposed or 0)
-        dst["other_events"] = int(src_row.other_events or 0)
+@inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-month", methods=["GET"])
+def inventory_ledger_summary_store_month():
+    user_id = _get_user_id_from_bearer()
+    if not user_id:
+        return jsonify({"error": "Invalid or missing token"}), 401
 
-    grouped = {}
+    _apply_region_and_marketplace_from_request()
 
-    for r in rows:
-        key = (r.date, r.msku, r.product_name, r.marketplace_id, r.location)
+    if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
-        if key not in grouped:
-            grouped[key] = {
-                "date": r.date.strftime("%Y-%m-%d"),
-                "msku": r.msku,
-                "product_name": r.product_name,
-                "marketplace_id": r.marketplace_id,
-                "location": r.location,
+    mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+    country = request.args.get("country", "us")
 
-                # base metrics (filled from SELLABLE when available)
-                "starting_warehouse_balance": 0,
-                "in_transit_between_warehouses": 0,
-                "receipts": 0,
-                "customer_shipments": 0,
-                "customer_returns": 0,
-                "vendor_returns": 0,
-                "warehouse_transfer_in_out": 0,
-                "found": 0,
-                "lost": 0,
-                "damaged": 0,
-                "disposed": 0,
-                "other_events": 0,
+    try:
+        month = int(request.args.get("month", "0"))
+        year = int(request.args.get("year", "0"))
+        start_date, end_date = _month_range(year, month)
+    except Exception:
+        return jsonify({"error": "Provide valid ?country=xx&month=MM&year=YYYY"}), 400
 
-                # disposition pivot columns (ending_warehouse_balance)
-                **{d: 0 for d in DISPOSITIONS},
+    table_name = _monthly_table_name(user_id, country, month, year)
 
-                # internal helper
-                "_base_set": False,
-            }
+    try:
+        with amazon_conn() as conn:
+            items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+            grand_total = _compute_grand_total(items)
 
-            # fallback: set base metrics from the first seen row
-            _pick_base_metrics(grouped[key], r)
-            grouped[key]["_base_set"] = True
+            # save normal rows + grand total row
+            to_save = items + [grand_total]
 
-        g = grouped[key]
+            _ensure_inventory_summary_table_exists(conn, table_name)
+            saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
 
-        # pivot ending_warehouse_balance
-        disp = (r.disposition or "").strip()
-        if disp in DISPOSITIONS:
-            g[disp] += int(r.ending_warehouse_balance or 0)
+        return jsonify({
+            "success": True,
+            "marketplace_id": mp,
+            "table": f"public.{table_name}",
+            "saved_rows": saved,  # includes Grand Total row
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        }), 200
 
-        # if SELLABLE row exists, override base metrics with SELLABLE (preferred)
-        if disp == "SELLABLE":
-            _pick_base_metrics(g, r)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
-    # -------------------- Add totals + difference --------------------
-    items = []
-    for g in grouped.values():
-        g.pop("_base_set", None)
 
-        total_ending = sum(g[d] for d in DISPOSITIONS)
-        g["total_ending_warehouse_balance"] = total_ending
-        g["difference"] = int(g["starting_warehouse_balance"] or 0) - total_ending
+# ============================================================
+# ROUTE 3: STORE QUARTER SUMMARY TABLE (with GRAND TOTAL row)
+# GET /amazon_api/inventory/ledger-summary/db/store-quarter?country=uk&quarter=4&year=2025
+# ============================================================
 
-        items.append(g)
+@inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-quarter", methods=["GET"])
+def inventory_ledger_summary_store_quarter():
+    user_id = _get_user_id_from_bearer()
+    if not user_id:
+        return jsonify({"error": "Invalid or missing token"}), 401
 
-    items.sort(key=lambda x: (x["date"], x["msku"], x.get("marketplace_id") or "", x.get("location") or ""))
+    _apply_region_and_marketplace_from_request()
 
-    return jsonify({
-        "success": True,
-        "mode": mode,
-        "marketplace_id": mp,
-        "start_date": start_date.strftime("%Y-%m-%d"),
-        "end_date": end_date.strftime("%Y-%m-%d"),
-        "count": len(items),
-        "items": items,
-    }), 200
+    if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
+    mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+    country = request.args.get("country", "us")
+
+    try:
+        quarter = int(request.args.get("quarter", "0"))
+        year = int(request.args.get("year", "0"))
+        start_date, end_date = _quarter_range(year, quarter)
+    except Exception:
+        return jsonify({"error": "Provide valid ?country=xx&quarter=Q&year=YYYY"}), 400
+
+    table_name = _quarterly_table_name(user_id, country, quarter, year)
+
+    try:
+        with amazon_conn() as conn:
+            items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+            grand_total = _compute_grand_total(items)
+
+            to_save = items + [grand_total]
+
+            _ensure_inventory_summary_table_exists(conn, table_name)
+            saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
+
+        return jsonify({
+            "success": True,
+            "marketplace_id": mp,
+            "table": f"public.{table_name}",
+            "saved_rows": saved,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        }), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ============================================================
+# ROUTE 4: STORE YEAR SUMMARY TABLE (with GRAND TOTAL row)
+# GET /amazon_api/inventory/ledger-summary/db/store-year?country=uk&year=2025
+# ============================================================
+
+@inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-year", methods=["GET"])
+def inventory_ledger_summary_store_year():
+    user_id = _get_user_id_from_bearer()
+    if not user_id:
+        return jsonify({"error": "Invalid or missing token"}), 401
+
+    _apply_region_and_marketplace_from_request()
+
+    if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
+
+    mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+    country = request.args.get("country", "us")
+
+    try:
+        year = int(request.args.get("year", "0"))
+        start_date, end_date = _year_range(year)
+    except Exception:
+        return jsonify({"error": "Provide valid ?country=xx&year=YYYY"}), 400
+
+    table_name = _yearly_table_name(user_id, country, year)
+
+    try:
+        with amazon_conn() as conn:
+            items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+            grand_total = _compute_grand_total(items)
+
+            to_save = items + [grand_total]
+
+            _ensure_inventory_summary_table_exists(conn, table_name)
+            saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
+
+        return jsonify({
+            "success": True,
+            "marketplace_id": mp,
+            "table": f"public.{table_name}",
+            "saved_rows": saved,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+        }), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500

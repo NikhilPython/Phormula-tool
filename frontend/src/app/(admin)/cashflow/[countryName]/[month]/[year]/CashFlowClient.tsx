@@ -170,7 +170,7 @@ const CashFlowPage: React.FC = () => {
     [currentYear]
   );
 
- // 🔹 NEW: compute whether the route params equal the *current* month & year
+  // 🔹 NEW: compute whether the route params equal the *current* month & year
   const today = new Date();
   const currentMonthName = monthsList[today.getMonth()]; // e.g. "December"
   const currentYearStr = String(today.getFullYear());
@@ -190,23 +190,23 @@ const CashFlowPage: React.FC = () => {
     ? String(paramYear)
     : "";
 
-    
 
-// previous month logic
-const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
 
-const defaultMonth = monthsList[prevMonthDate.getMonth()]; // "November"
-const defaultYear = String(prevMonthDate.getFullYear());   // "2024"
+  // previous month logic
+  const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+
+  const defaultMonth = monthsList[prevMonthDate.getMonth()]; // "November"
+  const defaultYear = String(prevMonthDate.getFullYear());   // "2024"
 
   // State
   const [selectedQuarter, setSelectedQuarter] = useState<string>("");
   const [month, setMonth] = useState<string>(
-  initialMonth || defaultMonth
-);
+    initialMonth || defaultMonth
+  );
 
-const [year, setYear] = useState<string>(
-  initialYear || defaultYear
-);
+  const [year, setYear] = useState<string>(
+    initialYear || defaultYear
+  );
   const [periodType, setPeriodType] = useState<PeriodType>("monthly");
   const [error, setError] = useState<string>("");
   const [data, setData] = useState<APIResponse | null>(null);
@@ -220,15 +220,15 @@ const [year, setYear] = useState<string>(
   const [quarterlyMonthlyData, setQuarterlyMonthlyData] =
     useState<QuarterlyMonthlyData>({});
 
-const defaultMetricState = {
-  net_sales: true,
-  amazon_fee: true,
-  advertising_total: true,
-  taxncredit: true,
-  otherwplatform: true,
-  rembursement_fee: true,
-  cashflow: true,
-};
+  const defaultMetricState = {
+    net_sales: true,
+    amazon_fee: true,
+    advertising_total: true,
+    taxncredit: true,
+    otherwplatform: true,
+    rembursement_fee: true,
+    cashflow: true,
+  };
 
 
 
@@ -249,7 +249,7 @@ const defaultMetricState = {
     Object.values(data.summary!).every((v) => !v);
 
   // API helpers (using fetch)
- const fetchSpecificPeriodData = async (
+  const fetchSpecificPeriodData = async (
     requestMonth: string | null,
     requestYear: string | null,
     requestPeriodType: PeriodType
@@ -281,27 +281,25 @@ const defaultMetricState = {
   };
 
   const prevMonthLabel =
-  periodType === "monthly" && month && year
-    ? `${monthsList[(monthsList.indexOf(month) + 11) % 12]} ${
-        month === "January" ? Number(year) - 1 : year
+    periodType === "monthly" && month && year
+      ? `${monthsList[(monthsList.indexOf(month) + 11) % 12]} ${month === "January" ? Number(year) - 1 : year
       }`
-    : "";
+      : "";
 
-    const prevQuarterLabel =
-  periodType === "quarterly" && selectedQuarter && year
-    ? `${selectedQuarter === "Q1" ? "Q4" : "Q" + (Number(selectedQuarter[1]) - 1)} ${
-        selectedQuarter === "Q1" ? Number(year) - 1 : year
+  const prevQuarterLabel =
+    periodType === "quarterly" && selectedQuarter && year
+      ? `${selectedQuarter === "Q1" ? "Q4" : "Q" + (Number(selectedQuarter[1]) - 1)} ${selectedQuarter === "Q1" ? Number(year) - 1 : year
       }`
-    : "";
+      : "";
 
-    const prevYearLabel =
-  periodType === "yearly" && year ? String(Number(year) - 1) : "";
-const previousLabel =
-  periodType === "monthly"
-    ? prevMonthLabel
-    : periodType === "quarterly"
-    ? prevQuarterLabel
-    : prevYearLabel;
+  const prevYearLabel =
+    periodType === "yearly" && year ? String(Number(year) - 1) : "";
+  const previousLabel =
+    periodType === "monthly"
+      ? prevMonthLabel
+      : periodType === "quarterly"
+        ? prevQuarterLabel
+        : prevYearLabel;
 
 
   const fetchQuarterlyMonthlyData = async (quarter: string, y: string) => {
@@ -397,28 +395,28 @@ const previousLabel =
     }
 
     try {
-    if (periodType === "quarterly") {
-  // 1️⃣ Quarterly API → Sankey + summary
-  const quarterPeriodType =
-    quarterToPeriodTypeMap[selectedQuarter];
+      if (periodType === "quarterly") {
+        // 1️⃣ Quarterly API → Sankey + summary
+        const quarterPeriodType =
+          quarterToPeriodTypeMap[selectedQuarter];
 
-  const quarterResp = await fetchSpecificPeriodData(
-    null,
-    year,
-    quarterPeriodType as PeriodType
-  );
+        const quarterResp = await fetchSpecificPeriodData(
+          null,
+          year,
+          quarterPeriodType as PeriodType
+        );
 
-  setData(quarterResp);
+        setData(quarterResp);
 
-  // 2️⃣ Monthly APIs → Line chart data
-  const { monthlyData } = await fetchQuarterlyMonthlyData(
-    selectedQuarter,
-    year
-  );
+        // 2️⃣ Monthly APIs → Line chart data
+        const { monthlyData } = await fetchQuarterlyMonthlyData(
+          selectedQuarter,
+          year
+        );
 
-  setQuarterlyMonthlyData(monthlyData);
-}
- else if (periodType === "yearly") {
+        setQuarterlyMonthlyData(monthlyData);
+      }
+      else if (periodType === "yearly") {
         await fetchAllYearlyData();
         const resp = await fetchSpecificPeriodData(null, year, "yearly");
         setData(resp);
@@ -496,36 +494,36 @@ const previousLabel =
     let labels: string[] = [];
     const datasets: any[] = [];
 
-if (
-  periodType === "quarterly" &&
-  selectedQuarter &&
-  Object.keys(quarterlyMonthlyData).length > 0
-) {
-  labels = quarterMapping[selectedQuarter] || [];
+    if (
+      periodType === "quarterly" &&
+      selectedQuarter &&
+      Object.keys(quarterlyMonthlyData).length > 0
+    ) {
+      labels = quarterMapping[selectedQuarter] || [];
 
-  columnsToDisplay2.forEach((key) => {
-    if (!selectedGraphs[key]) return;
+      columnsToDisplay2.forEach((key) => {
+        if (!selectedGraphs[key]) return;
 
-    const ds = labels.map((monthName) => {
-      const md = quarterlyMonthlyData[monthName];
-      return Math.abs(Number(md?.[key] ?? 0));
-    });
+        const ds = labels.map((monthName) => {
+          const md = quarterlyMonthlyData[monthName];
+          return Math.abs(Number(md?.[key] ?? 0));
+        });
 
-    datasets.push({
-      label: labelMap[key],
-      data: ds, // ✅ month-wise real data
-      borderColor: colorMapping[labelMap[key]],
-      backgroundColor: `${colorMapping[labelMap[key]]}20`,
-      borderWidth: 2,
-      fill: false,
-      tension: 0.35,
-      pointRadius: 3,
-      pointHoverRadius: 4,
-    });
-  });
-}
+        datasets.push({
+          label: labelMap[key],
+          data: ds, // ✅ month-wise real data
+          borderColor: colorMapping[labelMap[key]],
+          backgroundColor: `${colorMapping[labelMap[key]]}20`,
+          borderWidth: 2,
+          fill: false,
+          tension: 0.35,
+          pointRadius: 3,
+          pointHoverRadius: 4,
+        });
+      });
+    }
 
- else if (periodType === "yearly") {
+    else if (periodType === "yearly") {
       labels = monthsList;
       columnsToDisplay2.forEach((key) => {
         if (!selectedGraphs[key]) return;
@@ -635,7 +633,7 @@ if (
             };
           },
 
-          labelTextColor: () => "#414042",  
+          labelTextColor: () => "#414042",
 
         },
       },
@@ -770,15 +768,15 @@ if (
   }));
 
   // Handlers for PeriodFiltersTable
- const handleRangeChange = (v: PeriodType) => {
-  setPeriodType(v);
-  setData(null);
-  setError("");
+  const handleRangeChange = (v: PeriodType) => {
+    setPeriodType(v);
+    setData(null);
+    setError("");
 
-  // 🔥 reset graph selection on period change
-  setSelectedGraphs(
-    v === "monthly"
-      ? {
+    // 🔥 reset graph selection on period change
+    setSelectedGraphs(
+      v === "monthly"
+        ? {
           net_sales: true,
           amazon_fee: true,
           advertising_total: true,
@@ -787,7 +785,7 @@ if (
           rembursement_fee: true,
           cashflow: true,
         }
-      : {
+        : {
           net_sales: true,
           rembursement_fee: true,
           cashflow: true,
@@ -797,8 +795,8 @@ if (
           taxncredit: false,
           otherwplatform: false,
         }
-  );
-};
+    );
+  };
 
 
   const handleMonthChange = (lowercaseMonth: string) => {
@@ -873,62 +871,62 @@ if (
   };
 
   const canShowResults =
-  (periodType === "monthly" && !!month && !!year) ||
-  (periodType === "quarterly" && !!selectedQuarter && !!year) ||
-  (periodType === "yearly" && !!year);
+    (periodType === "monthly" && !!month && !!year) ||
+    (periodType === "quarterly" && !!selectedQuarter && !!year) ||
+    (periodType === "yearly" && !!year);
 
 
   return (
     <div className="w-full">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
 
-    {/* LEFT: Title */}
-    <div className="mb-2 flex flex-wrap items-start gap-2">
-      <div>
-        <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
-          <PageBreadcrumb
-            pageTitle="Cash Flow –"
-            variant="page"
-            align="left"
-            className=""
-          />
+          {/* LEFT: Title */}
+          <div className="mb-2 flex flex-wrap items-start gap-2">
+            <div>
+              <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
+                <PageBreadcrumb
+                  pageTitle="Cash Flow –"
+                  variant="page"
+                  align="left"
+                  className=""
+                />
 
-          <span className="text-[#5EA68E] font-bold text-lg 2xl:text-2xl">
-            {countryName?.toUpperCase()}
-          </span>
+                <span className="text-[#5EA68E] font-bold text-lg 2xl:text-2xl">
+                  {countryName?.toUpperCase()}
+                </span>
+              </div>
+
+              <p className="2xl:text-sm text-xs">
+                Track cash generation from performance
+              </p>
+            </div>
+          </div>
+
+          {/* RIGHT: Filters */}
+          <div className="mb-2">
+            <div className="flex flex-col md:flex-row items-center gap-[0.5vw]">
+              <PeriodFiltersTable
+                range={periodType}
+                selectedMonth={month.toLowerCase()}
+                selectedQuarter={selectedQuarter}
+                selectedYear={year}
+                yearOptions={years}
+                onRangeChange={handleRangeChange}
+                onMonthChange={handleMonthChange}
+                onQuarterChange={handleQuarterChange}
+                onYearChange={handleYearChange}
+              />
+            </div>
+          </div>
+
         </div>
-
-        <p className="2xl:text-sm text-xs">
-          Track cash generation from performance
-        </p>
       </div>
-    </div>
 
-    {/* RIGHT: Filters */}
-    <div className="mb-2">
-      <div className="flex flex-col md:flex-row items-center gap-[0.5vw]">
-        <PeriodFiltersTable
-          range={periodType}
-          selectedMonth={month.toLowerCase()}
-          selectedQuarter={selectedQuarter}
-          selectedYear={year}
-          yearOptions={years}
-          onRangeChange={handleRangeChange}
-          onMonthChange={handleMonthChange}
-          onQuarterChange={handleQuarterChange}
-          onYearChange={handleYearChange}
-        />
-      </div>
-    </div>
 
-  </div>
-</div>
 
-      
-
-            {/* Show alert until a valid period selection is made */}
+      {/* Show alert until a valid period selection is made */}
       {!canShowResults && (
         <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
           <div className="flex items-center">
@@ -944,7 +942,7 @@ if (
       {/* Loading – now using Loader */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <Loader fullscreen transparent />
+          <Loader fullscreen transparent />
         </div>
       )}
 
@@ -973,14 +971,14 @@ if (
 
           {/* Summary Table using DataTable */}
           {data?.summary && (
- <CashFlowSankey
-  data={data.summary}
-  previous_summary={data.previous_summary}
-  previousLabel={previousLabel}
-  periodType={periodType}
-  currency={currencySymbol}
-/>
-)}
+            <CashFlowSankey
+              data={data.summary}
+              previous_summary={data.previous_summary}
+              previousLabel={previousLabel}
+              periodType={periodType}
+              currency={currencySymbol}
+            />
+          )}
 
 
 

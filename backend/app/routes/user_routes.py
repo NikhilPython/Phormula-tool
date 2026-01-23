@@ -72,7 +72,7 @@ def register():
         # Send welcome and verification emails
         try:
             # test_send_email()
-            send_welcome_and_verification_emails(email, verification_link)
+            send_welcome_and_verification_emails(email, name, verification_link)
         except Exception as e:
             return jsonify({'success': False, 'message': 'Failed to send verification or welcome email', 'error': str(e)})
 
@@ -321,7 +321,7 @@ def google_register():
 
             try:
                 verification_link = 'http://127.0.0.1:5000/dashboard'
-                send_welcome_and_verification_emails(email, verification_link)
+                send_welcome_and_verification_emails(email, name, verification_link)
             except Exception as e:
                 print(f"Failed to send welcome email to {email}: {e}")
 
@@ -355,6 +355,7 @@ def google_register():
 def resend_verification_email():
     data = request.get_json()
     email = data.get('email')
+    name = data.get('name')  
 
     if not email:
         return jsonify({'success': False, 'message': 'Email is required'}), 400  # If email is not provided
@@ -370,7 +371,7 @@ def resend_verification_email():
 
     # Try sending the verification email
     try:
-        send_welcome_and_verification_emails(email, verification_link)
+        send_welcome_and_verification_emails(email, name, verification_link)
         return jsonify({'success': True, 'message': 'Verification email resent successfully.'})
     except Exception as e:
         return jsonify({'success': False, 'message': 'Failed to resend verification email', 'error': str(e)}), 500

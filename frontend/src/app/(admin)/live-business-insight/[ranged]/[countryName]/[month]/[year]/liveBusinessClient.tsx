@@ -2540,7 +2540,7 @@ export default function LiveBusinessClient({
           {error && <p style={{ color: 'red' }}>{error}</p>}
 
           {(overallSummary.length > 0 || overallActions.length > 0) && (
-            <div className="flex gap-4 flex-col md:flex-row mb-4">
+            <div className="flex gap-4 flex-col md:flex-row">
               {overallSummary.length > 0 && (
                 <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
                   {/* <h2 className="text-xl font-bold">Business Summary MTD</h2> */}
