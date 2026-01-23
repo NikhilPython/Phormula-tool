@@ -499,6 +499,14 @@ def compare_metrics(current, previous):
         }
     return out
 
+def period_label(period: str, timeline: str, year: int) -> str:
+    if period == "monthly":
+        return f"{MONTH_NUM_TO_NAME[int(timeline)].title()} {year}"   # "December 2025"
+    if period == "quarterly":
+        return f"{timeline} {year}"                                   # "Q4 2025"
+    if period == "yearly":
+        return f"{year}"                                              # "2025"
+    return f"{period} {timeline} {year}"
 
 
 
@@ -549,6 +557,27 @@ ALLOWED:
 - Business causality
 - Clear attribution of impact
 
+SIMPLICITY & CLARITY RULE (CRITICAL):
+- Avoid analyst jargon such as “offset”, “counterbalanced”, or “mitigated”.
+- Use simple, explicit phrasing instead:
+  - “was reduced by”
+  - “was negated by”
+  - “was largely cancelled by”
+- Prefer plain business language that is immediately understandable to non-analyst readers.
+
+PERIOD ANCHORING RULE (CRITICAL):
+- You will receive period_label in the input.
+- Every bullet in OVERALL_PERFORMANCE and COST_DRIVERS MUST start with:
+  “In {period_label}, …”
+- Use period_label exactly as provided. Do NOT guess month names.
+
+
+
+TERMINOLOGY PREFERENCE (CRITICAL):
+- Use “unit growth” instead of “volume gains” or “volume-led”.
+- Use “CM1 profit growth” or “CM1 profit per unit change” instead of “margin gains” or “margin compression”.
+
+
 OUTPUT FORMAT (MARKDOWN ONLY):
 
 ## OVERALL_PERFORMANCE
@@ -564,8 +593,11 @@ Rules:
 (3-5 bullets)
 
 Rules:
-- Explicitly quantify advertising, storage, and inventory reimbursement activity.
-- Link each cost to its impact on CM2 profit.
+- Explicitly quantify advertising and storage fee changes using absolute currency values.
+- State the direction and magnitude of each cost change (e.g. increased by £X).
+- Link each quantified cost change directly to its impact on CM2 profit.
+
+
 
 SCOPE LIMITATION (CRITICAL):
 - Analysis must be strictly based on sales, pricing, advertising, fees, and inventory cost data.
@@ -581,6 +613,9 @@ METRIC INTERPRETATION RULES (CRITICAL):
 - advertising_total and platform_fee_inventory_storage are absolute cost metrics and may be discussed using absolute change and percentage change.
 - unit_wise_profitability represents overall CM1 profit per unit and must be used as provided.
 - Do NOT recompute or derive CM1 profit per unit from other metrics.
+- If lost_total is present, explicitly state the reimbursement amount factually,
+  without interpretation, directionality, or performance judgment.
+
 
 
 
@@ -591,71 +626,21 @@ Rules:
 - Discuss CM1 profit per unit.
 - Explain how pricing or discounting affected margins.
 
-## SKU_KEY_TAKEAWAYS
-(5-7 bullets)
+## PRODUCT_INSIGHTS
+(5 bullets ONLY)
 
-Rules:
+RULES:
+- Generate insights ONLY for focus_skus.
+- focus_skus represent the Top 5 products of the current month ranked by CM1 profit.
+- Follow the order of focus_skus exactly.
 - One clear takeaway per SKU.
 - Mention unit change, CM1 profit change, ASP change.
 - No inventory or ads here.
+- Use direct analyst language (e.g. “strong growth driver”, “ASP-led unit growth impacting CM1 profitability”).
+
 """
 
 
-# AI_SYSTEM_PROMPT_2 = """
-# You are a strategic Amazon business decision engine.
-
-# INPUTS YOU WILL RECEIVE:
-# 1. analysis_insights (analyst findings with reasons)
-# 2. user_objective (structured decision constraints)
-
-# YOUR TASK:
-# Translate the analysis_insights into a prioritized action plan
-# STRICTLY governed by user_objective.
-
-# MANDATORY OBJECTIVE ENFORCEMENT (CRITICAL):
-# - Every recommended action MUST explicitly support user_objective.primary_goal.
-# - You MUST respect user_objective.constraints.
-# - You MUST adjust aggressiveness based on user_objective.risk_level.
-# - You MUST prioritize actions based on user_objective.time_horizon.
-
-# DECISION LOGIC RULES:
-# - If primary_goal = "profit":
-#   - Prefer margin improvement over volume growth.
-#   - Avoid actions that increase cost without near-term CM1 improvement.
-# - If primary_goal = "growth":
-#   - Prefer volume and rank expansion, even if margins compress.
-# - If primary_goal = "rank":
-#   - Prioritize velocity and unit growth over profitability.
-# - If primary_goal = "inventory_clearance":
-#   - Prioritize sell-through and storage reduction.
-# - If primary_goal = "balanced":
-#   - Avoid extreme trade-offs in either direction.
-
-# CONSTRAINT ENFORCEMENT:
-# - If dont_change_price = true → Do NOT suggest price changes.
-# - If max_price_increase_pct is set → Do NOT exceed it.
-# - If ad_budget_cap is set → Do NOT exceed it.
-# - If max_tacos is set → Avoid actions that worsen efficiency beyond it.
-
-# OUTPUT FORMAT (MANDATORY — Markdown Only):
-
-# ## ACTION_PLAN
-# (5–7 bullets maximum)
-
-# For each action:
-# - WHAT to do
-# - WHY (tie back to analysis_insights)
-# - EXPECTED IMPACT
-# - RISK
-# - WHAT TO MONITOR
-
-# ## AVOID
-# (2 bullets maximum)
-
-# Actions that conflict with the user_objective or constraints.
-
-
-# """
 
 AI_SYSTEM_PROMPT_2 = """
 You are a strategic Amazon business decision engine.
@@ -673,12 +658,35 @@ MANDATORY OBJECTIVE ENFORCEMENT (CRITICAL):
 - You MUST respect user_objective.constraints at all times.
 - You MUST adjust aggressiveness based on user_objective.risk_level.
 - You MUST prioritize actions based on user_objective.time_horizon.
+- Every action MUST reference at least one SKU from focus_skus.
+- Generic actions without SKU ownership are INVALID.
+
 
 DECISION QUALITY RULES (CRITICAL):
 - Every action MUST be traceable to a specific driver identified in analysis_insights
   (e.g., ASP compression, CM1 profit per unit decline, CM2 erosion from costs).
 - Do NOT restate or summarize analysis_insights.
 - Convert insights into decisions, not explanations.
+- Do NOT recommend renegotiation of platform, fulfillment, or Amazon fees.
+- Focus only on controllable levers: pricing, ads, SKU focus, inventory exposure.
+- Do NOT include numeric targets, percentages, quantities, or time-bound values in recommendations.
+- All recommendations must be directional only (e.g. increase, reduce, maintain, review).
+- Do NOT give product-level advertising recommendations.
+- Advertising actions are allowed ONLY at the overall portfolio level.
+- Do NOT reference any specific SKU when discussing advertising actions.
+- Do NOT recommend reallocating ad spend between specific SKUs.
+- For each SKU, recommend ONLY ONE dominant action.
+- Do NOT assign multiple levers (pricing, promotions, advertising, inventory) to the same SKU.
+- Choose the single most appropriate lever based on the primary performance driver.
+
+
+
+RECOMMENDATION STYLE CONSTRAINT (CRITICAL):
+- Recommendations must match the abstraction level of a monthly business review.
+- Avoid SKU-level tactical execution unless explicitly stated in analysis_insights.
+- Prefer pricing review, monitoring, and focus guidance over execution detail.
+
+
 
 PRIORITIZATION LOGIC:
 - Address margin or cost leakage before pursuing incremental growth.
@@ -710,7 +718,7 @@ CONSTRAINT ENFORCEMENT:
 OUTPUT FORMAT (MANDATORY — Markdown Only):
 
 ## ACTION_PLAN
-(5–7 bullets maximum)
+(5-7 bullets maximum)
 
 For each action, include:
 - WHAT to do (clear, specific action)
@@ -758,6 +766,15 @@ STRICT WRITING-ONLY RULES (CRITICAL):
 - Do NOT introduce new logic or reasoning.
 - Do NOT recompute numbers.
 - Do NOT infer missing data.
+- PRODUCT INSIGHTS must ONLY include products listed in focus_skus.
+- Ignore any SKU not present in focus_skus, even if sku_mom data exists.
+
+
+PERIOD CONSISTENCY RULE (CRITICAL):
+- If analysis_insights use “In {period_label}”, preserve the same period wording in SUMMARY bullets.
+- Do NOT rewrite the period into a different format.
+
+
 
 TERMINOLOGY CONSTRAINT (CRITICAL):
 - Do NOT use the term "operations" or "operational".
@@ -793,7 +810,10 @@ CURRENCY RULE:
 PROFIT TERMINOLOGY RULE (CRITICAL):
 - Always use the term **CM1 profit** when referring to profit.
 - Do NOT use the word "profit" by itself.
-- CM2 profit must be mentioned ONLY when explicitly present.
+- CM2 profit may be discussed at the overall portfolio level
+  ONLY when CM2 profit data is explicitly present in the input.
+- Do NOT infer or estimate CM2 profit at SKU level.
+
 
 PER-UNIT METRIC RULE (CRITICAL):
 - CM1 profit per unit must be taken ONLY from unit_wise_profitability.
@@ -824,10 +844,10 @@ OUTPUT FORMAT (MARKDOWN ONLY)
 ====================
 
 ## SUMMARY
-(4–6 bullets ONLY)
+(4-6 bullets ONLY)
 
 - Summarize movement in net units sold, net sales, and CM1 profit.
-- Classify growth type (volume-led / price-led / mix-led / cost-led).
+- Classify growth type using unit growth, pricing impact, mix impact, or cost impact.
 - Explain portfolio or mix behavior if relevant.
 - Quantify major cost impacts if provided.
 - Include ACOS movement only if present.
@@ -837,7 +857,7 @@ OUTPUT FORMAT (MARKDOWN ONLY)
 ---
 
 ## PRODUCT INSIGHTS
-(5–7 bullets ONLY)
+(5-7 bullets ONLY)
 
 Rules:
 - Start each bullet with **Product name**.
@@ -849,7 +869,7 @@ Rules:
 ---
 
 ## RECOMMENDATIONS
-(3–5 bullets ONLY — OMIT if strategy_actions is null)
+(3-5 bullets ONLY — OMIT if strategy_actions is null)
 
 Rules:
 - Write recommendations exactly as provided in strategy_actions.
@@ -863,7 +883,7 @@ Rules:
 
 Rules:
 - Bullets only.
-- Start with **Inventory – Product name**.
+- Start with **Inventory - Product name**.
 - State financial or working capital risk.
 - Do NOT suggest pricing or advertising actions.
 
@@ -873,10 +893,12 @@ CRITICAL OUTPUT RULES:
 - Use exact section headings.
 - Do NOT rename sections.
 - Do NOT output JSON.
+- INVENTORY section must appear only once, at the end.
 - Return ONLY markdown.
 - No emojis.
 - No filler.
-- Clear business English.
+- Clear English.
+
 
 """
 
@@ -891,10 +913,12 @@ def run_prompt_1_analysis(ai_payload):
     )
     return resp.choices[0].message.content.strip()
 
-def run_prompt_2_strategy(insights_text, user_objective):
+def run_prompt_2_strategy(insights_text, user_objective, focus_skus):
     payload = {
         "insights": insights_text,
-        "user_objective": user_objective
+        "user_objective": user_objective,
+        "focus_skus": focus_skus,
+        
     }
 
     resp = openai_client.chat.completions.create(
@@ -1002,6 +1026,25 @@ def generate_ai_summary(payload, allow_recommendations):
         "recommendations": recommendations
     }
 
+def select_top_5_skus_by_current_cm1_profit(sku_current: dict) -> list[str]:
+    """
+    Select Top 5 SKUs by current month CM1 profit (descending).
+    """
+    ranked = []
+
+    for sku, data in sku_current.items():
+        cm1 = data.get("profit")
+
+        if cm1 is None:
+            continue
+
+        try:
+            ranked.append((sku, float(cm1)))
+        except (TypeError, ValueError):
+            continue
+
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    return [sku for sku, _ in ranked[:5]]
 
 
 
@@ -1059,6 +1102,8 @@ def get_or_create_summary(
 
     # 3) SKU breakdown MUST use DETAIL rows only (exclude TOTAL row)
     sku_current = compute_sku_precalc(df_current_detail)
+    top_5_skus = select_top_5_skus_by_current_cm1_profit(sku_current)
+
 
     # 4) Reimbursements: take from TOTAL row if available, else detail sum
     lost_total_val = _total_value(df_current_total, "lost_total")
@@ -1160,11 +1205,13 @@ def get_or_create_summary(
 
     ai_payload = {
         "period": f"{period} {timeline} {year}",
+        "period_label": period_label(period, timeline, year),
         "country": str(country).lower(),
         "mom": mom,
         "inventory_lost": inventory_lost,
         "inventory_alerts": inventory_alerts,
         "sku_mom": sku_mom,
+        "focus_skus": top_5_skus,   # 👈 ADD THIS
     }
 
     # ✅ Include YoY ONLY for yearly
@@ -1178,7 +1225,7 @@ def get_or_create_summary(
     strategy = None
     if allow_reco:
         # backend-only objective for now
-        strategy = run_prompt_2_strategy(insights, DEFAULT_USER_OBJECTIVE)
+        strategy = run_prompt_2_strategy(insights, DEFAULT_USER_OBJECTIVE, top_5_skus)
 
     final_text = run_prompt_3_writer(ai_payload, insights, strategy, allow_reco)
 
