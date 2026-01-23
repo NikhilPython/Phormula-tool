@@ -744,6 +744,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     },
     [SIGN_PLUS, SIGN_MINUS]
   );
+  
   const buildSkuSheetModel = useCallback(
     (opts?: { allRows?: boolean }) => {
       const excelCols = buildExcelColumnsFromUI();
