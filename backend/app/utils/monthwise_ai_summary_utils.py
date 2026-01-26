@@ -42,6 +42,19 @@ MONTH_NUM_TO_NAME = {
     12: "december",
 }
 
+def rolling_months(anchor_year: int, anchor_month: int, max_months: int = 24):
+    months = []
+    y, m = anchor_year, anchor_month
+    for _ in range(max_months):
+        months.append((y, m))
+        if m == 1:
+            y -= 1
+            m = 12
+        else:
+            m -= 1
+    return list(reversed(months))  # oldest → newest
+
+
 DEFAULT_USER_OBJECTIVE = {
     "primary_goal": "profit",   # profit | growth | rank | inventory_clearance | balanced
     "time_horizon": "1_month",  # 2_weeks | 1_month | quarter
@@ -140,6 +153,98 @@ def fetch_precalc_table(user_id: int, country: str, period: str, timeline: str, 
     except Exception as e:
         print(f"[WARN] Could not read table {table}: {e}")
         return pd.DataFrame()
+    
+def build_rolling_monthly_series(user_id: int, country: str, anchor_year: int, anchor_month: int):
+    series = []
+
+    for y, m in rolling_months(anchor_year, anchor_month, 24):
+        df = fetch_precalc_table(
+            user_id=user_id,
+            country=country,
+            period="monthly",         # ✅ always monthly tables
+            timeline=str(m),
+            year=y
+        )
+
+        if df.empty:
+            continue
+
+        _, df_total = _split_total_row(df)
+        if df_total.empty:
+            continue
+
+        snapshot = extract_total_snapshot(df_total)
+        if not snapshot:
+            continue
+
+        series.append({
+            "year": y,
+            "month": m,
+            "values": snapshot
+        })
+
+    return series
+
+
+def compute_generic_movement(series: list, col: str):
+    values = []
+    for row in series:
+        if col in row["values"]:
+            values.append(row["values"][col])
+
+    if len(values) < 2:
+        return None
+
+    prev, cur = values[-2], values[-1]
+    if prev == 0:
+        return None
+
+    mom_pct = (cur - prev) / abs(prev) * 100
+
+    # Build rolling MoM % series
+    changes = []
+    for i in range(1, len(values)):
+        if values[i - 1] != 0:
+            changes.append((values[i] - values[i - 1]) / abs(values[i - 1]) * 100)
+
+    if not changes:
+        return None
+
+    # Rank by absolute magnitude (extreme movement detector)
+    sorted_changes = sorted(changes, key=lambda x: abs(x), reverse=True)
+    rank = sorted_changes.index(mom_pct) + 1 if mom_pct in sorted_changes else None
+
+    direction = "up" if mom_pct > 0 else "down" if mom_pct < 0 else "flat"
+
+    pattern = None
+    if len(changes) >= 2:
+        prev_change = changes[-2]
+        if prev_change > 0 and mom_pct < 0:
+            pattern = "reversal_down"
+        elif prev_change < 0 and mom_pct > 0:
+            pattern = "reversal_up"
+        elif prev_change > 0 and mom_pct > 0:
+            pattern = "continued_up"
+        elif prev_change < 0 and mom_pct < 0:
+            pattern = "continued_down"
+
+    return {
+        "delta_pct": round(mom_pct, 2),
+        "direction": direction,
+        "rank_in_rolling_window": rank,
+        "total_points": len(changes),
+        "pattern": pattern
+    }
+
+
+def build_movement_context(rolling_series: list):
+    ctx = {}
+    for col in MOVEMENT_COLUMNS:
+        m = compute_generic_movement(rolling_series, col)
+        if m:
+            ctx[col] = m
+    return ctx
+
 
 def _normalize_sku_col(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -185,6 +290,20 @@ def _total_value(df_total: pd.DataFrame, col: str):
     return float(pd.to_numeric(df_total[col], errors="coerce").fillna(0).iloc[0])
 
 
+def extract_total_snapshot(df_total: pd.DataFrame) -> dict:
+    snapshot = {}
+    if df_total.empty:
+        return snapshot
+
+    for col in MOVEMENT_COLUMNS:
+        if col in df_total.columns:
+            val = _total_value(df_total, col)
+            if val is not None:
+                snapshot[col] = float(val)
+
+    return snapshot
+
+
 
 METRIC_COLUMNS = {
     "quantity",
@@ -228,6 +347,9 @@ PERCENTAGE_COLUMNS = {
 }
 
 NON_ADDITIVE_COMPARABLE = {"asp", "unit_wise_profitability"}
+
+MOVEMENT_COLUMNS = METRIC_COLUMNS | PERCENTAGE_COLUMNS | NON_ADDITIVE_COMPARABLE
+
 
 
 
@@ -536,6 +658,15 @@ MONTH-OVER-MONTH PERFORMANCE ANALYSIS.
 YOUR TASK:
 Explain WHAT changed, WHY it changed, and WHAT it impacted
 using direct, analyst-grade business language.
+
+MOVEMENT-FIRST RULE (CRITICAL):
+- You will receive movement_context derived from a rolling window of up to 24 months.
+- You MUST use movement_context to describe relative movement (strongest/weakest/among the most severe),
+  not just MoM deltas.
+- If rank_in_rolling_window is present, explicitly mention severity based on rank.
+- If pattern is present, explicitly state it (reversal / continued up / continued down).
+- Do NOT narrate the output like a pivot table when movement_context exists.
+
 
 MANDATORY ANALYSIS RULES (CRITICAL):
 - Do NOT use hedging words such as "may", "might", "could", "appears".
@@ -1074,6 +1205,26 @@ def get_or_create_summary(
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
     df_current_detail, df_current_total = _split_total_row(df_current)
 
+    # ---------------- ROLLING 24-MONTH MOVEMENT CONTEXT (NEW) ----------------
+    if period == "monthly":
+        anchor_month = int(timeline)
+    elif period == "quarterly":
+        anchor_month = int(str(timeline).replace("Q", "")) * 3   # Q1->3, Q2->6, Q3->9, Q4->12
+    elif period == "yearly":
+        anchor_month = 12
+    else:
+        anchor_month = int(timeline)
+
+    rolling_series = build_rolling_monthly_series(
+        user_id=user_id,
+        country=country,
+        anchor_year=year,
+        anchor_month=anchor_month
+    )
+
+    movement_context = build_movement_context(rolling_series)
+
+
     # 1) Build overall metrics from DETAIL rows (prevents double counting TOTAL)
     current = {}
     if not df_current_detail.empty:
@@ -1211,7 +1362,8 @@ def get_or_create_summary(
         "inventory_lost": inventory_lost,
         "inventory_alerts": inventory_alerts,
         "sku_mom": sku_mom,
-        "focus_skus": top_5_skus,   # 👈 ADD THIS
+        "focus_skus": top_5_skus,
+        "movement_context": movement_context,   # 👈 ADD THIS
     }
 
     # ✅ Include YoY ONLY for yearly
