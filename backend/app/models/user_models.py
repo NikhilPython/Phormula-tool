@@ -669,6 +669,15 @@ class amazon_user(db.Model):
     currency = db.Column(db.String(10), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    amazon_ads_refresh_token = db.Column(db.Text, nullable=True)
+    amazon_ads_refresh_token_updated_at = db.Column(db.DateTime, nullable=True)
+
+    amazon_ads_profile_id_uk = db.Column(db.String(32), nullable=True)
+    amazon_ads_profile_id_us = db.Column(db.String(32), nullable=True)
+    amazon_ads_profile_id_ca = db.Column(db.String(32), nullable=True)
+    amazon_ads_manager_profile_id = db.Column(db.String(32), nullable=True)
+
+
 
 
 class Product(db.Model):
