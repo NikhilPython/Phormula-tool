@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from config import Config
 
 # LWA endpoints
@@ -192,127 +194,6 @@ class AmazonAdsAuthContext:
     access_token: str
     profile_id: str
 
-
-# class AmazonAdsReportingClient:
-#     def __init__(self, base_url: str, auth: AmazonAdsAuthContext, timeout: int = 60):
-#         self.base_url = base_url
-#         self.auth = auth
-#         self.timeout = timeout
-
-#     def _headers(self) -> Dict[str, str]:
-#         return {
-#             "Authorization": f"Bearer {self.auth.access_token}",
-#             "Amazon-Advertising-API-ClientId": Config.AMAZON_ADS_CLIENT_ID,
-#             "Amazon-Advertising-API-Scope": str(self.auth.profile_id),
-#             "Content-Type": "application/json",
-#             "Accept": "application/json",
-#         }
-
-#     def _request(self, method: str, path: str, **kwargs) -> requests.Response:
-#         url = f"{self.base_url}{path}"
-#         resp = requests.request(method, url, headers=self._headers(), timeout=self.timeout, **kwargs)
-#         if resp.status_code >= 400:
-#             raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
-#         return resp
-
-#     def create_sp_advertised_product_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
-#         payload = {
-#             "name": f"SP Advertised Product {start_date} to {end_date}",
-#             "startDate": start_date,
-#             "endDate": end_date,
-#             "configuration": {
-#                 "adProduct": "SPONSORED_PRODUCTS",
-#                 "reportTypeId": "spAdvertisedProduct",
-#                 "timeUnit": time_unit,
-#                 "format": "GZIP_JSON",
-#                 "columns": [
-#                     "campaignName", "adGroupName", "portfolioName",
-#                     "advertisedSku", "advertisedAsin",
-#                     "impressions", "clicks", "cost",
-#                     "attributedSales7d",
-#                     "acosClicks7d", "roasClicks7d",
-#                     "attributedConversions7d",
-#                     "attributedUnitsOrdered7d",
-#                     "attributedConversionsRate7d",
-#                     "attributedUnitsOrdered7dSameSku",
-#                     "attributedUnitsOrdered7dOtherSku",
-#                     "attributedSales7dSameSku",
-#                     "attributedSales7dOtherSku",
-#                     "currency",
-#                 ],
-#             },
-#         }
-
-#         resp = self._request("POST", "/reporting/reports", json=payload)
-#         data = resp.json()
-#         report_id = data.get("reportId")
-#         if not report_id:
-#             raise RuntimeError(f"Missing reportId in response: {data}")
-#         return str(report_id)
-
-#     def get_report_status(self, report_id: str) -> Dict[str, Any]:
-#         return self._request("GET", f"/reporting/reports/{report_id}").json()
-
-#     def wait_until_ready(self, report_id: str, max_wait_seconds: int = 600, poll_every_seconds: int = 8) -> str:
-#         deadline = time.time() + max_wait_seconds
-#         last = None
-
-#         while time.time() < deadline:
-#             last = self.get_report_status(report_id)
-#             status = (last.get("status") or "").upper()
-
-#             if status == "SUCCESS" and last.get("location"):
-#                 return last["location"]
-
-#             if status in {"FAILURE", "FAILED", "CANCELLED"}:
-#                 raise RuntimeError(f"Report failed: {last}")
-
-#             time.sleep(poll_every_seconds)
-
-#         raise TimeoutError(f"Report not ready within {max_wait_seconds}s. Last status: {last}")
-
-#     def download_gzip_json(self, location_url: str) -> List[Dict[str, Any]]:
-#         r = requests.get(location_url, timeout=self.timeout)
-#         if r.status_code >= 400:
-#             raise RuntimeError(f"Download failed {r.status_code}: {r.text}")
-
-#         content = r.content
-#         try:
-#             content = gzip.decompress(content)
-#         except OSError:
-#             pass
-
-#         raw = content.decode("utf-8", errors="replace").strip()
-
-#         # NDJSON
-#         rows: List[Dict[str, Any]] = []
-#         for line in raw.splitlines():
-#             line = line.strip()
-#             if not line:
-#                 continue
-#             try:
-#                 rows.append(json.loads(line))
-#             except json.JSONDecodeError:
-#                 rows = []
-#                 break
-#         if rows:
-#             return rows
-
-#         # JSON array/dict
-#         data = json.loads(raw)
-#         if isinstance(data, list):
-#             return data
-#         if isinstance(data, dict) and isinstance(data.get("rows"), list):
-#             return data["rows"]
-
-#         raise RuntimeError("Unknown report JSON format")
-
-
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
-from config import Config
 
 
 class AmazonAdsReportingClient:
