@@ -678,6 +678,74 @@ class amazon_user(db.Model):
     amazon_ads_manager_profile_id = db.Column(db.String(32), nullable=True)
 
 
+class amazon_sponsored_products(db.Model):
+    __tablename__ = "amazon_sponsored_products"
+    __bind_key__ = "amazon"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # ownership / traceability
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # report dimensions
+    start_date = db.Column(db.Date, nullable=False, index=True)
+    end_date = db.Column(db.Date, nullable=False, index=True)
+    country = db.Column(db.String(8), nullable=True, index=True)
+    profile_id = db.Column(db.String(32), nullable=True, index=True)
+
+    portfolio_id = db.Column(db.String(64), nullable=True)
+    currency = db.Column(db.String(16), nullable=True)
+
+    campaign_id = db.Column(db.String(64), nullable=True, index=True)
+    campaign_name = db.Column(db.String(512), nullable=True)
+
+    ad_group_id = db.Column(db.String(64), nullable=True, index=True)
+    ad_group_name = db.Column(db.String(512), nullable=True)
+
+    advertised_sku = db.Column(db.String(128), nullable=True, index=True)
+    advertised_asin = db.Column(db.String(32), nullable=True, index=True)
+
+    # metrics
+    impressions = db.Column(db.BigInteger, nullable=True)
+    clicks = db.Column(db.BigInteger, nullable=True)
+
+    ctr = db.Column(db.Float, nullable=True)   # Click-Thru Rate (CTR)
+    cpc = db.Column(db.Float, nullable=True)   # Cost Per Click (CPC)
+
+    spend = db.Column(db.Float, nullable=True)
+
+    sales_7d = db.Column(db.Float, nullable=True)
+    orders_7d = db.Column(db.Float, nullable=True)
+    units_7d = db.Column(db.Float, nullable=True)
+
+    acos = db.Column(db.Float, nullable=True)
+    roas = db.Column(db.Float, nullable=True)
+    conv_rate_7d = db.Column(db.Float, nullable=True)
+
+    adv_sku_sales_7d = db.Column(db.Float, nullable=True)
+    other_sku_sales_7d = db.Column(db.Float, nullable=True)
+
+    adv_sku_orders_7d = db.Column(db.Float, nullable=True)
+    adv_sku_units_7d = db.Column(db.Float, nullable=True)
+    other_sku_units_7d = db.Column(db.Float, nullable=True)
+
+    # optional: prevent duplicates
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "start_date",
+            "end_date",
+            "country",
+            "profile_id",
+            "campaign_id",
+            "ad_group_id",
+            "advertised_sku",
+            "advertised_asin",
+            name="uq_sp_report_row",
+        ),
+    )
 
 
 class Product(db.Model):
