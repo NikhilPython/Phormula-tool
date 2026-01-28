@@ -748,6 +748,236 @@ class amazon_sponsored_products(db.Model):
     )
 
 
+class amazon_sponsored_brands_keywords(db.Model):
+    __tablename__ = "amazon_sponsored_brands_keywords"
+    __bind_key__ = "amazon"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    start_date = db.Column(db.Date, nullable=False, index=True)
+    end_date = db.Column(db.Date, nullable=False, index=True)
+
+    # optional but useful
+    country = db.Column(db.String(8), nullable=True, index=True)
+    profile_id = db.Column(db.String(32), nullable=True, index=True)
+
+    portfolio_name = db.Column(db.String(512), nullable=True)
+    currency = db.Column(db.String(16), nullable=True)
+
+    campaign_name = db.Column(db.String(512), nullable=True)
+    ad_group_name = db.Column(db.String(512), nullable=True)
+
+    targeting = db.Column(db.Text, nullable=True)
+    match_type = db.Column(db.String(64), nullable=True)
+    cost_type = db.Column(db.String(64), nullable=True)
+
+    impressions = db.Column(db.BigInteger, nullable=True)
+    top_of_search_impression_share = db.Column(db.Float, nullable=True)
+    viewable_impressions = db.Column(db.BigInteger, nullable=True)
+    clicks = db.Column(db.BigInteger, nullable=True)
+    ctr = db.Column(db.Float, nullable=True)
+
+    spend = db.Column(db.Float, nullable=True)
+    cpc = db.Column(db.Float, nullable=True)
+    vcpm = db.Column(db.Float, nullable=True)
+
+    acos = db.Column(db.Float, nullable=True)
+    roas = db.Column(db.Float, nullable=True)
+
+    total_sales_14d = db.Column(db.Float, nullable=True)
+    total_orders_14d = db.Column(db.Float, nullable=True)
+    total_units_14d = db.Column(db.Float, nullable=True)
+    conversion_rate_14d = db.Column(db.Float, nullable=True)
+
+    vtr = db.Column(db.Float, nullable=True)
+    vctr = db.Column(db.Float, nullable=True)
+
+    video_first_quartile_views = db.Column(db.BigInteger, nullable=True)
+    video_midpoint_views = db.Column(db.BigInteger, nullable=True)
+    video_third_quartile_views = db.Column(db.BigInteger, nullable=True)
+    video_complete_views = db.Column(db.BigInteger, nullable=True)
+    video_unmutes = db.Column(db.BigInteger, nullable=True)
+    views_5s = db.Column(db.BigInteger, nullable=True)
+    view_rate_5s = db.Column(db.Float, nullable=True)
+
+    branded_searches_14d = db.Column(db.BigInteger, nullable=True)
+    detail_page_views_14d = db.Column(db.BigInteger, nullable=True)
+
+    ntb_orders_14d = db.Column(db.BigInteger, nullable=True)
+    ntb_orders_pct_14d = db.Column(db.Float, nullable=True)
+    ntb_sales_14d = db.Column(db.Float, nullable=True)
+    ntb_sales_pct_14d = db.Column(db.Float, nullable=True)
+    ntb_units_14d = db.Column(db.BigInteger, nullable=True)
+    ntb_units_pct_14d = db.Column(db.Float, nullable=True)
+    ntb_order_rate_14d = db.Column(db.Float, nullable=True)
+
+    acos_click = db.Column(db.Float, nullable=True)
+    roas_click = db.Column(db.Float, nullable=True)
+    sales_14d_click = db.Column(db.Float, nullable=True)
+    orders_14d_click = db.Column(db.BigInteger, nullable=True)
+    units_14d_click = db.Column(db.BigInteger, nullable=True)
+    brand_total_dpv_click = db.Column(db.BigInteger, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "start_date",
+            "end_date",
+            "profile_id",
+            "campaign_name",
+            "ad_group_name",
+            "targeting",
+            "match_type",
+            name="uq_sb_keyword_row",
+        ),
+    )
+
+
+class amazon_sponsored_display_campaigns(db.Model):
+    __tablename__ = "amazon_sponsored_display_campaigns"
+    __bind_key__ = "amazon"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    start_date = db.Column(db.Date, nullable=False, index=True)
+    end_date = db.Column(db.Date, nullable=False, index=True)
+
+    country = db.Column(db.String(8), nullable=True, index=True)
+    status = db.Column(db.String(64), nullable=True)
+
+    profile_id = db.Column(db.String(32), nullable=True, index=True)
+
+    currency = db.Column(db.String(16), nullable=True)
+    budget = db.Column(db.Float, nullable=True)
+
+    campaign_name = db.Column(db.String(512), nullable=True)
+    portfolio_name = db.Column(db.String(512), nullable=True)
+    cost_type = db.Column(db.String(64), nullable=True)
+
+    impressions = db.Column(db.BigInteger, nullable=True)
+    viewable_impressions = db.Column(db.BigInteger, nullable=True)
+    clicks = db.Column(db.BigInteger, nullable=True)
+    ctr = db.Column(db.Float, nullable=True)
+
+    detail_page_views_14d = db.Column(db.BigInteger, nullable=True)
+
+    spend = db.Column(db.Float, nullable=True)
+    cpc = db.Column(db.Float, nullable=True)
+    vcpm = db.Column(db.Float, nullable=True)
+
+    acos = db.Column(db.Float, nullable=True)
+    roas = db.Column(db.Float, nullable=True)
+
+    orders_14d = db.Column(db.BigInteger, nullable=True)
+    units_14d = db.Column(db.BigInteger, nullable=True)
+    sales_14d = db.Column(db.Float, nullable=True)
+
+    ntb_orders_14d = db.Column(db.BigInteger, nullable=True)
+    ntb_sales_14d = db.Column(db.Float, nullable=True)
+    ntb_units_14d = db.Column(db.BigInteger, nullable=True)
+
+    acos_click = db.Column(db.Float, nullable=True)
+    roas_click = db.Column(db.Float, nullable=True)
+    orders_14d_click = db.Column(db.BigInteger, nullable=True)
+    units_14d_click = db.Column(db.BigInteger, nullable=True)
+    sales_14d_click = db.Column(db.Float, nullable=True)
+    ntb_orders_14d_click = db.Column(db.BigInteger, nullable=True)
+    ntb_sales_14d_click = db.Column(db.Float, nullable=True)
+    ntb_units_14d_click = db.Column(db.BigInteger, nullable=True)
+
+    ntb_dpv = db.Column(db.BigInteger, nullable=True)
+    ntb_dpv_vtc = db.Column(db.BigInteger, nullable=True)
+    ntb_dpv_ctc = db.Column(db.BigInteger, nullable=True)
+    ntb_dpv_rate = db.Column(db.Float, nullable=True)
+    ecost_ntb_dpv = db.Column(db.Float, nullable=True)
+
+    atc_14d = db.Column(db.BigInteger, nullable=True)
+    atc_views_14d = db.Column(db.BigInteger, nullable=True)
+    atc_clicks_14d = db.Column(db.BigInteger, nullable=True)
+    atcr_14d = db.Column(db.Float, nullable=True)
+    ecp_atb = db.Column(db.Float, nullable=True)
+
+    branded_searches_14d = db.Column(db.BigInteger, nullable=True)
+    bs_vtc = db.Column(db.BigInteger, nullable=True)
+    bs_ctc = db.Column(db.BigInteger, nullable=True)
+    bs_rate = db.Column(db.Float, nullable=True)
+    ecost_bs = db.Column(db.Float, nullable=True)
+
+    long_term_sales = db.Column(db.Float, nullable=True)
+    long_term_roas = db.Column(db.Float, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "start_date",
+            "end_date",
+            "profile_id",
+            "campaign_name",
+            name="uq_sd_campaign_row",
+        ),
+    )
+
+class amazon_sponsored_display_advertised_products(db.Model):
+    __tablename__ = "amazon_sponsored_display_advertised_products"
+    __bind_key__ = "amazon"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    start_date = db.Column(db.Date, nullable=False, index=True)
+    end_date = db.Column(db.Date, nullable=False, index=True)
+
+    country = db.Column(db.String(8), nullable=True)
+    profile_id = db.Column(db.String(32), nullable=True, index=True)
+
+    campaign_id = db.Column(db.String(32), nullable=True)
+    campaign_name = db.Column(db.String(512), nullable=True)
+
+    ad_group_id = db.Column(db.String(32), nullable=True)
+    ad_group_name = db.Column(db.String(512), nullable=True)
+
+    advertised_sku = db.Column(db.String(64), nullable=True)
+    advertised_asin = db.Column(db.String(32), nullable=True)
+
+    currency = db.Column(db.String(16), nullable=True)
+
+    impressions = db.Column(db.BigInteger)
+    clicks = db.Column(db.BigInteger)
+    spend = db.Column(db.Float)
+    cpc = db.Column(db.Float)
+    ctr = db.Column(db.Float)
+
+    sales_14d = db.Column(db.Float)
+    orders_14d = db.Column(db.BigInteger)
+    units_14d = db.Column(db.BigInteger)
+
+    acos = db.Column(db.Float)
+    roas = db.Column(db.Float)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "start_date",
+            "end_date",
+            "profile_id",
+            "campaign_id",
+            "advertised_sku",
+            name="uq_sd_adv_product",
+        ),
+    )
+
+
 class Product(db.Model):
     __tablename__ = 'products'
     __bind_key__ = 'amazon'
