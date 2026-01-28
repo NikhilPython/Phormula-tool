@@ -20,7 +20,7 @@ TOKENINFO_URL = "https://api.amazon.com/auth/o2/tokeninfo"
 ADS_ENDPOINTS = {
     "NA": "https://advertising-api.amazon.com",
     "EU": "https://advertising-api-eu.amazon.com",
-    "FE": "https://advertising-api-fe.amazon.com",
+    # "FE": "https://advertising-api-fe.amazon.com",
 }
 
 # Correct Ads scope for reporting/campaign mgmt
@@ -136,15 +136,16 @@ def list_profiles_region(
 
 
 def list_top_level_profiles_all_regions(access_token: str) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Lists profiles WITHOUT manager scope.
-    Useful to find whether you have a MANAGER profile at all.
-    """
     out: Dict[str, List[Dict[str, Any]]] = {}
     for region in ADS_ENDPOINTS.keys():
-        _, profiles, _ = list_profiles_region(access_token, region, scope_profile_id=None)
-        out[region] = profiles
+        try:
+            _, profiles, _ = list_profiles_region(access_token, region, scope_profile_id=None)
+            out[region] = profiles
+        except Exception as e:
+            # don't kill everything if FE fails DNS
+            out[region] = []
     return out
+
 
 
 def find_manager_profile_id(top_profiles_by_region: Dict[str, List[Dict[str, Any]]]) -> Optional[str]:
@@ -160,14 +161,15 @@ def find_manager_profile_id(top_profiles_by_region: Dict[str, List[Dict[str, Any
 
 
 def list_child_profiles_all_regions(access_token: str, manager_profile_id: str) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Lists child advertiser profiles by calling /v2/profiles with manager scope.
-    """
     out: Dict[str, List[Dict[str, Any]]] = {}
     for region in ADS_ENDPOINTS.keys():
-        _, profiles, _ = list_profiles_region(access_token, region, scope_profile_id=manager_profile_id)
-        out[region] = profiles
+        try:
+            _, profiles, _ = list_profiles_region(access_token, region, scope_profile_id=manager_profile_id)
+            out[region] = profiles
+        except Exception:
+            out[region] = []
     return out
+
 
 
 def pick_profile_id(profiles: List[Dict[str, Any]], wanted_country_codes: set[str]) -> Optional[str]:
@@ -227,6 +229,24 @@ class AmazonAdsReportingClient:
         adapter = HTTPAdapter(max_retries=retry, pool_connections=20, pool_maxsize=20)
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
+
+    def list_report_types(self) -> list[dict]:
+        """
+        GET /reporting/reportTypes
+        Returns all report types available for this account.
+        """
+        resp = self._request("GET", "/reporting/reportTypes")
+        data = resp.json()
+        # usually list[dict], but keep defensive
+        return data if isinstance(data, list) else data.get("reportTypes", [])
+
+    def get_report_type(self, report_type_id: str) -> dict:
+        """
+        GET /reporting/reportTypes/{reportTypeId}
+        Shows allowed columns / groupBy for that report type.
+        """
+        resp = self._request("GET", f"/reporting/reportTypes/{report_type_id}")
+        return resp.json()
 
     def _headers(self) -> Dict[str, str]:
         return {
@@ -435,3 +455,217 @@ class AmazonAdsReportingClient:
         # Otherwise normal JSON
         data = json.loads(raw)
         return _normalize(data)
+
+    def create_sb_keyword_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
+        """
+        Sponsored Brands - Keyword report (v3)
+        NOTE: reportTypeId differs by account; most commonly sbKeywords.
+        """
+        payload = {
+            "name": f"SB Keyword {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
+            "startDate": start_date,
+            "endDate": end_date,
+            "configuration": {
+                "adProduct": "SPONSORED_BRANDS",
+                "reportTypeId": "sbKeywords",   # <- if your account uses different id, change here
+                "timeUnit": time_unit,
+                "format": "GZIP_JSON",
+                "groupBy": ["advertiser"],
+                "columns": [
+                    "startDate", "endDate",
+                    "portfolioName",
+                    "currency",
+                    "campaignName",
+                    "adGroupName",
+                    "targeting",
+                    "matchType",
+                    "costType",
+                    "impressions",
+                    "topOfSearchImpressionShare",
+                    "viewableImpressions",
+                    "clicks",
+                    "clickThroughRate",
+                    "cost",
+                    "costPerClick",
+                    "vCPM",
+                    "acos",
+                    "roas",
+                    "sales14d",
+                    "purchases14d",
+                    "unitsSold14d",
+                    "conversionRate14d",
+                    "viewThroughRate",
+                    "vctr",
+                    "videoFirstQuartileViews",
+                    "videoMidpointViews",
+                    "videoThirdQuartileViews",
+                    "videoCompleteViews",
+                    "videoUnmutes",
+                    "views5s",
+                    "viewRate5s",
+                    "brandedSearches14d",
+                    "detailPageViews14d",
+                    "newToBrandPurchases14d",
+                    "newToBrandPurchasesPercentage14d",
+                    "newToBrandSales14d",
+                    "newToBrandSalesPercentage14d",
+                    "newToBrandUnitsSold14d",
+                    "newToBrandUnitsSoldPercentage14d",
+                    "newToBrandOrderRate14d",
+                    "acosClicks14d",
+                    "roasClicks14d",
+                    "salesClicks14d",
+                    "purchasesClicks14d",
+                    "unitsSoldClicks14d",
+                    "brandTotalDetailPageViewsClicks14d",
+                ],
+            },
+        }
+        return self._create_report(payload)
+
+    # def create_sd_campaign_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
+    #     payload = {
+    #         "name": f"SD Campaign {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
+    #         "startDate": start_date,
+    #         "endDate": end_date,
+    #         "configuration": {
+    #             "adProduct": "SPONSORED_DISPLAY",
+    #             "reportTypeId": "sdCampaigns",  # might still be wrong for your account, see step 2
+    #             "timeUnit": time_unit,
+    #             "format": "GZIP_JSON",
+    #             # ✅ FIXED
+    #             "groupBy": ["campaign"],
+    #             # ✅ ONLY allowed columns
+    #             "columns": [
+    #                 "startDate", "endDate",
+    #                 "campaignId", "campaignName",
+    #                 "campaignBudgetCurrencyCode",
+    #                 "impressions", "clicks", "cost",
+    #                 "detailPageViews", "detailPageViewsClicks",
+    #                 "purchases", "purchasesClicks",
+    #                 "unitsSold", "unitsSoldClicks",
+    #                 "sales", "salesClicks",
+    #                 "newToBrandPurchases", "newToBrandPurchasesClicks",
+    #                 "newToBrandUnitsSold", "newToBrandUnitsSoldClicks",
+    #                 "newToBrandSalesClicks",
+    #                 "addToCart", "addToCartClicks", "addToCartViews", "addToCartRate", "eCPAddToCart",
+    #                 "brandedSearches", "brandedSearchesClicks", "brandedSearchesViews",
+    #                 "brandedSearchRate", "eCPBrandSearch",
+    #                 "longTermSales", "longTermROAS",
+    #             ],
+    #         },
+    #     }
+    #     return self._create_report(payload)
+ 
+    def create_sd_campaign_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
+        payload = {
+            "name": f"SD Campaign {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
+            "startDate": start_date,
+            "endDate": end_date,
+            "configuration": {
+                "adProduct": "SPONSORED_DISPLAY",
+                "reportTypeId": "sdCampaigns",      # keep, but validate via /reportTypes if needed
+                "timeUnit": time_unit,
+                "format": "GZIP_JSON",
+                "groupBy": ["campaign"],           # ✅ advertiser is invalid for this reportType
+                "columns": [                       # ✅ only allowed columns (based on your error)
+                    "startDate", "endDate",
+                    "campaignId", "campaignName",
+                    "campaignBudgetCurrencyCode",
+                    "impressions", "clicks", "cost",
+                    "viewabilityRate",             # use to derive viewable impressions
+                    "detailPageViews", "detailPageViewsClicks",
+
+                    "purchases", "purchasesClicks",
+                    "unitsSold", "unitsSoldClicks",
+                    "sales", "salesClicks",
+
+                    "newToBrandPurchases", "newToBrandPurchasesClicks",
+                    "newToBrandUnitsSold", "newToBrandUnitsSoldClicks",
+                    "newToBrandSalesClicks",       # note: your allowed list had clicks only
+
+                    "addToCart", "addToCartClicks", "addToCartViews", "addToCartRate", "eCPAddToCart",
+                    "brandedSearches", "brandedSearchesClicks", "brandedSearchesViews",
+                    "brandedSearchRate", "eCPBrandSearch",
+
+                    "longTermSales", "longTermROAS",
+                ],
+            },
+        }
+        return self._create_report(payload)
+    
+    def list_sd_campaigns(self) -> list[dict]:
+        # SD campaigns endpoint is separate from reporting rows
+        # Count/startIndex pagination can be added if you have many campaigns
+        resp = self._request("GET", "/sd/campaigns", params={"count": 1000, "startIndex": 0})
+        data = resp.json()
+        return data if isinstance(data, list) else []
+
+    def list_portfolios(self) -> list[dict]:
+        # portfolios are usually v2
+        resp = self._request("GET", "/v2/portfolios")
+        data = resp.json()
+        return data if isinstance(data, list) else []
+
+    def create_sd_advertised_product_report(
+        self, start_date: str, end_date: str, time_unit: str = "SUMMARY"
+    ) -> str:
+        payload = {
+            "name": f"SD Advertised Product {start_date} {uuid.uuid4().hex[:6]}",
+            "startDate": start_date,
+            "endDate": end_date,
+            "configuration": {
+                "adProduct": "SPONSORED_DISPLAY",
+                "reportTypeId": "sdAdvertisedProduct",  # keep this, but validate via /reportTypes if needed
+                "timeUnit": time_unit,
+                "format": "GZIP_JSON",
+                "groupBy": ["advertiser"],  # if this errors later, switch to ["campaign"] or whatever /reportTypes says
+                "columns": [
+                    "startDate", "endDate",
+                    "campaignId", "campaignName",
+                    "adGroupId", "adGroupName",
+
+                    # ✅ SD uses "promoted*" (per your allowed list)
+                    "promotedSku", "promotedAsin",
+
+                    "campaignBudgetCurrencyCode",
+
+                    # ✅ core metrics that ARE allowed
+                    "impressions", "clicks", "cost",
+                    "sales", "purchases", "unitsSold",
+
+                    # optional (also in your allowed list)
+                    "salesClicks", "purchasesClicks", "unitsSoldClicks",
+                    "newToBrandSales", "newToBrandPurchases", "newToBrandUnitsSold",
+                    "newToBrandSalesClicks", "newToBrandPurchasesClicks", "newToBrandUnitsSoldClicks",
+                    "viewabilityRate",
+                ],
+            },
+        }
+        return self._create_report(payload)
+
+
+    def _create_report(self, payload: dict) -> str:
+        """
+        helper used by all report creators.
+        """
+        url = f"{self.base_url}/reporting/reports"
+        resp = self.session.post(url, headers=self._headers(), json=payload, timeout=self._timeout())
+
+        if resp.status_code in (200, 202):
+            data = resp.json()
+            rid = data.get("reportId")
+            if not rid:
+                raise RuntimeError(f"Missing reportId in response: {data}")
+            return str(rid)
+
+        if resp.status_code == 425:
+            try:
+                data = resp.json()
+            except Exception:
+                data = {"raw": resp.text}
+            raise RuntimeError(f"Duplicate report response (425). Body: {data}")
+
+        raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
+
+
