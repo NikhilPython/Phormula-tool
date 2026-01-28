@@ -5,8 +5,7 @@ import React, { useEffect, useState } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { useRouter } from "next/navigation";
-
-// Redux
+import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 import { useAppDispatch } from "@/lib/hooks";
 import { logout, setUser } from "@/lib/features/auth/authSlice";
 import { useAppSelector } from "@/lib/store";
@@ -52,7 +51,7 @@ export default function UserDropdown() {
     }
   }, [userFromStore, dispatch]);
 
-  function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
+  function toggleDropdown(e: React.MouseEvent<HTMLElement, MouseEvent>) {
     e.stopPropagation();
     setIsOpen((prev) => !prev);
   }
@@ -86,37 +85,69 @@ export default function UserDropdown() {
     window.location.href = "/signin";
   };
 
+  const initials = userFromStore?.name
+    ?.split(" ")
+    .map((n: any) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
   return (
     <div className="relative z-99999">
-      <button
-        onClick={toggleDropdown}
-        className="flex items-center text-gray-700 dark:text-gray-400 dropdown-toggle"
-      >
-        {/* <span className="mr-3 overflow-hidden rounded-full h-11 w-11">
-          <Image width={44} height={44} src="/images/user/owner.jpg" alt="User" />
-        </span> */}
+      <div className="flex items-center text-gray-700 dark:text-gray-400">
+        {/* Welcome text + integration button (NO dropdown toggle) */}
 
-        <span className="block mr-1 font-normal text-xs lg:text-sm 2xl:text-base">Welcome, <span className="font-bold italic ">{userFromStore?.name}!</span></span>
+        <span className="mr-1 font-normal text-xs md:text-sm 2xl:text-base inline-flex items-center gap-2">
+          Welcome,
+          <span className="font-bold  inline-flex items-center gap-2">
+            <i>{userFromStore?.name}!</i>
 
-        <svg
-          className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""
-            }`}
-          width="18"
-          height="20"
-          viewBox="0 0 18 20"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
+            <div
+              onClick={toggleDropdown}
+              className=" cursor-pointer
+        flex items-center justify-center
+        w-7 h-7 sm:w-8 sm:h-8 2xl:w-8 2xl:h-8
+        rounded-full
+        bg-blue-700
+        text-yellow-200
+        text-xs
+        font-semibold
+        leading-none
+      "
+            >
+              {initials}
+            </div>
+
+            <IntegrationToggleButton />
+          </span>
+
+        </span>
+
+        {/* ⬇️ ONLY this icon toggles dropdown */}
+        {/* <button
+          onClick={toggleDropdown}
+          className="ml-1 flex items-center justify-center"
+          aria-label="Open user menu"
         >
-          <path
-            d="M4.3125 8.65625L9 13.3437L13.6875 8.65625"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+          <svg
+            className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""
+              }`}
+            width="18"
+            height="20"
+            viewBox="0 0 18 20"
+            fill="none"
+          >
+            <path
+              d="M4.3125 8.65625L9 13.3437L13.6875 8.65625"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button> */}
+      </div>
+
 
       <Dropdown
         isOpen={isOpen}
@@ -210,6 +241,6 @@ export default function UserDropdown() {
           Sign out
         </button>
       </Dropdown>
-    </div>
+    </div >
   );
 }

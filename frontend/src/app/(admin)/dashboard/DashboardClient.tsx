@@ -130,7 +130,6 @@ type BiApiResponse = {
 
 
 type BiAlignedTotals = {
-  // existing fields you already have...
   current_cm2_profit?: number;
   previous_cm2_profit?: number;
   total_current_profit_percentage?: number;
@@ -140,7 +139,6 @@ type BiAlignedTotals = {
   total_previous_net_sales?: number;
   total_current_net_sales?: number;
 
-  // ✅ NEW (from your API response)
   total_current_advertising?: number;
   total_previous_advertising?: number;
 
@@ -160,7 +158,6 @@ const currencyForCountry = (countryName: string): CurrencyCode => {
   if (c === "uk") return "GBP";
   if (c === "us") return "USD";
   if (c === "ca") return "CAD";
-  // fallback (if you ever use india/shopify here)
   if (c === "india") return "INR";
   return "USD";
 };
@@ -173,7 +170,6 @@ const safeDeltaPctFromPct = (currentPct: number, previousPct: number) => {
 };
 
 const fmtPct2 = (v: number) => `${(Number(v) || 0).toFixed(2)}%`;
-
 
 /* ===================== RANGE PICKER (moved above graph) ===================== */
 function RangePicker({
@@ -372,12 +368,10 @@ const sliceByDayRange = (
   const e = Math.max(startDay, endDay);
 
   return points.filter((p) => {
-    const day = Number(p.date?.slice(8, 10)); // "YYYY-MM-DD" -> DD
+    const day = Number(p.date?.slice(8, 10)); 
     return day >= s && day <= e;
   });
 };
-
-
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -415,8 +409,6 @@ export default function DashboardPage() {
     (state) => (state as RootState).auth.user?.brand_name
   );
 
-
-
   const biCountryName = useMemo(() => {
     if (platform === "global") return "uk";
     return countryName;
@@ -430,14 +422,10 @@ export default function DashboardPage() {
   );
 
   const amazonDataCurrency: CurrencyCode = useMemo(() => {
-    // your fetchAmazon uses UK when platform is "global"
     if (platform === "amazon-us") return "USD";
     if (platform === "amazon-ca") return "CAD";
     return "GBP"; // amazon-uk OR global default
   }, [platform]);
-
-
-
 
   /* ===================== PLATFORM → DISPLAY CURRENCY ===================== */
   const profileHomeCurrency = ((userData?.homeCurrency || "USD").toUpperCase() as CurrencyCode);
@@ -472,31 +460,19 @@ export default function DashboardPage() {
   const [shopifyError, setShopifyError] = useState<string | null>(null);
   const [shopifyRows, setShopifyRows] = useState<any[]>([]);
   const shopify = shopifyRows?.[0] || null;
-
-  // Shopify (previous month)
   const [shopifyPrevRows, setShopifyPrevRows] = useState<any[]>([]);
-
-  // Shopify store info
   const [shopifyStore, setShopifyStore] = useState<any | null>(null);
-
-  // which region tab is selected in the Amazon card
   const [amazonRegion, setAmazonRegion] = useState<RegionKey>("Global");
-
-  // which region is selected in the P&L graph
   const [graphRegion, setGraphRegion] = useState<RegionKey>("Global");
-
-
   const chartRef = React.useRef<HTMLDivElement | null>(null);
   const prevLabel = useMemo(() => getPrevMonthShortLabel(), []);
 
-  // ✅ put near other helpers
   const getDayOfMonthIST = () => {
     const now = new Date();
     const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
     return ist.getDate(); // 1..31
   };
 
-  // ✅ add state to "lock" today's sales (in BI currency)
   const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
 
 
@@ -546,14 +522,12 @@ export default function DashboardPage() {
       const { monthName, year } = getISTYearMonth();
       const month = monthName.toLowerCase();
 
-      // current-month only
       const cur = (rows || []).filter(
         (r) =>
           String(r.month || "").toLowerCase() === month &&
           Number(r.year) === Number(year)
       );
 
-      // helper: find conversion for pair (from -> to)
       const getRate = (from: string, to: string) => {
         const row = cur.find(
           (r) =>
@@ -564,7 +538,6 @@ export default function DashboardPage() {
         return Number.isFinite(rate) && rate > 0 ? rate : null;
       };
 
-      // ✅ set the three your code currently uses (from -> USD)
       const gbpUsd = getRate("gbp", "usd");
       const inrUsd = getRate("inr", "usd");
       const cadUsd = getRate("cad", "usd");
@@ -805,7 +778,6 @@ export default function DashboardPage() {
         biSourceCurrency
       );
 
-      // keep only meaningful rows
       if (currProfit <= 0 && prevProfit <= 0 && currSales <= 0) continue;
 
       currProfitMap.set(name, (currProfitMap.get(name) ?? 0) + currProfit);
@@ -1236,11 +1208,6 @@ export default function DashboardPage() {
 
       setBiLoading(true);
       setBiError(null);
-
-      // if (rangeActive) {
-      //   setBiAlignedTotals(null);
-      // }
-
       try {
         const token =
           typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -1253,7 +1220,6 @@ export default function DashboardPage() {
           generate_ai_insights: "false",
         });
 
-        // ✅ only send range params when rangeActive
         if (rangeActive) {
           params.set("start_day", String(startDay));
           params.set("end_day", String(endDay));
@@ -1270,7 +1236,6 @@ export default function DashboardPage() {
         setBiPeriods(json?.periods || null);
         setBiDailySeries(json?.daily_series || null);
 
-        // setBiAlignedTotals(json?.aligned_totals || null);
         const alignedFromNested = (json as any)?.aligned_totals;
 
         const alignedFromTopLevel: BiAlignedTotals = {
@@ -1288,7 +1253,6 @@ export default function DashboardPage() {
           total_previous_profit: (json as any)?.total_previous_profit,
         };
 
-        // ✅ prefer nested if backend sends it, else fallback to top-level
         setBiAlignedTotals(alignedFromNested ?? alignedFromTopLevel ?? null);
 
       } catch (e: any) {
@@ -1316,24 +1280,12 @@ export default function DashboardPage() {
     if (shopifyStore?.shop_name && shopifyStore?.access_token) {
       await Promise.all([fetchShopify(), fetchShopifyPrev()]);
     }
-    // also refresh BI (keep current selected range)
-    // if (showLiveBI) {
-    //   await fetchBiSeries(selectedStartDay, selectedEndDay);
-    // }
   }, [
     fetchAmazon,
     fetchShopify,
     fetchShopifyPrev,
     shopifyStore,
-    // showLiveBI,
-    // fetchBiSeries,
-    // selectedStartDay,
-    // selectedEndDay,
-  ]);
-
-  // useEffect(() => {
-  //   refreshAll();
-  // }, [refreshAll]);
+    ]);
 
   const didRefreshRef = useRef(false);
 
@@ -1342,7 +1294,6 @@ export default function DashboardPage() {
     didRefreshRef.current = true;
 
     refreshAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
@@ -1503,19 +1454,6 @@ export default function DashboardPage() {
 
 
   /* ===================== ✅ RANGE KPIs FOR CARDS (FROM SAME BI DATA AS GRAPH) ===================== */
-  // useEffect(() => {
-  //   const pts = biDailySeriesHome?.current_mtd || [];
-  //   if (!pts.length) return;
-
-  //   const todayDay = getDayOfMonthIST();
-
-  //   const todayPoint = pts.find((p) => Number(p.date?.slice(8, 10)) === todayDay);
-
-  //   if (todayPoint?.net_sales != null) {
-  //     setTodaySalesRaw(Number(todayPoint.net_sales) || 0); // now "raw" is actually HOME currency
-  //   }
-  // }, [biDailySeriesHome]);
-
   useEffect(() => {
     const pts = biDailySeriesHome?.current_mtd || [];
     if (!pts.length) return;
@@ -1719,115 +1657,35 @@ export default function DashboardPage() {
   }, [amazonPrevNetDisp, shopifyPrevDeriv?.netSales, convertToDisplayCurrency]);
 
 
-  // const regions = useMemo(() => {
-  //   const globalLastMonthTotal = chooseLastMonthTotal(
-  //     MANUAL_LAST_MONTH_USD_GLOBAL,
-  //     globalPrevTotalUSD
-  //   );
-
-  //   const globalTarget =
-  //     userMonthlyTargetHome > 0
-  //       ? userMonthlyTargetHome
-  //       : (globalPrevFullMonthNetSalesDisp > 0 ? globalPrevFullMonthNetSalesDisp : globalPrevNetDisp);
-
-  //   const global: RegionMetrics = {
-  //     mtdUSD: globalCurrNetDisp,
-  //     lastMonthToDateUSD: globalPrevNetDisp,   // prev MTD
-  //     lastMonthTotalUSD: globalTarget,         // ✅ prev FULL month total
-  //     targetUSD: globalTarget,                 // ✅ target = prev FULL month total
-  //     decTargetUSD: globalTarget,
-  //   };
-
-  //   const ukTarget =
-  //     userMonthlyTargetHome > 0
-  //       ? userMonthlyTargetHome
-  //       : (prevFullMonthNetSalesDisp > 0 ? prevFullMonthNetSalesDisp : amazonPrevNetDisp);
-
-  //   const ukRegion: RegionMetrics = {
-  //     mtdUSD: amazonCurrNetDisp,
-  //     lastMonthToDateUSD: amazonPrevNetDisp,
-  //     lastMonthTotalUSD: ukTarget,
-  //     targetUSD: ukTarget,
-  //     // ✅ Dec target
-  //     decTargetUSD: ukTarget,
-  //   };
-
-
-  //   const ukLastMonthTotal = chooseLastMonthTotal(
-  //     MANUAL_LAST_MONTH_USD_UK,
-  //     prevAmazonUKTotalUSD
-  //   );
-
-
-
-  //   const usLastMonthTotal = chooseLastMonthTotal(MANUAL_LAST_MONTH_USD_US, 0);
-  //   const usRegion: RegionMetrics = {
-  //     mtdUSD: 0,
-  //     lastMonthToDateUSD: prorateToDate(usLastMonthTotal),
-  //     lastMonthTotalUSD: usLastMonthTotal,
-  //     targetUSD: usLastMonthTotal,
-  //     decTargetUSD: usLastMonthTotal,
-  //   };
-
-  //   const caLastMonthTotal = chooseLastMonthTotal(MANUAL_LAST_MONTH_USD_CA, 0);
-  //   const caRegion: RegionMetrics = {
-  //     mtdUSD: 0,
-  //     lastMonthToDateUSD: prorateToDate(caLastMonthTotal),
-  //     lastMonthTotalUSD: caLastMonthTotal,
-  //     targetUSD: caLastMonthTotal,
-  //     // ✅ Dec target (fallback)
-  //     decTargetUSD: caLastMonthTotal,
-  //   };
-
-  //   return {
-  //     Global: global,
-  //     UK: ukRegion,
-  //     US: usRegion,
-  //     CA: caRegion,
-  //   } as Record<RegionKey, RegionMetrics>;
-  // }, [
-  //   globalCurrNetDisp,
-  //   globalPrevNetDisp,
-  //   amazonCurrNetDisp,
-  //   amazonPrevNetDisp,
-  //   prevFullMonthNetSalesDisp,
-  //   globalPrevFullMonthNetSalesDisp,
-  //   userMonthlyTargetHome,
-  // ]);
 
   const regions = useMemo(() => {
-    // ✅ user target is stored in GBP; convert to display (home) currency
     const userMonthlyTargetGBP = toNumberSafe(userData?.target_sales ?? 0);
     const userMonthlyTargetHome =
       userMonthlyTargetGBP > 0
         ? convertToDisplayCurrency(userMonthlyTargetGBP, "GBP")
         : 0;
 
-    // ✅ GLOBAL: keep "sales" (lastMonthTotalUSD) as your computed prev full-month sales
     const globalPrevFullMonthSales =
       globalPrevFullMonthNetSalesDisp > 0
         ? globalPrevFullMonthNetSalesDisp
         : globalPrevNetDisp;
 
-    // ✅ GLOBAL target: prefer user target, else fallback to sales baseline
     const globalTarget =
       userMonthlyTargetHome > 0 ? userMonthlyTargetHome : globalPrevFullMonthSales;
 
     const global: RegionMetrics = {
       mtdUSD: globalCurrNetDisp,
-      lastMonthToDateUSD: globalPrevNetDisp, // prev MTD
-      lastMonthTotalUSD: globalPrevFullMonthSales, // ✅ Dec/prev full-month SALES (as-is)
-      targetUSD: globalTarget, // ✅ Target from userData
+      lastMonthToDateUSD: globalPrevNetDisp, 
+      lastMonthTotalUSD: globalPrevFullMonthSales,
+      targetUSD: globalTarget, 
       decTargetUSD: globalTarget,
     };
 
-    // ✅ UK: keep "sales" (lastMonthTotalUSD) as your computed prev full-month sales
     const ukPrevFullMonthSales =
       prevFullMonthNetSalesDisp > 0
         ? prevFullMonthNetSalesDisp
         : amazonPrevNetDisp;
 
-    // ✅ UK target: prefer user target, else fallback
     const ukTarget =
       userMonthlyTargetHome > 0 ? userMonthlyTargetHome : ukPrevFullMonthSales;
 
@@ -1839,7 +1697,6 @@ export default function DashboardPage() {
       decTargetUSD: ukTarget,
     };
 
-    // ✅ US/CA unchanged (you currently use manual env fallbacks)
     const usLastMonthTotal = chooseLastMonthTotal(MANUAL_LAST_MONTH_USD_US, 0);
     const usRegion: RegionMetrics = {
       mtdUSD: 0,
@@ -2001,19 +1858,6 @@ export default function DashboardPage() {
     formatDisplayAmount,
   ]);
 
-  // ✅ remove empty categories so bars don't get spaced out
-  // const chartItems = useMemo(() => {
-  //   return (plItems || []).filter((i) => {
-  //     const v = Number(i?.raw ?? 0);
-  //     // keep only meaningful values
-  //     return Math.abs(v) > 1e-9;
-  //   });
-  // }, [plItems]);
-
-  // const labels = chartItems.map((i) => i.label);
-  // const values = chartItems.map((i) => Number(i.raw ?? 0));
-
-  // ✅ Keep ALL categories so x-axis labels never disappear
   const chartItems = useMemo(() => plItems || [], [plItems]);
 
   const labels = useMemo(() => chartItems.map((i) => i.label), [chartItems]);
@@ -2111,9 +1955,7 @@ export default function DashboardPage() {
 
   const colors = labels.map((label) => colorMapping[label] || "#75BBDA");
 
-  // const allValuesZero = values.length === 0 || values.every((v) => !v || v === 0);
-
-
+  
   /* ===================== EXCEL EXPORT (USES displayCurrency symbol) ===================== */
   const captureChartPng = useCallback(async () => {
     const container = chartRef.current;
@@ -2555,7 +2397,7 @@ export default function DashboardPage() {
                   {countryName.toUpperCase()}
                 </span>
               )}
-              <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-semibold text-[#5EA68E]">
+              <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-semibold text-green-500">
                 - {formattedMonthYear}
               </span>
             </div>
@@ -2841,19 +2683,7 @@ export default function DashboardPage() {
               <div className="w-full rounded-2xl border bg-white p-3 2xl:p-5 shadow-sm">
                 <div className="mb-3 lg:mb-2 2xl:mb-4 flex flex-row gap-3 items-start md:items-start md:justify-between">
                   <div className="flex flex-col flex-1 min-w-0">
-                    {/* <div className="flex flex-wrap items-baseline gap-2">
-                        <PageBreadcrumb pageTitle="Amazon" variant="page" align="left" />
-
-                        {countryName !== "global" && (
-                          <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
-                            {countryName.toUpperCase()}
-                          </span>
-                        )}
-                      </div> */}
-
-
                   </div>
-
                   <div className="flex items-center gap-2">
                     {showLiveBI && isCountryMode && (
                       <RangePicker
@@ -3115,23 +2945,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* {showLiveBI && isCountryMode && (
-                  <div className="w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
-                    <div className="w-full max-w-full min-w-0">
-                      <LiveBiLineGraph
-                        dailySeries={biDailySeries}
-                        periods={biPeriods}
-                        loading={biLoading}
-                        error={biError}
-                        selectedStartDay={selectedStartDay}
-                        selectedEndDay={selectedEndDay}
-                      />
-                    </div>
-                  </div>
-                )} */}
-
-
-              {/* Live BI graph */}
               {showLiveBI && isCountryMode && (
                 <div className="w-full rounded-2xl border bg-white p-3 lg:p-3 2xl:p-5 shadow-sm overflow-x-hidden">
                   <div className="w-full max-w-full min-w-0">
@@ -3165,9 +2978,6 @@ export default function DashboardPage() {
                         textSize="2xl"
                       />
                     </div>
-                    {/* <p className="mt-1 text-sm text-charcoal-500">
-                        Real-time data from Shopify
-                      </p> */}
                   </div>
                 </div>
 
@@ -3285,8 +3095,6 @@ export default function DashboardPage() {
       )}
 
 
-      {/* Months for BI */}
-      {/* <div className="w-full overflow-x-hidden"> */}
       <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
         {showLiveBI && (
           <div className="w-full max-w-full min-w-0">

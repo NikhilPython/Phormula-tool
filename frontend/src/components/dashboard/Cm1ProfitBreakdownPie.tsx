@@ -615,7 +615,7 @@ export default function Cm1ProfitBreakdownPie({
       responsive: true,
       maintainAspectRatio: false,
       animation: { duration: 0 },
-      radius: isLaptop ? "90%" : isDesktop ? "95%" : "100%",
+      radius: isLaptop ? "99%" : isDesktop ? "95%" : "100%",
       layout: { padding: { top: 0, bottom: 0, left: 0, right: 0 } },
       elements: { arc: { borderWidth: 0, hoverOffset: 4 } },
 
@@ -691,11 +691,11 @@ export default function Cm1ProfitBreakdownPie({
             <div
               className="shrink-0 overflow-auto pr-1"
               style={{
-                width: isDesktop ? 260 : isLaptop ? 220 : 240,
+                width: isDesktop ? 260 : isLaptop ? 140 : 240,
                 maxHeight: "100%",
               }}
             >
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1 2xl:gap-4">
                 {(displayData || []).map((slice, i) => {
                   const dot = COLORS[i % COLORS.length];
                   const chart = chartRef.current;
@@ -745,7 +745,7 @@ export default function Cm1ProfitBreakdownPie({
                           {/* line 1 */}
                           <div
                             className={`truncate ${isVisible ? "" : "line-through"}`}
-                            style={{ fontSize: isLaptop ? 10 : 12, color: "#414042" }}
+                            style={{ fontSize: isLaptop ? 8 : 12, color: "#414042" }}
                             title={slice.name}
                           >
                             {slice.name}
@@ -754,7 +754,7 @@ export default function Cm1ProfitBreakdownPie({
                           {/* line 2 */}
                           <div
                             className="whitespace-nowrap"
-                            style={{ fontSize: isLaptop ? 10 : 12, color: "#414042" }}
+                            style={{ fontSize: isLaptop ? 8 : 12, color: "#414042" }}
                           >
                             {currencySymbol}
                             {value.toLocaleString(undefined, {

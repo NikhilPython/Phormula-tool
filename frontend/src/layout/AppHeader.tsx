@@ -9,7 +9,7 @@ import React, { useState, useEffect, useRef } from "react";
 import AmazonConnect from "@/features/integration/AmazonConnect";
 import AmazonFinancialDashboard from "@/features/integration/AmazonFinancialDashboard";
 import ConnectShopifyModal from "@/features/integration/ConnectShopifyModal"; // ⬅️ add this
-import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
+// import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 import { useParams } from "next/navigation";
 
 const AppHeader: React.FC = () => {
@@ -83,24 +83,24 @@ const AppHeader: React.FC = () => {
       <header className="sticky top-0 flex w-full bg-white border-gray-200  dark:border-gray-800 dark:bg-gray-900 z-[1100]">
         <div className="flex flex-col items-center justify-between grow lg:flex-row lg:px-6">
           <div className="flex items-center justify-between w-full gap-2 px-3 py-2.5 border-b border-gray-200 dark:border-gray-800 sm:gap-4 lg:justify-normal lg:border-b-0 lg:px-0 lg:py-1.5 xl:py-2">
-          {!isExpanded && (
-  <button
-    onClick={handleToggle}
-    className="flex items-center justify-center w-10 h-10 rounded-lg
+            {!isExpanded && (
+              <button
+                onClick={handleToggle}
+                className="flex items-center justify-center w-10 h-10 rounded-lg
                bg-blue-700 text-white hover:bg-blue-800 transition"
-    aria-label="Open sidebar"
-  >
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M9.5 5L15.5 12L9.5 19"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  </button>
-)}
+                aria-label="Open sidebar"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M9.5 5L15.5 12L9.5 19"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            )}
             <Link href={realTimeHref} className="lg:hidden">
               <Image width={154} height={32} className="dark:hidden" src="/images/logo/Logo_Phormula.png" alt="Logo" />
               <Image width={154} height={32} className="hidden dark:block" src="./images/logo/logo-dark.svg" alt="Logo" />
@@ -114,20 +114,15 @@ const AppHeader: React.FC = () => {
             </button>
           </div>
 
-          <div className={`${isApplicationMenuOpen ? "flex" : "hidden"} items-center justify-between w-full gap-3 lg:gap-2
+          <div className={`${isApplicationMenuOpen ? "flex" : "hidden"} items-center  w-full gap-3 lg:gap-2
     px-4 sm:px-5 lg:px-0
     py-2.5 sm:py-3 lg:py-1.5 xl:py-2.5
-    lg:flex shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none`}>
-            <div className="flex items-center gap-2 lg:gap-1.5">
-              {/* <ThemeToggleButton /> */}
-              <IntegrationToggleButton />
-            </div>
+    lg:flex shadow-theme-md justify-end lg:px-0 lg:shadow-none`}>
             <UserDropdown />
           </div>
         </div>
       </header>
 
-      {/* Amazon Connect modal */}
       {openAmazonConnect && (
         <AmazonConnect
           onClose={() => setOpenAmazonConnect(false)}
@@ -144,7 +139,7 @@ const AppHeader: React.FC = () => {
       {/* Amazon Financial Dashboard as a modal */}
       {openAmazonFinance && (
         <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-white/60"  />
+          <div className="absolute inset-0 bg-white/60" />
           <div className="relative w-full max-w-xl rounded-xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-800 dark:bg-gray-900">
             <div className="mt-3">
               <AmazonFinancialDashboard onClose={() => setOpenAmazonFinance(false)} />

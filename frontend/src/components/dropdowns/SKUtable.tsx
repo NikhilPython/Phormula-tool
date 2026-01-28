@@ -530,7 +530,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       // label: "Sales",
       label: (
         <>
-          Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
+          Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
         </>
       ),
       collapsedCols: [{ key: "net_sales", label: "", align: "center" }], // hide "Total" on collapsed
@@ -1479,25 +1479,48 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   // ✅ FULL UPDATED FUNCTION (drop-in replace your current handleDownloadExcel)
 
-  const handleDownloadExcel = useCallback(async () => {
-    // ✅ export ALL rows (all SKUs)
-    const model = buildSkuSheetModel({ allRows: true });
+  // const handleDownloadExcel = useCallback(async () => {
+  //   // ✅ export ALL rows (all SKUs)
+  //   const model = buildSkuSheetModel({ allRows: true });
 
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet("SKU Profitability");
+  //   const wb = new ExcelJS.Workbook();
+  //   const ws = wb.addWorksheet("SKU Profitability");
 
-    buildSkuWorksheetFromModel(ws, model);
+  //   buildSkuWorksheetFromModel(ws, model);
 
-    const filename =
-      range === "monthly"
-        ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
-        : range === "quarterly"
-          ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
-          : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
+  //   const filename =
+  //     range === "monthly"
+  //       ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
+  //       : range === "quarterly"
+  //         ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
+  //         : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
 
-    await downloadWorkbookAsXlsx(wb, filename);
-    onDownload?.();
-  }, [buildSkuSheetModel, range, month, quarter, yearShort, onDownload]);
+  //   await downloadWorkbookAsXlsx(wb, filename);
+  //   onDownload?.();
+  // }, [buildSkuSheetModel, range, month, quarter, yearShort, onDownload]);
+
+const handleDownloadExcel = useCallback(async () => {
+  // ✅ export ALL rows (all SKUs)
+  const model = buildSkuSheetModel({ allRows: true });
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("SKU Profitability");
+
+  buildSkuWorksheetFromModel(ws, model);
+
+  // ✅ Filename must match Dropdowns.tsx pattern:
+  // Amazon-PnL-${formattedMonthYear}.xlsx
+  const formattedMonthYear =
+    range === "monthly"
+      ? `${convertToAbbreviatedMonth(month)}'${yearShort}` // Dec'25
+      : range === "quarterly"
+        ? `${quarter}'${yearShort}` // Q4'25
+        : `${year}`; // 2025
+
+  const filename = `Amazon-PnL-${formattedMonthYear}.xlsx`;
+
+  await downloadWorkbookAsXlsx(wb, filename);
+}, [buildSkuSheetModel, range, month, quarter, year, yearShort, onDownload]);
 
 
   /* --------- Render guards --------- */

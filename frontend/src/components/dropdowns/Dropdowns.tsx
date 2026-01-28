@@ -1509,7 +1509,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   if (initialLoading) {
     return (
-                 <Loader fullscreen transparent />
+      <Loader fullscreen transparent />
     );
   }
 
@@ -1594,52 +1594,52 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   return (
     <div
-  ref={layoutRef}
-  className="
+      ref={layoutRef}
+      className="
     space-y-3
     2xl:space-y-6
     relative
   "
->
+    >
       <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4  border-b border-gray-200 ">
 
-           {/* LEFT: Title + Subtitle */}
-          <div className="flex flex-col leading-tight w-full md:w-auto mb-5">
-            <div className="flex items-baseline gap-2">
-              <PageBreadcrumb
-                pageTitle="Financial Metrics -"
-                variant="page"
-                align="left"
-                textSize="2xl"
-              />
-
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                Amazon {countryName?.toLowerCase() === "global"
-                  ? "Global"
-                  : countryName?.toUpperCase()}
-              </span>
-            </div>
-
-            <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-              Track your profitability and key metrics
-            </p>
-          </div>
-
-          {/* RIGHT: Filters */}
-          <div className="flex w-full md:w-auto justify-start md:justify-end">
-            <PeriodFiltersTable
-              range={range === "" ? "yearly" : (range as "monthly" | "quarterly" | "yearly")}
-              selectedMonth={selectedMonth}
-              selectedQuarter={selectedQuarter || ""}
-              selectedYear={selectedYear}
-              yearOptions={yearOptions}
-              onRangeChange={handleRangeChange}
-              onMonthChange={handleMonthChange}
-              onQuarterChange={handleQuarterChange}
-              onYearChange={handleYearChange}
+        {/* LEFT: Title + Subtitle */}
+        <div className="flex flex-col leading-tight w-full md:w-auto mb-5">
+          <div className="flex items-baseline gap-2">
+            <PageBreadcrumb
+              pageTitle="Financial Metrics -"
+              variant="page"
+              align="left"
+              textSize="2xl"
             />
+
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              Amazon {countryName?.toLowerCase() === "global"
+                ? "Global"
+                : countryName?.toUpperCase()}
+            </span>
           </div>
+
+          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+            Track your profitability and key metrics
+          </p>
         </div>
+
+        {/* RIGHT: Filters */}
+        <div className="flex w-full md:w-auto justify-start md:justify-end">
+          <PeriodFiltersTable
+            range={range === "" ? "yearly" : (range as "monthly" | "quarterly" | "yearly")}
+            selectedMonth={selectedMonth}
+            selectedQuarter={selectedQuarter || ""}
+            selectedYear={selectedYear}
+            yearOptions={yearOptions}
+            onRangeChange={handleRangeChange}
+            onMonthChange={handleMonthChange}
+            onQuarterChange={handleQuarterChange}
+            onYearChange={handleYearChange}
+          />
+        </div>
+      </div>
 
       {/* WRAPPER: stacked layout */}
       <div className="flex flex-col gap-5 w-full mt-4">
@@ -2438,21 +2438,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         </>
                       ) : null} */}
                     </div>
-
-                    <DownloadIconButton
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownloadProfitabilityBundle();
-                      }}
-                      disabled={
-                        !trendExportApi ||              // ✅ ADD
-                        !chartExportApi ||
-                        !skuExportPayload ||
-                        !expenseBreakdownPieBase64 ||
-                        !productWiseCm1PieBase64
-                      }
-
-                    />
                   </div>
 
                   <div className="flex-1 min-h-0 overflow-hidden mt-4">
@@ -2518,7 +2503,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             homeCurrency={globalHomeCurrency}
             hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
-             onDownload={handleDownloadSkuSheet1}
+            onDownload={handleDownloadSkuSheet1}
           />
 
         </>
@@ -2620,7 +2605,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       ) : null} */}
                     </div>
 
-                    <DownloadIconButton
+                    {/* <DownloadIconButton
                       onClick={(e) => {
                         e.stopPropagation(); // ✅ don’t trigger zoom
                         handleDownloadProfitabilityBundle();
@@ -2633,7 +2618,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         !productWiseCm1PieBase64
                       }
 
-                    />
+                    /> */}
                   </div>
 
                   <div className="flex-1 min-h-0 overflow-hidden mt-4">
@@ -2796,7 +2781,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       </span> */}
                     </div>
 
-                    <DownloadIconButton
+                    {/* <DownloadIconButton
                       onClick={(e) => {
                         e.stopPropagation(); // ✅ don’t trigger zoom
                         handleDownloadProfitabilityBundle();
@@ -2809,7 +2794,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         !productWiseCm1PieBase64
                       }
 
-                    />
+                    /> */}
                   </div>
 
                   <div className="flex-1 min-h-0 overflow-hidden mt-4">
@@ -2871,7 +2856,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             homeCurrency={globalHomeCurrency}
             hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
-             onDownload={handleDownloadSkuSheet1}
+            onDownload={handleDownloadSkuSheet1}
           />
         </>
       )}

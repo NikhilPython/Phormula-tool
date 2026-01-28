@@ -91,6 +91,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
             borderWidth: 0,
             barPercentage: 0.9,
             categoryPercentage: 0.7,
+            hidden:true,
           },
         ]
         : []),
@@ -102,12 +103,12 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
       "Net Sales": "Net Sales",
       "COGS": "COGS",
       "Marketplace Fees": "Mkt. Fees",
-      "Tax & Credits": "Taxes",
+      "Tax & Credits": "Tax",
       "Advertisements": "Ads",
       "CM1 Profit": "CM1 Profit",
       "CM2 Profit": "CM2 Profit",
-      "Other Charges": "Others",
-      "Others": "Others",
+      "Other Charges": "Other",
+      "Others": "Other",
     };
     return map[s] ?? s;
   };
@@ -147,25 +148,82 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
         grid: { display: false, drawOnChartArea: false, drawTicks: false },
         title: { display: Boolean(xTitle), text: xTitle },
 
-      ticks: {
-  autoSkip: false,        // IMPORTANT: show all labels
-  maxRotation: 0,
-  minRotation: 0,
-  padding: 8,
-  callback: (_value, index) => {
-    const label = labels[index] ?? "";
-    const finalLabel = isSmallScreen ? shortLabel(label) : label;
+        ticks: {
+          autoSkip: false,        // IMPORTANT: show all labels
+          maxRotation: 0,
+          minRotation: 0,
+          padding: 8,
+          // callback: (_value, index) => {
+          //   const label = labels[index] ?? "";
+          //   const finalLabel = isSmallScreen ? shortLabel(label) : label;
 
-    // wrap into 2 lines if still long (only if needed)
-    if (isSmallScreen && finalLabel.length > 8) {
+          //   // wrap into 2 lines if still long (only if needed)
+          //   if (isSmallScreen && finalLabel.length > 8) {
+          //     const parts = finalLabel.split(" ");
+          //     if (parts.length >= 2) return [parts[0], parts.slice(1).join(" ")];
+          //     return [finalLabel.slice(0, 8), finalLabel.slice(8)];
+          //   }
+
+          //   return finalLabel;
+          // },
+          // callback: (_value, index) => {
+          //   const label = labels[index] ?? "";
+
+          //   // ✅ keep small screens unchanged
+          //   if (isSmallScreen) {
+          //     const finalLabel = shortLabel(label);
+
+          //     // wrap into 2 lines if still long (only if needed)
+          //     if (finalLabel.length > 8) {
+          //       const parts = finalLabel.split(" ");
+          //       if (parts.length >= 2) return [parts[0], parts.slice(1).join(" ")];
+          //       return [finalLabel.slice(0, 8), finalLabel.slice(8)];
+          //     }
+
+          //     return finalLabel;
+          //   }
+
+          //   // ✅ large screens: always 2 lines (best-effort split)
+          //   const parts = label.trim().split(/\s+/);
+
+          //   if (parts.length >= 2) {
+          //     const mid = Math.ceil(parts.length / 2);
+          //     return [parts.slice(0, mid).join(" "), parts.slice(mid).join(" ")];
+          //   }
+
+          //   // Single long word: split into two halves
+          //   const mid = Math.ceil(label.length / 2);
+          //   return [label.slice(0, mid), label.slice(mid)];
+          // },
+callback: (_value, index) => {
+  const label = labels[index] ?? "";
+
+  // ✅ keep small screens unchanged (your existing behavior)
+  if (isSmallScreen) {
+    const finalLabel = shortLabel(label);
+
+    if (finalLabel.length > 8) {
       const parts = finalLabel.split(" ");
       if (parts.length >= 2) return [parts[0], parts.slice(1).join(" ")];
       return [finalLabel.slice(0, 8), finalLabel.slice(8)];
     }
 
     return finalLabel;
-  },
+  }
+
+  // ✅ large screens: split ONLY when there are 2+ words
+  const parts = label.trim().split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    const mid = Math.ceil(parts.length / 2);
+    return [parts.slice(0, mid).join(" "), parts.slice(mid).join(" ")];
+  }
+
+  // single word => do NOT split
+  return label;
 },
+
+        },
 
 
       },
