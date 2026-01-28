@@ -42,7 +42,7 @@ import { FaCalendarAlt } from "react-icons/fa";
 import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/liveBusinessClient";
 import { useRouter } from "next/navigation";
 import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
-
+import { CgPushRight, CgPushLeft } from "react-icons/cg";
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -195,7 +195,7 @@ function RangePicker({
 
   const [shownDate, setShownDate] = useState<Date>(monthStart);
   const [showCalendar, setShowCalendar] = useState(false);
-
+  const [isMtdPlExpanded, setIsMtdPlExpanded] = useState(false);
   const [calendarRange, setCalendarRange] = useState<any>([
     { startDate: null, endDate: null, key: "selection" },
   ]);
@@ -203,10 +203,8 @@ function RangePicker({
   const [pendingStartDay, setPendingStartDay] = useState<number | null>(null);
   const [pendingEndDay, setPendingEndDay] = useState<number | null>(null);
 
-  // ✅ ADD THIS REF
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ ADD THIS EFFECT (outside click closes)
   useEffect(() => {
     if (!showCalendar) return;
 
@@ -214,15 +212,8 @@ function RangePicker({
       const el = wrapperRef.current;
       if (!el) return;
 
-      // if clicked outside the RangePicker wrapper → close
       if (!el.contains(e.target as Node)) {
         setShowCalendar(false);
-
-        // choose ONE behavior:
-        // A) just close (keep current pending selection)
-        // return;
-
-        // B) close + reset (your requested behaviour sounds like reset)
         setCalendarRange([{ startDate: null, endDate: null, key: "selection" }]);
         setPendingStartDay(null);
         setPendingEndDay(null);
@@ -233,6 +224,14 @@ function RangePicker({
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [showCalendar, onCloseReset]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsMtdPlExpanded(false);
+    };
+    if (isMtdPlExpanded) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isMtdPlExpanded]);
 
   const handleCalendarChange = (ranges: any) => {
     const range = ranges.selection;
@@ -368,13 +367,22 @@ const sliceByDayRange = (
   const e = Math.max(startDay, endDay);
 
   return points.filter((p) => {
-    const day = Number(p.date?.slice(8, 10)); 
+    const day = Number(p.date?.slice(8, 10));
     return day >= s && day <= e;
   });
 };
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [isMtdPlExpanded, setIsMtdPlExpanded] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsMtdPlExpanded(false);
+    };
+    if (isMtdPlExpanded) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isMtdPlExpanded]);
 
   useEffect(() => {
     const token =
@@ -1285,7 +1293,7 @@ export default function DashboardPage() {
     fetchShopify,
     fetchShopifyPrev,
     shopifyStore,
-    ]);
+  ]);
 
   const didRefreshRef = useRef(false);
 
@@ -1675,9 +1683,9 @@ export default function DashboardPage() {
 
     const global: RegionMetrics = {
       mtdUSD: globalCurrNetDisp,
-      lastMonthToDateUSD: globalPrevNetDisp, 
+      lastMonthToDateUSD: globalPrevNetDisp,
       lastMonthTotalUSD: globalPrevFullMonthSales,
-      targetUSD: globalTarget, 
+      targetUSD: globalTarget,
       decTargetUSD: globalTarget,
     };
 
@@ -1955,7 +1963,7 @@ export default function DashboardPage() {
 
   const colors = labels.map((label) => colorMapping[label] || "#75BBDA");
 
-  
+
   /* ===================== EXCEL EXPORT (USES displayCurrency symbol) ===================== */
   const captureChartPng = useCallback(async () => {
     const container = chartRef.current;
@@ -3113,37 +3121,148 @@ export default function DashboardPage() {
       {/* Lower P&L Graph and Inventory */}
       {hasAnyGraphData && (
         <>
-          {/* <div className="mt-6 rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm"> */}
           <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-
-              {/* LEFT: MTD P&L (Bar Graph) */}
+            <div
+              className={[
+                "grid grid-cols-1 gap-4 items-stretch",
+                isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
+              ].join(" ")}
+            >
+              {/* LEFT: MTD P&L (click to expand/collapse) */}
+              {/* <div
+                className={[
+                  "rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0",
+                  isMtdPlExpanded ? "cursor-zoom-out" : "cursor-zoom-in",
+                ].join(" ")}
+                role="button"
+                tabIndex={0}
+                title={isMtdPlExpanded ? "Click to collapse" : "Click to expand"}
+                onClick={(e) => {
+                  const t = e.target as HTMLElement;
+                  if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                  setIsMtdPlExpanded((s) => !s);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  const t = e.target as HTMLElement;
+                  if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                  setIsMtdPlExpanded((s) => !s);
+                }}
+              > */}
               <div className="rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="text-sm text-charcoal-500">
                     <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
-                      <PageBreadcrumb
-                        pageTitle="MTD P&L"
-                        align="left"
-                        textSize="2xl"
-                        variant="page"
-                      />
+                      <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
                     </div>
                   </div>
 
-                  {!isCountryMode && (
-                    <div className="flex items-center gap-3">
-                      <SegmentedToggle<RegionKey>
-                        value={graphRegion}
-                        options={graphRegions.map((r) => ({ value: r }))}
-                        onChange={setGraphRegion}
-                      />
-                      <DownloadIconButton onClick={handleDownload} />
-                    </div>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {/* Only this part depends on isCountryMode */}
+                    {!isCountryMode && (
+                      <>
+                        <SegmentedToggle<RegionKey>
+                          value={graphRegion}
+                          options={graphRegions.map((r) => ({ value: r }))}
+                          onChange={setGraphRegion}
+                        />
+                        <DownloadIconButton onClick={handleDownload} />
+                      </>
+                    )}
+
+
+                    {/* <button
+                      type="button"
+                      className="shrink-0 rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                      onClick={() => setIsMtdPlExpanded((s) => !s)}
+                      aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
+                      title={isMtdPlExpanded ? "Collapse" : "Expand"}
+                    >
+                      {isMtdPlExpanded ? < CgPushLeft size={18} className="font-extrabold" /> : <CgPushRight size={18} className="font-extrabold" />}
+                      
+                    </button> */}
+
+                    <span className="relative group shrink-0">
+                      <button
+                        type="button"
+                        className="
+      rounded-md
+      border
+      border-gray-300
+      bg-white
+      text-blue-700
+      p-1.5
+      transition-all
+      duration-200
+      ease-out
+      hover:-translate-y-[2px]
+      hover:shadow-lg
+      active:translate-y-0
+      active:shadow-md
+    "
+                        onClick={() => setIsMtdPlExpanded((s) => !s)}
+                        aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
+                      >
+                        {isMtdPlExpanded ? (
+                          <CgPushLeft size={18} className="font-extrabold" />
+                        ) : (
+                          <CgPushRight size={18} className="font-extrabold" />
+                        )}
+                      </button>
+
+                      {/* Chart.js-like tooltip */}
+                      <span
+                        className="
+      pointer-events-none
+      absolute
+      left-1/2
+      -translate-x-1/2
+      -top-9
+      z-50
+      whitespace-nowrap
+      rounded-md
+      border
+      border-gray-200
+      bg-white
+      px-2
+      py-1
+      text-[11px]
+      font-medium
+      text-[#414042]
+      shadow-sm
+      opacity-0
+      transition-opacity
+      duration-150
+      group-hover:opacity-100
+    "
+                      >
+                        {isMtdPlExpanded ? "Collapse" : "Expand"}
+
+                        {/* little arrow (bordered, like tooltip) */}
+                        <span
+                          className="
+        absolute
+        left-1/2
+        top-full
+        h-2
+        w-2
+        -translate-x-1/2
+        -translate-y-1/2
+        rotate-45
+        border-r
+        border-b
+        border-gray-200
+        bg-white
+      "
+                        />
+                      </span>
+                    </span>
+
+
+                  </div>
                 </div>
 
-                {/* IMPORTANT: bar chart wrapper ref should stay here if you're exporting bar chart */}
+
                 <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
                   <div className="w-full max-w-full min-w-0 h-full">
                     <DashboardBargraphCard
@@ -3153,6 +3272,7 @@ export default function DashboardPage() {
                       labels={labels}
                       values={values}
                       prevValues={prevValues}
+                      expanded={isMtdPlExpanded}
                       colors={colors}
                       loading={loading}
                       allValuesZero={allValuesZero}
@@ -3161,16 +3281,17 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* RIGHT: CM1 Profit Breakdown Pie */}
-              <div className="min-w-0 h-full flex flex-col">
-                <Cm1ProfitBreakdownPie
-                  title="CM1 Profit Breakdown"
-                  data={cm1ProfitPieData}
-                  currency={displayCurrency}
-                  height={320}
-                />
-              </div>
-
+              {/* RIGHT: CM1 Profit Breakdown Pie (hide when expanded) */}
+              {!isMtdPlExpanded && (
+                <div className="min-w-0 h-full flex flex-col">
+                  <Cm1ProfitBreakdownPie
+                    title="CM1 Profit Breakdown"
+                    data={cm1ProfitPieData}
+                    currency={displayCurrency}
+                    height={320}
+                  />
+                </div>
+              )}
             </div>
           </div>
 

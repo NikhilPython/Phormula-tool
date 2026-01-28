@@ -287,6 +287,43 @@ const getCurrencyDisplay = (countryLower: string, homeCurrencyCode: string) => {
 };
 
 
+const ALERT_STYLES: Record<string, string> = {
+  "High alert": "bg-[#B75A5A4D] text-[#B75A5A] border-[#B75A5A]",
+  "Please send shipment": "bg-[#ED9F504D] text-[#ED9F50] border-[#ED9F50]",
+  "High storage cost": "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "Ageing Inventory. Ref. AI Insights": "bg-purple-100 text-purple-800 border-purple-200",
+};
+
+const splitAlerts = (value: string) =>
+  (value || "")
+    .split(/[,;|]/g)               // supports "a, b" or "a; b" etc.
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+const AlertBadges = ({ value }: { value: string }) => {
+  const items = splitAlerts(value);
+  if (!items.length) return <span className="text-slate-400">—</span>;
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-1">
+      {items.map((label) => (
+        <span
+          key={label}
+          title={label}
+          className={[
+            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
+            ALERT_STYLES[label] || "bg-slate-100 text-slate-800 border-slate-200",
+          ].join(" ")}
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+
+
 /* ===================== COMPONENT ===================== */
 
 export default function CurrentInventorySection({
@@ -717,6 +754,8 @@ export default function CurrentInventorySection({
         inventory180Plus,
       } = c;
 
+      const alertText = inventoryAlerts[normalizeSku(row["SKU"])]?.alert || "";
+      
       return {
         rowType: "normal",
         sno: idx + 1,
@@ -730,6 +769,7 @@ export default function CurrentInventorySection({
         estStorage: estStorage ? formatInt(estStorage) : "—",
         coverageMonths: formatRatio(coverage),
         alert: inventoryAlerts[normalizeSku(row["SKU"])]?.alert || "",
+        // alert: <AlertBadges value={alertText} />,
       };
     });
 
@@ -913,12 +953,13 @@ export default function CurrentInventorySection({
         <DownloadIconButton
           onClick={downloadInventoryExcel}
           disabled={invLoading || !invRows?.length}
+          className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
         />
       </div>
 
       {invLoading ? (
         <div className="py-10 flex justify-center">
-                   <Loader fullscreen transparent />
+          <Loader fullscreen transparent />
         </div>
       ) : invError ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">

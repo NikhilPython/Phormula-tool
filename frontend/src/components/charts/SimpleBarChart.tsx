@@ -26,6 +26,7 @@ type SimpleBarChartProps = {
   prevLabel?: string;
   xTitle?: string;
   yTitle?: string;
+  showPrev?: boolean;
 };
 
 const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
@@ -38,6 +39,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
   prevLabel = "Last month till date",
   xTitle,
   yTitle,
+  showPrev = false,
 }) => {
   const chartRef = useRef<any>(null);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
@@ -64,7 +66,11 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
   }, []);
 
 
-  const hasPrev = Array.isArray(prevValues) && prevValues.length === labels.length;
+  const hasPrev =
+    showPrev &&
+    Array.isArray(prevValues) &&
+    prevValues.length === labels.length;
+
 
   const currentColors = colors.length ? colors : "#75BBDA";
   const previousColors = prevColors.length === labels.length ? prevColors : "#D9D9D9";
@@ -91,7 +97,6 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
             borderWidth: 0,
             barPercentage: 0.9,
             categoryPercentage: 0.7,
-            hidden:true,
           },
         ]
         : []),
@@ -195,33 +200,33 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
           //   const mid = Math.ceil(label.length / 2);
           //   return [label.slice(0, mid), label.slice(mid)];
           // },
-callback: (_value, index) => {
-  const label = labels[index] ?? "";
+          callback: (_value, index) => {
+            const label = labels[index] ?? "";
 
-  // ✅ keep small screens unchanged (your existing behavior)
-  if (isSmallScreen) {
-    const finalLabel = shortLabel(label);
+            // ✅ keep small screens unchanged (your existing behavior)
+            if (isSmallScreen) {
+              const finalLabel = shortLabel(label);
 
-    if (finalLabel.length > 8) {
-      const parts = finalLabel.split(" ");
-      if (parts.length >= 2) return [parts[0], parts.slice(1).join(" ")];
-      return [finalLabel.slice(0, 8), finalLabel.slice(8)];
-    }
+              if (finalLabel.length > 8) {
+                const parts = finalLabel.split(" ");
+                if (parts.length >= 2) return [parts[0], parts.slice(1).join(" ")];
+                return [finalLabel.slice(0, 8), finalLabel.slice(8)];
+              }
 
-    return finalLabel;
-  }
+              return finalLabel;
+            }
 
-  // ✅ large screens: split ONLY when there are 2+ words
-  const parts = label.trim().split(/\s+/).filter(Boolean);
+            // ✅ large screens: split ONLY when there are 2+ words
+            const parts = label.trim().split(/\s+/).filter(Boolean);
 
-  if (parts.length >= 2) {
-    const mid = Math.ceil(parts.length / 2);
-    return [parts.slice(0, mid).join(" "), parts.slice(mid).join(" ")];
-  }
+            if (parts.length >= 2) {
+              const mid = Math.ceil(parts.length / 2);
+              return [parts.slice(0, mid).join(" "), parts.slice(mid).join(" ")];
+            }
 
-  // single word => do NOT split
-  return label;
-},
+            // single word => do NOT split
+            return label;
+          },
 
         },
 

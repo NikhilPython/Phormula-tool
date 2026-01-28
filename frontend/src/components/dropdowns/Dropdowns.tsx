@@ -9,8 +9,6 @@ import CMchartofsku from "./CMchartofsku";
 import SKUtable from "./SKUtable";
 import IntegrationDashboard from "@/features/integration/IntegrationDashboard";
 import PageBreadcrumb from "../common/PageBreadCrumb";
-import Button from "../ui/button/Button";
-import { AiOutlinePlus } from "react-icons/ai";
 import { Modal } from "@/components/ui/modal";
 import FileUploadForm from "@/app/(admin)/(ui-elements)/modals/FileUploadForm";
 import PeriodFiltersTable from "../filters/PeriodFiltersTable";
