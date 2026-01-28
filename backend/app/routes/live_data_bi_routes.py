@@ -110,6 +110,120 @@ def align_prev_curr_by_sku(prev_data, curr_data):
     )
 
 
+def build_cm1_profit_pie_slices(
+    rows,
+    min_named=5,
+    pareto_threshold=0.8,
+    max_named=10,
+    others_label="Others",
+):
+    """
+    rows: list of dicts that must contain:
+      - product_name (or name)
+      - profit_curr
+      - profit_prev
+    Returns a list of slices:
+      [{name, profit_curr, profit_prev, pct, delta_pct}, ...]
+    """
+
+    def safe_name(r):
+        return (r.get("product_name") or r.get("name") or "").strip()
+
+    def is_others(n: str) -> bool:
+        return (n or "").strip().lower() == others_label.lower()
+
+    items = []
+    for r in rows:
+        name = safe_name(r)
+        if not name:
+            continue
+        items.append({
+            "name": name,
+            "profit_curr": float(r.get("profit_curr") or 0),
+            "profit_prev": float(r.get("profit_prev") or 0),
+        })
+
+    # Total profit used for pct
+    total_profit = sum(x["profit_curr"] for x in items) or 0.0
+
+    # Sort by current profit desc
+    items_sorted = sorted(items, key=lambda x: x["profit_curr"], reverse=True)
+
+    # --- Pareto pick (80% of profit), BUT don't let a real "Others" be a named slice
+    pareto_pick = []
+    running = 0.0
+    for it in items_sorted:
+        if len(pareto_pick) >= max_named:
+            break
+        if is_others(it["name"]):  # reserve label for aggregate bucket
+            continue
+        pareto_pick.append(it)
+        running += it["profit_curr"]
+        if total_profit > 0 and (running / total_profit) >= pareto_threshold:
+            break
+
+    # Fallback if pareto yields nothing
+    if not pareto_pick:
+        pareto_pick = [it for it in items_sorted if not is_others(it["name"])][:min_named]
+
+    chosen = list(pareto_pick)
+
+    # --- Enforce at least min_named named slices (skip real "Others" name)
+    if len(chosen) < min_named:
+        chosen_names = {x["name"] for x in chosen}
+        for it in items_sorted:
+            if len(chosen) >= min_named:
+                break
+            if is_others(it["name"]):
+                continue
+            if it["name"] not in chosen_names:
+                chosen.append(it)
+                chosen_names.add(it["name"])
+
+    # If total distinct non-others items <= min_named, just show them all
+    non_others = [it for it in items_sorted if not is_others(it["name"])]
+    if len(non_others) <= min_named:
+        chosen = non_others
+
+    chosen_names = {x["name"] for x in chosen}
+
+    # --- Everything not chosen goes to Others (including any literal "Others" SKU rows)
+    others_items = [it for it in items_sorted if it["name"] not in chosen_names]
+    others_curr = sum(x["profit_curr"] for x in others_items)
+    others_prev = sum(x["profit_prev"] for x in others_items)
+
+    def delta_pct(curr, prev):
+        if prev == 0:
+            return None
+        return ((curr - prev) / abs(prev)) * 100.0
+
+    slices = []
+    for it in chosen:
+        pct = (it["profit_curr"] / total_profit * 100.0) if total_profit else 0.0
+        slices.append({
+            "name": it["name"],
+            "profit_curr": it["profit_curr"],
+            "profit_prev": it["profit_prev"],
+            "pct": pct,
+            "delta_pct": delta_pct(it["profit_curr"], it["profit_prev"]),
+        })
+
+    if others_curr != 0:
+        pct = (others_curr / total_profit * 100.0) if total_profit else 0.0
+        slices.append({
+            "name": others_label,
+            "profit_curr": others_curr,
+            "profit_prev": others_prev,
+            "pct": pct,
+            "delta_pct": delta_pct(others_curr, others_prev),
+        })
+
+    return {
+        "total_profit_curr": total_profit,
+        "min_named": min_named,
+        "pareto_threshold": pareto_threshold,
+        "slices": slices,
+    }
 
 
 @live_data_bi_bp.route("/live_mtd_bi", methods=["GET"])
@@ -317,6 +431,25 @@ def live_mtd_vs_previous():
         )
 
         # ---------------------------
+        # CM1 PROFIT PIE (SAFE, NON-BREAKING)
+        # ---------------------------
+        pie_rows = [
+            {
+                "product_name": r.get("product_name"),
+                "profit_curr": r.get("profit_curr", 0),
+                "profit_prev": r.get("profit_prev", 0),
+            }
+            for r in (top_80_skus + other_skus)
+        ]
+
+        cm1_profit_pie = build_cm1_profit_pie_slices(
+            pie_rows,
+            min_named=5,
+            pareto_threshold=0.8,
+        )
+
+
+        # ---------------------------
         # INVENTORY SIGNALS
         # ---------------------------
         try:
@@ -447,6 +580,7 @@ def live_mtd_vs_previous():
                 "other_skus": other_skus,
                 "other_total": other_total_row,
             },
+                "cm1_profit_pie": cm1_profit_pie,
             "daily_series": {
                 "previous": prev_daily_full,
                 "current_mtd": curr_daily,

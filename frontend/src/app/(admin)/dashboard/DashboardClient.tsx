@@ -111,6 +111,21 @@ type PeriodInfo = {
   end_date: string;
 };
 
+type Cm1ProfitPieApiSlice = {
+  name: string;
+  profit_curr: number;
+  profit_prev: number;
+  pct: number;
+  delta_pct: number;
+};
+
+type Cm1ProfitPieApi = {
+  min_named?: number;
+  pareto_threshold?: number;
+  total_profit_curr?: number;
+  slices: Cm1ProfitPieApiSlice[];
+};
+
 type BiApiResponse = {
   message?: string;
   periods?: {
@@ -126,6 +141,7 @@ type BiApiResponse = {
   ai_insights?: Record<string, any>;
   overall_summary?: string[];
   overall_actions?: string[];
+  cm1_profit_pie?: Cm1ProfitPieApi;
 };
 
 
@@ -554,7 +570,7 @@ export default function DashboardPage() {
       if (inrUsd != null) setInrToUsd(inrUsd);
       if (cadUsd != null) setCadToUsd(cadUsd);
 
-      console.log("✅ FX (current month)", { month, year, gbpUsd, inrUsd, cadUsd });
+      // console.log("✅ FX (current month)", { month, year, gbpUsd, inrUsd, cadUsd });
     } catch (err) {
       console.error("Failed to fetch FX from DB, keeping env defaults", err);
     } finally {
@@ -563,14 +579,14 @@ export default function DashboardPage() {
   }, []);
 
 
-  useEffect(() => {
-    console.log("📊 FINAL FX RATES IN USE", {
-      GBP_TO_USD: gbpToUsd,
-      INR_TO_USD: inrToUsd,
-      CAD_TO_USD: cadToUsd,
-      displayCurrency,
-    });
-  }, [gbpToUsd, inrToUsd, cadToUsd, displayCurrency]);
+  // useEffect(() => {
+  //   console.log("📊 FINAL FX RATES IN USE", {
+  //     GBP_TO_USD: gbpToUsd,
+  //     INR_TO_USD: inrToUsd,
+  //     CAD_TO_USD: cadToUsd,
+  //     displayCurrency,
+  //   });
+  // }, [gbpToUsd, inrToUsd, cadToUsd, displayCurrency]);
 
 
   useEffect(() => {
@@ -737,148 +753,286 @@ export default function DashboardPage() {
   //   return slices;
   // }, [liveBiPayload, convertToDisplayCurrency, biSourceCurrency]);
 
-  const cm1ProfitPieData = useMemo(() => {
-    const cg = liveBiPayload?.categorized_growth;
-    if (!cg) return [];
+  // const cm1ProfitPieData = useMemo(() => {
+  //   const cg = liveBiPayload?.categorized_growth;
+  //   if (!cg) return [];
 
-    const all = [
-      ...(cg?.top_80_skus ?? []),
-      ...(cg?.other_skus ?? []),
-      ...(cg?.new_or_reviving_skus ?? []),
-    ];
+  //   const all = [
+  //     ...(cg?.top_80_skus ?? []),
+  //     ...(cg?.other_skus ?? []),
+  //     ...(cg?.new_or_reviving_skus ?? []),
+  //   ];
 
-    // Accumulate per product
-    const currProfitMap = new Map<string, number>();
-    const prevProfitMap = new Map<string, number>();
-    const currSalesMap = new Map<string, number>();
+  //   // Accumulate per product
+  //   const currProfitMap = new Map<string, number>();
+  //   const prevProfitMap = new Map<string, number>();
+  //   const currSalesMap = new Map<string, number>();
 
-    for (const r of all) {
-      const name = String(r?.product_name ?? "Unknown").trim() || "Unknown";
+  //   for (const r of all) {
+  //     const name = String(r?.product_name ?? "Unknown").trim() || "Unknown";
 
-      const currProfit = convertToDisplayCurrency(
-        Number(r?.profit_curr ?? 0),
-        biSourceCurrency
-      );
+  //     const currProfit = convertToDisplayCurrency(
+  //       Number(r?.profit_curr ?? 0),
+  //       biSourceCurrency
+  //     );
 
-      const prevProfitRaw =
-        r?.profit_prev ??
-        r?.profit_prev_month ??
-        r?.profit_previous ??
-        0;
+  //     const prevProfitRaw =
+  //       r?.profit_prev ??
+  //       r?.profit_prev_month ??
+  //       r?.profit_previous ??
+  //       0;
 
-      const prevProfit = convertToDisplayCurrency(
-        Number(prevProfitRaw ?? 0),
-        biSourceCurrency
-      );
+  //     const prevProfit = convertToDisplayCurrency(
+  //       Number(prevProfitRaw ?? 0),
+  //       biSourceCurrency
+  //     );
 
-      // 👇 update these keys to match your BI payload if needed
-      const salesRaw =
-        r?.net_sales_curr ??
-        r?.sales_curr ??
-        r?.revenue_curr ??
-        r?.net_sales ??
-        r?.sales ??
-        r?.revenue ??
-        0;
+  //     // 👇 update these keys to match your BI payload if needed
+  //     const salesRaw =
+  //       r?.net_sales_curr ??
+  //       r?.sales_curr ??
+  //       r?.revenue_curr ??
+  //       r?.net_sales ??
+  //       r?.sales ??
+  //       r?.revenue ??
+  //       0;
 
-      const currSales = convertToDisplayCurrency(
-        Number(salesRaw ?? 0),
-        biSourceCurrency
-      );
+  //     const currSales = convertToDisplayCurrency(
+  //       Number(salesRaw ?? 0),
+  //       biSourceCurrency
+  //     );
 
-      if (currProfit <= 0 && prevProfit <= 0 && currSales <= 0) continue;
+  //     if (currProfit <= 0 && prevProfit <= 0 && currSales <= 0) continue;
 
-      currProfitMap.set(name, (currProfitMap.get(name) ?? 0) + currProfit);
-      prevProfitMap.set(name, (prevProfitMap.get(name) ?? 0) + prevProfit);
-      currSalesMap.set(name, (currSalesMap.get(name) ?? 0) + currSales);
+  //     currProfitMap.set(name, (currProfitMap.get(name) ?? 0) + currProfit);
+  //     prevProfitMap.set(name, (prevProfitMap.get(name) ?? 0) + prevProfit);
+  //     currSalesMap.set(name, (currSalesMap.get(name) ?? 0) + currSales);
+  //   }
+
+  //   const items = Array.from(currProfitMap.entries()).map(([name, currProfit]) => ({
+  //     name,
+  //     currProfit,
+  //     prevProfit: prevProfitMap.get(name) ?? 0,
+  //     currSales: currSalesMap.get(name) ?? 0,
+  //   }));
+
+  //   const totalProfit = items.reduce((s, x) => s + x.currProfit, 0);
+  //   if (totalProfit <= 0) return [];
+
+  //   const totalSales = items.reduce((s, x) => s + x.currSales, 0);
+
+  //   const calcDeltaPct = (curr: number, prev: number) => {
+  //     if (!prev) return null;
+  //     return ((curr - prev) / Math.abs(prev)) * 100;
+  //   };
+
+  //   const pickPareto = (
+  //     arr: typeof items,
+  //     key: "currSales" | "currProfit",
+  //     threshold = 0.8,
+  //     maxN = 5
+  //   ) => {
+  //     const total = key === "currSales" ? totalSales : totalProfit;
+
+  //     // If sales is missing/zero, fall back to profit so chart still works
+  //     const effectiveKey =
+  //       key === "currSales" && (!total || total <= 0) ? "currProfit" : key;
+
+  //     const sorted = [...arr].sort((a, b) => (b as any)[effectiveKey] - (a as any)[effectiveKey]);
+
+  //     let running = 0;
+  //     const picked: typeof items = [];
+  //     for (const it of sorted) {
+  //       if (picked.length >= maxN) break;
+  //       running += Math.max(0, Number((it as any)[effectiveKey] ?? 0));
+  //       picked.push(it);
+  //       if (total > 0 && running / total >= threshold) break;
+  //     }
+  //     return picked;
+  //   };
+
+  //   // Option A: Always top 5 by profit
+  //   const top5ByProfit = [...items]
+  //     .sort((a, b) => b.currProfit - a.currProfit)
+  //     .slice(0, 5);
+
+  //   // Option B: smallest set reaching 80% of profit (cap at 5)
+  //   const profit80Pick = pickPareto(items, "currProfit", 0.8, 5);
+
+  //   // ✅ Rule:
+  //   // If 80% profit is achieved with fewer than 5 SKUs → show that smaller set.
+  //   // Otherwise → show top 5.
+  //   // const chosen =
+  //   //   profit80Pick.length > 0 && profit80Pick.length < 5
+  //   //     ? profit80Pick
+  //   //     : top5ByProfit;
+
+
+  //   // ✅ Pick smallest set reaching 80% profit,
+  //   // but ALWAYS show at least 5 named products if possible.
+  //   let chosen =
+  //     profit80Pick.length > 0 ? [...profit80Pick] : [...top5ByProfit];
+
+  //   if (chosen.length < 5) {
+  //     const already = new Set(chosen.map((x) => x.name));
+  //     const sortedByProfit = [...items].sort((a, b) => b.currProfit - a.currProfit);
+
+  //     for (const it of sortedByProfit) {
+  //       if (chosen.length >= 5) break;
+  //       if (!already.has(it.name)) {
+  //         chosen.push(it);
+  //         already.add(it.name);
+  //       }
+  //     }
+  //   }
+
+  //   // Safety: if fewer than 5 items exist overall, just use all
+  //   if (items.length <= 5) chosen = [...items];
+
+
+  //   const chosenNames = new Set(chosen.map((x) => x.name));
+  //   const others = items.filter((x) => !chosenNames.has(x.name));
+
+  //   const othersCurr = others.reduce((s, x) => s + x.currProfit, 0);
+  //   const othersPrev = others.reduce((s, x) => s + x.prevProfit, 0);
+
+  //   const slices: Cm1PieSlice[] = chosen.map((x) => ({
+  //     name: x.name,
+  //     value: x.currProfit,
+  //     prevValue: x.prevProfit,
+  //     pct: (x.currProfit / totalProfit) * 100,
+  //     deltaPct: calcDeltaPct(x.currProfit, x.prevProfit),
+  //   }));
+
+  //   // if (othersCurr > 0) {
+  //   //   slices.push({
+  //   //     name: "Others",
+  //   //     value: othersCurr,
+  //   //     prevValue: othersPrev,
+  //   //     pct: (othersCurr / totalProfit) * 100,
+  //   //     deltaPct: calcDeltaPct(othersCurr, othersPrev),
+  //   //   });
+  //   // }
+  //   if (othersCurr > 0) {
+  //     const othersLabel = "Others";
+  //     const existingIdx = slices.findIndex(
+  //       (s) => s.name.trim().toLowerCase() === othersLabel.toLowerCase()
+  //     );
+
+  //     if (existingIdx >= 0) {
+  //       const mergedValue = slices[existingIdx].value + othersCurr;
+  //       const mergedPrev = slices[existingIdx].prevValue + othersPrev;
+
+  //       slices[existingIdx] = {
+  //         ...slices[existingIdx],
+  //         value: mergedValue,
+  //         prevValue: mergedPrev,
+  //         pct: (mergedValue / totalProfit) * 100,
+  //         deltaPct: calcDeltaPct(mergedValue, mergedPrev),
+  //       };
+  //     } else {
+  //       slices.push({
+  //         name: othersLabel,
+  //         value: othersCurr,
+  //         prevValue: othersPrev,
+  //         pct: (othersCurr / totalProfit) * 100,
+  //         deltaPct: calcDeltaPct(othersCurr, othersPrev),
+  //       });
+  //     }
+  //   }
+
+
+  //   return slices;
+
+
+  //   return slices;
+  // }, [liveBiPayload, convertToDisplayCurrency, biSourceCurrency]);
+
+
+  const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
+    // ✅ 1) Prefer backend result (single source of truth)
+    const apiSlices = liveBiPayload?.cm1_profit_pie?.slices;
+    if (apiSlices?.length) {
+      // Merge duplicates defensively (prevents double "Others" even if ever sent twice)
+      const merged = new Map<string, { name: string; value: number; prevValue: number; deltaPct: number }>();
+
+      for (const s of apiSlices) {
+        const name = (s.name || "Others").trim();
+        const value = Number(s.profit_curr || 0);
+        const prevValue = Number(s.profit_prev || 0);
+
+        const existing = merged.get(name);
+        if (existing) {
+          existing.value += value;
+          existing.prevValue += prevValue;
+          // keep latest deltaPct (or you could compute weighted delta later if needed)
+          existing.deltaPct = Number(s.delta_pct ?? existing.deltaPct ?? 0);
+        } else {
+          merged.set(name, {
+            name,
+            value,
+            prevValue,
+            deltaPct: Number(s.delta_pct ?? 0),
+          });
+        }
+      }
+
+      const total = Array.from(merged.values()).reduce((sum, r) => sum + r.value, 0) || 1;
+
+      return Array.from(merged.values())
+        .map((r) => ({
+          ...r,
+          pct: (r.value / total) * 100,
+        }))
+        .sort((a, b) => b.value - a.value);
     }
 
-    const items = Array.from(currProfitMap.entries()).map(([name, currProfit]) => ({
-      name,
-      currProfit,
-      prevProfit: prevProfitMap.get(name) ?? 0,
-      currSales: currSalesMap.get(name) ?? 0,
-    }));
+    // ✅ 2) Fallback: your existing frontend logic (keep as backup)
+    const cg = liveBiPayload?.categorized_growth;
+    const top80 = cg?.top_80_skus ?? [];
+    const other = cg?.other_skus ?? [];
+    const combined = [...top80, ...other];
 
-    const totalProfit = items.reduce((s, x) => s + x.currProfit, 0);
-    if (totalProfit <= 0) return [];
+    if (!combined.length) return [];
 
-    const totalSales = items.reduce((s, x) => s + x.currSales, 0);
+    const sorted = combined
+      .map((r: any) => ({
+        name: String(r?.product_name ?? "Unknown"),
+        profit_curr: Number(r?.profit_curr ?? 0),
+        profit_prev: Number(r?.profit_prev ?? 0),
+      }))
+      .filter((x) => x.profit_curr !== 0 || x.profit_prev !== 0)
+      .sort((a, b) => b.profit_curr - a.profit_curr);
 
-    const calcDeltaPct = (curr: number, prev: number) => {
-      if (!prev) return null;
-      return ((curr - prev) / Math.abs(prev)) * 100;
-    };
+    const total = sorted.reduce((s, x) => s + x.profit_curr, 0) || 1;
 
-    const pickPareto = (
-      arr: typeof items,
-      key: "currSales" | "currProfit",
-      threshold = 0.8,
-      maxN = 5
-    ) => {
-      const total = key === "currSales" ? totalSales : totalProfit;
+    // keep your previous “min 5 named + pareto” logic here if you want
+    // (but ideally you won't hit this path once backend cm1_profit_pie exists)
+    const top = sorted.slice(0, 5);
+    const rest = sorted.slice(5);
 
-      // If sales is missing/zero, fall back to profit so chart still works
-      const effectiveKey =
-        key === "currSales" && (!total || total <= 0) ? "currProfit" : key;
-
-      const sorted = [...arr].sort((a, b) => (b as any)[effectiveKey] - (a as any)[effectiveKey]);
-
-      let running = 0;
-      const picked: typeof items = [];
-      for (const it of sorted) {
-        if (picked.length >= maxN) break;
-        running += Math.max(0, Number((it as any)[effectiveKey] ?? 0));
-        picked.push(it);
-        if (total > 0 && running / total >= threshold) break;
-      }
-      return picked;
-    };
-
-    // Option A: Always top 5 by profit
-    const top5ByProfit = [...items]
-      .sort((a, b) => b.currProfit - a.currProfit)
-      .slice(0, 5);
-
-    // Option B: smallest set reaching 80% of profit (cap at 5)
-    const profit80Pick = pickPareto(items, "currProfit", 0.8, 5);
-
-    // ✅ Rule:
-    // If 80% profit is achieved with fewer than 5 SKUs → show that smaller set.
-    // Otherwise → show top 5.
-    const chosen =
-      profit80Pick.length > 0 && profit80Pick.length < 5
-        ? profit80Pick
-        : top5ByProfit;
-
-
-    const chosenNames = new Set(chosen.map((x) => x.name));
-    const others = items.filter((x) => !chosenNames.has(x.name));
-
-    const othersCurr = others.reduce((s, x) => s + x.currProfit, 0);
-    const othersPrev = others.reduce((s, x) => s + x.prevProfit, 0);
-
-    const slices: Cm1PieSlice[] = chosen.map((x) => ({
+    const named: Cm1PieSlice[] = top.map((x) => ({
       name: x.name,
-      value: x.currProfit,
-      prevValue: x.prevProfit,
-      pct: (x.currProfit / totalProfit) * 100,
-      deltaPct: calcDeltaPct(x.currProfit, x.prevProfit),
+      value: x.profit_curr,
+      prevValue: x.profit_prev,
+      pct: (x.profit_curr / total) * 100,
+      deltaPct: x.profit_prev ? ((x.profit_curr - x.profit_prev) / Math.abs(x.profit_prev)) * 100 : 0,
     }));
 
-    if (othersCurr > 0) {
-      slices.push({
+    if (rest.length) {
+      const restCurr = rest.reduce((s, x) => s + x.profit_curr, 0);
+      const restPrev = rest.reduce((s, x) => s + x.profit_prev, 0);
+      named.push({
         name: "Others",
-        value: othersCurr,
-        prevValue: othersPrev,
-        pct: (othersCurr / totalProfit) * 100,
-        deltaPct: calcDeltaPct(othersCurr, othersPrev),
+        value: restCurr,
+        prevValue: restPrev,
+        pct: (restCurr / total) * 100,
+        deltaPct: restPrev ? ((restCurr - restPrev) / Math.abs(restPrev)) * 100 : 0,
       });
     }
 
-    return slices;
-  }, [liveBiPayload, convertToDisplayCurrency, biSourceCurrency]);
-
+    return named.sort((a, b) => b.value - a.value);
+  }, [liveBiPayload?.cm1_profit_pie, liveBiPayload?.categorized_growth]);
 
   /* ===================== INTEGRATION FLAGS ===================== */
   const shopifyDeriv = useMemo(() => {
