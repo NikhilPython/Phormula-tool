@@ -1577,10 +1577,8 @@ const handleDownloadExcel = useCallback(async () => {
               <GroupedCollapsibleTable<TableRow>
                 // rows={tableData}
                 rows={displayRows}
-
                 leftCols={LEFT_COLS}
                 groups={groups}
-
                 singleCols={SINGLE_COLS}
                 // layout={[
 
@@ -1636,7 +1634,6 @@ const handleDownloadExcel = useCallback(async () => {
                   other_transactions: "other_transactions_breakdown",
                   profit: "profit_breakdown",
                 }}
-
                 onVisibleColCountChange={setMainColCount}
                 showSignRowInBody
                 getSignForCol={getSignForCol}
@@ -1648,7 +1645,6 @@ const handleDownloadExcel = useCallback(async () => {
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                 }}
-
                 getValue={(row, colKey, rowIndex) => {
                   // const name = String((row as any)?.product_name || "").trim().toLowerCase();
                   // const isTotal = name === "total";
@@ -1700,7 +1696,6 @@ const handleDownloadExcel = useCallback(async () => {
 
                   return formatValue((row as any)[colKey], colKey);
                 }}
-
                 summary={{
                   enabled: mainColCount > 0,
 

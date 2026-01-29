@@ -43,6 +43,7 @@ import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[co
 import { useRouter } from "next/navigation";
 import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
 import { CgPushRight, CgPushLeft } from "react-icons/cg";
+import GroupedCollapsibleTable from "@/components/ui/table/GroupedCollapsibleTable";
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -53,6 +54,14 @@ type Cm1PieSlice = {
   pct: number;
   deltaPct: number | null;
 };
+
+
+type MonthlySpRow = {
+  sno: number | null;
+  products: string | null;
+  spend: number | null;
+};
+
 
 
 /* ===================== ENV & ENDPOINTS ===================== */
@@ -66,6 +75,8 @@ const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
 
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 
+
+const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_to_db`;
 const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
 const INR_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_INR_TO_USD || "0.01128");
 const CAD_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_CAD_TO_USD || "0.74");
@@ -169,6 +180,24 @@ type BiAlignedTotals = {
 /* ===================== SMALL HELPERS ===================== */
 const getShort = (label?: string) => (label ? label.split(" ")[0] || label : "");
 
+const monthToNumber = (monthName: string): number => {
+  const months: Record<string, number> = {
+    january: 1,
+    february: 2,
+    march: 3,
+    april: 4,
+    may: 5,
+    june: 6,
+    july: 7,
+    august: 8,
+    september: 9,
+    october: 10,
+    november: 11,
+    december: 12,
+  };
+  return months[monthName.toLowerCase()] || 1;
+};
+
 const currencyForCountry = (countryName: string): CurrencyCode => {
   const c = (countryName || "").toLowerCase();
   if (c === "uk") return "GBP";
@@ -212,6 +241,12 @@ function RangePicker({
   const [shownDate, setShownDate] = useState<Date>(monthStart);
   const [showCalendar, setShowCalendar] = useState(false);
   const [isMtdPlExpanded, setIsMtdPlExpanded] = useState(false);
+
+
+  const [monthlySpRows, setMonthlySpRows] = useState<MonthlySpRow[]>([]);
+  const [monthlySpLoading, setMonthlySpLoading] = useState(false);
+  const [monthlySpError, setMonthlySpError] = useState<string | null>(null);
+
   const [calendarRange, setCalendarRange] = useState<any>([
     { startDate: null, endDate: null, key: "selection" },
   ]);
@@ -471,6 +506,89 @@ export default function DashboardPage() {
     }
   }, [platform, profileHomeCurrency]);
 
+  type MonthlySpRow = {
+    sno: number | null;
+    products: string | null;
+    spend: number | null;
+  };
+
+  const [monthlySpRows, setMonthlySpRows] = useState<MonthlySpRow[]>([]);
+  const [monthlySpLoading, setMonthlySpLoading] = useState(false);
+  const [monthlySpError, setMonthlySpError] = useState<string | null>(null);
+  const [monthlySpTotalSpend, setMonthlySpTotalSpend] = useState<number | null>(null);
+
+
+  const fetchMonthlySp = useCallback(async () => {
+    try {
+      setMonthlySpLoading(true);
+      setMonthlySpError(null);
+
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+      if (!token) throw new Error("No token found. Please sign in.");
+
+      // same country logic you already use for the POST sync call
+      const country =
+        platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+
+      const { monthName, year } = getISTYearMonth();
+
+      const res = await fetch(MONTHLY_SP_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          month: monthToNumber(monthName.toLowerCase()),
+          year,
+          country,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const msg =
+          (json as any)?.message ||
+          (json as any)?.error ||
+          `Failed to load Monthly SP data (${res.status})`;
+        throw new Error(msg);
+      }
+
+      const items: any[] = Array.isArray((json as any)?.items) ? (json as any).items : [];
+
+      const grandTotalRow = items.find((r) => r?.products === "Grand Total");
+      setMonthlySpTotalSpend(
+        typeof grandTotalRow?.spend === "number" ? grandTotalRow.spend : null
+      );
+
+      const mapped: MonthlySpRow[] = items
+        .filter((r) => r && r.products !== "Grand Total") // keep body clean
+        .map((r) => ({
+          sno: r.sno ?? null,
+          products: r.products ?? null,
+          spend: r.spend ?? null,
+        }));
+
+      setMonthlySpRows(mapped);
+
+    } catch (e: any) {
+      setMonthlySpError(e?.message || "Failed to load Monthly SP data");
+      setMonthlySpRows([]);
+      setMonthlySpTotalSpend(null);
+    } finally {
+      setMonthlySpLoading(false);
+    }
+  }, [platform]);
+
+
+  useEffect(() => {
+    fetchMonthlySp();
+  }, [fetchMonthlySp]);
+
   /* ===================== AMAZON / SHOPIFY STATE ===================== */
   const [loading, setLoading] = useState(false);
   const [unauthorized, setUnauthorized] = useState(false);
@@ -624,6 +742,48 @@ export default function DashboardPage() {
   }, [isCountryMode, forcedRegion]);
 
 
+  const didMonthlyAdsSyncRef = useRef(false);
+
+  useEffect(() => {
+    if (didMonthlyAdsSyncRef.current) return;
+    didMonthlyAdsSyncRef.current = true;
+
+    const run = async () => {
+      try {
+        const jwtToken =
+          typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+        if (!jwtToken) return;
+
+        // decide country based on platform (match your app logic)
+        const country =
+          platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+
+        const { monthName, year } = getISTYearMonth();
+
+        const res = await fetch(`${baseURL}/api/ads/monthly_sp_to_db`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${jwtToken}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            month: monthToNumber(monthName.toLowerCase()),
+            year,
+            country,
+          }),
+        });
+
+        const json = await res.json().catch(() => ({}));
+        console.log("json", json)
+        if (!res.ok) throw new Error(json?.error || "monthly_sp_to_db failed");
+      } catch (e) {
+        console.error("monthly_sp_to_db error:", e);
+      }
+    };
+
+    run();
+  }, [platform, baseURL]);
 
 
   /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
@@ -3272,6 +3432,57 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* Monthly Sponsored Products (SP) */}
+      <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <PageBreadcrumb pageTitle="Monthly Ads Spend" variant="page" align="left" textSize="2xl" />
+          <button
+            type="button"
+            onClick={fetchMonthlySp}
+            disabled={monthlySpLoading}
+            className={`rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm ${monthlySpLoading ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400" : "border-gray-300 bg-white hover:bg-gray-50"
+              }`}
+          >
+            {monthlySpLoading ? "Loading…" : "Refresh"}
+          </button>
+        </div>
+
+        {monthlySpError ? (
+          <div className="text-sm text-red-600">{monthlySpError}</div>
+        ) : monthlySpLoading && monthlySpRows.length === 0 ? (
+          <div className="text-sm text-gray-500">Loading Monthly SP…</div>
+        ) : (
+          <GroupedCollapsibleTable
+            rows={monthlySpRows}
+            leftCols={[
+              { key: "sno", label: "S.No" },
+              { key: "products", label: "Products" },
+            ]}
+            groups={[]}
+            singleCols={[{ key: "spend", label: "Spend", align: "right" }]}
+            getValue={(row, key) => {
+              if (key === "sno") return row.sno ?? "-";
+              if (key === "products") return row.products ?? "-";
+              if (key === "spend") return row.spend ?? "-";
+              return "-";
+            }}
+            summary={{
+              fixedRows: [
+                {
+                  id: "monthly-sp-grand-total",
+                  label: <span className="font-semibold">Grand Total</span>,
+                  endValue:
+                    monthlySpTotalSpend === null ? "-" : monthlySpTotalSpend.toFixed(2),
+                },
+              ],
+            }}
+          />
+
+        )}
+      </div>
+
+
+
       {/* Lower P&L Graph and Inventory */}
       {hasAnyGraphData && (
         <>
@@ -3455,6 +3666,15 @@ export default function DashboardPage() {
               <CurrentInventorySection region={graphRegionToUse} />
             </div>
           )}
+
+          <div id="advertisements" className="scroll-mt-[80px] mt-4">
+            <div className="w-full rounded-2xl border bg-white p-4 shadow-sm">
+              <div className="font-semibold">Advertisements</div>
+              <div className="text-sm text-gray-500 mt-1">
+                Connect Amazon Ads to view campaign performance.
+              </div>
+            </div>
+          </div>
 
         </>
       )}

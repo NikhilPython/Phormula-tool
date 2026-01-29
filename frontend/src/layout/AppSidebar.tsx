@@ -156,6 +156,118 @@ const AppSidebar: React.FC = () => {
     countryFromRoute ? `amazon-${countryFromRoute}` : "global"
   );
 
+  const decodeJwtUserId = (jwt: string): string | null => {
+    try {
+      const payloadPart = jwt.split(".")[1];
+      if (!payloadPart) return null;
+
+      const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+      const json = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+          .join("")
+      );
+
+      const payload = JSON.parse(json);
+      return payload?.user_id != null ? String(payload.user_id) : null;
+    } catch {
+      return null;
+    }
+  };
+
+
+  // const ensureAdsSeedOnce = async (baseUrl: string, jwtToken: string) => {
+  //   const userId = decodeJwtUserId(jwtToken) || "unknown";
+  //   const storageKey = `ads_sp_seed_done_user_${userId}`;
+
+  //   // Already seeded once -> do nothing
+  //   if (localStorage.getItem(storageKey) === "1") return;
+
+  //   const { start_date, end_date } = getAdsSeedDatesIST();
+
+  //   // If it's the 1st of the month, yesterday belongs to previous month -> skip
+  //   if (end_date < start_date) return;
+
+  //   const body = {
+  //     start_date,
+  //     end_date,
+  //     time_unit: "SUMMARY",
+  //     countries: ["UK"],      // ✅ as requested
+  //     return_excel: false,    // ✅ as requested
+  //   };
+
+  //   const res = await fetch(
+  //     `${baseUrl}/api/ads/manager/sp_advertised_product_report`,
+  //     {
+  //       method: "POST",
+  //       headers: {
+  //         Authorization: `Bearer ${jwtToken}`,
+  //         Accept: "application/json",
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify(body),
+  //     }
+  //   );
+
+  //   if (!res.ok) {
+  //     const err = await res.json().catch(() => ({}));
+  //     throw new Error(err?.error || "Failed to seed Sponsored Products report");
+  //   }
+
+  //   // Mark as done forever (per user)
+  //   localStorage.setItem(storageKey, "1");
+  // };
+
+  const monthToNumber = (monthStr: string) => {
+    const idx = monthNames.indexOf(monthStr.toLowerCase());
+    return idx === -1 ? null : idx + 1; // 1..12
+  };
+
+
+  // const ensureAdsMonthlySeedOnce = async (
+  //   baseUrl: string,
+  //   jwtToken: string,
+  //   monthStr: string,
+  //   yearStr: string,
+  //   country: string = "UK"
+  // ) => {
+  //   const userId = decodeJwtUserId(jwtToken) || "unknown";
+
+  //   const monthNum = monthToNumber(monthStr);
+  //   const yearNum = Number(yearStr);
+
+  //   if (!monthNum || Number.isNaN(yearNum)) return;
+
+  //   // ✅ run once per user+month+year+country (recommended)
+  //   const storageKey = `ads_monthly_sp_seed_${userId}_${country}_${yearNum}_${monthNum}`;
+
+  //   if (localStorage.getItem(storageKey) === "1") return;
+
+  //   const body = {
+  //     month: monthNum,
+  //     year: yearNum,
+  //     country,
+  //   };
+
+  //   const res = await fetch(`${baseUrl}/api/ads/monthly_sp_to_db`, {
+  //     method: "POST",
+  //     headers: {
+  //       Authorization: `Bearer ${jwtToken}`,
+  //       Accept: "application/json",
+  //       "Content-Type": "application/json",
+  //     },
+  //     body: JSON.stringify(body),
+  //   });
+
+  //   if (!res.ok) {
+  //     const err = await res.json().catch(() => ({}));
+  //     throw new Error(err?.error || "Failed to sync monthly ads data");
+  //   }
+
+  //   localStorage.setItem(storageKey, "1");
+  // };
+
 
   useEffect(() => {
     // 1️⃣ URL has highest priority
@@ -271,7 +383,7 @@ const AppSidebar: React.FC = () => {
       }
 
       const baseUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL ;
+        process.env.NEXT_PUBLIC_API_BASE_URL;
 
       const months = [
         "january", "february", "march", "april", "may", "june",
@@ -311,6 +423,283 @@ const AppSidebar: React.FC = () => {
     }
   };
 
+  // const handleConnectAmazonAds = async () => {
+  //   const adsAnchorUrl = `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#advertisements`;
+
+  //   const token =
+  //     typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+  //   if (!token) return;
+
+  //   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  //   // 0) Check status first — if connected, go straight to table
+  //   try {
+  //     const statusRes = await fetch(`${baseUrl}/api/ads/status`, {
+  //       method: "GET",
+  //       headers: {
+  //         Authorization: `Bearer ${token}`,
+  //         Accept: "application/json",
+  //       },
+  //     });
+
+  //     const statusJson = await statusRes.json();
+
+  //     if (statusJson?.status === "connected") {
+  //       router.push(adsAnchorUrl);
+  //       return;
+  //     }
+  //   } catch {
+  //     // ignore and continue to connect flow
+  //   }
+
+  //   // 1) Not connected -> open popup
+  //   const popup = window.open(
+  //     "about:blank",
+  //     "amazonAdsConnect",
+  //     "width=720,height=820,menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes"
+  //   );
+
+  //   try {
+  //     // 2) fetch connect url
+  //     const res = await fetch(`${baseUrl}/api/ads/connect_url`, {
+  //       method: "GET",
+  //       headers: {
+  //         Authorization: `Bearer ${token}`,
+  //         Accept: "application/json",
+  //       },
+  //     });
+
+  //     const data = await res.json();
+  //     if (!res.ok) throw new Error(data?.error || "Failed to get ads connect URL");
+
+  //     const connectUrl = data?.url;
+  //     if (!connectUrl) throw new Error("No url returned from /api/ads/connect_url");
+
+  //     // 3) navigate popup to amazon consent
+  //     if (popup && !popup.closed) {
+  //       popup.location.href = connectUrl;
+  //       popup.focus();
+  //     } else {
+  //       window.location.href = connectUrl;
+  //       return;
+  //     }
+
+  //     // 4) Poll /api/ads/status until connected, then close popup + redirect
+  //     const start = Date.now();
+  //     const MAX_MS = 2 * 60 * 1000; // 2 minutes
+  //     const INTERVAL_MS = 1500;
+
+  //     const interval = window.setInterval(async () => {
+  //       try {
+  //         if (!popup || popup.closed) {
+  //           window.clearInterval(interval);
+  //           return;
+  //         }
+
+  //         const elapsed = Date.now() - start;
+  //         if (elapsed > MAX_MS) {
+  //           window.clearInterval(interval);
+  //           return;
+  //         }
+
+  //         const pollRes = await fetch(`${baseUrl}/api/ads/status`, {
+  //           method: "GET",
+  //           headers: {
+  //             Authorization: `Bearer ${token}`,
+  //             Accept: "application/json",
+  //           },
+  //         });
+
+  //         const pollJson = await pollRes.json();
+
+  //         if (pollJson?.status === "connected") {
+  //           window.clearInterval(interval);
+  //           try {
+  //             popup.close();
+  //           } catch {}
+
+  //           router.push(adsAnchorUrl);
+  //         }
+  //       } catch {
+  //         // ignore transient errors while polling
+  //       }
+  //     }, INTERVAL_MS);
+  //   } catch (err) {
+  //     try {
+  //       popup?.close();
+  //     } catch {}
+  //     console.error("Amazon Ads connect error:", err);
+  //   }
+  // };
+
+  const ensureSpReportSeedOnce = async (
+    baseUrl: string,
+    jwtToken: string,
+    monthStr: string,
+    yearStr: string,
+    country: string = "UK"
+  ) => {
+    const userId = decodeJwtUserId(jwtToken) || "unknown";
+
+    const monthNum = monthToNumber(monthStr);
+    const yearNum = Number(yearStr);
+    if (!monthNum || Number.isNaN(yearNum)) return;
+
+    // ✅ ONCE per user+month+year+country
+    const storageKey = `sp_report_seed_${userId}_${country}_${yearNum}_${monthNum}`;
+    if (localStorage.getItem(storageKey) === "1") return;
+
+    const body = {
+      month: monthNum,
+      year: yearNum,
+      country,
+      return_excel: false,
+    };
+
+    const res = await fetch(
+      `${baseUrl}/api/ads/manager/sp_advertised_product_report`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${jwtToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error || "Failed to seed Sponsored Products report");
+    }
+
+    localStorage.setItem(storageKey, "1");
+  };
+
+
+
+  const handleConnectAmazonAds = async () => {
+    const adsAnchorUrl = `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#advertisements`;
+
+    const jwtToken =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+    if (!jwtToken) return;
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+    const fetchAdsStatus = async () => {
+      const res = await fetch(`${baseUrl}/api/ads/status`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${jwtToken}`,
+          Accept: "application/json",
+        },
+      });
+      return res.json();
+    };
+
+    // A) Already connected -> seed once -> redirect
+    try {
+      const statusJson = await fetchAdsStatus();
+      if (statusJson?.status === "connected") {
+        await ensureSpReportSeedOnce(
+          baseUrl!,
+          jwtToken,
+          currentParams.month,
+          currentParams.year,
+          "UK"
+        );
+        router.push(adsAnchorUrl);
+        return;
+      }
+
+    } catch {
+      // ignore and continue
+    }
+
+    // B) Not connected -> open popup
+    const popup = window.open(
+      "about:blank",
+      "amazonAdsConnect",
+      "width=720,height=820,menubar=no,toolbar=no,location=yes,status=no,scrollbars=yes,resizable=yes"
+    );
+
+    try {
+      // get connect URL
+      const res = await fetch(`${baseUrl}/api/ads/connect_url`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${jwtToken}`,
+          Accept: "application/json",
+        },
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to get ads connect URL");
+
+      const connectUrl = data?.url;
+      if (!connectUrl) throw new Error("No url returned from /api/ads/connect_url");
+
+      // navigate popup
+      if (popup && !popup.closed) {
+        popup.location.href = connectUrl;
+        popup.focus();
+      } else {
+        window.location.href = connectUrl;
+        return;
+      }
+
+      // poll status until connected -> seed once -> close popup -> redirect
+      const start = Date.now();
+      const MAX_MS = 2 * 60 * 1000;
+      const INTERVAL_MS = 1500;
+
+      const interval = window.setInterval(async () => {
+        try {
+          const elapsed = Date.now() - start;
+
+          if (!popup || popup.closed) {
+            window.clearInterval(interval);
+            return;
+          }
+
+          if (elapsed > MAX_MS) {
+            window.clearInterval(interval);
+            return;
+          }
+
+          const pollJson = await fetchAdsStatus();
+          if (pollJson?.status === "connected") {
+            window.clearInterval(interval);
+
+            await ensureSpReportSeedOnce(
+              baseUrl!,
+              jwtToken,
+              currentParams.month,
+              currentParams.year,
+              "UK"
+            );
+
+            try {
+              popup.close();
+            } catch { }
+
+            router.push(adsAnchorUrl);
+          }
+        } catch {
+          // ignore transient errors
+        }
+      }, INTERVAL_MS);
+    } catch (err) {
+      try {
+        popup?.close();
+      } catch { }
+      console.error("Amazon Ads connect error:", err);
+    }
+  };
 
 
   const onRegionChange = (val: string) => {
@@ -441,6 +830,12 @@ const AppSidebar: React.FC = () => {
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
           onClick: handleFetchAgedInventory,
         },
+        {
+          name: "Advertisements",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#advertisements`,
+          onClick: handleConnectAmazonAds,
+        },
+
       ],
     },
 
@@ -628,37 +1023,37 @@ const AppSidebar: React.FC = () => {
             />
           )}
         </Link>
-{isExpanded && (
- <button
- type="button"
- onClick={handleToggle}
- className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200 bg-blue-700 text-white"
- aria-label={showText ? "Collapse sidebar" : "Expand sidebar"}
->
- {showText ? (
-   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-     <path
-       d="M14.5 5L8.5 12L14.5 19"
-       stroke="currentColor"
-       strokeWidth="2"
-       strokeLinecap="round"
-       strokeLinejoin="round"
-     />
-   </svg>
- ) : (
-   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-     <path
-       d="M9.5 5L15.5 12L9.5 19"
-       stroke="currentColor"
-       strokeWidth="2"
-       strokeLinecap="round"
-       strokeLinejoin="round"
-     />
-   </svg>
- )}
-</button>
-)}
-       
+        {isExpanded && (
+          <button
+            type="button"
+            onClick={handleToggle}
+            className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200 bg-blue-700 text-white"
+            aria-label={showText ? "Collapse sidebar" : "Expand sidebar"}
+          >
+            {showText ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M14.5 5L8.5 12L14.5 19"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M9.5 5L15.5 12L9.5 19"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </button>
+        )}
+
       </div>
 
       {/* Platform Select */}
@@ -720,7 +1115,13 @@ const AppSidebar: React.FC = () => {
                           <Link
                             key={idx}
                             href={resolvedPath}
-                            onClick={() => subItem.onClick?.()}
+                            // onClick={() => subItem.onClick?.()}
+                            onClick={(e) => {
+                              if (subItem.onClick) {
+                                e.preventDefault();
+                                subItem.onClick();
+                              }
+                            }}
                             className={`block rounded transition-colors
                               ${padItem} ${textMain} text-gray-700 hover:bg-[#5EA68E]/15
                               ${isActive(subItem.path as any)
