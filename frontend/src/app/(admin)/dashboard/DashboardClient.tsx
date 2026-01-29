@@ -43,7 +43,7 @@ import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[co
 import { useRouter } from "next/navigation";
 import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
 import { CgPushRight, CgPushLeft } from "react-icons/cg";
-import GroupedCollapsibleTable from "@/components/ui/table/GroupedCollapsibleTable";
+import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/GroupedCollapsibleTable";
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -55,14 +55,33 @@ type Cm1PieSlice = {
   deltaPct: number | null;
 };
 
-
 type MonthlySpRow = {
   sno: number | null;
   products: string | null;
   spend: number | null;
 };
 
+type MonthlyAdsSpentRow = {
+  sno?: number | null;
+  sku: string;
+  ad_spend: number;
+  isTotal?: boolean;
+};
 
+type MonthlySkuwiseRow = {
+  sno?: number;
+  sku: string;
+  quantity: number;
+  asp: number;
+  net_sales: number;
+  cogs: number;
+  fba_fees: number;
+  selling_fees: number;
+  ads_spend: number;
+  cm2_profit: number;
+  profit: number;
+  isTotal?: boolean;
+};
 
 /* ===================== ENV & ENDPOINTS ===================== */
 const baseURL =
@@ -76,7 +95,7 @@ const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 
 
-const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_to_db`;
+// const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_to_db`;
 const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
 const INR_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_INR_TO_USD || "0.01128");
 const CAD_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_CAD_TO_USD || "0.74");
@@ -243,9 +262,9 @@ function RangePicker({
   const [isMtdPlExpanded, setIsMtdPlExpanded] = useState(false);
 
 
-  const [monthlySpRows, setMonthlySpRows] = useState<MonthlySpRow[]>([]);
-  const [monthlySpLoading, setMonthlySpLoading] = useState(false);
-  const [monthlySpError, setMonthlySpError] = useState<string | null>(null);
+  // const [monthlySpRows, setMonthlySpRows] = useState<MonthlySpRow[]>([]);
+  // const [monthlySpLoading, setMonthlySpLoading] = useState(false);
+  // const [monthlySpError, setMonthlySpError] = useState<string | null>(null);
 
   const [calendarRange, setCalendarRange] = useState<any>([
     { startDate: null, endDate: null, key: "selection" },
@@ -506,88 +525,78 @@ export default function DashboardPage() {
     }
   }, [platform, profileHomeCurrency]);
 
-  type MonthlySpRow = {
-    sno: number | null;
-    products: string | null;
-    spend: number | null;
-  };
-
-  const [monthlySpRows, setMonthlySpRows] = useState<MonthlySpRow[]>([]);
-  const [monthlySpLoading, setMonthlySpLoading] = useState(false);
-  const [monthlySpError, setMonthlySpError] = useState<string | null>(null);
-  const [monthlySpTotalSpend, setMonthlySpTotalSpend] = useState<number | null>(null);
 
 
-  const fetchMonthlySp = useCallback(async () => {
-    try {
-      setMonthlySpLoading(true);
-      setMonthlySpError(null);
+  // const fetchMonthlySp = useCallback(async () => {
+  //   try {
+  //     setMonthlySpLoading(true);
+  //     setMonthlySpError(null);
 
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+  //     const token =
+  //       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-      if (!token) throw new Error("No token found. Please sign in.");
+  //     if (!token) throw new Error("No token found. Please sign in.");
 
-      // same country logic you already use for the POST sync call
-      const country =
-        platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+  //     // same country logic you already use for the POST sync call
+  //     const country =
+  //       platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-      const { monthName, year } = getISTYearMonth();
+  //     const { monthName, year } = getISTYearMonth();
 
-      const res = await fetch(MONTHLY_SP_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          month: monthToNumber(monthName.toLowerCase()),
-          year,
-          country,
-        }),
-      });
+  //     const res = await fetch(MONTHLY_SP_ENDPOINT, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         Accept: "application/json",
+  //         Authorization: `Bearer ${token}`,
+  //       },
+  //       body: JSON.stringify({
+  //         month: monthToNumber(monthName.toLowerCase()),
+  //         year,
+  //         country,
+  //       }),
+  //     });
 
-      const json = await res.json().catch(() => ({}));
+  //     const json = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        const msg =
-          (json as any)?.message ||
-          (json as any)?.error ||
-          `Failed to load Monthly SP data (${res.status})`;
-        throw new Error(msg);
-      }
+  //     if (!res.ok) {
+  //       const msg =
+  //         (json as any)?.message ||
+  //         (json as any)?.error ||
+  //         `Failed to load Monthly SP data (${res.status})`;
+  //       throw new Error(msg);
+  //     }
 
-      const items: any[] = Array.isArray((json as any)?.items) ? (json as any).items : [];
+  //     const items: any[] = Array.isArray((json as any)?.items) ? (json as any).items : [];
 
-      const grandTotalRow = items.find((r) => r?.products === "Grand Total");
-      setMonthlySpTotalSpend(
-        typeof grandTotalRow?.spend === "number" ? grandTotalRow.spend : null
-      );
+  //     const grandTotalRow = items.find((r) => r?.products === "Grand Total");
+  //     setMonthlySpTotalSpend(
+  //       typeof grandTotalRow?.spend === "number" ? grandTotalRow.spend : null
+  //     );
 
-      const mapped: MonthlySpRow[] = items
-        .filter((r) => r && r.products !== "Grand Total") // keep body clean
-        .map((r) => ({
-          sno: r.sno ?? null,
-          products: r.products ?? null,
-          spend: r.spend ?? null,
-        }));
+  //     const mapped: MonthlySpRow[] = items
+  //       .filter((r) => r && r.products !== "Grand Total") // keep body clean
+  //       .map((r) => ({
+  //         sno: r.sno ?? null,
+  //         products: r.products ?? null,
+  //         spend: r.spend ?? null,
+  //       }));
 
-      setMonthlySpRows(mapped);
+  //     setMonthlySpRows(mapped);
 
-    } catch (e: any) {
-      setMonthlySpError(e?.message || "Failed to load Monthly SP data");
-      setMonthlySpRows([]);
-      setMonthlySpTotalSpend(null);
-    } finally {
-      setMonthlySpLoading(false);
-    }
-  }, [platform]);
+  //   } catch (e: any) {
+  //     setMonthlySpError(e?.message || "Failed to load Monthly SP data");
+  //     setMonthlySpRows([]);
+  //     setMonthlySpTotalSpend(null);
+  //   } finally {
+  //     setMonthlySpLoading(false);
+  //   }
+  // }, [platform]);
 
 
-  useEffect(() => {
-    fetchMonthlySp();
-  }, [fetchMonthlySp]);
+  // useEffect(() => {
+  //   fetchMonthlySp();
+  // }, [fetchMonthlySp]);
 
   /* ===================== AMAZON / SHOPIFY STATE ===================== */
   const [loading, setLoading] = useState(false);
@@ -1244,6 +1253,13 @@ export default function DashboardPage() {
     [displayCurrency]
   );
 
+  const formatAdsNumber = (value: number) =>
+    Number.isFinite(value)
+      ? value.toLocaleString("en-GB", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+      : "-";
 
 
 
@@ -2061,7 +2077,6 @@ export default function DashboardPage() {
     prorateToDate,
   ]);
 
-
   const anyLoading = loading || shopifyLoading;
 
   const amazonTabs = useMemo<RegionKey[]>(() => {
@@ -2190,6 +2205,137 @@ export default function DashboardPage() {
     () => values.length === 0 || values.every((v) => Math.abs(v) < 1e-9),
     [values]
   );
+
+  // const monthlyAdsSpentRows = useMemo<MonthlyAdsSpentRow[]>(() => {
+  //   const items = (data as any)?.skuwise_items ?? [];
+  //   if (!Array.isArray(items)) return [];
+
+  //   const body = items.filter((r: any) => r?.sku && r.sku !== "GRAND_TOTAL");
+  //   const total = items.find((r: any) => r?.sku === "GRAND_TOTAL");
+
+  //   const mapSpend = (r: any) =>
+  //     Number(
+  //       r.ad_spend ??
+  //       r.advertising_spend ??
+  //       r.advertising_fees ??
+  //       r.advertising_cost ??
+  //       0
+  //     );
+
+  //   const mappedBody = body.map((r: any, idx: number) => ({
+  //     sno: idx + 1,
+  //     sku: String(r.sku),
+  //     ad_spend: mapSpend(r),
+  //     isTotal: false,
+  //   }));
+
+  //   if (total) {
+  //     mappedBody.push({
+  //       sno: undefined,
+  //       sku: "GRAND_TOTAL",
+  //       ad_spend: mapSpend(total),
+  //       isTotal: true,
+  //     });
+  //   }
+
+  //   return mappedBody;
+  // }, [data]);
+
+  const monthlySkuwiseRows = useMemo<MonthlySkuwiseRow[]>(() => {
+    const items = (data as any)?.skuwise_items ?? [];
+    if (!Array.isArray(items)) return [];
+
+    const body = items.filter((r: any) => r?.sku && r.sku !== "GRAND_TOTAL");
+    const total = items.find((r: any) => r?.sku === "GRAND_TOTAL");
+
+    const mapRow = (r: any, idx?: number, isTotal = false): MonthlySkuwiseRow => ({
+      sno: isTotal ? undefined : (idx ?? 0) + 1,
+      sku: String(r.sku ?? ""),
+
+      quantity: Number(r.quantity ?? 0),
+      asp: Number(r.asp ?? 0),
+      net_sales: Number(r.net_sales ?? 0),
+      cogs: Number(r.cogs ?? 0),
+
+      fba_fees: Number(r.fba_fees ?? 0),
+      selling_fees: Number(r.selling_fees ?? 0),
+
+      ads_spend: Number(r.ads_spend ?? 0),     // ✅ NEW
+      cm2_profit: Number(r.cm2_profit ?? 0),   // ✅ NEW
+
+      profit: Number(r.profit ?? 0),
+      isTotal,
+    });
+
+    const mapped = body.map((r: any, idx: number) => mapRow(r, idx, false));
+
+    if (total) mapped.push(mapRow(total, undefined, true));
+
+    return mapped;
+  }, [data]);
+
+  const SKUWISE_LEFT_COLS = [
+    { key: "sno", label: "S.No", align: "center" as const },
+    { key: "sku", label: "Products", align: "center" as const },
+  ];
+
+  const SKUWISE_GROUPS = [
+    {
+      id: "marketplace_fees",
+      label: "Marketplace Fees",
+
+      // Collapsed → show Total only
+      collapsedCols: [
+        {
+          key: "marketplace_total",
+          label: "Total",
+          align: "center" as const,
+        },
+      ],
+
+      // Expanded → show all 3 columns
+      expandedCols: [
+        { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+        { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+        {
+          key: "marketplace_total",
+          label: "Total",
+          align: "center" as const,
+        },
+      ],
+    },
+  ];
+
+
+
+
+  const SKUWISE_SINGLE_COLS = [
+    { key: "quantity", label: "Net Units Sold", align: "center" as const },
+    { key: "asp", label: "ASP", align: "center" as const },
+    { key: "net_sales", label: "Net Sales", align: "center" as const },
+    { key: "cogs", label: "COGS", align: "center" as const },
+    { key: "profit", label: "CM1 Profit", align: "center" as const },
+    { key: "ads_spend", label: "Ads Spend", align: "right" as const },
+    { key: "cm2_profit", label: "CM2 Profit", align: "right" as const }
+
+  ];
+
+
+  const monthlyAdsSpentTotal = useMemo<number>(() => {
+    const items = (data as any)?.skuwise_items ?? [];
+    const grand = items.find((r: any) => r?.sku === "GRAND_TOTAL");
+
+    return Number(
+      grand?.ad_spend ??
+      grand?.advertising_spend ??
+      grand?.advertising_fees ??
+      grand?.advertising_cost ??
+      (data as any)?.derived_totals?.advertising_fees ??
+      (data as any)?.totals?.advertising_cost ??
+      0
+    );
+  }, [data]);
+
 
 
   const prevValues = useMemo(() => {
@@ -2675,6 +2821,21 @@ export default function DashboardPage() {
     stats_targetHome > 0
       ? ((stats_mtdHome - proratedTargetToDate) / stats_targetHome) * 100
       : 0;
+
+  const ADS_SIGN_PLUS = new Set(["net_sales"]);
+  const ADS_SIGN_MINUS = new Set([
+    "ads_spend",
+    "cogs",
+    "fba_fees",
+    "selling_fees",
+    "marketplace_total",
+  ]);
+
+  const getAdsSignForCol = useCallback((colKey: string) => {
+    if (ADS_SIGN_PLUS.has(colKey)) return { text: "(+)", className: "text-green-700" };
+    if (ADS_SIGN_MINUS.has(colKey)) return { text: "(-)", className: "text-[#ff5c5c]" };
+    return null;
+  }, []);
 
   return (
     <div className="relative w-full">
@@ -3432,55 +3593,90 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Monthly Sponsored Products (SP) */}
+      {/* Monthly Ads Spent (from MTD Transactions -> skuwise_items) */}
       <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <PageBreadcrumb pageTitle="Monthly Ads Spend" variant="page" align="left" textSize="2xl" />
+          <PageBreadcrumb pageTitle="Monthly Ads Spent" variant="page" align="left" textSize="2xl" />
+
           <button
             type="button"
-            onClick={fetchMonthlySp}
-            disabled={monthlySpLoading}
-            className={`rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm ${monthlySpLoading ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400" : "border-gray-300 bg-white hover:bg-gray-50"
+            onClick={fetchAmazon}   // ✅ refreshes MTD data
+            disabled={loading}
+            className={`rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm ${loading ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400" : "border-gray-300 bg-white hover:bg-gray-50"
               }`}
           >
-            {monthlySpLoading ? "Loading…" : "Refresh"}
+            {loading ? "Loading…" : "Refresh"}
           </button>
         </div>
 
-        {monthlySpError ? (
-          <div className="text-sm text-red-600">{monthlySpError}</div>
-        ) : monthlySpLoading && monthlySpRows.length === 0 ? (
-          <div className="text-sm text-gray-500">Loading Monthly SP…</div>
+        {error ? (
+          <div className="text-sm text-red-600">{error}</div>
+        ) : loading && monthlySkuwiseRows.length === 0 ? (
+          <div className="text-sm text-gray-500">Loading…</div>
         ) : (
-          <GroupedCollapsibleTable
-            rows={monthlySpRows}
-            leftCols={[
-              { key: "sno", label: "S.No" },
-              { key: "products", label: "Products" },
+          <GroupedCollapsibleTable<MonthlySkuwiseRow>
+            rows={monthlySkuwiseRows}
+            getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.sku || String(idx))}
+            leftCols={SKUWISE_LEFT_COLS}
+            groups={SKUWISE_GROUPS}
+            singleCols={SKUWISE_SINGLE_COLS}
+             showSignRowInBody
+            getSignForCol={getAdsSignForCol}
+            layout={[
+              { type: "single", key: "quantity" },
+              { type: "single", key: "asp" },
+              { type: "single", key: "net_sales" },
+              { type: "single", key: "cogs" },
+              { type: "group", id: "marketplace_fees" },
+              { type: "single", key: "profit" },
+              { type: "single", key: "ads_spend" },
+              { type: "single", key: "cm2_profit" },
             ]}
-            groups={[]}
-            singleCols={[{ key: "spend", label: "Spend", align: "right" }]}
-            getValue={(row, key) => {
-              if (key === "sno") return row.sno ?? "-";
-              if (key === "products") return row.products ?? "-";
-              if (key === "spend") return row.spend ?? "-";
-              return "-";
+
+            initialCollapsed={{ marketplace_fees: false }}
+            getRowClassName={(row, index) => {
+              if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
+              return index % 2 === 0 ? "bg-white" : "bg-gray-50";
             }}
-            summary={{
-              fixedRows: [
-                {
-                  id: "monthly-sp-grand-total",
-                  label: <span className="font-semibold">Grand Total</span>,
-                  endValue:
-                    monthlySpTotalSpend === null ? "-" : monthlySpTotalSpend.toFixed(2),
-                },
-              ],
+            getValue={(row, colKey) => {
+              if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
+              if (colKey === "sku") return row.isTotal ? "Grand Total" : row.sku;
+
+              if (colKey === "quantity") return row.quantity;
+
+              if (colKey === "asp") return formatAdsNumber(row.asp);
+              if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
+
+              if (colKey === "ads_spend")   // ✅ NEW
+                return formatAdsNumber(Math.abs(row.ads_spend));
+
+              if (colKey === "cogs")
+                return formatAdsNumber(Math.abs(row.cogs));
+
+              if (colKey === "fba_fees")
+                return formatAdsNumber(Math.abs(row.fba_fees));
+
+              if (colKey === "selling_fees")
+                return formatAdsNumber(Math.abs(row.selling_fees));
+
+              if (colKey === "marketplace_total")
+                return formatAdsNumber(
+                  Math.abs(row.fba_fees) + Math.abs(row.selling_fees)
+                );
+
+              if (colKey === "cm2_profit")   // ✅ NEW
+                return formatAdsNumber(row.cm2_profit);
+
+              if (colKey === "profit")
+                return formatAdsNumber(row.profit);
+
+              return "";
             }}
+
           />
 
         )}
       </div>
-
 
 
       {/* Lower P&L Graph and Inventory */}
@@ -3667,14 +3863,14 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div id="advertisements" className="scroll-mt-[80px] mt-4">
+          {/* <div id="advertisements" className="scroll-mt-[80px] mt-4">
             <div className="w-full rounded-2xl border bg-white p-4 shadow-sm">
               <div className="font-semibold">Advertisements</div>
               <div className="text-sm text-gray-500 mt-1">
                 Connect Amazon Ads to view campaign performance.
               </div>
             </div>
-          </div>
+          </div> */}
 
         </>
       )}

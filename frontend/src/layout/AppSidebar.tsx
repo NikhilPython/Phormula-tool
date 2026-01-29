@@ -830,11 +830,11 @@ const AppSidebar: React.FC = () => {
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
           onClick: handleFetchAgedInventory,
         },
-        {
-          name: "Advertisements",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#advertisements`,
-          onClick: handleConnectAmazonAds,
-        },
+        // {
+        //   name: "Advertisements",
+        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#advertisements`,
+        //   onClick: handleConnectAmazonAds,
+        // },
 
       ],
     },
