@@ -903,6 +903,8 @@ def upload():
 
 import re
 
+
+# --- helpers (keep outside route, define once) ---
 def _safe_ident(s: str) -> str:
     s = (s or "").strip().lower()
     s = re.sub(r"[^a-z0-9_]+", "_", s)
@@ -914,6 +916,7 @@ def _build_skuwise_table_name(user_id: int, country: str, month: int, year: int)
 
 @amazon_api_bp.route("/amazon_api/finances/mtd_transactions", methods=["GET"])
 def finances_mtd_transactions():
+    # ---------------- Auth ----------------
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
@@ -927,14 +930,15 @@ def finances_mtd_transactions():
     except jwt.InvalidTokenError:
         return jsonify({"success": False, "error": "Invalid token"}), 401
 
+    # ---------------- Params ----------------
     transaction_status = request.args.get("transaction_status", "RELEASED")
     marketplace_id = request.args.get("marketplace_id")
     transaction_type_filter = request.args.get("transaction_type")
     response_format = (request.args.get("format") or "json").lower()
     store_in_db = (request.args.get("store_in_db", "true").lower() != "false")
-
     ui_country = (request.args.get("country") or "").strip().lower() or "uk"
 
+    # ---------------- Region + marketplace ----------------
     _apply_region_and_marketplace_from_request()
 
     au = amazon_user.query.filter_by(user_id=user_id, region=amazon_client.region).first()
@@ -950,6 +954,7 @@ def finances_mtd_transactions():
     now_utc = datetime.now(timezone.utc)
     posted_after, posted_before = _month_to_date_range_utc_safe(now_utc, safety_minutes=3)
 
+    # ---------------- COGS meta ----------------
     month_name = _month_name_lower(now_utc.month)
     user_currency = DEFAULT_SKU_PRICE_CURRENCY
     selected_currency = COUNTRY_TO_SELECTED_CURRENCY.get(ui_country, user_currency)
@@ -963,6 +968,7 @@ def finances_mtd_transactions():
         selected_currency=selected_currency
     )
 
+    # ---------------- Fetch MTD from SP-API ----------------
     params: Dict[str, Any] = {
         "postedAfter": posted_after,
         "postedBefore": posted_before,
@@ -996,6 +1002,7 @@ def finances_mtd_transactions():
 
             row = _flatten_transaction_to_row(tx or {})
 
+            # ✅ COGS per row (based on sku map)
             sku = (row.get("sku") or "").strip()
             qty = _i(row.get("quantity")) or 0
             price = sku_price_map.get(sku) if sku else None
@@ -1008,8 +1015,23 @@ def finances_mtd_transactions():
             break
         params = {"nextToken": next_token}
 
+    # ✅ Profit per row
     add_profit_column_from_uk_profit(all_rows, country=ui_country)
 
+    # ✅ Gross sales per row (needed for totals and SKU aggregation)
+    for r in all_rows:
+        r["gross_sales"] = (
+            float(r.get("product_sales", 0.0)) +
+            float(r.get("product_sales_tax", 0.0)) +
+            float(r.get("postage_credits", 0.0)) +
+            float(r.get("gift_wrap_credits", 0.0)) +
+            float(r.get("shipping_credits_tax", 0.0)) +
+            float(r.get("giftwrap_credits_tax", 0.0)) -
+            float(r.get("promotional_rebates", 0.0)) -
+            float(r.get("promotional_rebates_tax", 0.0))
+        )
+
+    # ---------------- Store raw liveorders ----------------
     db_result = None
     if store_in_db:
         try:
@@ -1023,18 +1045,7 @@ def finances_mtd_transactions():
             db.session.rollback()
             return jsonify({"success": False, "error": f"DB store failed: {str(e)}"}), 500
 
-    for r in all_rows:
-        r["gross_sales"] = (
-            float(r.get("product_sales", 0.0)) +
-            float(r.get("product_sales_tax", 0.0)) +
-            float(r.get("postage_credits", 0.0)) +
-            float(r.get("gift_wrap_credits", 0.0)) +
-            float(r.get("shipping_credits_tax", 0.0)) +
-            float(r.get("giftwrap_credits_tax", 0.0)) -
-            float(r.get("promotional_rebates", 0.0)) -
-            float(r.get("promotional_rebates_tax", 0.0))
-        )
-
+    # ---------------- Totals ----------------
     totals = compute_totals(all_rows)
 
     tax_and_credits = (
@@ -1057,6 +1068,7 @@ def finances_mtd_transactions():
     asp = (net_sales / qty_total) if qty_total else 0.0
     profit_total = float(totals.get("profit", 0.0))
 
+    # ---------------- platform + advertising fees ----------------
     df_all = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
 
     platform_fee_total = 0.0
@@ -1096,7 +1108,9 @@ def finances_mtd_transactions():
         now_utc=now_utc
     )
 
-    # ✅ SKU-wise table name (use helper)
+    # ============================================================
+    # ✅ SKU-WISE TABLE (SUM BY SKU) + GRAND TOTAL + RESPONSE ITEMS
+    # ============================================================
     skuwise_table_name = _build_skuwise_table_name(
         user_id=user_id,
         country=ui_country,
@@ -1106,10 +1120,12 @@ def finances_mtd_transactions():
 
     sku_summary_saved = False
     sku_summary_rows = 0
+    skuwise_items: List[Dict[str, Any]] = []
 
     if not df_all.empty:
         if "sku" not in df_all.columns:
             df_all["sku"] = ""
+
         df_all["sku"] = df_all["sku"].fillna("").astype(str).str.strip()
         df_skus = df_all[df_all["sku"] != ""].copy()
 
@@ -1132,6 +1148,7 @@ def finances_mtd_transactions():
 
         df_sku = df_skus.groupby("sku", as_index=False)[sum_cols].sum()
 
+        # derived at SKU level
         if "product_sales" in df_sku.columns and "promotional_rebates" in df_sku.columns:
             df_sku["net_sales"] = df_sku["product_sales"] + df_sku["promotional_rebates"]
         else:
@@ -1145,20 +1162,20 @@ def finances_mtd_transactions():
         else:
             df_sku["asp"] = 0.0
 
+        # meta
         df_sku["user_id"] = int(user_id)
         df_sku["country"] = ui_country
         df_sku["month"] = int(now_utc.month)
         df_sku["year"] = int(now_utc.year)
         df_sku["generated_at_utc"] = now_utc.isoformat()
 
-        total_row = {"sku": "GRAND_TOTAL"}
+        # grand total row
+        total_row: Dict[str, Any] = {"sku": "GRAND_TOTAL"}
         for c in sum_cols:
             total_row[c] = float(df_sku[c].sum()) if c in df_sku.columns else 0.0
-
         total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
         total_qty = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
         total_row["asp"] = (total_row["net_sales"] / total_qty) if total_qty else 0.0
-
         total_row["user_id"] = int(user_id)
         total_row["country"] = ui_country
         total_row["month"] = int(now_utc.month)
@@ -1167,10 +1184,14 @@ def finances_mtd_transactions():
 
         df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
 
+        # ✅ NEW: include item-wise rows in API response
+        skuwise_items = df_sku.to_dict(orient="records")
+
+        # store table in DB
         try:
             df_sku.to_sql(
                 skuwise_table_name,
-                PHORMULA_ENGINE,
+                PHORMULA_ENGINE,   # or ADMIN_ENGINE if you prefer admin creds
                 schema="public",
                 if_exists="replace",
                 index=False,
@@ -1183,6 +1204,7 @@ def finances_mtd_transactions():
             logger.exception(f"Failed to store SKU-wise table {skuwise_table_name}: {e}")
             sku_summary_saved = False
 
+    # ---------------- Excel response ----------------
     if response_format == "excel":
         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
         df = df.reindex(columns=MTD_COLUMNS + ["cogs", "profit", "gross_sales"], fill_value=0.0)
@@ -1196,6 +1218,10 @@ def finances_mtd_transactions():
             if db_result:
                 pd.DataFrame([db_result]).to_excel(writer, index=False, sheet_name="DBMeta")
 
+            # include sku table in excel too
+            if skuwise_items:
+                pd.DataFrame(skuwise_items).to_excel(writer, index=False, sheet_name="SKUWiseMonthly")
+
         output.seek(0)
         filename = f"finances_transactions_MTD_{now_utc.year}_{now_utc.month:02d}.xlsx"
         return send_file(
@@ -1205,6 +1231,7 @@ def finances_mtd_transactions():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
+    # ---------------- JSON response ----------------
     return jsonify({
         "success": True,
         "posted_after": posted_after,
@@ -1227,7 +1254,8 @@ def finances_mtd_transactions():
             "saved": sku_summary_saved,
             "rows": sku_summary_rows
         },
+        # ✅ NEW: item-wise sku summary in response
+        "skuwise_items": skuwise_items,
         "transactions": all_rows,
     }), 200
-
 
