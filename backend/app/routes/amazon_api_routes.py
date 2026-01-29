@@ -659,6 +659,259 @@ def upload():
 # ---------------------------------------------------------
 # ROUTE (MTD)  ✅ includes totals + cogs in JSON
 # ---------------------------------------------------------
+# @amazon_api_bp.route("/amazon_api/finances/mtd_transactions", methods=["GET"])
+# def finances_mtd_transactions():
+#     auth_header = request.headers.get("Authorization")
+#     if not auth_header or not auth_header.startswith("Bearer "):
+#         return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
+
+#     token = auth_header.split(" ")[1]
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+#         user_id = int(payload["user_id"])
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({"success": False, "error": "Token has expired"}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({"success": False, "error": "Invalid token"}), 401
+
+#     transaction_status = request.args.get("transaction_status", "RELEASED")
+#     marketplace_id = request.args.get("marketplace_id")
+#     transaction_type_filter = request.args.get("transaction_type")
+#     response_format = (request.args.get("format") or "json").lower()
+#     store_in_db = (request.args.get("store_in_db", "true").lower() != "false")
+
+#     ui_country = (request.args.get("country") or "").strip().lower() or "uk"
+
+#     _apply_region_and_marketplace_from_request()
+
+#     au = amazon_user.query.filter_by(user_id=user_id, region=amazon_client.region).first()
+#     if not au or not au.refresh_token:
+#         return jsonify({
+#             "success": False,
+#             "error": "Amazon account not connected for this region",
+#             "status": "no_refresh_token",
+#         }), 400
+
+#     amazon_client.refresh_token = au.refresh_token
+
+#     now_utc = datetime.now(timezone.utc)
+#     posted_after, posted_before = _month_to_date_range_utc_safe(now_utc, safety_minutes=3)
+
+#     # ✅ prepare cogs inputs once
+#     month_name = _month_name_lower(now_utc.month)
+#     user_currency = DEFAULT_SKU_PRICE_CURRENCY
+#     selected_currency = COUNTRY_TO_SELECTED_CURRENCY.get(ui_country, user_currency)
+
+#     sku_price_map = fetch_sku_price_map(user_id=user_id, country=ui_country)
+#     conversion_rate = fetch_conversion_rate(
+#         country=ui_country,
+#         year=now_utc.year,
+#         month_name=month_name,
+#         user_currency=user_currency,
+#         selected_currency=selected_currency
+#     )
+
+#     params: Dict[str, Any] = {
+#         "postedAfter": posted_after,
+#         "postedBefore": posted_before,
+#         "marketplaceId": marketplace_id or amazon_client.marketplace_id,
+#     }
+#     if transaction_status:
+#         params["transactionStatus"] = transaction_status
+
+#     all_rows: List[Dict[str, Any]] = []
+
+#     while True:
+#         res = amazon_client.make_api_call(
+#             "/finances/2024-06-19/transactions",
+#             method="GET",
+#             params=params,
+#         )
+#         if not res or "error" in res:
+#             return jsonify({"success": False, "error": res or {"error": "Unknown SP-API error"}}), 502
+
+#         payload_res = res.get("payload") or res
+#         transactions = payload_res.get("transactions") or []
+
+#         for tx in transactions:
+#             tstatus = (tx or {}).get("transactionStatus")
+#             ttype = (tx or {}).get("transactionType")
+
+#             if tstatus != "RELEASED":
+#                 continue
+#             if transaction_type_filter and ttype != transaction_type_filter:
+#                 continue
+
+#             row = _flatten_transaction_to_row(tx or {})
+
+#             # ✅ add cogs per row
+#             sku = (row.get("sku") or "").strip()
+#             qty = _i(row.get("quantity")) or 0
+#             price = sku_price_map.get(sku) if sku else None
+#             row["cogs"] = float(qty) * float(price) * float(conversion_rate) if (price is not None and qty > 0) else 0.0
+
+#             all_rows.append(row)
+
+#         next_token = payload_res.get("nextToken")
+#         if not next_token:
+#             break
+#         params = {"nextToken": next_token}
+
+#     # ✅ profit per row
+#     add_profit_column_from_uk_profit(all_rows, country=ui_country)
+
+#     # ✅ store to DB
+#     db_result = None
+#     if store_in_db:
+#         try:
+#             db_result = upsert_liveorders_from_rows(
+#                 all_rows,
+#                 user_id=user_id,
+#                 country=ui_country,
+#                 now_utc=now_utc
+#             )
+#         except Exception as e:
+#             db.session.rollback()
+#             return jsonify({"success": False, "error": f"DB store failed: {str(e)}"}), 500
+        
+#     # ✅ NEW: compute gross_sales per row (so totals can sum it)
+#     for r in all_rows:
+#         r["gross_sales"] = (
+#             float(r.get("product_sales", 0.0)) +
+#             float(r.get("product_sales_tax", 0.0)) +
+#             float(r.get("postage_credits", 0.0)) +
+#             float(r.get("gift_wrap_credits", 0.0)) +
+#             float(r.get("shipping_credits_tax", 0.0)) +
+#             float(r.get("giftwrap_credits_tax", 0.0)) -
+#             float(r.get("promotional_rebates", 0.0)) -
+#             float(r.get("promotional_rebates_tax", 0.0))
+#         )
+#     totals = compute_totals(all_rows)
+
+#     # ✅ NEW: tax_and_credits
+#     tax_and_credits = (
+#         float(totals.get("postage_credits", 0.0)) +
+#         float(totals.get("gift_wrap_credits", 0.0)) +
+#         float(totals.get("product_sales_tax", 0.0)) +
+#         float(totals.get("shipping_credits_tax", 0.0)) +
+#         float(totals.get("promotional_rebates_tax", 0.0)) +
+#         float(totals.get("marketplace_facilitator_tax", 0.0))
+#     )
+
+#     totals["tax_and_credits"] = round(tax_and_credits, 2)
+
+
+#     selling_fees = float(totals.get("selling_fees", 0.0))
+#     fba_fees     = float(totals.get("fba_fees", 0.0))
+#     amazon_fees  = abs(selling_fees) + abs(fba_fees)   # ✅ positive
+#     gross_sales = float(totals.get("gross_sales", 0.0))
+
+#     net_sales = float(totals.get("product_sales", 0.0)) + float(totals.get("promotional_rebates", 0.0))
+#     qty = float(totals.get("quantity", 0.0)) or 0.0
+#     asp = (net_sales / qty) if qty else 0.0
+
+#     profit = float(totals.get("profit", 0.0))
+    
+
+#     df_all = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
+
+#     platform_fee_total = 0.0
+#     advertising_fee_total = 0.0
+
+#     if not df_all.empty:
+#         for col, default in [("description", ""), ("total", 0.0), ("platform_fees", 0.0), ("advertising_cost", 0.0)]:
+#             if col not in df_all.columns:
+#                 df_all[col] = default
+
+#         platform_fee_total, _, _ = uk_platform_fee(df_all, country=ui_country, want_breakdown=False)
+#         advertising_fee_total, _, _ = uk_advertising(df_all, country=ui_country, want_breakdown=False)
+
+#     platform_fee_total = float(platform_fee_total or 0.0)
+#     advertising_fee_total = float(advertising_fee_total or 0.0)
+#     cm2_profit = profit - advertising_fee_total - platform_fee_total
+#     profit_percentage = (cm2_profit / net_sales * 100) if net_sales else 0.0
+#     current_net_reimbursement = compute_net_reimbursement_from_df(df_all)
+
+
+
+
+
+#     derived_totals = {
+#         "amazon_fees": round(amazon_fees, 2),
+#         "platform_fee": round(platform_fee_total, 2),          # ✅ NEW
+#         "advertising_fees": round(advertising_fee_total, 2),   # ✅ NEW
+#         "net_sales": round(net_sales, 2),
+#         "gross_sales": round(gross_sales, 2),
+#         "asp": round(asp, 2),
+#         "profit": round(profit, 2),
+#         "cm2_profit": round(cm2_profit, 2),   
+#         "profit_percentage": round(profit_percentage, 2),
+#         # ✅ NEW
+#         "current_net_reimbursement": round(current_net_reimbursement, 2),
+
+#     }
+
+
+#     # ✅ NEW: previous-month MTD data
+#     previous_period = get_previous_month_mtd_payload(
+#         user_id=user_id,
+#         country=ui_country,
+#         now_utc=now_utc
+#     )
+
+#     if response_format == "excel":
+#         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
+#         df = df.reindex(columns=MTD_COLUMNS + ["cogs", "profit"], fill_value=0.0)
+
+#         output = io.BytesIO()
+#         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+#             df.to_excel(writer, index=False, sheet_name="Transactions")
+#             pd.DataFrame([totals]).to_excel(writer, index=False, sheet_name="Totals")
+#             pd.DataFrame([derived_totals]).to_excel(writer, index=False, sheet_name="DerivedTotals")
+#             pd.DataFrame([previous_period]).to_excel(writer, index=False, sheet_name="PrevPeriodMeta")
+#             if db_result:
+#                 pd.DataFrame([db_result]).to_excel(writer, index=False, sheet_name="DBMeta")
+
+#         output.seek(0)
+#         filename = f"finances_transactions_MTD_{now_utc.year}_{now_utc.month:02d}.xlsx"
+#         return send_file(
+#             output,
+#             as_attachment=True,
+#             download_name=filename,
+#             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#         )
+
+#     return jsonify({
+#         "success": True,
+#         "posted_after": posted_after,
+#         "posted_before": posted_before,
+#         "count": len(all_rows),
+#         "stored": bool(store_in_db),
+#         "db_result": db_result,
+#         "cogs_meta": {
+#             "country": ui_country,
+#             "month": month_name,
+#             "year": now_utc.year,
+#             "pair": f"{user_currency}->{selected_currency}",
+#             "conversion_rate": conversion_rate,
+#         },
+#         "totals": totals,
+#         "derived_totals": derived_totals,
+#         "previous_period": previous_period,   # ✅ added
+#         "transactions": all_rows,
+#     }), 200
+
+import re
+
+def _safe_ident(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"[^a-z0-9_]+", "_", s)
+    return s.strip("_") or "x"
+
+def _build_skuwise_table_name(user_id: int, country: str, month: int, year: int) -> str:
+    return f"skuwisemonthly_{int(user_id)}_{_safe_ident(country)}_{int(month)}_{int(year)}"
+
+
 @amazon_api_bp.route("/amazon_api/finances/mtd_transactions", methods=["GET"])
 def finances_mtd_transactions():
     auth_header = request.headers.get("Authorization")
@@ -697,7 +950,6 @@ def finances_mtd_transactions():
     now_utc = datetime.now(timezone.utc)
     posted_after, posted_before = _month_to_date_range_utc_safe(now_utc, safety_minutes=3)
 
-    # ✅ prepare cogs inputs once
     month_name = _month_name_lower(now_utc.month)
     user_currency = DEFAULT_SKU_PRICE_CURRENCY
     selected_currency = COUNTRY_TO_SELECTED_CURRENCY.get(ui_country, user_currency)
@@ -744,7 +996,6 @@ def finances_mtd_transactions():
 
             row = _flatten_transaction_to_row(tx or {})
 
-            # ✅ add cogs per row
             sku = (row.get("sku") or "").strip()
             qty = _i(row.get("quantity")) or 0
             price = sku_price_map.get(sku) if sku else None
@@ -757,10 +1008,8 @@ def finances_mtd_transactions():
             break
         params = {"nextToken": next_token}
 
-    # ✅ profit per row
     add_profit_column_from_uk_profit(all_rows, country=ui_country)
 
-    # ✅ store to DB
     db_result = None
     if store_in_db:
         try:
@@ -773,8 +1022,7 @@ def finances_mtd_transactions():
         except Exception as e:
             db.session.rollback()
             return jsonify({"success": False, "error": f"DB store failed: {str(e)}"}), 500
-        
-    # ✅ NEW: compute gross_sales per row (so totals can sum it)
+
     for r in all_rows:
         r["gross_sales"] = (
             float(r.get("product_sales", 0.0)) +
@@ -786,9 +1034,9 @@ def finances_mtd_transactions():
             float(r.get("promotional_rebates", 0.0)) -
             float(r.get("promotional_rebates_tax", 0.0))
         )
+
     totals = compute_totals(all_rows)
 
-    # ✅ NEW: tax_and_credits
     tax_and_credits = (
         float(totals.get("postage_credits", 0.0)) +
         float(totals.get("gift_wrap_credits", 0.0)) +
@@ -797,21 +1045,17 @@ def finances_mtd_transactions():
         float(totals.get("promotional_rebates_tax", 0.0)) +
         float(totals.get("marketplace_facilitator_tax", 0.0))
     )
-
     totals["tax_and_credits"] = round(tax_and_credits, 2)
 
-
     selling_fees = float(totals.get("selling_fees", 0.0))
-    fba_fees     = float(totals.get("fba_fees", 0.0))
-    amazon_fees  = abs(selling_fees) + abs(fba_fees)   # ✅ positive
-    gross_sales = float(totals.get("gross_sales", 0.0))
+    fba_fees = float(totals.get("fba_fees", 0.0))
+    amazon_fees = abs(selling_fees) + abs(fba_fees)
 
+    gross_sales_total = float(totals.get("gross_sales", 0.0))
     net_sales = float(totals.get("product_sales", 0.0)) + float(totals.get("promotional_rebates", 0.0))
-    qty = float(totals.get("quantity", 0.0)) or 0.0
-    asp = (net_sales / qty) if qty else 0.0
-
-    profit = float(totals.get("profit", 0.0))
-    
+    qty_total = float(totals.get("quantity", 0.0)) or 0.0
+    asp = (net_sales / qty_total) if qty_total else 0.0
+    profit_total = float(totals.get("profit", 0.0))
 
     df_all = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
 
@@ -828,40 +1072,120 @@ def finances_mtd_transactions():
 
     platform_fee_total = float(platform_fee_total or 0.0)
     advertising_fee_total = float(advertising_fee_total or 0.0)
-    cm2_profit = profit - advertising_fee_total - platform_fee_total
+
+    cm2_profit = profit_total - advertising_fee_total - platform_fee_total
     profit_percentage = (cm2_profit / net_sales * 100) if net_sales else 0.0
-    current_net_reimbursement = compute_net_reimbursement_from_df(df_all)
-
-
-
-
+    current_net_reimbursement = compute_net_reimbursement_from_df(df_all) if not df_all.empty else 0.0
 
     derived_totals = {
         "amazon_fees": round(amazon_fees, 2),
-        "platform_fee": round(platform_fee_total, 2),          # ✅ NEW
-        "advertising_fees": round(advertising_fee_total, 2),   # ✅ NEW
+        "platform_fee": round(platform_fee_total, 2),
+        "advertising_fees": round(advertising_fee_total, 2),
         "net_sales": round(net_sales, 2),
-        "gross_sales": round(gross_sales, 2),
+        "gross_sales": round(gross_sales_total, 2),
         "asp": round(asp, 2),
-        "profit": round(profit, 2),
-        "cm2_profit": round(cm2_profit, 2),   
+        "profit": round(profit_total, 2),
+        "cm2_profit": round(cm2_profit, 2),
         "profit_percentage": round(profit_percentage, 2),
-        # ✅ NEW
-        "current_net_reimbursement": round(current_net_reimbursement, 2),
-
+        "current_net_reimbursement": round(float(current_net_reimbursement or 0.0), 2),
     }
 
-
-    # ✅ NEW: previous-month MTD data
     previous_period = get_previous_month_mtd_payload(
         user_id=user_id,
         country=ui_country,
         now_utc=now_utc
     )
 
+    # ✅ SKU-wise table name (use helper)
+    skuwise_table_name = _build_skuwise_table_name(
+        user_id=user_id,
+        country=ui_country,
+        month=now_utc.month,
+        year=now_utc.year
+    )
+
+    sku_summary_saved = False
+    sku_summary_rows = 0
+
+    if not df_all.empty:
+        if "sku" not in df_all.columns:
+            df_all["sku"] = ""
+        df_all["sku"] = df_all["sku"].fillna("").astype(str).str.strip()
+        df_skus = df_all[df_all["sku"] != ""].copy()
+
+        preferred_sum_cols = [
+            "quantity",
+            "product_sales", "product_sales_tax",
+            "postage_credits", "gift_wrap_credits",
+            "shipping_credits_tax", "giftwrap_credits_tax",
+            "promotional_rebates", "promotional_rebates_tax",
+            "marketplace_facilitator_tax",
+            "selling_fees", "fba_fees", "other",
+            "gross_sales",
+            "cogs",
+            "profit",
+        ]
+        sum_cols = [c for c in preferred_sum_cols if c in df_skus.columns]
+
+        for c in sum_cols:
+            df_skus[c] = pd.to_numeric(df_skus[c], errors="coerce").fillna(0.0)
+
+        df_sku = df_skus.groupby("sku", as_index=False)[sum_cols].sum()
+
+        if "product_sales" in df_sku.columns and "promotional_rebates" in df_sku.columns:
+            df_sku["net_sales"] = df_sku["product_sales"] + df_sku["promotional_rebates"]
+        else:
+            df_sku["net_sales"] = 0.0
+
+        if "quantity" in df_sku.columns:
+            df_sku["asp"] = df_sku.apply(
+                lambda r: (float(r["net_sales"]) / float(r["quantity"])) if float(r.get("quantity") or 0) else 0.0,
+                axis=1
+            )
+        else:
+            df_sku["asp"] = 0.0
+
+        df_sku["user_id"] = int(user_id)
+        df_sku["country"] = ui_country
+        df_sku["month"] = int(now_utc.month)
+        df_sku["year"] = int(now_utc.year)
+        df_sku["generated_at_utc"] = now_utc.isoformat()
+
+        total_row = {"sku": "GRAND_TOTAL"}
+        for c in sum_cols:
+            total_row[c] = float(df_sku[c].sum()) if c in df_sku.columns else 0.0
+
+        total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
+        total_qty = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
+        total_row["asp"] = (total_row["net_sales"] / total_qty) if total_qty else 0.0
+
+        total_row["user_id"] = int(user_id)
+        total_row["country"] = ui_country
+        total_row["month"] = int(now_utc.month)
+        total_row["year"] = int(now_utc.year)
+        total_row["generated_at_utc"] = now_utc.isoformat()
+
+        df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
+
+        try:
+            df_sku.to_sql(
+                skuwise_table_name,
+                PHORMULA_ENGINE,
+                schema="public",
+                if_exists="replace",
+                index=False,
+                method="multi",
+                chunksize=1000
+            )
+            sku_summary_saved = True
+            sku_summary_rows = int(len(df_sku))
+        except Exception as e:
+            logger.exception(f"Failed to store SKU-wise table {skuwise_table_name}: {e}")
+            sku_summary_saved = False
+
     if response_format == "excel":
         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
-        df = df.reindex(columns=MTD_COLUMNS + ["cogs", "profit"], fill_value=0.0)
+        df = df.reindex(columns=MTD_COLUMNS + ["cogs", "profit", "gross_sales"], fill_value=0.0)
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -897,7 +1221,13 @@ def finances_mtd_transactions():
         },
         "totals": totals,
         "derived_totals": derived_totals,
-        "previous_period": previous_period,   # ✅ added
+        "previous_period": previous_period,
+        "skuwise_table": {
+            "name": skuwise_table_name,
+            "saved": sku_summary_saved,
+            "rows": sku_summary_rows
+        },
         "transactions": all_rows,
     }), 200
+
 

@@ -8,7 +8,7 @@ import pandas as pd
 from flask import Blueprint, jsonify, request, send_file
 from app import db
 from config import Config
-from app.models.user_models import amazon_user, amazon_sponsored_products , amazon_sponsored_brands_keywords, amazon_sponsored_display_campaigns , amazon_sponsored_display_advertised_products
+from app.models.user_models import amazon_user, amazon_sponsored_products , amazon_sponsored_display_advertised_products
 from app.utils.amazon_ads_utils_reporting import (
     build_ads_lwa_auth_url,
     exchange_code_for_tokens,
