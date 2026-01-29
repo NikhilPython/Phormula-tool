@@ -1,5 +1,5 @@
 from __future__ import annotations
-import io, os,time, logging 
+import io, os,time, logging , re
 from datetime import datetime
 import pandas as pd
 from typing import Any, Dict, List
@@ -901,10 +901,8 @@ def upload():
 #         "transactions": all_rows,
 #     }), 200
 
-import re
 
-
-# --- helpers (keep outside route, define once) ---
+# ---------------- helpers ----------------
 def _safe_ident(s: str) -> str:
     s = (s or "").strip().lower()
     s = re.sub(r"[^a-z0-9_]+", "_", s)
@@ -912,6 +910,9 @@ def _safe_ident(s: str) -> str:
 
 def _build_skuwise_table_name(user_id: int, country: str, month: int, year: int) -> str:
     return f"skuwisemonthly_{int(user_id)}_{_safe_ident(country)}_{int(month)}_{int(year)}"
+
+def _build_adsmonthly_table_name(user_id: int, country: str, month: int, year: int) -> str:
+    return f"adsmonthly_{int(user_id)}_{_safe_ident(country)}_{int(month)}_{int(year)}"
 
 
 @amazon_api_bp.route("/amazon_api/finances/mtd_transactions", methods=["GET"])
@@ -960,7 +961,7 @@ def finances_mtd_transactions():
     selected_currency = COUNTRY_TO_SELECTED_CURRENCY.get(ui_country, user_currency)
 
     sku_price_map = fetch_sku_price_map(user_id=user_id, country=ui_country)
-    conversion_rate = fetch_conversion_rate(
+    conversion_rate_fx = fetch_conversion_rate(
         country=ui_country,
         year=now_utc.year,
         month_name=month_name,
@@ -968,7 +969,7 @@ def finances_mtd_transactions():
         selected_currency=selected_currency
     )
 
-    # ---------------- Fetch MTD from SP-API ----------------
+    # ---------------- Fetch MTD ----------------
     params: Dict[str, Any] = {
         "postedAfter": posted_after,
         "postedBefore": posted_before,
@@ -1002,11 +1003,10 @@ def finances_mtd_transactions():
 
             row = _flatten_transaction_to_row(tx or {})
 
-            # ✅ COGS per row (based on sku map)
             sku = (row.get("sku") or "").strip()
             qty = _i(row.get("quantity")) or 0
             price = sku_price_map.get(sku) if sku else None
-            row["cogs"] = float(qty) * float(price) * float(conversion_rate) if (price is not None and qty > 0) else 0.0
+            row["cogs"] = float(qty) * float(price) * float(conversion_rate_fx) if (price is not None and qty > 0) else 0.0
 
             all_rows.append(row)
 
@@ -1015,10 +1015,10 @@ def finances_mtd_transactions():
             break
         params = {"nextToken": next_token}
 
-    # ✅ Profit per row
+    # ✅ profit per row
     add_profit_column_from_uk_profit(all_rows, country=ui_country)
 
-    # ✅ Gross sales per row (needed for totals and SKU aggregation)
+    # ✅ gross_sales per row
     for r in all_rows:
         r["gross_sales"] = (
             float(r.get("product_sales", 0.0)) +
@@ -1045,7 +1045,7 @@ def finances_mtd_transactions():
             db.session.rollback()
             return jsonify({"success": False, "error": f"DB store failed: {str(e)}"}), 500
 
-    # ---------------- Totals ----------------
+    # ---------------- totals ----------------
     totals = compute_totals(all_rows)
 
     tax_and_credits = (
@@ -1073,20 +1073,18 @@ def finances_mtd_transactions():
 
     platform_fee_total = 0.0
     advertising_fee_total = 0.0
-
     if not df_all.empty:
         for col, default in [("description", ""), ("total", 0.0), ("platform_fees", 0.0), ("advertising_cost", 0.0)]:
             if col not in df_all.columns:
                 df_all[col] = default
-
         platform_fee_total, _, _ = uk_platform_fee(df_all, country=ui_country, want_breakdown=False)
         advertising_fee_total, _, _ = uk_advertising(df_all, country=ui_country, want_breakdown=False)
 
     platform_fee_total = float(platform_fee_total or 0.0)
     advertising_fee_total = float(advertising_fee_total or 0.0)
 
-    cm2_profit = profit_total - advertising_fee_total - platform_fee_total
-    profit_percentage = (cm2_profit / net_sales * 100) if net_sales else 0.0
+    cm2_profit_dashboard = profit_total - advertising_fee_total - platform_fee_total
+    profit_percentage = (cm2_profit_dashboard / net_sales * 100) if net_sales else 0.0
     current_net_reimbursement = compute_net_reimbursement_from_df(df_all) if not df_all.empty else 0.0
 
     derived_totals = {
@@ -1097,26 +1095,18 @@ def finances_mtd_transactions():
         "gross_sales": round(gross_sales_total, 2),
         "asp": round(asp, 2),
         "profit": round(profit_total, 2),
-        "cm2_profit": round(cm2_profit, 2),
+        "cm2_profit": round(cm2_profit_dashboard, 2),
         "profit_percentage": round(profit_percentage, 2),
         "current_net_reimbursement": round(float(current_net_reimbursement or 0.0), 2),
     }
 
-    previous_period = get_previous_month_mtd_payload(
-        user_id=user_id,
-        country=ui_country,
-        now_utc=now_utc
-    )
+    previous_period = get_previous_month_mtd_payload(user_id=user_id, country=ui_country, now_utc=now_utc)
 
     # ============================================================
-    # ✅ SKU-WISE TABLE (SUM BY SKU) + GRAND TOTAL + RESPONSE ITEMS
+    # ✅ SKU-WISE TABLE + ADS MERGE + cm2_profit = profit - ads_spend
     # ============================================================
-    skuwise_table_name = _build_skuwise_table_name(
-        user_id=user_id,
-        country=ui_country,
-        month=now_utc.month,
-        year=now_utc.year
-    )
+    skuwise_table_name = _build_skuwise_table_name(user_id, ui_country, now_utc.month, now_utc.year)
+    ads_table_name = _build_adsmonthly_table_name(user_id, ui_country, now_utc.month, now_utc.year)
 
     sku_summary_saved = False
     sku_summary_rows = 0
@@ -1125,7 +1115,6 @@ def finances_mtd_transactions():
     if not df_all.empty:
         if "sku" not in df_all.columns:
             df_all["sku"] = ""
-
         df_all["sku"] = df_all["sku"].fillna("").astype(str).str.strip()
         df_skus = df_all[df_all["sku"] != ""].copy()
 
@@ -1148,7 +1137,7 @@ def finances_mtd_transactions():
 
         df_sku = df_skus.groupby("sku", as_index=False)[sum_cols].sum()
 
-        # derived at SKU level
+        # finance derived
         if "product_sales" in df_sku.columns and "promotional_rebates" in df_sku.columns:
             df_sku["net_sales"] = df_sku["product_sales"] + df_sku["promotional_rebates"]
         else:
@@ -1162,6 +1151,75 @@ def finances_mtd_transactions():
         else:
             df_sku["asp"] = 0.0
 
+        # -------- ADS: read + aggregate + rename BEFORE merge --------
+        ads_agg = pd.DataFrame()
+        try:
+            sql = f'SELECT products, impressions, clicks, spend, sale_units, sale_amount FROM public."{ads_table_name}"'
+            ads_df = pd.read_sql_query(sql, PHORMULA_ENGINE)
+
+            ads_df["products"] = ads_df["products"].fillna("").astype(str).str.strip()
+            ads_df = ads_df[ads_df["products"] != ""]
+
+            for col in ["impressions", "clicks", "spend", "sale_units", "sale_amount"]:
+                if col not in ads_df.columns:
+                    ads_df[col] = 0.0
+                ads_df[col] = pd.to_numeric(ads_df[col], errors="coerce").fillna(0.0)
+
+            ads_agg = ads_df.groupby("products", as_index=False)[
+                ["impressions", "clicks", "spend", "sale_units", "sale_amount"]
+            ].sum()
+
+            ads_agg["ads_conversion_rate"] = ads_agg.apply(
+                lambda r: (float(r["sale_units"]) / float(r["clicks"]) * 100.0) if float(r["clicks"]) else 0.0,
+                axis=1
+            )
+            ads_agg["ads_roas"] = ads_agg.apply(
+                lambda r: (float(r["sale_amount"]) / float(r["spend"])) if float(r["spend"]) else 0.0,
+                axis=1
+            )
+            ads_agg["ads_acos"] = ads_agg.apply(
+                lambda r: (float(r["spend"]) / float(r["sale_amount"]) * 100.0) if float(r["sale_amount"]) else 0.0,
+                axis=1
+            )
+
+            ads_agg.rename(columns={
+                "impressions": "ads_impressions",
+                "clicks": "ads_clicks",
+                "spend": "ads_spend",
+                "sale_units": "ads_sale_units",
+                "sale_amount": "ads_sale_amount",
+            }, inplace=True)
+
+        except Exception as e:
+            logger.warning(f"Could not read/aggregate ads table {ads_table_name}: {e}")
+            ads_agg = pd.DataFrame()
+
+        if not ads_agg.empty:
+            df_sku = df_sku.merge(
+                ads_agg,
+                how="left",
+                left_on="sku",
+                right_on="products"
+            ).drop(columns=["products"], errors="ignore")
+
+        # ensure ads columns exist + numeric
+        for col in [
+            "ads_impressions", "ads_clicks", "ads_spend",
+            "ads_sale_units", "ads_sale_amount",
+            "ads_conversion_rate", "ads_roas", "ads_acos",
+        ]:
+            if col not in df_sku.columns:
+                df_sku[col] = 0.0
+            df_sku[col] = pd.to_numeric(df_sku[col], errors="coerce").fillna(0.0)
+
+        # ✅ NEW: cm2_profit (sku-level) = profit - ads_spend
+        if "profit" not in df_sku.columns:
+            df_sku["profit"] = 0.0
+        df_sku["profit"] = pd.to_numeric(df_sku["profit"], errors="coerce").fillna(0.0)
+
+        df_sku["cm2_profit"] = df_sku["profit"] - df_sku["ads_spend"]
+        df_sku["cm2_profit"] = pd.to_numeric(df_sku["cm2_profit"], errors="coerce").fillna(0.0)
+
         # meta
         df_sku["user_id"] = int(user_id)
         df_sku["country"] = ui_country
@@ -1169,13 +1227,34 @@ def finances_mtd_transactions():
         df_sku["year"] = int(now_utc.year)
         df_sku["generated_at_utc"] = now_utc.isoformat()
 
-        # grand total row
+        # -------- GRAND TOTAL --------
         total_row: Dict[str, Any] = {"sku": "GRAND_TOTAL"}
+
         for c in sum_cols:
             total_row[c] = float(df_sku[c].sum()) if c in df_sku.columns else 0.0
+
         total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
         total_qty = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
         total_row["asp"] = (total_row["net_sales"] / total_qty) if total_qty else 0.0
+
+        total_row["ads_impressions"] = float(df_sku["ads_impressions"].sum())
+        total_row["ads_clicks"] = float(df_sku["ads_clicks"].sum())
+        total_row["ads_spend"] = float(df_sku["ads_spend"].sum())
+        total_row["ads_sale_units"] = float(df_sku["ads_sale_units"].sum())
+        total_row["ads_sale_amount"] = float(df_sku["ads_sale_amount"].sum())
+
+        g_clicks = float(total_row["ads_clicks"])
+        g_spend = float(total_row["ads_spend"])
+        g_units = float(total_row["ads_sale_units"])
+        g_sales = float(total_row["ads_sale_amount"])
+
+        total_row["ads_conversion_rate"] = (g_units / g_clicks * 100.0) if g_clicks else 0.0
+        total_row["ads_roas"] = (g_sales / g_spend) if g_spend else 0.0
+        total_row["ads_acos"] = (g_spend / g_sales * 100.0) if g_sales else 0.0
+
+        # ✅ NEW: cm2_profit grand total = profit_total - ads_spend_total
+        total_row["cm2_profit"] = float(total_row.get("profit", 0.0)) - float(total_row.get("ads_spend", 0.0))
+
         total_row["user_id"] = int(user_id)
         total_row["country"] = ui_country
         total_row["month"] = int(now_utc.month)
@@ -1184,14 +1263,13 @@ def finances_mtd_transactions():
 
         df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
 
-        # ✅ NEW: include item-wise rows in API response
         skuwise_items = df_sku.to_dict(orient="records")
 
-        # store table in DB
+        # store
         try:
             df_sku.to_sql(
                 skuwise_table_name,
-                PHORMULA_ENGINE,   # or ADMIN_ENGINE if you prefer admin creds
+                PHORMULA_ENGINE,
                 schema="public",
                 if_exists="replace",
                 index=False,
@@ -1217,8 +1295,6 @@ def finances_mtd_transactions():
             pd.DataFrame([previous_period]).to_excel(writer, index=False, sheet_name="PrevPeriodMeta")
             if db_result:
                 pd.DataFrame([db_result]).to_excel(writer, index=False, sheet_name="DBMeta")
-
-            # include sku table in excel too
             if skuwise_items:
                 pd.DataFrame(skuwise_items).to_excel(writer, index=False, sheet_name="SKUWiseMonthly")
 
@@ -1244,7 +1320,7 @@ def finances_mtd_transactions():
             "month": month_name,
             "year": now_utc.year,
             "pair": f"{user_currency}->{selected_currency}",
-            "conversion_rate": conversion_rate,
+            "conversion_rate": conversion_rate_fx,
         },
         "totals": totals,
         "derived_totals": derived_totals,
@@ -1254,7 +1330,6 @@ def finances_mtd_transactions():
             "saved": sku_summary_saved,
             "rows": sku_summary_rows
         },
-        # ✅ NEW: item-wise sku summary in response
         "skuwise_items": skuwise_items,
         "transactions": all_rows,
     }), 200
