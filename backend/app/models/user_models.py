@@ -65,6 +65,9 @@ class User(db.Model):
     tax_id = db.Column(JSON, nullable=True)
     address = db.Column(JSON, nullable=True)
     token_name = db.Column(db.String(50), unique=True, nullable=False, index=True)  # Uncommented this line
+    # ✅ NEW columns
+    amazon_user_exists = db.Column(db.Boolean, default=False)  # both tokens exist
+    amazon_ads_exists = db.Column(db.Boolean, default=False)   # ads token exists
 
 
 class Category(db.Model):
