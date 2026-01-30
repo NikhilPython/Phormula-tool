@@ -9,8 +9,6 @@ import CMchartofsku from "./CMchartofsku";
 import SKUtable from "./SKUtable";
 import IntegrationDashboard from "@/features/integration/IntegrationDashboard";
 import PageBreadcrumb from "../common/PageBreadCrumb";
-import Button from "../ui/button/Button";
-import { AiOutlinePlus } from "react-icons/ai";
 import { Modal } from "@/components/ui/modal";
 import FileUploadForm from "@/app/(admin)/(ui-elements)/modals/FileUploadForm";
 import PeriodFiltersTable from "../filters/PeriodFiltersTable";
@@ -30,6 +28,7 @@ import RecommendationsCard from "./RecommendationsCard";
 import PerformanceTrendChart from "./PerformanceTrendChart";
 import SummaryMetricCard from "./SummaryMetricCard";
 import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
+import AiMarkdownSummary from "./AiMarkdownSummary";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -272,8 +271,6 @@ const renderMarkdownInline = (text: string) => {
   const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
   return { __html: html };
 };
-
-
 // Pull only bullets under "## SUMMARY" section if present; otherwise fallback to all bullets
 // --- NEW: split markdown into sections by "## " headings
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
@@ -307,24 +304,24 @@ const parseMdSections = (md?: string | null): Record<string, string[]> => {
 };
 
 // --- REPLACE old extractSummaryBullets with this (so it can also show PRODUCT INSIGHTS)
-const extractSummaryAndSkuBullets = (md?: string | null) => {
-  const sections = parseMdSections(md);
-  return {
-    summaryBullets: sections["SUMMARY"] ?? [],
-    skuInsightsBullets: sections["PRODUCT INSIGHTS"] ?? [],
-  };
-};
+// const extractSummaryAndSkuBullets = (md?: string | null) => {
+//   const sections = parseMdSections(md);
+//   return {
+//     summaryBullets: sections["SUMMARY"] ?? [],
+//     skuInsightsBullets: sections["PRODUCT INSIGHTS"] ?? [],
+//   };
+// };
 
 // --- NEW: for recommendations, keep main bullets + INVENTORY section bullets
-const extractRecoAndInventoryBullets = (md?: string | null) => {
-  const sections = parseMdSections(md);
+// const extractRecoAndInventoryBullets = (md?: string | null) => {
+//   const sections = parseMdSections(md);
 
-  // ROOT = bullets before any "##"
-  const recommendationBullets = sections["ROOT"] ?? [];
-  const inventoryBullets = sections["INVENTORY"] ?? [];
+//   // ROOT = bullets before any "##"
+//   const recommendationBullets = sections["ROOT"] ?? [];
+//   const inventoryBullets = sections["INVENTORY"] ?? [];
 
-  return { recommendationBullets, inventoryBullets };
-};
+//   return { recommendationBullets, inventoryBullets };
+// };
 
 type AiSingleInsightCardProps = {
   loading: boolean;
@@ -363,71 +360,70 @@ const Section = ({
           />
         ))}
       </ul>
-
     </div>
   );
 };
 
-const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
-  loading,
-  error,
-  summaryBullets,
-  recommendationBullets,
-  skuInsightsBullets,
-  inventoryBullets,
-}) => {
-  if (loading) {
-    return (
-      <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
-        <p className="text-sm text-charcoal-400">Generating insights…</p>
-      </div>
-    );
-  }
+// const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
+//   loading,
+//   error,
+//   summaryBullets,
+//   recommendationBullets,
+//   skuInsightsBullets,
+//   inventoryBullets,
+// }) => {
+//   if (loading) {
+//     return (
+//       <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+//         <p className="text-sm text-charcoal-400">Generating insights…</p>
+//       </div>
+//     );
+//   }
 
-  if (error) {
-    return (
-      <div className="w-full rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-600">
-        {error}
-      </div>
-    );
-  }
+//   if (error) {
+//     return (
+//       <div className="w-full rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-600">
+//         {error}
+//       </div>
+//     );
+//   }
 
-  if (
-    !summaryBullets.length &&
-    !recommendationBullets.length &&
-    !skuInsightsBullets.length &&
-    !inventoryBullets.length
-  ) {
-    return null;
-  }
+//   if (
+//     !summaryBullets.length &&
+//     !recommendationBullets.length &&
+//     !skuInsightsBullets.length &&
+//     !inventoryBullets.length
+//   ) {
+//     return null;
+//   }
 
-  return (
-    <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
-      <Section
-        title="Month-end Business Summary"
-        bullets={summaryBullets}
-      />
+//   return (
+//     <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
+//       <Section
+//         title="Month-end Business Summary"
+//         bullets={summaryBullets}
+//       />
 
-      <Section
-        title="Recommendations"
-        bullets={[...recommendationBullets, ...inventoryBullets]}
-      />
+//       <Section
+//         title="Recommendations"
+//         bullets={[...recommendationBullets, ...inventoryBullets]}
+//       />
 
-      <Section
-        title="PRODUCT INSIGHTS"
-        bullets={skuInsightsBullets}
-      />
+//       <Section
+//         title="PRODUCT INSIGHTS"
+//         bullets={skuInsightsBullets}
+//       />
 
-      {/* Inventory shown only if still exists separately */}
-      {inventoryBullets.length > 0 && (
-        <Section
-          title="Inventory"
-          bullets={inventoryBullets}
-        />
-      )}
-    </div>
-  );
-};
+//       {/* Inventory shown only if still exists separately */}
+//       {inventoryBullets.length > 0 && (
+//         <Section
+//           title="Inventory"
+//           bullets={inventoryBullets}
+//         />
+//       )}
+//     </div>
+//   );
+// };
 
 type FocusedChart = "trend" | "pnl" | null;
 
@@ -496,6 +492,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
   const [expenseBreakdownPieBase64, setExpenseBreakdownPieBase64] = useState<string | null>(null);
   const [productWiseCm1PieBase64, setProductWiseCm1PieBase64] = useState<string | null>(null);
+
+  
 
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const [overlayBounds, setOverlayBounds] = useState<{
@@ -699,19 +697,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setPerformanceTrend(data.performance_trend ?? null);
       setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
 
-      const { summaryBullets, skuInsightsBullets } =
-        extractSummaryAndSkuBullets(data.summary);
-      const { recommendationBullets, inventoryBullets } =
-        extractRecoAndInventoryBullets(data.recommendations);
+      // const { summaryBullets, skuInsightsBullets } =
+      //   extractSummaryAndSkuBullets(data.summary);
+      // const { recommendationBullets, inventoryBullets } =
+      //   extractRecoAndInventoryBullets(data.recommendations);
 
       setAiPanel({
-        summaryBullets,
-        skuInsightsBullets,
-        recommendationBullets,
-        inventoryBullets,
-        rawSummary: data.summary ?? null,
-        rawRecommendations: data.recommendations ?? null,
-      });
+  rawSummary: data.summary ?? null,
+  rawRecommendations: data.recommendations ?? null,
+});
+
     } catch (e: any) {
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
       setAiPanel(null);
@@ -1512,7 +1507,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   if (initialLoading) {
     return (
-                 <Loader fullscreen transparent />
+      <Loader fullscreen transparent />
     );
   }
 
@@ -1575,74 +1570,75 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     return (
       // <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <MonthEndBusinessSummaryCard
-          loading={aiPanelLoading}
-          error={aiPanelError}
-          summaryBullets={aiPanel?.summaryBullets ?? []}
-          skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-        />
+      // <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      //   <MonthEndBusinessSummaryCard
+      //     loading={aiPanelLoading}
+      //     error={aiPanelError}
+      //     summaryBullets={aiPanel?.summaryBullets ?? []}
+      //     skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+      //   />
 
-        <RecommendationsCard
-          loading={aiPanelLoading}
-          error={aiPanelError}
-          recommendationBullets={aiPanel?.recommendationBullets ?? []}
-          inventoryBullets={aiPanel?.inventoryBullets ?? []}
-        />
-      </div>
+      //   <RecommendationsCard
+      //     loading={aiPanelLoading}
+      //     error={aiPanelError}
+      //     recommendationBullets={aiPanel?.recommendationBullets ?? []}
+      //     inventoryBullets={aiPanel?.inventoryBullets ?? []}
+      //   />
       // </div>
+      // </div>
+      <div></div>
     );
   };
 
 
   return (
     <div
-  ref={layoutRef}
-  className="
+      ref={layoutRef}
+      className="
     space-y-3
     2xl:space-y-6
     relative
   "
->
+    >
       <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4  border-b border-gray-200 ">
 
-           {/* LEFT: Title + Subtitle */}
-          <div className="flex flex-col leading-tight w-full md:w-auto mb-5">
-            <div className="flex items-baseline gap-2">
-              <PageBreadcrumb
-                pageTitle="Financial Metrics -"
-                variant="page"
-                align="left"
-                textSize="2xl"
-              />
-
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                Amazon {countryName?.toLowerCase() === "global"
-                  ? "Global"
-                  : countryName?.toUpperCase()}
-              </span>
-            </div>
-
-            <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-              Track your profitability and key metrics
-            </p>
-          </div>
-
-          {/* RIGHT: Filters */}
-          <div className="flex w-full md:w-auto justify-start md:justify-end">
-            <PeriodFiltersTable
-              range={range === "" ? "yearly" : (range as "monthly" | "quarterly" | "yearly")}
-              selectedMonth={selectedMonth}
-              selectedQuarter={selectedQuarter || ""}
-              selectedYear={selectedYear}
-              yearOptions={yearOptions}
-              onRangeChange={handleRangeChange}
-              onMonthChange={handleMonthChange}
-              onQuarterChange={handleQuarterChange}
-              onYearChange={handleYearChange}
+        {/* LEFT: Title + Subtitle */}
+        <div className="flex flex-col leading-tight w-full md:w-auto mb-5">
+          <div className="flex items-baseline gap-2">
+            <PageBreadcrumb
+              pageTitle="Financial Metrics -"
+              variant="page"
+              align="left"
+              textSize="2xl"
             />
+
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              Amazon {countryName?.toLowerCase() === "global"
+                ? "Global"
+                : countryName?.toUpperCase()}
+            </span>
           </div>
+
+          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+            Track your profitability and key metrics
+          </p>
         </div>
+
+        {/* RIGHT: Filters */}
+        <div className="flex w-full md:w-auto justify-start md:justify-end">
+          <PeriodFiltersTable
+            range={range === "" ? "yearly" : (range as "monthly" | "quarterly" | "yearly")}
+            selectedMonth={selectedMonth}
+            selectedQuarter={selectedQuarter || ""}
+            selectedYear={selectedYear}
+            yearOptions={yearOptions}
+            onRangeChange={handleRangeChange}
+            onMonthChange={handleMonthChange}
+            onQuarterChange={handleQuarterChange}
+            onYearChange={handleYearChange}
+          />
+        </div>
+      </div>
 
       {/* WRAPPER: stacked layout */}
       <div className="flex flex-col gap-5 w-full mt-4">
@@ -2441,21 +2437,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         </>
                       ) : null} */}
                     </div>
-
-                    <DownloadIconButton
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownloadProfitabilityBundle();
-                      }}
-                      disabled={
-                        !trendExportApi ||              // ✅ ADD
-                        !chartExportApi ||
-                        !skuExportPayload ||
-                        !expenseBreakdownPieBase64 ||
-                        !productWiseCm1PieBase64
-                      }
-
-                    />
                   </div>
 
                   <div className="flex-1 min-h-0 overflow-hidden mt-4">
@@ -2480,14 +2461,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
           {allDropdownsSelected && (
             <div id="business-summary" className="scroll-mt-[80px]">
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-              />
+              <AiMarkdownSummary
+  loading={aiPanelLoading}
+  error={aiPanelError}
+  markdown={aiPanel?.rawSummary}
+/>
             </div>
           )}
 
@@ -2521,7 +2499,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             homeCurrency={globalHomeCurrency}
             hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
-             onDownload={handleDownloadSkuSheet1}
+            onDownload={handleDownloadSkuSheet1}
           />
 
         </>
@@ -2623,7 +2601,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       ) : null} */}
                     </div>
 
-                    <DownloadIconButton
+                    {/* <DownloadIconButton
                       onClick={(e) => {
                         e.stopPropagation(); // ✅ don’t trigger zoom
                         handleDownloadProfitabilityBundle();
@@ -2636,7 +2614,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         !productWiseCm1PieBase64
                       }
 
-                    />
+                    /> */}
                   </div>
 
                   <div className="flex-1 min-h-0 overflow-hidden mt-4">
@@ -2658,14 +2636,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
           {allDropdownsSelected && (
             <div id="business-summary" className="scroll-mt-[80px]">
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-              />
+<AiMarkdownSummary
+  loading={aiPanelLoading}
+  error={aiPanelError}
+  markdown={aiPanel?.rawSummary}
+/>
             </div>
           )}
 
@@ -2799,7 +2774,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       </span> */}
                     </div>
 
-                    <DownloadIconButton
+                    {/* <DownloadIconButton
                       onClick={(e) => {
                         e.stopPropagation(); // ✅ don’t trigger zoom
                         handleDownloadProfitabilityBundle();
@@ -2812,7 +2787,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         !productWiseCm1PieBase64
                       }
 
-                    />
+                    /> */}
                   </div>
 
                   <div className="flex-1 min-h-0 overflow-hidden mt-4">
@@ -2834,14 +2809,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
           {allDropdownsSelected && (
             <div id="business-summary" className="scroll-mt-[80px]">
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-              />
+              <AiMarkdownSummary
+  loading={aiPanelLoading}
+  error={aiPanelError}
+  markdown={aiPanel?.rawSummary}
+/>
             </div>
           )}
 
@@ -2874,7 +2846,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             homeCurrency={globalHomeCurrency}
             hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
-             onDownload={handleDownloadSkuSheet1}
+            onDownload={handleDownloadSkuSheet1}
           />
         </>
       )}

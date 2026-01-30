@@ -68,6 +68,13 @@ DEFAULT_USER_OBJECTIVE = {
     "notes": None
 }
 
+def severity_suffix(severity: str | None) -> str:
+    if not severity or severity == "normal":
+        return ""
+    return f" ({severity.replace('_', ' ').replace('24m', '24 months')})"
+
+
+
 
 def get_latest_completed_month(today=None):
     today = today or date.today()
@@ -730,6 +737,30 @@ Every insight MUST be decomposed into:
 - If CM1 or CM2 profit changes, explicitly identify
   which component caused it.
 
+────────────────────────────────────────
+PRODUCT-LEVEL DIAGNOSIS (CRITICAL)
+────────────────────────────────────────
+
+For each SKU in focus_skus, you MUST classify
+the dominant commercial diagnosis using
+STANDARDIZED DIAGNOSIS CODES.
+
+These diagnosis codes represent the PRIMARY
+reason explaining the SKU’s performance pattern.
+
+You MUST:
+- Select ONLY the most relevant diagnosis codes
+- Avoid overlapping or redundant diagnoses
+- Base diagnosis on units, pricing, and CM1 profit behaviour
+- Use movement_context when relevant
+
+You MUST NOT:
+- Write explanations
+- Write sentences
+- Suggest actions
+- Invent new diagnosis labels
+
+
 
 
 ────────────────────────────────────────
@@ -862,68 +893,102 @@ CM2 ATTRIBUTION CONSTRAINT (CRITICAL)
 MANDATORY OUTPUT FORMAT (STRICT JSON ONLY)
 ────────────────────────────────────────
 
+────────────────────────────────────────
+ALLOWED DIAGNOSIS CODES (STRICT)
+────────────────────────────────────────
+
+The following diagnosis codes are ALLOWED.
+You MUST select from this list only.
+
+- pricing_supports_volume
+  (unit growth positive, CM1 profit per unit declining)
+
+- pricing_effective
+  (unit growth positive, CM1 profit stable or growing)
+
+- demand_weakness
+  (units and net sales declining)
+
+- visibility_constraint
+  (units declining despite stable or reduced pricing)
+
+- mixed_signal
+  (no dominant pricing or demand signal)
+
+Each SKU may have:
+- 1 primary diagnosis
+- Maximum 2 diagnosis codes
+
+
 Return a single JSON object with the following structure:
 
-{
-  "overall_insights": {
-    "units": {
-      "movement": "increase | decrease | flat",
-      "severity": "highest_24m | lowest_24m | normal",
-      "driver": "unit_growth | pricing | mix",
-      "material": true | false
-    },
-    "net_sales": {
-      "movement": "increase | decrease | flat",
-      "severity": "highest_24m | lowest_24m | normal",
-      "driver": "unit_growth | pricing | mix",
-      "material": true | false
-    },
-
-    },
-    "asp": {
-      "movement": "increase | decrease | flat",
-      "severity": "steepest_24m | normal",
-      "material": true | false
-    },
-    "cm1_profit": {
-      "movement": "increase | decrease | flat",
-      "offset": true | false,
-      "material": true | false
-    },
-    "cm1_profit_per_unit": {
-      "movement": "increase | decrease | flat",
-      "severity": "largest_24m | normal",
-      "material": true | false
-    },
-    "cm2_profit": {
-      "movement": "increase | decrease | flat",
-      "drivers": ["advertising_total", "platform_fee_inventory_storage", "platformfeenew"],
-      "material": true | false
-    },
-    "lost_total": {
-      "present": true | false,
-      "material": true | false
-    },
-    "acos": {
-      "movement": "increase | decrease | flat",
-      "material": true | false
-    },
-    "business_quality_risk": {
-     "present": true | false,
-        "drivers": ["asp_compression", "per_unit_profit_decline", "cost_pressure"]
-    }
+"executive_summary_signals": {
+  "units": {
+    "direction": "increase | decrease | flat",
+    "severity": "highest_24m | lowest_24m | normal",
+    "pct_change": "number",
+    "absolute_change": "number"
   },
+  "net_sales": {
+  "pct_change": "number",
+  "absolute_change": "number",
+  "severity": "highest_24m | lowest_24m | normal"
+},
+  "asp": {
+    "pct_change": "number",
+    "absolute_change": "number",
+    "severity": "largest_24m | normal"
+  },
+ "cm1_profit": {
+  "pct_change": "number",
+  "absolute_change": "number",
+  "severity": "highest_24m | lowest_24m | normal"
+},
+  "cm1_profit_per_unit": {
+    "pct_change": "number",
+    "absolute_change": "number",
+    "severity": "largest_24m | normal"
+  },
+  "cost_pressure": {
+    "advertising": {
+  "pct_change": "number",
+  "absolute_change": "number",
+  "acos_delta": "number | null",
+  "severity": "largest_24m | normal"
+},
+"storage_fees": {
+  "pct_change": "number",
+  "absolute_change": "number",
+  "severity": "largest_24m | normal"
+}
 
-  "product_insights": {
-    "<sku>": {
-      "asp_effective": true | false,
-      "units_up": true | false,
-      "profit_up": true | false,
-      "profit_down": true | false,
-      "primary_driver": "pricing | units | visibility"
-    }
+  },
+  "cm2_profit": {
+    "pct_change": "number",
+    "absolute_change": "number",
+    "severity": "largest_24m | normal"
+  },
+  "reimbursements": {
+    "present": true | false,
+    "amount": "number | null"
+  },
+  "primary_causal_chain": [
+    "asp_decrease",
+    "unit_growth",
+    "net_sales_growth",
+    "per_unit_profit_decline",
+    "cost_pressure",
+    "cm2_profit_decline"
+  ]
+"product_insights": {
+  "<sku>": {
+    "diagnosis_codes": [
+      "pricing_supports_volume",
+      "per_unit_profit_decline"
+    ]
   }
 }
+
 
 
 """
@@ -1030,6 +1095,24 @@ of the following phrases:
 
 All other pricing phrases are STRICTLY FORBIDDEN.
 
+NON-PRICING ACTION DIRECTION (ALLOWED — STRICT)
+
+In specific cases, a SKU requires a non-pricing action.
+
+Allowed non-pricing action (exact phrase):
+- “Check product visibility”
+
+This action is allowed ONLY when all of the following are true for a SKU:
+- units are declining
+- net sales are declining
+- CM1 profit is declining
+- AND ASP is declining
+
+In this case:
+- Do NOT return a pricing action
+- Return exactly: “Check product visibility”
+
+
 ────────────────────────────────────────
 PRICING DECISION HIERARCHY (CRITICAL)
 ────────────────────────────────────────
@@ -1065,7 +1148,6 @@ ASP alone must NEVER trigger a pricing action.
 ────────────────────────────────────────
 VISIBILITY VS PRICING RULE (CRITICAL)
 ────────────────────────────────────────
-
 If a SKU shows:
 - declining units,
 - declining net sales,
@@ -1074,8 +1156,7 @@ If a SKU shows:
 
 THEN:
 - Do NOT recommend pricing actions.
-- Classify the issue as demand or visibility related.
-- Recommend monitoring or focus actions instead.
+- Return exactly: “Check product visibility”.
 
 ────────────────────────────────────────
 PORTFOLIO-LEVEL ADVERTISING RULES
@@ -1103,24 +1184,27 @@ CONSTRAINT ENFORCEMENT
 - If ad_budget_cap is set → Do NOT suggest expansion.
 - If max_tacos is set → Avoid efficiency deterioration.
 
-────────────────────────────────────────
-OUTPUT FORMAT (MANDATORY — MARKDOWN ONLY)
-────────────────────────────────────────
+OUTPUT FORMAT (MANDATORY — STRICT JSON ONLY)
 
-## ACTION_PLAN
-(5-7 bullets maximum)
+Return a single JSON object with the following structure:
 
-For each action:
-- First line: WHAT to do (directional action only)
-- Second line: WHY (single sentence referencing the driver)
+{
+  "sku_actions": {
+      "<sku_name>": "Increase ASP | Decrease ASP | Maintain current pricing | Check product visibility"
+  }
+}
 
-No additional explanation is permitted.
+Rules:
+- Each SKU from focus_skus may appear at most once.
+- Each SKU must have exactly one action.
+- Do NOT include explanations, reasoning, or commentary.
+- Do NOT include portfolio-level sections.
+- Do NOT include markdown.
+If no pricing action is appropriate for a SKU, return
+“Maintain current pricing”, UNLESS the visibility vs pricing rule applies,
+in which case return “Check product visibility”.
 
-## AVOID
-(2 bullets maximum)
 
-Actions that conflict with the user_objective
-or violate constraints.
 
 
 """
@@ -1324,6 +1408,32 @@ def build_comparison_label(period: str, timeline: str, year: int):
     return ""
 
 
+DIAGNOSIS_TEXT = {
+    "pricing_supports_volume": [
+        "CM1 profit per unit is declining while unit growth remains positive.",
+        "Current pricing is supporting volume but eroding profitability."
+    ],
+    "pricing_effective": [
+        "Both unit growth and CM1 profit are increasing.",
+        "Pricing is effectively driving profitable volume."
+    ],
+    "demand_weakness": [
+        "Units and net sales are declining.",
+        "This signals demand weakness requiring pricing support."
+    ],
+    "visibility_constraint": [
+        "Unit demand is declining despite lower pricing.",
+        "This indicates a visibility or demand-side constraint."
+    ],
+    "mixed_signal": [
+        "Performance trends are mixed with no dominant pricing signal.",
+        "Current pricing does not indicate immediate action."
+    ]
+}
+
+
+
+
 def render_month_end_summary(
     *,
     period: str,
@@ -1336,99 +1446,109 @@ def render_month_end_summary(
     inventory_alerts: dict,
     inventory_lost: float,
     currency_symbol: str,
-    strategy_actions: str | None
+    strategy_actions: dict | None = None,  # 👈 SKU → Action map
 ) -> str:
     """
     Deterministic executive month-end summary renderer.
+    Renderer is presentation-only. No decisions are made here.
     """
 
     comparison = build_comparison_label(period, timeline, year)
     lines: list[str] = []
 
-    # =========================
+   # =========================
     # SUMMARY
     # =========================
     lines.append("## SUMMARY")
 
-    oi = analysis_insights["overall_insights"]
+    es = analysis_insights["executive_summary_signals"]
+
+    lines.append(f"Performance Summary ({comparison})")
 
     # Units
-    if oi["units"]["material"]:
-        lines.append(
-            f"- {comparison}, total units sold increased by "
-            f"{mom['total_quantity']['delta_pct']:+.2f}%, "
-            f"marking the highest unit growth in the last 24 months."
-        )
+    u = es["units"]
+    lines.append(
+        f"• Units sold: {u['pct_change']:+.2f}% "
+        f"({int(u['absolute_change'])} units)"
+        f"{severity_suffix(u.get('severity'))}"
+    )
 
-    # Net sales + ASP
-    if oi["net_sales"]["material"] and oi["asp"]["material"]:
-        lines.append(
-            f"- {comparison}, net sales changed by "
-            f"{mom['net_sales']['delta_pct']:+.2f}% "
-            f"({currency_symbol}{mom['net_sales']['delta']:+.2f}), "
-            f"driven by an ASP change of "
-            f"{mom['asp']['delta_pct']:+.2f}%, "
-            f"the steepest ASP movement in the 24-month rolling window."
-        )
+    # Net sales (severity-enabled, extreme-only)
+    ns = es["net_sales"]
+    lines.append(
+        f"• Net sales: {ns['pct_change']:+.2f}% "
+        f"({currency_symbol}{ns['absolute_change']:+.2f})"
+        f"{severity_suffix(ns.get('severity'))}"
+    )
 
-    # CM1 profit
-    if oi["cm1_profit"]["material"]:
-        lines.append(
-            f"- {comparison}, CM1 profit changed by "
-            f"{mom['profit']['delta_pct']:+.2f}% "
-            f"({currency_symbol}{mom['profit']['delta']:+.2f}), "
-            f"as pricing and per-unit economics offset unit momentum."
-        )
+    # ASP
+    asp = es["asp"]
+    lines.append(
+        f"• ASP: {asp['pct_change']:+.2f}% "
+        f"({currency_symbol}{asp['absolute_change']:+.2f})"
+        f"{severity_suffix(asp.get('severity'))}"
+    )
+
+    # CM1 profit (severity-enabled)
+    cm1 = es["cm1_profit"]
+    lines.append(
+        f"• CM1 profit: {cm1['pct_change']:+.2f}% "
+        f"({currency_symbol}{cm1['absolute_change']:+.2f})"
+        f"{severity_suffix(cm1.get('severity'))}"
+    )
 
     # CM1 profit per unit
-    if oi["cm1_profit_per_unit"]["material"]:
+    ppu = es["cm1_profit_per_unit"]
+    lines.append(
+        f"• CM1 profit per unit: {ppu['pct_change']:+.2f}% "
+        f"({currency_symbol}{ppu['absolute_change']:+.2f})"
+        f"{severity_suffix(ppu.get('severity'))}"
+    )
+
+    # Cost pressure (Advertising)
+    cp = es["cost_pressure"]
+    ad = cp["advertising"]
+
+    lines.append(
+        f"• Advertising spends: {ad['pct_change']:+.2f}% "
+        f"({currency_symbol}{ad['absolute_change']:+.2f})"
+        f"{severity_suffix(ad.get('severity'))}, "
+        f"with ACOS change of {ad['acos_delta']:+.2f}%"
+    )
+
+    # Cost pressure (Storage)
+    st = cp["storage_fees"]
+    lines.append(
+        f"• Platform inventory storage fees: {st['pct_change']:+.2f}% "
+        f"({currency_symbol}{st['absolute_change']:+.2f})"
+        f"{severity_suffix(st.get('severity'))}"
+    )
+
+    # CM2 profit
+    cm2 = es["cm2_profit"]
+    lines.append(
+        f"• CM2 profit: {cm2['pct_change']:+.2f}% "
+        f"({currency_symbol}{cm2['absolute_change']:+.2f})"
+        f"{severity_suffix(cm2.get('severity'))}"
+    )
+
+    # Reimbursements (always shown if present, always positive)
+    if es["reimbursements"]["present"]:
+        amt = abs(float(es["reimbursements"].get("amount", 0)))
+
         lines.append(
-            f"- {comparison}, CM1 profit per unit declined by "
-            f"{mom['unit_wise_profitability']['delta_pct']:+.2f}%, "
-            f"representing the largest per-unit profitability erosion "
-            f"in the last 24 months."
+            f"• Amazon reimbursements for lost inventory: "
+            f"{currency_symbol}{amt:.2f} "
+            f"(non-recurring recovery)"
         )
 
-    # CM2 profit (portfolio level only)
-    if "cm2_profit" in mom and oi["cm2_profit"]["material"]:
-        ad_delta = mom.get("advertising_total", {}).get("delta")
-        storage_delta = mom.get("platform_fee_inventory_storage", {}).get("delta")
-
-        drivers = []
-        if ad_delta is not None:
-            drivers.append(f"higher advertising spend ({currency_symbol}{ad_delta:+.2f})")
-        if storage_delta is not None:
-            drivers.append(f"increased storage fees ({currency_symbol}{storage_delta:+.2f})")
-
-        driver_text = " and ".join(drivers) if drivers else "cost increases"
-
-        lines.append(
-            f"- {comparison}, CM2 profit declined by "
-            f"{mom['cm2_profit']['delta_pct']:+.2f}% "
-            f"({currency_symbol}{mom['cm2_profit']['delta']:+.2f}), "
-            f"driven by {driver_text}."
-        )
-
-    # Reimbursements
-    if oi["lost_total"]["present"]:
-        lines.append(
-            f"- {comparison}, Amazon reimbursed "
-            f"{currency_symbol}{inventory_lost:.2f} "
-            f"for lost or damaged inventory, representing recovery rather than core performance."
-        )
-
-    # Business quality risk
-    if oi["business_quality_risk"]["present"]:
-        lines.append(
-            f"- {comparison}, business quality risk increased as ASP compression "
-            f"directly drove a sharp decline in CM1 profit per unit, "
-            f"compounded by rising costs."
-        )
 
     # =========================
     # PRODUCT INSIGHTS
     # =========================
     lines.append("\n## PRODUCT INSIGHTS")
+
+    product_insights = analysis_insights.get("product_insights", {})
 
     for sku in focus_skus:
         s = sku_mom.get(sku)
@@ -1437,24 +1557,29 @@ def render_month_end_summary(
 
         name = s.get("product_name", sku)
 
-        lines.append(
-            f"- **{name}:** "
-            f"ASP changed by {currency_symbol}{s['asp']['delta']:+.2f} "
-            f"({s['asp']['delta_pct']:+.2f}%), "
-            f"units changed by {s['total_quantity']['delta']:+.0f} "
-            f"({s['total_quantity']['delta_pct']:+.2f}%), "
-            f"net sales changed by {currency_symbol}{s['net_sales']['delta']:+.2f} "
-            f"({s['net_sales']['delta_pct']:+.2f}%), "
-            f"CM1 profit changed by {currency_symbol}{s['profit']['delta']:+.2f} "
-            f"({s['profit']['delta_pct']:+.2f}%)."
-        )
+        lines.append(f"\n{name}")
 
-    # =========================
-    # RECOMMENDATIONS
-    # =========================
-    if strategy_actions:
-        lines.append("\n## RECOMMENDATIONS")
-        lines.append(strategy_actions.strip())
+        lines.append(f"• ASP: {currency_symbol}{s['asp']['delta']:+.2f} ({s['asp']['delta_pct']:+.2f}%)")
+        lines.append(f"• Units: {s['total_quantity']['delta']:+.0f} ({s['total_quantity']['delta_pct']:+.2f}%)")
+        lines.append(f"• Net sales: {currency_symbol}{s['net_sales']['delta']:+.2f} ({s['net_sales']['delta_pct']:+.2f}%)")
+        lines.append(f"• CM1 profit: {currency_symbol}{s['profit']['delta']:+.2f} ({s['profit']['delta_pct']:+.2f}%)")
+
+        # -------------------------
+        # Diagnosis (FROM PROMPT 1)
+        # -------------------------
+        sku_diag = product_insights.get(sku, {})
+        diagnosis_codes = sku_diag.get("diagnosis_codes", ["mixed_signal"])
+
+        for code in diagnosis_codes:
+            for line in DIAGNOSIS_TEXT.get(code, []):
+                lines.append(line)
+
+        # -------------------------
+        # Action (FROM PROMPT 2)
+        # -------------------------
+        if strategy_actions and sku in strategy_actions:
+            lines.append(f"Action: {strategy_actions[sku]} for {name}")
+
 
     # =========================
     # INVENTORY
@@ -1464,26 +1589,29 @@ def render_month_end_summary(
 
         if "aged_inventory_181_plus" in inventory_alerts:
             lines.append(
-                f"- Inventory - Aged inventory 181+ days: "
-                f"{inventory_alerts['aged_inventory_181_plus']['total_units']} units present, "
-                f"representing elevated working capital risk."
+                f"• Aged inventory (181+ days): "
+                f"{inventory_alerts['aged_inventory_181_plus']['total_units']} units"
             )
 
         if "unfulfillable_inventory" in inventory_alerts:
             lines.append(
-                f"- Inventory – Unfulfillable inventory: "
-                f"{inventory_alerts['unfulfillable_inventory']['total_units']} units at risk of write-off."
+                f"• Unfulfillable inventory: "
+                f"{inventory_alerts['unfulfillable_inventory']['total_units']} units"
             )
 
         if "storage_cost_risk" in inventory_alerts:
             lines.append(
-                f"- Inventory - Storage cost risk: "
-                f"Estimated next month storage cost of "
-                f"{currency_symbol}{inventory_alerts['storage_cost_risk']['estimated_next_month_cost']:.2f}, "
-                f"representing a forward-looking cost risk."
+                f"• Storage cost risk: Estimated "
+                f"{currency_symbol}{inventory_alerts['storage_cost_risk']['estimated_next_month_cost']:.2f} "
+                f"next month"
             )
+        lines.append(
+            "• For detailed inventory insights, please refer to the Inventory Reconciliation tab."
+        )
+    
 
     return "\n".join(lines)
+
 
 
 
@@ -1686,12 +1814,15 @@ def get_or_create_summary(
     strategy = None
     if allow_reco:
         # backend-only objective for now
-        strategy = run_prompt_2_strategy(analysis_insights, DEFAULT_USER_OBJECTIVE, top_5_skus)
+        strategy_raw = run_prompt_2_strategy(analysis_insights, DEFAULT_USER_OBJECTIVE, top_5_skus)
+        strategy_json = json.loads(strategy_raw)
+        sku_actions = strategy_json.get("sku_actions")
 
     final_text = render_month_end_summary(period=period, timeline=timeline,year=year, analysis_insights=analysis_insights, mom=mom, sku_mom=sku_mom,focus_skus=top_5_skus, inventory_alerts=inventory_alerts,
         inventory_lost=inventory_lost,
         currency_symbol="£" if country == "uk" else "$",
-        strategy_actions=strategy if allow_reco else None
+        strategy_actions=sku_actions if allow_reco else None
+
     )
 
 
