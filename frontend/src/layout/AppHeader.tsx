@@ -83,24 +83,20 @@ const AppHeader: React.FC = () => {
       <header className="sticky top-0 flex w-full bg-white border-gray-200  dark:border-gray-800 dark:bg-gray-900 z-[1100]">
         <div className="flex flex-col items-center justify-between grow lg:flex-row lg:px-6">
           <div className="flex items-center justify-between w-full gap-2 px-3 py-2.5 border-b border-gray-200 dark:border-gray-800 sm:gap-4 lg:justify-normal lg:border-b-0 lg:px-0 lg:py-1.5 xl:py-2">
-            {!isExpanded && (
-              <button
-                onClick={handleToggle}
-                className="flex items-center justify-center w-10 h-10 rounded-lg
-               bg-blue-700 text-white hover:bg-blue-800 transition"
-                aria-label="Open sidebar"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M9.5 5L15.5 12L9.5 19"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            )}
+          {!isExpanded && (
+  <button
+    onClick={handleToggle}
+    className="flex items-center justify-center w-10 h-10 rounded-lg lg:hidden"
+    aria-label="Open sidebar"
+  >
+    <Image
+            src="/images/icons/hamburger.png"
+            alt="Open sidebar"
+            width={20}
+            height={20}
+          />
+  </button>
+)}
             <Link href={realTimeHref} className="lg:hidden">
               <Image width={154} height={32} className="dark:hidden" src="/images/logo/Logo_Phormula.png" alt="Logo" />
               <Image width={154} height={32} className="hidden dark:block" src="./images/logo/logo-dark.svg" alt="Logo" />

@@ -26,6 +26,7 @@ export interface DisplayInventoryForecastProps {
   month: string;
   year: string;
   data: Array<Record<string, any>>;
+  isDemoMode?: Boolean
 }
 
 /* -------------------- Constants -------------------- */
@@ -82,9 +83,12 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   month,
   year,
   data,
+  isDemoMode = false,
 }) => {
   const [monthRange, setMonthRange] = useState<string | null>(null);
   const chartRef = useRef<any>(null);
+
+  const demoMode = Boolean(isDemoMode);
 
   const forecastData = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
@@ -598,12 +602,12 @@ const chartOptions = useMemo(
         </div>
         <div className="flex justify-end gap-3">
         <button
-          onClick={handleDownload}
-        className="bg-white border border-[#8B8585] px-1 rounded-sm"
-                                    style={{
-                         boxShadow: "0px 4px 4px 0px #00000040",  
-                       }}
-                                 >
+  onClick={handleDownload}
+  disabled={demoMode}
+  className={`bg-white border border-[#8B8585] px-1 rounded-sm ${
+    demoMode ? 'opacity-50 cursor-not-allowed' : ''
+  }`}
+>
                                  <IoDownload size={27} />
         </button>
       </div>

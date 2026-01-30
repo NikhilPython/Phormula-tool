@@ -61,6 +61,10 @@ const AppSidebar: React.FC = () => {
   const routeParams = useParams();
   const { data: user } = useGetUserDataQuery();
 
+  const isPreviewMode =
+  routeParams?.month === "NA" &&
+  routeParams?.year === "NA";
+
   //   useEffect(() => {
   //   if (typeof window === "undefined") return;
 
@@ -131,31 +135,39 @@ const AppSidebar: React.FC = () => {
   const countryFromRoute = routeParams?.countryName as string | undefined;
 
   const regionOptions: RegionOption[] = React.useMemo(() => {
-    const opts = buildPlatformOptions(connectedPlatforms);
+  const opts = buildPlatformOptions(connectedPlatforms);
 
-    const countryFromRoute = routeParams?.countryName as string | undefined;
-    if (countryFromRoute) {
-      const forcedValue = `amazon-${countryFromRoute}`;
+  const countryFromRoute = routeParams?.countryName as string | undefined;
 
-      const exists = opts.some(o => o.value === forcedValue);
-      if (!exists) {
-        opts.unshift({
-          value: forcedValue,
-          label: `Amazon ${countryFromRoute.toUpperCase()}`,
-        });
-      }
+  // ✅ ONLY force Amazon country if NOT global
+  if (countryFromRoute && countryFromRoute !== "global") {
+    const forcedValue = `amazon-${countryFromRoute}`;
+
+    const exists = opts.some(o => o.value === forcedValue);
+    if (!exists) {
+      opts.unshift({
+        value: forcedValue,
+        label: `Amazon ${countryFromRoute.toUpperCase()}`,
+      });
     }
+  }
 
-    return opts;
-  }, [connectedPlatforms, routeParams?.countryName]);
+  return opts;
+}, [connectedPlatforms, routeParams?.countryName]);
+
 
 
   // ===== Selected platform =====
 
-  const [selectedPlatform, setSelectedPlatform] = useState<string>(
-    countryFromRoute ? `amazon-${countryFromRoute}` : "global"
-  );
+ const [selectedPlatform, setSelectedPlatform] = useState<string>(() => {
+  if (isPreviewMode) return "global";
 
+  if (!countryFromRoute || countryFromRoute === "global") {
+    return "global";
+  }
+
+  return `amazon-${countryFromRoute}`;
+});
   const decodeJwtUserId = (jwt: string): string | null => {
     try {
       const payloadPart = jwt.split(".")[1];
@@ -270,23 +282,31 @@ const AppSidebar: React.FC = () => {
 
 
   useEffect(() => {
-    // 1️⃣ URL has highest priority
-    const country = routeParams?.countryName as string | undefined;
-    if (country) {
-      const platform = `amazon-${country}` as PlatformId;
-      setSelectedPlatform(platform);
-      setPlatformCtx(platform);
-      localStorage.setItem("selectedPlatform", platform);
-      return;
-    }
+  // 🔥 PREVIEW MODE: always GLOBAL
+  if (isPreviewMode) {
+    setSelectedPlatform("global");
+    setPlatformCtx("global" as PlatformId);
+    localStorage.setItem("selectedPlatform", "global");
+    return;
+  }
 
-    // 2️⃣ fallback to localStorage
-    const saved = localStorage.getItem("selectedPlatform");
-    if (saved) {
-      setSelectedPlatform(saved);
-      setPlatformCtx(saved as PlatformId);
-    }
-  }, [routeParams?.countryName]);
+  // 🔹 existing logic untouched
+  const country = routeParams?.countryName as string | undefined;
+if (country) {
+  if (country === "global") {
+    setSelectedPlatform("global");
+    setPlatformCtx("global" as PlatformId);
+    localStorage.setItem("selectedPlatform", "global");
+  } else {
+    const platform = `amazon-${country}` as PlatformId;
+    setSelectedPlatform(platform);
+    setPlatformCtx(platform);
+    localStorage.setItem("selectedPlatform", platform);
+  }
+  return;
+}
+}, [routeParams?.countryName, isPreviewMode]);
+
 
 
 
@@ -1001,60 +1021,49 @@ const AppSidebar: React.FC = () => {
     >
       {/* Logo + toggle */}
       <div
-        className={`py-4 sm:py-5 lg:py-6 flex gap-2 items-center border-0 ${!isExpanded && !isHovered ? "lg:justify-between" : "justify-between"
-          }`}
-      >
-        <Link href={`/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`} className="flex items-center gap-2">
-          {showText ? (
-            <Image
-              className="dark:hidden hidden lg:block"
-              src="/images/logo/Logo_Phormula.png"
-              alt="Logo"
-              width={132}
-              height={36}
-            />
-          ) : (
-            <Image
-              src="/images/logo/Logo_small.png"
-              alt="Logo"
-              width={42}
-              height={42}
-              className="w-[36px] h-[36px] sm:w-[42px] sm:h-[42px]"
-            />
-          )}
-        </Link>
-        {isExpanded && (
-          <button
-            type="button"
-            onClick={handleToggle}
-            className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200 bg-blue-700 text-white"
-            aria-label={showText ? "Collapse sidebar" : "Expand sidebar"}
-          >
-            {showText ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M14.5 5L8.5 12L14.5 19"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M9.5 5L15.5 12L9.5 19"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
-          </button>
-        )}
+  className={`py-4 sm:py-5 lg:py-6 flex items-center justify-between`}
+>
+  {/* Logo */}
+  <Link
+    href={`/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`}
+    className="flex items-center gap-2"
+  >
+    {showText ? (
+      <Image
+        className="dark:hidden hidden lg:block"
+        src="/images/logo/Logo_Phormula.png"
+        alt="Logo"
+        width={132}
+        height={36}
+      />
+    ) : null}
+  </Link>
 
-      </div>
+  {/* 🔥 TOGGLE BUTTON (always visible) */}
+  <button
+    type="button"
+    onClick={handleToggle}
+    className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200"
+    aria-label="Toggle sidebar"
+  >
+    {showText ? (
+      <Image
+        src="/images/icons/sidebarin.png"
+        alt="Close sidebar"
+        width={20}
+        height={20}
+      />
+    ) : (
+      <Image
+        src="/images/icons/hamburger.png"
+        alt="Open sidebar"
+        width={20}
+        height={20}
+      />
+    )}
+  </button>
+</div>
+
 
       {/* Platform Select */}
       {showText && regionOptions.length > 0 && (
@@ -1102,7 +1111,6 @@ const AppSidebar: React.FC = () => {
                       />
                     )}
                   </button>
-
                   {openSections[section.key] && showText && (
                     <div className="ml-4 sm:ml-5 lg:ml-6 mt-1 space-y-1 overflow-hidden">
                       {section.subItems.map((subItem, idx) => {

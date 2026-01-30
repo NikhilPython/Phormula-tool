@@ -235,6 +235,9 @@ const safeDeltaPctFromPct = (currentPct: number, previousPct: number) => {
 
 const fmtPct2 = (v: number) => `${(Number(v) || 0).toFixed(2)}%`;
 
+
+
+
 /* ===================== RANGE PICKER (moved above graph) ===================== */
 function RangePicker({
   selectedStartDay,
@@ -615,6 +618,13 @@ export default function DashboardPage() {
   const [shopifyStore, setShopifyStore] = useState<any | null>(null);
   const [amazonRegion, setAmazonRegion] = useState<RegionKey>("Global");
   const [graphRegion, setGraphRegion] = useState<RegionKey>("Global");
+  const [biStatus, setBiStatus] = useState<
+  "idle" | "loading" | "processing" | "ready" | "error"
+>("idle");
+
+const biUiLoading = biStatus === "loading" || biStatus === "processing";
+
+
   const chartRef = React.useRef<HTMLDivElement | null>(null);
   const prevLabel = useMemo(() => getPrevMonthShortLabel(), []);
 
@@ -637,6 +647,8 @@ export default function DashboardPage() {
   const [biPeriods, setBiPeriods] = useState<BiApiResponse["periods"] | null>(null);
   const [liveBiPayload, setLiveBiPayload] = useState<BiApiResponse | null>(null);
   const [biAlignedTotals, setBiAlignedTotals] = useState<BiAlignedTotals | null>(null);
+
+  const retryRef = useRef(0);
 
   /* ===================== FX RATES ===================== */
   const [gbpToUsd, setGbpToUsd] = useState(GBP_TO_USD_ENV);
@@ -1518,6 +1530,7 @@ export default function DashboardPage() {
   const { monthName: currMonthName, year: currYear } = getISTYearMonth();
 
   const lastBiKeyRef = useRef<string>("");
+  const aiRequestedRef = useRef(false);
 
 
 
@@ -1533,30 +1546,26 @@ export default function DashboardPage() {
       const rangeActive = startDay != null && endDay != null;
 
       const key = JSON.stringify({
-        country: normalized,
-        ranged: "MTD",
-        month: currMonthName.toLowerCase(),
-        year: currYear,
-        startDay: rangeActive ? startDay : null,
-        endDay: rangeActive ? endDay : null,
-      });
-
-      if (lastBiKeyRef.current === key) return;
-      lastBiKeyRef.current = key;
-
-      setBiLoading(true);
+  country: normalized,
+  ranged: "MTD",
+  month: currMonthName.toLowerCase(),
+  year: currYear,
+  startDay: rangeActive ? startDay : null,
+  endDay: rangeActive ? endDay : null,
+  ai: aiRequestedRef.current, // ✅ IMPORTANT
+});
       setBiError(null);
       try {
         const token =
           typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
         const params = new URLSearchParams({
-          countryName: normalized,
-          ranged: "MTD",
-          month: currMonthName.toLowerCase(),
-          year: String(currYear),
-          generate_ai_insights: "false",
-        });
+  countryName: normalized,
+  ranged: "MTD",
+  month: currMonthName.toLowerCase(),
+  year: String(currYear),
+  generate_ai_insights: aiRequestedRef.current ? "true" : "false",
+});
 
         if (rangeActive) {
           params.set("start_day", String(startDay));
@@ -1564,16 +1573,36 @@ export default function DashboardPage() {
         }
 
         const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
+  headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+});
 
-        const json: BiApiResponse = await res.json();
-        if (!res.ok) throw new Error((json as any)?.error || "Failed to load BI series");
+// ✅ HANDLE 202 FIRST
+if (res.status === 202) {
+  setBiStatus("processing");
+    // IMPORTANT
+  return;
+}
 
-        setLiveBiPayload(json);
-        setBiPeriods(json?.periods || null);
-        setBiDailySeries(json?.daily_series || null);
+if (!res.ok) {
+  throw new Error(`BI failed: ${res.status}`);
+}
 
+const json: BiApiResponse = await res.json();
+
+lastBiKeyRef.current = key;
+aiRequestedRef.current = true;
+
+setLiveBiPayload(json);
+setBiPeriods(json?.periods || null);
+setBiDailySeries(json?.daily_series || null);
+setBiAlignedTotals(json?.aligned_totals || null);
+
+setBiStatus("idle");      // 🔥 reset first
+setTimeout(() => {
+  setBiStatus("ready");   // 🔥 force render
+}, 0);
+
+        // setBiAlignedTotals(json?.aligned_totals || null);
         const alignedFromNested = (json as any)?.aligned_totals;
 
         const alignedFromTopLevel: BiAlignedTotals = {
@@ -1599,18 +1628,39 @@ export default function DashboardPage() {
         setBiAlignedTotals(null);
         setBiError(e?.message || "Failed to load BI series");
       } finally {
-        setBiLoading(false);
       }
     },
     [showLiveBI, biCountryName, currMonthName, currYear]
 
   );
 
+  useEffect(() => {
+  if (biStatus !== "processing") {
+    retryRef.current = 0;
+    return;
+  }
+
+  if (retryRef.current >= 10) {
+    setBiStatus("error");
+    return;
+  }
+
+  retryRef.current += 1;
+
+  const timer = setTimeout(() => {
+    fetchBiSeries(selectedStartDay, selectedEndDay);
+  }, 3000);
+
+  return () => clearTimeout(timer);
+}, [biStatus, fetchBiSeries, selectedStartDay, selectedEndDay]);
+
+
 
   useEffect(() => {
-    if (!showLiveBI) return;
-    fetchBiSeries(selectedStartDay, selectedEndDay);
-  }, [showLiveBI, fetchBiSeries, selectedStartDay, selectedEndDay]);
+  if (!showLiveBI) return;
+  if (biStatus === "processing") return; // 🔥 ADD THIS
+  fetchBiSeries(selectedStartDay, selectedEndDay);
+}, [showLiveBI, biStatus, fetchBiSeries, selectedStartDay, selectedEndDay]);
 
   /* ===================== REFRESH ALL ===================== */
   const refreshAll = useCallback(async () => {
@@ -1716,6 +1766,7 @@ export default function DashboardPage() {
       profitPct: toNumberSafe(prevTotals?.profit_percentage ?? 0),
     };
   }, [prevTotals]);
+
 
   // ✅ AMAZON Ads (display currency)
   const amazonCurrAdsDisp = useMemo(() => {
@@ -3428,21 +3479,65 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {showLiveBI && isCountryMode && (
-                <div className="w-full rounded-2xl border bg-white p-3 lg:p-3 2xl:p-5 shadow-sm overflow-x-hidden">
-                  <div className="w-full max-w-full min-w-0">
-                    <LiveBiLineGraph
-                      dailySeries={biDailySeriesHome}
-                      periods={biPeriods}
-                      loading={biLoading}
-                      error={biError}
-                      selectedStartDay={selectedStartDay}
-                      selectedEndDay={selectedEndDay}
-                      currencySymbol={currencySymbol}
-                    />
+              {/* {showLiveBI && isCountryMode && (
+                  <div className="w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
+                    <div className="w-full max-w-full min-w-0">
+                      <LiveBiLineGraph
+                        dailySeries={biDailySeries}
+                        periods={biPeriods}
+                        loading={biLoading}
+                        error={biError}
+                        selectedStartDay={selectedStartDay}
+                        selectedEndDay={selectedEndDay}
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
+                )} */}
+
+
+              {/* Live BI graph */}
+              {/* Live BI graph */}
+{showLiveBI && isCountryMode && (
+  <div className="w-full rounded-2xl border bg-white p-3 lg:p-3 2xl:p-5 shadow-sm overflow-x-hidden">
+    <div className="w-full max-w-full min-w-0">
+
+      {/* ✅ CASE 1: 202 → processing */}
+      {biStatus === "processing" && (
+        <div className="flex justify-center items-center py-10">
+          <Loader label="Preparing your Amazon data, this may take a moment…" />
+        </div>
+      )}
+
+      {biStatus === "error" && (
+    <div className="text-center py-10 text-sm text-red-500">
+      Taking longer than expected. Please refresh once.
+    </div>
+  )}
+
+      {/* ✅ CASE 2: 200 but empty */}
+      {biStatus === "ready" && !biDailySeriesHome && (
+        <div className="text-center py-10 text-sm text-gray-500">
+          No data available for the selected period
+        </div>
+      )}
+
+      {/* ✅ CASE 3: 200 + data */}
+      {biStatus === "ready" && biDailySeriesHome && (
+        <LiveBiLineGraph
+          dailySeries={biDailySeriesHome}
+          periods={biPeriods}
+          loading={biUiLoading}
+          error={biError}
+          selectedStartDay={selectedStartDay}
+          selectedEndDay={selectedEndDay}
+          currencySymbol={currencySymbol}
+        />
+      )}
+
+    </div>
+  </div>
+)}
+
 
             </div>
           )}
@@ -3451,7 +3546,7 @@ export default function DashboardPage() {
           {!isCountryMode && hasShopifyCard && (
             <div className="flex lg:flex-1">
               <div className="w-full rounded-2xl border bg-white p-5 shadow-sm">
-                <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between ">
                   <div className="flex flex-col">
                     <div className="flex items-baseline gap-2">
                       <PageBreadcrumb
@@ -3500,7 +3595,8 @@ export default function DashboardPage() {
                       loading={shopifyLoading}
                       formatter={formatDisplayAmount}
                       bottomLabel={prevLabel}
-                      className="border-[#B75A5A] bg-[#B75A5A4D]"
+                      className="border-[#B75A5A] bg-[#B75A5A4D] "
+
                     />
                   </div>
                 ) : (
@@ -3567,7 +3663,7 @@ export default function DashboardPage() {
             <LiveBiLineGraph
               dailySeries={biDailySeriesHome}
               periods={biPeriods}
-              loading={biLoading}
+              loading={biUiLoading}
               error={biError}
               selectedStartDay={selectedStartDay}
               selectedEndDay={selectedEndDay}
@@ -3579,105 +3675,16 @@ export default function DashboardPage() {
 
 
       <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
-        {showLiveBI && (
-          <div className="w-full max-w-full min-w-0">
-            <LiveBusinessClient
-              countryName={countryName}
-              ranged="MTD"
-              month={currMonthName.toLowerCase()}
-              year={String(currYear)}
-              initialData={liveBiPayload}
-            />
-
-          </div>
-        )}
+       {showLiveBI && liveBiPayload && (
+  <LiveBusinessClient
+    countryName={countryName}
+    ranged="MTD"
+    month={currMonthName.toLowerCase()}
+    year={String(currYear)}
+    initialData={liveBiPayload}
+  />
+)}
       </div>
-
-      {/* Monthly Ads Spent (from MTD Transactions -> skuwise_items) */}
-      <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <PageBreadcrumb pageTitle="Monthly Ads Spent" variant="page" align="left" textSize="2xl" />
-
-          <button
-            type="button"
-            onClick={fetchAmazon}   // ✅ refreshes MTD data
-            disabled={loading}
-            className={`rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm ${loading ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400" : "border-gray-300 bg-white hover:bg-gray-50"
-              }`}
-          >
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-        </div>
-
-        {error ? (
-          <div className="text-sm text-red-600">{error}</div>
-        ) : loading && monthlySkuwiseRows.length === 0 ? (
-          <div className="text-sm text-gray-500">Loading…</div>
-        ) : (
-          <GroupedCollapsibleTable<MonthlySkuwiseRow>
-            rows={monthlySkuwiseRows}
-            getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.sku || String(idx))}
-            leftCols={SKUWISE_LEFT_COLS}
-            groups={SKUWISE_GROUPS}
-            singleCols={SKUWISE_SINGLE_COLS}
-             showSignRowInBody
-            getSignForCol={getAdsSignForCol}
-            layout={[
-              { type: "single", key: "quantity" },
-              { type: "single", key: "asp" },
-              { type: "single", key: "net_sales" },
-              { type: "single", key: "cogs" },
-              { type: "group", id: "marketplace_fees" },
-              { type: "single", key: "profit" },
-              { type: "single", key: "ads_spend" },
-              { type: "single", key: "cm2_profit" },
-            ]}
-
-            initialCollapsed={{ marketplace_fees: false }}
-            getRowClassName={(row, index) => {
-              if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
-              return index % 2 === 0 ? "bg-white" : "bg-gray-50";
-            }}
-            getValue={(row, colKey) => {
-              if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
-              if (colKey === "sku") return row.isTotal ? "Grand Total" : row.sku;
-
-              if (colKey === "quantity") return row.quantity;
-
-              if (colKey === "asp") return formatAdsNumber(row.asp);
-              if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
-
-              if (colKey === "ads_spend")   // ✅ NEW
-                return formatAdsNumber(Math.abs(row.ads_spend));
-
-              if (colKey === "cogs")
-                return formatAdsNumber(Math.abs(row.cogs));
-
-              if (colKey === "fba_fees")
-                return formatAdsNumber(Math.abs(row.fba_fees));
-
-              if (colKey === "selling_fees")
-                return formatAdsNumber(Math.abs(row.selling_fees));
-
-              if (colKey === "marketplace_total")
-                return formatAdsNumber(
-                  Math.abs(row.fba_fees) + Math.abs(row.selling_fees)
-                );
-
-              if (colKey === "cm2_profit")   // ✅ NEW
-                return formatAdsNumber(row.cm2_profit);
-
-              if (colKey === "profit")
-                return formatAdsNumber(row.profit);
-
-              return "";
-            }}
-
-          />
-
-        )}
-      </div>
-
 
       {/* Lower P&L Graph and Inventory */}
       {hasAnyGraphData && (
@@ -3713,8 +3720,13 @@ export default function DashboardPage() {
               <div className="rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="text-sm text-charcoal-500">
-                    <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
-                      <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
+                    <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold ">
+                      <PageBreadcrumb
+                        pageTitle="MTD P&L"
+                        align="left"
+                        textSize="2xl"
+                        variant="page"
+                      />
                     </div>
                   </div>
 

@@ -20,11 +20,6 @@ import {
   PointElement,
   Title as ChartTitle,
 } from "chart.js";
-import { FiDownload } from "react-icons/fi";
-import DataTable, { ColumnDef } from "@/components/ui/table/DataTable";
-import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
-
-import { saveAs } from "file-saver";
 import CashFlowSankey from "@/components/cashflow/CashFlowSankey";
 
 ChartJS.register(
@@ -48,6 +43,8 @@ const Bar = dynamic(() => import("react-chartjs-2").then((m) => m.Bar), {
 type PeriodType = "monthly" | "quarterly" | "yearly";
 
 type SummaryShape = {
+  quantity_total: number;
+  gross_sales: number;
   net_sales: number;
   amazon_fee: number;
   advertising_total: number;
@@ -162,7 +159,19 @@ const CashFlowPage: React.FC = () => {
   const countryName = params?.countryName || "";
   const paramMonth = params?.month ? decodeURIComponent(params.month) : "";
   const paramYear = params?.year || "";
-  const currencySymbol = getCurrencySymbol(countryName);
+
+  const isPreviewMode =
+  !paramMonth ||
+  !paramYear ||
+  paramMonth.toLowerCase() === "na" ||
+  paramYear.toLowerCase() === "na";
+
+  const effectiveCountryForCurrency = isPreviewMode
+  ? "global"
+  : countryName;
+
+
+  const currencySymbol = getCurrencySymbol(effectiveCountryForCurrency);
 
   const currentYear = new Date().getFullYear();
   const years = useMemo(
@@ -170,7 +179,10 @@ const CashFlowPage: React.FC = () => {
     [currentYear]
   );
 
-  // 🔹 NEW: compute whether the route params equal the *current* month & year
+  
+
+
+ // 🔹 NEW: compute whether the route params equal the *current* month & year
   const today = new Date();
   const currentMonthName = monthsList[today.getMonth()]; // e.g. "December"
   const currentYearStr = String(today.getFullYear());
@@ -231,6 +243,24 @@ const CashFlowPage: React.FC = () => {
   };
 
 
+const DUMMY_CASHFLOW_SUMMARY: SummaryShape = {
+  quantity_total: 1050,
+  gross_sales: 160000,
+  net_sales: 140000,
+  amazon_fee: 32000,
+  advertising_total: 18500,
+  taxncredit: 4500,
+  otherwplatform: 2800,
+  rembursement_fee: 3200,
+  cashflow: 82500,
+};
+
+
+const effectiveData = isPreviewMode
+  ? { summary: DUMMY_CASHFLOW_SUMMARY }
+  : data;
+
+
 
   const [selectedGraphs, setSelectedGraphs] =
     useState<Record<string, boolean>>(defaultMetricState);
@@ -240,14 +270,12 @@ const CashFlowPage: React.FC = () => {
     typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
   const getSafeValue = (key: keyof SummaryShape) => {
-    return (data?.summary?.[key] ?? 0) as number;
+    return (effectiveData?.summary?.[key] ?? 0) as number;
   };
 
-  const allValuesZero =
-    Object.keys(data?.summary || {}).every((k) => !(data?.summary as any)[k]) ||
-    !data?.summary ||
-    Object.values(data.summary!).every((v) => !v);
-
+const allValuesZero =
+  !effectiveData?.summary ||
+  Object.values(effectiveData.summary).every((v) => !v);
   // API helpers (using fetch)
   const fetchSpecificPeriodData = async (
     requestMonth: string | null,
@@ -338,19 +366,7 @@ const CashFlowPage: React.FC = () => {
     return { monthlyData, quarterSummary };
   };
 
-  const fetchAllQuarterlyData = async () => {
-    const quarterlyData: Record<string, QuarterlyTotals> = {};
-    for (const q of Object.keys(quarterMapping)) {
-      try {
-        const { quarterSummary } = await fetchQuarterlyMonthlyData(q, year);
-        quarterlyData[q] = quarterSummary;
-      } catch {
-        // continue
-      }
-    }
-    setAllQuarterlyData(quarterlyData);
-    return quarterlyData;
-  };
+  
 
   const fetchAllYearlyData = async () => {
     const yearlyData: Record<string, Partial<SummaryShape>> = {};
@@ -373,6 +389,7 @@ const CashFlowPage: React.FC = () => {
   };
 
   const fetchCashFlowData = async () => {
+    if (isPreviewMode) return;
     setError("");
     setLoading(true);
     setData(null);
@@ -436,22 +453,23 @@ const CashFlowPage: React.FC = () => {
   };
 
   // 🔄 Auto-fetch when filters become valid
-  useEffect(() => {
-    if (periodType === "monthly") {
-      if (month && year) {
-        void fetchCashFlowData();
-      }
-    } else if (periodType === "quarterly") {
-      if (selectedQuarter && year) {
-        void fetchCashFlowData();
-      }
-    } else if (periodType === "yearly") {
-      if (year) {
-        void fetchCashFlowData();
-      }
+ useEffect(() => {
+  if (isPreviewMode) return; // 🔥 STOP ALL API CALLS
+
+  if (periodType === "monthly") {
+    if (month && year) {
+      void fetchCashFlowData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodType, month, year, selectedQuarter]);
+  } else if (periodType === "quarterly") {
+    if (selectedQuarter && year) {
+      void fetchCashFlowData();
+    }
+  } else if (periodType === "yearly") {
+    if (year) {
+      void fetchCashFlowData();
+    }
+  }
+}, [periodType, month, year, selectedQuarter, isPreviewMode]);
 
   // user data (company/brand) for export headers
   const [userData, setUserData] = useState<{
@@ -484,6 +502,9 @@ const CashFlowPage: React.FC = () => {
     void fetchUserData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  
+
 
   // chart helpers
   const viewportWidth =
@@ -573,6 +594,8 @@ const CashFlowPage: React.FC = () => {
     };
   };
 
+
+
   const xAxisTitle =
     periodType === "monthly"
       ? `${month} ${year}`
@@ -661,102 +684,8 @@ const CashFlowPage: React.FC = () => {
   } as const;
 
   // exports
-  const exportChartToExcel = (chartType: "line" | "bar" = "line") => {
-    const chartData =
-      chartType === "line" ? getLineChartData() : getFilteredBarChartData();
-    const { labels, datasets } = chartData as any;
+  
 
-    const company = userData?.company_name || "N/A";
-    const brand = userData?.brand_name || "N/A";
-
-    const extraHeader = [
-      [`Brand: ${brand}`],
-      [`Company: ${company}`],
-      [`Cash Flow - ${capitalize(periodType)}`],
-      [`Time Frame: ${xAxisTitle}`],
-      [`Currency: ${currencySymbol}`],
-      [`Country: ${capitalize(countryName || "")}`],
-      [""],
-    ];
-
-    const worksheetData: any[] = [["Metric", ...(labels || [])]];
-
-    (datasets || []).forEach((ds: any) => {
-      const row = [
-        ds.label,
-        ...(ds.data || []).map((v: number) => Number(Number(v).toFixed(2))),
-      ];
-      worksheetData.push(row);
-    });
-
-    const totals = (labels || []).map((_: any, i: number) =>
-      (datasets || []).reduce(
-        (sum: number, ds: any) => sum + (ds.data?.[i] || 0),
-        0
-      )
-    );
-    worksheetData.push([
-      "Total",
-      ...totals.map((v: number) => Number(Number(v).toFixed(2))),
-    ]);
-
-    const finalSheet = [...extraHeader, ...worksheetData];
-
-    const ws = XLSX.utils.aoa_to_sheet(finalSheet);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
-      wb,
-      ws,
-      chartType === "line" ? "Line Chart Metrics" : "Bar Chart Metrics"
-    );
-
-    const fileName = `${chartType === "line" ? "LineChart" : "BarChart"
-      }_${periodType}_${year}.xlsx`;
-    XLSX.writeFile(wb, fileName);
-  };
-
-  const downloadTableDataAsExcel = () => {
-    if (!data?.summary) return;
-
-    const extraRows = [
-      [`Brand: ${userData?.brand_name || "N/A"}`],
-      [`Company: ${userData?.company_name || "N/A"}`],
-      [`Period Type: ${capitalize(periodType)}`],
-      [`Time Frame: ${xAxisTitle}`],
-      [`Currency: ${currencySymbol}`],
-      [`Country: ${capitalize(countryName || "")}`],
-      [""],
-    ];
-
-    const tableHeader = [
-      ["S.No.", "Category", "", `Amount (${currencySymbol})`],
-    ];
-
-    const signs = ["(+)", "(-)", "(-)", "(-)", "(-)", "(-)", "(+)"];
-
-    const tableData = columnsToDisplay2.map((key, index) => {
-      const label = labelMap[key];
-      const sign = signs[index] || "";
-      const isLastRow = index === columnsToDisplay2.length - 1;
-      return [
-        isLastRow ? "" : index + 1,
-        label,
-        isLastRow ? "" : sign,
-        Number(
-          Math.abs(getSafeValue(key as keyof SummaryShape)).toFixed(2)
-        ),
-      ];
-    });
-
-    const finalSheetData = [...extraRows, ...tableHeader, ...tableData];
-
-    const ws = XLSX.utils.aoa_to_sheet(finalSheetData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Table Summary");
-
-    const fileName = `SummaryTable_${periodType}_${year}.xlsx`;
-    XLSX.writeFile(wb, fileName);
-  };
 
 
 
@@ -817,51 +746,7 @@ const CashFlowPage: React.FC = () => {
     setError("");
   };
 
-  const summaryColumns: ColumnDef<SummaryRow>[] = useMemo(
-    () => [
-      { key: "sno", header: "S.No." },
-      { key: "category", header: "Category" },
-      { key: "sign", header: "" },
-      { key: "amount", header: `Amount (${currencySymbol})` },
-    ],
-    [currencySymbol]
-  );
-
-
-
-  const summaryRows: SummaryRow[] = useMemo(() => {
-    if (!data?.summary) return [];
-
-    return columnsToDisplay2
-      .filter((key) => key !== "rembursement_fee")
-      .map((key, index, arr) => {
-        const isLastRow = index === arr.length - 1;
-        const signText = index === 0 || index === 3 ? "(+)" : "(-)";
-        const value = Math.abs(getSafeValue(key as keyof SummaryShape));
-
-        const signNode = !isLastRow ? (
-          <span
-            className={`font-semibold ${index === 0 || index === 3 ? "text-green-600" : "text-red-600"
-              }`}
-          >
-            {signText}
-          </span>
-        ) : (
-          ""
-        );
-
-        return {
-          sno: index + 1,
-          category: labelMap[key],
-          sign: signNode,
-          amount: value.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }),
-        };
-      });
-  }, [data?.summary, currencySymbol]);
-
+  
   const toggleMetric = (name: string) => {
     if (allValuesZero) return;
     setSelectedGraphs((prev) => ({
@@ -894,7 +779,7 @@ const CashFlowPage: React.FC = () => {
                 />
 
                 <span className="text-[#5EA68E] font-bold text-lg 2xl:text-2xl">
-                  {countryName?.toUpperCase()}
+                  {effectiveCountryForCurrency.toUpperCase()}
                 </span>
               </div>
 
@@ -926,8 +811,8 @@ const CashFlowPage: React.FC = () => {
 
 
 
-      {/* Show alert until a valid period selection is made */}
-      {!canShowResults && (
+            {/* Show alert until a valid period selection is made */}
+     {!isPreviewMode && !canShowResults && (
         <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
           <div className="flex items-center">
             <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
@@ -940,14 +825,14 @@ const CashFlowPage: React.FC = () => {
 
 
       {/* Loading – now using Loader */}
-      {loading && (
+      {!isPreviewMode && loading && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <Loader fullscreen transparent />
         </div>
       )}
 
       {/* Error */}
-      {!!error && (
+     {!isPreviewMode && !!error && (
         <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
           <div className="flex items-center">
             <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
@@ -957,8 +842,8 @@ const CashFlowPage: React.FC = () => {
       )}
 
       {/* Results */}
-      {data && (
-        <div className="flex flex-col mt-4">
+{(effectiveData) && (
+        <div className="flex flex-col">
           {/* Header + Download in one responsive row */}
           <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {/* Left: title + period */}
@@ -970,15 +855,17 @@ const CashFlowPage: React.FC = () => {
           </div>
 
           {/* Summary Table using DataTable */}
-          {data?.summary && (
-            <CashFlowSankey
-              data={data.summary}
-              previous_summary={data.previous_summary}
-              previousLabel={previousLabel}
-              periodType={periodType}
-              currency={currencySymbol}
-            />
-          )}
+          {effectiveData?.summary && (
+  <CashFlowSankey
+    data={effectiveData.summary}
+    previous_summary={
+      isPreviewMode ? undefined : data?.previous_summary
+    }
+    previousLabel={isPreviewMode ? undefined : previousLabel}
+    periodType={periodType}
+    currency={currencySymbol}
+  />
+)}
 
 
 

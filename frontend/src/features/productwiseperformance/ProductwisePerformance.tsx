@@ -324,6 +324,37 @@ const handleViewBusinessInsights = async () => {
   const monthParam = (params?.month as string) || undefined;
   const yearParam = (params?.year as string) || undefined;
 
+  const DUMMY_PRODUCTWISE_DATA: APIResponse = {
+  success: true,
+  data: {
+    global: [
+      { month: "January", net_sales: 42000, quantity: 320, profit: 9800 },
+      { month: "February", net_sales: 46000, quantity: 350, profit: 11200 },
+      { month: "March", net_sales: 52000, quantity: 380, profit: 13500 },
+    ],
+    uk: [
+      { month: "January", net_sales: 18000, quantity: 140, profit: 4200 },
+      { month: "February", net_sales: 20000, quantity: 150, profit: 5100 },
+      { month: "March", net_sales: 23000, quantity: 170, profit: 6400 },
+    ],
+    us: [
+      { month: "January", net_sales: 24000, quantity: 180, profit: 5600 },
+      { month: "February", net_sales: 26000, quantity: 200, profit: 6100 },
+      { month: "March", net_sales: 29000, quantity: 210, profit: 7100 },
+    ],
+    global_gbp: [],
+    global_inr: [],
+    global_cad: [],
+    ca: [],
+    india: []
+  },
+};
+
+
+  const isPreviewMode =
+  monthParam?.toUpperCase() === "NA" &&
+  yearParam?.toUpperCase() === "NA";
+
   const productname = propProductName || urlProductName || "";
 
   const [data, setData] = useState<APIResponse | null>(null);
@@ -501,7 +532,7 @@ useEffect(() => {
 
   /* ---------- fetch data ---------- */
   const fetchProductData = async () => {
-    if (!canShowResults) return;
+    if (!canShowResults || isPreviewMode) return;
 
     setLoading(true);
     setError("");
@@ -630,12 +661,16 @@ useEffect(() => {
 
 
   /* ---------- chart data (Last 12 Months + FX) ---------- */
-  const chartDataList = useMemo(() => {
-    if (!data?.data) return [null, null, null];
+const chartDataList = useMemo(() => {
+  const sourceData = isPreviewMode
+    ? DUMMY_PRODUCTWISE_DATA.data
+    : data?.data;
+
+  if (!sourceData) return [null, null, null];
 
     // 1) Collect all months we have from the API
     const allMonthsSet = new Set<string>();
-    Object.values(data.data).forEach((countryArray: any) => {
+    Object.values(sourceData).forEach((countryArray: any) => {
       const monthly = Array.isArray(countryArray)
         ? (countryArray as MonthDatum[])
         : [];
@@ -649,7 +684,7 @@ useEffect(() => {
       month: string,
       metric: keyof MonthDatum
     ) => {
-      const countryArr = (data.data as any)[country];
+      const countryArr = (sourceData as any)[country];
       const monthly: MonthDatum[] = Array.isArray(countryArr)
         ? countryArr
         : [];
@@ -697,17 +732,22 @@ useEffect(() => {
     return metrics.map(({ metric, suffix }) => {
       const visibleCountries: CountryKey[] = [];
 
-      // Include globalKey if toggled on
-      if (selectedCountries[globalKey] ?? true) {
-        visibleCountries.push(globalKey);
-      }
+if (isPreviewMode) {
+  // ✅ PREVIEW MODE: hardcode correct keys
+  visibleCountries.push("global");
+  visibleCountries.push("uk");
+} else {
+  // 🔹 NORMAL MODE (existing logic)
+  if (selectedCountries[globalKey] ?? true) {
+    visibleCountries.push(globalKey);
+  }
 
-      // Include non-empty real countries (UK, US)
-      visibleCountries.push(
-        ...nonEmptyCountriesFromApi.filter(
-          (c) => selectedCountries[c] ?? true
-        )
-      );
+  visibleCountries.push(
+    ...nonEmptyCountriesFromApi.filter(
+      (c) => selectedCountries[c] ?? true
+    )
+  );
+}
 
       const datasets = visibleCountries.map((country) =>
         makeDataset(country, metric, suffix)
@@ -813,7 +853,10 @@ useEffect(() => {
               }
 
               // 💰 still using home-currency formatter you already have
-              return `${datasetLabel}: ${formatHomeAmount(value)}`;
+              if (isPreviewMode) {
+  return `${datasetLabel}: ${value.toLocaleString()}`;
+}
+return `${datasetLabel}: ${formatHomeAmount(value)}`;
             },
           },
         },
@@ -881,24 +924,47 @@ useEffect(() => {
     return "";
   };
 
+  useEffect(() => {
+  if (isPreviewMode) {
+    setData(DUMMY_PRODUCTWISE_DATA);
+  }
+}, [isPreviewMode]);
+
 
   /* ---------- summary cards ---------- */
   const cards = useMemo(() => {
-    if (!data?.data) {
-      return [] as { country: string; stats: any; isConnected: boolean }[];
-    }
+  const sourceData = isPreviewMode
+    ? DUMMY_PRODUCTWISE_DATA.data
+    : data?.data;
+
+  if (!sourceData) return [];
 
     const connectedSet = new Set(
       connectedCountries.map((c) => c.toLowerCase())
     );
 
-    return Object.entries(data.data)
+    return Object.entries(sourceData)
       // keep global + only connected real countries (but normalised)
-      .filter(([country]) => {
-        const norm = normalizeCountryKey(country); // 👈 normalize "uk_usd" → "uk"
-        if (norm === "global") return true;       // always keep global
-        return connectedSet.has(norm);            // keep uk/us/ca only if connected
-      })
+      .filter(([country, rawArray]) => {
+  const norm = normalizeCountryKey(country);
+  const rows = Array.isArray(rawArray) ? rawArray : [];
+
+  // 🔥 PREVIEW MODE: only GLOBAL + UK with data
+  if (isPreviewMode) {
+    return (
+      (norm === "global" || norm === "uk") &&
+      rows.some(
+        (m: MonthDatum) =>
+          m.net_sales !== 0 || m.quantity !== 0 || m.profit !== 0
+      )
+    );
+  }
+
+  // 🔹 NORMAL MODE (existing logic)
+  if (norm === "global") return true;
+  return connectedSet.has(norm);
+})
+
       .map(([country, rawArray]) => {
         const backendKey = country.toLowerCase();         // e.g. "uk_usd"
         const normKey = normalizeCountryKey(backendKey);  // e.g. "uk"
@@ -1045,6 +1111,7 @@ useEffect(() => {
             onProductSelect={handleProductSelect}
             onViewBusinessInsights={handleViewBusinessInsights}
              insightsLoading={insightsLoading}
+             isPreviewMode={isPreviewMode}
           />
 
           <InsightSideDrawer

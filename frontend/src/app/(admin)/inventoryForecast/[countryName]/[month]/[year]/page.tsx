@@ -23,6 +23,40 @@ type UploadHistoryRes = { uploads: UploadItem[] };
 
 type ForecastRow = Record<string, any>;
 
+const DUMMY_INVENTORY_FORECAST = [
+  {
+    sku: "SKU-DEMO-1",
+    "Product Name": "Demo Product A",
+    "Oct'25 Sold": 120,
+    "Nov'25 Sold": 140,
+    "Dec'25 Sold": 160,
+    "Jan'26": 180,
+    "Feb'26": 200,
+    "Mar'26": 220,
+  },
+  {
+    sku: "SKU-DEMO-2",
+    "Product Name": "Demo Product B",
+    "Oct'25 Sold": 220,
+    "Nov'25 Sold": 250,
+    "Dec'25 Sold": 280,
+    "Jan'26": 300,
+    "Feb'26": 330,
+    "Mar'26": 360,
+  },
+  {
+    sku: "Total",
+    "Product Name": "Total",
+    "Oct'25 Sold": 340,
+    "Nov'25 Sold": 390,
+    "Dec'25 Sold": 440,
+    "Jan'26": 480,
+    "Feb'26": 530,
+    "Mar'26": 580,
+  },
+];
+
+
 // --------------------------------------
 
 export default function InventoryForecastPage() {
@@ -70,11 +104,22 @@ export default function InventoryForecastPage() {
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
 
+  const isDemoMode =
+  params.month?.toUpperCase() === 'NA' &&
+  params.year?.toUpperCase() === 'NA';
+
   // -------------- Effects --------------
   useEffect(() => {
-    void fetchUploadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countryName]);
+  if (isDemoMode) {
+    setExcelData(DUMMY_INVENTORY_FORECAST);
+    setLoading(false);
+    setError(null);
+    return;
+  }
+
+  void fetchUploadHistory();
+}, [countryName, isDemoMode]);
+
 
   // -------------- Helpers --------------
   const tokenOrFail = () => {
@@ -359,6 +404,7 @@ export default function InventoryForecastPage() {
         month={apiMonth}
         year={apiYear}
         data={excelData ?? []}
+        isDemoMode={isDemoMode}
       />
     )}
 

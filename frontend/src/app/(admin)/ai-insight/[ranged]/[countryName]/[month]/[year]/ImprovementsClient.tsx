@@ -202,6 +202,118 @@ const MonthsforBI: React.FC = () => {
   const month1Ref = React.useRef<HTMLDivElement | null>(null);
   const compareBtnRef = React.useRef<HTMLButtonElement | null>(null);
 
+  const isPreviewMode =
+  params?.month === "NA" || params?.year === "NA";
+
+  const effectiveCountry = isPreviewMode ? "global" : countryName;
+
+
+ // =========================
+// PREVIEW / DUMMY DATA
+// =========================
+
+const TOP_80_DUMMY: SkuItem[] = [
+  {
+    product_name: "Demo Product A",
+    sku: "DEMO-A",
+
+    total_quantity_month1: 120,
+    total_quantity_month2: 150,
+
+    net_sales_month1: 32000,
+    net_sales_month2: 41000,
+
+    asp_month1: 267,
+    asp_month2: 273,
+
+    profit_month1: 8200,
+    profit_month2: 10400,
+
+    "Sales Mix (Month2)": 45,
+
+    "Unit Growth": { category: "High Growth", value: 25 },
+    "ASP Growth": { category: "Low Growth", value: 2.2 },
+    "Net Sales Growth": { category: "High Growth", value: 28 },
+    "CM1 Profit Impact": { category: "High Growth", value: 27 },
+    "Profit Per Unit": { category: "High Growth", value: 18 },
+  },
+];
+
+const NEW_REV_DUMMY: SkuItem[] = [
+  {
+    product_name: "Demo Product B",
+    sku: "DEMO-B",
+
+    total_quantity_month1: 40,
+    total_quantity_month2: 80,
+
+    net_sales_month1: 9000,
+    net_sales_month2: 18000,
+
+    asp_month1: 225,
+    asp_month2: 225,
+
+    profit_month1: 1800,
+    profit_month2: 3900,
+
+    "Sales Mix (Month2)": 25,
+
+    "Unit Growth": { category: "High Growth", value: 100 },
+    "ASP Growth": { category: "Low Growth", value: 0 },
+    "Net Sales Growth": { category: "High Growth", value: 100 },
+    "CM1 Profit Impact": { category: "High Growth", value: 116 },
+    "Profit Per Unit": { category: "High Growth", value: 30 },
+  },
+];
+
+const OTHER_DUMMY: SkuItem[] = [
+  {
+    product_name: "Demo Product C",
+    sku: "DEMO-C",
+
+    total_quantity_month1: 200,
+    total_quantity_month2: 180,
+
+    net_sales_month1: 26000,
+    net_sales_month2: 24000,
+
+    asp_month1: 130,
+    asp_month2: 133,
+
+    profit_month1: 6000,
+    profit_month2: 5400,
+
+    "Sales Mix (Month2)": 30,
+
+    "Unit Growth": { category: "Negative Growth", value: -10 },
+    "ASP Growth": { category: "Low Growth", value: 2.3 },
+    "Net Sales Growth": { category: "Negative Growth", value: -8 },
+    "CM1 Profit Impact": { category: "Negative Growth", value: -10 },
+    "Profit Per Unit": { category: "Negative Growth", value: -5 },
+  },
+];
+
+const DUMMY_CATEGORIZED_GROWTH: CategorizedGrowth = {
+  top_80_skus: TOP_80_DUMMY,
+  new_or_reviving_skus: NEW_REV_DUMMY,
+  other_skus: OTHER_DUMMY,
+
+  // ✅ merged list for All SKUs tab
+  all_skus: [
+    ...TOP_80_DUMMY,
+    ...NEW_REV_DUMMY,
+    ...OTHER_DUMMY,
+  ],
+
+  top_80_total: null,
+  new_or_reviving_total: null,
+  other_total: null,
+  all_skus_total: null,
+};
+
+
+
+
 
 
   useEffect(() => {
@@ -242,9 +354,18 @@ const MonthsforBI: React.FC = () => {
     intro.start();
   }, [introReady]);
 
+  useEffect(() => {
+  if (isPreviewMode) {
+    setActiveTab('top_80_skus');
+  }
+}, [isPreviewMode]);
 
-
-
+useEffect(() => {
+  if (isPreviewMode) {
+    handleSubmit();
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isPreviewMode]);
 
 
   const toggleTotalsMetric = (key: string) => {
@@ -309,6 +430,23 @@ const MonthsforBI: React.FC = () => {
   const buildCompareSeries = (
     metricKeyBase: 'net_sales' | 'profit' | 'total_quantity' | 'rembursement_fee' | 'asp'
   ) => {
+    if (isPreviewMode) {
+  const x = ["Jan'24", "", "Feb'24"];
+
+  return {
+    x,
+    values: {
+      top80_m1: 12000,
+      top80_m2: 16500,
+
+      newRev_m1: 4000,
+      newRev_m2: 7200,
+
+      other_m1: 8000,
+      other_m2: 6500,
+    },
+  };
+}
     const m1Label = `${getAbbr(month1)}'${String(year1).slice(2)}`;
     const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
     const x = [`${m1Label}`, '', `${m2Label}`];
@@ -395,12 +533,14 @@ const MonthsforBI: React.FC = () => {
 
       const { x, values } = buildCompareSeries('net_sales');
       const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-      const currency = getCurrencySymbol();
+      const currency = effectiveCountry === "global"
+  ? "$"
+  : getCurrencySymbol(effectiveCountry);
 
       const hasAny =
         top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2
 
-      if (!hasAny) {
+      if (!hasAny && !isPreviewMode) {
         chartInstanceRef.current?.clear();
         chartInstanceRef.current?.setOption({ title: { text: 'No data' } });
         chartInstanceRef.current?.resize();
@@ -583,12 +723,15 @@ const MonthsforBI: React.FC = () => {
 
       const { x, values } = buildCompareSeries('profit');
       const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-      const currency = getCurrencySymbol();
+      const currency = effectiveCountry === "global"
+  ? "$"
+  : getCurrencySymbol(effectiveCountry);
+
 
       const hasAny =
         top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-      if (!hasAny) {
+      if (!hasAny && !isPreviewMode) {
         profitChartInstanceRef.current?.clear();
         profitChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
         profitChartInstanceRef.current?.resize();
@@ -769,7 +912,7 @@ const MonthsforBI: React.FC = () => {
       const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
 
       const hasAny = top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
-      if (!hasAny) {
+      if (!hasAny && !isPreviewMode) {
         unitsChartInstanceRef.current?.clear();
         unitsChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
         unitsChartInstanceRef.current?.resize();
@@ -934,12 +1077,15 @@ const MonthsforBI: React.FC = () => {
 
       const { x, values } = buildCompareSeries('asp');
       const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-      const currency = getCurrencySymbol();
+      const currency = effectiveCountry === "global"
+  ? "$"
+  : getCurrencySymbol(effectiveCountry);
+
 
       const hasAny =
         top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
 
-      if (!hasAny) {
+      if (!hasAny && !isPreviewMode) {
         aspChartInstanceRef.current?.clear();
         aspChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
         aspChartInstanceRef.current?.resize();
@@ -1103,7 +1249,10 @@ const MonthsforBI: React.FC = () => {
       const m1Label = `${getAbbr(month1)}'${String(year1).slice(2)}`;
       const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
       const x = [m1Label, '', m2Label];
-      const currency = getCurrencySymbol();
+      const currency = effectiveCountry === "global"
+  ? "$"
+  : getCurrencySymbol(effectiveCountry);
+
 
       const netSales_m1 = totalOf('net_sales_month1');
       const netSales_m2 = totalOf('net_sales_month2');
@@ -1124,7 +1273,7 @@ const MonthsforBI: React.FC = () => {
         netSales_m1 || netSales_m2 || profit_m1 || profit_m2 ||
         otherExp_m1 || otherExp_m2 || adv_m1 || adv_m2 || reimb_m1 || reimb_m2;
 
-      if (!hasAny) {
+      if (!hasAny && !isPreviewMode) {
         totalsChartInstanceRef.current?.clear();
         totalsChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
         totalsChartInstanceRef.current?.resize();
@@ -1427,38 +1576,48 @@ const MonthsforBI: React.FC = () => {
   }, [year2, availablePeriods]);
 
   useEffect(() => {
-    if (!availablePeriods?.length) return;
+  if (isPreviewMode) return; // 🔥 ADD THIS LINE
+  if (!availablePeriods?.length) return;
 
-    // If user already has a valid selection (or storage restored it), don't override
-    const hasValid =
-      month1 && year1 && month2 && year2 &&
-      isPeriodAvailable(year1, month1) &&
-      isPeriodAvailable(year2, month2);
+  const hasValid =
+    month1 && year1 && month2 && year2 &&
+    isPeriodAvailable(year1, month1) &&
+    isPeriodAvailable(year2, month2);
 
-    if (hasValid) return;
+  if (hasValid) return;
 
-    const def = pickDefaultComparePeriods(availablePeriods);
-    if (!def) return;
+  const def = pickDefaultComparePeriods(availablePeriods);
+  if (!def) return;
 
-    const [y2, m2] = def.newer.split('-'); // newer => Month2
-    const [y1, m1] = def.older.split('-'); // older => Month1
+  const [y2, m2] = def.newer.split("-");
+  const [y1, m1] = def.older.split("-");
 
-    setYear1(y1);
-    setMonth1(m1);
-    setYear2(y2);
-    setMonth2(m2);
+  setYear1(y1);
+  setMonth1(m1);
+  setYear2(y2);
+  setMonth2(m2);
+}, [availablePeriods, isPreviewMode]);
 
-    setAutoCompared(false);
-    setTimeout(() => setIntroReady(true), 0);
-    // optional: auto compare on load
-    // handleSubmit(); // (If you want auto fetch immediately)
-  }, [availablePeriods]);
 
 
   // =====================
   // Fetch compare result
   // =====================
   const handleSubmit = async (e?: React.FormEvent) => {
+    if (isPreviewMode) {
+  setError(null);
+
+  setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
+
+  setAdvertisingTotals({ month1: 4200, month2: 5200 });
+  setExpenseTotals({ month1: 3800, month2: 4100 });
+  setReimbursementTotals({ month1: 900, month2: 1100 });
+
+  setMonth2Label("Preview");
+
+  return;
+}
+
     e?.preventDefault?.();
     setError(null);
     setCategorizedGrowth({ top_80_skus: [], new_or_reviving_skus: [], other_skus: [] });
@@ -1582,7 +1741,7 @@ const MonthsforBI: React.FC = () => {
     return getInsightByProductName(item.product_name);
   };
 
-  const getCurrencySymbol = () => {
+  const getCurrencySymbol = (effectiveCountry: string | undefined) => {
     // Global => $, UK => £, baaki default $
     const c = (countryName || '').toLowerCase();
     if (c === 'uk') return '£';
@@ -1994,7 +2153,10 @@ const MonthsforBI: React.FC = () => {
 
   const m1Label = `${getAbbr(month1)}'${String(year1).slice(2)}`;
   const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
-  const currency = getCurrencySymbol(); // same helper you already have
+  const currency = effectiveCountry === "global"
+  ? "$"
+  : getCurrencySymbol(effectiveCountry);
+
 
   const totalsLine = useMemo(() => {
     const netSales_m1 = sumKey("net_sales_month1");
@@ -3038,7 +3200,7 @@ const MonthsforBI: React.FC = () => {
 <h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] ">
           Business Insights - AI Analyst&nbsp;-
           <span className="text-[#5EA68E] pl-1">
-            {countryName && formatCountryLabel(countryName)}<span className="text-[#5EA68E] px-2">
+            {effectiveCountry && formatCountryLabel(effectiveCountry)}<span className="text-[#5EA68E] px-2">
             </span>
           </span>
         </h2>
@@ -3296,11 +3458,12 @@ const MonthsforBI: React.FC = () => {
                       <button
                         onClick={analyzeSkus}
                         disabled={
-                          !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
-                            (k) =>
-                              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
-                          )
-                        }
+  isPreviewMode ||
+  !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
+    (k) =>
+      (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
+  )
+}
                         className="
     bg-custom-effect shin text-[#F8EDCE]
     rounded-sm xl:px-4 px-3
@@ -3352,7 +3515,7 @@ const MonthsforBI: React.FC = () => {
                         <IoDownload size={27} color="#414042" />
                       </button> */}
 
-                      <DownloadIconButton onClick={() => {
+                      <DownloadIconButton disabled={isPreviewMode} onClick={() => {
                         const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
                         const allRows = getAllSkusForExport();
                         exportToExcel(allRows, file);

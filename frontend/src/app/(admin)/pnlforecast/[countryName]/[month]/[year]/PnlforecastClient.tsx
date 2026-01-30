@@ -116,25 +116,153 @@ const Pnlforecast: React.FC = () => {
   const router = useRouter();
   const params = useParams();
   const countryName = (params?.countryName as string) || '';
-  const urlMonth = (params?.month as string) || '';
+const urlMonth = (params?.month as string) || '';
 const urlYear = (params?.year as string) || '';
-  const currencySymbol = getCurrencySymbol(countryName);
+
+const isDemoMode =
+  urlMonth?.toUpperCase() === "NA" &&
+  urlYear?.toUpperCase() === "NA";
+
+const effectiveCountry = isDemoMode
+  ? "global"
+  : countryName;
+
+// ✅ currency now follows effectiveCountry
+const currencySymbol = getCurrencySymbol(effectiveCountry);
+
   const { month, year } = getPreviousMonthYear(urlMonth, urlYear);
 
   const [data, setData] = useState<RowData[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<ChartDataItem[]>([]);
-  const [showTacosSection, setShowTacosSection] = useState<boolean>(false);
+  
   const [showCm1, setshowCm1] = useState<boolean>(false);
-  const [showamazonfee, setshowamazonfee] = useState<boolean>(false);
+  
   const [LosSalesUnits, setLosSalesUnits] = useState<boolean>(false);
-  const [isExpanded, setIsExpanded] = useState<boolean>(true);
+  
 
-  const toggleTacosSection = () => setShowTacosSection((p) => !p);
-  const handleshowCm1click = () => setshowCm1((p) => !p);
-  const handleAmazonFeeClick = () => setshowamazonfee((p) => !p);
-  const handleLosSalesUnitsclick = () => setLosSalesUnits((p) => !p);
+
+ 
+
+ const DUMMY_PNL_ROWS: RowData[] = [
+  {
+    sku: "SKU-DEMO-1",
+    product_name: "Demo Product A",
+
+    // ✅ Units
+    units_1st: 120,
+    units_2nd: 140,
+    units_3rd: 160,
+    units_sum: 420,
+
+    // ✅ Sales & CM1
+    Total_Sales_1st: 15000,
+    profit_1st: 4200,
+    profit_percentage_1st: 28,
+
+    Total_Sales_2nd: 18000,
+    profit_2nd: 5200,
+    profit_percentage_2nd: 29,
+
+    Total_Sales_3rd: 21000,
+    profit_3rd: 6100,
+    profit_percentage_3rd: 29,
+
+    // ✅ 3-month total
+    Total_Sales_sum: 54000,
+    profit_sum: 15500,
+  },
+  {
+    sku: "SKU-DEMO-2",
+    product_name: "Demo Product B",
+
+    units_1st: 220,
+    units_2nd: 250,
+    units_3rd: 280,
+    units_sum: 750,
+
+    Total_Sales_1st: 30000,
+    profit_1st: 7800,
+    profit_percentage_1st: 26,
+
+    Total_Sales_2nd: 34000,
+    profit_2nd: 9300,
+    profit_percentage_2nd: 27,
+
+    Total_Sales_3rd: 39000,
+    profit_3rd: 10900,
+    profit_percentage_3rd: 28,
+
+    Total_Sales_sum: 103000,
+    profit_sum: 28000,
+  },
+  {
+    sku: "Total",
+    product_name: "Total",
+
+    units_1st: 340,
+    units_2nd: 390,
+    units_3rd: 440,
+    units_sum: 1170,
+
+    Total_Sales_1st: 45000,
+    profit_1st: 12000,
+    profit_percentage_1st: 26.6,
+
+    Total_Sales_2nd: 52000,
+    profit_2nd: 14500,
+    profit_percentage_2nd: 27.8,
+
+    Total_Sales_3rd: 60000,
+    profit_3rd: 17000,
+    profit_percentage_3rd: 28.3,
+
+    Total_Sales_sum: 157000,
+    profit_sum: 43500,
+    profit_percentage_sum: 27.7,
+  },
+];
+
+
+
+
+const DUMMY_PNL_CHART: ChartDataItem[] = [
+  {
+    month: "Dec 25",
+    SALES: 42000,
+    "ADVERTISING COSTS": 3500,
+    "CM1 PROFIT": 11000,
+    "CM2 PROFIT": 5700,
+    isHistorical: true,
+  },
+  {
+    month: "Jan 26",
+    SALES: 45000,
+    "ADVERTISING COSTS": 4200,
+    "CM1 PROFIT": 12000,
+    "CM2 PROFIT": 7100,
+    isForecast: true,
+  },
+  {
+    month: "Feb 26",
+    SALES: 52000,
+    "ADVERTISING COSTS": 4800,
+    "CM1 PROFIT": 14500,
+    "CM2 PROFIT": 8600,
+    isForecast: true,
+  },
+  {
+    month: "Mar 26",
+    SALES: 60000,
+    "ADVERTISING COSTS": 5200,
+    "CM1 PROFIT": 17000,
+    "CM2 PROFIT": 10200,
+    isForecast: true,
+  },
+];
+
+
 
   const chartRef = useRef<any>(null);
 
@@ -329,96 +457,102 @@ const urlYear = (params?.year as string) || '';
   };
 
   useEffect(() => {
-    const fetchForecastData = async () => {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
-      if (!token) {
-        setError('Authorization token is missing');
+  // 🧪 DEMO MODE: month=NA & year=NA
+  if (isDemoMode) {
+    setData(DUMMY_PNL_ROWS);
+    setChartData(DUMMY_PNL_CHART);
+    setLoading(false);
+    setError(null);
+    return; // ⛔ API CALL SKIP
+  }
+
+  const fetchForecastData = async () => {
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("jwtToken")
+        : null;
+
+    if (!token) {
+      setError("Authorization token is missing");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const previousData = await fetchPreviousMonthsData();
+
+      const endpoint =
+        countryName.toLowerCase() === "global"
+          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/global?month=${month}&year=${year}`
+          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast?country=${countryName}&month=${month}&year=${year}`;
+
+      const response = await fetch(endpoint, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          setError(
+            "You need to load Inventory forecast first to load PnL forecast"
+          );
+        } else {
+          setError(`Error fetching data: ${response.statusText}`);
+        }
         setLoading(false);
         return;
       }
-      try {
-        const previousData = await fetchPreviousMonthsData();
-        const endpoint =
-          countryName.toLowerCase() === 'global'
-            ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/global?month=${month}&year=${year}`
-            : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast?country=${countryName}&month=${month}&year=${year}`;
 
-        const response = await fetch(endpoint, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
+      const contentType = response.headers.get("Content-Type") || "";
 
-        if (!response.ok) {
-          if (response.status === 404) {
-            setError('You need to load Inventory forecast first to load PnL forecast');
+      if (
+        contentType.startsWith(
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+      ) {
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          if (!e.target) return;
+          const arr = new Uint8Array(e.target.result as ArrayBuffer);
+          const workbook = XLSX.read(arr, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json<RowData>(sheet);
+
+          if (jsonData.length === 0) {
+            setError("Empty table found in the Excel file");
           } else {
-            setError(`Error fetching data: ${response.statusText}`);
+            setData(jsonData);
+            setChartData(prepareChartData(jsonData, previousData));
           }
-          setLoading(false);
-          return;
-        }
-
-        const contentType = response.headers.get('Content-Type') || '';
-        if (contentType.startsWith('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')) {
-          const blob = await response.blob();
-          const reader = new FileReader();
-          reader.onload = async (e: ProgressEvent<FileReader>) => {
-            if (!e.target) return;
-            const arr = new Uint8Array(e.target.result as ArrayBuffer);
-            const workbook = XLSX.read(arr, { type: 'array' });
-            const sheetName = workbook.SheetNames[0];
-            const sheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json<RowData>(sheet);
-            if (jsonData.length === 0) {
-              setError('Empty table found in the Excel file at the specified location');
-            } else {
-              setData(jsonData);
-              setChartData(prepareChartData(jsonData, previousData));
-            }
-          };
-          reader.readAsArrayBuffer(blob);
-          return;
-        }
-
-        if (contentType.includes('application/json')) {
-          const json = (await response.json()) as RowData[];
-          if (json && Array.isArray(json)) {
-            setData(json);
-            setChartData(prepareChartData(json, previousData));
-
-            // Auto-save JSON as Excel to backend
-            try {
-              const worksheet = XLSX.utils.json_to_sheet(json);
-              const workbook = XLSX.utils.book_new();
-              XLSX.utils.book_append_sheet(workbook, worksheet, 'PNL Forecast');
-              const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-              const excelBlob = new Blob([excelBuffer], { type: 'application/octet-stream' });
-              const formData = new FormData();
-              formData.append('file', excelBlob, 'PNL_Forecast.xlsx');
-              await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/save_pnl_forecast`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` },
-                body: formData,
-              });
-            } catch {}
-          } else {
-            throw new Error('Invalid JSON format');
-          }
-        } else {
-          throw new Error('Expected JSON or Excel response');
-        }
-      } catch (err: any) {
-        setError(err?.message || 'An error occurred while fetching the data');
-      } finally {
-        setLoading(false);
+        };
+        reader.readAsArrayBuffer(blob);
+        return;
       }
-    };
 
-    fetchForecastData();
-  }, [countryName, month, year]);
+      if (contentType.includes("application/json")) {
+        const json = (await response.json()) as RowData[];
+        if (Array.isArray(json)) {
+          setData(json);
+          setChartData(prepareChartData(json, previousData));
+        } else {
+          throw new Error("Invalid JSON format");
+        }
+      }
+    } catch (err: any) {
+      setError(err?.message || "An error occurred while fetching the data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchForecastData();
+}, [countryName, month, year, isDemoMode]);
+
 
   useEffect(() => {
     if (data && data.length > 0) {
@@ -622,58 +756,107 @@ const groups: ColGroup<RowData>[] = [
   ),
 ];
 
-const summaryRows = [
+const DUMMY_SUMMARY_ROWS = [
   {
     label: "Cost of Advertisement",
-    m1: data?.find(r => r.sku === "advertising_total1")?.value,
-    m2: data?.find(r => r.sku === "advertising_total2")?.value,
-    m3: data?.find(r => r.sku === "advertising_total3")?.value,
-    sum: data?.find(r => r.sku === "advertising_total")?.value,
+    m1: 3500,
+    m2: 4200,
+    m3: 4800,
+    sum: 12500,
   },
   {
     label: "Platform Fees",
-    m1: data?.find(r => r.sku === "Platform_Fees1")?.value,
-    m2: data?.find(r => r.sku === "Platform_Fees2")?.value,
-    m3: data?.find(r => r.sku === "Platform_Fees3")?.value,
-    sum: data?.find(r => r.sku === "platform_fees_total")?.value,
+    m1: 2800,
+    m2: 3200,
+    m3: 3600,
+    sum: 9600,
   },
   {
     label: "Other Expenses",
-    m1:
-      (data?.find(r => r.sku === "Platform_Fees1")?.value || 0) +
-      (data?.find(r => r.sku === "advertising_total1")?.value || 0),
-    m2:
-      (data?.find(r => r.sku === "Platform_Fees2")?.value || 0) +
-      (data?.find(r => r.sku === "advertising_total2")?.value || 0),
-    m3:
-      (data?.find(r => r.sku === "Platform_Fees3")?.value || 0) +
-      (data?.find(r => r.sku === "advertising_total3")?.value || 0),
-    sum:
-      (data?.find(r => r.sku === "platform_fees_total")?.value || 0) +
-      (data?.find(r => r.sku === "advertising_total")?.value || 0),
+    m1: 6300,
+    m2: 7400,
+    m3: 8400,
+    sum: 22100,
   },
   {
     label: "CM2 Profit/Loss",
-    m1: data?.find(r => r.sku === "cm2profit1")?.value,
-    m2: data?.find(r => r.sku === "cm2profit2")?.value,
-    m3: data?.find(r => r.sku === "cm2profit3")?.value,
-    sum: data?.find(r => r.sku === "cm2profit_total")?.value,
+    m1: 5700,
+    m2: 7100,
+    m3: 8600,
+    sum: 21400,
   },
   {
     label: "Net Reimbursement (Projected)",
-    m1: data?.find(r => r.sku === "NetReimbursement1")?.value,
-    m2: data?.find(r => r.sku === "NetReimbursement2")?.value,
-    m3: data?.find(r => r.sku === "NetReimbursement3")?.value,
-    sum: data?.find(r => r.sku === "NetReimbursement_total")?.value,
+    m1: 900,
+    m2: 1100,
+    m3: 1300,
+    sum: 3300,
   },
   {
     label: "Reimbursement vs CM2 Margins",
-    m1: data?.find(r => r.sku === "ReimbursementvsCM2Margins1")?.value,
-    m2: data?.find(r => r.sku === "ReimbursementvsCM2Margins2")?.value,
-    m3: data?.find(r => r.sku === "ReimbursementvsCM2Margins3")?.value,
-    sum: data?.find(r => r.sku === "ReimbursementvsCM2Margins_total")?.value,
+    m1: 16.5,
+    m2: 15.4,
+    m3: 15.1,
+    sum: 15.7,
   },
 ];
+
+
+const summaryRows = isDemoMode
+  ? DUMMY_SUMMARY_ROWS
+  : [
+      {
+        label: "Cost of Advertisement",
+        m1: data?.find(r => r.sku === "advertising_total1")?.value,
+        m2: data?.find(r => r.sku === "advertising_total2")?.value,
+        m3: data?.find(r => r.sku === "advertising_total3")?.value,
+        sum: data?.find(r => r.sku === "advertising_total")?.value,
+      },
+      {
+        label: "Platform Fees",
+        m1: data?.find(r => r.sku === "Platform_Fees1")?.value,
+        m2: data?.find(r => r.sku === "Platform_Fees2")?.value,
+        m3: data?.find(r => r.sku === "Platform_Fees3")?.value,
+        sum: data?.find(r => r.sku === "platform_fees_total")?.value,
+      },
+      {
+        label: "Other Expenses",
+        m1:
+          (data?.find(r => r.sku === "Platform_Fees1")?.value || 0) +
+          (data?.find(r => r.sku === "advertising_total1")?.value || 0),
+        m2:
+          (data?.find(r => r.sku === "Platform_Fees2")?.value || 0) +
+          (data?.find(r => r.sku === "advertising_total2")?.value || 0),
+        m3:
+          (data?.find(r => r.sku === "Platform_Fees3")?.value || 0) +
+          (data?.find(r => r.sku === "advertising_total3")?.value || 0),
+        sum:
+          (data?.find(r => r.sku === "platform_fees_total")?.value || 0) +
+          (data?.find(r => r.sku === "advertising_total")?.value || 0),
+      },
+      {
+        label: "CM2 Profit/Loss",
+        m1: data?.find(r => r.sku === "cm2profit1")?.value,
+        m2: data?.find(r => r.sku === "cm2profit2")?.value,
+        m3: data?.find(r => r.sku === "cm2profit3")?.value,
+        sum: data?.find(r => r.sku === "cm2profit_total")?.value,
+      },
+      {
+        label: "Net Reimbursement (Projected)",
+        m1: data?.find(r => r.sku === "NetReimbursement1")?.value,
+        m2: data?.find(r => r.sku === "NetReimbursement2")?.value,
+        m3: data?.find(r => r.sku === "NetReimbursement3")?.value,
+        sum: data?.find(r => r.sku === "NetReimbursement_total")?.value,
+      },
+      {
+        label: "Reimbursement vs CM2 Margins",
+        m1: data?.find(r => r.sku === "ReimbursementvsCM2Margins1")?.value,
+        m2: data?.find(r => r.sku === "ReimbursementvsCM2Margins2")?.value,
+        m3: data?.find(r => r.sku === "ReimbursementvsCM2Margins3")?.value,
+        sum: data?.find(r => r.sku === "ReimbursementvsCM2Margins_total")?.value,
+      },
+    ];
+
 
 
 const productRows = data?.filter(
@@ -759,13 +942,20 @@ const normalizedProductRows = productRows?.map(r => ({
       <div className='flex justify-between'>
 <h2 style={{ marginBottom: 10, color: '#414042' }} className='2xl:text-2xl text-lg text-[#414042] font-bold'>
         P &amp; L Forecast -{' '}
-        <span style={{ color: '#60a68e' }}>
-        {countryName.toUpperCase()}  ({formatMonthYear(currentMonth, currentYear)} to {formatMonthYear(nextToNextMonth, nextToNextMonthYear)} )
-        </span>
+  <span style={{ color: '#60a68e' }}>
+    {effectiveCountry.toUpperCase()} (
+    {formatMonthYear(currentMonth, currentYear)} to
+    {formatMonthYear(nextToNextMonth, nextToNextMonthYear)}
+    )
+  </span>
+
       </h2>
      <button
               onClick={() => exportTableToExcel()}
-            className="bg-white border border-[#8B8585] px-1  rounded-sm"
+              disabled={isDemoMode}
+            className={`bg-white border border-[#8B8585] px-1 rounded-sm ${
+    isDemoMode ? "opacity-50 cursor-not-allowed" : ""
+  }`}
                                         style={{
                              boxShadow: "0px 4px 4px 0px #00000040",  
                            }}
@@ -776,11 +966,9 @@ const normalizedProductRows = productRows?.map(r => ({
       
 
       {loading && <div className="loading">Loading...</div>}
-      {error && (
-        <div className="error">
-          {error}
-        </div>
-      )}
+      {error && !isDemoMode && (
+  <div className="error">{error}</div>
+)}
 
       {data && chartData.length > 0 && (
         <div className='border border-[#414042] rounded-sm'>
