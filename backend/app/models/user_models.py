@@ -65,6 +65,9 @@ class User(db.Model):
     tax_id = db.Column(JSON, nullable=True)
     address = db.Column(JSON, nullable=True)
     token_name = db.Column(db.String(50), unique=True, nullable=False, index=True)  # Uncommented this line
+    # ✅ NEW columns
+    amazon_user_exists = db.Column(db.Boolean, default=False)  # both tokens exist
+    amazon_ads_exists = db.Column(db.Boolean, default=False)   # ads token exists
 
 
 class Category(db.Model):
@@ -193,6 +196,16 @@ class HistoricAISummary(db.Model):
     )
     timeline = Column(String(50), nullable=False)
     year = Column(Integer, nullable=False)
+
+    # NEW: objective fields
+    primary_goal = Column(String(50), nullable=True)              # e.g. profit|growth|...
+    risk_level = Column(String(50), nullable=True)                # conservative|balanced|aggressive
+    max_tacos = Column(Integer, nullable=True)
+    max_price_increase_pct = Column(Numeric(10, 2), nullable=True)
+    ad_budget_cap = Column(Numeric(12, 2), nullable=True)
+    dont_change_price = Column(Boolean, nullable=True, default=False)
+    notes = Column(Text, nullable=True)
+    
     summary = Column(Text, nullable=False)
     recommendations = Column(Text, nullable=True)
 
