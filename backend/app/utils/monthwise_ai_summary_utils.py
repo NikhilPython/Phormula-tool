@@ -88,19 +88,44 @@ def fetch_existing_summary(user_id, country, marketplace_id, period, timeline, y
     ).first()
 
 
-def save_summary_to_db(data):
-    record = HistoricAISummary(
+def save_summary_to_db(data: dict):
+    upsert = bool(data.get("upsert"))
+
+    row = HistoricAISummary.query.filter_by(
         user_id=data["user_id"],
         country=data["country"],
-        marketplace_id=data["marketplace_id"],
+        marketplace_id=data.get("marketplace_id"),
         period=data["period"],
         timeline=data["timeline"],
         year=data["year"],
-        summary=data["summary"],
-        recommendations=data["recommendations"]
-    )
-    db.session.add(record)
+    ).first()
+
+    if not row:
+        row = HistoricAISummary(
+            user_id=data["user_id"],
+            country=data["country"],
+            marketplace_id=data.get("marketplace_id"),
+            period=data["period"],
+            timeline=data["timeline"],
+            year=data["year"],
+        )
+        db.session.add(row)
+
+    # ✅ store new objective columns
+    row.primary_goal = data.get("primary_goal")
+    row.risk_level = data.get("risk_level")
+    row.max_tacos = data.get("max_tacos")
+    row.max_price_increase_pct = data.get("max_price_increase_pct")
+    row.ad_budget_cap = data.get("ad_budget_cap")
+    row.dont_change_price = data.get("dont_change_price")
+    row.notes = data.get("notes")
+
+    # store output
+    row.summary = data.get("summary") or row.summary
+    row.recommendations = data.get("recommendations")
+
     db.session.commit()
+
 
 def month_name_from_timeline(timeline: str) -> str:
     # timeline is like "12"
@@ -761,24 +786,51 @@ def generate_ai_summary(payload, allow_recommendations):
 
 
 
-
 def get_or_create_summary(
     user_id,
     country,
     marketplace_id,
     period,
     timeline,
-    year
+    year,
+    objective=None,
+    force_regenerate=False
 ):
+    # ---------------- Objective defaults / normalize ----------------
+    objective = objective or {}
+    constraints = objective.get("constraints") or {}
+
+    primary_goal = objective.get("primary_goal", "profit")
+    risk_level = objective.get("risk_level", "balanced")
+
+    max_tacos = constraints.get("max_tacos")
+    max_price_increase_pct = constraints.get("max_price_increase_pct")
+    ad_budget_cap = constraints.get("ad_budget_cap")
+    dont_change_price = constraints.get("dont_change_price", False)
+    notes = objective.get("notes")
+
+    # ---------------- Cache lookup ----------------
     cached = fetch_existing_summary(
         user_id, country, marketplace_id, period, timeline, year
     )
 
-    if cached:
+    # ✅ Return cached only if not forcing regeneration
+    if cached and not force_regenerate:
         return {
             "summary": cached.summary,
             "recommendations": cached.recommendations,
-            "source": "db"
+            "source": "db",
+            "objective": {
+                "primary_goal": getattr(cached, "primary_goal", None),
+                "risk_level": getattr(cached, "risk_level", None),
+                "constraints": {
+                    "max_tacos": getattr(cached, "max_tacos", None),
+                    "max_price_increase_pct": float(cached.max_price_increase_pct) if getattr(cached, "max_price_increase_pct", None) is not None else None,
+                    "ad_budget_cap": float(cached.ad_budget_cap) if getattr(cached, "ad_budget_cap", None) is not None else None,
+                    "dont_change_price": getattr(cached, "dont_change_price", None),
+                },
+                "notes": getattr(cached, "notes", None)
+            }
         }
 
     allow_reco = is_latest_period(period, timeline, year)
@@ -787,7 +839,6 @@ def get_or_create_summary(
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
     df_current_detail, df_current_total = _split_total_row(df_current)
 
-    # 1) Build overall metrics from DETAIL rows (prevents double counting TOTAL)
     current = {}
     if not df_current_detail.empty:
         for col in get_metric_columns(df_current_detail):
@@ -795,7 +846,6 @@ def get_or_create_summary(
                 float(pd.to_numeric(df_current_detail[col], errors="coerce").fillna(0).sum()), 2
             )
 
-    # 2) Override overall-only metrics from TOTAL row (because detail rows may be zero)
     for c in [
         "platform_fee",
         "platformfeenew",
@@ -809,24 +859,17 @@ def get_or_create_summary(
         if v is not None:
             current[c] = round(v, 2)
 
-    print("METRICS USED:", list(current.keys()))
-
-    # 3) SKU breakdown MUST use DETAIL rows only (exclude TOTAL row)
     sku_current = compute_sku_precalc(df_current_detail)
 
-    # 4) Reimbursements: take from TOTAL row if available, else detail sum
     lost_total_val = _total_value(df_current_total, "lost_total")
     if lost_total_val is None:
         inventory_lost = round(abs(current.get("lost_total", 0.0)), 2)
     else:
         inventory_lost = round(abs(lost_total_val), 2)
 
-
     inventory_alerts = {}
 
-    # =====================================================
-    # 🔴 INVENTORY AGEING LOGIC (latest period only) 🔴
-    # =====================================================
+    # 🔴 INVENTORY AGEING (latest period only)
     if allow_reco:
         inventory_aged_df = fetch_inventory_aged_by_user(user_id)
         if not inventory_aged_df.empty:
@@ -847,7 +890,6 @@ def get_or_create_summary(
                 float(pd.to_numeric(df_prev_detail[col], errors="coerce").fillna(0).sum()), 2
             )
 
-    # override overall-only metrics from TOTAL row
     for c in [
         "platform_fee",
         "platformfeenew",
@@ -866,7 +908,6 @@ def get_or_create_summary(
     sku_prev = compute_sku_precalc(df_prev_detail)
     sku_mom = compare_sku_metrics(sku_current, sku_prev)
 
-
     # ---------------- YOY (SAFE) ----------------
     yoy = None
     sku_yoy = None
@@ -876,10 +917,8 @@ def get_or_create_summary(
         df_yoy = fetch_precalc_table(user_id, country, y_period, y_timeline, y_year)
 
         if not df_yoy.empty:
-            # 1) split total vs detail
             df_yoy_detail, df_yoy_total = _split_total_row(df_yoy)
 
-            # 2) build yoy_base from DETAIL rows (prevents double count from TOTAL row)
             yoy_base = {}
             if not df_yoy_detail.empty:
                 for col in get_metric_columns(df_yoy_detail):
@@ -887,7 +926,6 @@ def get_or_create_summary(
                         float(pd.to_numeric(df_yoy_detail[col], errors="coerce").fillna(0).sum()), 2
                     )
 
-            # 3) override overall-only metrics from TOTAL row (because detail rows may be zero)
             for c in [
                 "platform_fee",
                 "platformfeenew",
@@ -901,17 +939,14 @@ def get_or_create_summary(
                 if v is not None:
                     yoy_base[c] = round(v, 2)
 
-            # 4) overall YoY compare
             yoy = compare_metrics(current, yoy_base)
 
-            # 5) SKU YoY compare must use DETAIL rows only (exclude total row)
             sku_yoy = compare_sku_metrics(
                 sku_current,
                 compute_sku_precalc(df_yoy_detail)
             )
 
-    # ---- everything below stays same (debug/ai/save/return) ----
-
+    # ---------------- AI PAYLOAD (✅ include objective) ----------------
     ai_payload = {
         "period": f"{period} {timeline} {year}",
         "country": str(country).lower(),
@@ -921,10 +956,25 @@ def get_or_create_summary(
         "inventory_alerts": inventory_alerts,
         "sku_mom": sku_mom,
         "sku_yoy": sku_yoy,
+
+        # ✅ NEW: objective injected for the prompt
+        "objective": {
+            "primary_goal": primary_goal,
+            "risk_level": risk_level,
+            "constraints": {
+                "max_tacos": max_tacos,
+                "max_price_increase_pct": max_price_increase_pct,
+                "ad_budget_cap": ad_budget_cap,
+                "dont_change_price": dont_change_price,
+            },
+            "notes": notes
+        }
     }
 
     ai_output = generate_ai_summary(ai_payload, allow_reco)
 
+    # ---------------- SAVE/UPDATE DB (✅ with new columns) ----------------
+    # If row exists and we regenerated, update it; else insert new.
     save_summary_to_db({
         "user_id": user_id,
         "country": country,
@@ -932,8 +982,21 @@ def get_or_create_summary(
         "period": period,
         "timeline": timeline,
         "year": year,
+
+        # ✅ NEW columns
+        "primary_goal": primary_goal,
+        "risk_level": risk_level,
+        "max_tacos": max_tacos,
+        "max_price_increase_pct": max_price_increase_pct,
+        "ad_budget_cap": ad_budget_cap,
+        "dont_change_price": dont_change_price,
+        "notes": notes,
+
         "summary": ai_output["summary"],
-        "recommendations": ai_output["recommendations"]
+        "recommendations": ai_output["recommendations"],
+
+        # ✅ let save function know whether to update existing row
+        "upsert": True
     })
 
     return {
@@ -944,6 +1007,7 @@ def get_or_create_summary(
         "sku_current": sku_current,
         "sku_mom": sku_mom,
         "sku_yoy": sku_yoy,
+        "objective": ai_payload["objective"],
         "source": "ai"
     }
 

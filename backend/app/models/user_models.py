@@ -193,6 +193,16 @@ class HistoricAISummary(db.Model):
     )
     timeline = Column(String(50), nullable=False)
     year = Column(Integer, nullable=False)
+
+    # NEW: objective fields
+    primary_goal = Column(String(50), nullable=True)              # e.g. profit|growth|...
+    risk_level = Column(String(50), nullable=True)                # conservative|balanced|aggressive
+    max_tacos = Column(Integer, nullable=True)
+    max_price_increase_pct = Column(Numeric(10, 2), nullable=True)
+    ad_budget_cap = Column(Numeric(12, 2), nullable=True)
+    dont_change_price = Column(Boolean, nullable=True, default=False)
+    notes = Column(Text, nullable=True)
+    
     summary = Column(Text, nullable=False)
     recommendations = Column(Text, nullable=True)
 
