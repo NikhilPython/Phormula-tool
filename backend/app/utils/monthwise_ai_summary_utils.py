@@ -816,6 +816,15 @@ You MUST:
 
 DIAGNOSIS PRECEDENCE (CRITICAL)
 
+UNIT DOMINANCE RULE (CRITICAL)
+
+You MUST NOT classify a SKU as “visibility_constraint”
+if unit growth is positive.
+
+If units are increasing, visibility is NOT the binding constraint,
+regardless of pricing movement or CM1 profit behaviour.
+
+
 When multiple diagnosis codes are technically applicable,
 you MUST apply the following precedence rules:
 
