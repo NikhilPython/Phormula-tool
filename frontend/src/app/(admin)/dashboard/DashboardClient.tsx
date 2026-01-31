@@ -13424,8 +13424,8 @@ export default function DashboardPage() {
 
   const SKUWISE_LEFT_COLS = [
     { key: "sno", label: "S.No", align: "center" as const },
-    { key: "sku", label: "Products", align: "center" as const },
     { key: "product_name", label: "Product Name", align: "center" as const },
+    { key: "sku", label: "SKU", align: "center" as const },
   ];
 
   const SKUWISE_GROUPS = [
@@ -14767,7 +14767,7 @@ export default function DashboardPage() {
       {/* Monthly Ads Spent (from MTD Transactions -> skuwise_items) */}
       <div id="advertisements" className="scroll-mt-[80px] mt-4 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <PageBreadcrumb pageTitle="Monthly Ads Spent" variant="page" align="left" textSize="2xl" />
+          <PageBreadcrumb pageTitle="P&L Productwise Breakdown" variant="page" align="left" textSize="2xl" />
 
           <button
             type="button"
