@@ -1,8 +1,11 @@
+from flask import Blueprint, request, jsonify
+import jwt
 import os
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from config import Config
-from datetime import date
+from calendar import month_abbr, monthrange
+from datetime import date, datetime, timedelta
 from openai import OpenAI
 import json
 import pandas as pd
@@ -56,8 +59,7 @@ def rolling_months(anchor_year: int, anchor_month: int, max_months: int = 24):
 
 
 DEFAULT_USER_OBJECTIVE = {
-    "primary_goal": "profit",   # profit | growth | rank | inventory_clearance | balanced
-    "time_horizon": "1_month",  # 2_weeks | 1_month | quarter
+    "primary_goal": "rank",   # profit | growth | rank | inventory_clearance | balanced
     "risk_level": "balanced",   # conservative | balanced | aggressive
     "constraints": {
         "max_tacos": None,
@@ -67,6 +69,25 @@ DEFAULT_USER_OBJECTIVE = {
     },
     "notes": None
 }
+
+def get_objective_from_db(row) -> dict | None:
+    if not row:
+        return None
+
+    return {
+        "primary_goal": row.primary_goal,
+        "risk_level": row.risk_level,
+        "constraints": {
+            "max_tacos": row.max_tacos,
+            "max_price_increase_pct": float(row.max_price_increase_pct)
+                if row.max_price_increase_pct is not None else None,
+            "ad_budget_cap": float(row.ad_budget_cap)
+                if row.ad_budget_cap is not None else None,
+            "dont_change_price": bool(row.dont_change_price),
+        },
+        "notes": row.notes,
+    }
+
 
 def severity_suffix(severity: str | None) -> str:
     if not severity or severity == "normal":
@@ -117,19 +138,44 @@ def fetch_existing_summary(user_id, country, marketplace_id, period, timeline, y
     ).first()
 
 
-def save_summary_to_db(data):
-    record = HistoricAISummary(
+def save_summary_to_db(data: dict):
+    upsert = bool(data.get("upsert"))
+
+    row = HistoricAISummary.query.filter_by(
         user_id=data["user_id"],
         country=data["country"],
-        marketplace_id=data["marketplace_id"],
+        marketplace_id=data.get("marketplace_id"),
         period=data["period"],
         timeline=data["timeline"],
         year=data["year"],
-        summary=data["summary"],
-        recommendations=data["recommendations"]
-    )
-    db.session.add(record)
+    ).first()
+
+    if not row:
+        row = HistoricAISummary(
+            user_id=data["user_id"],
+            country=data["country"],
+            marketplace_id=data.get("marketplace_id"),
+            period=data["period"],
+            timeline=data["timeline"],
+            year=data["year"],
+        )
+        db.session.add(row)
+
+    # ✅ store new objective columns
+    row.primary_goal = data.get("primary_goal")
+    row.risk_level = data.get("risk_level")
+    row.max_tacos = data.get("max_tacos")
+    row.max_price_increase_pct = data.get("max_price_increase_pct")
+    row.ad_budget_cap = data.get("ad_budget_cap")
+    row.dont_change_price = data.get("dont_change_price")
+    row.notes = data.get("notes")
+
+    # store output
+    row.summary = data.get("summary") or row.summary
+    row.recommendations = data.get("recommendations")
+
     db.session.commit()
+
 
 def month_name_from_timeline(timeline: str) -> str:
     # timeline is like "12"
@@ -390,7 +436,6 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
     for c in other_cols:
         agg[c] = "first"
 
-
     g = df.groupby("sku", dropna=False).agg(agg).reset_index()
 
     out = {}
@@ -610,6 +655,9 @@ def compare_sku_metrics(current: dict, previous: dict) -> dict:
     return output
 
 
+
+
+
 def compare_metrics(current, previous):
     out = {}
     for k, v in current.items():
@@ -766,6 +814,34 @@ You MUST:
 - Base diagnosis on units, pricing, and CM1 profit behaviour
 - Use movement_context when relevant
 
+DIAGNOSIS PRECEDENCE (CRITICAL)
+
+UNIT DOMINANCE RULE (CRITICAL)
+
+You MUST NOT classify a SKU as “visibility_constraint”
+if unit growth is positive.
+
+If units are increasing, visibility is NOT the binding constraint,
+regardless of pricing movement or CM1 profit behaviour.
+
+
+When multiple diagnosis codes are technically applicable,
+you MUST apply the following precedence rules:
+
+ASP decline MUST be treated as a binary diagnostic state.
+If asp.pct_change is negative, pricing MUST be classified as “reduced”.
+
+- If units and net sales are declining AND pricing is reduced,
+  you MUST classify the SKU as “visibility_constraint”.
+  In this case, you MUST NOT classify the SKU as “demand_weakness”.
+
+- “demand_weakness” is permitted ONLY when pricing is stable
+  or increasing and demand is declining.
+
+Pricing response failure takes precedence over demand weakness.
+
+
+
 You MUST NOT:
 - Write explanations
 - Write sentences
@@ -778,9 +854,9 @@ You MUST NOT:
 ────────────────────────────────────────
 CRITICAL OUTPUT CONSTRAINT (NON-NEGOTIABLE)
 ────────────────────────────────────────
-- You MUST NOT write prose, sentences, bullets, or paragraphs.
-- You MUST NOT format output for presentation.
-- You MUST NOT explain insights in natural language.
+- You MUST NOT write prose, sentences, bullets, or paragraphs
+  EXCEPT inside the "executive_takeaway" field.
+- All other fields must be strictly structured and non-narrative.
 - You MUST output STRICT JSON ONLY.
 - Any response that is not valid JSON is INVALID.
 
@@ -788,12 +864,15 @@ CRITICAL OUTPUT CONSTRAINT (NON-NEGOTIABLE)
 ────────────────────────────────────────
 FORBIDDEN CONTENT (ABSOLUTE)
 ────────────────────────────────────────
+FORBIDDEN CONTENT (ABSOLUTE)
 - No recommendations
 - No actions
 - No strategy
 - No future suggestions
 - No soft or narrative language
+  EXCEPT within the "executive_takeaway" field.
 - No operational, supply chain, or fulfilment commentary
+
 
 ────────────────────────────────────────
 TERMINOLOGY (MANDATORY)
@@ -904,6 +983,10 @@ CM2 ATTRIBUTION CONSTRAINT (CRITICAL)
 ────────────────────────────────────────
 MANDATORY OUTPUT FORMAT (STRICT JSON ONLY)
 ────────────────────────────────────────
+- ALL fields shown below are REQUIRED.
+- If any field is missing, the response is INVALID.
+- The "executive_takeaway" field MUST be populated with text.
+
 
 ────────────────────────────────────────
 ALLOWED DIAGNOSIS CODES (STRICT)
@@ -932,57 +1015,58 @@ Each SKU may have:
 - Maximum 2 diagnosis codes
 
 
-Return a single JSON object with the following structure:
+Return a single JSON object with the following structure (STRICT JSON):
 
-"executive_summary_signals": {
-  "units": {
-    "direction": "increase | decrease | flat",
-    "severity": "highest_24m | lowest_24m | normal",
-    "pct_change": "number",
-    "absolute_change": "number"
-  },
-  "net_sales": {
-  "pct_change": "number",
-  "absolute_change": "number",
-  "severity": "highest_24m | lowest_24m | normal"
-},
-  "asp": {
-    "pct_change": "number",
-    "absolute_change": "number",
-    "severity": "largest_24m | normal"
-  },
- "cm1_profit": {
-  "pct_change": "number",
-  "absolute_change": "number",
-  "severity": "highest_24m | lowest_24m | normal"
-},
-  "cm1_profit_per_unit": {
-    "pct_change": "number",
-    "absolute_change": "number",
-    "severity": "largest_24m | normal"
-  },
-  "cost_pressure": {
-    "advertising": {
-  "pct_change": "number",
-  "absolute_change": "number",
-  "acos_delta": "number | null",
-  "severity": "largest_24m | normal"
-},
-"storage_fees": {
-  "pct_change": "number",
-  "absolute_change": "number",
-  "severity": "largest_24m | normal"
-}
-
-  },
-  "cm2_profit": {
-    "pct_change": "number",
-    "absolute_change": "number",
-    "severity": "largest_24m | normal"
-  },
-  "reimbursements": {
-    "present": true | false,
-    "amount": "number | null"
+{
+  "executive_summary_signals": {
+    "units": {
+      "direction": "increase | decrease | flat",
+      "severity": "highest_24m | lowest_24m | normal",
+      "pct_change": "number",
+      "absolute_change": "number"
+    },
+    "net_sales": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "highest_24m | lowest_24m | normal"
+    },
+    "asp": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "largest_24m | normal"
+    },
+    "cm1_profit": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "highest_24m | lowest_24m | normal"
+    },
+    "cm1_profit_per_unit": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "largest_24m | normal"
+    },
+    "cost_pressure": {
+      "advertising": {
+        "pct_change": "number",
+        "absolute_change": "number",
+        "acos_delta": "number | null",
+        "severity": "largest_24m | normal"
+      },
+      "storage_fees": {
+        "pct_change": "number",
+        "absolute_change": "number",
+        "severity": "largest_24m | normal"
+      }
+    },
+    "cm2_profit": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "largest_24m | normal"
+    },
+    "reimbursements": {
+      "present": true | false,
+      "amount": "number | null"
+    }
   },
   "primary_causal_chain": [
     "asp_decrease",
@@ -991,15 +1075,17 @@ Return a single JSON object with the following structure:
     "per_unit_profit_decline",
     "cost_pressure",
     "cm2_profit_decline"
-  ]
-"product_insights": {
-  "<sku>": {
-    "diagnosis_codes": [
-      "pricing_supports_volume",
-      "per_unit_profit_decline"
-    ]
+  ],
+  "executive_takeaway": "string (max 2 sentences, derived ONLY from primary_causal_chain, no actions)",
+  "product_insights": {
+    "<sku>": {
+      "diagnosis_codes": [
+        "pricing_supports_volume"
+      ]
+    }
   }
 }
+
 
 
 
@@ -1149,10 +1235,12 @@ Apply the following logic exactly:
    - CM1 profit is stable or growing
    (pricing is effective at driving profitable volume)
 
-4) Recommend “Decrease ASP” if:
+4) Recommend “Decrease ASP” ONLY IF:
    - units are declining, AND
-   - net sales are declining
-   (demand recovery required)
+   - net sales are declining, AND
+   - ASP is stable or increasing
+
+If ASP is already declining, this rule MUST NOT be applied.
 
 ASP is a SUPPORTING signal.
 ASP alone must NEVER trigger a pricing action.
@@ -1160,15 +1248,27 @@ ASP alone must NEVER trigger a pricing action.
 ────────────────────────────────────────
 VISIBILITY VS PRICING RULE (CRITICAL)
 ────────────────────────────────────────
+This rule MUST be evaluated BEFORE any pricing decision.
+It OVERRIDES the pricing decision hierarchy.
+This rule represents a FAILED PRICING RESPONSE.
+
 If a SKU shows:
 - declining units,
 - declining net sales,
 - declining CM1 profit,
 - AND declining ASP,
 
-THEN:
-- Do NOT recommend pricing actions.
+This means:
+- Pricing has already been reduced,
+- Demand did NOT respond to lower pricing,
+- Pricing is NOT the binding constraint.
+
+In this case:
+- Do NOT recommend any pricing action.
+- You MUST NOT suggest further ASP reduction.
+- You MUST NOT return “Maintain current pricing”.
 - Return exactly: “Check product visibility”.
+
 
 ────────────────────────────────────────
 PORTFOLIO-LEVEL ADVERTISING RULES
@@ -1350,10 +1450,9 @@ def run_prompt_1_analysis(ai_payload):
 
 def run_prompt_2_strategy(insights_text, user_objective, focus_skus):
     payload = {
-        "insights": insights_text,
-        "user_objective": user_objective,
-        "focus_skus": focus_skus,
-        
+    "analysis_insights": insights_text,
+    "user_objective": user_objective,
+    "focus_skus": focus_skus,
     }
 
     resp = openai_client.chat.completions.create(
@@ -1476,6 +1575,10 @@ def render_month_end_summary(
     es = analysis_insights["executive_summary_signals"]
 
     lines.append(f"Performance Summary ({comparison})")
+    takeaway = analysis_insights.get("executive_takeaway")
+    if takeaway:
+        lines.append(takeaway)
+
 
     # Units
     u = es["units"]
@@ -1575,6 +1678,8 @@ def render_month_end_summary(
         lines.append(f"• Units: {s['total_quantity']['delta']:+.0f} ({s['total_quantity']['delta_pct']:+.2f}%)")
         lines.append(f"• Net sales: {currency_symbol}{s['net_sales']['delta']:+.2f} ({s['net_sales']['delta_pct']:+.2f}%)")
         lines.append(f"• CM1 profit: {currency_symbol}{s['profit']['delta']:+.2f} ({s['profit']['delta_pct']:+.2f}%)")
+        lines.append(f"• CM1 profit per unit: {currency_symbol}{s['unit_wise_profitability']['delta']:+.2f} "f"({s['unit_wise_profitability']['delta_pct']:+.2f}%)")
+
 
         # -------------------------
         # Diagnosis (FROM PROMPT 1)
@@ -1634,17 +1739,45 @@ def get_or_create_summary(
     marketplace_id,
     period,
     timeline,
-    year
+    year,
+    objective=None,
+    force_regenerate=False
 ):
+    # ---------------- Objective defaults / normalize ----------------
+    objective = objective or {}
+    constraints = objective.get("constraints") or {}
+
+    primary_goal = objective.get("primary_goal", "profit")
+    risk_level = objective.get("risk_level", "balanced")
+
+    max_tacos = constraints.get("max_tacos")
+    max_price_increase_pct = constraints.get("max_price_increase_pct")
+    ad_budget_cap = constraints.get("ad_budget_cap")
+    dont_change_price = constraints.get("dont_change_price", False)
+    notes = objective.get("notes")
+
+    # ---------------- Cache lookup ----------------
     cached = fetch_existing_summary(
         user_id, country, marketplace_id, period, timeline, year
     )
 
-    if cached:
+    # ✅ Return cached only if not forcing regeneration
+    if cached and not force_regenerate:
         return {
             "summary": cached.summary,
             "recommendations": cached.recommendations,
-            "source": "db"
+            "source": "db",
+            "objective": {
+                "primary_goal": getattr(cached, "primary_goal", None),
+                "risk_level": getattr(cached, "risk_level", None),
+                "constraints": {
+                    "max_tacos": getattr(cached, "max_tacos", None),
+                    "max_price_increase_pct": float(cached.max_price_increase_pct) if getattr(cached, "max_price_increase_pct", None) is not None else None,
+                    "ad_budget_cap": float(cached.ad_budget_cap) if getattr(cached, "ad_budget_cap", None) is not None else None,
+                    "dont_change_price": getattr(cached, "dont_change_price", None),
+                },
+                "notes": getattr(cached, "notes", None)
+            }
         }
 
     allow_reco = is_latest_period(period, timeline, year)
@@ -1710,7 +1843,6 @@ def get_or_create_summary(
         inventory_lost = round(abs(current.get("lost_total", 0.0)), 2)
     else:
         inventory_lost = round(abs(lost_total_val), 2)
-
 
     inventory_alerts = {}
 
@@ -1794,6 +1926,7 @@ def get_or_create_summary(
                     yoy_base[c] = round(v, 2)
 
             yoy = compare_metrics(current, yoy_base)
+
             sku_yoy = compare_sku_metrics(
                 sku_current,
                 compute_sku_precalc(df_yoy_detail)
@@ -1807,11 +1940,26 @@ def get_or_create_summary(
         "period_label": period_label(period, timeline, year),
         "country": str(country).lower(),
         "mom": mom,
+        "yoy": yoy,
         "inventory_lost": inventory_lost,
         "inventory_alerts": inventory_alerts,
         "sku_mom": sku_mom,
+        "sku_yoy": sku_yoy,
         "focus_skus": top_5_skus,
-        "movement_context": movement_context,   # 👈 ADD THIS
+        "movement_context": movement_context, 
+
+        # ✅ NEW: objective injected for the prompt
+        "objective": {
+            "primary_goal": primary_goal,
+            "risk_level": risk_level,
+            "constraints": {
+                "max_tacos": max_tacos,
+                "max_price_increase_pct": max_price_increase_pct,
+                "ad_budget_cap": ad_budget_cap,
+                "dont_change_price": dont_change_price,
+            },
+            "notes": notes
+        }
     }
 
     # ✅ Include YoY ONLY for yearly
@@ -1821,12 +1969,15 @@ def get_or_create_summary(
 
 
     analysis_insights = json.loads(run_prompt_1_analysis(ai_payload))
+    print("EXECUTIVE TAKEAWAY:", analysis_insights.get("executive_takeaway"))
+
 
 
     strategy = None
     if allow_reco:
         # backend-only objective for now
-        strategy_raw = run_prompt_2_strategy(analysis_insights, DEFAULT_USER_OBJECTIVE, top_5_skus)
+        strategy_raw = run_prompt_2_strategy(analysis_insights,ai_payload["objective"], top_5_skus)
+
         strategy_json = json.loads(strategy_raw)
         sku_actions = strategy_json.get("sku_actions")
 
@@ -1852,8 +2003,8 @@ def get_or_create_summary(
         "recommendations": recommendations
     }
 
-
-
+    # ---------------- SAVE/UPDATE DB (✅ with new columns) ----------------
+    # If row exists and we regenerated, update it; else insert new.
     save_summary_to_db({
         "user_id": user_id,
         "country": country,
@@ -1861,8 +2012,21 @@ def get_or_create_summary(
         "period": period,
         "timeline": timeline,
         "year": year,
+
+        # ✅ NEW columns
+        "primary_goal": primary_goal,
+        "risk_level": risk_level,
+        "max_tacos": max_tacos,
+        "max_price_increase_pct": max_price_increase_pct,
+        "ad_budget_cap": ad_budget_cap,
+        "dont_change_price": dont_change_price,
+        "notes": notes,
+
         "summary": ai_output["summary"],
-        "recommendations": ai_output["recommendations"]
+        "recommendations": ai_output["recommendations"],
+
+        # ✅ let save function know whether to update existing row
+        "upsert": True
     })
 
     return {
@@ -1873,6 +2037,7 @@ def get_or_create_summary(
         "sku_current": sku_current,
         "sku_mom": sku_mom,
         "sku_yoy": sku_yoy,
+        "objective": ai_payload["objective"],
         "source": "ai"
     }
 

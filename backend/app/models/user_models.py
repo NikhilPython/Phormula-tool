@@ -180,6 +180,29 @@ class improvment(db.Model):
     row_index = Column(Integer, nullable=True)
 
 
+# class HistoricAISummary(db.Model):
+#     __tablename__ = 'historic_ai_summary'
+#     __bind_key__ = 'chatbot'
+
+#     id = Column(Integer, primary_key=True)
+#     user_id = Column(Integer, nullable=False)
+#     country = Column(String(255), nullable=False)
+#     marketplace_id = Column(Integer, nullable=True)
+#     period = Column(
+#         Enum('monthly', 'quarterly', 'yearly', name='period_enum'),
+#         nullable=False
+#     )
+#     timeline = Column(String(50), nullable=False)
+#     year = Column(Integer, nullable=False)
+#     summary = Column(Text, nullable=False)
+#     recommendations = Column(Text, nullable=True)
+
+#     def __repr__(self):
+#         return (
+#             f"<HistoricAISummary user_id={self.user_id}, "
+#             f"period={self.period}, timeline={self.timeline}, year={self.year}>"
+#         )
+
 class HistoricAISummary(db.Model):
     __tablename__ = 'historic_ai_summary'
     __bind_key__ = 'chatbot'
@@ -194,6 +217,16 @@ class HistoricAISummary(db.Model):
     )
     timeline = Column(String(50), nullable=False)
     year = Column(Integer, nullable=False)
+
+    # NEW: objective fields
+    primary_goal = Column(String(50), nullable=True)              # e.g. profit|growth|...
+    risk_level = Column(String(50), nullable=True)                # conservative|balanced|aggressive
+    max_tacos = Column(Integer, nullable=True)
+    max_price_increase_pct = Column(Numeric(10, 2), nullable=True)
+    ad_budget_cap = Column(Numeric(12, 2), nullable=True)
+    dont_change_price = Column(Boolean, nullable=True, default=False)
+    notes = Column(Text, nullable=True)
+    
     summary = Column(Text, nullable=False)
     recommendations = Column(Text, nullable=True)
 
@@ -202,7 +235,6 @@ class HistoricAISummary(db.Model):
             f"<HistoricAISummary user_id={self.user_id}, "
             f"period={self.period}, timeline={self.timeline}, year={self.year}>"
         )
-
  
     
 # ------------------------------------------------- Shopify Models -------------------------------------------------
