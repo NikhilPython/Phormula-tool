@@ -1,7 +1,3 @@
-
-
-
-
 // "use client";
 
 // import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -70,6 +66,7 @@
 //     sku: string;
 //     ad_spend: number;
 //     isTotal?: boolean;
+//     isOthers?: boolean;
 // };
 
 // type MonthlySkuwiseRow = {
@@ -82,6 +79,9 @@
 //     cogs: number;
 //     fba_fees: number;
 //     selling_fees: number;
+//     tax: number;
+//     credits: number;
+//     tax_and_credits: number;
 //     cm1_profit_per: number;
 //     cm1_profit_per_unit: number;
 //     ads_spend: number;
@@ -89,6 +89,12 @@
 //     profit: number;
 //     isTotal?: boolean;
 // };
+
+// type MonthlySkuwiseTableRow = MonthlySkuwiseRow & {
+//     isOthers?: boolean;
+//     isTotal?: boolean;
+// };
+
 
 // /* ===================== ENV & ENDPOINTS ===================== */
 // const baseURL =
@@ -205,6 +211,189 @@
 
 // /* ===================== SMALL HELPERS ===================== */
 // const getShort = (label?: string) => (label ? label.split(" ")[0] || label : "");
+
+// const formatPositive2Decimal = (value: any) => {
+//     const n = Number(value);
+//     if (!Number.isFinite(n)) return "0.00";
+//     return Math.abs(n).toFixed(2);
+// };
+
+// /* ===================== P&L PRODUCTWISE SUMMARY (MTD) HELPERS ===================== */
+// type PlSummaryTotals = {
+//     advertising_total: number;
+//     visible_ads: number;
+//     dealsvouchar_ads: number;
+
+//     other_transactions: number;
+//     platform_fee: number;
+//     inventory_storage_fees: number;
+//     misc_transaction: number;
+
+//     reimbursement_lost_inventory_amount: number;
+//     reimbursement_lost_inventory_units: number;
+//     lost_total: number;
+
+//     shipment_charges: number;
+//     reimbursement_vs_sales: number;
+
+//     cm2_profit: number;
+//     cm2_margins: number;
+//     acos: number;
+
+//     rembursment_vs_cm2_margins: number;
+//     net_reimbursement: number;
+
+//     profit: number;
+//     net_sales: number;
+// };
+
+// const toNumber = (v: any) => {
+//     if (v === undefined || v === null || v === "") return 0;
+//     if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+//     const n = Number(String(v).replace(/,/g, "").trim());
+//     return Number.isFinite(n) ? n : 0;
+// };
+
+// const INT_KEYS = new Set<string>(["reimbursement_lost_inventory_units"]);
+
+// // Keys where negative values should be preserved in display (do NOT abs)
+// const SIGNED_KEYS = new Set<string>([
+//     "cm2_profit",
+//     "cm2_margins",
+//     "rembursment_vs_cm2_margins",
+//     "reimbursement_vs_sales",
+// ]);
+
+// function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
+//     // This follows the same keys you used in SKUtable.tsx, but is defensive about naming.
+//     const platformFees = toNumber(source?.platformfeenew ?? source?.platform_fee_new ?? source?.platform_fee);
+//     const inventoryStorageFees = toNumber(
+//         source?.platform_fee_inventory_storage ?? source?.inventory_storage_fees ?? source?.inventory_storage_fee
+//     );
+
+//     const netReimbursement = toNumber(source?.rembursement_fee ?? source?.reimbursement_fee ?? source?.net_reimbursement);
+//     const reimbursementUnits = toNumber(
+//         source?.reimbursement_lost_inventory_units ?? source?.reimbursement_units ?? source?.lost_inventory_units
+//     );
+
+//     const cm2MarginsValue = toNumber(
+//         source?.cm2_margins ??
+//         source?.cm2_profit_percentage ??
+//         source?.cm2_profit_percent ??
+//         source?.cm2_profit_percentage_value ??
+//         source?.cm2_margin ??
+//         source?.cm2_margin_pct
+//     );
+
+//     return {
+//         advertising_total: toNumber(source?.advertising_total ?? source?.ads_total ?? source?.ads_spend_total),
+//         visible_ads: toNumber(source?.visible_ads ?? source?.ads_visibility),
+//         dealsvouchar_ads: toNumber(source?.dealsvouchar_ads ?? source?.deals_vouchers_ads),
+
+//         other_transactions: toNumber(source?.other_transactions ?? source?.platform_fee ?? source?.other_fees_total),
+//         platform_fee: platformFees,
+//         inventory_storage_fees: inventoryStorageFees,
+//         misc_transaction: toNumber(source?.misc_transaction ?? source?.misc_transactions),
+
+//         reimbursement_lost_inventory_amount: toNumber(
+//             source?.reimbursement_lost_inventory_amount ?? source?.lost_inventory_amount
+//         ),
+//         reimbursement_lost_inventory_units: reimbursementUnits,
+//         lost_total: toNumber(source?.lost_total ?? source?.reimbursement_total ?? source?.lost_inventory_total),
+
+//         shipment_charges: toNumber(source?.shipment_charges ?? source?.shipping_charges),
+//         reimbursement_vs_sales: toNumber(source?.reimbursement_vs_sales ?? source?.reimbursement_vs_net_sales),
+
+//         cm2_profit: toNumber(source?.cm2_profit),
+//         cm2_margins: cm2MarginsValue,
+//         acos: toNumber(source?.acos ?? source?.tacos),
+
+//         rembursment_vs_cm2_margins: toNumber(source?.rembursment_vs_cm2_margins ?? source?.reimbursement_vs_cm2_margins),
+//         net_reimbursement: netReimbursement,
+
+//         profit: toNumber(source?.Profit ?? source?.profit ?? source?.cm1_profit),
+//         net_sales: toNumber(source?.Net_Sales ?? source?.net_sales),
+//     };
+// }
+
+// function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
+//     // Fallback: use GRAND_TOTAL row from skuwise_items (or sum rows).
+//     const grand = rows?.find?.((r: any) => r?.isTotal) || rows?.[rows?.length - 1] || {};
+//     const netSales = toNumber(grand?.net_sales);
+//     const adsSpend = toNumber(grand?.ads_spend);
+//     const cm2Profit = toNumber(grand?.cm2_profit);
+
+//     const acos = netSales ? (Math.abs(adsSpend) / Math.abs(netSales)) * 100 : 0;
+//     const cm2Margins = netSales ? (cm2Profit / netSales) * 100 : 0;
+
+//     return {
+//         advertising_total: Math.abs(adsSpend),
+//         visible_ads: 0,
+//         dealsvouchar_ads: 0,
+
+//         other_transactions: 0,
+//         platform_fee: 0,
+//         inventory_storage_fees: 0,
+//         misc_transaction: 0,
+
+//         reimbursement_lost_inventory_amount: 0,
+//         reimbursement_lost_inventory_units: 0,
+//         lost_total: 0,
+
+//         shipment_charges: 0,
+//         reimbursement_vs_sales: 0,
+
+//         cm2_profit: cm2Profit,
+//         cm2_margins: cm2Margins,
+//         acos,
+
+//         rembursment_vs_cm2_margins: 0,
+//         net_reimbursement: 0,
+
+//         profit: toNumber(grand?.profit),
+//         net_sales: netSales,
+//     };
+// }
+
+// function computePlSummaryTotals(data: any, skuwiseRows: any[]): PlSummaryTotals {
+//     // Priority:
+//     // 1) If API returns a dedicated summary object, use it (common candidates).
+//     // 2) Else if API totals include the needed keys, use totals.
+//     // 3) Else fallback to GRAND_TOTAL skuwise row.
+//     const candidates = [
+//         data?.summary,
+//         data?.pl_summary,
+//         data?.mtd_summary,
+//         data?.totals, // sometimes contains extra finance breakdown fields
+//         data?.derived_totals,
+//     ].filter(Boolean);
+
+//     for (const c of candidates) {
+//         const t = computePlSummaryTotalsFromSource(c);
+//         // If it looks meaningful (net_sales or cm2_profit), accept it.
+//         if (t.net_sales !== 0 || t.cm2_profit !== 0 || t.advertising_total !== 0) return t;
+//     }
+//     return computePlSummaryTotalsFromSkuwise(skuwiseRows || []);
+// }
+
+// const formatSummaryValue = (value: unknown, key: string) => {
+//     if (value === undefined || value === null || value === "") return "-";
+
+//     const raw = toNumber(value);
+//     if (!Number.isFinite(raw)) return "-";
+
+//     // preserve sign for certain metrics; otherwise display as absolute value
+//     const n = SIGNED_KEYS.has(key) ? raw : Math.abs(raw);
+
+//     if (INT_KEYS.has(key)) return String(Math.trunc(n));
+
+//     const formatted = Math.abs(n).toLocaleString(undefined, {
+//         minimumFractionDigits: 2,
+//         maximumFractionDigits: 2,
+//     });
+
+//     return n < 0 ? `-${formatted}` : formatted;
+// };
 
 // const monthToNumber = (monthName: string): number => {
 //     const months: Record<string, number> = {
@@ -2051,11 +2240,15 @@
 //             fba_fees: Number(r.fba_fees ?? 0),
 //             selling_fees: Number(r.selling_fees ?? 0),
 
-//             ads_spend: Number(r.ads_spend ?? 0),     // ✅ NEW
-//             cm2_profit: Number(r.cm2_profit ?? 0),   // ✅ NEW
-//             cm1_profit_per: Number(r.cm1_profit_per ?? 0),   // ✅ NEW
-//             cm1_profit_per_unit: Number(r.cm1_profit_per_unit ?? 0),   // ✅ NEW
+//             ads_spend: Number(r.ads_spend ?? 0),
+//             cm2_profit: Number(r.cm2_profit ?? 0),
 
+//             tax: Number(r.tax ?? 0),
+//             credits: Number(r.credits ?? 0),
+//             tax_and_credits: Number(r.tax_and_credits ?? 0),
+
+//             cm1_profit_per: Number(r.cm1_profit_per ?? 0),
+//             cm1_profit_per_unit: Number(r.cm1_profit_per_unit ?? 0),
 //             profit: Number(r.profit ?? 0),
 //             isTotal,
 //         });
@@ -2066,6 +2259,79 @@
 
 //         return mapped;
 //     }, [data]);
+
+//     // Limit table body to Top 9 SKUs + one "Others" aggregate row + Grand Total
+//     // "Others" aggregates all remaining SKUs (after sorting by Net Sales desc).
+//     // For ASP, we show an average (computed as Net Sales / Quantity when Quantity > 0).
+//     const monthlySkuwiseRowsForTable = useMemo<MonthlySkuwiseTableRow[]>(() => {
+//         if (!monthlySkuwiseRows || monthlySkuwiseRows.length === 0) return [];
+
+//         const totalRow =
+//             monthlySkuwiseRows.find((r) => r.isTotal) ??
+//             monthlySkuwiseRows.find((r) => r.sku === "GRAND_TOTAL") ??
+//             null;
+
+//         const bodyRows = monthlySkuwiseRows.filter((r) => !r.isTotal && r.sku !== "GRAND_TOTAL");
+
+//         // If there are 9 or fewer body rows, show them as-is (plus total if present).
+//         if (bodyRows.length <= 9) {
+//             const out = [...bodyRows];
+//             if (totalRow) out.push(totalRow);
+//             // re-number S.No
+//             return out.map((r, idx) => (r.isTotal ? r : { ...r, sno: idx + 1 }));
+//         }
+
+//         const sorted = [...bodyRows].sort((a, b) => Math.abs(b.net_sales) - Math.abs(a.net_sales));
+//         const top9 = sorted.slice(0, 9).map((r, idx) => ({ ...r, sno: idx + 1 }));
+
+//         const rest = sorted.slice(9);
+
+//         const sum = (key: keyof MonthlySkuwiseRow) =>
+//             rest.reduce((acc, r) => acc + (Number((r as any)[key]) || 0), 0);
+
+//         const othersQty = sum("quantity");
+//         const othersNetSales = sum("net_sales");
+//         const othersAsp =
+//             othersQty && Number.isFinite(othersQty) && othersQty !== 0
+//                 ? othersNetSales / othersQty
+//                 : rest.length
+//                     ? rest.reduce((acc, r) => acc + (Number(r.asp) || 0), 0) / rest.length
+//                     : 0;
+
+//         const othersRow: MonthlySkuwiseTableRow = {
+//             sno: 10,
+//             sku: "OTHERS",
+//             product_name: "Others",
+//             quantity: othersQty,
+//             asp: othersAsp,
+//             net_sales: othersNetSales,
+//             cogs: sum("cogs"),
+//             fba_fees: sum("fba_fees"),
+//             selling_fees: sum("selling_fees"),
+//             // Not shown in the current layout; keep them as 0 to avoid misleading sums.
+//             tax: 0,
+//             credits: 0,
+//             tax_and_credits: 0,
+//             cm1_profit_per: 0,
+//             cm1_profit_per_unit: 0,
+//             ads_spend: sum("ads_spend"),
+//             cm2_profit: sum("cm2_profit"),
+//             profit: sum("profit"),
+//             isOthers: true,
+//         };
+
+//         const out: MonthlySkuwiseRow[] = [...top9, othersRow];
+//         if (totalRow) out.push(totalRow);
+//         return out;
+//     }, [monthlySkuwiseRows]);
+
+
+//     const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
+//         // ✅ Summary rows for "P&L Productwise Breakdown MTD"
+//         // Data source: mtd_transactions API response (data), with a safe fallback to GRAND_TOTAL in skuwise_items.
+//         return computePlSummaryTotals(data, monthlySkuwiseRows);
+//     }, [data, monthlySkuwiseRows]);
+
 
 //     const SKUWISE_LEFT_COLS = [
 //         { key: "sno", label: "S.No", align: "center" as const },
@@ -2118,6 +2384,29 @@
 //                 },
 //             ],
 //         },
+//         {
+//             id: "tax_and_credits",
+//             label: "Other Transactions",
+
+//             collapsedCols: [
+//                 {
+//                     key: "tax_and_credits",
+//                     label: "Total",
+//                     align: "center" as const,
+//                 },
+//             ],
+
+//             expandedCols: [
+//                 { key: "tax", label: "Net Taxes", align: "center" as const },
+//                 { key: "credits", label: "Net Credits", align: "center" as const },
+//                 {
+//                     key: "tax_and_credits",
+//                     label: "Total",
+//                     align: "center" as const,
+//                 },
+//             ],
+//         },
+
 //     ];
 
 
@@ -2458,6 +2747,43 @@
 //         inrToUsd,
 //     ]);
 
+
+//     // ✅ TaCOS for Summary rows (match the AmazonStatCard "TACoS" value)
+//     const tacosPctForSummary = useMemo(() => {
+//         // When BI is enabled for global view, the TACoS card computes (total advertising / total net sales) * 100.
+//         if (globalUseBi) {
+//             if (!globalCm2Ready) return 0;
+//             const ads = biAlignedTotals?.total_current_advertising ?? 0;
+//             const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+//             return sales > 0 ? (ads / sales) * 100 : 0;
+//         }
+
+//         // Otherwise use the same computed value used by the cards (already handles onlyAmazon vs combined).
+//         return globalCurrRoasPct;
+//     }, [globalUseBi, globalCm2Ready, biAlignedTotals, globalCurrRoasPct]);
+
+//     // ✅ Cost of Ads for Summary rows (match the AmazonStatCard "Cost of Ads" current value)
+//     const costOfAdsForSummary = useMemo(() => {
+//         // For non-global views, the Amazon cards use `useBiForAmazonCards` and `amazonCurrAdsDisp`.
+//         // If BI is active, "Cost of Ads" card shows converted aligned totals in home currency.
+//         if (useBiForAmazonCards) {
+//             if (!cm2Ready) return 0;
+//             return convertToDisplayCurrency(
+//                 biAlignedTotals?.total_current_advertising ?? 0,
+//                 biSourceCurrency
+//             );
+//         }
+//         return toNumber(amazonCurrAdsDisp);
+//     }, [
+//         useBiForAmazonCards,
+//         cm2Ready,
+//         biAlignedTotals,
+//         biSourceCurrency,
+//         convertToDisplayCurrency,
+//         amazonCurrAdsDisp,
+//     ]);
+
+
 //     const globalPrevRoasPct = useMemo(() => {
 //         const ads = toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0);
 //         const amazonSales = toNumberSafe(data?.previous_period?.totals?.net_sales ?? 0);
@@ -2605,6 +2931,39 @@
 //     const stats_lastMtdHome = identityConvert(targetData.lastMonthToDateUSD ?? 0);
 //     const stats_lastMonthTotalHome = identityConvert(targetData.lastMonthTotalUSD ?? 0);
 //     const stats_targetHome = identityConvert(targetData.targetUSD ?? 0);
+
+//     // ✅ Derived Summary Metrics (for P&L Productwise Breakdown MTD summary)
+
+//     // Reimbursement value should match what is sent to SalesTargetCard (home-currency reimbursement)
+//     const reimbursementForSummary = useMemo(() => {
+//         return toNumber(reimbursementHome?.current);
+//     }, [reimbursementHome?.current]);
+
+//     // CM2 Margin (%) = (CM2 Profit / Net Sales) * 100
+//     const cm2MarginPctForSummary = useMemo(() => {
+//         const cm2 = toNumber(plSummaryTotals.cm2_profit);
+//         const netSales = toNumber(plSummaryTotals.net_sales);
+//         return netSales ? (cm2 / netSales) * 100 : 0;
+//     }, [plSummaryTotals.cm2_profit, plSummaryTotals.net_sales]);
+
+//     // Net Reimbursement (%) = (Reimbursement / MTD Sales) * 100  (MTD Sales from SalesTargetCard inputs)
+//     const netReimbursementPctForSummary = useMemo(() => {
+//         const mtdSales = toNumber(stats_mtdHome);
+//         return mtdSales ? (reimbursementForSummary / mtdSales) * 100 : 0;
+//     }, [reimbursementForSummary, stats_mtdHome]);
+
+//     // Reimbursement vs CM2 Margin (%) = (Reimbursement / CM2 Profit/Loss) * 100
+//     const reimbursementVsCm2PctForSummary = useMemo(() => {
+//         const cm2 = toNumber(plSummaryTotals.cm2_profit);
+//         return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
+//     }, [reimbursementForSummary, plSummaryTotals.cm2_profit]);
+
+//     // Reimbursement vs Sales (%) = (Reimbursement / Net Sales) * 100
+//     // (Your text omitted *100; keeping % for consistent display with existing UI.)
+//     const reimbursementVsSalesPctForSummary = useMemo(() => {
+//         const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
+//         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
+//     }, [reimbursementForSummary, plSummaryTotals.net_sales, stats_mtdHome]);
 
 //     const { todayDay: statsTodayDay } = getISTDayInfo();
 
@@ -3430,9 +3789,9 @@
 //                 ) : loading && monthlySkuwiseRows.length === 0 ? (
 //                     <div className="text-sm text-gray-500">Loading…</div>
 //                 ) : (
-//                     <GroupedCollapsibleTable<MonthlySkuwiseRow>
-//                         rows={monthlySkuwiseRows}
-//                         getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.sku || String(idx))}
+//                     <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
+//                         rows={monthlySkuwiseRowsForTable}
+//                         getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.isOthers ? "OTHERS" : row.sku || String(idx))}
 //                         leftCols={SKUWISE_LEFT_COLS}
 //                         groups={SKUWISE_GROUPS}
 //                         singleCols={SKUWISE_SINGLE_COLS}
@@ -3445,6 +3804,7 @@
 //                             { type: "single", key: "cogs" },
 //                             { type: "group", id: "marketplace_fees" },
 //                             { type: "group", id: "profit" },
+//                             { type: "group", id: "tax_and_credits" },
 //                             // { type: "single", key: "profit" },
 //                             // { type: "single", key: "cm1_profit_per_unit" },
 //                             // { type: "single", key: "cm1_profit_per" },
@@ -3455,19 +3815,34 @@
 //                         // initialCollapsed={{ marketplace_fees: false }}
 //                         getRowClassName={(row, index) => {
 //                             if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
+//                             if (row.isOthers) return "";
 //                             return index % 2 === 0 ? "bg-white" : "bg-gray-50";
 //                         }}
 //                         getValue={(row, colKey) => {
 //                             if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
-//                             if (colKey === "sku") return row.isTotal ? "Grand Total" : row.sku;
-//                             if (colKey === "product_name") return row.isTotal ? "Grand Total" : row.product_name;
+//                             if (colKey === "sku") {
+//                                 if (row.isOthers || row.isTotal) return "-";
+//                                 return row.sku || "-";
+//                             }
+//                             if (colKey === "product_name") return row.isTotal ? "Total" : row.isOthers ? "Others" : row.product_name;
 
 //                             if (colKey === "quantity") return row.quantity;
 
 //                             if (colKey === "asp") return formatAdsNumber(row.asp);
 //                             if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
 
-//                             if (colKey === "ads_spend")   // ✅ NEW
+//                             // if (colKey === "tax") return formatAdsNumber(row.tax);
+//                             // if (colKey === "credits") return formatAdsNumber(row.credits);
+//                             // if (colKey === "tax_and_credits") return formatAdsNumber(row.tax_and_credits);
+
+//                             if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits") {
+//                                 const v = Number((row as any)[colKey] ?? 0);
+//                                 return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
+//                             }
+
+
+
+//                             if (colKey === "ads_spend")
 //                                 return formatAdsNumber(Math.abs(row.ads_spend));
 
 //                             if (colKey === "cogs")
@@ -3490,101 +3865,85 @@
 //                             if (colKey === "profit")
 //                                 return formatAdsNumber(row.profit);
 
-//                             if (colKey === "cm1_profit_per")
-//                                 return formatAdsNumber(row.cm1_profit_per);
 
-//                             if (colKey === "cm1_profit_per_unit")
-//                                 return formatAdsNumber(row.cm1_profit_per_unit);
-
-//                             return "";
+//                             // Fallback: return raw value if not explicitly formatted above
+//                             return (row as any)[colKey] ?? "";
 //                         }}
-//                         // summary={{
-//                         //     // enabled: mainColCount > 0,
+//                         summary={{
+//                             enabled: monthlySkuwiseRowsForTable.length > 0,
 
-//                         //     sections: [
-//                         //         {
-//                         //             id: "ads",
-//                         //             label: "Cost of Advertisement",
-//                         //             endValue: formatValue(totals.advertising_total, "advertising_total"),
-//                         //             // defaultCollapsed: true,/
 
-//                         //         },
 
-//                         //         {
-//                         //             id: "other",
-//                         //             label: "Other Transactions",
-//                         //             endValue: formatValue(totals.other_transactions, "other_transactions"),
-//                         //             defaultCollapsed: true,
-//                         //             children: [
-//                         //                 {
-//                         //                     id: "other_1",
-//                         //                     label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-//                         //                     midValue: formatValue(totals.platform_fee, "platform_fee"),
-//                         //                 },
-//                         //                 {
-//                         //                     id: "other_2",
-//                         //                     label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-//                         //                     midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
-//                         //                 },
-//                         //                 {
-//                         //                     id: "other_misc",
-//                         //                     label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
-//                         //                     midValue: formatValue(totals.misc_transaction, "misc_transaction"),
-//                         //                 },
-//                         //                 {
-//                         //                     id: "other_3",
-//                         //                     label: (
-//                         //                         <>
-//                         //                             Reimbursement for lost Inventory
-//                         //                             {totals.reimbursement_lost_inventory_units
-//                         //                                 ? ` - ${totals.reimbursement_lost_inventory_units} Units `
-//                         //                                 : " "}
-//                         //                             <strong className="text-green-500">(+)</strong>
-//                         //                         </>
-//                         //                     ),
-//                         //                     midValue: formatValue(totals.lost_total, "lost_total"),
-//                         //                 },
-//                         //             ],
-//                         //         },
-//                         //     ],
+//                             fixedRows: [
+//                                 ...(countryName === "us" || countryName === "global"
+//                                     ? [
+//                                         {
+//                                             id: "ship",
+//                                             label: (
+//                                                 <>
+//                                                     Shipment Charges <strong>(-)</strong>
+//                                                 </>
+//                                             ),
+//                                             endValue: formatSummaryValue(plSummaryTotals.shipment_charges, "shipment_charges"),
+//                                         },
+//                                     ]
+//                                     : []),
 
-//                         //     fixedRows: [
-//                         //         ...(countryName === "us" || countryName === "global"
-//                         //             ? [
-//                         //                 {
-//                         //                     id: "ship",
-//                         //                     label: <>Shipment Charges <strong>(-)</strong></>,
-//                         //                     endValue: formatValue(totals.shipment_charges, "shipment_charges"),
-//                         //                 },
-//                         //             ]
-//                         //             : []),
+//                                 {
+//                                     id: "ads",
+//                                     label: "Cost of Advertisement",
+//                                     endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
+//                                 },
+//                                 {
+//                                     id: "other",
+//                                     label: "Other Transactions",
+//                                     endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
+//                                 },
+//                                 {
+//                                     id: "cm2_profit",
+//                                     label: "CM2 Profit/Loss",
+//                                     endValue: formatSummaryValue(plSummaryTotals.cm2_profit, "cm2_profit"),
+//                                 },
+//                                 {
+//                                     id: "cm2_margins",
+//                                     label: "CM2 Margins",
+//                                     endValue: `${formatSummaryValue(cm2MarginPctForSummary, "cm2_margins")}%`,
+//                                 },
 
-//                         //         { id: "cm2_profit", label: "CM2 Profit/Loss", endValue: formatValue(totals.cm2_profit, "cm2_profit") },
-//                         //         { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}%` },
+//                                 {
+//                                     id: "tacos",
+//                                     label: "TACoS (Total Advertising Cost of Sale)",
+//                                     endValue: `${formatSummaryValue(tacosPctForSummary, "acos")}%`,
+//                                 },
 
-//                         //         // ✅ TACoS first
-//                         //         { id: "tacos", label: "TACoS (Total Advertising Cost of Sale)", endValue: `${formatValue(totals.acos, "acos")}%` },
+//                                 {
+//                                     id: "net_reimb",
+//                                     label: "Net Reimbursement",
+//                                     endValue: `${formatSummaryValue(reimbursementForSummary, "net_reimbursement")}`,
+//                                 },
+//                                 {
+//                                     id: "rv_cm2",
+//                                     label: "Reimbursement vs CM2 Margins",
+//                                     endValue: `${formatSummaryValue(
+//                                         reimbursementVsCm2PctForSummary, "rembursment_vs_cm2_margins")}%`,
+//                                 },
+//                                 {
+//                                     id: "rv_sales",
+//                                     label: "Reimbursement vs Sales",
+//                                     endValue: `${formatSummaryValue(
+//                                         reimbursementVsSalesPctForSummary, "reimbursement_vs_sales")}%`,
+//                                 },
+//                             ],
 
-//                         //         // ✅ then Net Reimbursement (below TACoS)
-//                         //         {
-//                         //             id: "net_reimb",
-//                         //             label: "Net Reimbursement",
-//                         //             endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
-//                         //         },
-//                         //         {
-//                         //             id: "rv_cm2",
-//                         //             label: "Reimbursement vs CM2 Margins",
-//                         //             endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%`,
-//                         //         },
-//                         //         {
-//                         //             id: "rv_sales",
-//                         //             label: "Reimbursement vs Sales",
-//                         //             endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
-//                         //         },
-//                         //     ],
+//                             valueCols: 2,
+//                         }}
+//                     //             label: "Reimbursement vs Sales",
+//                     //             endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
+//                     //         },
+//                     //     ],
 
-//                         //     valueCols: 2,
-//                         // }}
+//                     //     valueCols: 2,
+//                     // }}
 //                     />
 
 //                 )}
@@ -3652,7 +4011,7 @@
 //                       title={isMtdPlExpanded ? "Collapse" : "Expand"}
 //                     >
 //                       {isMtdPlExpanded ? < CgPushLeft size={18} className="font-extrabold" /> : <CgPushRight size={18} className="font-extrabold" />}
-
+                      
 //                     </button> */}
 
 //                                         <span className="relative group shrink-0">
@@ -3808,6 +4167,29 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -3854,6 +4236,7 @@ import { useRouter } from "next/navigation";
 import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
 import { CgPushRight, CgPushLeft } from "react-icons/cg";
 import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/GroupedCollapsibleTable";
+import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -6822,6 +7205,127 @@ export default function DashboardPage() {
         return null;
     }, []);
 
+    /* ===================== ✅ EXCEL EXPORT: P&L Productwise Breakdown MTD ===================== */
+    const handleDownloadPlProductwiseMtd = useCallback(() => {
+        try {
+            // Export ALL rows from API (no "Others" aggregate row), keep GRAND_TOTAL.
+            const rows = (monthlySkuwiseRows || []).filter((r) => {
+                const sku = String(r.sku || "").toUpperCase();
+                const pn = String((r as any).product_name || "").toLowerCase();
+                const isOthers = (r as any).isOthers === true;
+                return !isOthers && !(sku === "OTHERS" && pn === "others");
+            });
+
+            if (!rows.length) return;
+
+            const periodLabel = formattedMonthYear;
+            const titleCountry = countryName === "global" ? "Global" : countryName.toUpperCase();
+            const companyName =
+                (userData as any)?.companyName ||
+                (userData as any)?.company_name ||
+                (userData as any)?.company ||
+                "";
+
+            const dataRows = rows.map((r) => {
+                const marketplaceTotal = Math.abs(Number(r.fba_fees || 0)) + Math.abs(Number(r.selling_fees || 0));
+                return {
+                    "S.No": r.isTotal ? "" : (r.sno ?? ""),
+                    "Product Name": r.isTotal ? "Total" : (r.product_name ?? ""),
+                    SKU: r.isTotal ? "" : (r.sku ?? ""),
+                    "Net Units Sold": Number(r.quantity || 0),
+                    ASP: Number(r.asp || 0),
+                    "Net Sales": Number(r.net_sales || 0),
+                    COGS: Number(r.cogs || 0),
+                    "FBA Fees": Number(r.fba_fees || 0),
+                    "Selling Fees": Number(r.selling_fees || 0),
+                    "Marketplace Fees Total": marketplaceTotal,
+                    "Net Taxes": Number(r.tax || 0),
+                    "Net Credits": Number(r.credits || 0),
+                    "Tax & Credits": Number(r.tax_and_credits || 0),
+                    "CM1 Profit %": Number(r.cm1_profit_per || 0),
+                    "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
+                    "CM1 Profit": Number(r.profit || 0),
+                    "Ads Spend": Number(r.ads_spend || 0),
+                    "CM2 Profit": Number(r.cm2_profit || 0),
+                };
+            });
+
+            // ✅ Include the UI summary block in Excel export
+            const summaryRows = [
+                ...(countryName === "us" || countryName === "global"
+                    ? [
+                        {
+                            label: "Shipment Charges (-)",
+                            value: Number((plSummaryTotals as any)?.shipment_charges ?? 0),
+                        },
+                    ]
+                    : []),
+                {
+                    label: "Cost of Advertisement",
+                    value: Number(costOfAdsForSummary ?? 0),
+                },
+                {
+                    label: "Other Transactions",
+                    value: Number((plSummaryTotals as any)?.other_transactions ?? 0),
+                },
+                {
+                    label: "CM2 Profit/Loss",
+                    value: Number((plSummaryTotals as any)?.cm2_profit ?? 0),
+                },
+                {
+                    label: "CM2 Margins",
+                    value: `${Number(cm2MarginPctForSummary ?? 0)}%`,
+                },
+                {
+                    label: "TACoS (Total Advertising Cost of Sale)",
+                    value: `${Number(tacosPctForSummary ?? 0)}%`,
+                },
+                {
+                    label: "Net Reimbursement",
+                    value: Number(reimbursementForSummary ?? 0),
+                },
+                {
+                    label: "Reimbursement vs CM2 Margins",
+                    value: `${Number(reimbursementVsCm2PctForSummary ?? 0)}%`,
+                },
+                {
+                    label: "Reimbursement vs Sales",
+                    value: `${Number(reimbursementVsSalesPctForSummary ?? 0)}%`,
+                },
+            ];
+
+            exportPnLProductwiseBreakdownMtdExcel({
+                filename: `Amazon-PnL-Productwise-MTD-${periodLabel}.xlsx`,
+                titleLine: `Amazon ${titleCountry} - P&L Productwise Breakdown MTD - ${periodLabel}`,
+                countryName: countryName,
+                titleCountry,
+                platformLabel: "Amazon",
+                periodLabel,
+                companyName,
+                brandName: String(brandName || ""),
+                homeCurrencyCode: profileHomeCurrency,
+                dataRows,
+                summaryRows,
+            });
+        } catch (err) {
+            console.error("Error exporting P&L Productwise Breakdown MTD", err);
+        }
+    }, [
+        monthlySkuwiseRows,
+        formattedMonthYear,
+        countryName,
+        plSummaryTotals,
+        costOfAdsForSummary,
+        cm2MarginPctForSummary,
+        tacosPctForSummary,
+        reimbursementForSummary,
+        reimbursementVsCm2PctForSummary,
+        reimbursementVsSalesPctForSummary,
+        userData,
+        brandName,
+        profileHomeCurrency,
+    ]);
+
     return (
         <div className="relative w-full">
             <HashScroll offset={80} />
@@ -7583,15 +8087,23 @@ export default function DashboardPage() {
                 <div className="mb-3 flex items-center justify-between gap-3">
                     <PageBreadcrumb pageTitle="P&L Productwise Breakdown MTD" variant="page" align="left" textSize="2xl" />
 
-                    <button
-                        type="button"
-                        onClick={fetchAmazon}   // ✅ refreshes MTD data
-                        disabled={loading}
-                        className={`rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm ${loading ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400" : "border-gray-300 bg-white hover:bg-gray-50"
-                            }`}
-                    >
-                        {loading ? "Loading…" : "Refresh"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <DownloadIconButton
+                            onClick={handleDownloadPlProductwiseMtd}
+                            aria-label="Download P&L Productwise Breakdown MTD"
+                            // title="Download"
+                        />
+
+                        <button
+                            type="button"
+                            onClick={fetchAmazon}   
+                            disabled={loading}
+                            className={`rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm ${loading ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400" : "border-gray-300 bg-white hover:bg-gray-50"
+                                }`}
+                        >
+                            {loading ? "Loading…" : "Refresh"}
+                        </button>
+                    </div>
                 </div>
 
                 {error ? (
