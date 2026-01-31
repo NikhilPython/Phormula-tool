@@ -694,14 +694,31 @@ def monthly_sp_sd_to_db():
             "advertised_unit_sale": "sum",
             "other_unit_sale": "sum",
             "new_to_brand_sales": "sum",
+
+            # ✅ keep which sources contributed (SP / SD)
+            "source": lambda s: ",".join(sorted(set([str(x).upper() for x in s if x])))
         })
+
 
         # ---- output in your monthly table shape ----
         out = pd.DataFrame()
         out["sno"] = range(1, len(g) + 1)
         out["products"] = g["advertised_sku"]
         out["asin"] = g["advertised_asin"]
-        out["ad_type"] = None
+        def _ad_type_from_source(src: str) -> str:
+            parts = set((src or "").split(","))
+            has_sp = "SP" in parts
+            has_sd = "SD" in parts
+            if has_sp and has_sd:
+                return "sponsored_display, sponsored_product"
+            if has_sd:
+                return "sponsored_display"
+            if has_sp:
+                return "sponsored_product"
+            return None
+
+        out["ad_type"] = g["source"].apply(_ad_type_from_source)
+
         out["match_type"] = None
 
         out["impressions"] = g["impressions"].astype(int)

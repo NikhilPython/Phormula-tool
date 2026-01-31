@@ -656,6 +656,7 @@ def upload():
 
 # ========================================================= Live MTD fetch =========================================================
 
+
 # ---------------- helpers ----------------
 def _safe_ident(s: str) -> str:
     s = (s or "").strip().lower()
@@ -682,7 +683,6 @@ def _country_to_sku_col(country: str) -> str:
         return "sku_uk"
     if c in ("us", "usa", "united_states"):
         return "sku_us"
-    # default: try sku_uk first
     return "sku_uk"
 
 
@@ -893,10 +893,7 @@ def finances_mtd_transactions():
     #    - credits
     #    - tax
     #    - tax_and_credits = credits - abs(tax)
-    #    - cm2_profit = profit - ads_spend
-    #    - cm1_profit_per_unit = profit / quantity
-    #    - cm1_profit_per = (profit / net_sales) * 100
-    #    - product_name from sku_{user_id}_data_table
+    #    - ad_type  (merged from adsmonthly table)
     # ============================================================
     skuwise_table_name = _build_skuwise_table_name(user_id, ui_country, now_utc.month, now_utc.year)
     ads_table_name = _build_adsmonthly_table_name(user_id, ui_country, now_utc.month, now_utc.year)
@@ -961,7 +958,7 @@ def finances_mtd_transactions():
         df_sku["credits"] = _col(df_sku, "postage_credits") + _col(df_sku, "gift_wrap_credits")
         df_sku["credits"] = pd.to_numeric(df_sku["credits"], errors="coerce").fillna(0.0)
 
-        # ✅ tax (can be negative in your data)
+        # ✅ tax (can be negative)
         df_sku["tax"] = (
             _col(df_sku, "product_sales_tax")
             + _col(df_sku, "shipping_credits_tax")
@@ -971,28 +968,43 @@ def finances_mtd_transactions():
         )
         df_sku["tax"] = pd.to_numeric(df_sku["tax"], errors="coerce").fillna(0.0)
 
-        # ✅ NEW: tax_and_credits = credits - abs(tax)
-        df_sku["tax_and_credits"] = df_sku["credits"] - df_sku["tax"].abs()
-        df_sku["tax_and_credits"] = pd.to_numeric(df_sku["tax_and_credits"], errors="coerce").fillna(0.0)
-        df_sku["tax_and_credits"] = df_sku["tax_and_credits"].round(2)
+        # ✅ tax_and_credits = credits - abs(tax)
+        df_sku["tax_and_credits"] = (df_sku["credits"] - df_sku["tax"].abs()).round(2)
 
         # -------- ADS: read + aggregate + rename BEFORE merge --------
         ads_agg = pd.DataFrame()
         try:
-            sql = f'SELECT products, impressions, clicks, spend, sale_units, sale_amount FROM public."{ads_table_name}"'
+            sql = f'''
+                SELECT products, ad_type, impressions, clicks, spend, sale_units, sale_amount
+                FROM public."{ads_table_name}"
+            '''
             ads_df = pd.read_sql_query(sql, PHORMULA_ENGINE)
 
             ads_df["products"] = ads_df["products"].fillna("").astype(str).str.strip()
             ads_df = ads_df[ads_df["products"] != ""]
+
+            ads_df["ad_type"] = ads_df.get("ad_type", "").fillna("").astype(str).str.strip()
 
             for col in ["impressions", "clicks", "spend", "sale_units", "sale_amount"]:
                 if col not in ads_df.columns:
                     ads_df[col] = 0.0
                 ads_df[col] = pd.to_numeric(ads_df[col], errors="coerce").fillna(0.0)
 
-            ads_agg = ads_df.groupby("products", as_index=False)[
+            # numeric sums
+            ads_num = ads_df.groupby("products", as_index=False)[
                 ["impressions", "clicks", "spend", "sale_units", "sale_amount"]
             ].sum()
+
+            # ad_type unique list per SKU
+            ads_type = (
+                ads_df[ads_df["ad_type"] != ""]
+                .groupby("products")["ad_type"]
+                .apply(lambda s: ", ".join(sorted(set([str(x).strip() for x in s if str(x).strip()]))))
+                .reset_index()
+            )
+
+            ads_agg = ads_num.merge(ads_type, on="products", how="left")
+            ads_agg["ad_type"] = ads_agg["ad_type"].fillna("")
 
             ads_agg["ads_conversion_rate"] = ads_agg.apply(
                 lambda r: (float(r["sale_units"]) / float(r["clicks"]) * 100.0) if float(r["clicks"]) else 0.0,
@@ -1032,6 +1044,11 @@ def finances_mtd_transactions():
                 .drop(columns=["products"], errors="ignore")
             )
 
+        # ✅ ensure ad_type exists in skuwise table
+        if "ad_type" not in df_sku.columns:
+            df_sku["ad_type"] = ""
+        df_sku["ad_type"] = df_sku["ad_type"].fillna("").astype(str)
+
         # ensure ads columns exist + numeric
         for col in [
             "ads_impressions",
@@ -1060,7 +1077,7 @@ def finances_mtd_transactions():
             df_sku["net_sales"] = 0.0
         df_sku["net_sales"] = pd.to_numeric(df_sku["net_sales"], errors="coerce").fillna(0.0)
 
-        # ✅ cm2_profit (sku-level) = profit - ads_spend
+        # ✅ cm2_profit = profit - ads_spend
         df_sku["cm2_profit"] = (df_sku["profit"] - df_sku["ads_spend"]).fillna(0.0)
 
         # ✅ cm1_profit_per_unit = profit / quantity
@@ -1074,6 +1091,30 @@ def finances_mtd_transactions():
             lambda r: (float(r["profit"]) / float(r["net_sales"]) * 100.0) if float(r["net_sales"]) else 0.0,
             axis=1,
         )
+        # ✅ NEW: cm2_profit_per_unit = cm2_profit / quantity
+        df_sku["cm2_profit_per_unit"] = df_sku.apply(
+            lambda r: (float(r["cm2_profit"]) / float(r["quantity"]))
+            if float(r.get("quantity") or 0)
+            else 0.0,
+            axis=1,
+        )
+
+        # ✅ NEW: cm2_profit_per = (cm2_profit / net_sales) * 100
+        df_sku["cm2_profit_per"] = df_sku.apply(
+            lambda r: (float(r["cm2_profit"]) / float(r["net_sales"]) * 100.0)
+            if float(r.get("net_sales") or 0)
+            else 0.0,
+            axis=1,
+        )
+
+        df_sku["cm2_profit_per_unit"] = pd.to_numeric(
+            df_sku["cm2_profit_per_unit"], errors="coerce"
+        ).fillna(0.0)
+
+        df_sku["cm2_profit_per"] = pd.to_numeric(
+            df_sku["cm2_profit_per"], errors="coerce"
+        ).fillna(0.0)
+
 
         df_sku["cm2_profit"] = pd.to_numeric(df_sku["cm2_profit"], errors="coerce").fillna(0.0)
         df_sku["cm1_profit_per_unit"] = pd.to_numeric(df_sku["cm1_profit_per_unit"], errors="coerce").fillna(0.0)
@@ -1152,11 +1193,25 @@ def finances_mtd_transactions():
         total_row["cm2_profit"] = float(total_row.get("profit", 0.0)) - float(total_row.get("ads_spend", 0.0))
         total_row["cm1_profit_per_unit"] = (g_profit / g_qty) if g_qty else 0.0
         total_row["cm1_profit_per"] = (g_profit / g_net_sales * 100.0) if g_net_sales else 0.0
+        # ✅ GRAND TOTAL cm2 percentages
+        total_row["cm2_profit_per_unit"] = (
+            total_row["cm2_profit"] / total_row["quantity"]
+            if total_row.get("quantity", 0)
+            else 0.0
+        )
 
-        # ✅ GRAND TOTAL credits, tax, tax_and_credits
+        total_row["cm2_profit_per"] = (
+            total_row["cm2_profit"] / total_row["net_sales"] * 100.0
+            if total_row.get("net_sales", 0)
+            else 0.0
+        )
+
+
+        # ✅ GRAND TOTAL credits/tax/tax_and_credits + ad_type
         total_row["credits"] = float(df_sku["credits"].sum()) if "credits" in df_sku.columns else 0.0
         total_row["tax"] = float(df_sku["tax"].sum()) if "tax" in df_sku.columns else 0.0
         total_row["tax_and_credits"] = round(float(total_row["credits"]) - abs(float(total_row["tax"])), 2)
+        total_row["ad_type"] = "All"
 
         total_row["user_id"] = int(user_id)
         total_row["country"] = ui_country
