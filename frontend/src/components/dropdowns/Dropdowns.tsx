@@ -28,6 +28,13 @@ import RecommendationsCard from "./RecommendationsCard";
 import PerformanceTrendChart from "./PerformanceTrendChart";
 import SummaryMetricCard from "./SummaryMetricCard";
 import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
+import Button from "@mui/material/Button";
+import TextField from "@mui/material/TextField";
+import MenuItem from "@mui/material/MenuItem";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -274,6 +281,7 @@ const renderMarkdownInline = (text: string) => {
 // --- NEW: split markdown into sections by "## " headings
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
   if (!md) return {};
+
   const lines = md.split(/\r?\n/);
 
   const sections: Record<string, string[]> = {};
@@ -282,34 +290,52 @@ const parseMdSections = (md?: string | null): Record<string, string[]> => {
 
   for (const raw of lines) {
     const line = raw.trim();
+
     if (line.toLowerCase().startsWith("## ")) {
       current = line.replace(/^##\s+/i, "").trim().toUpperCase();
       if (!sections[current]) sections[current] = [];
       continue;
     }
-    sections[current].push(raw);
+
+    if (line) {
+      sections[current].push(line);
+    }
   }
 
-  // convert each section to bullets
+  const normalize = (l: string) =>
+    l.replace(/^[-•]\s+/, "").trim();
+
   const out: Record<string, string[]> = {};
   for (const [k, arr] of Object.entries(sections)) {
     out[k] = arr
-      .map((l) => l.trim())
-      .filter((l) => l.startsWith("- "))
-      .map((l) => l.replace(/^-\s+/, "").trim())
+      .filter((l) => !l.startsWith("##"))
+      .map(normalize)
       .filter(Boolean);
   }
+
   return out;
 };
 
+
 // --- REPLACE old extractSummaryBullets with this (so it can also show PRODUCT INSIGHTS)
 const extractSummaryAndSkuBullets = (md?: string | null) => {
+  if (!md) {
+    return { summaryBullets: [], skuInsightsBullets: [] };
+  }
+
   const sections = parseMdSections(md);
+
+  const summaryBullets =
+    sections["SUMMARY"]?.length
+      ? sections["SUMMARY"]
+      : [];
+
   return {
-    summaryBullets: sections["SUMMARY"] ?? [],
+    summaryBullets,
     skuInsightsBullets: sections["PRODUCT INSIGHTS"] ?? [],
   };
 };
+
 
 // --- NEW: for recommendations, keep main bullets + INVENTORY section bullets
 const extractRecoAndInventoryBullets = (md?: string | null) => {
@@ -491,6 +517,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
   const [expenseBreakdownPieBase64, setExpenseBreakdownPieBase64] = useState<string | null>(null);
   const [productWiseCm1PieBase64, setProductWiseCm1PieBase64] = useState<string | null>(null);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+
+const [primaryGoal, setPrimaryGoal] = useState("");
+const [riskLevel, setRiskLevel] = useState("");
+const [maxTacos, setMaxTacos] = useState<number | "">("");
+const [adBudget, setAdBudget] = useState<number | "">("");
+const [summaryNotes, setSummaryNotes] = useState("");
+const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
 
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const [overlayBounds, setOverlayBounds] = useState<{
@@ -717,6 +751,81 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       }
     }
   };
+
+  const submitCustomSummary = async () => {
+  if (!primaryGoal || !riskLevel) {
+    alert("Primary Goal & Risk Level are mandatory");
+    return;
+  }
+
+  setAiPanelLoading(true);
+  setAiPanelError(null);
+  setShowSummaryModal(false);
+
+  try {
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("jwtToken")
+        : null;
+
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/summary`);
+    url.searchParams.set("country", countryName);
+    url.searchParams.set("period", range);
+    url.searchParams.set(
+      "timeline",
+      range === "monthly"
+        ? monthNameToNumber(selectedMonth)
+        : range === "quarterly"
+        ? selectedQuarter
+        : "ALL"
+    );
+    url.searchParams.set("year", selectedYear);
+
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        primary_goal: primaryGoal,
+        risk_level: riskLevel,
+        constraints: {
+          max_tacos: typeof maxTacos === "number" ? maxTacos : null,
+          ad_budget_cap: typeof adBudget === "number" ? adBudget : null,
+          max_price_increase_pct: typeof maxPriceIncreasePct === "number" ? maxPriceIncreasePct : null,
+          dont_change_price: false,
+        },
+        notes: summaryNotes ? summaryNotes : null,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.details || "Failed to generate summary");
+    }
+
+    const data: AiSummaryResponse = await res.json();
+
+    const { summaryBullets, skuInsightsBullets } =
+      extractSummaryAndSkuBullets(data.summary);
+    const { recommendationBullets, inventoryBullets } =
+      extractRecoAndInventoryBullets(data.recommendations);
+
+    setAiPanel({
+      summaryBullets,
+      skuInsightsBullets,
+      recommendationBullets,
+      inventoryBullets,
+      rawSummary: data.summary ?? null,
+      rawRecommendations: data.recommendations ?? null,
+    });
+  } catch (e: any) {
+    setAiPanelError(e.message || "Summary generation failed");
+  } finally {
+    setAiPanelLoading(false);
+  }
+};
 
   const fetchPerformanceTrendFromHistory = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
@@ -1711,6 +1820,113 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           />
         </div>
       </div>
+
+      <Button
+        className="ml-3"
+        onClick={() => setShowSummaryModal(true)}
+      >
+        Month-end Business Summary
+      </Button>
+      
+      <Dialog
+        open={showSummaryModal}
+        onClose={() => setShowSummaryModal(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Month-end Business Summary</DialogTitle>
+      
+        <DialogContent className="flex flex-col gap-4 mt-2">
+          {/* Primary Goal */}
+          <TextField
+            select
+            label="Primary Goal"
+            required
+            value={primaryGoal}
+            onChange={(e) => setPrimaryGoal(e.target.value)}
+            fullWidth
+          >
+            <MenuItem value="profit">Profit</MenuItem>
+            <MenuItem value="rank">Growth</MenuItem>
+            <MenuItem value="inventory_clearance">Inventory Dilution</MenuItem>
+            <MenuItem value="balanced">Balanced</MenuItem>
+          </TextField>
+      
+          {/* Risk Level */}
+          <TextField
+            select
+            label="Risk Level"
+            required
+            value={riskLevel}
+            onChange={(e) => setRiskLevel(e.target.value)}
+            fullWidth
+          >
+            <MenuItem value="conservative">Conservative</MenuItem>
+            <MenuItem value="balanced">Balanced</MenuItem>
+            <MenuItem value="aggressive">Aggressive</MenuItem>
+          </TextField>
+      
+          {/* Max TACoS */}
+          <TextField
+            type="number"
+            label="Max TACoS"
+            value={maxTacos}
+            onChange={(e) =>
+        setMaxTacos(e.target.value === "" ? "" : Number(e.target.value))
+      }
+            fullWidth
+          />
+      
+          <TextField
+        type="number"
+        label="Max Price Increase %"
+        value={maxPriceIncreasePct}
+        onChange={(e) =>
+          setMaxPriceIncreasePct(
+            e.target.value === "" ? "" : Number(e.target.value)
+          )
+        }
+        fullWidth
+      />
+      
+          {/* Ads Budget */}
+          <TextField
+            type="number"
+            label="Ads Budget"
+            value={adBudget}
+            onChange={(e) => setAdBudget(Number(e.target.value))}
+            fullWidth
+          />
+      
+          {/* Notes */}
+          <TextField
+            label="Notes"
+            multiline
+            minRows={3}
+            value={summaryNotes}
+            onChange={(e) => setSummaryNotes(e.target.value)}
+            fullWidth
+          />
+        </DialogContent>
+      
+        <DialogActions>
+          <Button
+            onClick={() => setShowSummaryModal(false)}
+            color="inherit"
+          >
+            Cancel
+          </Button>
+      
+          <Button
+            variant="contained"
+            onClick={submitCustomSummary}
+            disabled={aiPanelLoading}
+          >
+            {aiPanelLoading ? "Generating..." : "Generate Summary"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
 
       {/* WRAPPER: stacked layout */}
       <div className="flex flex-col gap-5 w-full mt-4">
