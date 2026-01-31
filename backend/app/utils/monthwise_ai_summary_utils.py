@@ -45,6 +45,56 @@ MONTH_NUM_TO_NAME = {
     12: "december",
 }
 
+def rolling_months(anchor_year: int, anchor_month: int, max_months: int = 24):
+    months = []
+    y, m = anchor_year, anchor_month
+    for _ in range(max_months):
+        months.append((y, m))
+        if m == 1:
+            y -= 1
+            m = 12
+        else:
+            m -= 1
+    return list(reversed(months))  # oldest → newest
+
+
+DEFAULT_USER_OBJECTIVE = {
+    "primary_goal": "rank",   # profit | growth | rank | inventory_clearance | balanced
+    "risk_level": "balanced",   # conservative | balanced | aggressive
+    "constraints": {
+        "max_tacos": None,
+        "max_price_increase_pct": None,
+        "ad_budget_cap": None,
+        "dont_change_price": False
+    },
+    "notes": None
+}
+
+def get_objective_from_db(row) -> dict | None:
+    if not row:
+        return None
+
+    return {
+        "primary_goal": row.primary_goal,
+        "risk_level": row.risk_level,
+        "constraints": {
+            "max_tacos": row.max_tacos,
+            "max_price_increase_pct": float(row.max_price_increase_pct)
+                if row.max_price_increase_pct is not None else None,
+            "ad_budget_cap": float(row.ad_budget_cap)
+                if row.ad_budget_cap is not None else None,
+            "dont_change_price": bool(row.dont_change_price),
+        },
+        "notes": row.notes,
+    }
+
+
+def severity_suffix(severity: str | None) -> str:
+    if not severity or severity == "normal":
+        return ""
+    return f" ({severity.replace('_', ' ').replace('24m', '24 months')})"
+
+
 
 
 def get_latest_completed_month(today=None):
@@ -156,6 +206,98 @@ def fetch_precalc_table(user_id: int, country: str, period: str, timeline: str, 
     except Exception as e:
         print(f"[WARN] Could not read table {table}: {e}")
         return pd.DataFrame()
+    
+def build_rolling_monthly_series(user_id: int, country: str, anchor_year: int, anchor_month: int):
+    series = []
+
+    for y, m in rolling_months(anchor_year, anchor_month, 24):
+        df = fetch_precalc_table(
+            user_id=user_id,
+            country=country,
+            period="monthly",         # ✅ always monthly tables
+            timeline=str(m),
+            year=y
+        )
+
+        if df.empty:
+            continue
+
+        _, df_total = _split_total_row(df)
+        if df_total.empty:
+            continue
+
+        snapshot = extract_total_snapshot(df_total)
+        if not snapshot:
+            continue
+
+        series.append({
+            "year": y,
+            "month": m,
+            "values": snapshot
+        })
+
+    return series
+
+
+def compute_generic_movement(series: list, col: str):
+    values = []
+    for row in series:
+        if col in row["values"]:
+            values.append(row["values"][col])
+
+    if len(values) < 2:
+        return None
+
+    prev, cur = values[-2], values[-1]
+    if prev == 0:
+        return None
+
+    mom_pct = (cur - prev) / abs(prev) * 100
+
+    # Build rolling MoM % series
+    changes = []
+    for i in range(1, len(values)):
+        if values[i - 1] != 0:
+            changes.append((values[i] - values[i - 1]) / abs(values[i - 1]) * 100)
+
+    if not changes:
+        return None
+
+    # Rank by absolute magnitude (extreme movement detector)
+    sorted_changes = sorted(changes, key=lambda x: abs(x), reverse=True)
+    rank = sorted_changes.index(mom_pct) + 1 if mom_pct in sorted_changes else None
+
+    direction = "up" if mom_pct > 0 else "down" if mom_pct < 0 else "flat"
+
+    pattern = None
+    if len(changes) >= 2:
+        prev_change = changes[-2]
+        if prev_change > 0 and mom_pct < 0:
+            pattern = "reversal_down"
+        elif prev_change < 0 and mom_pct > 0:
+            pattern = "reversal_up"
+        elif prev_change > 0 and mom_pct > 0:
+            pattern = "continued_up"
+        elif prev_change < 0 and mom_pct < 0:
+            pattern = "continued_down"
+
+    return {
+        "delta_pct": round(mom_pct, 2),
+        "direction": direction,
+        "rank_in_rolling_window": rank,
+        "total_points": len(changes),
+        "pattern": pattern
+    }
+
+
+def build_movement_context(rolling_series: list):
+    ctx = {}
+    for col in MOVEMENT_COLUMNS:
+        m = compute_generic_movement(rolling_series, col)
+        if m:
+            ctx[col] = m
+    return ctx
+
 
 def _normalize_sku_col(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -201,6 +343,20 @@ def _total_value(df_total: pd.DataFrame, col: str):
     return float(pd.to_numeric(df_total[col], errors="coerce").fillna(0).iloc[0])
 
 
+def extract_total_snapshot(df_total: pd.DataFrame) -> dict:
+    snapshot = {}
+    if df_total.empty:
+        return snapshot
+
+    for col in MOVEMENT_COLUMNS:
+        if col in df_total.columns:
+            val = _total_value(df_total, col)
+            if val is not None:
+                snapshot[col] = float(val)
+
+    return snapshot
+
+
 
 METRIC_COLUMNS = {
     "quantity",
@@ -211,23 +367,17 @@ METRIC_COLUMNS = {
     "refund_sales",
     "net_sales",
 
-    # "cost_of_unit_sold",
-    # "selling_fees",
-    # "fba_fees",
-    # "amazon_fee",
-    "platform_fee",
+
     "platformfeenew",
     "platform_fee_inventory_storage",
     "other_transaction_fees",
     "misc_transaction",
 
-    # "tex_and_credits",
+
     "net_taxes",
     "net_credits",
 
-    # "promotional_rebates",
-    # "visible_ads",
-    # "dealsvouchar_ads",
+
     "advertising_total",
 
     "lost_total",
@@ -235,6 +385,8 @@ METRIC_COLUMNS = {
 
     "profit",
     "cm2_profit",
+ 
+    
 }
 
 PERCENTAGE_COLUMNS = {
@@ -242,10 +394,16 @@ PERCENTAGE_COLUMNS = {
     "profit_percentage",
     "cm2_profit_percentage",
     "promotional_rebates_percentage",
-    "unit_wise_profitability",
+
     "sales_mix",
     "profit_mix",
 }
+
+NON_ADDITIVE_COMPARABLE = {"asp", "unit_wise_profitability"}
+
+MOVEMENT_COLUMNS = METRIC_COLUMNS | PERCENTAGE_COLUMNS | NON_ADDITIVE_COMPARABLE
+
+
 
 
 def get_metric_columns(df: pd.DataFrame) -> list[str]:
@@ -260,9 +418,21 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
         return {}
 
     num_cols = get_metric_columns(df)
-    other_cols = [c for c in df.columns if c not in num_cols and c != "sku"]
+
+    # Metrics that should NOT be summed at SKU level
+    non_additive_cols = {"asp"}
+
+    other_cols = [
+        c for c in df.columns
+        if c not in num_cols and c not in non_additive_cols and c != "sku"
+    ]
 
     agg = {c: "sum" for c in num_cols}
+
+    # SKU-level ASP should be kept as-is (not summed)
+    if "asp" in df.columns:
+        agg["asp"] = "first"
+
     for c in other_cols:
         agg[c] = "first"
 
@@ -458,6 +628,28 @@ def compare_sku_metrics(current: dict, previous: dict) -> dict:
                 "delta_pct": None           # intentionally skipped
             }
 
+                # ---------------- NON-ADDITIVE COMPARABLE METRICS (ASP) ----------------
+        for metric in NON_ADDITIVE_COMPARABLE:
+            if metric not in curr and metric not in prev:
+                continue
+
+            try:
+                new = float(curr.get(metric, 0.0) or 0.0)
+                old = float(prev.get(metric, 0.0) or 0.0)
+            except (TypeError, ValueError):
+                continue
+
+            delta = new - old
+            pct = (delta / old * 100) if old != 0 else None
+
+            sku_out[metric] = {
+                "current": round(new, 2),
+                "previous": round(old, 2),
+                "delta": round(delta, 2),
+                "delta_pct": round(pct, 2) if pct is not None else None
+            }
+    
+
         output[sku] = sku_out
 
     return output
@@ -481,307 +673,1053 @@ def compare_metrics(current, previous):
         }
     return out
 
+def period_label(period: str, timeline: str, year: int) -> str:
+    if period == "monthly":
+        return f"{MONTH_NUM_TO_NAME[int(timeline)].title()} {year}"   # "December 2025"
+    if period == "quarterly":
+        return f"{timeline} {year}"                                   # "Q4 2025"
+    if period == "yearly":
+        return f"{year}"                                              # "2025"
+    return f"{period} {timeline} {year}"
+
+
+
 
 def resolve_comparison(period, timeline, year):
     if period == "monthly":
         m = int(timeline)
         prev = ("monthly", "12", year - 1) if m == 1 else ("monthly", str(m - 1), year)
-        yoy = ("monthly", timeline, year - 1)
-        return prev, yoy
+        return prev, None   # ✅ NO YoY
 
     if period == "quarterly":
         q = int(timeline.replace("Q", ""))
         prev = ("quarterly", "Q4", year - 1) if q == 1 else ("quarterly", f"Q{q-1}", year)
-        yoy = ("quarterly", timeline, year - 1)
-        return prev, yoy
+        return prev, None   # ✅ NO YoY
 
     if period == "yearly":
         return ("yearly", "ALL", year - 1), None
 
     raise ValueError("Invalid period")
 
-AI_SYSTEM_PROMPT = """
-You are a senior ecommerce performance analyst.
-
-You receive structured JSON data containing:
-- Overall MoM metrics (month-over-month)
-- Overall YoY metrics (year-over-year, optional)
-- Product-level MoM comparisons
-- Product-level YoY comparisons
-- Inventory alerts per Product (optional)
-
-IMPORTANT DATA RULES:
-- All numbers are pre-calculated
-- Percentage values represent percentage points (delta = current − previous)
-- Do NOT recompute, infer, or validate numbers
-- Do NOT convert percentages into growth rates
-- Do NOT produce paragraphs
-
-PERCENTAGE FORMATTING RULE:
-- Always append "%" when mentioning percentage values.
-- Do NOT output raw numeric deltas without "%" for growth or change metrics.
-
-CURRENCY RULE:
-- Use the symbol provided in user_context.currency_symbol for all monetary values.
-- Do NOT spell out currency names (GBP, USD).
-- Do NOT infer or guess currency from country names.
-- If currency_symbol is empty, omit the symbol.
-- Never omit the currency symbol when it is provided.
-
-METRIC INTERPRETATION RULES (CRITICAL):
-- The following metrics DO NOT have product-level meaning and must be treated as OVERALL ONLY:
-  platform_fee, platformfeenew, platform_fee_inventory_storage,
-  visible_ads, dealsvouchar_ads, advertising_total,
-  cm2_profit, cm2_profit_percentage, acos, misc_transaction
-- Never attribute the above metrics to individual SKUs in insights or actions.
-
-ACOS SUMMARY RULE (CRITICAL):
-- ACOS must be mentioned ONLY in the SUMMARY section.
-- Treat ACOS strictly as an OVERALL efficiency metric.
-- Describe ACOS movement using percentage (e.g., "ACOS increased by 2.4 percentage").
-- Use MoM language for monthly/quarterly periods and YoY language for yearly periods.
-- Do NOT describe ACOS as growth or decline in percentage terms.
-- Do NOT mention ACOS in PRODUCT INSIGHTS, RECOMMENDATIONS, or INVENTORY sections.
-
-QUANTITY DEFINITIONS:
-- quantity = gross units shipped
-- return_quantity = units returned
-- total_quantity = net units sold
-- quantity = total_quantity + return_quantity
-- Use total_quantity when referring to actual units sold.
-- Do NOT imply returns are additional sales.
-
-REIMBURSEMENT LOGIC:
-- lost_total represents reimbursements received from Amazon for lost inventory.
-- Treat this as cost recovery or credit.
-- Do NOT describe lost_total as a loss or negative event.
-
-REIMBURSEMENT SUMMARY RULE (CRITICAL):
-- If inventory_lost is present and > 0, include exactly 1 bullet in ## SUMMARY stating:
-  "Reimbursements for lost inventory: <currency_symbol><inventory_lost> received."
-- Do NOT treat this as a negative cost or loss.
-- Do NOT mention reimbursements in PRODUCT INSIGHTS.
-
-MISC TRANSACTION RULE (CRITICAL):
-- misc_transaction represents miscellaneous/unallocated transactions that do not have SKU/product breakdown.
-- If misc_transaction exists and its current value is non-zero, include exactly 1 bullet in ## SUMMARY:
-  "Miscellaneous transactions: <currency_symbol><misc_transaction_current>."
-- Do NOT mention misc_transaction in PRODUCT INSIGHTS (because it is not SKU-level).
 
 
+AI_SYSTEM_PROMPT_1 = """
+You are a Senior Amazon Business Analyst preparing an
+EXECUTIVE-LEVEL MONTH-OVER-MONTH PERFORMANCE REVIEW.
 
-SPECIAL PRODUCT LOGIC:
-- If a Product appears in MoM data but NOT in YoY data, treat it as a **New / Reviving SKU**
-- Explicitly call this out in insights or actions
+You are analysing pre-calculated Amazon performance data
+for a single seller account and marketplace.
 
-NEW / REVIVING SKU YoY RULE (CRITICAL):
-- For any Product labeled as **New / Reviving SKU**:
-  - YoY comparison is NOT APPLICABLE.
-  - Do NOT mention YoY percentages, YoY growth, or YoY trends.
-  - Only describe MoM performance or absolute contribution.
-  - Never write phrases like "MoM and YoY" for these SKUs.
+The data you receive:
+- Is already final, cleaned, and aggregated.
+- Contains both product-level (SKU-wise) and overall account-level metrics.
+- Includes a TOTAL row representing overall business performance.
+- Uses consistent column definitions across all users and all months.
+- Does NOT require recalculation, validation, or reconciliation.
 
-DISPLAY NAME RULE (CRITICAL):
-- Always use product_name when available.
-- If product_name is missing, blank, null, or "0", fall back to SKU.
-- Never display raw SKU if a valid product_name exists.
-- The first bolded text in PRODUCT INSIGHTS MUST always be product_name.
+You will also receive:
+- A defined reporting period (period_label).
+- Month-over-month comparisons.
+- A rolling historical movement context of up to 24 months,
+  used to identify trends, reversals, and extremity of change.
+- A curated list of focus_skus representing the
+  Top 5 products ranked by current month CM1 profit.
 
-TIME COMPARISON LOGIC (CRITICAL):
-- If the period is MONTHLY or QUARTERLY:
-  - Use MoM as the primary comparison.
-  - Include YoY only if YoY data is present.
-- If the period is YEARLY:
-  - Treat ALL comparisons as YoY.
-  - Do NOT mention MoM anywhere in SUMMARY or SKU INSIGHTS.
-  - Replace MoM language with YoY language (e.g., "up YoY", "down YoY").
+Your audience is senior leadership (Founder, CFO, Accountant, Account Managers).
 
-GOAL:
-Produce a concise monthly performance output with:
-1) A short overall summary
-2) Key SKU-level insights
-3) Clear, limited actions
+They do NOT want:
+- Raw data narration
+- Metric-by-metric explanations
+- Pivot-table style commentary
+- Technical or operational detail
 
-====================
-OUTPUT FORMAT (MARKDOWN ONLY)
-====================
+They want:
+- Clear business movement
+- Causal explanations
+- Financial impact on growth, profitability, and business quality
 
-## SUMMARY
-(4–6 bullets ONLY)
+YOUR CORE RESPONSIBILITY:
+Identify WHAT materially changed, WHY it changed,
+and WHAT business impact it had.
 
-- Summarize overall movement in **net units sold, net sales, and CM1 profit**
-  (Use MoM for monthly/quarterly periods, YoY for yearly periods)
-- Clearly state whether growth/decline is **volume-led, cost-led, or margin-led**
-- Call out **major overall cost drivers** if they materially impacted CM1 profit
-- Include ACOS movement (percentage-point change) if ACOS data exists
-- If both MoM and YoY exist (non-yearly only), include exactly 1 bullet comparing MoM vs YoY trend
-- Use short bullets, no sub-bullets, no paragraphs
+In addition to structured signals, you MUST produce
+an executive_takeaway summarizing the overall
+business outcome.
 
----
-
-## PRODUCT INSIGHTS
-(5–7 bullets ONLY)
-
-Each bullet must:
-- Start with **Product name**
-- Mention **key Product-level metrics only** (units sold, net sales, CM1 profit, ASP)
-- Clearly state direction (up/down/flat)
-- If Product is New / Reviving, explicitly label it:
-  **“(New / Reviving SKU)”**
-
-When describing Product performance:
-- Always include percentage values when available
-- Use MoM percentages for monthly/quarterly periods
-- Use YoY percentages for yearly periods
-- Do NOT mix MoM and YoY for the same metric
-- Do NOT invent percentages if data is missing
-
-Do NOT:
-- Mention inventory here
-- Mention platform fees, advertising totals, ACOS, CM2, or ROAS here
-- Use long explanations
-
----
-
-## RECOMMENDATIONS
-(3–5 bullets ONLY)
-
-Rules:
-- Actions must be **specific and actionable**
-- Each bullet should clearly map to **pricing, cost control, ads, or inventory**
-- Actions should be driven by SKU-level behavior OR clear overall trends
-- Do NOT restate metrics
-- Do NOT include generic advice
+This takeaway MUST:
+- Be derived ONLY from the primary_causal_chain
+- Reflect business quality impact (not metric narration)
+- Be written in executive finance language
+- Be maximum 2 sentences
+- Contain NO recommendations or actions
 
 
-Examples of valid actions:
-- Reduce ASP slightly on low-margin SKUs showing unit decline.
-- Monitor pricing on fast-growing SKUs to protect margin.
-- Review ad spend on SKUs where CM1 profit declined despite sales growth.
-- Investigate negative CM1 profit drivers for SKUs showing rising volume but declining profitability to prevent margin erosion.
+You MUST express insights as structured classifications,
 
 
----
-
-## INVENTORY
-(ONLY if inventory_alerts exist)
-
-IMPORTANT INVENTORY OUTPUT RULES:
-- This section should be used ONLY when inventory risk cannot be clearly expressed as a recommendation.
-- Prefer summarizing inventory risk in RECOMMENDATIONS when possible.
-- Keep this section minimal (0–2 bullets preferred).
-- Inventory risks SHOULD be preferentially handled here when they impact profitability, cost, or future loss.
-- Inventory actions must be phrased as business actions, not operational alerts.
-- Do NOT list inventory SKU-by-SKU unless it materially affects CM1 profit trajectory.
+You are an analysis engine, not a report writer.
 
 
-- Use bullets
-- One SKU per bullet
-- Start each bullet with **Inventory – Product name**
-- Mention the issue and the consequence (cost, risk, or blockage)
-- Do NOT suggest pricing or ad actions here
-- Address aged or unfulfillable inventory exposure on low-performing SKUs to limit storage and risk.
+────────────────────────────────────────
+EXECUTIVE ANALYSIS PRINCIPLES (CRITICAL)
+────────────────────────────────────────
 
----
+1) MATERIALITY FIRST
+- Do NOT describe every metric.
+- Focus ONLY on movements that are:
+  - extreme,
+  - abnormal,
+  - trend-defining,
+  - or business-quality impacting.
+- Minor or expected changes must be ignored.
 
-CRITICAL OUTPUT RULES:
-- You MUST use the exact heading "## SUMMARY" for the summary section.
-- You MUST use the exact heading "## RECOMMENDATIONS" for the recommendations section.
-- Do NOT rename, reword, or omit these headings.
-- If allow_recommendations is false, DO NOT include the "## RECOMMENDATIONS" section at all.
+2) MOVEMENT, NOT SNAPSHOT (CRITICAL)
+- You will receive movement_context derived from a rolling window
+  of up to 24 months.
+- You MUST translate movement_context into:
+- categorical severity labels
+- directional flags
+- pattern classifications
 
----
+- You are FORBIDDEN from narrating static MoM deltas
+  like a pivot table when movement_context is present.
+- You must translate movement_context into categorical severity labels
+(e.g. highest_24m, steepest_24m), not descriptive language.
 
-TONE & STYLE RULES:
-- Business-focused
-- Concise
-- No storytelling
-- No speculation
-- No emojis
-- No filler language
+3) CAUSE → EFFECT DISCIPLINE
+Every insight MUST be decomposed into:
+- movement
+- primary driver
+- business impact flag
 
-Return ONLY Markdown.
-Do NOT return JSON.
+- If sales change, explain whether it was driven by:
+  pricing, unit growth, or mix.
+- If CM1 or CM2 profit changes, explicitly identify
+  which component caused it.
+
+────────────────────────────────────────
+PRODUCT-LEVEL DIAGNOSIS (CRITICAL)
+────────────────────────────────────────
+
+For each SKU in focus_skus, you MUST classify
+the dominant commercial diagnosis using
+STANDARDIZED DIAGNOSIS CODES.
+
+These diagnosis codes represent the PRIMARY
+reason explaining the SKU’s performance pattern.
+
+You MUST:
+- Select ONLY the most relevant diagnosis codes
+- Avoid overlapping or redundant diagnoses
+- Base diagnosis on units, pricing, and CM1 profit behaviour
+- Use movement_context when relevant
+
+DIAGNOSIS PRECEDENCE (CRITICAL)
+
+When multiple diagnosis codes are technically applicable,
+you MUST apply the following precedence rules:
+
+ASP decline MUST be treated as a binary diagnostic state.
+If asp.pct_change is negative, pricing MUST be classified as “reduced”.
+
+- If units and net sales are declining AND pricing is reduced,
+  you MUST classify the SKU as “visibility_constraint”.
+  In this case, you MUST NOT classify the SKU as “demand_weakness”.
+
+- “demand_weakness” is permitted ONLY when pricing is stable
+  or increasing and demand is declining.
+
+Pricing response failure takes precedence over demand weakness.
+
+
+
+You MUST NOT:
+- Write explanations
+- Write sentences
+- Suggest actions
+- Invent new diagnosis labels
+
+
+
+
+────────────────────────────────────────
+CRITICAL OUTPUT CONSTRAINT (NON-NEGOTIABLE)
+────────────────────────────────────────
+- You MUST NOT write prose, sentences, bullets, or paragraphs
+  EXCEPT inside the "executive_takeaway" field.
+- All other fields must be strictly structured and non-narrative.
+- You MUST output STRICT JSON ONLY.
+- Any response that is not valid JSON is INVALID.
+
+
+────────────────────────────────────────
+FORBIDDEN CONTENT (ABSOLUTE)
+────────────────────────────────────────
+FORBIDDEN CONTENT (ABSOLUTE)
+- No recommendations
+- No actions
+- No strategy
+- No future suggestions
+- No soft or narrative language
+  EXCEPT within the "executive_takeaway" field.
+- No operational, supply chain, or fulfilment commentary
+
+
+────────────────────────────────────────
+TERMINOLOGY (MANDATORY)
+────────────────────────────────────────
+- Use “unit growth” (never volume-led).
+- Use “CM1 profit growth” or “CM1 profit per unit change”
+  (never margin expansion / compression).
+- Always refer to profit as **CM1 profit**.
+
+────────────────────────────────────────
+METRICS REFERENCE (EXECUTIVE GLOSSARY — REFERENCE ONLY)
+────────────────────────────────────────
+
+The following definitions describe the exact business meaning
+of each metric used in this analysis.
+
+These definitions are provided for interpretation clarity only.
+They do NOT imply priority, importance, or mandatory discussion.
+
+UNITS
+- quantity:
+  Gross units sold before returns.
+- return_quantity:
+  Units returned by customers.
+- total_quantity:
+  Net units sold after subtracting returns from gross units.
+
+SALES & REVENUE
+- gross_sales:
+  Total gross sales including product sales, sales tax,
+  promotional rebates, postage credits, shipping credits,
+  and related tax components.
+- refund_sales:
+  Sales value associated with refunded orders.
+- net_sales:
+  Gross sales minus refund sales.
+  Represents realised topline revenue.
+
+FEES, TAXES & ADJUSTMENTS
+- platformfeenew:
+  Amazon platform charges (UK).
+  Overall account-level charge with no product-wise breakdown.
+- platform_fee_inventory_storage:
+  Amazon warehouse storage fees.
+  Overall account-level charge with no product-wise breakdown.
+- other_transaction_fees:
+  Amazon Seller Central and account-level fees.
+  These are NOT CM2 profit drivers.
+- misc_transaction:
+  Unclassified or newly introduced Amazon charges.
+  These are NOT CM2 profit drivers.
+- net_taxes:
+  Aggregate tax charges including marketplace taxes,
+  sales tax, promotional rebate tax, shipping and giftwrap tax.
+- net_credits:
+  Credits such as postage and giftwrap credits.
+
+ADVERTISING
+- advertising_total:
+  Total advertising spend for the month.
+  Overall value with no product-wise breakdown.
+- acos:
+  Advertising cost of sales.
+  Treated strictly as a percentage-point efficiency metric.
+
+REIMBURSEMENTS
+- lost_total:
+  Reimbursement received for lost or damaged inventory.
+  Added to CM2 profit.
+  Represents recovery, not performance.
+- rembursement_fee:
+  Reimbursement amounts transferred during Amazon’s
+  15-day settlement cycle.
+
+PROFITABILITY
+- profit:
+  Contribution Margin 1 (CM1) profit.
+- cm2_profit:
+  Contribution Margin 2 (CM2) profit.
+  Derived ONLY from CM1 profit after advertising,
+  platform fees, storage fees, and reimbursements.
+  Overall value without product-wise breakdown.
+
+PRICING & PER-UNIT ECONOMICS
+- asp:
+  Average selling price.
+- unit_wise_profitability:
+  CM1 profit per unit.
+
+IMPORTANT:
+- Percentage metrics represent percentage-point values.
+- Metrics without product-wise breakdown must never be
+  attributed to individual SKUs.
+
+────────────────────────────────────────
+CM2 ATTRIBUTION CONSTRAINT (CRITICAL)
+────────────────────────────────────────
+- CM2 profit movement MUST be attributed ONLY to:
+  advertising_total,
+  platformfeenew,
+  platform_fee_inventory_storage,
+  and lost_total.
+- other_transaction_fees and misc_transaction
+  MUST NEVER be cited as CM2 profit drivers.
+- If CM2 movement is not fully explained by the allowed components,
+  do NOT infer or introduce additional cost drivers.
+
+────────────────────────────────────────
+MANDATORY OUTPUT FORMAT (STRICT JSON ONLY)
+────────────────────────────────────────
+- ALL fields shown below are REQUIRED.
+- If any field is missing, the response is INVALID.
+- The "executive_takeaway" field MUST be populated with text.
+
+
+────────────────────────────────────────
+ALLOWED DIAGNOSIS CODES (STRICT)
+────────────────────────────────────────
+
+The following diagnosis codes are ALLOWED.
+You MUST select from this list only.
+
+- pricing_supports_volume
+  (unit growth positive, CM1 profit per unit declining)
+
+- pricing_effective
+  (unit growth positive, CM1 profit stable or growing)
+
+- demand_weakness
+  (units and net sales declining)
+
+- visibility_constraint
+  (units declining despite stable or reduced pricing)
+
+- mixed_signal
+  (no dominant pricing or demand signal)
+
+Each SKU may have:
+- 1 primary diagnosis
+- Maximum 2 diagnosis codes
+
+
+Return a single JSON object with the following structure (STRICT JSON):
+
+{
+  "executive_summary_signals": {
+    "units": {
+      "direction": "increase | decrease | flat",
+      "severity": "highest_24m | lowest_24m | normal",
+      "pct_change": "number",
+      "absolute_change": "number"
+    },
+    "net_sales": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "highest_24m | lowest_24m | normal"
+    },
+    "asp": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "largest_24m | normal"
+    },
+    "cm1_profit": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "highest_24m | lowest_24m | normal"
+    },
+    "cm1_profit_per_unit": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "largest_24m | normal"
+    },
+    "cost_pressure": {
+      "advertising": {
+        "pct_change": "number",
+        "absolute_change": "number",
+        "acos_delta": "number | null",
+        "severity": "largest_24m | normal"
+      },
+      "storage_fees": {
+        "pct_change": "number",
+        "absolute_change": "number",
+        "severity": "largest_24m | normal"
+      }
+    },
+    "cm2_profit": {
+      "pct_change": "number",
+      "absolute_change": "number",
+      "severity": "largest_24m | normal"
+    },
+    "reimbursements": {
+      "present": true | false,
+      "amount": "number | null"
+    }
+  },
+  "primary_causal_chain": [
+    "asp_decrease",
+    "unit_growth",
+    "net_sales_growth",
+    "per_unit_profit_decline",
+    "cost_pressure",
+    "cm2_profit_decline"
+  ],
+  "executive_takeaway": "string (max 2 sentences, derived ONLY from primary_causal_chain, no actions)",
+  "product_insights": {
+    "<sku>": {
+      "diagnosis_codes": [
+        "pricing_supports_volume"
+      ]
+    }
+  }
+}
+
+
+
+
 """
 
 
 
+AI_SYSTEM_PROMPT_2 = """
+You are a strategic Amazon business decision engine operating at
+executive decision-making level.
+
+You are NOT an analyst.
+You are NOT a reporting engine.
+You do NOT explain performance.
+You convert validated analysis into disciplined business decisions.
+
+────────────────────────────────────────
+INPUTS YOU WILL RECEIVE
+────────────────────────────────────────
+
+1) analysis_insights
+- These are final, analyst-grade findings.
+- Each insight already contains WHAT changed, WHY it changed, and WHAT it impacted.
+- All insights are factual, pre-validated, and must be treated as true.
+- You MUST NOT reinterpret, restate, or challenge these insights.
+- You MUST NOT introduce new causal language beyond what is explicitly supported.
+
+2) user_objective
+A structured decision mandate defining how decisions MUST be made.
+
+The user_objective includes:
+
+- primary_goal:
+  profit | growth | rank | inventory_clearance | balanced
+
+- time_horizon:
+  2_weeks | 1_month | quarter
+
+- risk_level:
+  conservative | balanced | aggressive
+
+- constraints:
+  Hard limits that MUST NOT be violated.
+  Examples:
+  - dont_change_price
+  - max_price_increase_pct
+  - ad_budget_cap
+  - max_tacos
+
+- notes:
+  Optional qualitative context.
+  Use ONLY if explicitly relevant.
+
+────────────────────────────────────────
+YOUR TASK
+────────────────────────────────────────
+
+Translate the analysis_insights into a prioritized,
+decision-ready ACTION PLAN that:
+
+- STRICTLY follows user_objective.primary_goal
+- Respects ALL constraints without exception
+- Adjusts aggressiveness based on risk_level
+- Prioritizes actions based on time_horizon
+- Avoids any action that conflicts with the mandate
+
+You are producing executive decisions,
+not explanations, analysis, or strategy discussion.
+
+If an action does not clearly support the user_objective,
+it MUST NOT be included.
+
+────────────────────────────────────────
+MANDATORY OBJECTIVE ENFORCEMENT (CRITICAL)
+────────────────────────────────────────
+
+- Every recommended action MUST explicitly support user_objective.primary_goal.
+- Every action MUST reference at least one SKU from focus_skus.
+- Generic or portfolio-wide actions without justification are INVALID.
+- Each SKU may receive ONLY ONE dominant action.
+
+────────────────────────────────────────
+DECISION QUALITY RULES (CRITICAL)
+────────────────────────────────────────
+
+- Every action MUST be traceable to a specific driver in analysis_insights
+  (e.g., CM1 profit decline, per-unit profitability erosion, demand slowdown).
+- Do NOT restate analysis_insights.
+- Convert insight → decision directly.
+- Focus ONLY on controllable levers:
+  pricing direction, portfolio-level advertising, SKU focus, inventory exposure.
+- Do NOT include numeric targets, percentages, quantities, or timing.
+- All actions MUST be directional only.
+
+────────────────────────────────────────
+PRICING ACTION DIRECTION (MANDATORY)
+────────────────────────────────────────
+
+If a pricing action is selected, you MUST use EXACTLY ONE
+of the following phrases:
+
+- “Increase ASP”
+- “Decrease ASP”
+- “Maintain current pricing”
+
+All other pricing phrases are STRICTLY FORBIDDEN.
+
+NON-PRICING ACTION DIRECTION (ALLOWED — STRICT)
+
+In specific cases, a SKU requires a non-pricing action.
+
+Allowed non-pricing action (exact phrase):
+- “Check product visibility”
+
+This action is allowed ONLY when all of the following are true for a SKU:
+- units are declining
+- net sales are declining
+- CM1 profit is declining
+- AND ASP is declining
+
+In this case:
+- Do NOT return a pricing action
+- Return exactly: “Check product visibility”
 
 
-def generate_ai_summary(payload, allow_recommendations):
-    user_prompt = {
-        "period": payload["period"],
-        "instructions": {
-            "allow_recommendations": allow_recommendations
-        },
-        "user_context": {
-            "currency_symbol": "£" if payload.get("country") == "uk"
-            else "$" if payload.get("country") == "us"
-            else ""
-        },
-        "overall_mom": payload["mom"],
-        "overall_yoy": payload.get("yoy"),
-        "sku_mom": payload.get("sku_mom"),
-        "sku_yoy": payload.get("sku_yoy"),
-        "inventory_lost": payload.get("inventory_lost"),
-        "inventory_alerts": payload.get("inventory_alerts"),
+────────────────────────────────────────
+PRICING DECISION HIERARCHY (CRITICAL)
+────────────────────────────────────────
+
+Pricing actions MUST be driven by PROFITABILITY and DEMAND,
+not by ASP movement alone.
+
+Apply the following logic exactly:
+
+1) Recommend “Increase ASP” if:
+   - CM1 profit per unit is declining, AND
+   - unit growth is positive
+   (pricing is supporting volume but eroding profitability)
+
+2) Recommend “Increase ASP” if:
+   - CM1 profit is declining, AND
+   - analysis_insights identify pricing as a contributor to profit erosion
+
+3) Recommend “Maintain current pricing” if:
+   - ASP declined, BUT
+   - unit growth is positive, AND
+   - CM1 profit is stable or growing
+   (pricing is effective at driving profitable volume)
+
+4) Recommend “Decrease ASP” ONLY IF:
+   - units are declining, AND
+   - net sales are declining, AND
+   - ASP is stable or increasing
+
+If ASP is already declining, this rule MUST NOT be applied.
+
+ASP is a SUPPORTING signal.
+ASP alone must NEVER trigger a pricing action.
+
+────────────────────────────────────────
+VISIBILITY VS PRICING RULE (CRITICAL)
+────────────────────────────────────────
+This rule MUST be evaluated BEFORE any pricing decision.
+It OVERRIDES the pricing decision hierarchy.
+This rule represents a FAILED PRICING RESPONSE.
+
+If a SKU shows:
+- declining units,
+- declining net sales,
+- declining CM1 profit,
+- AND declining ASP,
+
+This means:
+- Pricing has already been reduced,
+- Demand did NOT respond to lower pricing,
+- Pricing is NOT the binding constraint.
+
+In this case:
+- Do NOT recommend any pricing action.
+- You MUST NOT suggest further ASP reduction.
+- You MUST NOT return “Maintain current pricing”.
+- Return exactly: “Check product visibility”.
+
+
+────────────────────────────────────────
+PORTFOLIO-LEVEL ADVERTISING RULES
+────────────────────────────────────────
+
+- Advertising actions are allowed ONLY at the portfolio level.
+- Do NOT reference specific SKUs in advertising actions.
+- Do NOT reallocate ad spend between SKUs.
+- Advertising actions must be justified by CM2 profit or efficiency erosion.
+
+────────────────────────────────────────
+PRIORITIZATION LOGIC
+────────────────────────────────────────
+
+- Address margin or cost leakage before pursuing incremental growth.
+- Prefer lower-risk actions when primary_goal = profit.
+- Avoid actions that materially damage CM1 profit unless explicitly required.
+
+────────────────────────────────────────
+CONSTRAINT ENFORCEMENT
+────────────────────────────────────────
+
+- If dont_change_price = true → Do NOT suggest pricing actions.
+- If max_price_increase_pct is set → Respect it implicitly (no numeric output).
+- If ad_budget_cap is set → Do NOT suggest expansion.
+- If max_tacos is set → Avoid efficiency deterioration.
+
+OUTPUT FORMAT (MANDATORY — STRICT JSON ONLY)
+
+Return a single JSON object with the following structure:
+
+{
+  "sku_actions": {
+      "<sku_name>": "Increase ASP | Decrease ASP | Maintain current pricing | Check product visibility"
+  }
+}
+
+Rules:
+- Each SKU from focus_skus may appear at most once.
+- Each SKU must have exactly one action.
+- Do NOT include explanations, reasoning, or commentary.
+- Do NOT include portfolio-level sections.
+- Do NOT include markdown.
+If no pricing action is appropriate for a SKU, return
+“Maintain current pricing”, UNLESS the visibility vs pricing rule applies,
+in which case return “Check product visibility”.
+
+
+
+
+"""
+
+
+AI_SYSTEM_PROMPT_3_POLISHER = """
+You are an executive copy POLISHER for a
+MONTH-END, EXECUTIVE-LEVEL Amazon business review.
+
+IMPORTANT ROLE CLARIFICATION (CRITICAL):
+- You are NOT an analyst.
+- You are NOT a strategist.
+- You are NOT a report generator.
+- The report content has already been fully constructed
+  by a deterministic system.
+- Your sole responsibility is to POLISH the language
+  for executive readability WITHOUT altering meaning.
+
+You are writing for:
+Founder, CFO, Finance Leadership, and Senior Account Owners.
+
+They expect:
+- CFO-grade clarity
+- Sharp, decisive phrasing
+- Clean executive flow
+- Zero ambiguity
+
+────────────────────────────────────────
+ABSOLUTE INPUT CONSTRAINT (CRITICAL)
+────────────────────────────────────────
+You will receive a STRUCTURED OBJECT containing:
+- Pre-written SUMMARY bullets
+- Pre-written PRODUCT INSIGHTS bullets
+- Pre-written RECOMMENDATIONS bullets (optional)
+- Pre-written INVENTORY bullets (optional)
+
+These bullets are FINAL in:
+- Logic
+- Ordering
+- Metrics
+- Causality
+- Scope
+
+You MUST treat all content as FACTUAL and FINAL.
+
+────────────────────────────────────────
+WHAT YOU ARE ALLOWED TO DO
+────────────────────────────────────────
+- Improve sentence sharpness and concision
+- Improve executive tone
+- Remove redundant filler words
+- Improve grammatical clarity
+- Improve financial phrasing consistency
+
+────────────────────────────────────────
+WHAT YOU ARE STRICTLY FORBIDDEN TO DO
+────────────────────────────────────────
+- Do NOT add new bullets
+- Do NOT remove bullets
+- Do NOT reorder bullets
+- Do NOT merge or split bullets
+- Do NOT add or remove numbers
+- Do NOT change any numeric value
+- Do NOT change any percentage
+- Do NOT change causal logic
+- Do NOT reinterpret insights
+- Do NOT soften or exaggerate claims
+- Do NOT introduce new risks, drivers, or explanations
+
+If a bullet appears awkward, you may ONLY improve wording —
+never substance.
+
+────────────────────────────────────────
+NUMERIC INTEGRITY RULE (NON-NEGOTIABLE)
+────────────────────────────────────────
+- All numbers must remain EXACTLY the same.
+- All percentage signs must remain.
+- All + / - signs must remain.
+- Currency symbols must remain unchanged.
+- If any number is changed, the output is INVALID.
+
+────────────────────────────────────────
+STYLE REQUIREMENT
+────────────────────────────────────────
+- Maintain a **Month-End Business Summary** tone.
+- Use assertive, finance-review language.
+- Prefer short, declarative sentences.
+- Avoid narrative or descriptive storytelling.
+- Avoid analyst-style hedging.
+
+────────────────────────────────────────
+SECTION PRESERVATION RULE (CRITICAL)
+────────────────────────────────────────
+- Preserve ALL section headings exactly:
+  ## SUMMARY
+  ## PRODUCT INSIGHTS
+  ## RECOMMENDATIONS
+  ## INVENTORY
+- Do NOT rename sections.
+- Do NOT add new sections.
+- Do NOT remove empty sections if present.
+
+────────────────────────────────────────
+OUTPUT FORMAT (MANDATORY)
+────────────────────────────────────────
+- Return MARKDOWN only.
+- Preserve bullet structure.
+- Preserve section order.
+- Return the SAME number of bullets per section.
+- No emojis.
+- No commentary.
+- No explanations.
+- Output ONLY the polished report.
+
+If you cannot improve a bullet without changing meaning,
+return it unchanged.
+
+
+"""
+
+def run_prompt_1_analysis(ai_payload):
+    resp = openai_client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[
+            {"role": "system", "content": AI_SYSTEM_PROMPT_1},
+            {"role": "user", "content": json.dumps(ai_payload, separators=(",", ":"))}
+        ],
+        temperature=0.2,
+    )
+    return resp.choices[0].message.content.strip()
+
+def run_prompt_2_strategy(insights_text, user_objective, focus_skus):
+    payload = {
+    "analysis_insights": insights_text,
+    "user_objective": user_objective,
+    "focus_skus": focus_skus,
     }
 
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
-                {"role": "system", "content": AI_SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(user_prompt, separators=(",", ":"))}
-            ],
-            temperature=0.3,
+    resp = openai_client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[
+            {"role": "system", "content": AI_SYSTEM_PROMPT_2},
+            {"role": "user", "content": json.dumps(payload, separators=(",", ":"))}
+        ],
+        temperature=0.3,
+    )
+    return resp.choices[0].message.content.strip()
+
+def run_prompt_3_polish(bullets: dict) -> dict:
+    resp = openai_client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[
+            {"role": "system", "content": AI_SYSTEM_PROMPT_3_POLISHER},
+            {"role": "user", "content": json.dumps(bullets, separators=(",", ":"))}
+        ],
+        temperature=0.0,
+    )
+    return json.loads(resp.choices[0].message.content)
+
+
+def select_top_5_skus_by_current_cm1_profit(sku_current: dict) -> list[str]:
+    """
+    Select Top 5 SKUs by current month CM1 profit (descending).
+    """
+    ranked = []
+
+    for sku, data in sku_current.items():
+        cm1 = data.get("profit")
+
+        if cm1 is None:
+            continue
+
+        try:
+            ranked.append((sku, float(cm1)))
+        except (TypeError, ValueError):
+            continue
+
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    return [sku for sku, _ in ranked[:5]]
+
+def build_comparison_label(period: str, timeline: str, year: int):
+    if period == "monthly":
+        m = int(timeline)
+        prev_year = year if m > 1 else year - 1
+        prev_month = m - 1 if m > 1 else 12
+
+        cur = f"{MONTH_NUM_TO_NAME[m].title()} {year}"
+        prev = f"{MONTH_NUM_TO_NAME[prev_month].title()} {prev_year}"
+        return f"{cur} vs {prev}"
+
+    if period == "quarterly":
+        q = int(timeline.replace("Q", ""))
+        prev_year = year if q > 1 else year - 1
+        prev_q = q - 1 if q > 1 else 4
+        return f"Q{q} {year} vs Q{prev_q} {prev_year}"
+
+    if period == "yearly":
+        return f"{year} vs {year - 1}"
+
+    return ""
+
+
+DIAGNOSIS_TEXT = {
+    "pricing_supports_volume": [
+        "CM1 profit per unit is declining while unit growth remains positive.",
+        "Current pricing is supporting volume but eroding profitability."
+    ],
+    "pricing_effective": [
+        "Both unit growth and CM1 profit are increasing.",
+        "Pricing is effectively driving profitable volume."
+    ],
+    "demand_weakness": [
+        "Units and net sales are declining.",
+        "This signals demand weakness requiring pricing support."
+    ],
+    "visibility_constraint": [
+        "Unit demand is declining despite lower pricing.",
+        "This indicates a visibility or demand-side constraint."
+    ],
+    "mixed_signal": [
+        "Performance trends are mixed with no dominant pricing signal.",
+        "Current pricing does not indicate immediate action."
+    ]
+}
+
+
+
+
+def render_month_end_summary(
+    *,
+    period: str,
+    timeline: str,
+    year: int,
+    analysis_insights: dict,
+    mom: dict,
+    sku_mom: dict,
+    focus_skus: list,
+    inventory_alerts: dict,
+    inventory_lost: float,
+    currency_symbol: str,
+    strategy_actions: dict | None = None,  # 👈 SKU → Action map
+) -> str:
+    """
+    Deterministic executive month-end summary renderer.
+    Renderer is presentation-only. No decisions are made here.
+    """
+
+    comparison = build_comparison_label(period, timeline, year)
+    lines: list[str] = []
+
+   # =========================
+    # SUMMARY
+    # =========================
+    lines.append("## SUMMARY")
+
+    es = analysis_insights["executive_summary_signals"]
+
+    lines.append(f"Performance Summary ({comparison})")
+    takeaway = analysis_insights.get("executive_takeaway")
+    if takeaway:
+        lines.append(takeaway)
+
+
+    # Units
+    u = es["units"]
+    lines.append(
+        f"• Units sold: {u['pct_change']:+.2f}% "
+        f"({int(u['absolute_change'])} units)"
+        f"{severity_suffix(u.get('severity'))}"
+    )
+
+    # Net sales (severity-enabled, extreme-only)
+    ns = es["net_sales"]
+    lines.append(
+        f"• Net sales: {ns['pct_change']:+.2f}% "
+        f"({currency_symbol}{ns['absolute_change']:+.2f})"
+        f"{severity_suffix(ns.get('severity'))}"
+    )
+
+    # ASP
+    asp = es["asp"]
+    lines.append(
+        f"• ASP: {asp['pct_change']:+.2f}% "
+        f"({currency_symbol}{asp['absolute_change']:+.2f})"
+        f"{severity_suffix(asp.get('severity'))}"
+    )
+
+    # CM1 profit (severity-enabled)
+    cm1 = es["cm1_profit"]
+    lines.append(
+        f"• CM1 profit: {cm1['pct_change']:+.2f}% "
+        f"({currency_symbol}{cm1['absolute_change']:+.2f})"
+        f"{severity_suffix(cm1.get('severity'))}"
+    )
+
+    # CM1 profit per unit
+    ppu = es["cm1_profit_per_unit"]
+    lines.append(
+        f"• CM1 profit per unit: {ppu['pct_change']:+.2f}% "
+        f"({currency_symbol}{ppu['absolute_change']:+.2f})"
+        f"{severity_suffix(ppu.get('severity'))}"
+    )
+
+    # Cost pressure (Advertising)
+    cp = es["cost_pressure"]
+    ad = cp["advertising"]
+
+    lines.append(
+        f"• Advertising spends: {ad['pct_change']:+.2f}% "
+        f"({currency_symbol}{ad['absolute_change']:+.2f})"
+        f"{severity_suffix(ad.get('severity'))}, "
+        f"with ACOS change of {ad['acos_delta']:+.2f}%"
+    )
+
+    # Cost pressure (Storage)
+    st = cp["storage_fees"]
+    lines.append(
+        f"• Platform inventory storage fees: {st['pct_change']:+.2f}% "
+        f"({currency_symbol}{st['absolute_change']:+.2f})"
+        f"{severity_suffix(st.get('severity'))}"
+    )
+
+    # CM2 profit
+    cm2 = es["cm2_profit"]
+    lines.append(
+        f"• CM2 profit: {cm2['pct_change']:+.2f}% "
+        f"({currency_symbol}{cm2['absolute_change']:+.2f})"
+        f"{severity_suffix(cm2.get('severity'))}"
+    )
+
+    # Reimbursements (always shown if present, always positive)
+    if es["reimbursements"]["present"]:
+        amt = abs(float(es["reimbursements"].get("amount", 0)))
+
+        lines.append(
+            f"• Amazon reimbursements for lost inventory: "
+            f"{currency_symbol}{amt:.2f} "
+            f"(non-recurring recovery)"
         )
 
-        ai_text = response.choices[0].message.content.strip()
 
-    except OpenAIError as e:
-        # 🔴 Covers quota exceeded, billing issues, invalid API key, etc.
-        print("[AI ERROR]", str(e))
+    # =========================
+    # PRODUCT INSIGHTS
+    # =========================
+    lines.append("\n## PRODUCT INSIGHTS")
 
-        friendly_message = (
-            "## SUMMARY\n"
-            "- AI insights are temporarily unavailable due to account limits.\n"
-            "- Please contact us at **care@phormula.io** to continue using AI summaries.\n"
+    product_insights = analysis_insights.get("product_insights", {})
+
+    for sku in focus_skus:
+        s = sku_mom.get(sku)
+        if not s:
+            continue
+
+        name = s.get("product_name", sku)
+
+        lines.append(f"\n{name}")
+
+        lines.append(f"• ASP: {currency_symbol}{s['asp']['delta']:+.2f} ({s['asp']['delta_pct']:+.2f}%)")
+        lines.append(f"• Units: {s['total_quantity']['delta']:+.0f} ({s['total_quantity']['delta_pct']:+.2f}%)")
+        lines.append(f"• Net sales: {currency_symbol}{s['net_sales']['delta']:+.2f} ({s['net_sales']['delta_pct']:+.2f}%)")
+        lines.append(f"• CM1 profit: {currency_symbol}{s['profit']['delta']:+.2f} ({s['profit']['delta_pct']:+.2f}%)")
+        lines.append(f"• CM1 profit per unit: {currency_symbol}{s['unit_wise_profitability']['delta']:+.2f} "f"({s['unit_wise_profitability']['delta_pct']:+.2f}%)")
+
+
+        # -------------------------
+        # Diagnosis (FROM PROMPT 1)
+        # -------------------------
+        sku_diag = product_insights.get(sku, {})
+        diagnosis_codes = sku_diag.get("diagnosis_codes", ["mixed_signal"])
+
+        for code in diagnosis_codes:
+            for line in DIAGNOSIS_TEXT.get(code, []):
+                lines.append(line)
+
+        # -------------------------
+        # Action (FROM PROMPT 2)
+        # -------------------------
+        if strategy_actions and sku in strategy_actions:
+            lines.append(f"Action: {strategy_actions[sku]} for {name}")
+
+
+    # =========================
+    # INVENTORY
+    # =========================
+    if inventory_alerts:
+        lines.append("\n## INVENTORY")
+
+        if "aged_inventory_181_plus" in inventory_alerts:
+            lines.append(
+                f"• Aged inventory (181+ days): "
+                f"{inventory_alerts['aged_inventory_181_plus']['total_units']} units"
+            )
+
+        if "unfulfillable_inventory" in inventory_alerts:
+            lines.append(
+                f"• Unfulfillable inventory: "
+                f"{inventory_alerts['unfulfillable_inventory']['total_units']} units"
+            )
+
+        if "storage_cost_risk" in inventory_alerts:
+            lines.append(
+                f"• Storage cost risk: Estimated "
+                f"{currency_symbol}{inventory_alerts['storage_cost_risk']['estimated_next_month_cost']:.2f} "
+                f"next month"
+            )
+        lines.append(
+            "• For detailed inventory insights, please refer to the Inventory Reconciliation tab."
         )
+    
 
-        return {
-            "summary": friendly_message,
-            "recommendations": None
-        }
+    return "\n".join(lines)
 
-    except Exception as e:
-        # 🔴 Catch-all safety net
-        print("[UNEXPECTED AI ERROR]", str(e))
-
-        friendly_message = (
-            "## SUMMARY\n"
-            "- AI insights could not be generated at the moment.\n"
-            "- Please try again later or contact **care@phormula.io**.\n"
-        )
-
-        return {
-            "summary": friendly_message,
-            "recommendations": None
-        }
-
-    # ---------------- NORMAL FLOW ----------------
-    summary = ai_text
-    recommendations = None
-
-    if allow_recommendations and "## RECOMMENDATIONS" in ai_text:
-        parts = ai_text.split("## RECOMMENDATIONS", 1)
-        summary = parts[0].strip()
-        recommendations = parts[1].strip()
-
-    return {
-        "summary": summary,
-        "recommendations": recommendations
-    }
 
 
 
@@ -839,6 +1777,27 @@ def get_or_create_summary(
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
     df_current_detail, df_current_total = _split_total_row(df_current)
 
+    # ---------------- ROLLING 24-MONTH MOVEMENT CONTEXT (NEW) ----------------
+    if period == "monthly":
+        anchor_month = int(timeline)
+    elif period == "quarterly":
+        anchor_month = int(str(timeline).replace("Q", "")) * 3   # Q1->3, Q2->6, Q3->9, Q4->12
+    elif period == "yearly":
+        anchor_month = 12
+    else:
+        anchor_month = int(timeline)
+
+    rolling_series = build_rolling_monthly_series(
+        user_id=user_id,
+        country=country,
+        anchor_year=year,
+        anchor_month=anchor_month
+    )
+
+    movement_context = build_movement_context(rolling_series)
+
+
+    # 1) Build overall metrics from DETAIL rows (prevents double counting TOTAL)
     current = {}
     if not df_current_detail.empty:
         for col in get_metric_columns(df_current_detail):
@@ -846,6 +1805,7 @@ def get_or_create_summary(
                 float(pd.to_numeric(df_current_detail[col], errors="coerce").fillna(0).sum()), 2
             )
 
+    # 2) Override overall-only metrics from TOTAL row (because detail rows may be zero)
     for c in [
         "platform_fee",
         "platformfeenew",
@@ -854,13 +1814,21 @@ def get_or_create_summary(
         "acos",
         "cm2_profit",
         "misc_transaction",
+        "asp",
+        "unit_wise_profitability",
     ]:
         v = _total_value(df_current_total, c)
         if v is not None:
             current[c] = round(v, 2)
 
-    sku_current = compute_sku_precalc(df_current_detail)
+    print("METRICS USED:", list(current.keys()))
 
+    # 3) SKU breakdown MUST use DETAIL rows only (exclude TOTAL row)
+    sku_current = compute_sku_precalc(df_current_detail)
+    top_5_skus = select_top_5_skus_by_current_cm1_profit(sku_current)
+
+
+    # 4) Reimbursements: take from TOTAL row if available, else detail sum
     lost_total_val = _total_value(df_current_total, "lost_total")
     if lost_total_val is None:
         inventory_lost = round(abs(current.get("lost_total", 0.0)), 2)
@@ -869,7 +1837,9 @@ def get_or_create_summary(
 
     inventory_alerts = {}
 
-    # 🔴 INVENTORY AGEING (latest period only)
+    # =====================================================
+    # 🔴 INVENTORY AGEING LOGIC (latest period only) 🔴
+    # =====================================================
     if allow_reco:
         inventory_aged_df = fetch_inventory_aged_by_user(user_id)
         if not inventory_aged_df.empty:
@@ -890,6 +1860,7 @@ def get_or_create_summary(
                 float(pd.to_numeric(df_prev_detail[col], errors="coerce").fillna(0).sum()), 2
             )
 
+    # override overall-only metrics from TOTAL row
     for c in [
         "platform_fee",
         "platformfeenew",
@@ -898,6 +1869,8 @@ def get_or_create_summary(
         "acos",
         "cm2_profit",
         "misc_transaction",
+        "asp",
+        "unit_wise_profitability",
     ]:
         v = _total_value(df_prev_total, c)
         if v is not None:
@@ -908,11 +1881,13 @@ def get_or_create_summary(
     sku_prev = compute_sku_precalc(df_prev_detail)
     sku_mom = compare_sku_metrics(sku_current, sku_prev)
 
-    # ---------------- YOY (SAFE) ----------------
+
+   
+    # ---------------- YOY (YEARLY ONLY) ----------------
     yoy = None
     sku_yoy = None
 
-    if yoy_key:
+    if period == "yearly" and yoy_key:
         y_period, y_timeline, y_year = yoy_key
         df_yoy = fetch_precalc_table(user_id, country, y_period, y_timeline, y_year)
 
@@ -934,6 +1909,8 @@ def get_or_create_summary(
                 "acos",
                 "cm2_profit",
                 "misc_transaction",
+                "asp",
+                "unit_wise_profitability",
             ]:
                 v = _total_value(df_yoy_total, c)
                 if v is not None:
@@ -946,9 +1923,12 @@ def get_or_create_summary(
                 compute_sku_precalc(df_yoy_detail)
             )
 
-    # ---------------- AI PAYLOAD (✅ include objective) ----------------
+
+    # ---- everything below stays same (debug/ai/save/return) ----
+
     ai_payload = {
         "period": f"{period} {timeline} {year}",
+        "period_label": period_label(period, timeline, year),
         "country": str(country).lower(),
         "mom": mom,
         "yoy": yoy,
@@ -956,6 +1936,8 @@ def get_or_create_summary(
         "inventory_alerts": inventory_alerts,
         "sku_mom": sku_mom,
         "sku_yoy": sku_yoy,
+        "focus_skus": top_5_skus,
+        "movement_context": movement_context, 
 
         # ✅ NEW: objective injected for the prompt
         "objective": {
@@ -971,7 +1953,46 @@ def get_or_create_summary(
         }
     }
 
-    ai_output = generate_ai_summary(ai_payload, allow_reco)
+    # ✅ Include YoY ONLY for yearly
+    if period == "yearly":
+        ai_payload["yoy"] = yoy
+        ai_payload["sku_yoy"] = sku_yoy
+
+
+    analysis_insights = json.loads(run_prompt_1_analysis(ai_payload))
+    print("EXECUTIVE TAKEAWAY:", analysis_insights.get("executive_takeaway"))
+
+
+
+    strategy = None
+    if allow_reco:
+        # backend-only objective for now
+        strategy_raw = run_prompt_2_strategy(analysis_insights,ai_payload["objective"], top_5_skus)
+
+        strategy_json = json.loads(strategy_raw)
+        sku_actions = strategy_json.get("sku_actions")
+
+    final_text = render_month_end_summary(period=period, timeline=timeline,year=year, analysis_insights=analysis_insights, mom=mom, sku_mom=sku_mom,focus_skus=top_5_skus, inventory_alerts=inventory_alerts,
+        inventory_lost=inventory_lost,
+        currency_symbol="£" if country == "uk" else "$",
+        strategy_actions=sku_actions if allow_reco else None
+
+    )
+
+
+    # ---------------- SPLIT SUMMARY & RECOMMENDATIONS ----------------
+    summary = final_text
+    recommendations = None
+
+    if allow_reco and "## RECOMMENDATIONS" in final_text:
+        parts = final_text.split("## RECOMMENDATIONS", 1)
+        summary = parts[0].strip()
+        recommendations = parts[1].strip()
+
+    ai_output = {
+        "summary": summary,
+        "recommendations": recommendations
+    }
 
     # ---------------- SAVE/UPDATE DB (✅ with new columns) ----------------
     # If row exists and we regenerated, update it; else insert new.
