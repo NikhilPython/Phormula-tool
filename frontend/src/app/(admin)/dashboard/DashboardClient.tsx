@@ -3044,13 +3044,14 @@ export default function DashboardPage() {
             ? ((stats_mtdHome - proratedTargetToDate) / stats_targetHome) * 100
             : 0;
 
-    const ADS_SIGN_PLUS = new Set(["net_sales"]);
+    const ADS_SIGN_PLUS = new Set(["net_sales","credits","tax_and_credits"]);
     const ADS_SIGN_MINUS = new Set([
         "ads_spend",
         "cogs",
         "fba_fees",
         "selling_fees",
         "marketplace_total",
+        "tax"
     ]);
 
     const getAdsSignForCol = useCallback((colKey: string) => {
