@@ -73,6 +73,7 @@ type MonthlyAdsSpentRow = {
 type MonthlySkuwiseRow = {
     sno?: number;
     sku: string;
+    ad_type?: string;
     product_name: string;
     quantity: number;
     asp: number;
@@ -755,12 +756,12 @@ export default function DashboardPage() {
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                    // month: monthToNumber(monthName.toLowerCase()),
-                    // year,
-                    // country: "UK",
-                    month: 1,
-                    year: 2026,
-                    country: "UK"
+                    month: monthToNumber(monthName.toLowerCase()),
+                    year,
+                    country: "UK",
+                    // month: 1,
+                    // year: 2026,
+                    // country: "UK"
                 }),
             });
 
@@ -1026,13 +1027,13 @@ export default function DashboardPage() {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                        // month: monthToNumber(monthName.toLowerCase()),
-                        // year,
-                        // country: "UK",
-                        // include: ["SP", "SD"], 
-                        month: 1,
-                        year: 2026,
-                        country: "UK"
+                        month: monthToNumber(monthName.toLowerCase()),
+                        year,
+                        country: "UK",
+                        include: ["SP", "SD"], 
+                        // month: 1,
+                        // year: 2026,
+                        // country: "UK"
 
 
                     }),
@@ -2234,7 +2235,9 @@ export default function DashboardPage() {
             sno: isTotal ? undefined : (idx ?? 0) + 1,
             sku: String(r.sku ?? ""),
             product_name: String(r.product_name ?? ""),
-
+            ad_type: String(
+                r.ad_type ?? r.adType ?? r.ad_types ?? r.adTypes ?? ""
+            ),
             quantity: Number(r.quantity ?? 0),
             asp: Number(r.asp ?? 0),
             net_sales: Number(r.net_sales ?? 0),
@@ -2265,6 +2268,18 @@ export default function DashboardPage() {
 
         return mapped;
     }, [data]);
+
+    const formatAdType = (adType?: string | null) => {
+        if (!adType) return "-";
+
+        return String(adType)
+            .split(",")
+            .map((t) =>
+                t.trim().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+            )
+            .filter(Boolean)
+            .join(", ");
+    };
 
     // Limit table body to Top 9 SKUs + one "Others" aggregate row + Grand Total
     // "Others" aggregates all remaining SKUs (after sorting by Net Sales desc).
@@ -2345,6 +2360,7 @@ export default function DashboardPage() {
         { key: "sno", label: "S.No", align: "center" as const },
         { key: "product_name", label: "Product Name", align: "center" as const },
         { key: "sku", label: "SKU", align: "center" as const },
+        { key: "ad_type", label: "Ad Type", align: "center" as const },
     ];
 
     const SKUWISE_GROUPS = [
@@ -4000,6 +4016,10 @@ export default function DashboardPage() {
                                 return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
                             }
 
+                            if (colKey === "ad_type") {
+                                if (row.isOthers || row.isTotal) return "-";
+                                return formatAdType((row as any).ad_type);
+                            }
 
 
                             if (colKey === "ads_spend")
