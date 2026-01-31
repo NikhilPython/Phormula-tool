@@ -634,7 +634,6 @@ def monthly_sp_sd_to_db():
 
                     "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
 
-                    # keep if you want extra cols later
                     "advertised_unit_sale": float(getattr(r, "adv_sku_units_7d", 0.0) or 0.0),
                     "other_unit_sale": float(getattr(r, "other_sku_units_7d", 0.0) or 0.0),
                 } for r in sp_rows])
@@ -667,16 +666,12 @@ def monthly_sp_sd_to_db():
                     "clicks": int(r.clicks or 0),
                     "spend": float(getattr(r, "spend", 0.0) or 0.0),
 
-                    # In your SD table you store sales_14d/orders_14d/units_14d
                     "sales": float(getattr(r, "sales_14d", 0.0) or 0.0),
                     "orders": float(getattr(r, "orders_14d", 0.0) or 0.0),
                     "units": float(getattr(r, "units_14d", 0.0) or 0.0),
 
-                    # SD has New-to-brand fields in raw report, but you didn't store them.
-                    # If your model has them later, these lines will start working.
                     "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
 
-                    # SD doesn't have advertised vs other sku breakdown in your DB
                     "advertised_unit_sale": 0.0,
                     "other_unit_sale": 0.0,
                 } for r in sd_rows])
@@ -699,15 +694,31 @@ def monthly_sp_sd_to_db():
             "advertised_unit_sale": "sum",
             "other_unit_sale": "sum",
             "new_to_brand_sales": "sum",
+
+            # ✅ keep which sources contributed (SP / SD)
+            "source": lambda s: ",".join(sorted(set([str(x).upper() for x in s if x])))
         })
+
 
         # ---- output in your monthly table shape ----
         out = pd.DataFrame()
         out["sno"] = range(1, len(g) + 1)
         out["products"] = g["advertised_sku"]
         out["asin"] = g["advertised_asin"]
+        def _ad_type_from_source(src: str) -> str:
+            parts = set((src or "").split(","))
+            has_sp = "SP" in parts
+            has_sd = "SD" in parts
+            if has_sp and has_sd:
+                return "sponsored_display, sponsored_product"
+            if has_sd:
+                return "sponsored_display"
+            if has_sp:
+                return "sponsored_product"
+            return None
 
-        out["ad_type"] = None
+        out["ad_type"] = g["source"].apply(_ad_type_from_source)
+
         out["match_type"] = None
 
         out["impressions"] = g["impressions"].astype(int)
@@ -724,7 +735,6 @@ def monthly_sp_sd_to_db():
         ]
 
         out["spend"] = g["spend"].astype(float)
-
         out["sale_units"] = g["units"].astype(float)
         out["sale_amount"] = g["sales"].astype(float)
 
@@ -776,7 +786,6 @@ def monthly_sp_sd_to_db():
         }
 
         out = pd.concat([out, pd.DataFrame([total_row])], ignore_index=True)
-
         items = out.where(pd.notnull(out), None).to_dict(orient="records")
 
         # ---- dynamic table name ----
@@ -818,11 +827,6 @@ def monthly_sp_sd_to_db():
         );
         """
 
-        delete_sql = f"""
-        DELETE FROM public.{table_name}
-        WHERE user_id=:user_id AND country=:country AND month=:month AND year=:year;
-        """
-
         insert_sql = f"""
         INSERT INTO public.{table_name} (
             user_id, country, month, year,
@@ -843,15 +847,14 @@ def monthly_sp_sd_to_db():
 
         try:
             db.session.execute(text(create_sql))
-            db.session.execute(text(delete_sql), {
-                "user_id": user_id,
-                "country": country,
-                "month": month,
-                "year": year,
-            })
 
+            # ✅ IMPORTANT FIX: wipe table before inserting (prevents double)
+            db.session.execute(text(f"TRUNCATE TABLE public.{table_name};"))
+
+            # build params list and bulk execute
+            params = []
             for r in items:
-                db.session.execute(text(insert_sql), {
+                params.append({
                     "user_id": user_id,
                     "country": country,
                     "month": month,
@@ -881,6 +884,9 @@ def monthly_sp_sd_to_db():
                     "acos": float(r.get("acos") or 0.0),
                 })
 
+            if params:
+                db.session.execute(text(insert_sql), params)
+
             db.session.commit()
 
         except Exception:
@@ -907,6 +913,7 @@ def monthly_sp_sd_to_db():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
 
 
 #------------------------------------------  "monthly" | "quarterly" | "yearly" routes ------------------------------------------#

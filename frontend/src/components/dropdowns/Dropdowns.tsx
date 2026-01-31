@@ -691,8 +691,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
 
-      setPerformanceTrend(data.performance_trend ?? null);
-      setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
+      // setPerformanceTrend(data.performance_trend ?? null);
+      // setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
 
       const { summaryBullets, skuInsightsBullets } =
         extractSummaryAndSkuBullets(data.summary);
@@ -718,6 +718,57 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
+  const fetchPerformanceTrendFromHistory = async (rangeType: RangeType) => {
+    if (!countryName || !rangeType || !selectedYear) return;
+
+    // build timeline exactly like your summary route did
+    const timeline =
+      rangeType === "monthly"
+        ? monthNameToNumber(selectedMonth)               // 1..12
+        : rangeType === "quarterly"
+          ? selectedQuarter                              // "Q1".."Q4"
+          : "ALL";                                       // yearly
+
+    if (rangeType === "monthly" && !timeline) return;
+    if (rangeType === "quarterly" && !selectedQuarter) return;
+
+    try {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`);
+      url.searchParams.set("country", countryName);
+      url.searchParams.set("period", rangeType);
+      url.searchParams.set("timeline", String(timeline));
+      url.searchParams.set("year", String(selectedYear));
+
+      // (optional) if you want to control metric from FE:
+      url.searchParams.set("metric", performanceTrendMetric); // "net_sales" | "units"
+
+      // ✅ Only for GLOBAL send homeCurrency
+      if (countryName.toLowerCase() === "global" && homeCurrency) {
+        url.searchParams.set("homeCurrency", homeCurrency);
+      }
+
+      const res = await fetch(url.toString(), {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        setPerformanceTrend(null);
+        return;
+      }
+
+      const data = await res.json();
+
+      setPerformanceTrend(data.performance_trend ?? null);
+      setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
+    } catch (e) {
+      setPerformanceTrend(null);
+    }
+  };
 
 
 
@@ -805,6 +856,28 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     fetchAiSummary(range);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
+
+
+  useEffect(() => {
+    if (!range || !selectedYear) {
+      setPerformanceTrend(null);
+      return;
+    }
+
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
+
+    if (!ready) {
+      setPerformanceTrend(null);
+      return;
+    }
+
+    fetchPerformanceTrendFromHistory(range);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric]);
+
 
   const cropPngBase64WithSize = async (
     base64: string,

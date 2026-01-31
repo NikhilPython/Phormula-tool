@@ -1458,106 +1458,6 @@ def check_file_upload_status():
 from flask import request, jsonify
 import jwt
 
-@upload_bp.route('/upload_history', methods=['GET'])
-def upload_history():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-    token = auth_header.split(' ')[1]
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token has expired'}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({'error': 'Invalid token'}), 401
-
-    # ✅ read optional params
-    # If you also pass country from FE, support it too (safe default = "")
-    country_param = (request.args.get('country') or "").strip().lower()
-    home_currency = (request.args.get('homeCurrency') or "").strip().lower()
-
-    uploads = UploadHistory.query.filter_by(user_id=user_id).all()
-
-    # Month number to name mapping
-    month_names = {
-        1: 'january', 2: 'february', 3: 'march', 4: 'april',
-        5: 'may', 6: 'june', 7: 'july', 8: 'august',
-        9: 'september', 10: 'october', 11: 'november', 12: 'december'
-    }
-
-    response = []
-
-    for upload in uploads:
-        upload_country = (upload.country or "").strip().lower()
-
-        # ✅ IMPORTANT FIX:
-        # When requesting GLOBAL history:
-        # - if homeCurrency is provided => only return global_<currency>
-        # - else => only return base global
-        if country_param == "global":
-            if home_currency:
-                if upload_country != f"global_{home_currency}":
-                    continue
-            else:
-                if upload_country != "global":
-                    continue
-
-        # ✅ Optional: if FE passes specific country, filter by it
-        # (This avoids sending huge payloads)
-        elif country_param:
-            if upload_country != country_param:
-                continue
-
-        # Convert numeric month to month name for display
-        month_name = month_names.get(upload.month, str(upload.month))
-
-        table_name = f"user_{upload_country}_{month_name}{upload.year}_data"
-
-        response.append({
-            'month': month_name,
-            'month_num': upload.month,          # ✅ keep numeric month here
-            'year': upload.year,
-            'country': upload_country,
-            'file_name': table_name,
-
-            'total_sales': upload.total_sales,
-            'total_product_sales': upload.total_product_sales,
-            'total_profit': upload.total_profit,
-            'total_expense': upload.total_expense,
-            'total_fba_fees': upload.total_fba_fees,
-
-            'platform_fee': upload.platform_fee,
-            'rembursement_fee': upload.rembursement_fee,
-
-            'expense_chart_img': upload.expense_chart_img,
-            'sales_chart_img': upload.sales_chart_img,
-            'qtd_pie_chart': upload.qtd_pie_chart,
-            'ytd_pie_chart': upload.ytd_pie_chart,
-
-            'total_cous': upload.total_cous,
-            'total_amazon_fee': upload.total_amazon_fee,
-            'profit_chart_img': upload.profit_chart_img,
-
-            'cm2_profit': upload.cm2_profit,
-            'cm2_margins': upload.cm2_margins,
-            'acos': upload.acos,
-
-            'rembursment_vs_cm2_margins': upload.rembursment_vs_cm2_margins,
-            'advertising_total': upload.advertising_total,
-            'reimbursement_vs_sales': upload.reimbursement_vs_sales,
-            'taxncredit': upload.taxncredit,
-            'unit_sold': upload.unit_sold,
-
-            'otherwplatform': upload.platform_fee,
-        })
-
-    return jsonify({'uploads': response}), 200
-
-################################################################################################################
-# Revised upload_history with performance trend logic integrated donot delete this comment
-
 # @upload_bp.route('/upload_history', methods=['GET'])
 # def upload_history():
 #     auth_header = request.headers.get('Authorization')
@@ -1573,18 +1473,14 @@ def upload_history():
 #     except jwt.InvalidTokenError:
 #         return jsonify({'error': 'Invalid token'}), 401
 
-#     # ✅ read optional params (existing)
+#     # ✅ read optional params
+#     # If you also pass country from FE, support it too (safe default = "")
 #     country_param = (request.args.get('country') or "").strip().lower()
 #     home_currency = (request.args.get('homeCurrency') or "").strip().lower()
 
-#     # (Optional) If you want "latest" logic stable
-#     uploads = (
-#         UploadHistory.query
-#         .filter_by(user_id=user_id)
-#         .order_by(UploadHistory.year.desc(), UploadHistory.month.desc())
-#         .all()
-#     )
+#     uploads = UploadHistory.query.filter_by(user_id=user_id).all()
 
+#     # Month number to name mapping
 #     month_names = {
 #         1: 'january', 2: 'february', 3: 'march', 4: 'april',
 #         5: 'may', 6: 'june', 7: 'july', 8: 'august',
@@ -1609,17 +1505,19 @@ def upload_history():
 #                     continue
 
 #         # ✅ Optional: if FE passes specific country, filter by it
+#         # (This avoids sending huge payloads)
 #         elif country_param:
 #             if upload_country != country_param:
 #                 continue
 
 #         # Convert numeric month to month name for display
 #         month_name = month_names.get(upload.month, str(upload.month))
+
 #         table_name = f"user_{upload_country}_{month_name}{upload.year}_data"
 
 #         response.append({
 #             'month': month_name,
-#             'month_num': upload.month,
+#             'month_num': upload.month,          # ✅ keep numeric month here
 #             'year': upload.year,
 #             'country': upload_country,
 #             'file_name': table_name,
@@ -1655,55 +1553,157 @@ def upload_history():
 #             'otherwplatform': upload.platform_fee,
 #         })
 
-#     # ---------------- PERFORMANCE TREND (moved here, down below) ----------------
-#     # Make sure you have:
-#     # from utils.performance_trend import get_performance_trend
+#     return jsonify({'uploads': response}), 200
 
-#     period = (request.args.get("period") or "monthly").strip().lower()
-#     timeline = (request.args.get("timeline") or "ALL").strip().upper()
-#     year = request.args.get("year", type=int)
+################################################################################################################
+# Revised upload_history with performance trend logic integrated donot delete this comment
 
-#     metric = (request.args.get("metric", "net_sales") or "net_sales").strip().lower()
-#     if metric not in ("net_sales", "units"):
-#         metric = "net_sales"
+@upload_bp.route('/upload_history', methods=['GET'])
+def upload_history():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
-#     # Use requested country if provided, else infer from first upload, else default "uk"
-#     trend_country = (country_param or (response[0]["country"] if response else "uk")).strip().lower()
+    token = auth_header.split(' ')[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        user_id = payload['user_id']
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
 
-#     # ✅ If FE doesn't send year, infer from filtered history (latest year available)
-#     if year is None:
-#         year = max((u["year"] for u in response), default=None)
+    # ✅ read optional params (existing)
+    country_param = (request.args.get('country') or "").strip().lower()
+    home_currency = (request.args.get('homeCurrency') or "").strip().lower()
 
-#     # ✅ Your original summary logic required monthly timeline 1..12.
-#     # If FE sends ALL for monthly, normalize it to "12" (last 12 months style)
-#     if period == "monthly" and timeline == "ALL":
-#         timeline = "12"
+    # (Optional) If you want "latest" logic stable
+    uploads = (
+        UploadHistory.query
+        .filter_by(user_id=user_id)
+        .order_by(UploadHistory.year.desc(), UploadHistory.month.desc())
+        .all()
+    )
 
-#     performance_trend = None
-#     try:
-#         if year is not None:
-#             performance_trend = get_performance_trend(
-#                 user_id=user_id,
-#                 country=trend_country,
-#                 period=period,
-#                 timeline=timeline,
-#                 year=year,
-#             )
-#     except Exception as e:
-#         # Keep upload_history usable even if trend fails
-#         import traceback
-#         print("Unexpected error computing performance_trend in /upload_history:", e)
-#         print(traceback.format_exc())
+    month_names = {
+        1: 'january', 2: 'february', 3: 'march', 4: 'april',
+        5: 'may', 6: 'june', 7: 'july', 8: 'august',
+        9: 'september', 10: 'october', 11: 'november', 12: 'december'
+    }
 
-#     return jsonify({
-#         'uploads': response,
-#         'performance_trend': performance_trend,
-#         'performance_trend_metric': metric,
-#         'trend_country': trend_country,
-#         'trend_period': period,
-#         'trend_timeline': timeline,
-#         'trend_year': year,
-#     }), 200
+    response = []
+
+    for upload in uploads:
+        upload_country = (upload.country or "").strip().lower()
+
+        # ✅ IMPORTANT FIX:
+        # When requesting GLOBAL history:
+        # - if homeCurrency is provided => only return global_<currency>
+        # - else => only return base global
+        if country_param == "global":
+            if home_currency:
+                if upload_country != f"global_{home_currency}":
+                    continue
+            else:
+                if upload_country != "global":
+                    continue
+
+        # ✅ Optional: if FE passes specific country, filter by it
+        elif country_param:
+            if upload_country != country_param:
+                continue
+
+        # Convert numeric month to month name for display
+        month_name = month_names.get(upload.month, str(upload.month))
+        table_name = f"user_{upload_country}_{month_name}{upload.year}_data"
+
+        response.append({
+            'month': month_name,
+            'month_num': upload.month,
+            'year': upload.year,
+            'country': upload_country,
+            'file_name': table_name,
+
+            'total_sales': upload.total_sales,
+            'total_product_sales': upload.total_product_sales,
+            'total_profit': upload.total_profit,
+            'total_expense': upload.total_expense,
+            'total_fba_fees': upload.total_fba_fees,
+
+            'platform_fee': upload.platform_fee,
+            'rembursement_fee': upload.rembursement_fee,
+
+            'expense_chart_img': upload.expense_chart_img,
+            'sales_chart_img': upload.sales_chart_img,
+            'qtd_pie_chart': upload.qtd_pie_chart,
+            'ytd_pie_chart': upload.ytd_pie_chart,
+
+            'total_cous': upload.total_cous,
+            'total_amazon_fee': upload.total_amazon_fee,
+            'profit_chart_img': upload.profit_chart_img,
+
+            'cm2_profit': upload.cm2_profit,
+            'cm2_margins': upload.cm2_margins,
+            'acos': upload.acos,
+
+            'rembursment_vs_cm2_margins': upload.rembursment_vs_cm2_margins,
+            'advertising_total': upload.advertising_total,
+            'reimbursement_vs_sales': upload.reimbursement_vs_sales,
+            'taxncredit': upload.taxncredit,
+            'unit_sold': upload.unit_sold,
+
+            'otherwplatform': upload.platform_fee,
+        })
+
+    # ---------------- PERFORMANCE TREND (moved here, down below) ----------------
+    # Make sure you have:
+    # from utils.performance_trend import get_performance_trend
+
+    period = (request.args.get("period") or "monthly").strip().lower()
+    timeline = (request.args.get("timeline") or "ALL").strip().upper()
+    year = request.args.get("year", type=int)
+
+    metric = (request.args.get("metric", "net_sales") or "net_sales").strip().lower()
+    if metric not in ("net_sales", "units"):
+        metric = "net_sales"
+
+    # Use requested country if provided, else infer from first upload, else default "uk"
+    trend_country = (country_param or (response[0]["country"] if response else "uk")).strip().lower()
+
+    # ✅ If FE doesn't send year, infer from filtered history (latest year available)
+    if year is None:
+        year = max((u["year"] for u in response), default=None)
+
+    # ✅ Your original summary logic required monthly timeline 1..12.
+    # If FE sends ALL for monthly, normalize it to "12" (last 12 months style)
+    if period == "monthly" and timeline == "ALL":
+        timeline = "12"
+
+    performance_trend = None
+    try:
+        if year is not None:
+            performance_trend = get_performance_trend(
+                user_id=user_id,
+                country=trend_country,
+                period=period,
+                timeline=timeline,
+                year=year,
+            )
+    except Exception as e:
+        # Keep upload_history usable even if trend fails
+        import traceback
+        print("Unexpected error computing performance_trend in /upload_history:", e)
+        print(traceback.format_exc())
+
+    return jsonify({
+        'uploads': response,
+        'performance_trend': performance_trend,
+        'performance_trend_metric': metric,
+        'trend_country': trend_country,
+        'trend_period': period,
+        'trend_timeline': timeline,
+        'trend_year': year,
+    }), 200
 # ###################################################################################################################
 
 

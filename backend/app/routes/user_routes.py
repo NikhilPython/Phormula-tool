@@ -11,7 +11,7 @@ import numpy as np
 from app.utils.data_utils import  create_user_session
 from app.utils.email_utils import send_welcome_and_verification_emails , send_reset_email
 from app import db
-from app.models.user_models import User, CountryProfile, Category 
+from app.models.user_models import User, CountryProfile, Category , amazon_user
 import jwt
 import secrets
 import string
@@ -28,9 +28,49 @@ import json
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
 db_url1= os.getenv('DATABASE_ADMIN_URL')
+db_url2= os.getenv('DATABASE_AMAZON_URL')
 
 
 user_bp = Blueprint('user', __name__)
+
+ALLOWED_MARKETPLACES = {
+    "ATVPDKIKX0DER",  # US
+    "A1F83G8C2ARO7P", # UK
+    "A2EUQ1WTGCTBG2", # CA
+}
+
+COUNTRY_TO_MARKETPLACE = {
+    "us": "ATVPDKIKX0DER",
+    "uk": "A1F83G8C2ARO7P",
+    "ca": "A2EUQ1WTGCTBG2",
+}
+
+def compute_marketplace_ids_from_country(country_value: str) -> str:
+    """
+    country_value can be:
+      - 'uk'
+      - 'uk,us'
+      - 'UK, US'
+    returns comma-separated marketplace ids in stable order.
+    """
+    if not country_value:
+        return ""
+
+    countries = [c.strip().lower() for c in country_value.split(",") if c.strip()]
+    ids = []
+
+    for c in countries:
+        mp = COUNTRY_TO_MARKETPLACE.get(c)
+        if mp and mp in ALLOWED_MARKETPLACES:
+            ids.append(mp)
+
+    # remove duplicates while preserving order
+    seen = set()
+    ids = [x for x in ids if not (x in seen or seen.add(x))]
+
+    return ",".join(ids)
+
+
 
 
 @user_bp.route('/register', methods=['POST'])
@@ -162,118 +202,6 @@ def reset_password(token):
         return jsonify({'success': False, 'message': 'User not found.'})
 
 
-
-
-# @user_bp.route('/google_register', methods=['POST'])
-# def google_register():
-#     try:
-#         data = request.get_json()
-#         if data is None:
-#             return jsonify({'success': False, 'message': 'Invalid input'}), 400
-            
-#         email = data.get('email')
-#         if not email:
-#             return jsonify({'success': False, 'message': 'Email is required'}), 400
-            
-#         phone_number = data.get('phone_number', "0000000000")
-#         password = data.get('password', "default_password")
-
-#         # Check if user already exists
-#         existing_user = User.query.filter_by(email=email).first()
-#         if existing_user:
-#             if existing_user.is_google_user:
-#                 # User exists and is already a Google user, log them in
-#                 token = generate_token(existing_user.id)
-#                 session['user_id'] = existing_user.id
-#                 return jsonify({'success': True, 'message': 'Google user login successful', 'token': token})
-#             else:
-#                 # User exists but not as Google user
-#                 return jsonify({'success': False, 'message': 'Email already exists with regular account. Please use regular login.'}), 409
-
-#         # Generate token_name for new user
-#         random_token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
-#         token_name = f"user_{random_token}"
-
-#         # Hash the password
-#         password_hash = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
-
-#         # Register new Google user
-#         new_user = User(
-#             email=email, 
-#             phone_number=phone_number, 
-#             password=password_hash, 
-#             is_google_user=True,
-#             is_verified=True,  # Google users are pre-verified
-#             token_name=token_name
-#         )
-#         db.session.add(new_user)
-#         db.session.commit()
-
-#         # Generate token and set session
-#         auth_token = generate_token(new_user.id)
-#         session['user_id'] = new_user.id
-
-#         # Optional: Send welcome email (verification not needed for Google users)
-#         try:
-#             verification_link = f'http://127.0.0.1:5000/dashboard'  # Direct to dashboard
-#             send_welcome_and_verification_emails(email, verification_link)
-#         except Exception as e:
-#             print(f"Failed to send welcome email to {email}: {e}")
-#             # Don't fail registration if email fails
-
-#         return jsonify({
-#             'success': True, 
-#             'message': 'Google user registered successfully', 
-#             'token': auth_token,
-#             'show_country_selection': True,
-#             'user_id': new_user.id,
-#             'token_name': token_name
-#         })
-
-#     except Exception as e:
-#         db.session.rollback()
-#         print(f"Google registration error: {str(e)}")
-#         return jsonify({'success': False, 'message': 'Server error during Google registration', 'error': str(e)}), 500
-
-
-# @user_bp.route('/google_login', methods=['POST'])
-# def google_login():
-#     try:
-#         data = request.get_json()
-#         if data is None:
-#             return jsonify({'success': False, 'message': 'Invalid input'}), 400
-            
-#         email = data.get('email')
-#         if not email:
-#             return jsonify({'success': False, 'message': 'Email is required'}), 400
-
-#         user = User.query.filter_by(email=email).first()
-        
-#         if not user:
-#             # No user found - they need to register first
-#             return jsonify({'success': False, 'message': 'No account found. Please register first.'}), 404
-        
-#         if not user.is_google_user:
-#             # User exists but not as Google user
-#             return jsonify({'success': False, 'message': 'Please log in using your email and password.'}), 401
-            
-#         # User exists and is a Google user
-#         if not user.is_verified:
-#             # This shouldn't happen for Google users, but just in case
-#             user.is_verified = True
-#             db.session.commit()
-            
-#         # Generate token and set session
-#         token = generate_token(user.id)
-#         session['user_id'] = user.id
-        
-#         return jsonify({'success': True, 'message': 'Google login successful', 'token': token})
-        
-#     except Exception as e:
-#         print(f"Google login error: {str(e)}")
-#         return jsonify({'success': False, 'message': 'Server error during Google login', 'error': str(e)}), 500
-
-
 @user_bp.route('/google_register', methods=['POST'])
 def google_register():
     try:
@@ -378,6 +306,45 @@ def resend_verification_email():
 
 
 
+# @user_bp.route('/get_user_data', methods=['GET'])
+# def get_user_data():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])  # ✅ Fixed here
+#         user_id = payload['user_id']
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     user = User.query.filter_by(id=user_id).first()
+#     if not user:
+#         return jsonify({'error': 'User not found'}), 404
+
+#     return jsonify({
+#         'name': user.name,
+#         'company_name': user.company_name,
+#         'brand_name': user.brand_name,
+#         'email': user.email,
+#         'phone_number': user.phone_number,
+#         'annual_sales_range': user.annual_sales_range,
+#         'password': user.password,
+#         'marketplace_id': user.marketplace_id,
+#         'country': user.country,
+#         'homeCurrency': user.homeCurrency,
+#         'target_sales': float(user.target_sales) if user.target_sales is not None else None,  # ✅ add
+#         'tax_id': user.tax_id,
+#         'address': user.address
+#     })
+
+
+def _has_token(val):
+    return bool(val and str(val).strip())
+
 @user_bp.route('/get_user_data', methods=['GET'])
 def get_user_data():
     auth_header = request.headers.get('Authorization')
@@ -386,7 +353,7 @@ def get_user_data():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])  # ✅ Fixed here
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
         user_id = payload['user_id']
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
@@ -397,8 +364,31 @@ def get_user_data():
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
+    # ✅ Fetch amazon tokens row (can be None if not connected)
+    arow = amazon_user.query.filter_by(user_id=user_id).first()
+
+    spapi_connected = False
+    ads_connected = False
+
+    if arow:
+        spapi_connected = _has_token(arow.refresh_token)
+        ads_connected = _has_token(arow.amazon_ads_refresh_token)
+
+    # ✅ Your rule: amazon_user_exists True only if BOTH tokens exist
+    amazon_user_exists = bool(spapi_connected and ads_connected)
+
+    # ✅ Save in User table (optional but you asked “add column in User class and fill it”)
+    user.amazon_user_exists = amazon_user_exists
+    user.amazon_ads_exists = ads_connected
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Failed to update amazon flags', 'details': str(e)}), 500
+
     return jsonify({
-         'name': user.name,
+        'name': user.name,
         'company_name': user.company_name,
         'brand_name': user.brand_name,
         'email': user.email,
@@ -408,10 +398,14 @@ def get_user_data():
         'marketplace_id': user.marketplace_id,
         'country': user.country,
         'homeCurrency': user.homeCurrency,
-        'target_sales': float(user.target_sales) if user.target_sales is not None else None,  # ✅ add
+        'target_sales': float(user.target_sales) if user.target_sales is not None else None,
         'tax_id': user.tax_id,
-        'address': user.address
-    })
+        'address': user.address,
+
+        # ✅ NEW FIELDS returned to frontend
+        'amazon_user_exists': user.amazon_user_exists,   # both tokens
+        'amazon_ads_exists': user.amazon_ads_exists,     # ads token only
+    }), 200
 
 
 
@@ -441,43 +435,6 @@ def get_user_countries():
 
     return jsonify({'countries': country_list}), 200
 
-
-ALLOWED_MARKETPLACES = {
-    "ATVPDKIKX0DER",  # US
-    "A1F83G8C2ARO7P", # UK
-    "A2EUQ1WTGCTBG2", # CA
-}
-
-COUNTRY_TO_MARKETPLACE = {
-    "us": "ATVPDKIKX0DER",
-    "uk": "A1F83G8C2ARO7P",
-    "ca": "A2EUQ1WTGCTBG2",
-}
-
-def compute_marketplace_ids_from_country(country_value: str) -> str:
-    """
-    country_value can be:
-      - 'uk'
-      - 'uk,us'
-      - 'UK, US'
-    returns comma-separated marketplace ids in stable order.
-    """
-    if not country_value:
-        return ""
-
-    countries = [c.strip().lower() for c in country_value.split(",") if c.strip()]
-    ids = []
-
-    for c in countries:
-        mp = COUNTRY_TO_MARKETPLACE.get(c)
-        if mp and mp in ALLOWED_MARKETPLACES:
-            ids.append(mp)
-
-    # remove duplicates while preserving order
-    seen = set()
-    ids = [x for x in ids if not (x in seen or seen.add(x))]
-
-    return ",".join(ids)
 
 
 
@@ -587,66 +544,6 @@ def switch_profile(profile_id):
     return jsonify({'error': 'Profile not found or unauthorized access'}), 404
 
 
-
-
-# @user_bp.route('/profileupdate', methods=['POST'])
-# def profileupdate():
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-#         user_id = payload['user_id']
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-
-#     user = User.query.get(user_id)
-#     if not user:
-#         return jsonify({'error': 'User not found'}), 404
-
-#     data = request.get_json() or {}
-
-#     # -------- SAFE FIELD UPDATES --------
-#     user.email = data.get('email', user.email)
-#     user.phone_number = data.get('phone_number', user.phone_number)
-#     user.annual_sales_range = data.get('annual_sales_range', user.annual_sales_range)
-#     user.company_name = data.get('company_name', user.company_name)
-#     user.brand_name = data.get('brand_name', user.brand_name)
-#     user.homeCurrency = data.get('homeCurrency', user.homeCurrency)
-#     user.tax_id = data.get('tax_id', user.tax_id)
-#     user.address = data.get('address', user.address)
-
-#     # -------- PASSWORD (HASHED) --------
-#     new_password = data.get('password')
-#     if new_password:
-#         user.password = generate_password_hash(
-#             new_password, method='pbkdf2:sha256', salt_length=8
-#         )
-
-#     # -------- COUNTRY + MARKETPLACE --------
-#     new_country = data.get('country')
-#     if new_country:
-#         user.country = new_country
-#         user.marketplace_id = compute_marketplace_ids_from_country(new_country)
-
-#     # -------- TARGET SALES (VALIDATED) --------
-#     target_sales = data.get('target_sales')
-#     if target_sales is not None:
-#         try:
-#             user.target_sales = float(target_sales)
-#         except (TypeError, ValueError):
-#             return jsonify({'error': 'target_sales must be a number'}), 400
-
-#     try:
-#         db.session.commit()
-#         return jsonify({'message': 'Profile updated successfully'}), 200
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({'error': str(e)}), 500
 
 @user_bp.route('/profileupdate', methods=['POST'])
 def profileupdate():
