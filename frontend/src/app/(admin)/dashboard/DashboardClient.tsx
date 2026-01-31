@@ -3982,8 +3982,8 @@ export default function DashboardPage() {
                             { type: "single", key: "net_sales" },
                             { type: "single", key: "cogs" },
                             { type: "group", id: "marketplace_fees" },
-                            { type: "group", id: "profit" },
                             { type: "group", id: "tax_and_credits" },
+                            { type: "group", id: "profit" },
                             { type: "single", key: "ads_spend" },
                             { type: "group", id: "cm2_profit" },
 
