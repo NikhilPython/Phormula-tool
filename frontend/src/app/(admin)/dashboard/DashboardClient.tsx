@@ -4012,9 +4012,14 @@ export default function DashboardPage() {
                             // if (colKey === "credits") return formatAdsNumber(row.credits);
                             // if (colKey === "tax_and_credits") return formatAdsNumber(row.tax_and_credits);
 
-                            if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits" || colKey === "cm1_profit_per" || colKey === "cm1_profit_per_unit" || colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
+                            if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits" || colKey === "cm1_profit_per" || colKey === "cm1_profit_per_unit") {
                                 const v = Number((row as any)[colKey] ?? 0);
                                 return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
+                            }
+
+                            if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
+                                const v = Number((row as any)[colKey] ?? 0);
+                                return formatAdsNumber(Number.isFinite(v) ? v : 0);
                             }
 
                             if (colKey === "ad_type") {
