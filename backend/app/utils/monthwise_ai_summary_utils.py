@@ -59,7 +59,7 @@ def rolling_months(anchor_year: int, anchor_month: int, max_months: int = 24):
 
 
 DEFAULT_USER_OBJECTIVE = {
-    "primary_goal": "rank",   # profit | growth | rank | inventory_clearance | balanced
+    "primary_goal": "profit",   # profit | growth | rank | inventory_clearance | balanced
     "risk_level": "balanced",   # conservative | balanced | aggressive
     "constraints": {
         "max_tacos": None,
@@ -95,6 +95,41 @@ def severity_suffix(severity: str | None) -> str:
     return f" ({severity.replace('_', ' ').replace('24m', '24 months')})"
 
 
+def resolve_latest_available_month(user_id: int, country: str):
+    """
+    Returns the latest (year, month) for which a precalc table actually exists.
+    Falls back safely to latest completed month.
+    """
+    y, m = get_latest_completed_month()
+
+    # Try current completed month first, then walk backwards
+    for _ in range(24):
+        table = build_table_name(
+            user_id=user_id,
+            country=country,
+            period="monthly",
+            timeline=str(m),
+            year=y
+        )
+        try:
+            pd.read_sql(
+                f'SELECT 1 FROM public."{table}" LIMIT 1',
+                phormula_engine
+            )
+            return y, m
+        except Exception:
+            pass
+
+        if m == 1:
+            y -= 1
+            m = 12
+        else:
+            m -= 1
+
+    # Absolute fallback (should never happen)
+    return get_latest_completed_month()
+
+
 
 
 def get_latest_completed_month(today=None):
@@ -102,6 +137,15 @@ def get_latest_completed_month(today=None):
     if today.month == 1:
         return today.year - 1, 12
     return today.year, today.month - 1
+
+def resolve_latest_two_months():
+    """
+    Canonical advisor time resolver.
+    Always returns latest completed month for MoM analysis.
+    """
+    year, month = get_latest_completed_month()
+    return "monthly", str(month), year
+
 
 
 def get_latest_completed_quarter(today=None):
@@ -209,6 +253,7 @@ def fetch_precalc_table(user_id: int, country: str, period: str, timeline: str, 
     
 def build_rolling_monthly_series(user_id: int, country: str, anchor_year: int, anchor_month: int):
     series = []
+    anchor_year, anchor_month = resolve_latest_available_month(user_id, country)
 
     for y, m in rolling_months(anchor_year, anchor_month, 24):
         df = fetch_precalc_table(
@@ -1550,120 +1595,131 @@ def render_month_end_summary(
     period: str,
     timeline: str,
     year: int,
-    analysis_insights: dict,
+    analysis_insights: dict | None,
     mom: dict,
     sku_mom: dict,
     focus_skus: list,
     inventory_alerts: dict,
     inventory_lost: float,
     currency_symbol: str,
-    strategy_actions: dict | None = None,  # 👈 SKU → Action map
+    strategy_actions: dict | None = None,
 ) -> str:
     """
     Deterministic executive month-end summary renderer.
-    Renderer is presentation-only. No decisions are made here.
+    Presentation-only. Fully None-safe.
     """
+
+    def fmt_pct(x):
+        return f"{x:+.2f}%" if isinstance(x, (int, float)) else "N/A"
+
+    def fmt_num(x, decimals=2):
+        return f"{x:+.{decimals}f}" if isinstance(x, (int, float)) else "N/A"
+
+    def fmt_int(x):
+        return f"{int(x)}" if isinstance(x, (int, float)) else "N/A"
 
     comparison = build_comparison_label(period, timeline, year)
     lines: list[str] = []
 
-   # =========================
-    # SUMMARY
-    # =========================
-    lines.append("## SUMMARY")
+    # =========================================================
+    # SUMMARY — PORTFOLIO ONLY
+    # =========================================================
+    if analysis_insights is not None:
+        lines.append("## SUMMARY")
 
-    es = analysis_insights["executive_summary_signals"]
+        es = analysis_insights.get("executive_summary_signals", {})
 
-    lines.append(f"Performance Summary ({comparison})")
-    takeaway = analysis_insights.get("executive_takeaway")
-    if takeaway:
-        lines.append(takeaway)
+        lines.append(f"Performance Summary ({comparison})")
+        takeaway = analysis_insights.get("executive_takeaway")
+        if takeaway:
+            lines.append(takeaway)
 
-
-    # Units
-    u = es["units"]
-    lines.append(
-        f"• Units sold: {u['pct_change']:+.2f}% "
-        f"({int(u['absolute_change'])} units)"
-        f"{severity_suffix(u.get('severity'))}"
-    )
-
-    # Net sales (severity-enabled, extreme-only)
-    ns = es["net_sales"]
-    lines.append(
-        f"• Net sales: {ns['pct_change']:+.2f}% "
-        f"({currency_symbol}{ns['absolute_change']:+.2f})"
-        f"{severity_suffix(ns.get('severity'))}"
-    )
-
-    # ASP
-    asp = es["asp"]
-    lines.append(
-        f"• ASP: {asp['pct_change']:+.2f}% "
-        f"({currency_symbol}{asp['absolute_change']:+.2f})"
-        f"{severity_suffix(asp.get('severity'))}"
-    )
-
-    # CM1 profit (severity-enabled)
-    cm1 = es["cm1_profit"]
-    lines.append(
-        f"• CM1 profit: {cm1['pct_change']:+.2f}% "
-        f"({currency_symbol}{cm1['absolute_change']:+.2f})"
-        f"{severity_suffix(cm1.get('severity'))}"
-    )
-
-    # CM1 profit per unit
-    ppu = es["cm1_profit_per_unit"]
-    lines.append(
-        f"• CM1 profit per unit: {ppu['pct_change']:+.2f}% "
-        f"({currency_symbol}{ppu['absolute_change']:+.2f})"
-        f"{severity_suffix(ppu.get('severity'))}"
-    )
-
-    # Cost pressure (Advertising)
-    cp = es["cost_pressure"]
-    ad = cp["advertising"]
-
-    lines.append(
-        f"• Advertising spends: {ad['pct_change']:+.2f}% "
-        f"({currency_symbol}{ad['absolute_change']:+.2f})"
-        f"{severity_suffix(ad.get('severity'))}, "
-        f"with ACOS change of {ad['acos_delta']:+.2f}%"
-    )
-
-    # Cost pressure (Storage)
-    st = cp["storage_fees"]
-    lines.append(
-        f"• Platform inventory storage fees: {st['pct_change']:+.2f}% "
-        f"({currency_symbol}{st['absolute_change']:+.2f})"
-        f"{severity_suffix(st.get('severity'))}"
-    )
-
-    # CM2 profit
-    cm2 = es["cm2_profit"]
-    lines.append(
-        f"• CM2 profit: {cm2['pct_change']:+.2f}% "
-        f"({currency_symbol}{cm2['absolute_change']:+.2f})"
-        f"{severity_suffix(cm2.get('severity'))}"
-    )
-
-    # Reimbursements (always shown if present, always positive)
-    if es["reimbursements"]["present"]:
-        amt = abs(float(es["reimbursements"].get("amount", 0)))
-
+        # Units
+        u = es.get("units", {})
         lines.append(
-            f"• Amazon reimbursements for lost inventory: "
-            f"{currency_symbol}{amt:.2f} "
-            f"(non-recurring recovery)"
+            f"• Units sold: {fmt_pct(u.get('pct_change'))} "
+            f"({fmt_int(u.get('absolute_change'))} units)"
+            f"{severity_suffix(u.get('severity'))}"
         )
 
+        # Net sales
+        ns = es.get("net_sales", {})
+        lines.append(
+            f"• Net sales: {fmt_pct(ns.get('pct_change'))} "
+            f"({currency_symbol}{fmt_num(ns.get('absolute_change'))})"
+            f"{severity_suffix(ns.get('severity'))}"
+        )
 
-    # =========================
-    # PRODUCT INSIGHTS
-    # =========================
+        # ASP
+        asp = es.get("asp", {})
+        lines.append(
+            f"• ASP: {fmt_pct(asp.get('pct_change'))} "
+            f"({currency_symbol}{fmt_num(asp.get('absolute_change'))})"
+            f"{severity_suffix(asp.get('severity'))}"
+        )
+
+        # CM1 profit
+        cm1 = es.get("cm1_profit", {})
+        lines.append(
+            f"• CM1 profit: {fmt_pct(cm1.get('pct_change'))} "
+            f"({currency_symbol}{fmt_num(cm1.get('absolute_change'))})"
+            f"{severity_suffix(cm1.get('severity'))}"
+        )
+
+        # CM1 profit per unit
+        ppu = es.get("cm1_profit_per_unit", {})
+        lines.append(
+            f"• CM1 profit per unit: {fmt_pct(ppu.get('pct_change'))} "
+            f"({currency_symbol}{fmt_num(ppu.get('absolute_change'))})"
+            f"{severity_suffix(ppu.get('severity'))}"
+        )
+
+        # Cost pressure – Advertising
+        cp = es.get("cost_pressure", {})
+        ad = cp.get("advertising", {})
+        lines.append(
+            f"• Advertising spends: {fmt_pct(ad.get('pct_change'))} "
+            f"({currency_symbol}{fmt_num(ad.get('absolute_change'))})"
+            f"{severity_suffix(ad.get('severity'))}, "
+            f"with ACOS change of {fmt_pct(ad.get('acos_delta'))}"
+        )
+
+        # Cost pressure – Storage
+        st = cp.get("storage_fees", {})
+        lines.append(
+            f"• Platform inventory storage fees: {fmt_pct(st.get('pct_change'))} "
+            f"({currency_symbol}{fmt_num(st.get('absolute_change'))})"
+            f"{severity_suffix(st.get('severity'))}"
+        )
+
+        # CM2 profit
+        cm2 = es.get("cm2_profit", {})
+        lines.append(
+            f"• CM2 profit: {fmt_pct(cm2.get('pct_change'))} "
+            f"({currency_symbol}{fmt_num(cm2.get('absolute_change'))})"
+            f"{severity_suffix(cm2.get('severity'))}"
+        )
+
+        # Reimbursements
+        reimb = es.get("reimbursements", {})
+        if reimb.get("present"):
+            amt = reimb.get("amount")
+            if isinstance(amt, (int, float)):
+                lines.append(
+                    f"• Amazon reimbursements for lost inventory: "
+                    f"{currency_symbol}{abs(amt):.2f} (non-recurring recovery)"
+                )
+
+    # =========================================================
+    # PRODUCT INSIGHTS (ALWAYS SHOWN)
+    # =========================================================
     lines.append("\n## PRODUCT INSIGHTS")
 
-    product_insights = analysis_insights.get("product_insights", {})
+    product_insights = (
+        analysis_insights.get("product_insights", {})
+        if analysis_insights is not None
+        else {}
+    )
 
     for sku in focus_skus:
         s = sku_mom.get(sku)
@@ -1671,19 +1727,21 @@ def render_month_end_summary(
             continue
 
         name = s.get("product_name", sku)
-
         lines.append(f"\n{name}")
 
-        lines.append(f"• ASP: {currency_symbol}{s['asp']['delta']:+.2f} ({s['asp']['delta_pct']:+.2f}%)")
-        lines.append(f"• Units: {s['total_quantity']['delta']:+.0f} ({s['total_quantity']['delta_pct']:+.2f}%)")
-        lines.append(f"• Net sales: {currency_symbol}{s['net_sales']['delta']:+.2f} ({s['net_sales']['delta_pct']:+.2f}%)")
-        lines.append(f"• CM1 profit: {currency_symbol}{s['profit']['delta']:+.2f} ({s['profit']['delta_pct']:+.2f}%)")
-        lines.append(f"• CM1 profit per unit: {currency_symbol}{s['unit_wise_profitability']['delta']:+.2f} "f"({s['unit_wise_profitability']['delta_pct']:+.2f}%)")
+        def sku_fmt(metric, key="delta", pct_key="delta_pct"):
+            m = s.get(metric, {})
+            return f"{fmt_num(m.get(key))} ({fmt_pct(m.get(pct_key))})"
 
+        lines.append(f"• ASP: {currency_symbol}{sku_fmt('asp')}")
+        lines.append(f"• Units: {sku_fmt('total_quantity', key='delta', pct_key='delta_pct')}")
+        lines.append(f"• Net sales: {currency_symbol}{sku_fmt('net_sales')}")
+        lines.append(f"• CM1 profit: {currency_symbol}{sku_fmt('profit')}")
+        lines.append(
+            f"• CM1 profit per unit: {currency_symbol}"
+            f"{sku_fmt('unit_wise_profitability')}"
+        )
 
-        # -------------------------
-        # Diagnosis (FROM PROMPT 1)
-        # -------------------------
         sku_diag = product_insights.get(sku, {})
         diagnosis_codes = sku_diag.get("diagnosis_codes", ["mixed_signal"])
 
@@ -1691,16 +1749,12 @@ def render_month_end_summary(
             for line in DIAGNOSIS_TEXT.get(code, []):
                 lines.append(line)
 
-        # -------------------------
-        # Action (FROM PROMPT 2)
-        # -------------------------
         if strategy_actions and sku in strategy_actions:
             lines.append(f"Action: {strategy_actions[sku]} for {name}")
 
-
-    # =========================
-    # INVENTORY
-    # =========================
+    # =========================================================
+    # INVENTORY (PORTFOLIO ONLY)
+    # =========================================================
     if inventory_alerts:
         lines.append("\n## INVENTORY")
 
@@ -1722,15 +1776,263 @@ def render_month_end_summary(
                 f"{currency_symbol}{inventory_alerts['storage_cost_risk']['estimated_next_month_cost']:.2f} "
                 f"next month"
             )
+
         lines.append(
             "• For detailed inventory insights, please refer to the Inventory Reconciliation tab."
         )
-    
 
     return "\n".join(lines)
 
 
 
+
+# def get_or_create_summary(
+#     user_id,
+#     country,
+#     marketplace_id,
+#     period,
+#     timeline,
+#     year,
+#     objective=None,
+#     target_sku: str | list | None = None,
+#     force_regenerate=False
+# ):
+#     # ---------------- Objective defaults / normalize ----------------
+#     objective = objective or {}
+#     constraints = objective.get("constraints") or {}
+
+#     primary_goal = objective.get("primary_goal", "profit")
+#     risk_level = objective.get("risk_level", "balanced")
+
+#     max_tacos = constraints.get("max_tacos")
+#     max_price_increase_pct = constraints.get("max_price_increase_pct")
+#     ad_budget_cap = constraints.get("ad_budget_cap")
+#     dont_change_price = constraints.get("dont_change_price", False)
+#     notes = objective.get("notes")
+
+#     # ---------------- Cache lookup ----------------
+#     cached = fetch_existing_summary(
+#         user_id, country, marketplace_id, period, timeline, year
+#     )
+
+#     if cached and not force_regenerate:
+#         return {
+#             "summary": cached.summary,
+#             "recommendations": cached.recommendations,
+#             "source": "db",
+#             "objective": {
+#                 "primary_goal": getattr(cached, "primary_goal", None),
+#                 "risk_level": getattr(cached, "risk_level", None),
+#                 "constraints": {
+#                     "max_tacos": getattr(cached, "max_tacos", None),
+#                     "max_price_increase_pct": float(cached.max_price_increase_pct)
+#                         if getattr(cached, "max_price_increase_pct", None) is not None else None,
+#                     "ad_budget_cap": float(cached.ad_budget_cap)
+#                         if getattr(cached, "ad_budget_cap", None) is not None else None,
+#                     "dont_change_price": getattr(cached, "dont_change_price", None),
+#                 },
+#                 "notes": getattr(cached, "notes", None)
+#             }
+#         }
+
+#     # ---------------- CURRENT PERIOD (SAFE LATEST) ----------------
+#     year, month = resolve_latest_available_month(user_id, country)
+#     timeline = str(month)
+#     period = "monthly"
+#     allow_reco = is_latest_period(period, timeline, year)
+
+#     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
+#     df_current_detail, df_current_total = _split_total_row(df_current)
+
+#     # ---------------- ROLLING CONTEXT ----------------
+#     anchor_month = int(timeline)
+#     rolling_series = build_rolling_monthly_series(
+#         user_id=user_id,
+#         country=country,
+#         anchor_year=year,
+#         anchor_month=anchor_month
+#     )
+#     movement_context = build_movement_context(rolling_series)
+
+#     # ---------------- CURRENT METRICS ----------------
+#     current = {}
+#     if not df_current_detail.empty:
+#         for col in get_metric_columns(df_current_detail):
+#             current[col.lower()] = round(
+#                 float(pd.to_numeric(df_current_detail[col], errors="coerce").fillna(0).sum()), 2
+#             )
+
+#     for c in [
+#         "platform_fee",
+#         "platformfeenew",
+#         "platform_fee_inventory_storage",
+#         "advertising_total",
+#         "acos",
+#         "cm2_profit",
+#         "misc_transaction",
+#         "asp",
+#         "unit_wise_profitability",
+#     ]:
+#         v = _total_value(df_current_total, c)
+#         if v is not None:
+#             current[c] = round(v, 2)
+
+#     # ---------------- INVENTORY LOSS ----------------
+#     lost_total_val = _total_value(df_current_total, "lost_total")
+#     inventory_lost = round(abs(lost_total_val), 2) if lost_total_val is not None else 0.0
+
+#     # ---------------- SKU CURRENT ----------------
+#     sku_current = compute_sku_precalc(df_current_detail)
+
+#     # ============================================================
+#     # 🔒 SINGLE SKU / PRODUCT MODE (CRITICAL FIX)
+#     # ============================================================
+#     single_sku_mode = False
+
+#     if target_sku:
+#         single_sku_mode = True
+
+#         if isinstance(target_sku, list):
+#             target_sku = target_sku[0]
+
+#         target_sku = str(target_sku).strip()
+
+#         # CASE 1: Exact SKU
+#         if target_sku in sku_current:
+#             top_5_skus = [target_sku]
+#             sku_current = {target_sku: sku_current[target_sku]}
+
+#         else:
+#             # CASE 2: Product name → map to SKUs
+#             matched = {
+#                 sku: v
+#                 for sku, v in sku_current.items()
+#                 if v.get("product_name", "").strip().lower() == target_sku.lower()
+#             }
+
+#             if not matched:
+#                 return {
+#                     "summary": f"I couldn’t find '{target_sku}' in the latest available month.",
+#                     "recommendations": None,
+#                     "inventory_lost": inventory_lost,
+#                     "inventory_alerts": {},
+#                     "sku_current": {},
+#                     "sku_mom": {},
+#                     "sku_yoy": None,
+#                     "objective": None,
+#                     "sku_actions": {},
+#                     "source": "no_data",
+#                 }
+
+#             top_5_skus = list(matched.keys())
+#             sku_current = matched
+
+#     else:
+#         top_5_skus = select_top_5_skus_by_current_cm1_profit(sku_current)
+
+#     # ---------------- INVENTORY ALERTS ----------------
+#     inventory_alerts = {}
+#     if allow_reco:
+#         inventory_aged_df = fetch_inventory_aged_by_user(user_id)
+#         if not inventory_aged_df.empty:
+#             inventory_alerts = build_inventory_alerts(inventory_aged_df)
+
+#     # ---------------- PREVIOUS PERIOD ----------------
+#     (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
+#     df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
+#     df_prev_detail, df_prev_total = _split_total_row(df_prev)
+
+#     sku_prev = compute_sku_precalc(df_prev_detail)
+#     sku_mom = compare_sku_metrics(sku_current, sku_prev)
+
+#     if single_sku_mode:
+#         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
+
+#     # ---------------- AI PAYLOAD ----------------
+#     ai_payload = {
+#         "period": f"{period} {timeline} {year}",
+#         "period_label": period_label(period, timeline, year),
+#         "country": str(country).lower(),
+#         "inventory_lost": inventory_lost,
+#         "inventory_alerts": inventory_alerts,
+#         "sku_mom": sku_mom,
+#         "sku_yoy": None,
+#         "focus_skus": top_5_skus,
+#         "movement_context": movement_context,
+#         "objective": {
+#             "primary_goal": primary_goal,
+#             "risk_level": risk_level,
+#             "constraints": {
+#                 "max_tacos": max_tacos,
+#                 "max_price_increase_pct": max_price_increase_pct,
+#                 "ad_budget_cap": ad_budget_cap,
+#                 "dont_change_price": dont_change_price,
+#             },
+#             "notes": notes
+#         }
+#     }
+
+#     # 🔒 IMPORTANT: prompt-1 ONLY for portfolio
+#     if not single_sku_mode:
+#         analysis_insights = json.loads(run_prompt_1_analysis(ai_payload))
+#     else:
+#         analysis_insights = {
+#             "executive_takeaway": None,
+#             "key_insights": []
+#         }
+
+#     sku_actions = {}
+#     if allow_reco:
+#         strategy_raw = run_prompt_2_strategy(
+#             analysis_insights, ai_payload["objective"], top_5_skus
+#         )
+#         sku_actions = json.loads(strategy_raw).get("sku_actions") or {}
+
+#     final_text = render_month_end_summary(
+#         period=period,
+#         timeline=timeline,
+#         year=year,
+#         analysis_insights=None if single_sku_mode else analysis_insights,
+#         mom=None,
+#         sku_mom=sku_mom,
+#         focus_skus=top_5_skus,
+#         inventory_alerts=inventory_alerts,
+#         inventory_lost=inventory_lost,
+#         currency_symbol="£" if country == "uk" else "$",
+#         strategy_actions=sku_actions if allow_reco else None
+#     )
+
+#     save_summary_to_db({
+#         "user_id": user_id,
+#         "country": country,
+#         "marketplace_id": marketplace_id,
+#         "period": period,
+#         "timeline": timeline,
+#         "year": year,
+#         "primary_goal": primary_goal,
+#         "risk_level": risk_level,
+#         "max_tacos": max_tacos,
+#         "max_price_increase_pct": max_price_increase_pct,
+#         "ad_budget_cap": ad_budget_cap,
+#         "dont_change_price": dont_change_price,
+#         "notes": notes,
+#         "summary": final_text,
+#         "recommendations": None,
+#         "upsert": True
+#     })
+
+#     return {
+#         "summary": final_text,
+#         "recommendations": None,
+#         "inventory_lost": inventory_lost,
+#         "inventory_alerts": inventory_alerts,
+#         "sku_current": sku_current,
+#         "sku_mom": sku_mom,
+#         "sku_yoy": None,
+#         "objective": ai_payload["objective"],
+#         "source": "ai",
+#         "sku_actions": sku_actions,
+#     }
 
 
 def get_or_create_summary(
@@ -1741,6 +2043,7 @@ def get_or_create_summary(
     timeline,
     year,
     objective=None,
+    target_sku: str | list | None = None,
     force_regenerate=False
 ):
     # ---------------- Objective defaults / normalize ----------------
@@ -1756,199 +2059,132 @@ def get_or_create_summary(
     dont_change_price = constraints.get("dont_change_price", False)
     notes = objective.get("notes")
 
-    # ---------------- Cache lookup ----------------
+    # ============================================================
+    # Cache lookup — ONLY for portfolio
+    # ============================================================
     cached = fetch_existing_summary(
         user_id, country, marketplace_id, period, timeline, year
     )
 
-    # ✅ Return cached only if not forcing regeneration
-    if cached and not force_regenerate:
+    if cached and not force_regenerate and not target_sku:
         return {
             "summary": cached.summary,
             "recommendations": cached.recommendations,
             "source": "db",
+            "scope": "portfolio",
             "objective": {
                 "primary_goal": getattr(cached, "primary_goal", None),
                 "risk_level": getattr(cached, "risk_level", None),
                 "constraints": {
                     "max_tacos": getattr(cached, "max_tacos", None),
-                    "max_price_increase_pct": float(cached.max_price_increase_pct) if getattr(cached, "max_price_increase_pct", None) is not None else None,
-                    "ad_budget_cap": float(cached.ad_budget_cap) if getattr(cached, "ad_budget_cap", None) is not None else None,
+                    "max_price_increase_pct": float(cached.max_price_increase_pct)
+                        if getattr(cached, "max_price_increase_pct", None) is not None else None,
+                    "ad_budget_cap": float(cached.ad_budget_cap)
+                        if getattr(cached, "ad_budget_cap", None) is not None else None,
                     "dont_change_price": getattr(cached, "dont_change_price", None),
                 },
                 "notes": getattr(cached, "notes", None)
             }
         }
 
+    # ---------------- CURRENT PERIOD (LATEST AVAILABLE DATA) ----------------
+    year, month = resolve_latest_available_month(user_id, country)
+    timeline = str(month)
+    period = "monthly"
     allow_reco = is_latest_period(period, timeline, year)
 
-    # ---------------- CURRENT PERIOD ----------------
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
     df_current_detail, df_current_total = _split_total_row(df_current)
 
-    # ---------------- ROLLING 24-MONTH MOVEMENT CONTEXT (NEW) ----------------
-    if period == "monthly":
-        anchor_month = int(timeline)
-    elif period == "quarterly":
-        anchor_month = int(str(timeline).replace("Q", "")) * 3   # Q1->3, Q2->6, Q3->9, Q4->12
-    elif period == "yearly":
-        anchor_month = 12
-    else:
-        anchor_month = int(timeline)
-
-    rolling_series = build_rolling_monthly_series(
-        user_id=user_id,
-        country=country,
-        anchor_year=year,
-        anchor_month=anchor_month
-    )
-
-    movement_context = build_movement_context(rolling_series)
-
-
-    # 1) Build overall metrics from DETAIL rows (prevents double counting TOTAL)
-    current = {}
-    if not df_current_detail.empty:
-        for col in get_metric_columns(df_current_detail):
-            current[col.lower()] = round(
-                float(pd.to_numeric(df_current_detail[col], errors="coerce").fillna(0).sum()), 2
-            )
-
-    # 2) Override overall-only metrics from TOTAL row (because detail rows may be zero)
-    for c in [
-        "platform_fee",
-        "platformfeenew",
-        "platform_fee_inventory_storage",
-        "advertising_total",
-        "acos",
-        "cm2_profit",
-        "misc_transaction",
-        "asp",
-        "unit_wise_profitability",
-    ]:
-        v = _total_value(df_current_total, c)
-        if v is not None:
-            current[c] = round(v, 2)
-
-    print("METRICS USED:", list(current.keys()))
-
-    # 3) SKU breakdown MUST use DETAIL rows only (exclude TOTAL row)
+    # ---------------- SKU CURRENT ----------------
     sku_current = compute_sku_precalc(df_current_detail)
-    top_5_skus = select_top_5_skus_by_current_cm1_profit(sku_current)
 
+    # ============================================================
+    # 🔒 SINGLE SKU MODE — TRUST CHATBOT SKU (CRITICAL FIX)
+    # ============================================================
+    single_sku_mode = False
+    scope = "portfolio"
 
-    # 4) Reimbursements: take from TOTAL row if available, else detail sum
-    lost_total_val = _total_value(df_current_total, "lost_total")
-    if lost_total_val is None:
-        inventory_lost = round(abs(current.get("lost_total", 0.0)), 2)
+    if target_sku:
+        single_sku_mode = True
+        scope = "sku"
+
+        if isinstance(target_sku, list):
+            target_sku = target_sku[0]
+
+        target_sku = str(target_sku).strip()
+
+        # 🔑 TRUST EXACT SKU ONLY — NO product_name mapping
+        if target_sku in sku_current:
+            top_5_skus = [target_sku]
+            sku_current = {target_sku: sku_current[target_sku]}
+        else:
+            # ❌ SKU not present in analyst data → fail fast (NO portfolio fallback)
+            return {
+                "summary": f"I couldn’t find SKU '{target_sku}' in the latest available data.",
+                "recommendations": None,
+                "inventory_lost": 0.0,
+                "inventory_alerts": {},
+                "sku_current": {},
+                "sku_mom": {},
+                "sku_yoy": None,
+                "objective": objective,
+                "sku_actions": {},
+                "scope": "sku",
+                "source": "no_data",
+            }
     else:
-        inventory_lost = round(abs(lost_total_val), 2)
+        top_5_skus = select_top_5_skus_by_current_cm1_profit(sku_current)
 
+    # ---------------- ROLLING CONTEXT ----------------
+    if single_sku_mode:
+        movement_context = {}
+    else:
+        anchor_month = int(timeline)
+        rolling_series = build_rolling_monthly_series(
+            user_id=user_id,
+            country=country,
+            anchor_year=year,
+            anchor_month=anchor_month
+        )
+        movement_context = build_movement_context(rolling_series)
+
+    # ---------------- INVENTORY LOSS ----------------
+    lost_total_val = _total_value(df_current_total, "lost_total")
+    inventory_lost = round(abs(lost_total_val), 2) if lost_total_val is not None else 0.0
+    if single_sku_mode:
+        inventory_lost = 0.0
+
+    # ---------------- INVENTORY ALERTS ----------------
     inventory_alerts = {}
-
-    # =====================================================
-    # 🔴 INVENTORY AGEING LOGIC (latest period only) 🔴
-    # =====================================================
-    if allow_reco:
+    if allow_reco and not single_sku_mode:
         inventory_aged_df = fetch_inventory_aged_by_user(user_id)
         if not inventory_aged_df.empty:
             inventory_alerts = build_inventory_alerts(inventory_aged_df)
-        else:
-            inventory_alerts = {}
 
-    # ---------------- PREVIOUS PERIOD (MoM / QoQ) ----------------
-    (p_period, p_timeline, p_year), yoy_key = resolve_comparison(period, timeline, year)
-
+    # ---------------- PREVIOUS PERIOD ----------------
+    (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
     df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
-    df_prev_detail, df_prev_total = _split_total_row(df_prev)
-
-    prev = {}
-    if not df_prev_detail.empty:
-        for col in get_metric_columns(df_prev_detail):
-            prev[col.lower()] = round(
-                float(pd.to_numeric(df_prev_detail[col], errors="coerce").fillna(0).sum()), 2
-            )
-
-    # override overall-only metrics from TOTAL row
-    for c in [
-        "platform_fee",
-        "platformfeenew",
-        "platform_fee_inventory_storage",
-        "advertising_total",
-        "acos",
-        "cm2_profit",
-        "misc_transaction",
-        "asp",
-        "unit_wise_profitability",
-    ]:
-        v = _total_value(df_prev_total, c)
-        if v is not None:
-            prev[c] = round(v, 2)
-
-    mom = compare_metrics(current, prev)
+    df_prev_detail, _ = _split_total_row(df_prev)
 
     sku_prev = compute_sku_precalc(df_prev_detail)
     sku_mom = compare_sku_metrics(sku_current, sku_prev)
 
+    if single_sku_mode:
+        sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
 
-   
-    # ---------------- YOY (YEARLY ONLY) ----------------
-    yoy = None
-    sku_yoy = None
-
-    if period == "yearly" and yoy_key:
-        y_period, y_timeline, y_year = yoy_key
-        df_yoy = fetch_precalc_table(user_id, country, y_period, y_timeline, y_year)
-
-        if not df_yoy.empty:
-            df_yoy_detail, df_yoy_total = _split_total_row(df_yoy)
-
-            yoy_base = {}
-            if not df_yoy_detail.empty:
-                for col in get_metric_columns(df_yoy_detail):
-                    yoy_base[col.lower()] = round(
-                        float(pd.to_numeric(df_yoy_detail[col], errors="coerce").fillna(0).sum()), 2
-                    )
-
-            for c in [
-                "platform_fee",
-                "platformfeenew",
-                "platform_fee_inventory_storage",
-                "advertising_total",
-                "acos",
-                "cm2_profit",
-                "misc_transaction",
-                "asp",
-                "unit_wise_profitability",
-            ]:
-                v = _total_value(df_yoy_total, c)
-                if v is not None:
-                    yoy_base[c] = round(v, 2)
-
-            yoy = compare_metrics(current, yoy_base)
-
-            sku_yoy = compare_sku_metrics(
-                sku_current,
-                compute_sku_precalc(df_yoy_detail)
-            )
-
-
-    # ---- everything below stays same (debug/ai/save/return) ----
-
+    # ---------------- AI PAYLOAD ----------------
     ai_payload = {
         "period": f"{period} {timeline} {year}",
         "period_label": period_label(period, timeline, year),
         "country": str(country).lower(),
-        "mom": mom,
-        "yoy": yoy,
         "inventory_lost": inventory_lost,
         "inventory_alerts": inventory_alerts,
         "sku_mom": sku_mom,
-        "sku_yoy": sku_yoy,
+        "sku_yoy": None,
         "focus_skus": top_5_skus,
-        "movement_context": movement_context, 
-
-        # ✅ NEW: objective injected for the prompt
+        "movement_context": movement_context,
+        "scope": scope,
         "objective": {
             "primary_goal": primary_goal,
             "risk_level": risk_level,
@@ -1962,49 +2198,34 @@ def get_or_create_summary(
         }
     }
 
-    # ✅ Include YoY ONLY for yearly
-    if period == "yearly":
-        ai_payload["yoy"] = yoy
-        ai_payload["sku_yoy"] = sku_yoy
+    # 🔒 Prompt-1 ONLY for portfolio
+    analysis_insights = None
+    if not single_sku_mode:
+        analysis_insights = json.loads(run_prompt_1_analysis(ai_payload))
 
+    # 🔒 Strategy ONLY for portfolio
+    sku_actions = {}
+    if allow_reco and not single_sku_mode and analysis_insights:
+        strategy_raw = run_prompt_2_strategy(
+            analysis_insights, ai_payload["objective"], top_5_skus
+        )
+        sku_actions = json.loads(strategy_raw).get("sku_actions") or {}
 
-    analysis_insights = json.loads(run_prompt_1_analysis(ai_payload))
-    print("EXECUTIVE TAKEAWAY:", analysis_insights.get("executive_takeaway"))
-
-
-
-    strategy = None
-    if allow_reco:
-        # backend-only objective for now
-        strategy_raw = run_prompt_2_strategy(analysis_insights,ai_payload["objective"], top_5_skus)
-
-        strategy_json = json.loads(strategy_raw)
-        sku_actions = strategy_json.get("sku_actions")
-
-    final_text = render_month_end_summary(period=period, timeline=timeline,year=year, analysis_insights=analysis_insights, mom=mom, sku_mom=sku_mom,focus_skus=top_5_skus, inventory_alerts=inventory_alerts,
+    # ---------------- RENDER ----------------
+    final_text = render_month_end_summary(
+        period=period,
+        timeline=timeline,
+        year=year,
+        analysis_insights=None if single_sku_mode else analysis_insights,
+        mom=None,
+        sku_mom=sku_mom,
+        focus_skus=top_5_skus,
+        inventory_alerts=inventory_alerts,
         inventory_lost=inventory_lost,
         currency_symbol="£" if country == "uk" else "$",
-        strategy_actions=sku_actions if allow_reco else None
-
+        strategy_actions=sku_actions if not single_sku_mode else None
     )
 
-
-    # ---------------- SPLIT SUMMARY & RECOMMENDATIONS ----------------
-    summary = final_text
-    recommendations = None
-
-    if allow_reco and "## RECOMMENDATIONS" in final_text:
-        parts = final_text.split("## RECOMMENDATIONS", 1)
-        summary = parts[0].strip()
-        recommendations = parts[1].strip()
-
-    ai_output = {
-        "summary": summary,
-        "recommendations": recommendations
-    }
-
-    # ---------------- SAVE/UPDATE DB (✅ with new columns) ----------------
-    # If row exists and we regenerated, update it; else insert new.
     save_summary_to_db({
         "user_id": user_id,
         "country": country,
@@ -2012,8 +2233,6 @@ def get_or_create_summary(
         "period": period,
         "timeline": timeline,
         "year": year,
-
-        # ✅ NEW columns
         "primary_goal": primary_goal,
         "risk_level": risk_level,
         "max_tacos": max_tacos,
@@ -2021,25 +2240,25 @@ def get_or_create_summary(
         "ad_budget_cap": ad_budget_cap,
         "dont_change_price": dont_change_price,
         "notes": notes,
-
-        "summary": ai_output["summary"],
-        "recommendations": ai_output["recommendations"],
-
-        # ✅ let save function know whether to update existing row
+        "summary": final_text,
+        "recommendations": None,
         "upsert": True
     })
 
+    print("\n[DEBUG][SUMMARY_RETURN]")
+    print("scope =", scope)
+    print("focus_skus =", top_5_skus)
+
     return {
-        "summary": ai_output["summary"],
-        "recommendations": ai_output["recommendations"],
+        "summary": final_text,
+        "recommendations": None,
         "inventory_lost": inventory_lost,
         "inventory_alerts": inventory_alerts,
         "sku_current": sku_current,
         "sku_mom": sku_mom,
-        "sku_yoy": sku_yoy,
+        "sku_yoy": None,
         "objective": ai_payload["objective"],
-        "source": "ai"
+        "sku_actions": sku_actions,
+        "scope": scope,
+        "source": "ai",
     }
-
-
-

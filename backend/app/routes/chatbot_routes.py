@@ -29,6 +29,7 @@ from sqlalchemy import text
 import time
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
+from app.utils.monthwise_ai_summary_utils import get_latest_completed_month, fetch_precalc_table
     
 
 
@@ -3959,13 +3960,87 @@ def _looks_anaphoric_to_time(q: str) -> bool:
     explicit = ("same period", "same time", "same window", "as above", "as before")
     return any(p in ql for p in explicit) or (len(ql.split()) <= 3)
 
+# ------------------------------------------------------------------
+# Unified AI-Analyst advisor runner (DATAFRAME-FREE)
+# ------------------------------------------------------------------
+def run_ai_advisor(
+    *,
+    query: str,
+    user_id: int,
+    country: str,
+    objective: dict | None,
+    target_sku: str | list | None = None,
+):
+    """
+    Single canonical entrypoint for AI Analyst.
+    - No dataframes
+    - No SQL rebuilding
+    - NO scope decision here (portfolio vs product is pre-decided)
+    """
+
+    if not objective:
+        return (
+            [
+                "What’s your primary objective right now?",
+                "• Increase profit",
+                "• Grow sales",
+                "• Reduce costs",
+                "• Overall performance",
+            ],
+            "clarify",
+        )
+
+    try:
+        # ✅ NORMALIZE target_sku ONCE
+        if isinstance(target_sku, list):
+            target_sku = target_sku[0] if target_sku else None
+
+        lines = BusinessAdvisor.recommend(
+            query=query,
+            user_id=user_id,
+            country=country,
+            objective=objective,
+            period="monthly",
+            timeline=None,
+            year=None,
+            marketplace_id=None,
+            target_sku=target_sku,   # ✅ pass through
+        )
+
+        return lines or ["I couldn’t generate recommendations right now."], "advisor"
+
+    except Exception as e:
+        print("[DEBUG][ai-advisor] failed:", e)
+        return ["I couldn’t generate recommendations right now."], "advisor"
+
+
+def _extract_target_sku_from_query(query: str) -> str | None:
+    """
+    Best-effort SKU / product extraction for objective fast-path.
+    """
+    q = (query or "").strip()
+
+    # SKU-like tokens (your SKUs contain dashes)
+    tokens = re.findall(r"[A-Z0-9]{2,}(?:-[A-Z0-9]{2,})+", q, re.I)
+    if tokens:
+        return tokens[0]
+
+    return None
+
 
 @chatbot_bp.route("/chatbot", methods=["POST", "OPTIONS"])
 def chatbot():
     if request.method == "OPTIONS":
         return ("", 200)
 
-    def _stash_context(user_id, plan, country_override, table_records=None, user_msg: str = None):
+    def _stash_context(
+        user_id,
+        plan,
+        country_override,
+        table_records=None,
+        user_msg: str = None,
+        objective: dict | None = None,
+    ):
         """Persist essentials from the last analytics run for follow-ups (plus last table rows)."""
         try:
             import time
@@ -4004,7 +4079,7 @@ def chatbot():
                     last_skus.insert(0, sku)
 
             store[int(user_id)] = {
-                "metric": metric,                                   # ← now preserves sales_mix/profit_mix/etc.
+                "metric": metric,
                 "product": plan.get("product"),
                 "sku": sku,
                 "country": country_override or plan.get("country"),
@@ -4013,8 +4088,12 @@ def chatbot():
                 "last_skus": last_skus[:50],
                 "last_products": last_products[:50],
                 "last_user_msg": user_msg,
-                "ts": time.time(),                                  # timestamp for TTL
+                "ts": time.time(),
             }
+
+            # ✅ NEW: persist objective for AI Analyst
+            if objective:
+                store[int(user_id)]["objective"] = objective
 
         except Exception as _e:
             print("[DEBUG][followup] failed to stash context:", _e)
@@ -4089,17 +4168,22 @@ def chatbot():
                     return df2, mode2, p2
 
         # 2) Drop exact/in SKU filter if present (over-narrow)
-        if plan.get("filters"):
+        # 🔒 Only if SKU was NOT explicitly requested
+        if plan.get("filters") and not plan.get("explicit_sku"):
             has_sku = any(
                 (str(f.get("field","")).lower() == "sku" and str(f.get("op","")).lower() in {"=","eq","in"})
                 for f in plan["filters"]
             )
             if has_sku:
                 p2 = dict(plan)
-                p2["filters"] = [f for f in plan["filters"] if str(f.get("field","")).lower() != "sku"]
+                p2["filters"] = [
+                    f for f in plan["filters"]
+                    if str(f.get("field","")).lower() != "sku"
+                ]
                 df2, mode2 = _exec_retry(p2, "drop_sku_filter")
                 if df2 is not None and not df2.empty:
                     return df2, mode2, p2
+
 
         # 3) Country swap UK <-> US
         eff_ctry = (plan.get("country") or country_override or "").upper()
@@ -4222,7 +4306,173 @@ def chatbot():
     # Keep original user wording and normalized version
     orig_q = query
     query_norm = normalize_user_query(query)
+    target_sku = None
+    # 🔑 EARLY PRODUCT NAME RESOLUTION (BEFORE PLANNING)
+    if not target_sku:
+        eff_country = (country_override or "UK").upper()
+        if eff_country not in ("UK", "US"):
+            eff_country = "UK"
 
+        try:
+            # Try resolving raw query directly against product_name
+            cands = product_candidates(
+                engine,
+                user_id,
+                eff_country,
+                query.strip(),
+                limit=5
+            ) or []
+
+            # Only accept if EXACTLY one match (no ambiguity)
+            if len(cands) == 1:
+                target_sku = cands[0].get("sku")
+                print(
+                    f"[DEBUG][EARLY_PRODUCT_MATCH] "
+                    f"product_name='{cands[0].get('product_name')}' "
+                    f"sku='{target_sku}'"
+                )
+        except Exception as e:
+            print("[DEBUG][EARLY_PRODUCT_MATCH] failed:", e)
+
+    # ------------------------------------------------------------------
+    # Current user objective (AI Analyst context)
+    # ------------------------------------------------------------------
+    objective = (
+        globals()
+        .setdefault("LAST_CONTEXT", {})
+        .get(int(user_id), {})
+        .get("objective")
+    )
+   
+    # 🔑 PRODUCT NAME DIRECT MATCH (single-token safe path)
+    if not target_sku:
+        eff_country = (country_override or "UK").upper()
+        if eff_country not in ("UK", "US"):
+            eff_country = "UK"
+
+        try:
+            cands = product_candidates(engine, user_id, eff_country, query.strip(), limit=5) or []
+            if len(cands) == 1:
+                target_sku = cands[0].get("sku") or cands[0].get("product_name")
+                print(f"[DEBUG][PRODUCT_MATCH] matched product_name='{cands[0].get('product_name')}'")
+        except Exception as e:
+            print("[DEBUG][PRODUCT_MATCH] failed:", e)
+
+
+ 
+    # ------------ OBJECTIVE FAST-PATH (advisor trigger) ----------------
+
+    user_reply = (query or "").strip().lower()
+
+    objective_map = {
+        "increase profit": "profit",
+        "grow sales": "growth",
+        "reduce costs": "profit",
+        "overall performance": "balanced",
+    }
+
+    matched_objective = None
+    for phrase, goal in objective_map.items():
+        if phrase in user_reply:
+            matched_objective = goal
+            break
+
+    if matched_objective:
+        # 1️⃣ Build objective
+        objective = {
+            "primary_goal": matched_objective,
+            "risk_level": "balanced",
+            "constraints": {},
+            "notes": None,
+        }
+
+        # 2️⃣ Persist objective
+        globals().setdefault("LAST_CONTEXT", {}).setdefault(int(user_id), {})[
+            "objective"
+        ] = objective
+
+        # 3️⃣ Resolve country
+        eff_country = (country_override or "UK").upper()
+        if eff_country not in ("UK", "US"):
+            eff_country = "UK"
+
+        # 4️⃣ Resolve latest AVAILABLE data month
+        year, month = get_latest_data_year_month(int(user_id), eff_country)
+        timeline = str(month)
+
+        # ---------------------------------------------------------
+        # 🔑 PRODUCT NAME → MULTI-SKU RESOLUTION (CRITICAL FIX)
+        # ---------------------------------------------------------
+        if not target_sku:
+            try:
+                cands = product_candidates(
+                    engine,
+                    int(user_id),
+                    eff_country,
+                    query.strip(),
+                    limit=20
+                ) or []
+
+                # collect ALL SKUs whose product_name matches query
+                matched_skus = [
+                    c.get("sku")
+                    for c in cands
+                    if (c.get("product_name") or "").strip().lower()
+                    == query.strip().lower()
+                ]
+
+                if matched_skus:
+                    target_sku = matched_skus
+                    print(
+                        f"[DEBUG][OBJECTIVE_PRODUCT_GROUP] "
+                        f"product_name='{query}' skus={matched_skus}"
+                    )
+
+            except Exception as e:
+                print("[DEBUG][OBJECTIVE_PRODUCT_GROUP] failed:", e)
+
+        # ---------------------------------------------------------
+        # 🔒 Fallback: explicit SKU token only (never overrides)
+        # ---------------------------------------------------------
+        if not target_sku:
+            target_sku = _extract_target_sku_from_query(query)
+
+        print(
+            f"[DEBUG][OBJECTIVE_ADVISOR] "
+            f"country={eff_country} month={timeline}-{year} target_sku={target_sku}"
+        )
+
+        # 5️⃣ Run AI Analyst
+        lines = BusinessAdvisor.recommend(
+            query="business performance",
+            user_id=int(user_id),
+            country=eff_country,
+            objective=objective,
+            period="monthly",
+            timeline=timeline,
+            year=year,
+            marketplace_id=None,
+            target_sku=target_sku,
+        )
+
+        reply = "\n".join(lines)
+        msg_id = save_chat_to_db(user_id, query, reply) or None
+        return ok({
+            "mode": "advisor",
+            "response": reply,
+            "message_id": msg_id
+        })
+
+
+
+
+
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+
+
+    
     # ------------ STEP 1: Handle *pending clarifications* FIRST --------------
     pending_snapshot = PENDING.get(user_id)
     if pending_snapshot:
@@ -4251,293 +4501,60 @@ def chatbot():
                     "all products","all product","all skus","all sku","everything","all variants","any product"
                 ]):
                     plan["product"] = None
-                    plan["filters"] = [f for f in (plan.get("filters") or [])
-                                       if str(f.get("field","")).lower() not in {"sku","product","product_name"}]
+                    plan["filters"] = [
+                        f for f in (plan.get("filters") or [])
+                        if str(f.get("field","")).lower() not in {"sku","product","product_name"}
+                    ]
                     if not plan.get("group_by"):
                         plan["group_by"] = "product"
-             
             except Exception as _e:
                 print("[DEBUG][WARN] pending 'all products' normalization failed:", _e)
 
+           
+            # ✅ ADD THIS EXACTLY HERE
+            objective = objective or (
+                globals()
+                .setdefault("LAST_CONTEXT", {})
+                .get(int(user_id), {})
+                .get("objective")
+            )
+
+
+            
             # SKU/product wording normalization
             plan = _normalize_plan_for_sku_language(plan, orig_q)
 
+            # 🔒 Re-derive target_sku AFTER normalization
+            try:
+                target_sku = None
+                for f in (plan.get("filters") or []):
+                    if str(f.get("field", "")).lower() == "sku":
+                        target_sku = f.get("value")
+                        break
+
+                if not target_sku and plan.get("product"):
+                    target_sku = plan.get("product")
+
+            except Exception as _e:
+                print("[DEBUG][target_sku][pending] extraction failed:", _e)
+
             # Advisor short-circuit (pending)
-            if isinstance(plan, dict) and (plan.get("operation") or "").lower() == "advisor":
-                advisor = BusinessAdvisor(engine, user_id, country_override)
-
-                product_phrase = (plan.get("product") or "").strip()
-                table_name = engine_q.builder.table_for(str(user_id), plan.get("country") or country_override)
-
-                if product_phrase:
-                    advice_text = advisor.answer_for_product(product_phrase, table_name)
-                else:
-                    advice_text = advisor.answer(orig_q)
-
-                msg_id = save_chat_to_db(user_id, orig_q, advice_text) or None
-                return ok({"mode": "advisor", "response": advice_text, "message_id": msg_id})
-
-            # Execute
-            try:
-                df, mode = engine_q.exec_plan_via_formula(
-                    plan=plan, query=orig_q, user_id=str(user_id), country_override=country_override
-                )
-            except Exception as e:
-                import traceback; traceback.print_exc()
-                return Response(
-                    json.dumps({
-                        "success": False,
-                        "message": "Unexpected error after clarification.",
-                        "error": str(e)
-                    }, allow_nan=False),
-                    status=500,
-                    mimetype="application/json"
-                )
-
-            # Recovery on empty
-            if df is None or df.empty:
-                df, mode, plan = _recover_empty_result(df, mode, plan, locals().get("orig_q", query))
-                if df is None or df.empty:
-                    # --- ADVISOR FALLBACK: try last 90 days if user asked for advice/plan ---
-                    try:
-                        if wants_advice(orig_q, plan) or ("plan" in (plan.get("operation") or "").lower()):
-                            eff_country = country_override or plan.get("country") or "UK"
-                            tr_recent = clamp_relative_time_to_available(user_id, eff_country, "last 90 days")
-
-                            if tr_recent and tr_recent.get("start") and tr_recent.get("end"):
-                                df_recent, mode_recent = engine_q.exec_plan_via_formula(
-                                    plan={
-                                        "operation": "trend",
-                                        "metric": plan.get("metric") or "sales",
-                                        "time_range": tr_recent,
-                                        "country": eff_country,
-                                        "group_by": plan.get("group_by") or "product",
-                                        "filters": [],
-                                    },
-                                    # IMPORTANT: advisor internal fetch → neutral query
-                                    query="",
-                                    user_id=str(user_id),
-                                    country_override=eff_country,
-                                )
-
-                                if df_recent is not None and not df_recent.empty:
-                                    scope = plan.get("group_by") or "portfolio"
-                                    advice_lines = BusinessAdvisor.recommend(
-                                        orig_q,
-                                        df_recent,
-                                        aux={
-                                            "country": eff_country,
-                                            "time_range": tr_recent,
-                                            "scope": scope,
-                                            "target": plan.get("product"),
-                                        },
-                                    )
-                                    reply = "\n".join(advice_lines) if advice_lines else \
-                                        "I couldn’t derive targeted growth actions from recent data."
-                                    msg_id = save_chat_to_db(user_id, query, reply) or None
-                                    return ok({"mode": "advisor", "response": reply, "message_id": msg_id})
-                    except Exception as _e:
-                        print("[DEBUG][advisor fallback (pending)] failed:", _e)
-
-                # --- Default response if still empty ---
-                reply = "No data found for your query."
-                msg_id = save_chat_to_db(user_id, query, reply) or None
-                return ok({"response": reply, "message_id": msg_id, "mode": mode})
-
-            # SKU clarification (pending)
-            if mode == "sql_special" and "_" in df.columns and len(df) == 1:
-                reply = str(df.iloc[0]["_"])
-                if re.search(r"(multiple\s+skus|one\s+specific\s+variant|all\s+variants)", reply, re.I):
-                    PENDING.set(
-                        user_id,
-                        plan,
-                        missing=["sku_choice"],
-                        reprompt=reply,
-                        original_query=orig_q,
-                        country_override=country_override,
-                    )
-                    msg_id = save_chat_to_db(user_id, query, reply) or None
-                    return ok({"mode": "clarify", "response": reply, "message_id": msg_id})
-                msg_id = save_chat_to_db(user_id, query, reply) or None
-                return ok({"response": reply, "message_id": msg_id, "mode": mode})
-
-            # --- Render formula-mode (PENDING branch) ---
-            if mode == "sql_formula":
-                table_records = df_to_records_safe(df)
-                final_records = _finalize_records(plan, table_records)
- 
-
-                if wants_advice(orig_q, plan):
-                    # --------- Build proper df_primary for BusinessAdvisor (PENDING branch) ----------
-                    try:
-                        # 1) Determine effective country
-                        eff_country = (country_override or plan.get("country") or parse_country_strict(orig_q) or "UK").upper()
-                        if eff_country not in {"UK", "US"}:
-                            store__ = globals().setdefault("LAST_CONTEXT", {})
-                            lc__ = store__.get(int(user_id)) or {}
-                            eff_country = lc__.get("country") or "UK"
-
-                        # 2) Try to infer a single product from query or last context
-                        picked_product = None
-                        try:
-                            cands = product_candidates(engine, user_id, eff_country, orig_q, limit=10) or []
-                        except Exception:
-                            cands = []
-                        if len(cands) == 1:
-                            picked_product = (cands[0].get("product_name") or "").strip()
-
-                        if not picked_product:
-                            lc_safe = (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id)) or {})
-                            if lc_safe.get("product"):
-                                picked_product = lc_safe["product"]
-                                eff_country = lc_safe.get("country") or eff_country
-
-                        # 3) Pick a trailing time window for advisor, prefer clamp
-                        tr = (
-                            clamp_relative_time_to_available(user_id, eff_country, "last 4 months")
-                            or clamp_relative_time_to_available(user_id, eff_country, "last 3 months")
-                            or plan.get("time_range")
-                        )
-
-                        # If clamp couldn't determine a window, build a safe 3-month span
-                        if not tr:
-                            try:
-                                latest_y, latest_m = get_latest_data_year_month(user_id, eff_country)
-                                end_last = calendar.monthrange(latest_y, latest_m)[1]
-                                end = f"{latest_y:04d}-{latest_m:02d}-{end_last:02d}"
-                                start_m = latest_m - 2
-                                start_y = latest_y
-                                while start_m <= 0:
-                                    start_m += 12
-                                    start_y -= 1
-                                start = f"{start_y:04d}-{start_m:02d}-01"
-                                tr = {"start": start, "end": end}
-                            except Exception:
-                                tr = None
-
-                        # 4) Build a TREND plan to feed BusinessAdvisor
-                        trend_plan = {
-                            "operation": "trend",
-                            "metric": plan.get("metric") or "sales",
-                            "time_range": tr,
-                            "country": eff_country,
-                            "group_by": None if picked_product else "product",
-                            "sort_dir": "desc",
-                            "product": picked_product,
-                            "filters": [],
-                        }
-
-                        df_trend, mode_trend = engine_q.exec_plan_via_formula(
-                            plan=trend_plan,
-                            # IMPORTANT: advisor internal fetch → neutral query
-                            query="",
-                            user_id=str(user_id),
-                            country_override=country_override,
-                        )
-
-                        # 5) Choose df_primary + scope/target
-                        if isinstance(df_trend, pd.DataFrame) and not df_trend.empty:
-                            df_primary = df_trend.copy()
-                            scope = "product" if picked_product else "portfolio"
-                            target = picked_product if picked_product else None
-                            time_range_for_advisor = tr
-                        else:
-                            # Fallback: use current df
-                            df_primary = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
-                            scope = (
-                                "sku"
-                                if plan.get("force_product_only")
-                                and isinstance(plan.get("product"), str)
-                                and plan["product"].upper() == plan["product"]
-                                else "product"
-                                if plan.get("product")
-                                else "portfolio"
-                            )
-                            target = plan.get("product")
-                            time_range_for_advisor = plan.get("time_range")
-
-                        # 6) Call BusinessAdvisor
-                        advice_lines = BusinessAdvisor.recommend(
-                            orig_q,
-                            df_primary,
-                            aux={
-                                "country": eff_country,
-                                "time_range": time_range_for_advisor,
-                                "scope": scope,
-                                "target": target,
-                            },
-                        )
-                        reply = "\n".join(advice_lines) if advice_lines else \
-                                "I couldn’t derive targeted growth actions from the latest data."
-                        used_mode = "advisor"
-
-                    except Exception as e:
-                        # If anything goes wrong, fall back to plain sql_formula narrative
-          
-                        reply = generate_openai_answer(
-                            user_query=orig_q,
-                            mode="sql_formula",
-                            analysis=None,
-                            table_records=final_records,
-                        )
-                        used_mode = "sql_formula"
-
-                else:
-                    # Non-advisor path: descriptive table narrative
-                    reply = generate_openai_answer(
-                        user_query=orig_q,
-                        mode="sql_formula",
-                        analysis=None,
-                        table_records=final_records,
-                    )
-                    used_mode = mode
-
-                # Stash context & follow-up memory (unchanged)
-                try:
-                    _stash_context(
-                        user_id,
-                        plan,
-                        country_override,
-                        table_records=final_records,
-                        user_msg=orig_q,
-                    )
-                    _local = globals().setdefault("LAST_CONTEXT", {})
-                    FOLLOWUP_MEMORY.push(_local.get(int(user_id), {}))
-                except Exception:
-                    pass
-
-                msg_id = save_chat_to_db(user_id, query, reply) or None
-                return ok({
-                    "mode": used_mode,
-                    "response": reply,
-                    "message_id": msg_id,
-                    "table": final_records
-                })
-
-            # Default: analysis summary
-            analysis = analyst.analyze_results(df, orig_q)
-            reply = generate_openai_answer(
-                user_query=orig_q,
-                mode=mode if mode else "sql",
-                analysis=analysis,
-                table_records=None,
+            lines, mode_used = run_ai_advisor(
+                query=orig_q,
+                user_id=user_id,
+                country=country_override or plan.get("country") or "UK",
+                objective=objective,
+                target_sku=target_sku,
             )
-            try:
-                _stash_context(
-                    user_id,
-                    plan,
-                    country_override,
-                    table_records=None,
-                    user_msg=orig_q,
-                )
-                _local = globals().setdefault("LAST_CONTEXT", {})
-                FOLLOWUP_MEMORY.push(_local.get(int(user_id), {}))
 
-            except Exception:
-                pass
 
-            msg_id = save_chat_to_db(user_id, query, reply) or None
-            return ok({"response": reply, "message_id": msg_id, "mode": mode})
+            reply = "\n".join(lines)
+            msg_id = save_chat_to_db(user_id, orig_q, reply) or None
+            return ok({
+                "mode": mode_used,
+                "response": reply,
+                "message_id": msg_id
+            })
 
     # ------------ STEP 2: Small-talk / Capability fast-path ------------------
     if is_smalltalk(query):
@@ -4678,7 +4695,8 @@ def chatbot():
                             },
                             country_override,
                             table_records=table_records,
-                            user_msg=orig_q
+                            user_msg=orig_q,
+                            objective=objective,
                         )
                         _local = globals().setdefault("LAST_CONTEXT", {})
                         FOLLOWUP_MEMORY.push(_local.get(int(user_id), {}))
@@ -4781,6 +4799,26 @@ def chatbot():
 
 
     plan = _normalize_plan_for_sku_language(plan, query)
+
+    try:
+        # 🔒 Do NOT override an existing SKU intent
+        if not target_sku:
+            # 1️⃣ SKU filter wins
+            for f in (plan.get("filters") or []):
+                if str(f.get("field", "")).lower() == "sku":
+                    target_sku = f.get("value")
+                    plan["explicit_sku"] = True
+                    break
+
+            # 2️⃣ Else single product intent
+            if not target_sku and plan.get("product"):
+                target_sku = plan.get("product")
+                plan["explicit_sku"] = True
+
+    except Exception as _e:
+        print("[DEBUG][target_sku] extraction failed:", _e)
+
+
 
     lc_for_defaults = (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id)) or {})
     plan, _filled = _auto_fill_defaults(plan, query, user_id, country_override, lc_for_defaults)
@@ -4923,20 +4961,18 @@ def chatbot():
                     scope = "product" if picked_product else "portfolio"
                     target = picked_product if picked_product else None
 
-                    advice_lines = BusinessAdvisor.recommend(
-                        query,
-                        df2.copy(),
-                        aux={
-                            "country": eff_country,
-                            "time_range": tr,
-                            "scope": scope,
-                            "target": target,
-                        },
+                    lines, mode_used = run_ai_advisor(
+                        query=query,
+                        user_id=user_id,
+                        country=eff_country,
+                        objective=objective,
+                        target_sku=picked_product,
                     )
-                    reply = "\n".join(advice_lines) if advice_lines else \
-                            "I couldn’t derive targeted growth actions from the latest data."
+
+                    reply = "\n".join(lines)
                     msg_id = save_chat_to_db(user_id, query, reply) or None
-                    return ok({"mode": "advisor", "response": reply, "message_id": msg_id})
+                    return ok({"mode": mode_used, "response": reply, "message_id": msg_id})
+
             except Exception as e:
                 print("[DEBUG][advisor-fallback] failed:", e)
 
@@ -4992,20 +5028,18 @@ def chatbot():
                     scope = "product" if picked_product else "portfolio"
                     target = picked_product if picked_product else None
 
-                    advice_lines = BusinessAdvisor.recommend(
-                        query,
-                        df2.copy(),
-                        aux={
-                            "country": eff_country,
-                            "time_range": tr,
-                            "scope": scope,
-                            "target": target,
-                        },
+                    lines, mode_used = run_ai_advisor(
+                        query=query,
+                        user_id=user_id,
+                        country=eff_country,
+                        objective=objective,
+                        target_sku=picked_product,
                     )
-                    reply = "\n".join(advice_lines) if advice_lines else \
-                        "I couldn’t derive targeted growth actions from the latest data."
+
+                    reply = "\n".join(lines)
                     msg_id = save_chat_to_db(user_id, query, reply) or None
-                    return ok({"mode": "advisor", "response": reply, "message_id": msg_id})
+                    return ok({"mode": mode_used, "response": reply, "message_id": msg_id})
+
             except Exception as e:
                 print("[DEBUG][advisor-fallback] failed:", e)
 
@@ -5087,6 +5121,26 @@ def chatbot():
 
         plan = _normalize_plan_for_sku_language(plan, query)
 
+       
+        try:
+            # 🔒 Do NOT override an existing SKU intent
+            if not target_sku:
+                # 1️⃣ SKU filter wins
+                for f in (plan.get("filters") or []):
+                    if str(f.get("field", "")).lower() == "sku":
+                        target_sku = f.get("value")
+                        plan["explicit_sku"] = True
+                        break
+
+                # 2️⃣ Else single product intent
+                if not target_sku and plan.get("product"):
+                    target_sku = plan.get("product")
+                    plan["explicit_sku"] = True
+
+        except Exception as _e:
+            print("[DEBUG][target_sku] extraction failed:", _e)
+
+
         lc_for_defaults = (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id)) or {})
         plan, _filled = _auto_fill_defaults(plan, query, user_id, country_override, lc_for_defaults)
 
@@ -5132,20 +5186,38 @@ def chatbot():
             except Exception as e:
                 print("[DEBUG][followup/main] clamp fill failed:", e)
 
-        # Advisor short-circuit (main branch)
+
+        # Advisor short-circuit (main branch) — unified AI Analyst
         if isinstance(plan, dict) and (plan.get("operation") or "").lower() == "advisor":
-            advisor = BusinessAdvisor(engine, user_id, country_override)
+            eff_country = (
+                plan.get("country")
+                or country_override
+                or (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id), {}) or {}).get("country")
+                or "UK"
+            )
 
-            product_phrase = (plan.get("product") or "").strip()
-            table_name = engine_q.builder.table_for(str(user_id), plan.get("country") or country_override)
+            lines, mode_used = run_ai_advisor(
+                query=query,
+                user_id=user_id,
+                country=eff_country,
+                objective=objective,
+                target_sku=target_sku,
+            )
 
-            if product_phrase:
-                advice_text = advisor.answer_for_product(product_phrase, table_name)
-            else:
-                advice_text = advisor.answer(query)
+            reply = "\n".join(lines)
+            msg_id = save_chat_to_db(user_id, query, reply) or None
 
-            msg_id = save_chat_to_db(user_id, query, advice_text) or None
-            return ok({"mode": "advisor", "response": advice_text, "message_id": msg_id})
+            # Persist objective + context
+            _stash_context(
+                user_id,
+                plan,
+                country_override,
+                user_msg=query,
+                objective=objective,
+            )
+
+            return ok({"mode": mode_used, "response": reply, "message_id": msg_id})
+
 
         # Natural-language time backfill
         try:
@@ -5399,7 +5471,8 @@ def chatbot():
 
         # --- Step 4 — Advisor queries skip clarification entirely -------------------
         try:
-            if wants_advice(query, plan):
+            if wants_advice(query, plan) and objective:
+
                 # Don’t ask any questions — run with safe defaults.
                 plan["needs_clarification"] = False
 
@@ -5452,52 +5525,10 @@ def chatbot():
         if df is None or df.empty:
             df, mode, plan = _recover_empty_result(df, mode, plan, query)
 
-            if df is None or df.empty:
-                # --- ADVISOR FALLBACK: try last 90 days if user asked for advice/plan ---
-                try:
-                    if wants_advice(query, plan) or ("plan" in (plan.get("operation") or "").lower()):
-                        eff_country = country_override or plan.get("country") or "UK"
-                        tr_recent = clamp_relative_time_to_available(user_id, eff_country, "last 90 days")
-
-                        if tr_recent and tr_recent.get("start") and tr_recent.get("end"):
-                            df_recent, mode_recent = engine_q.exec_plan_via_formula(
-                                plan={
-                                    "operation": "trend",
-                                    "metric": plan.get("metric") or "sales",
-                                    "time_range": tr_recent,
-                                    "country": eff_country,
-                                    "group_by": plan.get("group_by") or "product",
-                                    "filters": [],
-                                },
-                                # IMPORTANT: advisor internal fetch → neutral query
-                                query="",
-                                user_id=str(user_id),
-                                country_override=eff_country,
-                            )
-
-                            if df_recent is not None and not df_recent.empty:
-                                scope = plan.get("group_by") or "portfolio"
-                                advice_lines = BusinessAdvisor.recommend(
-                                    query,
-                                    df_recent,
-                                    aux={
-                                        "country": eff_country,
-                                        "time_range": tr_recent,
-                                        "scope": scope,
-                                        "target": plan.get("product"),
-                                    },
-                                )
-                                reply = "\n".join(advice_lines) if advice_lines else \
-                                    "I couldn’t derive targeted growth actions from recent data."
-                                msg_id = save_chat_to_db(user_id, query, reply) or None
-                                return ok({"mode": "advisor", "response": reply, "message_id": msg_id})
-                except Exception as _e:
-                    print("[DEBUG][advisor fallback] failed:", _e)
-
-                # --- Default response if still empty ---
-                reply = "No data found for your query."
-                msg_id = save_chat_to_db(user_id, query, reply) or None
-                return ok({"response": reply, "message_id": msg_id, "mode": mode})
+            # --- Default response if still empty ---
+            reply = "No data found for your query."
+            msg_id = save_chat_to_db(user_id, query, reply) or None
+            return ok({"response": reply, "message_id": msg_id, "mode": mode})
 
         # SKU clarification (normal)
         if mode == "sql_special" and "_" in df.columns and len(df) == 1:
@@ -5523,103 +5554,32 @@ def chatbot():
   
 
             if wants_advice(orig_q, plan):
-                # --------- Build proper df_primary for BusinessAdvisor (main branch) ----------
                 try:
-                    eff_country = (country_override or plan.get("country") or parse_country_strict(orig_q) or "UK").upper()
-                    if eff_country not in {"UK", "US"}:
-                        store__ = globals().setdefault("LAST_CONTEXT", {})
-                        lc__ = store__.get(int(user_id)) or {}
-                        eff_country = lc__.get("country") or "UK"
-
-                    picked_product = None
-                    try:
-                        cands = product_candidates(engine, user_id, eff_country, orig_q, limit=10) or []
-                    except Exception:
-                        cands = []
-                    if len(cands) == 1:
-                        picked_product = (cands[0].get("product_name") or "").strip()
-
-                    if not picked_product:
-                        lc_safe = (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id)) or {})
-                        if lc_safe.get("product"):
-                            picked_product = lc_safe["product"]
-                            eff_country = lc_safe.get("country") or eff_country
-
-                    tr = (
-                        clamp_relative_time_to_available(user_id, eff_country, "last 4 months")
-                        or clamp_relative_time_to_available(user_id, eff_country, "last 3 months")
-                        or plan.get("time_range")
+                    eff_country = (
+                        country_override
+                        or plan.get("country")
+                        or (globals().setdefault("LAST_CONTEXT", {}).get(int(user_id), {}) or {}).get("country")
+                        or "UK"
                     )
 
-                    if not tr:
-                        try:
-                            latest_y, latest_m = get_latest_data_year_month(user_id, eff_country)
-                            end_last = calendar.monthrange(latest_y, latest_m)[1]
-                            end = f"{latest_y:04d}-{latest_m:02d}-{end_last:02d}"
-                            start_m = latest_m - 2
-                            start_y = latest_y
-                            while start_m <= 0:
-                                start_m += 12
-                                start_y -= 1
-                            start = f"{start_y:04d}-{start_m:02d}-01"
-                            tr = {"start": start, "end": end}
-                        except Exception:
-                            tr = None
-
-                    trend_plan = {
-                        "operation": "trend",
-                        "metric": plan.get("metric") or "sales",
-                        "time_range": tr,
-                        "country": eff_country,
-                        "group_by": None if picked_product else "product",
-                        "sort_dir": "desc",
-                        "product": picked_product,
-                        "filters": [],
-                    }
-
-                    df_trend, mode_trend = engine_q.exec_plan_via_formula(
-                        plan=trend_plan,
-                        # IMPORTANT: advisor internal fetch → neutral query
-                        query="",
-                        user_id=str(user_id),
-                        country_override=country_override,
+                    lines, mode_used = run_ai_advisor(
+                        query=query,
+                        user_id=user_id,
+                        country=eff_country,
+                        objective=objective,
+                        target_sku=target_sku,
                     )
 
-                    if isinstance(df_trend, pd.DataFrame) and not df_trend.empty:
-                        df_primary = df_trend.copy()
-                        scope = "product" if picked_product else "portfolio"
-                        target = picked_product if picked_product else None
-                        time_range_for_advisor = tr
-                    else:
-                        df_primary = df.copy() if isinstance(df, pd.DataFrame) else pd.DataFrame()
-                        scope = (
-                            "sku"
-                            if plan.get("force_product_only")
-                            and isinstance(plan.get("product"), str)
-                            and plan["product"].upper() == plan["product"]
-                            else "product"
-                            if plan.get("product")
-                            else "portfolio"
-                        )
-                        target = plan.get("product")
-                        time_range_for_advisor = plan.get("time_range")
-
-                    advice_lines = BusinessAdvisor.recommend(
-                        orig_q,
-                        df_primary,
-                        aux={
-                            "country": eff_country,
-                            "time_range": time_range_for_advisor,
-                            "scope": scope,
-                            "target": target,
-                        },
-                    )
-                    reply = "\n".join(advice_lines) if advice_lines else \
-                            "I couldn’t derive targeted growth actions from the latest data."
-                    used_mode = "advisor"
+                    reply = "\n".join(lines)
+                    msg_id = save_chat_to_db(user_id, query, reply) or None
+                    return ok({
+                        "mode": mode_used,
+                        "response": reply,
+                        "message_id": msg_id
+                    })
 
                 except Exception as e:
-                    print("[DEBUG][advisor-pending] failed, falling back to sql_formula narrative:", e)
+                    print("[DEBUG][advisor-main] failed, falling back to sql_formula narrative:", e)
                     reply = generate_openai_answer(
                         user_query=orig_q,
                         mode="sql_formula",
@@ -5627,6 +5587,7 @@ def chatbot():
                         table_records=final_records,
                     )
                     used_mode = "sql_formula"
+
 
             else:
                 reply = generate_openai_answer(
@@ -5638,7 +5599,7 @@ def chatbot():
                 used_mode = mode
 
             try:
-                _stash_context(user_id, plan, country_override, table_records=final_records, user_msg=orig_q)
+                _stash_context(user_id, plan, country_override, table_records=final_records, user_msg=orig_q, objective=objective)
                 _local = globals().setdefault("LAST_CONTEXT", {})
                 FOLLOWUP_MEMORY.push(_local.get(int(user_id), {}))
 
@@ -5669,6 +5630,7 @@ def chatbot():
                 country_override,
                 table_records=None,
                 user_msg=orig_q,
+                objective=objective,
             )
             _local = globals().setdefault("LAST_CONTEXT", {})
             FOLLOWUP_MEMORY.push(_local.get(int(user_id), {}))

@@ -4314,68 +4314,104 @@ def _finalize_records(plan: dict, table_records: list[dict]) -> list[dict]:
 class BusinessAdvisor:
    
 
+   
     @staticmethod
     def _render_from_analyst(result: dict) -> list[str]:
-        """
-        Convert AI Analyst output into chat-friendly lines.
-        No logic, no decisions — display only.
-        """
         lines: list[str] = []
 
-        # -------- SUMMARY --------
-        lines.append("SUMMARY")
-        summary = result.get("summary") or ""
-        for line in summary.split("\n"):
-            if line.strip():
-                lines.append(f"- {line.strip()}")
-
-        lines.append("")
-        lines.append("ACTIONS")
-        lines.append("")
-
+        scope = result.get("scope", "portfolio")
         sku_actions = result.get("sku_actions") or {}
         sku_mom = result.get("sku_mom") or {}
 
-        # Show only top actions (already selected by analyst)
-        for sku, action in list(sku_actions.items())[:5]:
+        # If SKU actions exist → show only actions
+        if sku_actions:
+            sku, action = next(iter(sku_actions.items()))
             sku_info = sku_mom.get(sku, {})
             product_name = sku_info.get("product_name", sku)
 
-            lines.append(f"Product name - {product_name}")
-            lines.append(action)
-            lines.append("")
+            lines.append("PRODUCT ACTION")
+            lines.append(f"- Product: {product_name}")
+            lines.append(f"- Action: {action}")
+            return lines
 
-        return lines
+        # 🔒 CRITICAL: Never fall back to portfolio summary in SKU scope
+        if scope == "sku":
+            return ["No pricing or visibility action required for this SKU this month."]
+
+        # Portfolio fallback only
+        summary = result.get("summary") or ""
+        if summary.strip():
+            lines.append("SUMMARY")
+            for line in summary.split("\n"):
+                if line.strip():
+                    lines.append(f"- {line.strip()}")
+
+        return lines if lines else ["No output generated."]
+
+
   
 
 
 
 
     # ---------- main: keyword-free, data-driven recommendations ----------
+
     @staticmethod
     def recommend(
         query: str,
         user_id: int,
         country: str,
         objective: dict,
-        period: str = "monthly",
-        timeline: str | None = None,
-        year: int | None = None,
+        period: str = "monthly",          # ignored
+        timeline: str | None = None,       # ignored
+        year: int | None = None,           # ignored
         marketplace_id: int | None = None,
+        target_sku: str | None = None,
     ) -> list[str]:
         """
         Chat adapter over AI Analyst.
 
         Responsibilities:
-        - Call the AI Analyst with the CURRENT chat objective
-        - Never compute metrics
-        - Never decide actions
-        - Never call an LLM here
-        - Only render analyst output for chat
+        - ALWAYS run MoM-style business analysis
+        - Portfolio → latest COMPLETED month
+        - SKU / Product → latest AVAILABLE data month
+        - Use objective as the ONLY driver
+        - Render analyst output for chat
         """
 
         try:
-            # 1️⃣ Call AI Analyst (single source of truth)
+            # 🔑 NORMALIZE TARGET SKU (CRITICAL FIX)
+            if isinstance(target_sku, list):
+                target_sku = target_sku[0]
+
+            if isinstance(target_sku, str):
+                target_sku = target_sku.strip()
+
+            if not target_sku:
+                target_sku = None
+
+            # 🔒 STEP 1: Resolve analysis month (INTENT-AWARE)
+            from app.utils.monthwise_ai_summary_utils import (
+                get_latest_completed_month,
+                resolve_latest_available_month,
+            )
+
+            if target_sku:
+                # 🎯 SKU / Product advisor → latest AVAILABLE data
+                year, month = resolve_latest_available_month(user_id, country)
+            else:
+                # 📊 Portfolio advisor → strict completed month
+                year, month = get_latest_completed_month()
+
+            period = "monthly"
+            timeline = str(month)
+
+            print(
+                f"[DEBUG][OBJECTIVE_ADVISOR] "
+                f"country={country} month={month}-{year} target_sku={target_sku}"
+            )
+
+            # 🔒 STEP 2: Always regenerate (advisor must be fresh)
             analyst_result = get_or_create_summary(
                 user_id=user_id,
                 country=country,
@@ -4384,6 +4420,8 @@ class BusinessAdvisor:
                 timeline=timeline,
                 year=year,
                 objective=objective,
+                force_regenerate=True,
+                target_sku=target_sku,
             )
 
             if not analyst_result:
@@ -4392,15 +4430,16 @@ class BusinessAdvisor:
                     "Please try again in a moment."
                 ]
 
-            # 2️⃣ Render analyst output for chat
+            # 🔒 STEP 3: Render only
             return BusinessAdvisor._render_from_analyst(analyst_result)
 
         except Exception as e:
-            # Fail safely without hallucinating advice
+            print("[BusinessAdvisor][ERROR]:", e)
             return [
                 "Something went wrong while fetching the analysis. "
                 "Please try again shortly."
             ]
+
 
 
 
