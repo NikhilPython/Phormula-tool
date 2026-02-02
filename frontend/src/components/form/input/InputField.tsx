@@ -53,7 +53,7 @@ const Input: FC<InputProps> = ({
   } else if (success) {
     inputClasses += ` text-success-500 border-success-400 focus:ring-success-500/10 focus:border-success-300  dark:text-success-400 dark:border-success-500`;
   } else {
-    inputClasses += ` bg-[#D9D9D94D] text-gray-800 border-gray-300 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 `;
+    inputClasses += `  text-gray-800 border-gray-300  outline-green-500`;
   }
 
   return (

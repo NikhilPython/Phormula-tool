@@ -1649,6 +1649,7 @@ def render_month_end_summary(
             f"({currency_symbol}{fmt_num(ns.get('absolute_change'))})"
             f"{severity_suffix(ns.get('severity'))}"
         )
+    
 
         # ASP
         asp = es.get("asp", {})
@@ -2098,6 +2099,8 @@ def get_or_create_summary(
 
     # ---------------- SKU CURRENT ----------------
     sku_current = compute_sku_precalc(df_current_detail)
+    top_5_skus = select_top_5_skus_by_current_cm1_profit(sku_current)
+
 
     # ============================================================
     # 🔒 SINGLE SKU MODE — TRUST CHATBOT SKU (CRITICAL FIX)
@@ -2226,6 +2229,44 @@ def get_or_create_summary(
         strategy_actions=sku_actions if not single_sku_mode else None
     )
 
+
+    analysis_insights = json.loads(run_prompt_1_analysis(ai_payload))
+    print("EXECUTIVE TAKEAWAY:", analysis_insights.get("executive_takeaway"))
+
+
+
+    strategy = None
+    if allow_reco:
+        # backend-only objective for now
+        strategy_raw = run_prompt_2_strategy(analysis_insights,ai_payload["objective"], top_5_skus)
+
+        strategy_json = json.loads(strategy_raw)
+        sku_actions = strategy_json.get("sku_actions")
+
+    final_text = render_month_end_summary(period=period, timeline=timeline,year=year, analysis_insights=analysis_insights, mom=mom, sku_mom=sku_mom,focus_skus=top_5_skus, inventory_alerts=inventory_alerts,
+        inventory_lost=inventory_lost,
+        currency_symbol="£" if country == "uk" else "$",
+        strategy_actions=sku_actions if allow_reco else None
+
+    )
+
+
+    # ---------------- SPLIT SUMMARY & RECOMMENDATIONS ----------------
+    summary = final_text
+    recommendations = None
+
+    if allow_reco and "## RECOMMENDATIONS" in final_text:
+        parts = final_text.split("## RECOMMENDATIONS", 1)
+        summary = parts[0].strip()
+        recommendations = parts[1].strip()
+
+    ai_output = {
+        "summary": summary,
+        "recommendations": recommendations
+    }
+
+    # ---------------- SAVE/UPDATE DB (✅ with new columns) ----------------
+    # If row exists and we regenerated, update it; else insert new.
     save_summary_to_db({
         "user_id": user_id,
         "country": country,

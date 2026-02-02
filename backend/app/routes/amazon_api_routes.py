@@ -1,5 +1,5 @@
 from __future__ import annotations
-import io, os,time, logging 
+import io, os,time, logging , re
 from datetime import datetime
 import pandas as pd
 from typing import Any, Dict, List
@@ -656,11 +656,39 @@ def upload():
 
 # ========================================================= Live MTD fetch =========================================================
 
-# ---------------------------------------------------------
-# ROUTE (MTD)  ✅ includes totals + cogs in JSON
-# ---------------------------------------------------------
+
+# ---------------- helpers ----------------
+def _safe_ident(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"[^a-z0-9_]+", "_", s)
+    return s.strip("_") or "x"
+
+
+def _build_skuwise_table_name(user_id: int, country: str, month: int, year: int) -> str:
+    return f"skuwisemonthly_{int(user_id)}_{_safe_ident(country)}_{int(month)}_{int(year)}"
+
+
+def _build_adsmonthly_table_name(user_id: int, country: str, month: int, year: int) -> str:
+    return f"adsmonthly_{int(user_id)}_{_safe_ident(country)}_{int(month)}_{int(year)}"
+
+
+def _build_sku_data_table_name(user_id: int) -> str:
+    # table: public.sku_{user_id}_data_table
+    return f"sku_{int(user_id)}_data_table"
+
+
+def _country_to_sku_col(country: str) -> str:
+    c = (country or "").strip().lower()
+    if c in ("uk", "gb", "united_kingdom"):
+        return "sku_uk"
+    if c in ("us", "usa", "united_states"):
+        return "sku_us"
+    return "sku_uk"
+
+
 @amazon_api_bp.route("/amazon_api/finances/mtd_transactions", methods=["GET"])
 def finances_mtd_transactions():
+    # ---------------- Auth ----------------
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
@@ -674,43 +702,50 @@ def finances_mtd_transactions():
     except jwt.InvalidTokenError:
         return jsonify({"success": False, "error": "Invalid token"}), 401
 
+    # ---------------- Params ----------------
     transaction_status = request.args.get("transaction_status", "RELEASED")
     marketplace_id = request.args.get("marketplace_id")
     transaction_type_filter = request.args.get("transaction_type")
     response_format = (request.args.get("format") or "json").lower()
     store_in_db = (request.args.get("store_in_db", "true").lower() != "false")
-
     ui_country = (request.args.get("country") or "").strip().lower() or "uk"
 
+    # ---------------- Region + marketplace ----------------
     _apply_region_and_marketplace_from_request()
 
     au = amazon_user.query.filter_by(user_id=user_id, region=amazon_client.region).first()
     if not au or not au.refresh_token:
-        return jsonify({
-            "success": False,
-            "error": "Amazon account not connected for this region",
-            "status": "no_refresh_token",
-        }), 400
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Amazon account not connected for this region",
+                    "status": "no_refresh_token",
+                }
+            ),
+            400,
+        )
 
     amazon_client.refresh_token = au.refresh_token
 
     now_utc = datetime.now(timezone.utc)
     posted_after, posted_before = _month_to_date_range_utc_safe(now_utc, safety_minutes=3)
 
-    # ✅ prepare cogs inputs once
+    # ---------------- COGS meta ----------------
     month_name = _month_name_lower(now_utc.month)
     user_currency = DEFAULT_SKU_PRICE_CURRENCY
     selected_currency = COUNTRY_TO_SELECTED_CURRENCY.get(ui_country, user_currency)
 
     sku_price_map = fetch_sku_price_map(user_id=user_id, country=ui_country)
-    conversion_rate = fetch_conversion_rate(
+    conversion_rate_fx = fetch_conversion_rate(
         country=ui_country,
         year=now_utc.year,
         month_name=month_name,
         user_currency=user_currency,
-        selected_currency=selected_currency
+        selected_currency=selected_currency,
     )
 
+    # ---------------- Fetch MTD ----------------
     params: Dict[str, Any] = {
         "postedAfter": posted_after,
         "postedBefore": posted_before,
@@ -744,11 +779,14 @@ def finances_mtd_transactions():
 
             row = _flatten_transaction_to_row(tx or {})
 
-            # ✅ add cogs per row
             sku = (row.get("sku") or "").strip()
             qty = _i(row.get("quantity")) or 0
             price = sku_price_map.get(sku) if sku else None
-            row["cogs"] = float(qty) * float(price) * float(conversion_rate) if (price is not None and qty > 0) else 0.0
+            row["cogs"] = (
+                float(qty) * float(price) * float(conversion_rate_fx)
+                if (price is not None and qty > 0)
+                else 0.0
+            )
 
             all_rows.append(row)
 
@@ -760,7 +798,20 @@ def finances_mtd_transactions():
     # ✅ profit per row
     add_profit_column_from_uk_profit(all_rows, country=ui_country)
 
-    # ✅ store to DB
+    # ✅ gross_sales per row
+    for r in all_rows:
+        r["gross_sales"] = (
+            float(r.get("product_sales", 0.0))
+            + float(r.get("product_sales_tax", 0.0))
+            + float(r.get("postage_credits", 0.0))
+            + float(r.get("gift_wrap_credits", 0.0))
+            + float(r.get("shipping_credits_tax", 0.0))
+            + float(r.get("giftwrap_credits_tax", 0.0))
+            - float(r.get("promotional_rebates", 0.0))
+            - float(r.get("promotional_rebates_tax", 0.0))
+        )
+
+    # ---------------- Store raw liveorders ----------------
     db_result = None
     if store_in_db:
         try:
@@ -768,58 +819,47 @@ def finances_mtd_transactions():
                 all_rows,
                 user_id=user_id,
                 country=ui_country,
-                now_utc=now_utc
+                now_utc=now_utc,
             )
         except Exception as e:
             db.session.rollback()
             return jsonify({"success": False, "error": f"DB store failed: {str(e)}"}), 500
-        
-    # ✅ NEW: compute gross_sales per row (so totals can sum it)
-    for r in all_rows:
-        r["gross_sales"] = (
-            float(r.get("product_sales", 0.0)) +
-            float(r.get("product_sales_tax", 0.0)) +
-            float(r.get("postage_credits", 0.0)) +
-            float(r.get("gift_wrap_credits", 0.0)) +
-            float(r.get("shipping_credits_tax", 0.0)) +
-            float(r.get("giftwrap_credits_tax", 0.0)) -
-            float(r.get("promotional_rebates", 0.0)) -
-            float(r.get("promotional_rebates_tax", 0.0))
-        )
+
+    # ---------------- totals ----------------
     totals = compute_totals(all_rows)
 
-    # ✅ NEW: tax_and_credits
-    tax_and_credits = (
-        float(totals.get("postage_credits", 0.0)) +
-        float(totals.get("gift_wrap_credits", 0.0)) +
-        float(totals.get("product_sales_tax", 0.0)) +
-        float(totals.get("shipping_credits_tax", 0.0)) +
-        float(totals.get("promotional_rebates_tax", 0.0)) +
-        float(totals.get("marketplace_facilitator_tax", 0.0))
+    tax_and_credits_total = (
+        float(totals.get("postage_credits", 0.0))
+        + float(totals.get("gift_wrap_credits", 0.0))
+        + float(totals.get("product_sales_tax", 0.0))
+        + float(totals.get("shipping_credits_tax", 0.0))
+        + float(totals.get("promotional_rebates_tax", 0.0))
+        + float(totals.get("marketplace_facilitator_tax", 0.0))
     )
-
-    totals["tax_and_credits"] = round(tax_and_credits, 2)
-
+    totals["tax_and_credits"] = round(tax_and_credits_total, 2)
 
     selling_fees = float(totals.get("selling_fees", 0.0))
-    fba_fees     = float(totals.get("fba_fees", 0.0))
-    amazon_fees  = abs(selling_fees) + abs(fba_fees)   # ✅ positive
-    gross_sales = float(totals.get("gross_sales", 0.0))
+    fba_fees = float(totals.get("fba_fees", 0.0))
+    amazon_fees = abs(selling_fees) + abs(fba_fees)
 
+    gross_sales_total = float(totals.get("gross_sales", 0.0))
     net_sales = float(totals.get("product_sales", 0.0)) + float(totals.get("promotional_rebates", 0.0))
-    qty = float(totals.get("quantity", 0.0)) or 0.0
-    asp = (net_sales / qty) if qty else 0.0
+    qty_total = float(totals.get("quantity", 0.0)) or 0.0
+    asp = (net_sales / qty_total) if qty_total else 0.0
+    profit_total = float(totals.get("profit", 0.0))
 
-    profit = float(totals.get("profit", 0.0))
-    
-
+    # ---------------- platform + advertising fees (dashboard) ----------------
     df_all = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
 
     platform_fee_total = 0.0
     advertising_fee_total = 0.0
-
     if not df_all.empty:
-        for col, default in [("description", ""), ("total", 0.0), ("platform_fees", 0.0), ("advertising_cost", 0.0)]:
+        for col, default in [
+            ("description", ""),
+            ("total", 0.0),
+            ("platform_fees", 0.0),
+            ("advertising_cost", 0.0),
+        ]:
             if col not in df_all.columns:
                 df_all[col] = default
 
@@ -828,40 +868,382 @@ def finances_mtd_transactions():
 
     platform_fee_total = float(platform_fee_total or 0.0)
     advertising_fee_total = float(advertising_fee_total or 0.0)
-    cm2_profit = profit - advertising_fee_total - platform_fee_total
-    profit_percentage = (cm2_profit / net_sales * 100) if net_sales else 0.0
-    current_net_reimbursement = compute_net_reimbursement_from_df(df_all)
 
-
-
-
+    cm2_profit_dashboard = profit_total - advertising_fee_total - platform_fee_total
+    profit_percentage = (cm2_profit_dashboard / net_sales * 100) if net_sales else 0.0
+    current_net_reimbursement = compute_net_reimbursement_from_df(df_all) if not df_all.empty else 0.0
 
     derived_totals = {
         "amazon_fees": round(amazon_fees, 2),
-        "platform_fee": round(platform_fee_total, 2),          # ✅ NEW
-        "advertising_fees": round(advertising_fee_total, 2),   # ✅ NEW
+        "platform_fee": round(platform_fee_total, 2),
+        "advertising_fees": round(advertising_fee_total, 2),
         "net_sales": round(net_sales, 2),
-        "gross_sales": round(gross_sales, 2),
+        "gross_sales": round(gross_sales_total, 2),
         "asp": round(asp, 2),
-        "profit": round(profit, 2),
-        "cm2_profit": round(cm2_profit, 2),   
+        "profit": round(profit_total, 2),
+        "cm2_profit": round(cm2_profit_dashboard, 2),
         "profit_percentage": round(profit_percentage, 2),
-        # ✅ NEW
-        "current_net_reimbursement": round(current_net_reimbursement, 2),
-
+        "current_net_reimbursement": round(float(current_net_reimbursement or 0.0), 2),
     }
 
+    previous_period = get_previous_month_mtd_payload(user_id=user_id, country=ui_country, now_utc=now_utc)
 
-    # ✅ NEW: previous-month MTD data
-    previous_period = get_previous_month_mtd_payload(
-        user_id=user_id,
-        country=ui_country,
-        now_utc=now_utc
-    )
+    # ============================================================
+    # ✅ SKU-WISE TABLE + ADS MERGE + NEW COLUMNS:
+    #    - credits
+    #    - tax
+    #    - tax_and_credits = credits - abs(tax)
+    #    - ad_type  (merged from adsmonthly table)
+    # ============================================================
+    skuwise_table_name = _build_skuwise_table_name(user_id, ui_country, now_utc.month, now_utc.year)
+    ads_table_name = _build_adsmonthly_table_name(user_id, ui_country, now_utc.month, now_utc.year)
 
+    sku_summary_saved = False
+    sku_summary_rows = 0
+    skuwise_items: List[Dict[str, Any]] = []
+
+    if not df_all.empty:
+        # base
+        if "sku" not in df_all.columns:
+            df_all["sku"] = ""
+        df_all["sku"] = df_all["sku"].fillna("").astype(str).str.strip()
+        df_skus = df_all[df_all["sku"] != ""].copy()
+
+        preferred_sum_cols = [
+            "quantity",
+            "product_sales",
+            "product_sales_tax",
+            "postage_credits",
+            "gift_wrap_credits",
+            "shipping_credits_tax",
+            "giftwrap_credits_tax",
+            "promotional_rebates",
+            "promotional_rebates_tax",
+            "marketplace_facilitator_tax",
+            "selling_fees",
+            "fba_fees",
+            "other",
+            "gross_sales",
+            "cogs",
+            "profit",
+        ]
+        sum_cols = [c for c in preferred_sum_cols if c in df_skus.columns]
+
+        for c in sum_cols:
+            df_skus[c] = pd.to_numeric(df_skus[c], errors="coerce").fillna(0.0)
+
+        df_sku = df_skus.groupby("sku", as_index=False)[sum_cols].sum()
+
+        # finance derived
+        if "product_sales" in df_sku.columns and "promotional_rebates" in df_sku.columns:
+            df_sku["net_sales"] = df_sku["product_sales"] + df_sku["promotional_rebates"]
+        else:
+            df_sku["net_sales"] = 0.0
+
+        if "quantity" in df_sku.columns:
+            df_sku["asp"] = df_sku.apply(
+                lambda r: (float(r["net_sales"]) / float(r["quantity"])) if float(r.get("quantity") or 0) else 0.0,
+                axis=1,
+            )
+        else:
+            df_sku["asp"] = 0.0
+
+        # ✅ safe getter
+        def _col(df: pd.DataFrame, name: str) -> pd.Series:
+            if name not in df.columns:
+                return pd.Series([0.0] * len(df), index=df.index)
+            return pd.to_numeric(df[name], errors="coerce").fillna(0.0)
+
+        # ✅ credits (positive components)
+        df_sku["credits"] = _col(df_sku, "postage_credits") + _col(df_sku, "gift_wrap_credits")
+        df_sku["credits"] = pd.to_numeric(df_sku["credits"], errors="coerce").fillna(0.0)
+
+        # ✅ tax (can be negative)
+        df_sku["tax"] = (
+            _col(df_sku, "product_sales_tax")
+            + _col(df_sku, "shipping_credits_tax")
+            + _col(df_sku, "giftwrap_credits_tax")
+            + _col(df_sku, "promotional_rebates_tax")
+            + _col(df_sku, "marketplace_facilitator_tax")
+        )
+        df_sku["tax"] = pd.to_numeric(df_sku["tax"], errors="coerce").fillna(0.0)
+
+        # ✅ tax_and_credits = credits - abs(tax)
+        df_sku["tax_and_credits"] = (df_sku["credits"] - df_sku["tax"].abs()).round(2)
+
+        # -------- ADS: read + aggregate + rename BEFORE merge --------
+        ads_agg = pd.DataFrame()
+        try:
+            sql = f'''
+                SELECT products, ad_type, impressions, clicks, spend, sale_units, sale_amount
+                FROM public."{ads_table_name}"
+            '''
+            ads_df = pd.read_sql_query(sql, PHORMULA_ENGINE)
+
+            ads_df["products"] = ads_df["products"].fillna("").astype(str).str.strip()
+            ads_df = ads_df[ads_df["products"] != ""]
+
+            ads_df["ad_type"] = ads_df.get("ad_type", "").fillna("").astype(str).str.strip()
+
+            for col in ["impressions", "clicks", "spend", "sale_units", "sale_amount"]:
+                if col not in ads_df.columns:
+                    ads_df[col] = 0.0
+                ads_df[col] = pd.to_numeric(ads_df[col], errors="coerce").fillna(0.0)
+
+            # numeric sums
+            ads_num = ads_df.groupby("products", as_index=False)[
+                ["impressions", "clicks", "spend", "sale_units", "sale_amount"]
+            ].sum()
+
+            # ad_type unique list per SKU
+            ads_type = (
+                ads_df[ads_df["ad_type"] != ""]
+                .groupby("products")["ad_type"]
+                .apply(lambda s: ", ".join(sorted(set([str(x).strip() for x in s if str(x).strip()]))))
+                .reset_index()
+            )
+
+            ads_agg = ads_num.merge(ads_type, on="products", how="left")
+            ads_agg["ad_type"] = ads_agg["ad_type"].fillna("")
+
+            ads_agg["ads_conversion_rate"] = ads_agg.apply(
+                lambda r: (float(r["sale_units"]) / float(r["clicks"]) * 100.0) if float(r["clicks"]) else 0.0,
+                axis=1,
+            )
+            ads_agg["ads_roas"] = ads_agg.apply(
+                lambda r: (float(r["sale_amount"]) / float(r["spend"])) if float(r["spend"]) else 0.0,
+                axis=1,
+            )
+            ads_agg["ads_acos"] = ads_agg.apply(
+                lambda r: (float(r["spend"]) / float(r["sale_amount"]) * 100.0) if float(r["sale_amount"]) else 0.0,
+                axis=1,
+            )
+
+            ads_agg.rename(
+                columns={
+                    "impressions": "ads_impressions",
+                    "clicks": "ads_clicks",
+                    "spend": "ads_spend",
+                    "sale_units": "ads_sale_units",
+                    "sale_amount": "ads_sale_amount",
+                },
+                inplace=True,
+            )
+        except Exception as e:
+            logger.warning(f"Could not read/aggregate ads table {ads_table_name}: {e}")
+            ads_agg = pd.DataFrame()
+
+        if not ads_agg.empty:
+            df_sku = (
+                df_sku.merge(
+                    ads_agg,
+                    how="left",
+                    left_on="sku",
+                    right_on="products",
+                )
+                .drop(columns=["products"], errors="ignore")
+            )
+
+        # ✅ ensure ad_type exists in skuwise table
+        if "ad_type" not in df_sku.columns:
+            df_sku["ad_type"] = ""
+        df_sku["ad_type"] = df_sku["ad_type"].fillna("").astype(str)
+
+        # ensure ads columns exist + numeric
+        for col in [
+            "ads_impressions",
+            "ads_clicks",
+            "ads_spend",
+            "ads_sale_units",
+            "ads_sale_amount",
+            "ads_conversion_rate",
+            "ads_roas",
+            "ads_acos",
+        ]:
+            if col not in df_sku.columns:
+                df_sku[col] = 0.0
+            df_sku[col] = pd.to_numeric(df_sku[col], errors="coerce").fillna(0.0)
+
+        # ensure numeric base cols
+        if "profit" not in df_sku.columns:
+            df_sku["profit"] = 0.0
+        df_sku["profit"] = pd.to_numeric(df_sku["profit"], errors="coerce").fillna(0.0)
+
+        if "quantity" not in df_sku.columns:
+            df_sku["quantity"] = 0.0
+        df_sku["quantity"] = pd.to_numeric(df_sku["quantity"], errors="coerce").fillna(0.0)
+
+        if "net_sales" not in df_sku.columns:
+            df_sku["net_sales"] = 0.0
+        df_sku["net_sales"] = pd.to_numeric(df_sku["net_sales"], errors="coerce").fillna(0.0)
+
+        # ✅ cm2_profit = profit - ads_spend
+        df_sku["cm2_profit"] = (df_sku["profit"] - df_sku["ads_spend"]).fillna(0.0)
+
+        # ✅ cm1_profit_per_unit = profit / quantity
+        df_sku["cm1_profit_per_unit"] = df_sku.apply(
+            lambda r: (float(r["profit"]) / float(r["quantity"])) if float(r["quantity"]) else 0.0,
+            axis=1,
+        )
+
+        # ✅ cm1_profit_per = (profit / net_sales) * 100
+        df_sku["cm1_profit_per"] = df_sku.apply(
+            lambda r: (float(r["profit"]) / float(r["net_sales"]) * 100.0) if float(r["net_sales"]) else 0.0,
+            axis=1,
+        )
+        # ✅ NEW: cm2_profit_per_unit = cm2_profit / quantity
+        df_sku["cm2_profit_per_unit"] = df_sku.apply(
+            lambda r: (float(r["cm2_profit"]) / float(r["quantity"]))
+            if float(r.get("quantity") or 0)
+            else 0.0,
+            axis=1,
+        )
+
+        # ✅ NEW: cm2_profit_per = (cm2_profit / net_sales) * 100
+        df_sku["cm2_profit_per"] = df_sku.apply(
+            lambda r: (float(r["cm2_profit"]) / float(r["net_sales"]) * 100.0)
+            if float(r.get("net_sales") or 0)
+            else 0.0,
+            axis=1,
+        )
+
+        df_sku["cm2_profit_per_unit"] = pd.to_numeric(
+            df_sku["cm2_profit_per_unit"], errors="coerce"
+        ).fillna(0.0)
+
+        df_sku["cm2_profit_per"] = pd.to_numeric(
+            df_sku["cm2_profit_per"], errors="coerce"
+        ).fillna(0.0)
+
+
+        df_sku["cm2_profit"] = pd.to_numeric(df_sku["cm2_profit"], errors="coerce").fillna(0.0)
+        df_sku["cm1_profit_per_unit"] = pd.to_numeric(df_sku["cm1_profit_per_unit"], errors="coerce").fillna(0.0)
+        df_sku["cm1_profit_per"] = pd.to_numeric(df_sku["cm1_profit_per"], errors="coerce").fillna(0.0)
+
+        # ✅ product_name mapping
+        df_sku["product_name"] = ""
+        sku_data_table = _build_sku_data_table_name(user_id)
+        sku_col = _country_to_sku_col(ui_country)
+
+        try:
+            map_sql = f'SELECT product_name, "{sku_col}" AS sku_key FROM public."{sku_data_table}"'
+            map_df = pd.read_sql_query(map_sql, PHORMULA_ENGINE)
+
+            if not map_df.empty:
+                map_df["sku_key"] = map_df["sku_key"].fillna("").astype(str).str.strip()
+                map_df["product_name"] = map_df["product_name"].fillna("").astype(str).str.strip()
+
+                map_df = map_df[map_df["sku_key"] != ""]
+                map_df = map_df.sort_values(by=["sku_key"]).drop_duplicates(subset=["sku_key"], keep="first")
+
+                df_sku = df_sku.merge(map_df, how="left", left_on="sku", right_on="sku_key").drop(
+                    columns=["sku_key"], errors="ignore"
+                )
+
+                if "product_name_y" in df_sku.columns:
+                    if "product_name_x" in df_sku.columns:
+                        df_sku["product_name"] = df_sku["product_name_y"].fillna(df_sku["product_name_x"]).fillna("")
+                        df_sku.drop(columns=["product_name_x", "product_name_y"], inplace=True, errors="ignore")
+                    else:
+                        df_sku.rename(columns={"product_name_y": "product_name"}, inplace=True)
+                elif "product_name" not in df_sku.columns and "product_name_x" in df_sku.columns:
+                    df_sku.rename(columns={"product_name_x": "product_name"}, inplace=True)
+
+                df_sku["product_name"] = df_sku["product_name"].fillna("").astype(str)
+        except Exception as e:
+            logger.warning(f"Could not read/map product_name from {sku_data_table}: {e}")
+            df_sku["product_name"] = df_sku.get("product_name", "").fillna("").astype(str)
+
+        # meta
+        df_sku["user_id"] = int(user_id)
+        df_sku["country"] = ui_country
+        df_sku["month"] = int(now_utc.month)
+        df_sku["year"] = int(now_utc.year)
+        df_sku["generated_at_utc"] = now_utc.isoformat()
+
+        # -------- GRAND TOTAL --------
+        total_row: Dict[str, Any] = {"sku": "GRAND_TOTAL", "product_name": "Grand Total"}
+
+        for c in sum_cols:
+            total_row[c] = float(df_sku[c].sum()) if c in df_sku.columns else 0.0
+
+        total_row["net_sales"] = float(df_sku["net_sales"].sum()) if "net_sales" in df_sku.columns else 0.0
+        total_qty = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
+        total_row["asp"] = (total_row["net_sales"] / total_qty) if total_qty else 0.0
+
+        total_row["ads_impressions"] = float(df_sku["ads_impressions"].sum())
+        total_row["ads_clicks"] = float(df_sku["ads_clicks"].sum())
+        total_row["ads_spend"] = float(df_sku["ads_spend"].sum())
+        total_row["ads_sale_units"] = float(df_sku["ads_sale_units"].sum())
+        total_row["ads_sale_amount"] = float(df_sku["ads_sale_amount"].sum())
+
+        g_clicks = float(total_row["ads_clicks"])
+        g_spend = float(total_row["ads_spend"])
+        g_units = float(total_row["ads_sale_units"])
+        g_sales = float(total_row["ads_sale_amount"])
+
+        total_row["ads_conversion_rate"] = (g_units / g_clicks * 100.0) if g_clicks else 0.0
+        total_row["ads_roas"] = (g_sales / g_spend) if g_spend else 0.0
+        total_row["ads_acos"] = (g_spend / g_sales * 100.0) if g_sales else 0.0
+
+        g_profit = float(total_row.get("profit", 0.0))
+        g_net_sales = float(total_row.get("net_sales", 0.0))
+        g_qty = float(total_row.get("quantity", 0.0))
+
+        total_row["cm2_profit"] = float(total_row.get("profit", 0.0)) - float(total_row.get("ads_spend", 0.0))
+        total_row["cm1_profit_per_unit"] = (g_profit / g_qty) if g_qty else 0.0
+        total_row["cm1_profit_per"] = (g_profit / g_net_sales * 100.0) if g_net_sales else 0.0
+        # ✅ GRAND TOTAL cm2 percentages
+        total_row["cm2_profit_per_unit"] = (
+            total_row["cm2_profit"] / total_row["quantity"]
+            if total_row.get("quantity", 0)
+            else 0.0
+        )
+
+        total_row["cm2_profit_per"] = (
+            total_row["cm2_profit"] / total_row["net_sales"] * 100.0
+            if total_row.get("net_sales", 0)
+            else 0.0
+        )
+
+
+        # ✅ GRAND TOTAL credits/tax/tax_and_credits + ad_type
+        total_row["credits"] = float(df_sku["credits"].sum()) if "credits" in df_sku.columns else 0.0
+        total_row["tax"] = float(df_sku["tax"].sum()) if "tax" in df_sku.columns else 0.0
+        total_row["tax_and_credits"] = round(float(total_row["credits"]) - abs(float(total_row["tax"])), 2)
+        total_row["ad_type"] = "All"
+
+        total_row["user_id"] = int(user_id)
+        total_row["country"] = ui_country
+        total_row["month"] = int(now_utc.month)
+        total_row["year"] = int(now_utc.year)
+        total_row["generated_at_utc"] = now_utc.isoformat()
+
+        df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
+
+        skuwise_items = df_sku.to_dict(orient="records")
+
+        # store
+        try:
+            df_sku.to_sql(
+                skuwise_table_name,
+                PHORMULA_ENGINE,
+                schema="public",
+                if_exists="replace",
+                index=False,
+                method="multi",
+                chunksize=1000,
+            )
+            sku_summary_saved = True
+            sku_summary_rows = int(len(df_sku))
+        except Exception as e:
+            logger.exception(f"Failed to store SKU-wise table {skuwise_table_name}: {e}")
+            sku_summary_saved = False
+
+    # ---------------- Excel response ----------------
     if response_format == "excel":
         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
-        df = df.reindex(columns=MTD_COLUMNS + ["cogs", "profit"], fill_value=0.0)
+        df = df.reindex(columns=MTD_COLUMNS + ["cogs", "profit", "gross_sales"], fill_value=0.0)
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -871,6 +1253,8 @@ def finances_mtd_transactions():
             pd.DataFrame([previous_period]).to_excel(writer, index=False, sheet_name="PrevPeriodMeta")
             if db_result:
                 pd.DataFrame([db_result]).to_excel(writer, index=False, sheet_name="DBMeta")
+            if skuwise_items:
+                pd.DataFrame(skuwise_items).to_excel(writer, index=False, sheet_name="SKUWiseMonthly")
 
         output.seek(0)
         filename = f"finances_transactions_MTD_{now_utc.year}_{now_utc.month:02d}.xlsx"
@@ -881,23 +1265,32 @@ def finances_mtd_transactions():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    return jsonify({
-        "success": True,
-        "posted_after": posted_after,
-        "posted_before": posted_before,
-        "count": len(all_rows),
-        "stored": bool(store_in_db),
-        "db_result": db_result,
-        "cogs_meta": {
-            "country": ui_country,
-            "month": month_name,
-            "year": now_utc.year,
-            "pair": f"{user_currency}->{selected_currency}",
-            "conversion_rate": conversion_rate,
-        },
-        "totals": totals,
-        "derived_totals": derived_totals,
-        "previous_period": previous_period,   # ✅ added
-        "transactions": all_rows,
-    }), 200
+    # ---------------- JSON response ----------------
+    return jsonify(
+        {
+            "success": True,
+            "posted_after": posted_after,
+            "posted_before": posted_before,
+            "count": len(all_rows),
+            "stored": bool(store_in_db),
+            "db_result": db_result,
+            "cogs_meta": {
+                "country": ui_country,
+                "month": month_name,
+                "year": now_utc.year,
+                "pair": f"{user_currency}->{selected_currency}",
+                "conversion_rate": conversion_rate_fx,
+            },
+            "totals": totals,
+            "derived_totals": derived_totals,
+            "previous_period": previous_period,
+            "skuwise_table": {
+                "name": skuwise_table_name,
+                "saved": sku_summary_saved,
+                "rows": sku_summary_rows,
+            },
+            "skuwise_items": skuwise_items,
+            "transactions": all_rows,
+        }
+    ), 200
 

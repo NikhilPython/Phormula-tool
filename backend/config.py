@@ -30,6 +30,10 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 class Config:
     # --- Secret Key ---
     SECRET_KEY = _env("SECRET_KEY")
+    AMAZON_ADS_CLIENT_ID = _env("AMAZON_ADS_CLIENT_ID")
+    AMAZON_ADS_CLIENT_SECRET = _env("AMAZON_ADS_CLIENT_SECRET")
+    AMAZON_ADS_REDIRECT_URI = _env("AMAZON_ADS_REDIRECT_URI", f"{FRONTEND_BASE_URL}/api/ads/callback")
+
 
     # --- Database ---
     SQLALCHEMY_DATABASE_URI        = _env("DATABASE_URL")

@@ -482,46 +482,138 @@ export default function Cm1ProfitBreakdownPie({
   const MIN_SKUS = 5;
   const TARGET_SHARE = 0.8;
 
+  // const displayData = useMemo<Cm1PieSlice[]>(() => {
+  //   const arr = (data || []).filter((d) => Number(d.value || 0) !== 0);
+  //   if (!arr.length) return [];
+
+  //   // Sort by current profit magnitude (matches your chart logic)
+  //   const sorted = [...arr].sort(
+  //     (a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0))
+  //   );
+
+  //   const total = sorted.reduce(
+  //     (s, d) => s + Math.abs(Number(d.value || 0)),
+  //     0
+  //   );
+  //   if (!total) return [];
+
+  //   let cum = 0;
+  //   let cutoff = 0;
+
+  //   for (let i = 0; i < sorted.length; i++) {
+  //     cum += Math.abs(Number(sorted[i].value || 0));
+  //     cutoff = i + 1;
+  //     if (cum / total >= TARGET_SHARE) break;
+  //   }
+
+  //   const keepCount = Math.min(sorted.length, Math.max(MIN_SKUS, cutoff));
+  //   const kept = sorted.slice(0, keepCount);
+  //   const rest = sorted.slice(keepCount);
+
+  //   const rebuiltKept: Cm1PieSlice[] = kept.map((d) => {
+  //     const v = Math.abs(Number(d.value || 0));
+  //     const pv = Math.abs(Number(d.prevValue || 0));
+  //     const pct = total ? (v / total) * 100 : 0;
+
+  //     // Recompute deltaPct to remain consistent after abs/grouping
+  //     const deltaPct = pv === 0 ? null : ((v - pv) / pv) * 100;
+
+  //     return { ...d, value: v, prevValue: pv, pct, deltaPct };
+  //   });
+
+  //   if (!rest.length) return rebuiltKept;
+
+  //   const othersValue = rest.reduce(
+  //     (s, d) => s + Math.abs(Number(d.value || 0)),
+  //     0
+  //   );
+  //   const othersPrev = rest.reduce(
+  //     (s, d) => s + Math.abs(Number(d.prevValue || 0)),
+  //     0
+  //   );
+
+  //   const othersPct = total ? (othersValue / total) * 100 : 0;
+  //   const othersDeltaPct =
+  //     othersPrev === 0 ? null : ((othersValue - othersPrev) / othersPrev) * 100;
+
+  //   return [
+  //     ...rebuiltKept,
+  //     {
+  //       name: "Others",
+  //       value: othersValue,
+  //       prevValue: othersPrev,
+  //       pct: othersPct,
+  //       deltaPct: othersDeltaPct,
+  //     },
+  //   ];
+  // }, [data]);
+
   const displayData = useMemo<Cm1PieSlice[]>(() => {
     const arr = (data || []).filter((d) => Number(d.value || 0) !== 0);
     if (!arr.length) return [];
 
-    // Sort by current profit magnitude (matches your chart logic)
-    const sorted = [...arr].sort(
+    const isOthers = (name?: string) => (name || "").trim().toLowerCase() === "others";
+
+    // ✅ If backend already produced "Others", don't create another one.
+    const hasOthers = arr.some((d) => isOthers(d.name));
+
+    const normalized = arr.map((d) => {
+      const v = Math.abs(Number(d.value || 0));
+      const pv = Math.abs(Number(d.prevValue || 0));
+      const fallbackDelta = pv === 0 ? null : ((v - pv) / pv) * 100;
+
+      return {
+        ...d,
+        name: (d.name || "").trim() || "Others",
+        value: v,
+        prevValue: pv,
+        // keep pct from backend if present; else compute later
+        pct: Number(d.pct || 0),
+        // prefer backend deltaPct if provided, else fallback
+        deltaPct: d.deltaPct ?? fallbackDelta,
+      };
+    });
+
+    // ✅ If pct missing/0, compute it from normalized values
+    const total = normalized.reduce((s, d) => s + (Number(d.value) || 0), 0) || 1;
+    const withPct = normalized.map((d) => ({
+      ...d,
+      pct: d.pct ? d.pct : (Number(d.value || 0) / total) * 100,
+    }));
+
+    // ✅ Helper: always move "Others" to the end (if present)
+    const othersLast = (rows: Cm1PieSlice[]) => {
+      const nonOthers = rows.filter((r) => !isOthers(r.name));
+      const others = rows.filter((r) => isOthers(r.name));
+      return [...nonOthers, ...others];
+    };
+
+    if (hasOthers) {
+      // ✅ backend already aggregated to exactly what you want
+      return othersLast(withPct);
+    }
+
+    // Fallback: only if backend didn't send Others
+    const sorted = [...withPct].sort(
       (a, b) => Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0))
     );
 
-    const total = sorted.reduce(
-      (s, d) => s + Math.abs(Number(d.value || 0)),
-      0
-    );
-    if (!total) return [];
+    const totalAbs =
+      sorted.reduce((s, d) => s + Math.abs(Number(d.value || 0)), 0) || 1;
 
     let cum = 0;
     let cutoff = 0;
-
     for (let i = 0; i < sorted.length; i++) {
       cum += Math.abs(Number(sorted[i].value || 0));
       cutoff = i + 1;
-      if (cum / total >= TARGET_SHARE) break;
+      if (cum / totalAbs >= TARGET_SHARE) break;
     }
 
     const keepCount = Math.min(sorted.length, Math.max(MIN_SKUS, cutoff));
     const kept = sorted.slice(0, keepCount);
     const rest = sorted.slice(keepCount);
 
-    const rebuiltKept: Cm1PieSlice[] = kept.map((d) => {
-      const v = Math.abs(Number(d.value || 0));
-      const pv = Math.abs(Number(d.prevValue || 0));
-      const pct = total ? (v / total) * 100 : 0;
-
-      // Recompute deltaPct to remain consistent after abs/grouping
-      const deltaPct = pv === 0 ? null : ((v - pv) / pv) * 100;
-
-      return { ...d, value: v, prevValue: pv, pct, deltaPct };
-    });
-
-    if (!rest.length) return rebuiltKept;
+    if (!rest.length) return othersLast(kept);
 
     const othersValue = rest.reduce(
       (s, d) => s + Math.abs(Number(d.value || 0)),
@@ -532,12 +624,12 @@ export default function Cm1ProfitBreakdownPie({
       0
     );
 
-    const othersPct = total ? (othersValue / total) * 100 : 0;
+    const othersPct = totalAbs ? (othersValue / totalAbs) * 100 : 0;
     const othersDeltaPct =
       othersPrev === 0 ? null : ((othersValue - othersPrev) / othersPrev) * 100;
 
-    return [
-      ...rebuiltKept,
+    return othersLast([
+      ...kept,
       {
         name: "Others",
         value: othersValue,
@@ -545,8 +637,10 @@ export default function Cm1ProfitBreakdownPie({
         pct: othersPct,
         deltaPct: othersDeltaPct,
       },
-    ];
+    ]);
   }, [data]);
+
+
 
   const exportChartBase64 = () => {
     try {
@@ -615,7 +709,7 @@ export default function Cm1ProfitBreakdownPie({
       responsive: true,
       maintainAspectRatio: false,
       animation: { duration: 0 },
-      radius: isLaptop ? "90%" : isDesktop ? "95%" : "100%",
+      radius: isLaptop ? "99%" : isDesktop ? "95%" : "100%",
       layout: { padding: { top: 0, bottom: 0, left: 0, right: 0 } },
       elements: { arc: { borderWidth: 0, hoverOffset: 4 } },
 
@@ -691,11 +785,11 @@ export default function Cm1ProfitBreakdownPie({
             <div
               className="shrink-0 overflow-auto pr-1"
               style={{
-                width: isDesktop ? 260 : isLaptop ? 220 : 240,
+                width: isDesktop ? 260 : isLaptop ? 140 : 240,
                 maxHeight: "100%",
               }}
             >
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1 2xl:gap-4">
                 {(displayData || []).map((slice, i) => {
                   const dot = COLORS[i % COLORS.length];
                   const chart = chartRef.current;
@@ -715,8 +809,8 @@ export default function Cm1ProfitBreakdownPie({
                     delta == null
                       ? "text-[#414042]"
                       : delta >= 0
-                      ? "text-green-500"
-                      : "text-red-500";
+                        ? "text-green-500"
+                        : "text-red-500";
 
                   return (
                     <button
@@ -732,9 +826,8 @@ export default function Cm1ProfitBreakdownPie({
                       }}
                     >
                       <div
-                        className={`flex items-start gap-3 ${
-                          isVisible ? "opacity-100" : "opacity-40"
-                        }`}
+                        className={`flex items-start gap-3 ${isVisible ? "opacity-100" : "opacity-40"
+                          }`}
                       >
                         <span
                           className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full"
@@ -745,7 +838,7 @@ export default function Cm1ProfitBreakdownPie({
                           {/* line 1 */}
                           <div
                             className={`truncate ${isVisible ? "" : "line-through"}`}
-                            style={{ fontSize: isLaptop ? 10 : 12, color: "#414042" }}
+                            style={{ fontSize: isLaptop ? 8 : 12, color: "#414042" }}
                             title={slice.name}
                           >
                             {slice.name}
@@ -754,7 +847,7 @@ export default function Cm1ProfitBreakdownPie({
                           {/* line 2 */}
                           <div
                             className="whitespace-nowrap"
-                            style={{ fontSize: isLaptop ? 10 : 12, color: "#414042" }}
+                            style={{ fontSize: isLaptop ? 8 : 12, color: "#414042" }}
                           >
                             {currencySymbol}
                             {value.toLocaleString(undefined, {

@@ -312,7 +312,7 @@ export default function SalesTargetCard({
   const tipTitle = "Sales Snapshot";
   const tipLines = [
     `MTD Sale: ${formatHomeK(mtdHomeResolved)} (${pctDisplay.toFixed(2)}%)`,
-    `Target: ${formatHomeK(targetHomeResolved)}`,
+    `${thisMonthLabel} Target: ${formatHomeK(targetHomeResolved)}`,
     `${prevLabel} Sale: ${formatHomeK(lastMonthTotalHomeResolved)}`,
     `Last month by today: ${formatHomeK(lastMonthToDateHomeResolved)}`,
   ];

@@ -31,7 +31,6 @@ type ParsedAI = {
 
 export default function ChatbotCore() {
   const scrollRef = useRef<HTMLDivElement>(null);
-
   const [actionMessage, setActionMessage] = useState<{ id: string; text: string } | null>(null);
 
   const {
@@ -43,6 +42,11 @@ export default function ChatbotCore() {
     reactToMessage,
     sendFeedback,
   } = useChatbotStore();
+
+  // ✅ NEW: hydrate on mount (fixes blank in new tab + hello msg missing)
+  useEffect(() => {
+    loadFromStorage();
+  }, [loadFromStorage]);
 
   
 
@@ -78,10 +82,9 @@ export default function ChatbotCore() {
         await navigator.clipboard.writeText(msg.text || "");
         flash(msg.id, "Copied to share");
       }
-    } catch {
-      // user cancelled share or it failed
-    }
+    } catch {}
   };
+
 
   const cleanMarkdown = (s = '') =>
   s
@@ -472,25 +475,50 @@ className="p-1 rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700 
       {/* Input */}
       <div className="px-2 border-t border-gray-300 py-2 shrink-0">
         <div className="flex-1 flex items-center bg-[#D9D9D9] rounded-full px-3 py-2">
-        <input
-          placeholder="Ask me anything..."
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              sendMessage((e.target as HTMLInputElement).value);
-              (e.target as HTMLInputElement).value = "";
-            }
-          }}
-          className="flex-1 bg-transparent text-black caret-black outline-none text-xs sm:text-sm md:text-[0.75rem] lg:text-[0.875rem] h-full cursor-text"
-        />
+        <textarea
+  placeholder="Ask me anything..."
+  rows={1}
+  onInput={(e) => {
+    const el = e.currentTarget;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px"; // max ~5 lines
+  }}
+  onKeyDown={(e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+
+      const val = e.currentTarget.value.trim();
+      if (!val) return;
+
+      sendMessage(val);
+      e.currentTarget.value = "";
+      e.currentTarget.style.height = "auto";
+    }
+  }}
+  className="
+    flex-1
+    resize-none
+    bg-transparent
+    text-black
+    caret-black
+    outline-none
+    text-xs sm:text-sm md:text-[0.75rem] lg:text-[0.875rem]
+    leading-snug
+    max-h-[80px] py-1 px-1
+    overflow-y-auto
+    cursor-text
+  "
+/>
+
        <WindowSendButton
   onClick={() => {
     const input = document.querySelector<HTMLInputElement>(
       'input[placeholder="Ask me anything..."]'
     );
-    if (input?.value) {
-      sendMessage(input.value);
-      input.value = "";
-    }
+    if (input?.value.trim()) {
+  sendMessage(input.value.trim());
+  input.value = "";
+}
   }}
   disabled={loading}
   

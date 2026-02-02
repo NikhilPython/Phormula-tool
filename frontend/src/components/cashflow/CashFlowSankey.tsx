@@ -53,6 +53,12 @@ const CashFlowSankey: React.FC<Props> = ({
   typeof window !== "undefined" ? window.innerWidth : 1920
 );
 
+const isPreviewSankey =
+  !data ||
+  Object.values(data).every(
+    (v) => v === 0 || v === undefined
+  );
+
 React.useEffect(() => {
   const onResize = () => setScreenWidth(window.innerWidth);
   window.addEventListener("resize", onResize);
@@ -61,15 +67,12 @@ React.useEffect(() => {
 
 const is2XL = screenWidth >= 1536;
 const isXL = screenWidth >= 1280 && screenWidth < 1536;
-
 const sankeyCols = {
   label: is2XL ? 150 : isXL ? 80 : 80,
   sign:  is2XL ? 28  : 24,
   amount:is2XL ? 90  : isXL ? 65 : 60,
   pct:   is2XL ? 60  : 50,
 };
-
-
   
 
   const formatNumber = (val?: number) =>
@@ -100,7 +103,6 @@ const sankeyCols = {
   // Year format: "2024" → "2024"
   return label;
 };
-
 const marketplaceFees =
   (data.amazon_fee || 0) + (data.otherwplatform || 0);
 
@@ -214,8 +216,18 @@ const prevMarketplaceFees =
 
   /* ---------- SANKEY ---------- */
 
-const rows = [
-  { name: "Gross Sales", value: data.gross_sales || 0, sign: "+", barColor: "#75BBDA", signColor: "#2E7D32" },
+const rows = isPreviewSankey
+  ? [
+      { name: "Gross Sales", value: 1, barColor: "#75BBDA" },
+      { name: "Fees & Costs", value: 1, barColor: "#ED9F50" },
+      
+      { name: "FBA Fees", value: 2, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+  { name: "Selling  Fees", value: 2, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+  { name: "Ads Cost", value: 1, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+  { name: "Cash Generated", value: 1, barColor: "#7B9A6D" },
+    ]
+  : [
+      { name: "Gross Sales", value: data.gross_sales || 0, sign: "+", barColor: "#75BBDA", signColor: "#2E7D32" },
   { name: "Tax and Credit", value: data.taxncredit || 0, sign: "+", barColor: "#75BBDA", signColor: "#2E7D32" },
   { name: "Discount", value: data.promotional_rebates || 0, sign: "-", barColor: "#ED9F50", signColor: "#D32F2F" },
   { name: "FBA Fees", value: data.fba_fees || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
@@ -225,6 +237,11 @@ const rows = [
   { name: "Cash Generated", value: data.cashflow || 0, sign: "+", barColor: "#7B9A6D", signColor: "#2E7D32" },
 ];
 
+const hasPrevious =
+  previous_summary &&
+  Object.values(previous_summary).some(
+    (v) => v !== undefined && v !== 0
+  );
 
 
 
@@ -248,6 +265,10 @@ label: {
   overflow: "none",
   width: is2XL ? 300 : isXL ? 215 : 210,
 formatter: (n: any) => {
+  if (isPreviewSankey) {
+    return `{label|${n.name}}`;
+  }
+
   const row = rows.find(r => r.name === n.name);
   if (!row) return "";
 
@@ -267,8 +288,6 @@ formatter: (n: any) => {
     `{pct|(${pct.toFixed(1)}%)}`
   );
 },
-
-
 rich: {
   label: {
     width: sankeyCols.label,
@@ -314,14 +333,11 @@ rich: {
     color: "#6B7280",
   },
 },
-
-
-
 },
 
 
 
-       data: [
+  data: [
   { name: "Summary", itemStyle: { color: "transparent" } },
   ...rows.map((r) => ({
     name: r.name,
@@ -394,28 +410,21 @@ links: rows.map((r) => ({
   )}
 </div>
 
-              {p && (
-                <div className="flex justify-between items-end 2xl:text-xs text-[10px] mt-2">
-                  <div className="flex flex-col">
-                    <span className="text-charcoal-400">
-                      {formatPrevLabel(previousLabel)}:
-                    </span>
-                   <span className="font-semibold text-charcoal-700">
-  {c.label === "Units"
-    ? formatInteger(c.prev)
-    : c.isDiscount ? (
+              <div className="flex justify-between items-end 2xl:text-xs text-[10px] mt-2">
+  <div className="flex flex-col">
+    <span className="text-charcoal-400">
+      {formatPrevLabel(previousLabel || "Previous")}:
+    </span>
+
+    <span className="font-semibold text-charcoal-700">
+      {!hasPrevious ? (
+        c.label === "Units" ? "-" : `${currency}-`
+      ) : c.label === "Units" ? (
+        formatInteger(c.prev)
+      ) : c.isDiscount ? (
         <>
           {currency}
           {formatNumber(Math.abs(c.prev || 0))}
-          <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-            (
-            {(
-              ((Math.abs(c.prev || 0)) /
-                (previous_summary?.gross_sales || 1)) *
-              100
-            ).toFixed(1)}
-            %)
-          </span>
         </>
       ) : (
         <>
@@ -432,17 +441,22 @@ links: rows.map((r) => ({
             </span>
           )}
         </>
-      )
-  }
-</span>
+      )}
+    </span>
+  </div>
 
-                  </div>
+  {/* % change sirf tab jab previous data ho */}
+  {hasPrevious && p && (
+    <span
+      className={`text-nowrap ${
+        Number(p) < 0 ? "text-red-600" : "text-green-600"
+      }`}
+    >
+      {Number(p) < 0 ? "▼" : "▲"} {Math.abs(Number(p))}%
+    </span>
+  )}
+</div>
 
-                  <span className={` text-nowrap ${isNegative ? "text-red-600" : "text-green-600"}`}>
-                    {isNegative ? "▼" : "▲"} {Math.abs(Number(p))}%
-                  </span>
-                </div>
-              )}
             </div>
           );
         })}
@@ -452,9 +466,14 @@ links: rows.map((r) => ({
      
 
       {/* SANKEY */}
-      <div className="h-[520px]  ">
+      <div className="h-[520px]  overflow-x-auto">
         <ReactECharts option={option} style={{ height: "100%" }} />
       </div>
+      {isPreviewSankey && (
+  <div className="mt-2 text-center text-xs text-gray-400">
+    Preview – connect Amazon and fetch data to see cash flow breakdown
+  </div>
+)}
     </div>
     </div>
    

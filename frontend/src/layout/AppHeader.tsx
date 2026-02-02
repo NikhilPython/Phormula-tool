@@ -9,7 +9,7 @@ import React, { useState, useEffect, useRef } from "react";
 import AmazonConnect from "@/features/integration/AmazonConnect";
 import AmazonFinancialDashboard from "@/features/integration/AmazonFinancialDashboard";
 import ConnectShopifyModal from "@/features/integration/ConnectShopifyModal"; // ⬅️ add this
-import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
+// import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 import { useParams } from "next/navigation";
 
 const AppHeader: React.FC = () => {
@@ -86,19 +86,15 @@ const AppHeader: React.FC = () => {
           {!isExpanded && (
   <button
     onClick={handleToggle}
-    className="flex items-center justify-center w-10 h-10 rounded-lg
-               bg-blue-700 text-white hover:bg-blue-800 transition"
+    className="flex items-center justify-center w-10 h-10 rounded-lg lg:hidden"
     aria-label="Open sidebar"
   >
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <path
-        d="M9.5 5L15.5 12L9.5 19"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <Image
+            src="/images/icons/hamburger.png"
+            alt="Open sidebar"
+            width={20}
+            height={20}
+          />
   </button>
 )}
             <Link href={realTimeHref} className="lg:hidden">
@@ -114,20 +110,15 @@ const AppHeader: React.FC = () => {
             </button>
           </div>
 
-          <div className={`${isApplicationMenuOpen ? "flex" : "hidden"} items-center justify-between w-full gap-3 lg:gap-2
+          <div className={`${isApplicationMenuOpen ? "flex" : "hidden"} items-center  w-full gap-3 lg:gap-2
     px-4 sm:px-5 lg:px-0
     py-2.5 sm:py-3 lg:py-1.5 xl:py-2.5
-    lg:flex shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none`}>
-            <div className="flex items-center gap-2 lg:gap-1.5">
-              {/* <ThemeToggleButton /> */}
-              <IntegrationToggleButton />
-            </div>
+    lg:flex shadow-theme-md justify-end lg:px-0 lg:shadow-none`}>
             <UserDropdown />
           </div>
         </div>
       </header>
 
-      {/* Amazon Connect modal */}
       {openAmazonConnect && (
         <AmazonConnect
           onClose={() => setOpenAmazonConnect(false)}
@@ -144,7 +135,7 @@ const AppHeader: React.FC = () => {
       {/* Amazon Financial Dashboard as a modal */}
       {openAmazonFinance && (
         <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-white/60"  />
+          <div className="absolute inset-0 bg-white/60" />
           <div className="relative w-full max-w-xl rounded-xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-800 dark:bg-gray-900">
             <div className="mt-3">
               <AmazonFinancialDashboard onClose={() => setOpenAmazonFinance(false)} />

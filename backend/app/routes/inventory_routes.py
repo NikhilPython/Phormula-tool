@@ -2672,113 +2672,341 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
     return len(rows)
 
 
-# ============================================================
-# ROUTE 1: READ amazon_db -> GROUP BY MSKU + return GRAND TOTAL
-# GET /amazon_api/inventory/ledger-summary/db?month=11&year=2025
-# ============================================================
-
-@inventory_bp.route("/amazon_api/inventory/ledger-summary/db", methods=["GET"])
-def inventory_ledger_summary_db():
-    user_id = _get_user_id_from_bearer()
-    if not user_id:
-        return jsonify({"error": "Invalid or missing token"}), 401
-
-    _apply_region_and_marketplace_from_request()
-
-    if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
-        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
-
-    mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
-
-    # same date logic you use
-    date_str = request.args.get("date")
-    start_str = request.args.get("start_date")
-    end_str = request.args.get("end_date")
-    month_param = request.args.get("month")
-    quarter_param = request.args.get("quarter")
-    year_param = request.args.get("year")
-
-    mode = None
-
-    try:
-        if month_param and not (date_str or start_str or end_str or quarter_param):
-            if "-" in month_param:  # "2025-11"
-                y_str, m_str = month_param.split("-", 1)
-                year = int(year_param or y_str)
-                month = int(m_str)
-            else:
-                month = int(month_param)
-                year = int(year_param) if year_param else datetime.utcnow().year
-            start_date, end_date = _month_range(year, month)
-            mode = "month"
-
-        elif quarter_param and not (date_str or start_str or end_str or month_param):
-            qp = quarter_param.strip().upper()
-            if "-Q" in qp:
-                y_str, q_str = qp.split("-Q", 1)
-                year = int(year_param or y_str)
-                quarter = int(q_str)
-            elif qp.startswith("Q"):
-                quarter = int(qp[1:])
-                year = int(year_param) if year_param else datetime.utcnow().year
-            else:
-                quarter = int(qp)
-                year = int(year_param) if year_param else datetime.utcnow().year
-            start_date, end_date = _quarter_range(year, quarter)
-            mode = "quarter"
-
-        elif year_param and not (date_str or start_str or end_str or month_param or quarter_param):
-            year = int(year_param)
-            start_date, end_date = _year_range(year)
-            mode = "year"
-
-        elif date_str:
-            start_date = end_date = _parse_date_str(date_str)
-            mode = "date"
-
-        else:
-            if not (start_str and end_str):
-                return jsonify({
-                    "error": (
-                        "Provide either ?date=..., both ?start_date= and ?end_date=, "
-                        "or ?month=...&year=..., or ?quarter=...&year=..., or ?year=YYYY."
-                    )
-                }), 400
-            start_date = _parse_date_str(start_str)
-            end_date = _parse_date_str(end_str)
-            if end_date < start_date:
-                return jsonify({"error": "end_date cannot be before start_date"}), 400
-            mode = "range"
-
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-    try:
-        with amazon_conn() as conn:
-            items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
-            grand_total = _compute_grand_total(items)
-
-        # return with total last (like Excel)
-        items_with_total = items + [grand_total]
-
-        return jsonify({
-            "success": True,
-            "marketplace_id": mp,
-            "mode": mode,
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-            "count": len(items),  # excludes Grand Total
-            "items": items_with_total,
-        }), 200
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
 
 
-# ============================================================
-# ROUTE 2: STORE MONTH SUMMARY TABLE (with GRAND TOTAL row)
-# GET /amazon_api/inventory/ledger-summary/db/store-month?country=uk&month=11&year=2025
-# ============================================================
+
+# # ============================================================
+# # ROUTE 1: READ amazon_db -> GROUP BY MSKU + return GRAND TOTAL
+# # GET /amazon_api/inventory/ledger-summary/db?month=11&year=2025
+# # ============================================================
+
+# @inventory_bp.route("/amazon_api/inventory/ledger-summary/db", methods=["GET"])
+# def inventory_ledger_summary_db():
+#     user_id = _get_user_id_from_bearer()
+#     if not user_id:
+#         return jsonify({"error": "Invalid or missing token"}), 401
+
+#     _apply_region_and_marketplace_from_request()
+
+#     if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+#         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
+
+#     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+
+#     # same date logic you use
+#     date_str = request.args.get("date")
+#     start_str = request.args.get("start_date")
+#     end_str = request.args.get("end_date")
+#     month_param = request.args.get("month")
+#     quarter_param = request.args.get("quarter")
+#     year_param = request.args.get("year")
+
+#     mode = None
+
+#     try:
+#         if month_param and not (date_str or start_str or end_str or quarter_param):
+#             if "-" in month_param:  # "2025-11"
+#                 y_str, m_str = month_param.split("-", 1)
+#                 year = int(year_param or y_str)
+#                 month = int(m_str)
+#             else:
+#                 month = int(month_param)
+#                 year = int(year_param) if year_param else datetime.utcnow().year
+#             start_date, end_date = _month_range(year, month)
+#             mode = "month"
+
+#         elif quarter_param and not (date_str or start_str or end_str or month_param):
+#             qp = quarter_param.strip().upper()
+#             if "-Q" in qp:
+#                 y_str, q_str = qp.split("-Q", 1)
+#                 year = int(year_param or y_str)
+#                 quarter = int(q_str)
+#             elif qp.startswith("Q"):
+#                 quarter = int(qp[1:])
+#                 year = int(year_param) if year_param else datetime.utcnow().year
+#             else:
+#                 quarter = int(qp)
+#                 year = int(year_param) if year_param else datetime.utcnow().year
+#             start_date, end_date = _quarter_range(year, quarter)
+#             mode = "quarter"
+
+#         elif year_param and not (date_str or start_str or end_str or month_param or quarter_param):
+#             year = int(year_param)
+#             start_date, end_date = _year_range(year)
+#             mode = "year"
+
+#         elif date_str:
+#             start_date = end_date = _parse_date_str(date_str)
+#             mode = "date"
+
+#         else:
+#             if not (start_str and end_str):
+#                 return jsonify({
+#                     "error": (
+#                         "Provide either ?date=..., both ?start_date= and ?end_date=, "
+#                         "or ?month=...&year=..., or ?quarter=...&year=..., or ?year=YYYY."
+#                     )
+#                 }), 400
+#             start_date = _parse_date_str(start_str)
+#             end_date = _parse_date_str(end_str)
+#             if end_date < start_date:
+#                 return jsonify({"error": "end_date cannot be before start_date"}), 400
+#             mode = "range"
+
+#     except ValueError as e:
+#         return jsonify({"error": str(e)}), 400
+
+#     try:
+#         with amazon_conn() as conn:
+#             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+#             grand_total = _compute_grand_total(items)
+
+#         # return with total last (like Excel)
+#         items_with_total = items + [grand_total]
+
+#         return jsonify({
+#             "success": True,
+#             "marketplace_id": mp,
+#             "mode": mode,
+#             "start_date": start_date.isoformat(),
+#             "end_date": end_date.isoformat(),
+#             "count": len(items),  # excludes Grand Total
+#             "items": items_with_total,
+#         }), 200
+
+#     except Exception as e:
+#         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# # ============================================================
+# # ROUTE 2: STORE MONTH SUMMARY TABLE (with GRAND TOTAL row)
+# # GET /amazon_api/inventory/ledger-summary/db/store-month?country=uk&month=11&year=2025
+# # ============================================================
+
+# @inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-month", methods=["GET"])
+# def inventory_ledger_summary_store_month():
+#     user_id = _get_user_id_from_bearer()
+#     if not user_id:
+#         return jsonify({"error": "Invalid or missing token"}), 401
+
+#     _apply_region_and_marketplace_from_request()
+
+#     if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+#         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
+
+#     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+#     country = request.args.get("country", "us")
+
+#     try:
+#         month = int(request.args.get("month", "0"))
+#         year = int(request.args.get("year", "0"))
+#         start_date, end_date = _month_range(year, month)
+#     except Exception:
+#         return jsonify({"error": "Provide valid ?country=xx&month=MM&year=YYYY"}), 400
+
+#     table_name = _monthly_table_name(user_id, country, month, year)
+
+#     try:
+#         with amazon_conn() as conn:
+#             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+#             grand_total = _compute_grand_total(items)
+
+#             # save normal rows + grand total row
+#             to_save = items + [grand_total]
+
+#             _ensure_inventory_summary_table_exists(conn, table_name)
+#             saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
+
+#         return jsonify({
+#             "success": True,
+#             "marketplace_id": mp,
+#             "table": f"public.{table_name}",
+#             "saved_rows": saved,  # includes Grand Total row
+#             "start_date": start_date.isoformat(),
+#             "end_date": end_date.isoformat(),
+#         }), 200
+
+#     except Exception as e:
+#         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# # ============================================================
+# # ROUTE 3: STORE QUARTER SUMMARY TABLE (with GRAND TOTAL row)
+# # GET /amazon_api/inventory/ledger-summary/db/store-quarter?country=uk&quarter=4&year=2025
+# # ============================================================
+
+# @inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-quarter", methods=["GET"])
+# def inventory_ledger_summary_store_quarter():
+#     user_id = _get_user_id_from_bearer()
+#     if not user_id:
+#         return jsonify({"error": "Invalid or missing token"}), 401
+
+#     _apply_region_and_marketplace_from_request()
+
+#     if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+#         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
+
+#     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+#     country = request.args.get("country", "us")
+
+#     try:
+#         quarter = int(request.args.get("quarter", "0"))
+#         year = int(request.args.get("year", "0"))
+#         start_date, end_date = _quarter_range(year, quarter)
+#     except Exception:
+#         return jsonify({"error": "Provide valid ?country=xx&quarter=Q&year=YYYY"}), 400
+
+#     table_name = _quarterly_table_name(user_id, country, quarter, year)
+
+#     try:
+#         with amazon_conn() as conn:
+#             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+#             grand_total = _compute_grand_total(items)
+
+#             to_save = items + [grand_total]
+
+#             _ensure_inventory_summary_table_exists(conn, table_name)
+#             saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
+
+#         return jsonify({
+#             "success": True,
+#             "marketplace_id": mp,
+#             "table": f"public.{table_name}",
+#             "saved_rows": saved,
+#             "start_date": start_date.isoformat(),
+#             "end_date": end_date.isoformat(),
+#         }), 200
+
+#     except Exception as e:
+#         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# # ============================================================
+# # ROUTE 4: STORE YEAR SUMMARY TABLE (with GRAND TOTAL row)
+# # GET /amazon_api/inventory/ledger-summary/db/store-year?country=uk&year=2025
+# # ============================================================
+
+# @inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-year", methods=["GET"])
+# def inventory_ledger_summary_store_year():
+#     user_id = _get_user_id_from_bearer()
+#     if not user_id:
+#         return jsonify({"error": "Invalid or missing token"}), 401
+
+#     _apply_region_and_marketplace_from_request()
+
+#     if amazon_client.marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+#         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
+
+#     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+#     country = request.args.get("country", "us")
+
+#     try:
+#         year = int(request.args.get("year", "0"))
+#         start_date, end_date = _year_range(year)
+#     except Exception:
+#         return jsonify({"error": "Provide valid ?country=xx&year=YYYY"}), 400
+
+#     table_name = _yearly_table_name(user_id, country, year)
+
+#     try:
+#         with amazon_conn() as conn:
+#             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+#             grand_total = _compute_grand_total(items)
+
+#             to_save = items + [grand_total]
+
+#             _ensure_inventory_summary_table_exists(conn, table_name)
+#             saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
+
+#         return jsonify({
+#             "success": True,
+#             "marketplace_id": mp,
+#             "table": f"public.{table_name}",
+#             "saved_rows": saved,
+#             "start_date": start_date.isoformat(),
+#             "end_date": end_date.isoformat(),
+#         }), 200
+
+#     except Exception as e:
+#         return jsonify({"success": False, "error": str(e)}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import re
+from sqlalchemy import text
+
+def _safe_ident(name: str) -> str:
+    # only allow identifiers you generate internally
+    if not re.fullmatch(r"[A-Za-z0-9_]+", name or ""):
+        raise ValueError("Invalid table name")
+    return name
+
+def _read_inventory_summary_table(conn, table_name: str):
+    t = _safe_ident(table_name)
+
+    # If your tables are in public schema, use public."table"
+    # We quote the identifier to preserve underscores etc.
+    sql = text(f'''
+        SELECT *
+        FROM public."{t}"
+        ORDER BY
+            CASE WHEN UPPER(COALESCE(msku, '')) = 'GRAND TOTAL' THEN 1 ELSE 0 END,
+            msku NULLS LAST
+    ''')
+
+    result = conn.execute(sql)
+
+    # SQLAlchemy 1.4+/2.0: result.mappings() yields dict-like rows
+    return [dict(r) for r in result.mappings().all()]
+
 
 @inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-month", methods=["GET"])
 def inventory_ledger_summary_store_month():
@@ -2807,30 +3035,29 @@ def inventory_ledger_summary_store_month():
         with amazon_conn() as conn:
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
             grand_total = _compute_grand_total(items)
-
-            # save normal rows + grand total row
             to_save = items + [grand_total]
 
             _ensure_inventory_summary_table_exists(conn, table_name)
             saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
 
+            # ✅ Read back rows from created table
+            read_items = _read_inventory_summary_table(conn, table_name)
+
         return jsonify({
             "success": True,
             "marketplace_id": mp,
+            "mode": "month",
+            "country": country,
             "table": f"public.{table_name}",
-            "saved_rows": saved,  # includes Grand Total row
+            "saved_rows": saved,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
+            "count": max(len(read_items) - 1, 0) if read_items else 0,
+            "items": read_items,
         }), 200
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
-
-# ============================================================
-# ROUTE 3: STORE QUARTER SUMMARY TABLE (with GRAND TOTAL row)
-# GET /amazon_api/inventory/ledger-summary/db/store-quarter?country=uk&quarter=4&year=2025
-# ============================================================
 
 @inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-quarter", methods=["GET"])
 def inventory_ledger_summary_store_quarter():
@@ -2859,29 +3086,28 @@ def inventory_ledger_summary_store_quarter():
         with amazon_conn() as conn:
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
             grand_total = _compute_grand_total(items)
-
             to_save = items + [grand_total]
 
             _ensure_inventory_summary_table_exists(conn, table_name)
             saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
 
+            read_items = _read_inventory_summary_table(conn, table_name)
+
         return jsonify({
             "success": True,
             "marketplace_id": mp,
+            "mode": "quarter",
+            "country": country,
             "table": f"public.{table_name}",
             "saved_rows": saved,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
+            "count": max(len(read_items) - 1, 0) if read_items else 0,
+            "items": read_items,
         }), 200
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
-
-# ============================================================
-# ROUTE 4: STORE YEAR SUMMARY TABLE (with GRAND TOTAL row)
-# GET /amazon_api/inventory/ledger-summary/db/store-year?country=uk&year=2025
-# ============================================================
 
 @inventory_bp.route("/amazon_api/inventory/ledger-summary/db/store-year", methods=["GET"])
 def inventory_ledger_summary_store_year():
@@ -2909,19 +3135,24 @@ def inventory_ledger_summary_store_year():
         with amazon_conn() as conn:
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
             grand_total = _compute_grand_total(items)
-
             to_save = items + [grand_total]
 
             _ensure_inventory_summary_table_exists(conn, table_name)
             saved = _upsert_inventory_summary_rows(conn, table_name, to_save)
 
+            read_items = _read_inventory_summary_table(conn, table_name)
+
         return jsonify({
             "success": True,
             "marketplace_id": mp,
+            "mode": "year",
+            "country": country,
             "table": f"public.{table_name}",
             "saved_rows": saved,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
+            "count": max(len(read_items) - 1, 0) if read_items else 0,
+            "items": read_items,
         }), 200
 
     except Exception as e:

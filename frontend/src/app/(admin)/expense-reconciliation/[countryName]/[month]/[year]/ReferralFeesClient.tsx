@@ -219,13 +219,6 @@ const fmtPctPlain = (p: number) => `${toNumberSafe(p).toFixed(2)}%`;
 
 
 // --- Fee buckets helpers ---
-const isSummaryLine = (sku: any) => {
-  const s = String(sku ?? "");
-  return s.startsWith("Charge -") || s === "Grand Total" || s.toLowerCase() === "total";
-};
-
-const sumByKey = (list: any[], key: string) =>
-  list.reduce((acc, r) => acc + toNumberSafe(r?.[key]), 0);
 
 // Customize these patterns to match your data keys/naming
 const FBA_KEYS = ["fba_fees", "fulfillment_fees"];
@@ -233,228 +226,7 @@ const PLATFORM_KEYS = ["platform_fees", "marketplace_fees"];
 const OTHER_KEYS = ["other_fees", "misc_fees"];
 
 
-/* ===================== Donut Component ===================== */
-type OverlapSalesDonutProps = {
-  sales: number;
-  applicable: number;
-  charged: number;
-  fmtCurrency: (n: number) => string;
-};
 
-/* ===================== Cards ===================== */
-
-function StatCard({
-  title,
-  value,
-  valueFmt,
-  bottomLeftLabel,
-  bottomLeftValue,
-  bottomRightDeltaPct,
-
-  borderColor = "#cbd5e1",
-  bgColor = "#ffffff",
-}: {
-  title: string;
-  value: number;
-  valueFmt: (n: number) => string;
-
-  bottomLeftLabel?: string;
-  bottomLeftValue?: number;
-  bottomRightDeltaPct?: number;
-
-  borderColor?: string;
-  bgColor?: string;
-}) {
-  const showBottom =
-    bottomLeftLabel !== undefined ||
-    bottomLeftValue !== undefined ||
-    bottomRightDeltaPct !== undefined;
-
-  const d = typeof bottomRightDeltaPct === "number" ? bottomRightDeltaPct : null;
-  const isUp = (d ?? 0) > 0;
-  const isDown = (d ?? 0) < 0;
-
-  return (
-    <div
-      className={`rounded-2xl border shadow-sm px-4 py-3 ${showBottom ? "min-h-[110px] flex flex-col" : ""
-        }`}
-      style={{ borderColor, backgroundColor: bgColor }}
-    >
-      <p className="text-xs font-semibold text-charcoal-500">{title}</p>
-
-      <p className="mt-1 text-base font-bold text-charcoal-500">
-        {valueFmt(toNumberSafe(value))}
-      </p>
-
-      {showBottom && (
-        <div className="mt-auto flex items-end justify-between gap-3 pt-2">
-          <div className="text-left">
-            <p className="text-[11px] sm:text-xs text-slate-600">
-              {bottomLeftLabel ?? ""}
-            </p>
-            <p className="text-[11px] sm:text-xs font-semibold text-charcoal-500">
-              {bottomLeftValue !== undefined ? valueFmt(toNumberSafe(bottomLeftValue)) : ""}
-            </p>
-          </div>
-
-          {d !== null ? (
-            <div
-              className={`text-[11px] sm:text-xs font-bold flex items-center gap-1 ${isUp ? "text-emerald-600" : isDown ? "text-red-600" : "text-slate-500"
-                }`}
-            >
-              <span className="text-sm leading-none">{isUp ? "▲" : isDown ? "▼" : ""}</span>
-              <span>{fmtPct(d)}</span>
-            </div>
-          ) : (
-            <div />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// function SalesCard({
-//   title,
-//   sales,
-//   units,
-//   valueFmt,
-//   borderColor,
-//   bgColor,
-// }: {
-//   title: string;
-//   sales: number;
-//   units: number;
-//   valueFmt: (n: number) => string;
-//   borderColor?: string;
-//   bgColor?: string;
-// }) {
-
-//   const asp =
-//     toNumberSafe(units) > 0
-//       ? toNumberSafe(sales) / toNumberSafe(units)
-//       : 0;
-
-//   return (
-//     <div
-//       className="rounded-2xl border shadow-sm px-4 py-3 flex flex-col min-h-[110px]"
-//       style={{ borderColor: borderColor ?? "#cbd5e1", backgroundColor: bgColor ?? "#fff" }}
-//     >
-//       <p className="text-xs font-semibold text-charcoal-500">{title}</p>
-
-//       <p className="mt-1 text-[11px] sm:text-xs font-bold text-charcoal-500">
-//         {valueFmt(toNumberSafe(sales))}
-//       </p>
-//       <div className="mt-auto pt-2 grid grid-cols-2 gap-4">
-//         {/* Units Sold */}
-//         <div>
-//           <p className="text-[11px] sm:text-xs text-slate-600">Units Sold</p>
-//           <p className="text-[11px] sm:text-xs font-semibold text-charcoal-500">
-//             {fmtInteger(Math.round(toNumberSafe(units)))}
-//           </p>
-//         </div>
-
-//         {/* ASP */}
-//         <div className="text-center">
-//           <p className="text-[11px] sm:text-xs text-slate-600">ASP</p>
-//           <p className="text-[11px] sm:text-xs font-semibold text-charcoal-500 tabular-nums">
-//             {valueFmt(0).replace(/[\d.,\s]/g, "")}
-//             {asp.toFixed(2)}
-//           </p>
-
-//         </div>
-//       </div>
-
-//     </div>
-//   );
-// }
-
-
-// function SalesCard({
-//   title,
-//   sales,          // Net
-//   productSales,   // Gross
-//   units,
-//   valueFmt,
-//   borderColor,
-//   bgColor,
-// }: {
-//   title: string;
-//   sales: number;
-//   productSales: number;
-//   units: number;
-//   valueFmt: (n: number) => string;
-//   borderColor?: string;
-//   bgColor?: string;
-// }) {
-//   const net = toNumberSafe(sales);
-//   const gross = toNumberSafe(productSales);
-//   const discount = gross - net;
-
-//   const asp =
-//     toNumberSafe(units) > 0 ? net / toNumberSafe(units) : 0;
-
-//   const discountPct =
-//     gross > 0 ? ((gross - net) / gross) * 100 : 0;
-
-//   return (
-//     <div
-//       className="rounded-2xl border shadow-sm px-4 py-3 flex flex-col min-h-[110px]"
-//       style={{ borderColor: borderColor ?? "#cbd5e1", backgroundColor: bgColor ?? "#fff" }}
-//     >
-//       <p className="text-xs font-semibold text-charcoal-500">{title}</p>
-
-//       {/* Sales: Net / Gross / Discount */}
-//       <div className="mt-1">
-//         {/* <p className="text-[11px] sm:text-xs font-semibold text-slate-600">Sales</p> */}
-
-//         <div className="grid grid-cols-3 gap-2 mt-1">
-
-//           <div>
-//             <p className="text-[10px] sm:text-[11px] text-slate-500">Gross</p>
-//             <p className="text-[11px] sm:text-xs font-bold text-charcoal-500">
-//               {valueFmt(gross)}
-//             </p>
-//           </div>
-//           <div className="text-center">
-//             <p className="text-[10px] sm:text-[11px] text-slate-500">Net</p>
-//             <p className="text-[11px] sm:text-xs font-bold text-charcoal-500">
-//               {valueFmt(net)}
-//             </p>
-//           </div>
-
-
-
-//           <div className="text-right">
-//             <p className="text-[10px] sm:text-[11px] text-slate-500">Disc.</p>
-//             <p className="text-[11px] sm:text-xs font-bold text-charcoal-500 tabular-nums">
-//               {discountPct.toFixed(2)}%
-//             </p>
-//           </div>
-
-//         </div>
-//       </div>
-
-//       {/* Bottom: Units + ASP */}
-//       <div className="mt-auto pt-2 grid grid-cols-2 gap-4">
-//         <div className="text-center">
-//           <p className="text-[11px] sm:text-xs text-slate-600">Units Sold</p>
-//           <p className="text-[11px] sm:text-xs font-semibold text-charcoal-500">
-//             {fmtInteger(Math.round(toNumberSafe(units)))}
-//           </p>
-//         </div>
-
-//         <div className="text-center">
-//           <p className="text-[11px] sm:text-xs text-slate-600">ASP</p>
-//           <p className="text-[11px] sm:text-xs font-semibold text-charcoal-500 tabular-nums">
-//             {valueFmt(0).replace(/[\d.,\s]/g, "")}
-//             {asp.toFixed(2)}
-//           </p>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
 
 
 function SalesCard({
@@ -623,8 +395,21 @@ export default function ReferralFeesDashboard(): JSX.Element {
   // ✅ IMPORTANT: pick platform/country from URL
   const country = ((routeParams?.countryName as string) || "global").toLowerCase();
 
+  const [month, setMonth] = useState<string>("");
+  const [year, setYear] = useState<string>("");
+  const [range, setRange] = useState<Range>("monthly");
+  const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+
+  const isPreviewMode =
+  month === "NA" ||
+  year === "NA";
+
+  const effectiveCountry = isPreviewMode
+  ? "global"
+  : country;
+
   // ✅ Global vs country behavior
-  const isGlobalPage = country === "global";
+  const isGlobalPage = effectiveCountry === "global";
 
   // ✅ get home currency ONLY for global formatting + api param
   const { homeCurrency: rawHomeCurrency } = useHomeCurrencyContext(country);
@@ -632,9 +417,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   // ✅ formatting currency code (NO fallback to homeCurrency on country pages)
   const displayCurrencyCode = useMemo(() => {
-    if (isGlobalPage) return homeCurrency;
-    return currencyFromCountryName(country);
-  }, [isGlobalPage, homeCurrency, country]);
+  if (effectiveCountry === "global") return homeCurrency || "USD";
+  return currencyFromCountryName(effectiveCountry);
+}, [effectiveCountry, homeCurrency]);
+
+  
 
   const [card6, setCard6] = useState<Card6Summary>({
     sales: 0,
@@ -686,16 +473,135 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
 
 
-  const refDeltaPct = useMemo(
-    () => pctDelta(card6.refFeesApplied, card6.refFeesApplicable),
-    [card6.refFeesApplied, card6.refFeesApplicable]
-  );
+  
 
 
-  const [month, setMonth] = useState<string>("");
-  const [year, setYear] = useState<string>("");
-  const [range, setRange] = useState<Range>("monthly");
-  const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+  
+
+  const DUMMY_CARD6: Card6Summary = {
+  sales: 125000,
+  units: 3400,
+  productSales: 138500,
+
+  totalFees: 18500,
+  totalFeesApplicable: 17200,
+
+  refFeesApplied: 9200,
+  refFeesApplicable: 8800,
+
+  fbaFees: 5200,
+  fbaFeesApplicable: 5000,
+
+  platformFees: 2800,
+  platformFeesApplicable: 2600,
+
+  otherFees: 1300,
+  otherFeesApplicable: 1200,
+};
+
+const DUMMY_FEE_SUMMARY_ROWS: FeeSummaryRow[] = [
+  {
+    label: "Charge - Accurate",
+    units: 2100,
+    sales: 82000,
+    refFeesApplicable: 5900,
+    refFeesCharged: 6100,
+    overcharged: -200,
+  },
+  {
+    label: "Charge - Overcharged",
+    units: 700,
+    sales: 28000,
+    refFeesApplicable: 1700,
+    refFeesCharged: 2100,
+    overcharged: 400,
+  },
+  {
+    label: "Charge - Undercharged",
+    units: 400,
+    sales: 10000,
+    refFeesApplicable: 900,
+    refFeesCharged: 600,
+    overcharged: -300,
+  },
+  {
+    label: "Charge - noreferallfee",
+    units: 200,
+    sales: 5000,
+    refFeesApplicable: 0,
+    refFeesCharged: 0,
+    overcharged: 0,
+  },
+  {
+    label: "Grand Total",
+    units: 3400,
+    sales: 125000,
+    refFeesApplicable: 8500,
+    refFeesCharged: 8800,
+    overcharged: -300,
+  },
+];
+
+
+const DUMMY_ROWS: ReferralRow[] = [
+  {
+    sku: "Charge - Accurate",
+    net_sales_total_value: 82000,
+    selling_fees: 6100,
+    answer: 5900,
+    difference: -200,
+  },
+  {
+    sku: "Charge - Overcharged",
+    net_sales_total_value: 28000,
+    selling_fees: 2100,
+    answer: 1700,
+    difference: 400,
+  },
+  {
+    sku: "Charge - Undercharged",
+    net_sales_total_value: 10000,
+    selling_fees: 600,
+    answer: 900,
+    difference: -300,
+  },
+  {
+    sku: "Charge - noreferallfee",
+    net_sales_total_value: 5000,
+    selling_fees: 0,
+    answer: 0,
+    difference: 0,
+  },
+  {
+    sku: "Grand Total",
+    net_sales_total_value: 125000,
+    selling_fees: 8800,
+    answer: 8500,
+    difference: -300,
+  },
+];
+
+const DUMMY_SKU_ROWS: ReferralRow[] = [
+  {
+    sku: "SKU-001",
+    product_name: "Demo Product A",
+    quantity: 1200,
+    net_sales_total_value: 42000,
+    selling_fees: 3200,
+    answer: 3000,
+    difference: 200,
+  },
+  {
+    sku: "SKU-002",
+    product_name: "Demo Product B",
+    quantity: 800,
+    net_sales_total_value: 31000,
+    selling_fees: 2600,
+    answer: 2500,
+    difference: 100,
+  },
+];
+
 
   // quarter -> representative month (choose what you prefer: start month here)
   const quarterToMonth = (q: string) => {
@@ -797,6 +703,19 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   /* ===================== API Fetch ===================== */
   const fetchReferralData = useCallback(async () => {
+    if (isPreviewMode) {
+  setLoading(false);
+  setError(null);
+
+  setRows(DUMMY_ROWS);
+  setSkuwiseRows(DUMMY_SKU_ROWS);
+  setFeeSummaryRows(DUMMY_FEE_SUMMARY_ROWS);
+  setAllOrdersByStatus([]);
+
+  setCard6(DUMMY_CARD6);
+
+  return;
+}
     if (!month || !year || !country) {
       setError("Please select both month and year to view referral fees.");
       setRows([]);
@@ -1629,7 +1548,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
           className="mb-0"
         />
         <span className="text-[#5EA68E] font-bold text-lg sm:text-2xl md:text-2xl">
-          {country.toUpperCase()}
+          {effectiveCountry.toUpperCase()}
         </span>
       </div>
     </div>
@@ -2025,7 +1944,10 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     align="left"
                     className="mb-0 md:mb-4 text-center"
                   />
-                  <DownloadButton onClick={handleDownloadExcel} />
+<DownloadButton
+  onClick={handleDownloadExcel}
+  disabled={isPreviewMode}
+/>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

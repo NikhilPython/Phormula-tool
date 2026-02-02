@@ -12,7 +12,7 @@ type DashboardBargraphCardProps = {
   values: number[];
   prevValues: number[];
   colors?: string[];
-
+  expanded?: boolean;
   loading: boolean;
   allValuesZero?: boolean;
 };
@@ -28,6 +28,7 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   prevValues,
   colors,
   loading,
+  expanded,
   allValuesZero = false,
 }) => {
   const titleCountry = useMemo(() => {
@@ -42,11 +43,11 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   }, [formattedMonthYear]);
 
   const prevColors = useMemo(() => {
-  if (!colors || colors.length !== labels.length) return [];
+    if (!colors || colors.length !== labels.length) return [];
 
-  // Add ~50% opacity to each hex color: #RRGGBB -> #RRGGBB80
-  return colors.map((c) => (c.startsWith("#") && c.length === 7 ? `${c}4D` : c));
-}, [colors, labels.length]);
+    // Add ~50% opacity to each hex color: #RRGGBB -> #RRGGBB80
+    return colors.map((c) => (c.startsWith("#") && c.length === 7 ? `${c}4D` : c));
+  }, [colors, labels.length]);
 
 
   return (
@@ -79,12 +80,13 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
             <SimpleBarChart
               labels={labels}
               values={values}
-              prevValues={prevValues} 
+              prevValues={prevValues}
               colors={colors}
               prevColors={prevColors}
               currentLabel="MTD"
               prevLabel="Last month till date"
               yTitle={`Amount (${currencySymbol})`}
+              showPrev={expanded}
             />
 
 
