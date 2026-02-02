@@ -559,19 +559,6 @@ const LiveLineChart: React.FC<{
     }),
   };
 
-  // return (
-  //   <div style={{ width: "100%", height: "100%" }}>
-  //     <ReactECharts
-  //       option={option}
-  //       style={{ width: "100%", height: "100%" }}
-  //       opts={{ renderer: "canvas" }}
-  //       onChartReady={(instance) => {
-  //         echartsInstanceRef.current = instance;
-  //       }}
-  //     />
-  //   </div>
-  // );
-
   const containerRef = useRef<HTMLDivElement | null>(null);
   
   useEffect(() => {
@@ -597,14 +584,11 @@ const LiveLineChart: React.FC<{
         opts={{ renderer: "canvas" }}
         onChartReady={(instance) => {
           echartsInstanceRef.current = instance;
-          // one immediate resize helps too
           try { instance.resize(); } catch { }
         }}
       />
     </div>
   );
-
-
 };
 
 export default function PerformanceTrendChart(props: PerformanceTrendChartProps) {

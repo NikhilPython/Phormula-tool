@@ -9,8 +9,9 @@ export type Align = "left" | "center" | "right";
 export type LeafCol<RowT> = {
   key: string;
   label: React.ReactNode;
-    excelLabel?: string;
+  excelLabel?: string;
   align?: Align;
+  width?: number | string;      // ✅ ADD
   tooltip?: React.ReactNode;
   thClassName?: string;
   tdClassName?: string;
@@ -18,7 +19,7 @@ export type LeafCol<RowT> = {
 
 export type ColGroup<RowT> = {
   id: string;
-  label: React.ReactNode; 
+  label: React.ReactNode;
   headerClassName?: string;
   collapsedCols: LeafCol<RowT>[];
   expandedCols: LeafCol<RowT>[];
@@ -31,7 +32,7 @@ type LayoutItem<RowT> =
 type Props<RowT> = {
   rows: RowT[];
   getRowKey?: (row: RowT, index: number) => string | number;
-
+  onAnyGroupExpandedChange?: (expanded: boolean) => void;
   leftCols: LeafCol<RowT>[];
   groups: ColGroup<RowT>[];
   singleCols: LeafCol<RowT>[];
@@ -115,6 +116,7 @@ const alignClass = (align?: Align) =>
 export default function GroupedCollapsibleTable<RowT>({
   rows,
   getRowKey,
+  onAnyGroupExpandedChange,
   leftCols,
   groups,
   singleCols,
@@ -228,6 +230,11 @@ export default function GroupedCollapsibleTable<RowT>({
     [groups, collapsed]
   );
 
+  useEffect(() => {
+  onAnyGroupExpandedChange?.(anyGroupExpanded);
+}, [anyGroupExpanded, onAnyGroupExpandedChange]);
+
+
   const row2Cells = useMemo<LeafCol<RowT>[]>(() => {
     if (!anyGroupExpanded) return [];
 
@@ -259,14 +266,24 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const cellPadding = "px-2 sm:px-3 py-3";
   const thBase =
-    `whitespace-nowrap border border-gray-300 ${cellPadding}`;
+    `whitespace-normal break-words leading-tight border border-gray-300 ${cellPadding}`;
 
   /* ---------------- Render ---------------- */
 
   return (
     <table className={tableClassName}>
+      {/* 🔹 Column width controller */}
+      <colgroup>
+        {visibleLeafCols.map((c) => (
+          <col
+            key={c.key}
+            style={c.width ? { width: c.width } : undefined}
+          />
+        ))}
+      </colgroup>
+
       <thead className="sticky top-0 z-10 font-bold">
-        {/* -------- Header Row 1 -------- */}
+
 
         {/* -------- Header Row 1 -------- */}
         <tr className={headerRow1ClassName}>
@@ -307,7 +324,10 @@ export default function GroupedCollapsibleTable<RowT>({
                     <span className="shrink-0 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
                       {isCollapsed ? "+" : "−"}
                     </span>
-                    <span className="min-w-0 truncate">{g.label}</span>
+                    <span className="min-w-0 whitespace-normal break-words leading-tight">
+                      {g.label}
+                    </span>
+
                   </div>
                 </th>
               );
@@ -340,7 +360,10 @@ export default function GroupedCollapsibleTable<RowT>({
                   )}
 
                   {/* label */}
-                  <span className="min-w-0 truncate">{c.label}</span>
+                  <span className="min-w-0 whitespace-normal break-words leading-tight">
+                    {c.label}
+                  </span>
+
                 </div>
               </th>
             );

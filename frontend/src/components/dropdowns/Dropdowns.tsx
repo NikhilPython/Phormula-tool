@@ -316,36 +316,41 @@ const parseMdSections = (md?: string | null): Record<string, string[]> => {
   return out;
 };
 
-
-// --- REPLACE old extractSummaryBullets with this (so it can also show PRODUCT INSIGHTS)
 const extractSummaryAndSkuBullets = (md?: string | null) => {
-  if (!md) {
+  if (!md || typeof md !== "string") {
     return { summaryBullets: [], skuInsightsBullets: [] };
   }
 
   const sections = parseMdSections(md);
 
-  const summaryBullets =
-    sections["SUMMARY"]?.length
-      ? sections["SUMMARY"]
-      : [];
-
   return {
-    summaryBullets,
+    summaryBullets: sections["SUMMARY"] ?? [],
     skuInsightsBullets: sections["PRODUCT INSIGHTS"] ?? [],
   };
 };
 
+const extractRecoAndInventoryBullets = (
+  mdOrObj?: string | Record<string, string> | null
+) => {
+  // ✅ Case 1: object-based recommendations (new API)
+  if (mdOrObj && typeof mdOrObj === "object") {
+    return {
+      recommendationBullets: Object.values(mdOrObj),
+      inventoryBullets: [],
+    };
+  }
 
-// --- NEW: for recommendations, keep main bullets + INVENTORY section bullets
-const extractRecoAndInventoryBullets = (md?: string | null) => {
-  const sections = parseMdSections(md);
+  // ✅ Case 2: markdown (old API)
+  if (!mdOrObj || typeof mdOrObj !== "string") {
+    return { recommendationBullets: [], inventoryBullets: [] };
+  }
 
-  // ROOT = bullets before any "##"
-  const recommendationBullets = sections["ROOT"] ?? [];
-  const inventoryBullets = sections["INVENTORY"] ?? [];
+  const sections = parseMdSections(mdOrObj);
 
-  return { recommendationBullets, inventoryBullets };
+  return {
+    recommendationBullets: sections["ROOT"] ?? [],
+    inventoryBullets: sections["INVENTORY"] ?? [],
+  };
 };
 
 type AiSingleInsightCardProps = {
@@ -482,6 +487,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const currencySymbol = isGlobalPage
     ? getCurrencySymbol(homeCurrency) // GLOBAL → homeCurrency
     : getCurrencySymbol(countryName || ""); // Country → country currency
+  const [collapsed, setCollapsed] = useState(false);
 
   const [range, setRange] = useState<RangeType>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -504,6 +510,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setFocusedChart((prev) => (prev === which ? null : which));
   };
 
+  // ✅ PnL is "collapsed" when it's NOT in focused full view
+  const pnlCollapsed = focusedChart !== "pnl";
 
   // ---------------- AI Summary Panel state ----------------
   const [aiPanel, setAiPanel] = useState<AiPanelData | null>(null);
@@ -519,12 +527,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [productWiseCm1PieBase64, setProductWiseCm1PieBase64] = useState<string | null>(null);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
 
-const [primaryGoal, setPrimaryGoal] = useState("");
-const [riskLevel, setRiskLevel] = useState("");
-const [maxTacos, setMaxTacos] = useState<number | "">("");
-const [adBudget, setAdBudget] = useState<number | "">("");
-const [summaryNotes, setSummaryNotes] = useState("");
-const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
+  const [primaryGoal, setPrimaryGoal] = useState("");
+  const [riskLevel, setRiskLevel] = useState("");
+  const [maxTacos, setMaxTacos] = useState<number | "">("");
+  const [adBudget, setAdBudget] = useState<number | "">("");
+  const [summaryNotes, setSummaryNotes] = useState("");
+  const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
 
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const [overlayBounds, setOverlayBounds] = useState<{
@@ -753,79 +761,79 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
   };
 
   const submitCustomSummary = async () => {
-  if (!primaryGoal || !riskLevel) {
-    alert("Primary Goal & Risk Level are mandatory");
-    return;
-  }
-
-  setAiPanelLoading(true);
-  setAiPanelError(null);
-  setShowSummaryModal(false);
-
-  try {
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("jwtToken")
-        : null;
-
-    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/summary`);
-    url.searchParams.set("country", countryName);
-    url.searchParams.set("period", range);
-    url.searchParams.set(
-      "timeline",
-      range === "monthly"
-        ? monthNameToNumber(selectedMonth)
-        : range === "quarterly"
-        ? selectedQuarter
-        : "ALL"
-    );
-    url.searchParams.set("year", selectedYear);
-
-    const res = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        primary_goal: primaryGoal,
-        risk_level: riskLevel,
-        constraints: {
-          max_tacos: typeof maxTacos === "number" ? maxTacos : null,
-          ad_budget_cap: typeof adBudget === "number" ? adBudget : null,
-          max_price_increase_pct: typeof maxPriceIncreasePct === "number" ? maxPriceIncreasePct : null,
-          dont_change_price: false,
-        },
-        notes: summaryNotes ? summaryNotes : null,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.details || "Failed to generate summary");
+    if (!primaryGoal || !riskLevel) {
+      alert("Primary Goal & Risk Level are mandatory");
+      return;
     }
 
-    const data: AiSummaryResponse = await res.json();
+    setAiPanelLoading(true);
+    setAiPanelError(null);
+    setShowSummaryModal(false);
 
-    const { summaryBullets, skuInsightsBullets } =
-      extractSummaryAndSkuBullets(data.summary);
-    const { recommendationBullets, inventoryBullets } =
-      extractRecoAndInventoryBullets(data.recommendations);
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
 
-    setAiPanel({
-      summaryBullets,
-      skuInsightsBullets,
-      recommendationBullets,
-      inventoryBullets,
-      rawSummary: data.summary ?? null,
-      rawRecommendations: data.recommendations ?? null,
-    });
-  } catch (e: any) {
-    setAiPanelError(e.message || "Summary generation failed");
-  } finally {
-    setAiPanelLoading(false);
-  }
-};
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/summary`);
+      url.searchParams.set("country", countryName);
+      url.searchParams.set("period", range);
+      url.searchParams.set(
+        "timeline",
+        range === "monthly"
+          ? monthNameToNumber(selectedMonth)
+          : range === "quarterly"
+            ? selectedQuarter
+            : "ALL"
+      );
+      url.searchParams.set("year", selectedYear);
+
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          primary_goal: primaryGoal,
+          risk_level: riskLevel,
+          constraints: {
+            max_tacos: typeof maxTacos === "number" ? maxTacos : null,
+            ad_budget_cap: typeof adBudget === "number" ? adBudget : null,
+            max_price_increase_pct: typeof maxPriceIncreasePct === "number" ? maxPriceIncreasePct : null,
+            dont_change_price: false,
+          },
+          notes: summaryNotes ? summaryNotes : null,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.details || "Failed to generate summary");
+      }
+
+      const data: AiSummaryResponse = await res.json();
+
+      const { summaryBullets, skuInsightsBullets } =
+        extractSummaryAndSkuBullets(data.summary);
+      const { recommendationBullets, inventoryBullets } =
+        extractRecoAndInventoryBullets(data.recommendations);
+
+      setAiPanel({
+        summaryBullets,
+        skuInsightsBullets,
+        recommendationBullets,
+        inventoryBullets,
+        rawSummary: data.summary ?? null,
+        rawRecommendations: data.recommendations ?? null,
+      });
+    } catch (e: any) {
+      setAiPanelError(e.message || "Summary generation failed");
+    } finally {
+      setAiPanelLoading(false);
+    }
+  };
 
   const fetchPerformanceTrendFromHistory = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
@@ -1827,7 +1835,7 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
       >
         Month-end Business Summary
       </Button>
-      
+
       <Dialog
         open={showSummaryModal}
         onClose={() => setShowSummaryModal(false)}
@@ -1835,7 +1843,7 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
         fullWidth
       >
         <DialogTitle>Month-end Business Summary</DialogTitle>
-      
+
         <DialogContent className="flex flex-col gap-4 mt-2">
           {/* Primary Goal */}
           <TextField
@@ -1851,7 +1859,7 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
             <MenuItem value="inventory_clearance">Inventory Dilution</MenuItem>
             <MenuItem value="balanced">Balanced</MenuItem>
           </TextField>
-      
+
           {/* Risk Level */}
           <TextField
             select
@@ -1865,30 +1873,30 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
             <MenuItem value="balanced">Balanced</MenuItem>
             <MenuItem value="aggressive">Aggressive</MenuItem>
           </TextField>
-      
+
           {/* Max TACoS */}
           <TextField
             type="number"
             label="Max TACoS"
             value={maxTacos}
             onChange={(e) =>
-        setMaxTacos(e.target.value === "" ? "" : Number(e.target.value))
-      }
+              setMaxTacos(e.target.value === "" ? "" : Number(e.target.value))
+            }
             fullWidth
           />
-      
+
           <TextField
-        type="number"
-        label="Max Price Increase %"
-        value={maxPriceIncreasePct}
-        onChange={(e) =>
-          setMaxPriceIncreasePct(
-            e.target.value === "" ? "" : Number(e.target.value)
-          )
-        }
-        fullWidth
-      />
-      
+            type="number"
+            label="Max Price Increase %"
+            value={maxPriceIncreasePct}
+            onChange={(e) =>
+              setMaxPriceIncreasePct(
+                e.target.value === "" ? "" : Number(e.target.value)
+              )
+            }
+            fullWidth
+          />
+
           {/* Ads Budget */}
           <TextField
             type="number"
@@ -1897,7 +1905,7 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
             onChange={(e) => setAdBudget(Number(e.target.value))}
             fullWidth
           />
-      
+
           {/* Notes */}
           <TextField
             label="Notes"
@@ -1908,7 +1916,7 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
             fullWidth
           />
         </DialogContent>
-      
+
         <DialogActions>
           <Button
             onClick={() => setShowSummaryModal(false)}
@@ -1916,7 +1924,7 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
           >
             Cancel
           </Button>
-      
+
           <Button
             variant="contained"
             onClick={submitCustomSummary}
@@ -1926,7 +1934,7 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
           </Button>
         </DialogActions>
       </Dialog>
-      
+
 
       {/* WRAPPER: stacked layout */}
       <div className="flex flex-col gap-5 w-full mt-4">
@@ -2918,6 +2926,7 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
                       hideDownloadButton
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                      isCollapsed={pnlCollapsed}
                     />
                   </div>
                 </div>
@@ -3093,6 +3102,7 @@ const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
                       hideDownloadButton
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                      isCollapsed={pnlCollapsed}
                     />
                   </div>
                 </div>

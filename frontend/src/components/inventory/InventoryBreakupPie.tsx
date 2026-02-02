@@ -65,7 +65,8 @@ export default function InventoryTopProductsPie({
 
     // ✅ Choose what "inventory count" means.
     // Use "ending_total" because that's what you want breakup of (Inventory at month end -> Total)
-    const getInventoryCount = (r: AnyRow) => toNum(r?.ending_total);
+const getInventoryCount = (r: AnyRow) =>
+  toNum(r?.ending_total ?? r?.__ending_total ?? r?.EndingTotal ?? r?.endingTotal);
 
     const MIN_PRODUCTS = 5;
 
