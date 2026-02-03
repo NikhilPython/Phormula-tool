@@ -21,6 +21,11 @@ import PageBreadcrumb from "../common/PageBreadCrumb";
 import Loader from "@/components/loader/Loader";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import { ProfitChartExportApi } from "@/lib/utils/exportTypes";
+import {
+  getMetricLabel,
+  type MetricKey,
+} from "@/lib/constants/metricLabels";
+
 
 ChartJS.register(
   CategoryScale,
@@ -42,6 +47,7 @@ type GraphPageProps = {
   onNoDataChange?: (noData: boolean) => void;
   onExportApiReady?: (api: ProfitChartExportApi) => void;
   hideDownloadButton?: boolean;
+  isCollapsed: boolean;
 };
 
 type UploadRow = {
@@ -84,6 +90,8 @@ const getCurrencySymbol = (codeOrCountry: string) => {
   }
 };
 
+
+
 const GraphPage: React.FC<GraphPageProps> = ({
   range,
   selectedMonth,
@@ -94,9 +102,17 @@ const GraphPage: React.FC<GraphPageProps> = ({
   onNoDataChange,
   onExportApiReady,
   hideDownloadButton,
+  isCollapsed = false,
 }) => {
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
   const normalizedHomeCurrency = (homeCurrency || "").trim().toLowerCase();
+
+
+  // const getMetricLabel = (metric: MetricKey) =>
+  //   isCollapsed
+  //     ? METRIC_LABELS[metric].short
+  //     : METRIC_LABELS[metric].full;
+
 
   // ✅ For global pages: we want to filter rows by `country` field.
   // - global (base)
@@ -180,18 +196,23 @@ const GraphPage: React.FC<GraphPageProps> = ({
   const convertToAbbreviatedMonth = (m?: string) =>
     m ? capitalizeFirstLetter(m).slice(0, 3) : "";
 
-  const labelMap: Record<string, string> = {
-    sales: "Sales",
-    total_cous: "COGS",
-    taxncredit: "Taxes & Credits",
-    AmazonExpense: "Amazon Fees",
-    advertisingCosts: "Advertising Costs",
-    Other: "Other",
-    profit: "CM2 Profit",
-    profit2: "CM1 Profit",
-  };
+  // const labelMap: Record<string, string> = {
+  //   sales: "Sales",
+  //   total_cous: "COGS",
+  //   taxncredit: "Taxes & Credits",
+  //   AmazonExpense: "Amazon Fees",
+  //   advertisingCosts: "Advertising Costs",
+  //   Other: "Other",
+  //   profit: "CM2 Profit",
+  //   profit2: "CM1 Profit",
+  // };
 
   // ✅ Fetch upload history
+
+
+  const shortLabel = (key: MetricKey) => getMetricLabel(key, true);
+  const fullLabel = (key: MetricKey) => getMetricLabel(key, false);
+
   useEffect(() => {
     const fetchUploadHistory = async () => {
       try {
@@ -416,7 +437,9 @@ const GraphPage: React.FC<GraphPageProps> = ({
       const datasets = Object.entries(selectedGraphs)
         .filter(([, checked]) => checked)
         .map(([metric]) => ({
-          label: labelMap[metric] ?? metric,
+          // label: labelMap[metric] ?? metric,
+          metricKey: metric as MetricKey,
+          label: getMetricLabel(metric as MetricKey, isCollapsed),
           data: labels.map(
             (l) =>
               dataToUse[l]?.[metric as keyof (typeof dataToUse)[string]] || 0
@@ -669,7 +692,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
               { name: "advertisingCosts", label: "Advertising Costs", color: "#C49466" },
               { name: "Other", label: "Other", color: "#3A8EA4" },
               { name: "profit", label: "CM2 Profit", color: "#B8C78C" },
-            ].map(({ name, label, color }) => {
+            ].map(({ name, color }) => {
               const isChecked = !!selectedGraphs[name];
 
               return (
@@ -711,7 +734,10 @@ const GraphPage: React.FC<GraphPageProps> = ({
                       </svg>
                     )}
                   </span>
-                  <span className="capitalize">{label}</span>
+                  <span className="capitalize">
+                    {getMetricLabel(name as MetricKey, isCollapsed)}
+                  </span>
+
                 </label>
               );
             })}
@@ -739,7 +765,12 @@ const GraphPage: React.FC<GraphPageProps> = ({
                     intersect: false,
                     callbacks: {
                       label: (tooltipItem: any) => {
-                        const displayLabel = (tooltipItem.dataset.label as string) || "";
+                        // const displayLabel = (tooltipItem.dataset.label as string) || "";
+                        const metricKey = (tooltipItem.dataset as any).metricKey as MetricKey | undefined;
+                        const displayLabel = metricKey
+                          ? fullLabel(metricKey) // ✅ always full on hover
+                          : ((tooltipItem.dataset.label as string) || "");
+
                         const value = tooltipItem.raw as number;
                         return `${displayLabel}: ${currencySymbol} ${value.toLocaleString(undefined, {
                           minimumFractionDigits: 2,

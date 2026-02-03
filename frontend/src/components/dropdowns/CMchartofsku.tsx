@@ -348,7 +348,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       responsive: true,
       maintainAspectRatio: false,
       animation: { duration: 0 },
-      radius: isLaptop ? "90%" : isDesktop ? "95%" : "100%",
+      radius: isLaptop ? "100%" : isDesktop ? "95%" : "100%",
       layout: { padding: { top: 0, bottom: 0, left: 0, right: 0 } },
       elements: { arc: { borderWidth: 0, hoverOffset: 4 } },
       plugins: {
@@ -444,11 +444,11 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
             <div
               className="shrink-0 overflow-auto pr-1"
               style={{
-                width: isDesktop ? 260 : isLaptop ? 220 : 240,
+                width: isDesktop ? 260 : isLaptop ? 170 : 240,
                 maxHeight: "100%",
               }}
             >
-              <div className="flex flex-col gap-3">
+               <div className="flex flex-col gap-1 2xl:gap-4">
                 {slices.map((slice, i) => {
                   const dot = COLORS[i % COLORS.length];
                   const chart = chartRef.current;
@@ -521,7 +521,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                               maximumFractionDigits: 2,
                             })}{" "}
                             ({pct.toFixed(2)}%){" "}
-                            <span className={deltaClass} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <span className={deltaClass} style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
                               (
                               {delta == null ? (
                                 "—"
