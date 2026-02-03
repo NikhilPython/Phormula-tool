@@ -127,7 +127,11 @@ def build_cm1_profit_pie_slices(
     """
 
     def safe_name(r):
-        return (r.get("product_name") or r.get("name") or "").strip()
+        val = r.get("product_name") or r.get("name")
+        if val is None:
+            return ""
+        return str(val).strip()
+
 
     def is_others(n: str) -> bool:
         return (n or "").strip().lower() == others_label.lower()
