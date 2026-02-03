@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, json, request, jsonify
 import jwt
 from datetime import datetime
 from config import Config
@@ -355,7 +355,12 @@ def summary():
 
         # Update summary output
         row.summary = result.get("summary", "") or row.summary
-        row.recommendations = result.get("recommendations", row.recommendations)
+        reco = result.get("recommendations")
+        if isinstance(reco, dict):
+            row.recommendations = json.dumps(reco)
+        elif isinstance(reco, str):
+            row.recommendations = reco
+
 
         db.session.commit()
 

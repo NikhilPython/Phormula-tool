@@ -4122,170 +4122,173 @@ export default function DashboardPage() {
                 ) : loading && monthlySkuwiseRows.length === 0 ? (
                     <div className="text-sm text-gray-500">Loading…</div>
                 ) : (
-                    <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
-                        rows={monthlySkuwiseRowsForTable}
-                        getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.isOthers ? "OTHERS" : row.sku || String(idx))}
-                        leftCols={SKUWISE_LEFT_COLS}
-                        groups={SKUWISE_GROUPS}
-                        singleCols={SKUWISE_SINGLE_COLS}
-                        showSignRowInBody
-                        getSignForCol={getAdsSignForCol}
-                        layout={[
-                            { type: "single", key: "quantity" },
-                            { type: "single", key: "asp" },
-                            { type: "single", key: "net_sales" },
-                            { type: "single", key: "cogs" },
-                            { type: "group", id: "marketplace_fees" },
-                            { type: "group", id: "tax_and_credits" },
-                            { type: "group", id: "profit" },
-                            { type: "single", key: "ads_spend" },
-                            { type: "group", id: "cm2_profit" },
+                       <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
+                        <div className="min-w-full">
+                            <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
+                                rows={monthlySkuwiseRowsForTable}
+                                getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.isOthers ? "OTHERS" : row.sku || String(idx))}
+                                leftCols={SKUWISE_LEFT_COLS}
+                                groups={SKUWISE_GROUPS}
+                                singleCols={SKUWISE_SINGLE_COLS}
+                                showSignRowInBody
+                                getSignForCol={getAdsSignForCol}
+                                layout={[
+                                    { type: "single", key: "quantity" },
+                                    { type: "single", key: "asp" },
+                                    { type: "single", key: "net_sales" },
+                                    { type: "single", key: "cogs" },
+                                    { type: "group", id: "marketplace_fees" },
+                                    { type: "group", id: "tax_and_credits" },
+                                    { type: "group", id: "profit" },
+                                    { type: "single", key: "ads_spend" },
+                                    { type: "group", id: "cm2_profit" },
 
-                        ]}
+                                ]}
 
-                        // initialCollapsed={{ marketplace_fees: false }}
-                        getRowClassName={(row, index) => {
-                            if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
-                            if (row.isOthers) return "";
-                            return index % 2 === 0 ? "bg-white" : "bg-gray-50";
-                        }}
-                        getValue={(row, colKey) => {
-                            if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
-                            if (colKey === "sku") {
-                                if (row.isOthers || row.isTotal) return "-";
-                                return row.sku || "-";
-                            }
-                            if (colKey === "product_name") return row.isTotal ? "Total" : row.isOthers ? "Others" : row.product_name;
+                                // initialCollapsed={{ marketplace_fees: false }}
+                                getRowClassName={(row, index) => {
+                                    if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
+                                    if (row.isOthers) return "";
+                                    return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                                }}
+                                getValue={(row, colKey) => {
+                                    if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
+                                    if (colKey === "sku") {
+                                        if (row.isOthers || row.isTotal) return "-";
+                                        return row.sku || "-";
+                                    }
+                                    if (colKey === "product_name") return row.isTotal ? "Total" : row.isOthers ? "Others" : row.product_name;
 
-                            if (colKey === "quantity") return row.quantity;
+                                    if (colKey === "quantity") return row.quantity;
 
-                            if (colKey === "asp") return formatAdsNumber(row.asp);
-                            if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
+                                    if (colKey === "asp") return formatAdsNumber(row.asp);
+                                    if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
 
-                            // if (colKey === "tax") return formatAdsNumber(row.tax);
-                            // if (colKey === "credits") return formatAdsNumber(row.credits);
-                            // if (colKey === "tax_and_credits") return formatAdsNumber(row.tax_and_credits);
+                                    // if (colKey === "tax") return formatAdsNumber(row.tax);
+                                    // if (colKey === "credits") return formatAdsNumber(row.credits);
+                                    // if (colKey === "tax_and_credits") return formatAdsNumber(row.tax_and_credits);
 
-                            if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits" || colKey === "cm1_profit_per" || colKey === "cm1_profit_per_unit") {
-                                const v = Number((row as any)[colKey] ?? 0);
-                                return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
-                            }
+                                    if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits" || colKey === "cm1_profit_per" || colKey === "cm1_profit_per_unit") {
+                                        const v = Number((row as any)[colKey] ?? 0);
+                                        return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
+                                    }
 
-                            if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
-                                const v = Number((row as any)[colKey] ?? 0);
-                                return formatAdsNumber(Number.isFinite(v) ? v : 0);
-                            }
+                                    if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
+                                        const v = Number((row as any)[colKey] ?? 0);
+                                        return formatAdsNumber(Number.isFinite(v) ? v : 0);
+                                    }
 
-                            if (colKey === "ad_type") {
-                                if (row.isOthers || row.isTotal) return "-";
-                                return formatAdType((row as any).ad_type);
-                            }
-
-
-                            if (colKey === "ads_spend")
-                                return formatAdsNumber(Math.abs(row.ads_spend));
-
-                            if (colKey === "cogs")
-                                return formatAdsNumber(Math.abs(row.cogs));
-
-                            if (colKey === "fba_fees")
-                                return formatAdsNumber(Math.abs(row.fba_fees));
-
-                            if (colKey === "selling_fees")
-                                return formatAdsNumber(Math.abs(row.selling_fees));
-
-                            if (colKey === "marketplace_total")
-                                return formatAdsNumber(
-                                    Math.abs(row.fba_fees) + Math.abs(row.selling_fees)
-                                );
-
-                            if (colKey === "cm2_profit")
-                                return formatAdsNumber(row.cm2_profit);
-
-                            if (colKey === "profit")
-                                return formatAdsNumber(row.profit);
+                                    if (colKey === "ad_type") {
+                                        if (row.isOthers || row.isTotal) return "-";
+                                        return formatAdType((row as any).ad_type);
+                                    }
 
 
-                            // Fallback: return raw value if not explicitly formatted above
-                            return (row as any)[colKey] ?? "";
-                        }}
-                        summary={{
-                            enabled: monthlySkuwiseRowsForTable.length > 0,
+                                    if (colKey === "ads_spend")
+                                        return formatAdsNumber(Math.abs(row.ads_spend));
+
+                                    if (colKey === "cogs")
+                                        return formatAdsNumber(Math.abs(row.cogs));
+
+                                    if (colKey === "fba_fees")
+                                        return formatAdsNumber(Math.abs(row.fba_fees));
+
+                                    if (colKey === "selling_fees")
+                                        return formatAdsNumber(Math.abs(row.selling_fees));
+
+                                    if (colKey === "marketplace_total")
+                                        return formatAdsNumber(
+                                            Math.abs(row.fba_fees) + Math.abs(row.selling_fees)
+                                        );
+
+                                    if (colKey === "cm2_profit")
+                                        return formatAdsNumber(row.cm2_profit);
+
+                                    if (colKey === "profit")
+                                        return formatAdsNumber(row.profit);
+
+
+                                    // Fallback: return raw value if not explicitly formatted above
+                                    return (row as any)[colKey] ?? "";
+                                }}
+                                summary={{
+                                    enabled: monthlySkuwiseRowsForTable.length > 0,
 
 
 
-                            fixedRows: [
-                                ...(countryName === "us" || countryName === "global"
-                                    ? [
+                                    fixedRows: [
+                                        ...(countryName === "us" || countryName === "global"
+                                            ? [
+                                                {
+                                                    id: "ship",
+                                                    label: (
+                                                        <>
+                                                            Shipment Charges <strong>(-)</strong>
+                                                        </>
+                                                    ),
+                                                    endValue: formatSummaryValue(plSummaryTotals.shipment_charges, "shipment_charges"),
+                                                },
+                                            ]
+                                            : []),
+
                                         {
-                                            id: "ship",
-                                            label: (
-                                                <>
-                                                    Shipment Charges <strong>(-)</strong>
-                                                </>
-                                            ),
-                                            endValue: formatSummaryValue(plSummaryTotals.shipment_charges, "shipment_charges"),
+                                            id: "ads",
+                                            label: "Cost of Advertisement",
+                                            endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
                                         },
-                                    ]
-                                    : []),
+                                        {
+                                            id: "other",
+                                            label: "Other Transactions",
+                                            endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
+                                        },
+                                        {
+                                            id: "cm2_profit",
+                                            label: "CM2 Profit/Loss",
+                                            endValue: formatSummaryValue(plSummaryTotals.cm2_profit, "cm2_profit"),
+                                        },
+                                        {
+                                            id: "cm2_margins",
+                                            label: "CM2 Margins",
+                                            endValue: `${formatSummaryValue(cm2MarginPctForSummary, "cm2_margins")}%`,
+                                        },
 
-                                {
-                                    id: "ads",
-                                    label: "Cost of Advertisement",
-                                    endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
-                                },
-                                {
-                                    id: "other",
-                                    label: "Other Transactions",
-                                    endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
-                                },
-                                {
-                                    id: "cm2_profit",
-                                    label: "CM2 Profit/Loss",
-                                    endValue: formatSummaryValue(plSummaryTotals.cm2_profit, "cm2_profit"),
-                                },
-                                {
-                                    id: "cm2_margins",
-                                    label: "CM2 Margins",
-                                    endValue: `${formatSummaryValue(cm2MarginPctForSummary, "cm2_margins")}%`,
-                                },
+                                        {
+                                            id: "tacos",
+                                            label: "TACoS (Total Advertising Cost of Sale)",
+                                            endValue: `${formatSummaryValue(tacosPctForSummary, "acos")}%`,
+                                        },
 
-                                {
-                                    id: "tacos",
-                                    label: "TACoS (Total Advertising Cost of Sale)",
-                                    endValue: `${formatSummaryValue(tacosPctForSummary, "acos")}%`,
-                                },
+                                        {
+                                            id: "net_reimb",
+                                            label: "Net Reimbursement",
+                                            endValue: `${formatSummaryValue(reimbursementForSummary, "net_reimbursement")}`,
+                                        },
+                                        {
+                                            id: "rv_cm2",
+                                            label: "Reimbursement vs CM2 Margins",
+                                            endValue: `${formatSummaryValue(
+                                                reimbursementVsCm2PctForSummary, "rembursment_vs_cm2_margins")}%`,
+                                        },
+                                        {
+                                            id: "rv_sales",
+                                            label: "Reimbursement vs Sales",
+                                            endValue: `${formatSummaryValue(
+                                                reimbursementVsSalesPctForSummary, "reimbursement_vs_sales")}%`,
+                                        },
+                                    ],
 
-                                {
-                                    id: "net_reimb",
-                                    label: "Net Reimbursement",
-                                    endValue: `${formatSummaryValue(reimbursementForSummary, "net_reimbursement")}`,
-                                },
-                                {
-                                    id: "rv_cm2",
-                                    label: "Reimbursement vs CM2 Margins",
-                                    endValue: `${formatSummaryValue(
-                                        reimbursementVsCm2PctForSummary, "rembursment_vs_cm2_margins")}%`,
-                                },
-                                {
-                                    id: "rv_sales",
-                                    label: "Reimbursement vs Sales",
-                                    endValue: `${formatSummaryValue(
-                                        reimbursementVsSalesPctForSummary, "reimbursement_vs_sales")}%`,
-                                },
-                            ],
+                                    valueCols: 2,
+                                }}
+                            //             label: "Reimbursement vs Sales",
+                            //             endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
+                            //         },
+                            //     ],
 
-                            valueCols: 2,
-                        }}
-                    //             label: "Reimbursement vs Sales",
-                    //             endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
-                    //         },
-                    //     ],
-
-                    //     valueCols: 2,
-                    // }}
-                    />
-
+                            //     valueCols: 2,
+                            // }}
+                            />
+                        </div>
+                    </div>
                 )}
             </div>
 

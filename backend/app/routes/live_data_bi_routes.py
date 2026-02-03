@@ -11,7 +11,7 @@ import json
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.utils.live_bi_utils import (build_inventory_signals, compute_total_asp, compute_total_unit_profitability, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months,round_numeric_values,totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
+from app.utils.live_bi_utils import (build_inventory_signals, build_movement_context, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_user_objective, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, run_live_prompt_2_decisions,totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
                                      compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 
@@ -127,7 +127,10 @@ def build_cm1_profit_pie_slices(
     """
 
     def safe_name(r):
-        return (r.get("product_name") or r.get("name") or "").strip()
+        val = r.get("product_name") or r.get("name")
+        if val is None:
+            return ""
+        return str(val).strip()
 
     def is_others(n: str) -> bool:
         return (n or "").strip().lower() == others_label.lower()
@@ -244,6 +247,12 @@ def live_mtd_vs_previous():
         as_of = request.args.get("as_of")
 
         # ---------------------------
+        # USER OBJECTIVE (SHARED WITH HISTORIC BI)
+        # ---------------------------
+        user_objective = fetch_user_objective(user_id)
+        print("[LIVE BI] user_objective =", user_objective)
+
+        # ---------------------------
         # DATE RANGE
         # ---------------------------
         start_day_str = request.args.get("start_day")
@@ -269,6 +278,30 @@ def live_mtd_vs_previous():
         prev_end = ranges["previous"]["end"]
         curr_start = ranges["current"]["start"]
         curr_end = ranges["current"]["end"]
+        # --------------------------------------------
+        # HISTORIC MOVEMENT CONTEXT (24 MONTHS)
+        # --------------------------------------------
+        today = ranges["meta"]["today"]
+
+        # Anchor on LAST COMPLETED MONTH (never current MTD)
+        anchor_year = today.year
+        anchor_month = today.month - 1
+        if anchor_month == 0:
+            anchor_month = 12
+            anchor_year -= 1
+
+        movement_series = build_rolling_monthly_series(
+            user_id=user_id,
+            country=country,
+            anchor_year=anchor_year,
+            anchor_month=anchor_month,
+        )
+
+        movement_context = build_movement_context(movement_series)
+
+        # DEBUG (remove after verification)
+        print("[LIVE BI] movement_context =", movement_context)
+
 
         # FULL previous month (charts)
         prev_full_start = date(
@@ -505,7 +538,10 @@ def live_mtd_vs_previous():
         }
         currency = currency_map.get(country, {"symbol": "£", "code": "GBP"})
 
-        overall = build_ai_summary(
+        # ---------------------------
+        # BUILD PAYLOAD (NO AI HERE)
+        # ---------------------------
+        payload_ai = build_ai_summary(
             prev_totals,
             curr_totals,
             top_80_skus,
@@ -518,11 +554,118 @@ def live_mtd_vs_previous():
             curr_fee_totals=curr_fee_totals,
             estimated_storage_cost_next_month=estimated_storage_cost_next_month,
             currency=currency,
+            user_objective=user_objective,
+            movement_context=movement_context,
         )
 
-        overall_summary = overall.get("summary_bullets", [])
-        overall_actions = overall.get("action_bullets", [])
+        
 
+        # 🔍 DEBUG 1 — payload sanity
+        print("PAYLOAD → Prompt-1 keys:", payload_ai.keys())
+
+
+        # ---------------------------
+        # PROMPT-1 (ANALYSIS)
+        # ---------------------------
+        analysis = run_live_prompt_1_analysis(payload_ai)
+
+        # 🔍 DEBUG 2 — analysis output
+        print("ANALYSIS (P1):", json.dumps(analysis, indent=2))
+
+        # ---------------------------
+        # PROMPT-1.5 (EXECUTIVE SUMMARY)
+        # ---------------------------
+        summary_out = run_live_prompt_1_5_summary(
+            analysis_output=analysis,
+            numeric_context={
+                "periods": payload_ai["periods"],
+                "pct_changes": payload_ai["pct_changes"],
+                "selling_costs": payload_ai["selling_costs"],
+                "roas": payload_ai["roas"],
+                "movement_context": payload_ai["movement_context"],
+                "currency": payload_ai["currency"],
+            },
+            user_objective=user_objective,
+        )
+
+        # 🔍 DEBUG 2.5 — summary output
+        print("SUMMARY (P1.5):", json.dumps(summary_out, indent=2))
+
+        # ===========================
+        # EXTRACT EXECUTIVE SUMMARY  ✅ (THIS IS STEP 3)
+        # ===========================
+        overall_summary_text = summary_out.get("summary_text", "")
+        overall_summary_bullets = summary_out.get("metric_bullets", [])
+
+
+
+
+        # ---------------------------
+        # PROMPT-2 (DECISIONS)
+        # ---------------------------
+        actions = run_live_prompt_2_decisions(
+            analysis_output=analysis,
+            user_objective=user_objective,
+        )
+
+        # 🔍 DEBUG 3 — actions output
+        print("ACTIONS (P2):", json.dumps(actions, indent=2))
+
+        # ===========================
+        # BUILD RECOMMENDED ACTIONS (HISTORIC LOGIC CLONE)
+        # ===========================
+
+        recommended_actions_mtd = {}
+
+        sku_actions = actions.get("sku_actions", {})
+
+        for row in top_80_skus + new_reviving:
+            sku = row.get("sku")
+            if not sku:
+                continue
+
+            # 1️⃣ Growth row (Live BI equivalent of sku_mom)
+            growth_row = next(
+                (g for g in growth_data if g.get("sku") == sku),
+                None
+            )
+            if not growth_row:
+                continue
+
+            # 2️⃣ Diagnosis codes from Prompt-1
+            diagnosis_codes = (
+                analysis
+                .get("product_insights", {})
+                .get(sku, {})
+                .get("diagnosis_codes", ["mixed_signal"])
+            )
+
+            # 3️⃣ Final action from Prompt-2
+            action = sku_actions.get(sku, "Please Monitor this SKU")
+
+            # 4️⃣ Deterministic Historic-style renderer
+            recommended_actions_mtd[sku] = render_live_recommended_action(
+                growth_row=growth_row,
+                diagnosis_codes=diagnosis_codes,
+                action=action,
+                currency_symbol=currency["symbol"],
+            )
+            print(
+                "\n[LIVE BI][DEBUG] recommended_actions_mtd:",
+                json.dumps(recommended_actions_mtd, indent=2)
+            )
+
+
+        # ===========================
+        # FINAL FIELDS USED BY RESPONSE / EMAIL
+        # ===========================
+        overall_summary = {
+            "summary_text": overall_summary_text,
+            "metric_bullets": overall_summary_bullets,
+        }
+        overall_actions = actions.get("sku_actions", {})
+
+      
         # ---------------------------
         # AI INSIGHTS (SKU LEVEL)
         # ---------------------------
@@ -592,6 +735,7 @@ def live_mtd_vs_previous():
             "ai_insights": insights,
             "overall_summary": overall_summary,
             "overall_actions": overall_actions,
+            "recommended_actions_mtd": recommended_actions_mtd,  # 👈 ADD THIS
         }
 
         # ---------------------------
@@ -622,7 +766,7 @@ def live_mtd_vs_previous():
                             to_email=user_email,
                             overall_summary=response_payload["overall_summary"],
                             overall_actions=response_payload["overall_actions"],
-                            sku_actions=None,
+                            sku_actions=recommended_actions_mtd,  # 👈 FIX
                             country=country,
                             prev_label=prev_label,
                             curr_label=curr_label,
