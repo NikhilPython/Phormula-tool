@@ -1338,7 +1338,7 @@ export default function DashboardPage() {
 
             const params = new URLSearchParams({
                 marketplace_id: marketplaceId,
-                store_in_db: "false",
+                store_in_db: "true",
                 country: uiCountry,
             });
 
@@ -1513,7 +1513,8 @@ export default function DashboardPage() {
     const { monthName: currMonthName, year: currYear } = getISTYearMonth();
 
     const lastBiKeyRef = useRef<string>("");
-    const aiRequestedRef = useRef(false);
+    const aiRequestedRef = useRef<boolean>(false);
+
 
 
 
@@ -1573,7 +1574,7 @@ export default function DashboardPage() {
                 const json: BiApiResponse = await res.json();
 
                 lastBiKeyRef.current = key;
-                aiRequestedRef.current = true;
+                // aiRequestedRef.current = true;
 
                 setLiveBiPayload(json);
                 setBiPeriods(json?.periods || null);
@@ -3968,7 +3969,7 @@ export default function DashboardPage() {
                                     </div>
                                 )}
                             </div>
-                    
+
                             <AmazonStatCard
                                 label="ASP"
                                 current={(() => {
@@ -3985,336 +3986,323 @@ export default function DashboardPage() {
 
                             />
                         </div>
-                    
-                
-          )}
-        </div>
 
-                {/* RIGHT COLUMN – Sales Target */ }
-    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex flex-col gap-4 lg:gap-4 2xl:gap-4 h-full">
-        <div className="w-full">
-            <SalesTargetStatsCard
-                regions={regions}
-                value={targetRegion}
-                onChange={setTargetRegion}
-                hideTabs={isCountryMode}
-                homeCurrency={displayCurrency}
-                formatHomeK={formatDisplayK}
-                todayHome={stats_todayHome}
-                mtdHome={stats_mtdHome}
-                targetHome={stats_targetHome}
-                lastMonthTotalHome={stats_lastMonthTotalHome}
-                salesTrendPct={stats_salesTrendPct}
-                targetTrendPct={stats_targetTrendPct}
-                currentReimbursement={reimbursementHome.current}
-                previousReimbursement={reimbursementHome.previous}
-            />
-        </div>
 
-        <div className="w-full lg:sticky lg:top-4 2xl:top-6">
-            <SalesTargetCard
-                data={targetData}
-                // onChange={setTargetRegion}
-                // hideTabs={isCountryMode}
-                homeCurrency={displayCurrency}
-                convertToHomeCurrency={identityConvert}
-                formatHomeK={formatDisplayK}
-                todaySales={todaySalesRaw}
-                targetHome={stats_targetHome}
-                mtdHome={stats_mtdHome}
-                lastMonthTotalHome={stats_lastMonthTotalHome}
-                lastMonthToDateHome={stats_lastMtdHome}
-                currentReimbursement={reimbursementHome.current}
-                previousReimbursement={reimbursementHome.previous}
-            />
-        </div>
-    </aside>
+                    )}
+                </div>
+
+                {/* RIGHT COLUMN – Sales Target */}
+                <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex flex-col gap-4 lg:gap-4 2xl:gap-4 h-full">
+                    <div className="w-full">
+                        <SalesTargetStatsCard
+                            regions={regions}
+                            value={targetRegion}
+                            onChange={setTargetRegion}
+                            hideTabs={isCountryMode}
+                            homeCurrency={displayCurrency}
+                            formatHomeK={formatDisplayK}
+                            todayHome={stats_todayHome}
+                            mtdHome={stats_mtdHome}
+                            targetHome={stats_targetHome}
+                            lastMonthTotalHome={stats_lastMonthTotalHome}
+                            salesTrendPct={stats_salesTrendPct}
+                            targetTrendPct={stats_targetTrendPct}
+                            currentReimbursement={reimbursementHome.current}
+                            previousReimbursement={reimbursementHome.previous}
+                        />
+                    </div>
+
+                    <div className="w-full lg:sticky lg:top-4 2xl:top-6">
+                        <SalesTargetCard
+                            data={targetData}
+                            // onChange={setTargetRegion}
+                            // hideTabs={isCountryMode}
+                            homeCurrency={displayCurrency}
+                            convertToHomeCurrency={identityConvert}
+                            formatHomeK={formatDisplayK}
+                            todaySales={todaySalesRaw}
+                            targetHome={stats_targetHome}
+                            mtdHome={stats_mtdHome}
+                            lastMonthTotalHome={stats_lastMonthTotalHome}
+                            lastMonthToDateHome={stats_lastMtdHome}
+                            currentReimbursement={reimbursementHome.current}
+                            previousReimbursement={reimbursementHome.previous}
+                        />
+                    </div>
+                </aside>
             </div >
 
 
 
-        {/* ✅ Global-only Performance Trend BELOW top section */ }
-    {
-        platform === "global" && showLiveBI && (
-            // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
-            <div
-                id="targets-action-items"
-                className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
-            >
-                <div className="w-full max-w-full min-w-0">
-                    <LiveBiLineGraph
-                        dailySeries={biDailySeriesHome}
-                        periods={biPeriods}
-                        loading={biUiLoading}
-                        error={biError}
-                        selectedStartDay={selectedStartDay}
-                        selectedEndDay={selectedEndDay}
-                        currencySymbol={currencySymbol}
-                    />
-                </div>
-            </div>
-        )
-    }
-    {/* ✅ Global-only Performance Trend BELOW top section */ }
-    {
-        platform === "global" && showLiveBI && (
-            // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
-            <div
-                id="targets-action-items"
-                className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
-            >
-                <div className="w-full max-w-full min-w-0">
-                    <LiveBiLineGraph
-                        dailySeries={biDailySeriesHome}
-                        periods={biPeriods}
-                        loading={biLoading}
-                        error={biError}
-                        selectedStartDay={selectedStartDay}
-                        selectedEndDay={selectedEndDay}
-                        currencySymbol={currencySymbol}
-                    />
-                </div>
-            </div>
-        )
-    }
-
-
-      <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
-       {showLiveBI && liveBiPayload && (
-  <LiveBusinessClient
-    countryName={countryName}
-    ranged="MTD"
-    month={currMonthName.toLowerCase()}
-    year={String(currYear)}
-    initialData={liveBiPayload}
-  />
-)}
-      </div>
-            <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
-                {showLiveBI && (
-                    <div className="w-full max-w-full min-w-0">
-                        <LiveBusinessClient
-                            countryName={countryName}
-                            ranged="MTD"
-                            month={currMonthName.toLowerCase()}
-                            year={String(currYear)}
-                            initialData={liveBiPayload}
-                        />
-
+            {/* ✅ Global-only Performance Trend BELOW top section */}
+            {
+                platform === "global" && showLiveBI && (
+                    // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
+                    <div
+                        id="targets-action-items"
+                        className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
+                    >
+                        <div className="w-full max-w-full min-w-0">
+                            <LiveBiLineGraph
+                                dailySeries={biDailySeriesHome}
+                                periods={biPeriods}
+                                loading={biUiLoading}
+                                error={biError}
+                                selectedStartDay={selectedStartDay}
+                                selectedEndDay={selectedEndDay}
+                                currencySymbol={currencySymbol}
+                            />
+                        </div>
                     </div>
+                )
+            }
+            {/* ✅ Global-only Performance Trend BELOW top section */}
+            {
+                platform === "global" && showLiveBI && (
+                    // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
+                    <div
+                        id="targets-action-items"
+                        className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
+                    >
+                        <div className="w-full max-w-full min-w-0">
+                            <LiveBiLineGraph
+                                dailySeries={biDailySeriesHome}
+                                periods={biPeriods}
+                                loading={biLoading}
+                                error={biError}
+                                selectedStartDay={selectedStartDay}
+                                selectedEndDay={selectedEndDay}
+                                currencySymbol={currencySymbol}
+                            />
+                        </div>
+                    </div>
+                )
+            }
+
+
+            <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
+                {showLiveBI && liveBiPayload && (
+                    <LiveBusinessClient
+                        countryName={countryName}
+                        ranged="MTD"
+                        month={currMonthName.toLowerCase()}
+                        year={String(currYear)}
+                        initialData={liveBiPayload}
+                    />
                 )}
             </div>
 
-    {/* Monthly Ads Spent (from MTD Transactions -> skuwise_items) */ }
-    <div id="advertisements" className="scroll-mt-[80px] mt-4 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
-        <div className="mb-3 flex items-center justify-between gap-3">
-            <PageBreadcrumb pageTitle="P&L Productwise Breakdown MTD" variant="page" align="left" textSize="2xl" />
 
-            <div className="flex items-center gap-2">
-                <DownloadIconButton
-                    onClick={handleDownloadPlProductwiseMtd}
-                    aria-label="Download P&L Productwise Breakdown MTD"
-                // title="Download"
-                />
+            {/* Monthly Ads Spent (from MTD Transactions -> skuwise_items) */}
+            <div id="advertisements" className="scroll-mt-[80px] mt-4 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                    <PageBreadcrumb pageTitle="P&L Productwise Breakdown MTD" variant="page" align="left" textSize="2xl" />
 
-                <button
-                    type="button"
-                    onClick={fetchAmazon}
-                    disabled={loading}
-                    className={`rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm ${loading ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400" : "border-gray-300 bg-white hover:bg-gray-50"
-                        }`}
-                >
-                    {loading ? "Loading…" : "Refresh"}
-                </button>
-            </div>
-        </div>
+                    <div className="flex items-center gap-2">
+                        <DownloadIconButton
+                            onClick={handleDownloadPlProductwiseMtd}
+                            aria-label="Download P&L Productwise Breakdown MTD"
+                        // title="Download"
+                        />
 
-        {error ? (
-            <div className="text-sm text-red-600">{error}</div>
-        ) : loading && monthlySkuwiseRows.length === 0 ? (
-            <div className="text-sm text-gray-500">Loading…</div>
-        ) : (
-            <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
-                rows={monthlySkuwiseRowsForTable}
-                getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.isOthers ? "OTHERS" : row.sku || String(idx))}
-                leftCols={SKUWISE_LEFT_COLS}
-                groups={SKUWISE_GROUPS}
-                singleCols={SKUWISE_SINGLE_COLS}
-                showSignRowInBody
-                getSignForCol={getAdsSignForCol}
-                layout={[
-                    { type: "single", key: "quantity" },
-                    { type: "single", key: "asp" },
-                    { type: "single", key: "net_sales" },
-                    { type: "single", key: "cogs" },
-                    { type: "group", id: "marketplace_fees" },
-                    { type: "group", id: "tax_and_credits" },
-                    { type: "group", id: "profit" },
-                    { type: "single", key: "ads_spend" },
-                    { type: "group", id: "cm2_profit" },
+                        <button
+                            type="button"
+                            onClick={fetchAmazon}
+                            disabled={loading}
+                            className={`rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm ${loading ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400" : "border-gray-300 bg-white hover:bg-gray-50"
+                                }`}
+                        >
+                            {loading ? "Loading…" : "Refresh"}
+                        </button>
+                    </div>
+                </div>
 
-                ]}
+                {error ? (
+                    <div className="text-sm text-red-600">{error}</div>
+                ) : loading && monthlySkuwiseRows.length === 0 ? (
+                    <div className="text-sm text-gray-500">Loading…</div>
+                ) : (
+                    <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
+                        rows={monthlySkuwiseRowsForTable}
+                        getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.isOthers ? "OTHERS" : row.sku || String(idx))}
+                        leftCols={SKUWISE_LEFT_COLS}
+                        groups={SKUWISE_GROUPS}
+                        singleCols={SKUWISE_SINGLE_COLS}
+                        showSignRowInBody
+                        getSignForCol={getAdsSignForCol}
+                        layout={[
+                            { type: "single", key: "quantity" },
+                            { type: "single", key: "asp" },
+                            { type: "single", key: "net_sales" },
+                            { type: "single", key: "cogs" },
+                            { type: "group", id: "marketplace_fees" },
+                            { type: "group", id: "tax_and_credits" },
+                            { type: "group", id: "profit" },
+                            { type: "single", key: "ads_spend" },
+                            { type: "group", id: "cm2_profit" },
 
-                // initialCollapsed={{ marketplace_fees: false }}
-                getRowClassName={(row, index) => {
-                    if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
-                    if (row.isOthers) return "";
-                    return index % 2 === 0 ? "bg-white" : "bg-gray-50";
-                }}
-                getValue={(row, colKey) => {
-                    if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
-                    if (colKey === "sku") {
-                        if (row.isOthers || row.isTotal) return "-";
-                        return row.sku || "-";
-                    }
-                    if (colKey === "product_name") return row.isTotal ? "Total" : row.isOthers ? "Others" : row.product_name;
+                        ]}
 
-                    if (colKey === "quantity") return row.quantity;
+                        // initialCollapsed={{ marketplace_fees: false }}
+                        getRowClassName={(row, index) => {
+                            if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
+                            if (row.isOthers) return "";
+                            return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                        }}
+                        getValue={(row, colKey) => {
+                            if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
+                            if (colKey === "sku") {
+                                if (row.isOthers || row.isTotal) return "-";
+                                return row.sku || "-";
+                            }
+                            if (colKey === "product_name") return row.isTotal ? "Total" : row.isOthers ? "Others" : row.product_name;
 
-                    if (colKey === "asp") return formatAdsNumber(row.asp);
-                    if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
+                            if (colKey === "quantity") return row.quantity;
 
-                    // if (colKey === "tax") return formatAdsNumber(row.tax);
-                    // if (colKey === "credits") return formatAdsNumber(row.credits);
-                    // if (colKey === "tax_and_credits") return formatAdsNumber(row.tax_and_credits);
+                            if (colKey === "asp") return formatAdsNumber(row.asp);
+                            if (colKey === "net_sales") return formatAdsNumber(row.net_sales);
 
-                    if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits" || colKey === "cm1_profit_per" || colKey === "cm1_profit_per_unit") {
-                        const v = Number((row as any)[colKey] ?? 0);
-                        return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
-                    }
+                            // if (colKey === "tax") return formatAdsNumber(row.tax);
+                            // if (colKey === "credits") return formatAdsNumber(row.credits);
+                            // if (colKey === "tax_and_credits") return formatAdsNumber(row.tax_and_credits);
 
-                    if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
-                        const v = Number((row as any)[colKey] ?? 0);
-                        return formatAdsNumber(Number.isFinite(v) ? v : 0);
-                    }
+                            if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits" || colKey === "cm1_profit_per" || colKey === "cm1_profit_per_unit") {
+                                const v = Number((row as any)[colKey] ?? 0);
+                                return formatAdsNumber(Math.abs(Number.isFinite(v) ? v : 0));
+                            }
 
-                    if (colKey === "ad_type") {
-                        if (row.isOthers || row.isTotal) return "-";
-                        return formatAdType((row as any).ad_type);
-                    }
+                            if (colKey === "cm2_profit_per" || colKey === "cm2_profit_per_unit") {
+                                const v = Number((row as any)[colKey] ?? 0);
+                                return formatAdsNumber(Number.isFinite(v) ? v : 0);
+                            }
 
-
-                    if (colKey === "ads_spend")
-                        return formatAdsNumber(Math.abs(row.ads_spend));
-
-                    if (colKey === "cogs")
-                        return formatAdsNumber(Math.abs(row.cogs));
-
-                    if (colKey === "fba_fees")
-                        return formatAdsNumber(Math.abs(row.fba_fees));
-
-                    if (colKey === "selling_fees")
-                        return formatAdsNumber(Math.abs(row.selling_fees));
-
-                    if (colKey === "marketplace_total")
-                        return formatAdsNumber(
-                            Math.abs(row.fba_fees) + Math.abs(row.selling_fees)
-                        );
-
-                    if (colKey === "cm2_profit")
-                        return formatAdsNumber(row.cm2_profit);
-
-                    if (colKey === "profit")
-                        return formatAdsNumber(row.profit);
+                            if (colKey === "ad_type") {
+                                if (row.isOthers || row.isTotal) return "-";
+                                return formatAdType((row as any).ad_type);
+                            }
 
 
-                    // Fallback: return raw value if not explicitly formatted above
-                    return (row as any)[colKey] ?? "";
-                }}
-                summary={{
-                    enabled: monthlySkuwiseRowsForTable.length > 0,
+                            if (colKey === "ads_spend")
+                                return formatAdsNumber(Math.abs(row.ads_spend));
+
+                            if (colKey === "cogs")
+                                return formatAdsNumber(Math.abs(row.cogs));
+
+                            if (colKey === "fba_fees")
+                                return formatAdsNumber(Math.abs(row.fba_fees));
+
+                            if (colKey === "selling_fees")
+                                return formatAdsNumber(Math.abs(row.selling_fees));
+
+                            if (colKey === "marketplace_total")
+                                return formatAdsNumber(
+                                    Math.abs(row.fba_fees) + Math.abs(row.selling_fees)
+                                );
+
+                            if (colKey === "cm2_profit")
+                                return formatAdsNumber(row.cm2_profit);
+
+                            if (colKey === "profit")
+                                return formatAdsNumber(row.profit);
+
+
+                            // Fallback: return raw value if not explicitly formatted above
+                            return (row as any)[colKey] ?? "";
+                        }}
+                        summary={{
+                            enabled: monthlySkuwiseRowsForTable.length > 0,
 
 
 
-                    fixedRows: [
-                        ...(countryName === "us" || countryName === "global"
-                            ? [
+                            fixedRows: [
+                                ...(countryName === "us" || countryName === "global"
+                                    ? [
+                                        {
+                                            id: "ship",
+                                            label: (
+                                                <>
+                                                    Shipment Charges <strong>(-)</strong>
+                                                </>
+                                            ),
+                                            endValue: formatSummaryValue(plSummaryTotals.shipment_charges, "shipment_charges"),
+                                        },
+                                    ]
+                                    : []),
+
                                 {
-                                    id: "ship",
-                                    label: (
-                                        <>
-                                            Shipment Charges <strong>(-)</strong>
-                                        </>
-                                    ),
-                                    endValue: formatSummaryValue(plSummaryTotals.shipment_charges, "shipment_charges"),
+                                    id: "ads",
+                                    label: "Cost of Advertisement",
+                                    endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
                                 },
-                            ]
-                            : []),
+                                {
+                                    id: "other",
+                                    label: "Other Transactions",
+                                    endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
+                                },
+                                {
+                                    id: "cm2_profit",
+                                    label: "CM2 Profit/Loss",
+                                    endValue: formatSummaryValue(plSummaryTotals.cm2_profit, "cm2_profit"),
+                                },
+                                {
+                                    id: "cm2_margins",
+                                    label: "CM2 Margins",
+                                    endValue: `${formatSummaryValue(cm2MarginPctForSummary, "cm2_margins")}%`,
+                                },
 
-                        {
-                            id: "ads",
-                            label: "Cost of Advertisement",
-                            endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
-                        },
-                        {
-                            id: "other",
-                            label: "Other Transactions",
-                            endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
-                        },
-                        {
-                            id: "cm2_profit",
-                            label: "CM2 Profit/Loss",
-                            endValue: formatSummaryValue(plSummaryTotals.cm2_profit, "cm2_profit"),
-                        },
-                        {
-                            id: "cm2_margins",
-                            label: "CM2 Margins",
-                            endValue: `${formatSummaryValue(cm2MarginPctForSummary, "cm2_margins")}%`,
-                        },
+                                {
+                                    id: "tacos",
+                                    label: "TACoS (Total Advertising Cost of Sale)",
+                                    endValue: `${formatSummaryValue(tacosPctForSummary, "acos")}%`,
+                                },
 
-                        {
-                            id: "tacos",
-                            label: "TACoS (Total Advertising Cost of Sale)",
-                            endValue: `${formatSummaryValue(tacosPctForSummary, "acos")}%`,
-                        },
+                                {
+                                    id: "net_reimb",
+                                    label: "Net Reimbursement",
+                                    endValue: `${formatSummaryValue(reimbursementForSummary, "net_reimbursement")}`,
+                                },
+                                {
+                                    id: "rv_cm2",
+                                    label: "Reimbursement vs CM2 Margins",
+                                    endValue: `${formatSummaryValue(
+                                        reimbursementVsCm2PctForSummary, "rembursment_vs_cm2_margins")}%`,
+                                },
+                                {
+                                    id: "rv_sales",
+                                    label: "Reimbursement vs Sales",
+                                    endValue: `${formatSummaryValue(
+                                        reimbursementVsSalesPctForSummary, "reimbursement_vs_sales")}%`,
+                                },
+                            ],
 
-                        {
-                            id: "net_reimb",
-                            label: "Net Reimbursement",
-                            endValue: `${formatSummaryValue(reimbursementForSummary, "net_reimbursement")}`,
-                        },
-                        {
-                            id: "rv_cm2",
-                            label: "Reimbursement vs CM2 Margins",
-                            endValue: `${formatSummaryValue(
-                                reimbursementVsCm2PctForSummary, "rembursment_vs_cm2_margins")}%`,
-                        },
-                        {
-                            id: "rv_sales",
-                            label: "Reimbursement vs Sales",
-                            endValue: `${formatSummaryValue(
-                                reimbursementVsSalesPctForSummary, "reimbursement_vs_sales")}%`,
-                        },
-                    ],
+                            valueCols: 2,
+                        }}
+                    //             label: "Reimbursement vs Sales",
+                    //             endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
+                    //         },
+                    //     ],
 
-                    valueCols: 2,
-                }}
-            //             label: "Reimbursement vs Sales",
-            //             endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
-            //         },
-            //     ],
+                    //     valueCols: 2,
+                    // }}
+                    />
 
-            //     valueCols: 2,
-            // }}
-            />
-
-        )}
-    </div>
+                )}
+            </div>
 
 
-    {/* Lower P&L Graph and Inventory */ }
-    {
-        hasAnyGraphData && (
-            <>
-                <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
-                    <div
-                        className={[
-                            "grid grid-cols-1 gap-4 items-stretch",
-                            isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
-                        ].join(" ")}
-                    >
-                        {/* LEFT: MTD P&L (click to expand/collapse) */}
-                        {/* <div
+            {/* Lower P&L Graph and Inventory */}
+            {
+                hasAnyGraphData && (
+                    <>
+                        <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
+                            <div
+                                className={[
+                                    "grid grid-cols-1 gap-4 items-stretch",
+                                    isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
+                                ].join(" ")}
+                            >
+                                {/* LEFT: MTD P&L (click to expand/collapse) */}
+                                {/* <div
                 className={[
                   "rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0",
                   isMtdPlExpanded ? "cursor-zoom-out" : "cursor-zoom-in",
@@ -4334,29 +4322,29 @@ export default function DashboardPage() {
                   setIsMtdPlExpanded((s) => !s);
                 }}
               > */}
-                        <div className="rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0">
-                            <div className="mb-3 flex items-center justify-between">
-                                <div className="text-sm text-charcoal-500">
-                                    <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
-                                        <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
-                                    </div>
-                                </div>
+                                <div className="rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0">
+                                    <div className="mb-3 flex items-center justify-between">
+                                        <div className="text-sm text-charcoal-500">
+                                            <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
+                                                <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
+                                            </div>
+                                        </div>
 
-                                <div className="flex items-center gap-3">
-                                    {/* Only this part depends on isCountryMode */}
-                                    {!isCountryMode && (
-                                        <>
-                                            <SegmentedToggle<RegionKey>
-                                                value={graphRegion}
-                                                options={graphRegions.map((r) => ({ value: r }))}
-                                                onChange={setGraphRegion}
-                                            />
-                                            <DownloadIconButton onClick={handleDownload} />
-                                        </>
-                                    )}
+                                        <div className="flex items-center gap-3">
+                                            {/* Only this part depends on isCountryMode */}
+                                            {!isCountryMode && (
+                                                <>
+                                                    <SegmentedToggle<RegionKey>
+                                                        value={graphRegion}
+                                                        options={graphRegions.map((r) => ({ value: r }))}
+                                                        onChange={setGraphRegion}
+                                                    />
+                                                    <DownloadIconButton onClick={handleDownload} />
+                                                </>
+                                            )}
 
 
-                                    {/* <button
+                                            {/* <button
                       type="button"
                       className="shrink-0 rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                       onClick={() => setIsMtdPlExpanded((s) => !s)}
@@ -4367,10 +4355,10 @@ export default function DashboardPage() {
                       
                     </button> */}
 
-                                    <span className="relative group shrink-0">
-                                        <button
-                                            type="button"
-                                            className="
+                                            <span className="relative group shrink-0">
+                                                <button
+                                                    type="button"
+                                                    className="
       rounded-md
       border
       border-gray-300
@@ -4385,19 +4373,19 @@ export default function DashboardPage() {
       active:translate-y-0
       active:shadow-md
     "
-                                            onClick={() => setIsMtdPlExpanded((s) => !s)}
-                                            aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
-                                        >
-                                            {isMtdPlExpanded ? (
-                                                <CgPushLeft size={18} className="font-extrabold" />
-                                            ) : (
-                                                <CgPushRight size={18} className="font-extrabold" />
-                                            )}
-                                        </button>
+                                                    onClick={() => setIsMtdPlExpanded((s) => !s)}
+                                                    aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
+                                                >
+                                                    {isMtdPlExpanded ? (
+                                                        <CgPushLeft size={18} className="font-extrabold" />
+                                                    ) : (
+                                                        <CgPushRight size={18} className="font-extrabold" />
+                                                    )}
+                                                </button>
 
-                                        {/* Chart.js-like tooltip */}
-                                        <span
-                                            className="
+                                                {/* Chart.js-like tooltip */}
+                                                <span
+                                                    className="
       pointer-events-none
       absolute
       left-1/2
@@ -4420,12 +4408,12 @@ export default function DashboardPage() {
       duration-150
       group-hover:opacity-100
     "
-                                        >
-                                            {isMtdPlExpanded ? "Collapse" : "Expand"}
+                                                >
+                                                    {isMtdPlExpanded ? "Collapse" : "Expand"}
 
-                                            {/* little arrow (bordered, like tooltip) */}
-                                            <span
-                                                className="
+                                                    {/* little arrow (bordered, like tooltip) */}
+                                                    <span
+                                                        className="
         absolute
         left-1/2
         top-full
@@ -4439,55 +4427,55 @@ export default function DashboardPage() {
         border-gray-200
         bg-white
       "
+                                                    />
+                                                </span>
+                                            </span>
+
+
+                                        </div>
+                                    </div>
+
+
+                                    <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
+                                        <div className="w-full max-w-full min-w-0 h-full">
+                                            <DashboardBargraphCard
+                                                countryName={countryNameForGraph}
+                                                formattedMonthYear={formattedMonthYear}
+                                                currencySymbol={currencySymbol}
+                                                labels={labels}
+                                                values={values}
+                                                prevValues={prevValues}
+                                                expanded={isMtdPlExpanded}
+                                                colors={colors}
+                                                loading={loading}
+                                                allValuesZero={allValuesZero}
                                             />
-                                        </span>
-                                    </span>
-
-
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
 
-
-                            <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
-                                <div className="w-full max-w-full min-w-0 h-full">
-                                    <DashboardBargraphCard
-                                        countryName={countryNameForGraph}
-                                        formattedMonthYear={formattedMonthYear}
-                                        currencySymbol={currencySymbol}
-                                        labels={labels}
-                                        values={values}
-                                        prevValues={prevValues}
-                                        expanded={isMtdPlExpanded}
-                                        colors={colors}
-                                        loading={loading}
-                                        allValuesZero={allValuesZero}
-                                    />
-                                </div>
+                                {/* RIGHT: CM1 Profit Breakdown Pie (hide when expanded) */}
+                                {!isMtdPlExpanded && (
+                                    <div className="min-w-0 h-full flex flex-col">
+                                        <Cm1ProfitBreakdownPie
+                                            title="CM1 Profit Breakdown"
+                                            data={cm1ProfitPieData}
+                                            currency={displayCurrency}
+                                            height={320}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
 
-                        {/* RIGHT: CM1 Profit Breakdown Pie (hide when expanded) */}
-                        {!isMtdPlExpanded && (
-                            <div className="min-w-0 h-full flex flex-col">
-                                <Cm1ProfitBreakdownPie
-                                    title="CM1 Profit Breakdown"
-                                    data={cm1ProfitPieData}
-                                    currency={displayCurrency}
-                                    height={320}
-                                />
+
+                        {amazonIntegrated && graphRegionToUse !== "Global" && (
+                            <div id="current-inventory" className="scroll-mt-[80px]">
+                                <CurrentInventorySection region={graphRegionToUse} />
                             </div>
                         )}
-                    </div>
-                </div>
 
-
-                {amazonIntegrated && graphRegionToUse !== "Global" && (
-                    <div id="current-inventory" className="scroll-mt-[80px]">
-                        <CurrentInventorySection region={graphRegionToUse} />
-                    </div>
-                )}
-
-                {/* <div id="advertisements" className="scroll-mt-[80px] mt-4">
+                        {/* <div id="advertisements" className="scroll-mt-[80px] mt-4">
             <div className="w-full rounded-2xl border bg-white p-4 shadow-sm">
               <div className="font-semibold">Advertisements</div>
               <div className="text-sm text-gray-500 mt-1">
@@ -4496,9 +4484,9 @@ export default function DashboardPage() {
             </div>
           </div> */}
 
-            </>
-        )
-    }
+                    </>
+                )
+            }
         </div >
 
     );

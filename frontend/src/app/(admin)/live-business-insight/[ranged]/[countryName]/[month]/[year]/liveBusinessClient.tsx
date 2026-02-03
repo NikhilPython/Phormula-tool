@@ -123,8 +123,13 @@ interface ApiResponse {
   categorized_growth?: CategorizedGrowth;
   insights?: Record<string, SkuInsight>;
   ai_insights?: Record<string, SkuInsight>;
-  overall_summary?: string[];
+  overall_summary?: {
+    summary_text: string;
+    metric_bullets: string[];
+  };
+
   overall_actions?: string[];
+    recommended_actions_mtd?: Record<string, string>;
 }
 
 // =========================
@@ -231,8 +236,12 @@ export default function LiveBusinessClient({
   const [error, setError] = useState<string | null>(null);
 
   // overall bullets from backend
+  const [summaryText, setSummaryText] = useState<string>("");
   const [overallSummary, setOverallSummary] = useState<string[]>([]);
-  const [overallActions, setOverallActions] = useState<string[]>([]);
+
+  const [overallActions, setOverallActions] = useState<any[]>([]);
+  const [recommendedActions, setRecommendedActions] = useState<Record<string, string>>({});
+
   const [insightDate, setInsightDate] = useState<string | null>(null);
 
   // Insights + modal
@@ -263,6 +272,7 @@ export default function LiveBusinessClient({
 
   const prevPeriod = getMonthYearFromLabel(periods?.previous?.label);
   const currPeriod = getMonthYearFromLabel(periods?.current_mtd?.label);
+
 
 
   type TabKey =
@@ -439,8 +449,10 @@ export default function LiveBusinessClient({
       if (saved.activeTab) setActiveTab(saved.activeTab);
 
       if (saved.insightDate === todayKey) {
-        if (saved.overallSummary) setOverallSummary(saved.overallSummary);
         if (saved.overallActions) setOverallActions(saved.overallActions);
+        if (saved.summaryText) setSummaryText(saved.summaryText);
+        if (saved.overallSummary) setOverallSummary(saved.overallSummary);
+
         setInsightDate(todayKey);
       }
     }
@@ -484,6 +496,7 @@ export default function LiveBusinessClient({
         },
       });
 
+
       const newPeriods = res.data.periods || null;
       const rawCat = res.data.categorized_growth || {
         top_80_skus: [],
@@ -498,8 +511,19 @@ export default function LiveBusinessClient({
       const currentLabel = newPeriods?.current_mtd?.label || '';
       setMonth2Label(currentLabel);
 
-      const summaryFromApi = res.data.overall_summary || [];
+      const summaryObj = res.data.overall_summary;
+
+      const summaryTextFromApi = summaryObj?.summary_text || "";
+      const summaryBulletsFromApi = summaryObj?.metric_bullets || [];
+
       const actionsFromApi = res.data.overall_actions || [];
+      const recommendedActionsFromApi = res.data.recommended_actions_mtd || {};
+
+
+
+      setSummaryText(summaryTextFromApi);
+      setOverallSummary(summaryBulletsFromApi);
+      setRecommendedActions(recommendedActionsFromApi);
 
       let finalSummary = overallSummary;
       let finalActions = overallActions;
@@ -512,11 +536,13 @@ export default function LiveBusinessClient({
           overallSummary.length === 0 && overallActions.length === 0;
 
         if (isNewDay || hasNoExisting) {
-          finalSummary = summaryFromApi;
+          finalSummary = summaryBulletsFromApi;
           finalActions = actionsFromApi;
 
-          setOverallSummary(summaryFromApi);
+          setSummaryText(summaryTextFromApi);
+          setOverallSummary(summaryBulletsFromApi);
           setOverallActions(actionsFromApi);
+
           setInsightDate(todayKey);
         }
       }
@@ -533,8 +559,11 @@ export default function LiveBusinessClient({
         month2Label: currentLabel,
         activeTab,
         countryName,
-        overallSummary: finalSummary,
+        // overallSummary: finalSummary,
         overallActions: finalActions,
+        recommendedActions: recommendedActionsFromApi, // ✅ ADD
+        overallSummary: summaryBulletsFromApi,
+        summaryText: summaryTextFromApi,
         insightDate: todayKey,
       });
     } catch (err: any) {
@@ -545,6 +574,7 @@ export default function LiveBusinessClient({
       );
     } finally {
       if (!generateInsights) setPageLoading(false);
+
     }
   };
 
@@ -2512,6 +2542,16 @@ export default function LiveBusinessClient({
     return 'bg-white';
   };
 
+  const extractActionLines = (text: string): string[] => {
+    if (!text) return [];
+
+    return text
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l =>
+        /^Action\s*:|^(Increase|Maintain|Decrease|Check|Review)/i.test(l)
+      );
+  };
 
   // =========================
   // Render
@@ -2533,7 +2573,7 @@ export default function LiveBusinessClient({
 
       {pageLoading ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Loader fullscreen transparent />
+          <Loader fullscreen transparent />
         </div>
       ) : (
         <div className="flex flex-col mt-4">
@@ -2541,28 +2581,68 @@ export default function LiveBusinessClient({
 
           {(overallSummary.length > 0 || overallActions.length > 0) && (
             <div className="flex gap-4 flex-col md:flex-row">
-              {overallSummary.length > 0 && (
+              {(summaryText || overallSummary.length > 0) && (
                 <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
-                  {/* <h2 className="text-xl font-bold">Business Summary MTD</h2> */}
                   <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
-                  <ul className="list-disc pl-5 space-y-1 pt-2">
-                    {overallSummary.map((line, idx) => (
-                      <li key={idx}>{formatBulletLine(line)}</li>
-                    ))}
-                  </ul>
+
+                  {/* ✅ Executive paragraph */}
+                  {summaryText && (
+                    <p className="mb-2 text-sm text-charcoal-500">
+                      {summaryText}
+                    </p>
+                  )}
+
+                  {/* ✅ Metric bullets */}
+                  {overallSummary.length > 0 && (
+                    <ul className="list-disc pl-5 space-y-1 pt-2">
+                      {overallSummary.map((line, idx) => (
+                        <li key={idx}>{formatBulletLine(line)}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
 
-              {overallActions.length > 0 && (
-                <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500  w-full">
-                  <PageBreadcrumb pageTitle="AI-Powered Recommendations" variant="page" align="left" />
-                  <ul className="list-disc pl-5 space-y-1 pt-2">
-                    {overallActions.map((line, idx) => (
-                      <li key={idx}>{renderAiActionLine(line)}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {((recommendedActions && Object.keys(recommendedActions).length > 0) ||
+                (skuInsights && Object.keys(skuInsights).length > 0)) && (
+
+
+                  <div className="bg-[#F7F9FC] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+                    <PageBreadcrumb
+                      pageTitle="Recommended Actions (MTD)"
+                      variant="page"
+                      align="left"
+                    />
+
+                    <div className="space-y-3 pt-2">
+
+                      {/* ✅ PREFERRED: AI Insights (rich text) */}
+                      {skuInsights && Object.keys(skuInsights).length > 0 ? (
+                        Object.values(skuInsights).map((insight, idx) => (
+                          <div key={idx} className="border-b pb-2 last:border-b-0">
+                            <div className="font-bold text-charcoal-500 mb-1">
+                              {insight.product_name}
+                            </div>
+                            <div className="text-sm">
+                              {renderAiActionLine(insight.insight)}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+
+                        /* ✅ FALLBACK: overallActions (SKU → action) */
+                        Object.entries(recommendedActions || {}).map(([sku, action], idx) => (
+                          <div key={idx} className="text-sm text-charcoal-500">
+                            {renderAiActionLine(action)}
+                          </div>
+                        ))
+
+                      )}
+
+                    </div>
+                  </div>
+                )}
+
             </div>
           )}
 
@@ -2597,7 +2677,7 @@ export default function LiveBusinessClient({
 
 
                   <div className="flex gap-3">
-                   
+
 
                     <AiButton onClick={analyzeSkus}
                       disabled={
@@ -2608,7 +2688,7 @@ export default function LiveBusinessClient({
                       } >  {loadingInsight ? "Generating..." : "AI Insights"}</AiButton>
 
 
-                   
+
 
                     <DownloadIconButton
                       onClick={() => {

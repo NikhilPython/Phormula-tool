@@ -4322,31 +4322,41 @@ class BusinessAdvisor:
         scope = result.get("scope", "portfolio")
         sku_actions = result.get("sku_actions") or {}
         sku_mom = result.get("sku_mom") or {}
-
-        # If SKU actions exist → show only actions
-        if sku_actions:
-            sku, action = next(iter(sku_actions.items()))
-            sku_info = sku_mom.get(sku, {})
-            product_name = sku_info.get("product_name", sku)
-
-            lines.append("PRODUCT ACTION")
-            lines.append(f"- Product: {product_name}")
-            lines.append(f"- Action: {action}")
-            return lines
-
-        # 🔒 CRITICAL: Never fall back to portfolio summary in SKU scope
-        if scope == "sku":
-            return ["No pricing or visibility action required for this SKU this month."]
-
-        # Portfolio fallback only
         summary = result.get("summary") or ""
-        if summary.strip():
+
+        # ======================================================
+        # PORTFOLIO SUMMARY (shown first, if available)
+        # ======================================================
+        if scope != "sku" and summary.strip():
             lines.append("SUMMARY")
             for line in summary.split("\n"):
                 if line.strip():
                     lines.append(f"- {line.strip()}")
 
+        # ======================================================
+        # PRODUCT ACTIONS (ALL actions, not just one)
+        # ======================================================
+        if sku_actions:
+            lines.append("")
+            lines.append("PRODUCT ACTIONS")
+
+            for sku, action in sku_actions.items():
+                sku_info = sku_mom.get(sku, {})
+                product_name = sku_info.get("product_name", sku)
+
+                lines.append(f"- Product: {product_name}")
+                lines.append(f"  Action: {action}")
+
+            return lines
+
+        # ======================================================
+        # SKU SCOPE FALLBACK (no actions)
+        # ======================================================
+        if scope == "sku":
+            return ["No pricing or visibility action required for this SKU this month."]
+
         return lines if lines else ["No output generated."]
+
 
 
   
