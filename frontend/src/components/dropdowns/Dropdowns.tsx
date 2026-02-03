@@ -35,6 +35,8 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import { FiMaximize2, FiMinimize2 } from "react-icons/fi";
+import { CgPushLeft, CgPushRight } from "react-icons/cg";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -2656,21 +2658,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {/* LEFT card */}
               {(focusedChart === null || focusedChart === "trend") && (
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    const t = e.target as HTMLElement;
-                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-
-                    toggleFocus("trend");
-                  }}
-
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    const t = e.target as HTMLElement;
-                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                    toggleFocus("trend");
-                  }}
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
                     "cursor-zoom-in select-none",
@@ -2678,6 +2665,37 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
+                  {/* <button
+                    type="button"
+                    data-no-expand
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFocus("trend");
+                    }}
+                    aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
+                    title={focusedChart === "trend" ? "Collapse" : "Expand"}
+                    className="rounded-md
+      border
+      border-gray-300
+      bg-white
+      text-blue-700
+      p-1.5
+      transition-all
+      duration-200
+      ease-out
+      hover:-translate-y-[2px]
+      hover:shadow-lg
+      active:translate-y-0
+      active:shadow-md"
+                  >
+                    {focusedChart === "trend" ? (
+                      <CgPushLeft size={18} className="font-extrabold" />
+                    ) : (
+                      <CgPushRight size={18} className="font-extrabold" />
+                    )}
+
+                  </button> */}
+
                   <div className="h-[50vh]">
                     <PerformanceTrendChart
                       range={range}
@@ -2689,6 +2707,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       data={performanceTrend}
                       metric={performanceTrendMetric}
                       onExportApiReady={setTrendExportApi}
+                      isExpanded={focusedChart === "trend"}
+                      onToggleExpand={() => toggleFocus("trend")}
                     />
                   </div>
                 </div>
@@ -2697,15 +2717,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {/* RIGHT card */}
               {(focusedChart === null || focusedChart === "pnl") && (
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    const t = e.target as HTMLElement;
-                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                    toggleFocus("pnl");
-                  }}
-
-                  onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
                     "cursor-zoom-in select-none",
@@ -2717,22 +2728,41 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 >
                   {/* Heading */}
                   <div className="shrink-0 flex items-center justify-between gap-3">
-                    <div className="flex items-baseline gap-2">
-                      <PageBreadcrumb pageTitle="P&L " variant="page" align="left" textSize="2xl" />
-
-                      {/* <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                        {getPnLTitleParts().country}
-                      </span> */}
-
-                      {/* {getPnLTitleParts().period ? (
-                        <>
-                          <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">-</span>
-                          <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                            {getPnLTitleParts().period}
-                          </span>
-                        </>
-                      ) : null} */}
+                    {/* LEFT: title */}
+                    <div className="flex items-baseline gap-2 min-w-0">
+                      <PageBreadcrumb pageTitle="P&L" variant="page" align="left" textSize="2xl" />
                     </div>
+
+                    {/* RIGHT: icon button (always pinned right) */}
+                    <button
+                      type="button"
+                      data-no-expand
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFocus("pnl");
+                      }}
+                      aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
+                      title={focusedChart === "pnl" ? "Collapse" : "Expand"}
+                      className="rounded-md
+      border
+      border-gray-300
+      bg-white
+      text-blue-700
+      p-1.5
+      transition-all
+      duration-200
+      ease-out
+      hover:-translate-y-[2px]
+      hover:shadow-lg
+      active:translate-y-0
+      active:shadow-md"
+                    >
+                      {focusedChart === "pnl" ? (
+                        <CgPushLeft size={18} className="font-extrabold" />
+                      ) : (
+                        <CgPushRight size={18} className="font-extrabold" />
+                      )}
+                    </button>
                   </div>
 
                   <div className="flex-1 min-h-0 overflow-hidden mt-4">
@@ -2749,6 +2779,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   </div>
                 </div>
               )}
+
             </div>
           </div>
 
@@ -2816,22 +2847,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {/* LEFT card (Trend) */}
               {(focusedChart === null || focusedChart === "trend") && (
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    // ✅ don’t expand when clicking buttons/toggles inside the card
-                    const t = e.target as HTMLElement;
-                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-
-                    toggleFocus("trend");
-                  }}
-
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    const t = e.target as HTMLElement;
-                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                    toggleFocus("trend");
-                  }}
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
                     "cursor-zoom-in select-none",
@@ -2839,6 +2854,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
+                  <button
+                    type="button"
+                    data-no-expand
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFocus("trend");
+                    }}
+                    aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
+                    title={focusedChart === "trend" ? "Collapse" : "Expand"}
+                    className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
+                  >
+                    {focusedChart === "trend" ? (
+                      <CgPushLeft size={18} className="font-extrabold" />
+                    ) : (
+                      <CgPushRight size={18} className="font-extrabold" />
+                    )}
+
+                  </button>
+
                   <div className="h-[50vh]">
                     <PerformanceTrendChart
                       range={range}
@@ -2850,6 +2884,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       data={performanceTrend}
                       metric={performanceTrendMetric}
                       onExportApiReady={setTrendExportApi}
+                      isExpanded={focusedChart === "trend"}
+                      onToggleExpand={() => toggleFocus("trend")}
                     />
                   </div>
                 </div>
@@ -2858,15 +2894,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {/* RIGHT card (PnL) */}
               {(focusedChart === null || focusedChart === "pnl") && (
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    const t = e.target as HTMLElement;
-                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                    toggleFocus("pnl");
-                  }}
-
-                  onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
                     "cursor-zoom-in select-none",
@@ -2883,22 +2910,39 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         align="left"
                         textSize="2xl"
                       />
-
-                      {/* <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                        {getPnLTitleParts().country}
-                      </span> */}
-
-                      {/* {getPnLTitleParts().period ? (
-                        <>
-                          <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                            -
-                          </span>
-                          <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                            {getPnLTitleParts().period}
-                          </span>
-                        </>
-                      ) : null} */}
                     </div>
+
+                    <button
+                      type="button"
+                      data-no-expand
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFocus("pnl");
+                      }}
+                      aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
+                      title={focusedChart === "pnl" ? "Collapse" : "Expand"}
+                      className="rounded-md
+      border
+      border-gray-300
+      bg-white
+      text-blue-700
+      p-1.5
+      transition-all
+      duration-200
+      ease-out
+      hover:-translate-y-[2px]
+      hover:shadow-lg
+      active:translate-y-0
+      active:shadow-md"
+                    >
+                      {focusedChart === "pnl" ? (
+                        <CgPushLeft size={18} className="font-extrabold" />
+                      ) : (
+                        <CgPushRight size={18} className="font-extrabold" />
+                      )}
+
+                    </button>
+
 
                     {/* <DownloadIconButton
                       onClick={(e) => {
@@ -2995,23 +3039,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {/* LEFT card (Trend) */}
               {(focusedChart === null || focusedChart === "trend") && (
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    // ✅ don’t expand when clicking buttons/toggles inside the card
-                    const t = e.target as HTMLElement;
-                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-
-                    toggleFocus("trend");
-                  }}
-
-                  onKeyDown={(e) => {
-                    if (e.key !== "Enter") return;
-                    const t = e.target as HTMLElement;
-                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                    toggleFocus("trend");
-                  }}
-
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
                     "cursor-zoom-in select-none",
@@ -3019,6 +3046,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
+                  <button
+                    type="button"
+                    data-no-expand
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFocus("trend");
+                    }}
+                    aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
+                    title={focusedChart === "trend" ? "Collapse" : "Expand"}
+                    className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
+                  >
+                    {focusedChart === "trend" ? (
+                      <CgPushLeft size={18} className="font-extrabold" />
+                    ) : (
+                      <CgPushRight size={18} className="font-extrabold" />
+                    )}
+
+                  </button>
                   <div className="h-[50vh]">
                     <PerformanceTrendChart
                       range={range}
@@ -3029,23 +3074,27 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       data={performanceTrend}
                       metric={performanceTrendMetric}
                       onExportApiReady={setTrendExportApi}
+                      isExpanded={focusedChart === "trend"}
+                      onToggleExpand={() => toggleFocus("trend")}
                     />
                   </div>
+
+
                 </div>
               )}
 
               {/* RIGHT card (PnL) */}
               {(focusedChart === null || focusedChart === "pnl") && (
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    const t = e.target as HTMLElement;
-                    if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                    toggleFocus("pnl");
-                  }}
+                  // role="button"
+                  // tabIndex={0}
+                  // onClick={(e) => {
+                  //   const t = e.target as HTMLElement;
+                  //   if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
+                  //   toggleFocus("pnl");
+                  // }}
 
-                  onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
+                  // onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
                     "cursor-zoom-in select-none",
@@ -3063,19 +3112,39 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         align="left"
                         textSize="2xl"
                       />
-
-                      {/* <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                        {getPnLTitleParts().country}
-                      </span> */}
-
-                      {/* <span className="text-charcoal-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                        -
-                      </span>
-
-                      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                        {getPnLTitleParts().period}
-                      </span> */}
                     </div>
+
+                    <button
+                      type="button"
+                      data-no-expand
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFocus("pnl");
+                      }}
+                      aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
+                      title={focusedChart === "pnl" ? "Collapse" : "Expand"}
+                      className="rounded-md
+      border
+      border-gray-300
+      bg-white
+      text-blue-700
+      p-1.5
+      transition-all
+      duration-200
+      ease-out
+      hover:-translate-y-[2px]
+      hover:shadow-lg
+      active:translate-y-0
+      active:shadow-md"
+                    >
+                      {focusedChart === "pnl" ? (
+                        <CgPushLeft size={18} className="font-extrabold" />
+                      ) : (
+                        <CgPushRight size={18} className="font-extrabold" />
+                      )}
+
+                    </button>
+
 
                     {/* <DownloadIconButton
                       onClick={(e) => {

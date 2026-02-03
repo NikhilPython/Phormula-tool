@@ -4102,6 +4102,13 @@ export default function DashboardPage() {
                         <DownloadIconButton
                             onClick={handleDownloadPlProductwiseMtd}
                             aria-label="Download P&L Productwise Breakdown MTD"
+                            className="transition-all
+      duration-200
+      ease-out
+      hover:-translate-y-[2px]
+      hover:shadow-lg
+      active:translate-y-0
+      active:shadow-md"
                         // title="Download"
                         />
 

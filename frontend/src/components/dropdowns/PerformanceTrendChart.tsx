@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import SegmentedToggle from "../ui/SegmentedToggle";
 import type { TrendChartExportApi } from "@/lib/utils/exportTypes";
+import { CgPushLeft, CgPushRight } from "react-icons/cg";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -41,6 +42,8 @@ type PerformanceTrendChartProps = {
   selectedEndDay?: number | null;
   currencySymbol?: string;
   onExportApiReady?: (api: TrendChartExportApi | null) => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 };
 
 const MONTH_ABBR_TO_IDX: Record<string, number> = {
@@ -325,7 +328,6 @@ const LiveLineChart: React.FC<{
   selectedEndDay?: number | null;
   onExportApiReady?: (api: TrendChartExportApi | null) => void;
 }> = ({ xAxisData, series, metric, currencySymbol, selectedStartDay, selectedEndDay, onExportApiReady }) => {
-  const chartRef = useRef<any>(null);
   const echartsInstanceRef = useRef<any>(null);
   const isDaily = series[0]?.kind === "daily";
 
@@ -560,7 +562,7 @@ const LiveLineChart: React.FC<{
   };
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -623,20 +625,51 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          <SegmentedToggle<ChartMetric>
-            value={chartMetric}
-            onChange={setChartMetric}
-            options={[
-              { value: "net_sales", label: "Net Sales" },
-              { value: "units", label: "Units" },
-            ]}
-            textSizeClass="text-xs"
-            className="border-[#D9D9D9E5] bg-white"
-          />
+          <div className="flex items-center justify-between gap-2">
+            <SegmentedToggle<ChartMetric>
+              value={chartMetric}
+              onChange={setChartMetric}
+              options={[
+                { value: "net_sales", label: "Net Sales" },
+                { value: "units", label: "Units" },
+              ]}
+              textSizeClass="text-xs"
+              className="border-[#D9D9D9E5] bg-white"
+            />
+
+            {props.onToggleExpand && (
+              <button
+                type="button"
+                onClick={props.onToggleExpand}
+                aria-label={props.isExpanded ? "Collapse chart" : "Expand chart"}
+                title={props.isExpanded ? "Collapse" : "Expand"}
+                className="rounded-md
+      border
+      border-gray-300
+      bg-white
+      text-blue-700
+      p-1.5
+      transition-all
+      duration-200
+      ease-out
+      hover:-translate-y-[2px]
+      hover:shadow-lg
+      active:translate-y-0
+      active:shadow-md"
+              >
+                {props.isExpanded ? (
+                  <CgPushLeft size={18} className="font-extrabold" />
+                ) : (
+                  <CgPushRight size={18} className="font-extrabold" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* <div className="mt-2 h-[280px] md:h-[320px] lg:h-[320px] 2xl:h-[480px] overflow-hidden"> */}
+      {/* <div className="mt-2 h-[450px] md:h-[520px] lg:h-[600px] overflow-hidden"> */}
+
       <div className="mt-2 flex-1 min-h-0 overflow-hidden">
         {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
         {error && <div className="text-sm text-red-500">{error}</div>}
@@ -661,3 +694,4 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
     </div>
   );
 }
+
