@@ -1678,9 +1678,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
           {
             key: '__open_orders_total',
             label: 'Total',
-            align: 'right',
-            thClassName: 'min-w-[140px]',
-            tdClassName: 'tabular-nums',
+            width: 110, align: 'center'
           },
         ],
         expandedCols: [
