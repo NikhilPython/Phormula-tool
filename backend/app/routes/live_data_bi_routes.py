@@ -132,7 +132,6 @@ def build_cm1_profit_pie_slices(
             return ""
         return str(val).strip()
 
-
     def is_others(n: str) -> bool:
         return (n or "").strip().lower() == others_label.lower()
 
