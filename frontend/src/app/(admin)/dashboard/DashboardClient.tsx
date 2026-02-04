@@ -417,6 +417,180 @@ const monthToNumber = (monthName: string): number => {
     return months[monthName.toLowerCase()] || 1;
 };
 
+async function withLocalStorageLock<T>(
+  lockKey: string,
+  fn: () => Promise<T>,
+  ttlMs = 2 * 60 * 1000 // 2 minutes
+): Promise<T | null> {
+  const now = Date.now();
+  const existing = Number(localStorage.getItem(lockKey) || "0");
+
+  // if lock is active and not expired, skip
+  if (existing && now - existing < ttlMs) return null;
+
+  // set lock
+  localStorage.setItem(lockKey, String(now));
+
+  try {
+    return await fn();
+  } finally {
+    // release lock
+    localStorage.removeItem(lockKey);
+  }
+}
+
+// ===================== ADS REPORT SEED (SP + SD) - ONCE PER DAY =====================
+
+const decodeJwtUserId = (jwt: string): string | null => {
+    try {
+        const payloadPart = jwt.split(".")[1];
+        if (!payloadPart) return null;
+
+        const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+        const json = decodeURIComponent(
+            atob(base64)
+                .split("")
+                .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+                .join("")
+        );
+
+        const payload = JSON.parse(json);
+        return payload?.user_id != null ? String(payload.user_id) : null;
+    } catch {
+        return null;
+    }
+};
+
+// ✅ IST-safe "today" and month start
+const getIstTodayISO = () => {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const y = ist.getFullYear();
+    const m = ist.getMonth() + 1; // 1..12
+    const d = ist.getDate();
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+};
+
+const getIstMonthStartISO = () => {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const y = ist.getFullYear();
+    const m = ist.getMonth() + 1; // 1..12
+    return `${y}-${String(m).padStart(2, "0")}-01`;
+};
+
+const getIstMonthToTodayRangeISO = () => ({
+    start_date: getIstMonthStartISO(),
+    end_date: getIstTodayISO(),
+});
+
+const ensureSpReportSeedOncePerDay = async (
+  baseUrl: string,
+  jwtToken: string,
+  country: string // "UK" | "US" | "CA"
+) => {
+  const userId = decodeJwtUserId(jwtToken) || "unknown";
+  const { start_date, end_date } = getIstMonthToTodayRangeISO();
+
+  // once per user + country + day
+  const storageKey = `sp_report_seed_daily_${userId}_${country}_${end_date}`;
+  if (localStorage.getItem(storageKey) === "1") return;
+
+  const lockKey = `${storageKey}_lock`;
+
+  await withLocalStorageLock(lockKey, async () => {
+    // re-check after lock to avoid race
+    if (localStorage.getItem(storageKey) === "1") return;
+
+    const body = {
+      start_date,
+      end_date,
+      time_unit: "SUMMARY",
+      countries: [country],
+      return_excel: false,
+    };
+
+    const res = await fetch(`${baseUrl}/api/ads/manager/sp_advertised_product_report`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${jwtToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    // ✅ If backend returns duplicate constraint error, treat as success (frontend workaround)
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      const msg = String(errJson?.error || "");
+
+      const isDuplicate =
+        msg.toLowerCase().includes("uniqueviolation") ||
+        msg.toLowerCase().includes("duplicate key value") ||
+        msg.toLowerCase().includes("already exists");
+
+      if (isDuplicate) {
+        localStorage.setItem(storageKey, "1");
+        return;
+      }
+
+      throw new Error(msg || "Failed to seed Sponsored Products report");
+    }
+
+    localStorage.setItem(storageKey, "1");
+  });
+};
+
+
+const ensureSdReportSeedOncePerDay = async (
+  baseUrl: string,
+  jwtToken: string,
+  country?: string // optional; include if SD report is region/country scoped
+) => {
+  const userId = decodeJwtUserId(jwtToken) || "unknown";
+  const { start_date, end_date } = getIstMonthToTodayRangeISO();
+
+  const storageKey = `sd_report_seed_daily_${userId}_${country || "ALL"}_${end_date}`;
+  if (localStorage.getItem(storageKey) === "1") return;
+
+  const lockKey = `${storageKey}_lock`;
+
+  await withLocalStorageLock(lockKey, async () => {
+    if (localStorage.getItem(storageKey) === "1") return;
+
+    const body: any = {
+      start_date,
+      end_date,
+      time_unit: "SUMMARY",
+      max_wait_seconds: 20,
+      poll_every_seconds: 5,
+    };
+
+    if (country) body.countries = [country];
+
+    const res = await fetch(`${baseUrl}/api/ads/manager/sd_advertised_product_report/sync`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${jwtToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 202 || res.ok) {
+      localStorage.setItem(storageKey, "1");
+      return;
+    }
+
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || "Failed to seed SD advertised product report");
+  });
+};
+
+
+
 const currencyForCountry = (countryName: string): CurrencyCode => {
     const c = (countryName || "").toLowerCase();
     if (c === "uk") return "GBP";
@@ -970,6 +1144,36 @@ export default function DashboardPage() {
         if (isCountryMode) setTargetRegion(forcedRegion);
     }, [isCountryMode, forcedRegion]);
 
+    const didAdsManagerSeedRef = useRef(false);
+
+    useEffect(() => {
+        if (didAdsManagerSeedRef.current) return;
+        didAdsManagerSeedRef.current = true;
+
+        const run = async () => {
+            try {
+                if (platform === "shopify") return;
+
+                const jwtToken =
+                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+                if (!jwtToken) return;
+
+                const baseUrl = baseURL;
+
+                // ✅ decide country based on platform
+                const country =
+                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+
+                // ✅ once per day seeds
+                await ensureSpReportSeedOncePerDay(baseUrl, jwtToken, country);
+                await ensureSdReportSeedOncePerDay(baseUrl, jwtToken);
+            } catch (e) {
+                console.error("ads manager daily seed error:", e);
+            }
+        };
+
+        run();
+    }, [platform]);
 
     const didMonthlyAdsSyncRef = useRef(false);
 
@@ -4129,7 +4333,7 @@ export default function DashboardPage() {
                 ) : loading && monthlySkuwiseRows.length === 0 ? (
                     <div className="text-sm text-gray-500">Loading…</div>
                 ) : (
-                       <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
+                    <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
                         <div className="min-w-full">
                             <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
                                 rows={monthlySkuwiseRowsForTable}
