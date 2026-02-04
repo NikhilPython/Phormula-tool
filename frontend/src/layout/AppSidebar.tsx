@@ -933,15 +933,19 @@ if (country) {
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#mtd-pl`,
         },
         {
+          name: "P&L Productwise Breakdown",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
+        },
+        {
           name: "Current Inventory",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
           onClick: handleFetchAgedInventory,
         },
-        {
-          name: "Advertisements",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#advertisements`,
-          // onClick: handleConnectAmazonAds,
-        },
+        // {
+        //   name: "Advertisements",
+        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#advertisements`,
+        //   // onClick: handleConnectAmazonAds,
+        // },
 
       ],
     },

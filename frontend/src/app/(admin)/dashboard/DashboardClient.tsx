@@ -4593,10 +4593,23 @@ export default function DashboardPage() {
             }
 
 
-            {/* Monthly Ads Spent (from MTD Transactions -> skuwise_items) */}
-            <div id="advertisements" className="scroll-mt-[80px] mt-4 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
+            <div id="pnl-mtd" className="scroll-mt-[80px] mt-4 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                    <PageBreadcrumb pageTitle="P&L Productwise Breakdown MTD" variant="page" align="left" textSize="2xl" />
+                    <div className="flex items-center gap-2">
+                        <span>
+                            <PageBreadcrumb
+                                pageTitle="P&L Productwise Breakdown"
+                                variant="page"
+                                align="left"
+                                textSize="2xl"
+                            />
+                        </span>
+
+                        <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
+                            ({currencySymbol})
+                        </span>
+                    </div>
+
 
                     <div className="flex items-center gap-2">
                         <DownloadIconButton
@@ -4721,7 +4734,63 @@ export default function DashboardPage() {
                                 summary={{
                                     enabled: monthlySkuwiseRowsForTable.length > 0,
 
+                                    sections: [
+                                        {
+                                            id: "ads",
+                                            label: "Cost of Advertisement",
+                                            endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
+                                            defaultCollapsed: true,
+                                            children: [
+                                                {
+                                                    id: "ads_1",
+                                                    label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                     midValue: "-",
+                                                },
+                                                {
+                                                    id: "ads_2",
+                                                    label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                   midValue: "-",
+                                                },
+                                            ],
+                                        },
 
+                                        {
+                                            id: "other",
+                                            label: "Other Transactions",
+                                            endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
+                                            defaultCollapsed: true,
+                                            children: [
+                                                {
+                                                    id: "other_1",
+                                                    label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                     midValue: "-",
+                                                },
+                                                {
+                                                    id: "other_2",
+                                                    label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                     midValue: "-",
+                                                },
+                                                {
+                                                    id: "other_misc",
+                                                    label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
+                                                    midValue: "-",
+                                                },
+                                                {
+                                                    id: "other_3",
+                                                    label: (
+                                                        <>
+                                                            Reimbursement for lost Inventory
+                                                            {/* {totals.reimbursement_lost_inventory_units
+                                                                ? ` - ${totals.reimbursement_lost_inventory_units} Units `
+                                                                : " "} */}
+                                                            <strong className="text-green-500">(+)</strong>
+                                                        </>
+                                                    ),
+                                                      midValue: "-",
+                                                },
+                                            ],
+                                        },
+                                    ],
 
                                     fixedRows: [
                                         ...(countryName === "us" || countryName === "global"
@@ -4738,16 +4807,16 @@ export default function DashboardPage() {
                                             ]
                                             : []),
 
-                                        {
-                                            id: "ads",
-                                            label: "Cost of Advertisement",
-                                            endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
-                                        },
-                                        {
-                                            id: "other",
-                                            label: "Other Transactions",
-                                            endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
-                                        },
+                                        // {
+                                        //     id: "ads",
+                                        //     label: "Cost of Advertisement",
+                                        //     endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
+                                        // },
+                                        // {
+                                        //     id: "other",
+                                        //     label: "Other Transactions",
+                                        //     endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
+                                        // },
                                         {
                                             id: "cm2_profit",
                                             label: "CM2 Profit/Loss",

@@ -58,6 +58,90 @@ def ads_connect_url():
         return jsonify({"error": str(e)}), 400
 
 
+# @advertisement_api_routes_bp.route("/api/ads/callback", methods=["GET"])
+# def ads_callback():
+#     """
+#     - exchange code -> refresh_token
+#     - store refresh token
+#     - refresh -> access_token
+#     - list top profiles (no scope) -> find manager profile id (if any)
+#     - if manager exists: list child advertiser profiles via scope
+#       else: child profiles == top profiles
+#     - save best-effort UK/US/CA advertiser profile IDs
+#     """
+#     try:
+#         code = request.args.get("code")
+#         state = request.args.get("state") or ""
+
+#         if not code:
+#             return jsonify({"error": "Missing code"}), 400
+#         if not state.startswith("user:"):
+#             return jsonify({"error": "Invalid state"}), 400
+
+#         user_id = int(state.split("user:")[1])
+
+#         tokens = exchange_code_for_tokens(code)
+#         refresh_token = tokens.get("refresh_token")
+
+#         if not refresh_token:
+#             return jsonify({
+#                 "error": "Missing refresh_token from Amazon. Reconnect with prompt=consent.",
+#                 "token_response": tokens
+#             }), 400
+
+#         u = _get_user_row(user_id)
+#         u.amazon_ads_refresh_token = refresh_token
+#         u.amazon_ads_refresh_token_updated_at = datetime.utcnow()
+
+#         access_token = get_ads_access_token_from_refresh(refresh_token)
+
+#         # 1) Top-level profiles across regions (no scope)
+#         top_profiles_by_region = list_top_level_profiles_all_regions(access_token)
+#         manager_profile_id = find_manager_profile_id(top_profiles_by_region)
+#         u.amazon_ads_manager_profile_id = manager_profile_id
+
+#         # 2) Child profiles (advertisers) if manager; otherwise top-level is your advertisers
+#         if manager_profile_id:
+#             child_profiles_by_region = list_child_profiles_all_regions(access_token, manager_profile_id)
+#         else:
+#             child_profiles_by_region = top_profiles_by_region
+
+#         # Save best-effort advertiser profile IDs by country
+#         eu_child = child_profiles_by_region.get("EU", []) or []
+#         na_child = child_profiles_by_region.get("NA", []) or []
+
+#         # Amazon uses GB for UK
+#         u.amazon_ads_profile_id_uk = pick_profile_id(eu_child, {"GB", "UK"})
+#         u.amazon_ads_profile_id_us = pick_profile_id(na_child, {"US"})
+#         u.amazon_ads_profile_id_ca = pick_profile_id(na_child, {"CA"})
+
+#         db.session.commit()
+
+#         # helpful counts for debugging
+#         return jsonify({
+#             "message": "Amazon Ads connected successfully",
+#             "saved": {
+#                 "amazon_ads_refresh_token_updated_at": u.amazon_ads_refresh_token_updated_at.isoformat()
+#                 if u.amazon_ads_refresh_token_updated_at else None,
+#                 "amazon_ads_manager_profile_id": u.amazon_ads_manager_profile_id,
+#                 "amazon_ads_profile_id_uk": u.amazon_ads_profile_id_uk,
+#                 "amazon_ads_profile_id_us": u.amazon_ads_profile_id_us,
+#                 "amazon_ads_profile_id_ca": u.amazon_ads_profile_id_ca,
+#             },
+#             "counts": {
+#                 "top_level": {k: len(v or []) for k, v in top_profiles_by_region.items()},
+#                 "child": {k: len(v or []) for k, v in child_profiles_by_region.items()},
+#             },
+#         })
+
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 400
+
+
+from flask import request, jsonify, Response
+from datetime import datetime
+import json
+
 @advertisement_api_routes_bp.route("/api/ads/callback", methods=["GET"])
 def ads_callback():
     """
@@ -84,10 +168,36 @@ def ads_callback():
         refresh_token = tokens.get("refresh_token")
 
         if not refresh_token:
-            return jsonify({
+            payload = {
                 "error": "Missing refresh_token from Amazon. Reconnect with prompt=consent.",
                 "token_response": tokens
-            }), 400
+            }
+            if request.args.get("format") == "json":
+                return jsonify(payload), 400
+
+            html = f"""
+            <!doctype html>
+            <html>
+              <head><meta charset="utf-8" /></head>
+              <body>
+                <script>
+                  (function () {{
+                    try {{
+                      if (window.opener && !window.opener.closed) {{
+                        window.opener.postMessage(
+                          {{ type: "amazon_ads_connected", ok: false, error: {json.dumps(payload["error"])} }},
+                          "*"
+                        );
+                      }}
+                    }} catch (e) {{}}
+                    try {{ window.close(); }} catch (e) {{}}
+                    document.body.innerHTML = "Connection failed. You can close this window.";
+                  }})();
+                </script>
+              </body>
+            </html>
+            """
+            return Response(html, mimetype="text/html"), 400
 
         u = _get_user_row(user_id)
         u.amazon_ads_refresh_token = refresh_token
@@ -117,12 +227,13 @@ def ads_callback():
 
         db.session.commit()
 
-        # helpful counts for debugging
-        return jsonify({
+        payload = {
             "message": "Amazon Ads connected successfully",
             "saved": {
-                "amazon_ads_refresh_token_updated_at": u.amazon_ads_refresh_token_updated_at.isoformat()
-                if u.amazon_ads_refresh_token_updated_at else None,
+                "amazon_ads_refresh_token_updated_at": (
+                    u.amazon_ads_refresh_token_updated_at.isoformat()
+                    if u.amazon_ads_refresh_token_updated_at else None
+                ),
                 "amazon_ads_manager_profile_id": u.amazon_ads_manager_profile_id,
                 "amazon_ads_profile_id_uk": u.amazon_ads_profile_id_uk,
                 "amazon_ads_profile_id_us": u.amazon_ads_profile_id_us,
@@ -132,10 +243,72 @@ def ads_callback():
                 "top_level": {k: len(v or []) for k, v in top_profiles_by_region.items()},
                 "child": {k: len(v or []) for k, v in child_profiles_by_region.items()},
             },
-        })
+        }
+
+        # Debug mode if you want JSON:
+        # /api/ads/callback?code=...&state=...&format=json
+        if request.args.get("format") == "json":
+            return jsonify(payload)
+
+        # Normal popup flow: notify opener + close popup
+        html = f"""
+        <!doctype html>
+        <html>
+          <head><meta charset="utf-8" /></head>
+          <body>
+            <script>
+              (function () {{
+                try {{
+                  if (window.opener && !window.opener.closed) {{
+                    window.opener.postMessage(
+                      {{ type: "amazon_ads_connected", ok: true, payload: {json.dumps(payload)} }},
+                      "*"
+                    );
+                  }}
+                }} catch (e) {{}}
+
+                try {{ window.close(); }} catch (e) {{}}
+
+                document.body.innerHTML = "Connected. You can close this window.";
+              }})();
+            </script>
+          </body>
+        </html>
+        """
+        return Response(html, mimetype="text/html")
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        err_payload = {"error": str(e)}
+
+        if request.args.get("format") == "json":
+            return jsonify(err_payload), 400
+
+        html = f"""
+        <!doctype html>
+        <html>
+          <head><meta charset="utf-8" /></head>
+          <body>
+            <script>
+              (function () {{
+                try {{
+                  if (window.opener && !window.opener.closed) {{
+                    window.opener.postMessage(
+                      {{ type: "amazon_ads_connected", ok: false, error: {json.dumps(str(e))} }},
+                      "*"
+                    );
+                  }}
+                }} catch (e) {{}}
+
+                try {{ window.close(); }} catch (e) {{}}
+
+                document.body.innerHTML = "Connection failed. You can close this window.";
+              }})();
+            </script>
+          </body>
+        </html>
+        """
+        return Response(html, mimetype="text/html"), 400
+
 
 
 @advertisement_api_routes_bp.route("/api/ads/status", methods=["GET"])
