@@ -211,6 +211,7 @@ import IntegrationsModal from "./IntegrationsModal";
 // ✅ NEW
 import AmazonAdsConnectModal from "./AmazonAdsConnectModal";
 import AmazonAdsIntegrationFlow from "./AmazonAdsIntegrationFlow";
+import AmazonAdsConnectLegacy from "./AmazonAdsConnectLegacy";
 
 type Provider = "amazon" | "shopify" | "amazon_ads";
 type Origin = "header" | "page";
@@ -218,8 +219,6 @@ type Origin = "header" | "page";
 export default function HeaderIntegrationFlow() {
   const [openIntegrationModal, setOpenIntegrationModal] = useState(false);
   const [showAmazonLegacy, setShowAmazonLegacy] = useState(false);
-
-  // ✅ NEW
   const [showAmazonAds, setShowAmazonAds] = useState(false);
 
   // Minimal props required by AmazonAdsConnectModal
@@ -237,6 +236,7 @@ export default function HeaderIntegrationFlow() {
       const { provider, origin } = custom.detail || {};
       if (!provider) return;
       console.log("Header flow got event:", custom.detail);
+      console.log("integration:choose received", custom.detail);
 
       // 🟢 Only handle header-origin events here
       if (origin !== "header") return;
@@ -246,11 +246,8 @@ export default function HeaderIntegrationFlow() {
         return;
       }
 
-      // ✅ NEW
-      if (provider === "amazon_ads") {
-        setShowAmazonAds(true);
-        return;
-      }
+      if (origin !== "header") return;
+      if (provider === "amazon_ads") setShowAmazonAds(true);
     };
 
     window.addEventListener("integration:choose", handler as EventListener);
@@ -314,16 +311,13 @@ export default function HeaderIntegrationFlow() {
 
       {/* ✅ NEW */}
       {showAmazonAds && (
-        <AmazonAdsConnectModal
-          isOpen={showAmazonAds}
+        <AmazonAdsConnectLegacy
           onClose={() => setShowAmazonAds(false)}
-          adsStatusLoading={adsStatusLoading}
-          adsStatus={adsStatus}
-          adsConnecting={adsConnecting}
-          adsError={adsError}
-          onConnectOrSync={onConnectOrSyncAds}
+          onConnected={() => setShowAmazonAds(false)}
         />
       )}
+
+
     </>
   );
 }

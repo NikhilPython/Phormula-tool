@@ -438,25 +438,25 @@ const monthToNumber = (monthName: string): number => {
 };
 
 async function withLocalStorageLock<T>(
-  lockKey: string,
-  fn: () => Promise<T>,
-  ttlMs = 2 * 60 * 1000 // 2 minutes
+    lockKey: string,
+    fn: () => Promise<T>,
+    ttlMs = 2 * 60 * 1000 // 2 minutes
 ): Promise<T | null> {
-  const now = Date.now();
-  const existing = Number(localStorage.getItem(lockKey) || "0");
+    const now = Date.now();
+    const existing = Number(localStorage.getItem(lockKey) || "0");
 
-  // if lock is active and not expired, skip
-  if (existing && now - existing < ttlMs) return null;
+    // if lock is active and not expired, skip
+    if (existing && now - existing < ttlMs) return null;
 
-  // set lock
-  localStorage.setItem(lockKey, String(now));
+    // set lock
+    localStorage.setItem(lockKey, String(now));
 
-  try {
-    return await fn();
-  } finally {
-    // release lock
-    localStorage.removeItem(lockKey);
-  }
+    try {
+        return await fn();
+    } finally {
+        // release lock
+        localStorage.removeItem(lockKey);
+    }
 }
 
 // ===================== ADS REPORT SEED (SP + SD) - ONCE PER DAY =====================
@@ -505,108 +505,108 @@ const getIstMonthToTodayRangeISO = () => ({
 });
 
 const ensureSpReportSeedOncePerDay = async (
-  baseUrl: string,
-  jwtToken: string,
-  country: string // "UK" | "US" | "CA"
+    baseUrl: string,
+    jwtToken: string,
+    country: string // "UK" | "US" | "CA"
 ) => {
-  const userId = decodeJwtUserId(jwtToken) || "unknown";
-  const { start_date, end_date } = getIstMonthToTodayRangeISO();
+    const userId = decodeJwtUserId(jwtToken) || "unknown";
+    const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
-  // once per user + country + day
-  const storageKey = `sp_report_seed_daily_${userId}_${country}_${end_date}`;
-  if (localStorage.getItem(storageKey) === "1") return;
-
-  const lockKey = `${storageKey}_lock`;
-
-  await withLocalStorageLock(lockKey, async () => {
-    // re-check after lock to avoid race
+    // once per user + country + day
+    const storageKey = `sp_report_seed_daily_${userId}_${country}_${end_date}`;
     if (localStorage.getItem(storageKey) === "1") return;
 
-    const body = {
-      start_date,
-      end_date,
-      time_unit: "SUMMARY",
-      countries: [country],
-      return_excel: false,
-    };
+    const lockKey = `${storageKey}_lock`;
 
-    const res = await fetch(`${baseUrl}/api/ads/manager/sp_advertised_product_report`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${jwtToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    await withLocalStorageLock(lockKey, async () => {
+        // re-check after lock to avoid race
+        if (localStorage.getItem(storageKey) === "1") return;
 
-    // ✅ If backend returns duplicate constraint error, treat as success (frontend workaround)
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
-      const msg = String(errJson?.error || "");
+        const body = {
+            start_date,
+            end_date,
+            time_unit: "SUMMARY",
+            countries: [country],
+            return_excel: false,
+        };
 
-      const isDuplicate =
-        msg.toLowerCase().includes("uniqueviolation") ||
-        msg.toLowerCase().includes("duplicate key value") ||
-        msg.toLowerCase().includes("already exists");
+        const res = await fetch(`${baseUrl}/api/ads/manager/sp_advertised_product_report`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${jwtToken}`,
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+        });
 
-      if (isDuplicate) {
+        // ✅ If backend returns duplicate constraint error, treat as success (frontend workaround)
+        if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            const msg = String(errJson?.error || "");
+
+            const isDuplicate =
+                msg.toLowerCase().includes("uniqueviolation") ||
+                msg.toLowerCase().includes("duplicate key value") ||
+                msg.toLowerCase().includes("already exists");
+
+            if (isDuplicate) {
+                localStorage.setItem(storageKey, "1");
+                return;
+            }
+
+            throw new Error(msg || "Failed to seed Sponsored Products report");
+        }
+
         localStorage.setItem(storageKey, "1");
-        return;
-      }
-
-      throw new Error(msg || "Failed to seed Sponsored Products report");
-    }
-
-    localStorage.setItem(storageKey, "1");
-  });
+    });
 };
 
 
 const ensureSdReportSeedOncePerDay = async (
-  baseUrl: string,
-  jwtToken: string,
-  country?: string // optional; include if SD report is region/country scoped
+    baseUrl: string,
+    jwtToken: string,
+    country?: string // optional; include if SD report is region/country scoped
 ) => {
-  const userId = decodeJwtUserId(jwtToken) || "unknown";
-  const { start_date, end_date } = getIstMonthToTodayRangeISO();
+    const userId = decodeJwtUserId(jwtToken) || "unknown";
+    const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
-  const storageKey = `sd_report_seed_daily_${userId}_${country || "ALL"}_${end_date}`;
-  if (localStorage.getItem(storageKey) === "1") return;
-
-  const lockKey = `${storageKey}_lock`;
-
-  await withLocalStorageLock(lockKey, async () => {
+    const storageKey = `sd_report_seed_daily_${userId}_${country || "ALL"}_${end_date}`;
     if (localStorage.getItem(storageKey) === "1") return;
 
-    const body: any = {
-      start_date,
-      end_date,
-      time_unit: "SUMMARY",
-      max_wait_seconds: 20,
-      poll_every_seconds: 5,
-    };
+    const lockKey = `${storageKey}_lock`;
 
-    if (country) body.countries = [country];
+    await withLocalStorageLock(lockKey, async () => {
+        if (localStorage.getItem(storageKey) === "1") return;
 
-    const res = await fetch(`${baseUrl}/api/ads/manager/sd_advertised_product_report/sync`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${jwtToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+        const body: any = {
+            start_date,
+            end_date,
+            time_unit: "SUMMARY",
+            max_wait_seconds: 20,
+            poll_every_seconds: 5,
+        };
+
+        if (country) body.countries = [country];
+
+        const res = await fetch(`${baseUrl}/api/ads/manager/sd_advertised_product_report/sync`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${jwtToken}`,
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (res.status === 202 || res.ok) {
+            localStorage.setItem(storageKey, "1");
+            return;
+        }
+
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to seed SD advertised product report");
     });
-
-    if (res.status === 202 || res.ok) {
-      localStorage.setItem(storageKey, "1");
-      return;
-    }
-
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error || "Failed to seed SD advertised product report");
-  });
 };
 
 
@@ -927,6 +927,8 @@ export default function DashboardPage() {
     const [monthlySpError, setMonthlySpError] = useState<string | null>(null);
     const [monthlySpTotalSpend, setMonthlySpTotalSpend] = useState<number | null>(null);
 
+    const [adsSeeded, setAdsSeeded] = useState(false);
+    const [adsSeedError, setAdsSeedError] = useState<string | null>(null);
 
 
     const fetchMonthlySp = useCallback(async () => {
@@ -1165,37 +1167,108 @@ export default function DashboardPage() {
     }, [isCountryMode, forcedRegion]);
 
     const didAdsManagerSeedRef = useRef(false);
-
     useEffect(() => {
-        if (didAdsManagerSeedRef.current) return;
-        didAdsManagerSeedRef.current = true;
+        let cancelled = false;
 
         const run = async () => {
             try {
-                if (platform === "shopify") return;
+                if (platform === "shopify") {
+                    if (!cancelled) setAdsSeeded(true);
+                    return;
+                }
 
                 const jwtToken =
                     typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
                 if (!jwtToken) return;
 
-                const baseUrl = baseURL;
-
-                // ✅ decide country based on platform
                 const country =
                     platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-                // ✅ once per day seeds
-                await ensureSpReportSeedOncePerDay(baseUrl, jwtToken, country);
-                await ensureSdReportSeedOncePerDay(baseUrl, jwtToken);
+                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+                await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+
+                if (!cancelled) {
+                    setAdsSeedError(null);
+                    setAdsSeeded(true);
+                }
+            } catch (e: any) {
+                if (!cancelled) {
+                    setAdsSeedError(e?.message || "Ads seed failed");
+                    // you can still allow monthly call, but safest is keep false
+                    setAdsSeeded(false);
+                }
+            }
+        };
+
+        setAdsSeeded(false);
+        run();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [platform]);
+
+
+    const didMonthlyAdsSyncRef = useRef(false);
+
+    useEffect(() => {
+        if (!adsSeeded) return;        // ✅ hard gate: monthly runs only after seed is done
+        if (platform === "shopify") return;
+
+        let cancelled = false;
+
+        const run = async () => {
+            try {
+                const jwtToken =
+                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+                if (!jwtToken) return;
+
+                const country =
+                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+
+                const { monthName, year } = getISTYearMonth();
+                const month = monthToNumber(monthName.toLowerCase());
+
+                const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${jwtToken}`,
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        month,
+                        year,
+                        country,                 // ✅ IMPORTANT: don't hardcode "UK"
+                        include: ["SP", "SD"],
+                    }),
+                });
+
+                const json = await res.json().catch(() => ({}));
+
+                if (res.status === 404 && String(json?.error || "").includes("No rows found")) {
+                    console.warn(`No monthly ads rows for ${country} ${month}/${year}. Skipping.`);
+                    return;
+                }
+
+                if (!res.ok) throw new Error(json?.error || "monthly_sp_sd_to_db failed");
+
+                if (cancelled) return;
+
+                // ✅ optional: now that DB is ready, fetch UI table
+                await fetchMonthlySp();
             } catch (e) {
-                console.error("ads manager daily seed error:", e);
+                console.error("monthly_sp_sd_to_db error:", e);
             }
         };
 
         run();
-    }, [platform]);
 
-    const didMonthlyAdsSyncRef = useRef(false);
+        return () => {
+            cancelled = true;
+        };
+    }, [adsSeeded, platform, baseURL, fetchMonthlySp]);
+
 
     // useEffect(() => {
     //   if (didMonthlyAdsSyncRef.current) return;
@@ -1238,69 +1311,69 @@ export default function DashboardPage() {
     //   run();
     // }, [platform, baseURL]);
 
-    useEffect(() => {
-        if (didMonthlyAdsSyncRef.current) return;
-        didMonthlyAdsSyncRef.current = true;
+    // useEffect(() => {
+    //     if (didMonthlyAdsSyncRef.current) return;
+    //     didMonthlyAdsSyncRef.current = true;
 
-        const run = async () => {
-            try {
-                const jwtToken =
-                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-                if (!jwtToken) return;
+    //     const run = async () => {
+    //         try {
+    //             const jwtToken =
+    //                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+    //             if (!jwtToken) return;
 
-                // decide country based on platform (match your app logic)
-                const country =
-                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+    //             // decide country based on platform (match your app logic)
+    //             const country =
+    //                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-                const { monthName, year } = getISTYearMonth();
-                const month = monthToNumber(monthName.toLowerCase()); // 1..12
+    //             const { monthName, year } = getISTYearMonth();
+    //             const month = monthToNumber(monthName.toLowerCase()); // 1..12
 
-                const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${jwtToken}`,
-                        Accept: "application/json",
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                        month: monthToNumber(monthName.toLowerCase()),
-                        year,
-                        country: "UK",
-                        include: ["SP", "SD"],
-                        // month: 1,
-                        // year: 2026,
-                        // country: "UK"
+    //             const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
+    //                 method: "POST",
+    //                 headers: {
+    //                     Authorization: `Bearer ${jwtToken}`,
+    //                     Accept: "application/json",
+    //                     "Content-Type": "application/json",
+    //                 },
+    //                 body: JSON.stringify({
+    //                     month: monthToNumber(monthName.toLowerCase()),
+    //                     year,
+    //                     country: "UK",
+    //                     include: ["SP", "SD"],
+    //                     // month: 1,
+    //                     // year: 2026,
+    //                     // country: "UK"
 
 
-                    }),
-                });
+    //                 }),
+    //             });
 
-                const json = await res.json().catch(() => ({}));
-                console.log("monthly_sp_sd_to_db response:", json);
+    //             const json = await res.json().catch(() => ({}));
+    //             console.log("monthly_sp_sd_to_db response:", json);
 
-                // ✅ If no rows found, treat as normal "no data" state (don't throw)
-                if (res.status === 404 && json?.error?.includes("No rows found")) {
-                    console.warn(
-                        `No monthly ads rows for ${country} ${month}/${year}. Skipping.`
-                    );
-                    // Optional: set some state here so UI can show "No data"
-                    // setMonthlyAdsRows([]);
-                    // setMonthlyAdsMessage("No ads data found for this month.");
-                    return;
-                }
+    //             // ✅ If no rows found, treat as normal "no data" state (don't throw)
+    //             if (res.status === 404 && json?.error?.includes("No rows found")) {
+    //                 console.warn(
+    //                     `No monthly ads rows for ${country} ${month}/${year}. Skipping.`
+    //                 );
+    //                 // Optional: set some state here so UI can show "No data"
+    //                 // setMonthlyAdsRows([]);
+    //                 // setMonthlyAdsMessage("No ads data found for this month.");
+    //                 return;
+    //             }
 
-                // ✅ Any other error should be surfaced
-                if (!res.ok) throw new Error(json?.error || "monthly_sp_sd_to_db failed");
+    //             // ✅ Any other error should be surfaced
+    //             if (!res.ok) throw new Error(json?.error || "monthly_sp_sd_to_db failed");
 
-                // Optional: if you want to use returned items immediately
-                // setMonthlyAdsRows(json.items || []);
-            } catch (e) {
-                console.error("monthly_sp_sd_to_db error:", e);
-            }
-        };
+    //             // Optional: if you want to use returned items immediately
+    //             // setMonthlyAdsRows(json.items || []);
+    //         } catch (e) {
+    //             console.error("monthly_sp_sd_to_db error:", e);
+    //         }
+    //     };
 
-        run();
-    }, [platform, baseURL]);
+    //     run();
+    // }, [platform, baseURL]);
 
 
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
@@ -2748,11 +2821,11 @@ export default function DashboardPage() {
         },
         {
             id: "cm2_profit",
-           label: (
-                   <>
-                     CM2 Profit <InfoTip text={TERM_DEFINITIONS.cm2_profit} />
-                   </>
-                 ),
+            label: (
+                <>
+                    CM2 Profit <InfoTip text={TERM_DEFINITIONS.cm2_profit} />
+                </>
+            ),
 
             collapsedCols: [
                 {
