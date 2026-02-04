@@ -208,19 +208,6 @@ export default function GroupedCollapsibleTable<RowT>({
 
 
   /* ---------------- Row 2 Headers ---------------- */
-
-  // const row2LeafCols = useMemo(() => {
-  //   const out: LeafCol<RowT>[] = [];
-  //   for (const item of resolvedLayout) {
-  //     if (item.type !== "group") continue;
-  //     const g = groupMap.get(item.id);
-  //     if (!g) continue;
-  //     const isCollapsed = collapsed[g.id];
-  //     out.push(...(isCollapsed ? g.collapsedCols : g.expandedCols));
-  //   }
-  //   return out;
-  // }, [resolvedLayout, collapsed, groupMap]);
-
   type Row2Cell<RowT> =
     | { kind: "col"; col: LeafCol<RowT>; colSpan: 1 }
     | { kind: "blank"; key: string; colSpan: number };
@@ -250,13 +237,6 @@ export default function GroupedCollapsibleTable<RowT>({
     }
     return cols;
   }, [anyGroupExpanded, resolvedLayout, collapsed, groupMap]);
-
-
-  // const shouldRenderHeaderRow2 = useMemo(() => {
-  //   // show row2 only when at least one group is expanded
-  //   return groups.some((g) => collapsed[g.id] === false);
-  // }, [groups, collapsed]);
-
 
   const visibleCount = visibleLeafCols.length;
   const valueCols = summary?.valueCols ?? 2;
@@ -327,7 +307,6 @@ export default function GroupedCollapsibleTable<RowT>({
                     <span className="min-w-0 whitespace-normal break-words leading-tight">
                       {g.label}
                     </span>
-
                   </div>
                 </th>
               );

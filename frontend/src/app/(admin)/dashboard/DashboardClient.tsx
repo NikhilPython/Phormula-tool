@@ -45,6 +45,26 @@ import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie"
 import { CgPushRight, CgPushLeft } from "react-icons/cg";
 import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/GroupedCollapsibleTable";
 import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
+import InfoTip from "@/components/ui/InfoTip";
+
+const TERM_DEFINITIONS: Record<string, string> = {
+    asp: "Average Selling Price",
+    net_sales: "Net Sales",
+    net_taxes: "Net Taxes",
+    net_credits: "Net Credits",
+    tex_and_credits: "Taxes & Credits = combined effect of taxes and credits applied to orders (used to reconcile from gross to net).",
+    marketplace_fees: "Marketplace Fees = total fees charged by Amazon (e.g., referral + FBA fees).",
+    amazon_fee: "Marketplace Fees = total fees charged by Amazon (e.g., referral + FBA fees).",
+    selling_fees: "Selling Fees = Amazon referral/commission and selling-related fees (non-FBA components).",
+    fba_fees: "FBA Fees = fulfillment, storage-related and FBA service fees (as mapped in reports).",
+    promotional_rebates: "Promotions = promotional rebates/discounts applied (coupons/deals) that reduce profitability.",
+    promotional_rebates_percentage: "Promotions % = Promotions ÷ Net Sales × 100.",
+    cost_of_unit_sold: "COGS = Cost of goods sold for the units sold in the period (as provided/derived).",
+    cm1_profit: "CM1 Profit",
+    cm2_profit: "CM2 Profit",
+    profit_percentage: "CM1 Profit % = CM1 Profit ÷ Net Sales × 100.",
+    unit_wise_profitability: "CM1 Profit Per Unit = CM1 Profit ÷ Net Units Sold.",
+};
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -2614,14 +2634,16 @@ export default function DashboardPage() {
     const SKUWISE_LEFT_COLS = [
         { key: "sno", label: "S.No", align: "center" as const },
         { key: "product_name", label: "Product Name", align: "center" as const },
-        { key: "sku", label: "SKU", align: "center" as const },
-        { key: "ad_type", label: "Ad Type", align: "center" as const },
     ];
 
     const SKUWISE_GROUPS = [
         {
             id: "marketplace_fees",
-            label: "Marketplace Fees",
+            label: (
+                <>
+                    Marketplace Fees <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />
+                </>
+            ),
 
             collapsedCols: [
                 {
@@ -2641,9 +2663,36 @@ export default function DashboardPage() {
                 },
             ],
         },
+
+        {
+            id: "quantity",
+            label: "Net Units Sold",
+
+            collapsedCols: [
+                {
+                    key: "quantity",
+                    label: "Total",
+                    align: "center" as const,
+                },
+            ],
+
+            expandedCols: [
+                { key: "sku", label: "SKU", align: "center" as const },
+                {
+                    key: "quantity",
+                    label: "Total",
+                    align: "center" as const,
+                },
+            ],
+        },
+
         {
             id: "profit",
-            label: "CM1 Profit",
+            label: (
+                <>
+                    CM1 Profit <InfoTip text={TERM_DEFINITIONS.cm1_profit} />
+                </>
+            ),
 
             collapsedCols: [
                 {
@@ -2654,8 +2703,8 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "cm1_profit_per", label: "CM1 Profit %", align: "center" as const },
                 { key: "cm1_profit_per_unit", label: "CM1 Profit Per Unit", align: "center" as const },
+                { key: "cm1_profit_per", label: "CM1 Profit %", align: "center" as const },
                 {
                     key: "profit",
                     label: "Total",
@@ -2676,8 +2725,20 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "tax", label: "Net Taxes", align: "center" as const },
-                { key: "credits", label: "Net Credits", align: "center" as const },
+                {
+                    key: "tax", label: (
+                        <>
+                            Net Taxes <InfoTip text={TERM_DEFINITIONS.net_taxes} />
+                        </>
+                    ), align: "center" as const
+                },
+                {
+                    key: "credits", label: (
+                        <>
+                            Net Credits <InfoTip text={TERM_DEFINITIONS.net_credits} />
+                        </>
+                    ), align: "center" as const
+                },
                 {
                     key: "tax_and_credits",
                     label: "Total",
@@ -2687,7 +2748,11 @@ export default function DashboardPage() {
         },
         {
             id: "cm2_profit",
-            label: "CM2 Profit",
+           label: (
+                   <>
+                     CM2 Profit <InfoTip text={TERM_DEFINITIONS.cm2_profit} />
+                   </>
+                 ),
 
             collapsedCols: [
                 {
@@ -2698,8 +2763,8 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "cm2_profit_per", label: "CM2 Profit %", align: "center" as const },
                 { key: "cm2_profit_per_unit", label: "CM2 Profit Per Unit", align: "center" as const },
+                { key: "cm2_profit_per", label: "CM2 Profit %", align: "center" as const },
                 {
                     key: "cm2_profit",
                     label: "Total",
@@ -2709,13 +2774,22 @@ export default function DashboardPage() {
         },
     ];
 
-
-
-
     const SKUWISE_SINGLE_COLS = [
         { key: "quantity", label: "Net Units Sold", align: "center" as const },
-        { key: "asp", label: "ASP", align: "center" as const },
-        { key: "net_sales", label: "Net Sales", align: "center" as const },
+        {
+            key: "asp", label: (
+                <>
+                    ASP <InfoTip text={TERM_DEFINITIONS.asp} />
+                </>
+            ), align: "center" as const
+        },
+        {
+            key: "net_sales", label: (
+                <>
+                    Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
+                </>
+            ), align: "center" as const
+        },
         { key: "cogs", label: "COGS", align: "center" as const },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
         { key: "ads_spend", label: "Ads Spend", align: "center" as const },
@@ -3362,7 +3436,6 @@ export default function DashboardPage() {
                 };
             });
 
-            // ✅ Include the UI summary block in Excel export
             const summaryRows = [
                 ...(countryName === "us" || countryName === "global"
                     ? [
@@ -4297,6 +4370,156 @@ export default function DashboardPage() {
             </div>
 
 
+
+            {/* Lower P&L Graph and Inventory */}
+            {
+                hasAnyGraphData && (
+                    <>
+                        <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
+                            <div
+                                className={[
+                                    "grid grid-cols-1 gap-4 items-stretch",
+                                    isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
+                                ].join(" ")}
+                            >
+                                <div className="rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0">
+                                    <div className="mb-3 flex items-center justify-between">
+                                        <div className="text-sm text-charcoal-500">
+                                            <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
+                                                <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            {/* Only this part depends on isCountryMode */}
+                                            {!isCountryMode && (
+                                                <>
+                                                    <SegmentedToggle<RegionKey>
+                                                        value={graphRegion}
+                                                        options={graphRegions.map((r) => ({ value: r }))}
+                                                        onChange={setGraphRegion}
+                                                    />
+                                                    <DownloadIconButton onClick={handleDownload} />
+                                                </>
+                                            )}
+                                            <span className="relative group shrink-0">
+                                                <button
+                                                    type="button"
+                                                    className="
+      rounded-md
+      border
+      border-gray-300
+      bg-white
+      text-blue-700
+      p-1.5
+      transition-all
+      duration-200
+      ease-out
+      hover:-translate-y-[2px]
+      hover:shadow-lg
+      active:translate-y-0
+      active:shadow-md
+    "
+                                                    onClick={() => setIsMtdPlExpanded((s) => !s)}
+                                                    aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
+                                                >
+                                                    {isMtdPlExpanded ? (
+                                                        <CgPushLeft size={18} className="font-extrabold" />
+                                                    ) : (
+                                                        <CgPushRight size={18} className="font-extrabold" />
+                                                    )}
+                                                </button>
+
+                                                {/* Chart.js-like tooltip */}
+                                                <span
+                                                    className="
+      pointer-events-none
+      absolute
+      left-1/2
+      -translate-x-1/2
+      -top-9
+      z-50
+      whitespace-nowrap
+      rounded-md
+      border
+      border-gray-200
+      bg-white
+      px-2
+      py-1
+      text-[11px]
+      font-medium
+      text-[#414042]
+      shadow-sm
+      opacity-0
+      transition-opacity
+      duration-150
+      group-hover:opacity-100
+    "
+                                                >
+                                                    {isMtdPlExpanded ? "Collapse" : "Expand"}
+                                                    <span
+                                                        className="
+        absolute
+        left-1/2
+        top-full
+        h-2
+        w-2
+        -translate-x-1/2
+        -translate-y-1/2
+        rotate-45
+        border-r
+        border-b
+        border-gray-200
+        bg-white
+      "
+                                                    />
+                                                </span>
+                                            </span>
+
+
+                                        </div>
+                                    </div>
+
+
+                                    <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
+                                        <div className="w-full max-w-full min-w-0 h-full">
+                                            <DashboardBargraphCard
+                                                countryName={countryNameForGraph}
+                                                formattedMonthYear={formattedMonthYear}
+                                                currencySymbol={currencySymbol}
+                                                labels={labels}
+                                                values={values}
+                                                prevValues={prevValues}
+                                                expanded={isMtdPlExpanded}
+                                                colors={colors}
+                                                loading={loading}
+                                                allValuesZero={allValuesZero}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* RIGHT: CM1 Profit Breakdown Pie (hide when expanded) */}
+                                {!isMtdPlExpanded && (
+                                    <div className="min-w-0 h-full flex flex-col">
+                                        <Cm1ProfitBreakdownPie
+                                            title="CM1 Profit Breakdown"
+                                            data={cm1ProfitPieData}
+                                            currency={displayCurrency}
+                                            height={320}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+
+
+                    </>
+                )
+            }
+
+
             {/* Monthly Ads Spent (from MTD Transactions -> skuwise_items) */}
             <div id="advertisements" className="scroll-mt-[80px] mt-4 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -4344,7 +4567,7 @@ export default function DashboardPage() {
                                 showSignRowInBody
                                 getSignForCol={getAdsSignForCol}
                                 layout={[
-                                    { type: "single", key: "quantity" },
+                                    { type: "group", id: "quantity" },
                                     { type: "single", key: "asp" },
                                     { type: "single", key: "net_sales" },
                                     { type: "single", key: "cogs" },
@@ -4504,203 +4727,12 @@ export default function DashboardPage() {
             </div>
 
 
-            {/* Lower P&L Graph and Inventory */}
-            {
-                hasAnyGraphData && (
-                    <>
-                        <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
-                            <div
-                                className={[
-                                    "grid grid-cols-1 gap-4 items-stretch",
-                                    isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
-                                ].join(" ")}
-                            >
-                                {/* LEFT: MTD P&L (click to expand/collapse) */}
-                                {/* <div
-                className={[
-                  "rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0",
-                  isMtdPlExpanded ? "cursor-zoom-out" : "cursor-zoom-in",
-                ].join(" ")}
-                role="button"
-                tabIndex={0}
-                title={isMtdPlExpanded ? "Click to collapse" : "Click to expand"}
-                onClick={(e) => {
-                  const t = e.target as HTMLElement;
-                  if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                  setIsMtdPlExpanded((s) => !s);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter" && e.key !== " ") return;
-                  const t = e.target as HTMLElement;
-                  if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                  setIsMtdPlExpanded((s) => !s);
-                }}
-              > */}
-                                <div className="rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0">
-                                    <div className="mb-3 flex items-center justify-between">
-                                        <div className="text-sm text-charcoal-500">
-                                            <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
-                                                <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
-                                            </div>
-                                        </div>
+            {amazonIntegrated && graphRegionToUse !== "Global" && (
+                <div id="current-inventory" className="scroll-mt-[80px] ">
+                    <CurrentInventorySection region={graphRegionToUse} />
+                </div>
+            )}
 
-                                        <div className="flex items-center gap-3">
-                                            {/* Only this part depends on isCountryMode */}
-                                            {!isCountryMode && (
-                                                <>
-                                                    <SegmentedToggle<RegionKey>
-                                                        value={graphRegion}
-                                                        options={graphRegions.map((r) => ({ value: r }))}
-                                                        onChange={setGraphRegion}
-                                                    />
-                                                    <DownloadIconButton onClick={handleDownload} />
-                                                </>
-                                            )}
-
-
-                                            {/* <button
-                      type="button"
-                      className="shrink-0 rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                      onClick={() => setIsMtdPlExpanded((s) => !s)}
-                      aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
-                      title={isMtdPlExpanded ? "Collapse" : "Expand"}
-                    >
-                      {isMtdPlExpanded ? < CgPushLeft size={18} className="font-extrabold" /> : <CgPushRight size={18} className="font-extrabold" />}
-                      
-                    </button> */}
-
-                                            <span className="relative group shrink-0">
-                                                <button
-                                                    type="button"
-                                                    className="
-      rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md
-    "
-                                                    onClick={() => setIsMtdPlExpanded((s) => !s)}
-                                                    aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
-                                                >
-                                                    {isMtdPlExpanded ? (
-                                                        <CgPushLeft size={18} className="font-extrabold" />
-                                                    ) : (
-                                                        <CgPushRight size={18} className="font-extrabold" />
-                                                    )}
-                                                </button>
-
-                                                {/* Chart.js-like tooltip */}
-                                                <span
-                                                    className="
-      pointer-events-none
-      absolute
-      left-1/2
-      -translate-x-1/2
-      -top-9
-      z-50
-      whitespace-nowrap
-      rounded-md
-      border
-      border-gray-200
-      bg-white
-      px-2
-      py-1
-      text-[11px]
-      font-medium
-      text-[#414042]
-      shadow-sm
-      opacity-0
-      transition-opacity
-      duration-150
-      group-hover:opacity-100
-    "
-                                                >
-                                                    {isMtdPlExpanded ? "Collapse" : "Expand"}
-
-                                                    {/* little arrow (bordered, like tooltip) */}
-                                                    <span
-                                                        className="
-        absolute
-        left-1/2
-        top-full
-        h-2
-        w-2
-        -translate-x-1/2
-        -translate-y-1/2
-        rotate-45
-        border-r
-        border-b
-        border-gray-200
-        bg-white
-      "
-                                                    />
-                                                </span>
-                                            </span>
-
-
-                                        </div>
-                                    </div>
-
-
-                                    <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
-                                        <div className="w-full max-w-full min-w-0 h-full">
-                                            <DashboardBargraphCard
-                                                countryName={countryNameForGraph}
-                                                formattedMonthYear={formattedMonthYear}
-                                                currencySymbol={currencySymbol}
-                                                labels={labels}
-                                                values={values}
-                                                prevValues={prevValues}
-                                                expanded={isMtdPlExpanded}
-                                                colors={colors}
-                                                loading={loading}
-                                                allValuesZero={allValuesZero}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* RIGHT: CM1 Profit Breakdown Pie (hide when expanded) */}
-                                {!isMtdPlExpanded && (
-                                    <div className="min-w-0 h-full flex flex-col">
-                                        <Cm1ProfitBreakdownPie
-                                            title="CM1 Profit Breakdown"
-                                            data={cm1ProfitPieData}
-                                            currency={displayCurrency}
-                                            height={320}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-
-                        {amazonIntegrated && graphRegionToUse !== "Global" && (
-                            <div id="current-inventory" className="scroll-mt-[80px]">
-                                <CurrentInventorySection region={graphRegionToUse} />
-                            </div>
-                        )}
-
-                        {/* <div id="advertisements" className="scroll-mt-[80px] mt-4">
-            <div className="w-full rounded-2xl border bg-white p-4 shadow-sm">
-              <div className="font-semibold">Advertisements</div>
-              <div className="text-sm text-gray-500 mt-1">
-                Connect Amazon Ads to view campaign performance.
-              </div>
-            </div>
-          </div> */}
-
-                    </>
-                )
-            }
         </div >
 
     );

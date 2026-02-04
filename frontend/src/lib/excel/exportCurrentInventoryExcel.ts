@@ -339,7 +339,7 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
     summaryAoA.push(new Array(headerCount).fill(""));
 
     const summaryTitleRow = new Array(headerCount).fill("");
-    summaryTitleRow[labelCol] = "Summary";
+    summaryTitleRow[labelCol] = "";
     summaryAoA.push(summaryTitleRow);
 
     summaryRows.forEach((s) => {
@@ -450,3 +450,6 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   XLSX.utils.book_append_sheet(wb, ws, safeSheetName("P&L Productwise MTD"));
   XLSX.writeFile(wb, filename);
 }
+
+
+
