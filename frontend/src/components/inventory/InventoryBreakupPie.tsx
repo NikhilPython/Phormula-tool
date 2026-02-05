@@ -303,11 +303,6 @@ const getInventoryCount = (r: AnyRow) =>
                                     );
                                 })}
                             </div>
-
-                            {/* ✅ Total from API (not computed from slices) */}
-                            {/* <div className="mt-4 pt-3 border-t border-slate-200 text-xs text-[#414042]">
-                                Total: <span className="font-semibold">{apiTotal.toLocaleString()}</span>
-                            </div> */}
                         </div>
                     </div>
                 </div>

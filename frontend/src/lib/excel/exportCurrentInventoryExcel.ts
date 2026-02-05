@@ -261,205 +261,6 @@ const {
   XLSX.writeFile(wb, filename);
 }
 
-/* =========================
-   P&L Productwise Breakdown MTD export
-========================= */
-// export function exportPnLProductwiseBreakdownMtdExcel(params: {
-//   filename: string;
-//   titleLine: string; // e.g. "Amazon UK - P&L Productwise Breakdown MTD - Jan'26"
-
-//   countryName: string; // "uk" | "us" | "ca" | "global"
-//   titleCountry: string; // "UK" | "US" | "CA" | "Global"
-//   platformLabel?: string; // "Amazon" etc
-
-//   periodLabel: string;
-//   companyName: string;
-//   brandName: string;
-
-//   homeCurrencyCode?: string;
-//   dataRows: Record<string, any>[];
-
-//   // summaryRows?: { label: string; value: any }[];
-//   type SummaryNode = {
-//   label: string;
-//   value?: any;                 // optional for parent rows
-//   children?: SummaryNode[];    // expandable rows
-//   defaultCollapsed?: boolean;  // like UI
-//   bold?: boolean;              // optional styling
-// }
-
-// }) {
-//   const {
-//     filename,
-//     titleLine,
-//     countryName,
-//     titleCountry,
-//     platformLabel = "Amazon",
-//     periodLabel,
-//     companyName,
-//     brandName,
-//     homeCurrencyCode,
-//     dataRows,
-//     summaryRows,
-//   } = params;
-
-//   if (!dataRows?.length) return;
-
-//   const headers = Object.keys(dataRows[0] || {});
-//   const headerCount = headers.length || 1;
-
-//   // Anchor brand above "CM1 Profit" (fallback: last column)
-//   const cm1ProfitCol0 = headers.indexOf("CM1 Profit");
-//   const ANCHOR_COL_1_BASED = cm1ProfitCol0 >= 0 ? cm1ProfitCol0 + 1 : headerCount;
-
-//   const currencySymbol = getCurrencySymbol({ countryName, homeCurrencyCode });
-
-//   const topExtraLines = [
-//     `Country : ${titleCountry}`,
-//     `Platform : ${platformLabel}`,
-//     `Currency : ${currencySymbol}`,
-//     `Period : ${periodLabel}`,
-//   ];
-
-//   const topAoA = buildTopAoA({
-//     headerCount,
-//     title: titleLine,
-//     companyName,
-//     brandName,
-//     anchorCol1Based: ANCHOR_COL_1_BASED,
-//     extraLines: topExtraLines,
-//   });
-
-//   const headerRowIndex = topAoA.length;
-//   const bodyAoA = dataRows.map((r) => headers.map((h) => (r as any)[h] ?? ""));
-
-//   // Summary: label under "Product Name", value under "CM1 Profit"
-//   const productNameCol = headers.indexOf("Product Name");
-//   const cm1ProfitCol = headers.indexOf("CM1 Profit");
-
-//   const labelCol = productNameCol >= 0 ? productNameCol : 0;
-//   const valueCol =
-//     cm1ProfitCol >= 0 ? cm1ProfitCol : Math.min(1, Math.max(0, headerCount - 1));
-
-//   const summaryAoA: any[][] = [];
-//   if (summaryRows?.length) {
-//     summaryAoA.push(new Array(headerCount).fill(""));
-
-//     const summaryTitleRow = new Array(headerCount).fill("");
-//     summaryTitleRow[labelCol] = "";
-//     summaryAoA.push(summaryTitleRow);
-
-//     summaryRows.forEach((s) => {
-//       const row = new Array(headerCount).fill("");
-//       row[labelCol] = s?.label ?? "";
-
-//       const lbl = String(s?.label ?? "");
-//       const n = toNumberLoose(s?.value);
-
-//       if (n === null) {
-//         row[valueCol] = "";
-//       } else if (isPercentLabel(lbl)) {
-//         row[valueCol] = n > 1 ? n / 100 : n; // store as fraction for Excel %
-//       } else {
-//         row[valueCol] = n;
-//       }
-
-//       summaryAoA.push(row);
-//     });
-//   }
-
-//   const sheetAoA = [...topAoA, headers, ...bodyAoA, ...summaryAoA];
-//   const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
-
-//   // Freeze under table header
-//   ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
-
-//   // Auto widths
-//   ws["!cols"] = headers.map((h) => ({
-//     wch: Math.min(Math.max(String(h).length + 2, 12), 48),
-//   }));
-
-//   applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
-
-//   // Bold table header row
-//   for (let c = 0; c < headerCount; c++) {
-//     const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
-//     if (ws[addr]) {
-//       ws[addr].s = {
-//         ...(ws[addr].s || {}),
-//         font: { bold: true, sz: 11 },
-//         alignment: { horizontal: "center", vertical: "center" },
-//       };
-//     }
-//   }
-
-//   // Bold total row (last data row)
-//   const totalRowIndex = headerRowIndex + 1 + bodyAoA.length - 1;
-//   for (let c = 0; c < headerCount; c++) {
-//     const addr = XLSX.utils.encode_cell({ r: totalRowIndex, c });
-//     if (ws[addr]) {
-//       ws[addr].s = {
-//         ...(ws[addr].s || {}),
-//         font: { bold: true, sz: 11 },
-//       };
-//     }
-//   }
-
-//   // Bold Summary rows (title + items)
-//   if (summaryRows?.length) {
-//     const firstSummaryRow = topAoA.length + 1 + bodyAoA.length + 1;
-//     const summaryRowCount = 1 + summaryRows.length;
-
-//     for (let r = 0; r < summaryRowCount; r++) {
-//       const rowIndex = firstSummaryRow + r;
-//       for (let c = 0; c < headerCount; c++) {
-//         const addr = XLSX.utils.encode_cell({ r: rowIndex, c });
-//         if (ws[addr]) {
-//           ws[addr].s = {
-//             ...(ws[addr].s || {}),
-//             font: { bold: true, sz: 11 },
-//           };
-//         }
-//       }
-//     }
-//   }
-
-//   // Force all numeric cells to 2 decimals (default)
-//   const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-//   for (let r = range.s.r; r <= range.e.r; r++) {
-//     for (let c = range.s.c; c <= range.e.c; c++) {
-//       const addr = XLSX.utils.encode_cell({ r, c });
-//       const cell = ws[addr];
-//       if (!cell) continue;
-//       if (isNumber(cell.v)) cell.z = "#,##0.00";
-//     }
-//   }
-
-//   // Override Summary value format (percent rows -> 0.00%)
-//   if (summaryRows?.length) {
-//     const firstSummaryRow = topAoA.length + 1 + bodyAoA.length + 1;
-
-//     for (let i = 0; i < summaryRows.length; i++) {
-//       const rowIndex = firstSummaryRow + 1 + i; // +1 skips "Summary" title row
-//       const lbl = String(summaryRows[i]?.label ?? "");
-
-//       const valueAddr = XLSX.utils.encode_cell({ r: rowIndex, c: valueCol });
-//       const cell = ws[valueAddr];
-//       if (!cell) continue;
-
-//       if (isNumber(cell.v)) {
-//         cell.z = isPercentLabel(lbl) ? "0.00%" : "#,##0.00";
-//       }
-//     }
-//   }
-
-//   const wb = XLSX.utils.book_new();
-//   XLSX.utils.book_append_sheet(wb, ws, safeSheetName("P&L Productwise MTD"));
-//   XLSX.writeFile(wb, filename);
-// }
-
-
-
 
 /* =========================
    P&L Productwise Breakdown MTD export
@@ -664,5 +465,180 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, safeSheetName("P&L Productwise MTD"));
+  XLSX.writeFile(wb, filename);
+}
+
+
+
+
+export function exportInventoryReconExcel(params: {
+  filename: string;
+  titleLine: string;
+
+  countryName: string;
+  titleCountry: string;
+  platformLabel?: string;
+
+  // expects already formatted like Dec'25
+  periodLabel: string;
+
+  companyName: string;
+  brandName: string;
+
+  dataRows: Record<string, any>[]; // YOU control headers + values
+}) {
+  const {
+    filename,
+    titleLine,
+    titleCountry,
+    platformLabel = "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+    dataRows,
+  } = params;
+
+  if (!dataRows?.length) return;
+
+  const headers = Object.keys(dataRows[0] || {});
+  const headerCount = headers.length || 1;
+
+  /* =========================
+     Top block (same layout)
+  ========================= */
+  const topAoA: any[][] = [];
+
+  // Row 1: Title (merged later)
+  const r1 = new Array(headerCount).fill("");
+  r1[0] = titleLine || "";
+  topAoA.push(r1);
+
+  // Row 2: Company left, Brand right
+  const r2 = new Array(headerCount).fill("");
+  r2[0] = `Company Name : ${companyName || ""}`;
+  r2[headerCount - 1] = `${brandName || ""}`;
+  topAoA.push(r2);
+
+  // Row 3-5: meta
+  topAoA.push(Object.assign(new Array(headerCount).fill(""), { 0: `Country : ${titleCountry}` }));
+  topAoA.push(Object.assign(new Array(headerCount).fill(""), { 0: `Platform : ${platformLabel}` }));
+  topAoA.push(Object.assign(new Array(headerCount).fill(""), { 0: `Period : ${periodLabel}` }));
+
+  // Spacer
+  topAoA.push(new Array(headerCount).fill(""));
+
+  const headerRowIndex = topAoA.length; // where column headers will be placed
+
+  /* =========================
+     Body
+  ========================= */
+  const bodyAoA = dataRows.map((r) => headers.map((h) => r?.[h] ?? ""));
+  const sheetAoA = [...topAoA, headers, ...bodyAoA];
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+
+  /* =========================
+     Sheet options
+  ========================= */
+  ws["!merges"] = ws["!merges"] || [];
+  // merge title row A1 -> last col
+  ws["!merges"].push({ s: { r: 0, c: 0 }, e: { r: 0, c: headerCount - 1 } });
+
+  // freeze below column header row
+  ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
+
+  // widths
+  ws["!cols"] = headers.map((h) => ({
+    wch: Math.min(Math.max(String(h).length + 2, 12), 55),
+  }));
+
+  // align company + brand
+  const companyAddr = XLSX.utils.encode_cell({ r: 1, c: 0 });
+  if (ws[companyAddr]) ws[companyAddr].s = { ...(ws[companyAddr].s || {}), alignment: { horizontal: "left" } };
+
+  const brandAddr = XLSX.utils.encode_cell({ r: 1, c: headerCount - 1 });
+  if (ws[brandAddr]) ws[brandAddr].s = { ...(ws[brandAddr].s || {}), alignment: { horizontal: "right" } };
+
+  // bold column headers
+  for (let c = 0; c < headerCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
+    if (ws[addr]) {
+      ws[addr].s = {
+        ...(ws[addr].s || {}),
+        font: { bold: true, sz: 11 },
+        alignment: { horizontal: "center", vertical: "center" },
+      };
+    }
+  }
+
+  /* =========================
+     Formatting rules
+     - Keep S. No. as TEXT (no 1.00)
+     - Numbers => #,##0.00
+  ========================= */
+  const snoCol0 = headers.findIndex((h) => String(h).toLowerCase().includes("s. no"));
+  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      // ✅ don't coerce Sno column
+      if (c === snoCol0) continue;
+
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      if (!cell) continue;
+
+      const n = toNumberLoose(cell.v);
+      if (n !== null) {
+        cell.t = "n";
+        cell.v = n;
+        cell.z = "#,##0.00";
+      }
+    }
+  }
+
+  /* =========================
+     Bold TOTAL / GRAND TOTAL rows (after numeric coercion)
+  ========================= */
+  const applyBoldRow = (rowIndex: number) => {
+    const ref = ws["!ref"];
+    if (!ref) return;
+    const rr = XLSX.utils.decode_range(ref);
+
+    for (let c = rr.s.c; c <= rr.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r: rowIndex, c });
+      const cell = ws[addr] || { t: "s", v: "" };
+      ws[addr] = {
+        ...cell,
+        s: {
+          ...((cell as any).s || {}),
+          font: { ...(((cell as any).s)?.font || {}), bold: true, sz: 11 },
+        },
+      };
+    }
+  };
+
+  const productNameCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("product name")
+  );
+
+  if (productNameCol0 >= 0) {
+    const totalCandidates = new Set(["total", "grand total"]);
+
+    const startBodyRow = headerRowIndex + 1; // first data row
+    const endBodyRow = headerRowIndex + bodyAoA.length;
+
+    for (let r = startBodyRow; r <= endBodyRow; r++) {
+      const addr = XLSX.utils.encode_cell({ r, c: productNameCol0 });
+      const v = String(ws[addr]?.v ?? "").trim().toLowerCase();
+      if (totalCandidates.has(v)) applyBoldRow(r);
+    }
+  }
+
+  /* =========================
+     Save
+  ========================= */
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, safeSheetName("Inventory Recon"));
   XLSX.writeFile(wb, filename);
 }
