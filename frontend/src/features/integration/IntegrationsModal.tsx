@@ -1,12 +1,13 @@
 "use client";
 
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSelector } from "react-redux";
 import { useRouter } from "next/navigation";
+import AmazonAdsConnectLegacy from "./AmazonAdsConnectLegacy";
 
-type Provider = "amazon" | "shopify";
+type Provider = "amazon" | "shopify" | "amazon_ads";
 
 type Props = {
   open: boolean;
@@ -15,22 +16,32 @@ type Props = {
 };
 
 const options: { key: Provider; title: string; icon: string }[] = [
-  { key: "amazon", title: "Amazon ", icon: "/amazon.png" },
-  { key: "shopify", title: "Shopify ", icon: "/shopify.png" },
+  { key: "amazon", title: "Amazon", icon: "/amazon.png" },
+  { key: "shopify", title: "Shopify", icon: "/shopify.png" },
+  { key: "amazon_ads", title: "Amazon Ads", icon: "/amazon_ads_2.png" },
 ];
 
 const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
-  const [mounted, setMounted] = useState(false);
   const router = useRouter();
   const reduxToken = useSelector((state: any) => state.auth?.token);
+
+  const [mounted, setMounted] = useState(false);
   const [shopifyStore, setShopifyStore] = useState<any | null>(null);
   const [shopifyLoading, setShopifyLoading] = useState(false);
-  const isShopifyConnected = !!(shopifyStore && shopifyStore.access_token);
 
+  const [showAmazonAds, setShowAmazonAds] = useState(false);
+
+  const isShopifyConnected = useMemo(
+    () => !!(shopifyStore && shopifyStore.access_token),
+    [shopifyStore]
+  );
+
+  // ✅ Hook 1: mounted
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // ✅ Hook 2: fetch shopify store
   useEffect(() => {
     const fetchShopifyStore = async () => {
       if (!reduxToken) return;
@@ -40,27 +51,18 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
 
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/shopify/store`,
-          {
-            headers: {
-              Authorization: `Bearer ${reduxToken}`,
-            },
-          }
+          { headers: { Authorization: `Bearer ${reduxToken}` } }
         );
 
         const contentType = res.headers.get("content-type") || "";
         if (!contentType.includes("application/json")) return;
 
         const data = await res.json();
-        console.log("Shopify store (header modal):", data);
-
         if (!res.ok || data?.error) return;
 
         setShopifyStore(data);
       } catch (err) {
-        console.error(
-          "Error fetching Shopify store in IntegrationsModal:",
-          err
-        );
+        console.error("Error fetching Shopify store in IntegrationsModal:", err);
       } finally {
         setShopifyLoading(false);
       }
@@ -69,12 +71,20 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
     fetchShopifyStore();
   }, [reduxToken]);
 
-  if (!open || !mounted) return null;
+  // ✅ Hook 3: debug listener (optional)
+  useEffect(() => {
+    const test = (e: any) =>
+      console.log("Modal heard integration:choose", e.detail);
+    window.addEventListener("integration:choose", test);
+    return () => window.removeEventListener("integration:choose", test);
+  }, []);
+
+  // ✅ IMPORTANT: decide rendering AFTER hooks
+  const shouldRender = open && mounted;
+  if (!shouldRender) return null;
 
   const buildShopifyOrdersUrl = () => {
-    if (!shopifyStore?.shop_name || !shopifyStore?.access_token) {
-      return "/orders";
-    }
+    if (!shopifyStore?.shop_name || !shopifyStore?.access_token) return "/orders";
 
     const params = new URLSearchParams({
       shop: shopifyStore.shop_name,
@@ -82,28 +92,28 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
     });
 
     if (shopifyStore.email) params.set("email", shopifyStore.email);
-
     return `/orders?${params.toString()}`;
   };
 
   const handleChoose = (key: Provider) => {
-    // Shopify header: if already connected, go straight to orders
+    console.log("IntegrationsModal clicked:", key);
+
+    if (key === "amazon_ads") {
+      setShowAmazonAds(true);
+      return;
+    }
+
     if (key === "shopify" && isShopifyConnected) {
       const url = buildShopifyOrdersUrl();
-      console.log(
-        "Header modal: Shopify already connected, redirecting to:",
-        url
-      );
       router.push(url);
       onClose();
       onConnected?.();
       return;
     }
 
-    // For everything else, delegate to IntegrationDashboard
     window.dispatchEvent(
       new CustomEvent("integration:choose", {
-        detail: { provider: key },
+        detail: { provider: key, origin: "header" },
       })
     );
 
@@ -117,43 +127,36 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      onClick={onClose}
+      onClick={onClose} // click outside closes
     >
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 "
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/40" />
 
       {/* Modal box */}
-      <div className="relative z-10 w-full max-w-md rounded-xl border border-gray-200 bg-white px-1 py-7 shadow-2xl dark:border-gray-800 dark:bg-gray-900">
+      <div
+        className="relative z-10 w-full max-w-2xl rounded-xl border border-gray-200 bg-white px-1 py-7 shadow-2xl dark:border-gray-800 dark:bg-gray-900"
+        onClick={(e) => e.stopPropagation()} 
+      >
         <PageBreadcrumb
           pageTitle="Select Your Integration"
           variant="table"
           textSize="2xl"
         />
 
-        {/* Integration selection block */}
         <div className="flex flex-col sm:flex-row justify-center items-center gap-6 sm:gap-10 mt-6">
           {options.map((opt) => (
             <button
               key={opt.key}
               type="button"
               disabled={locked || (opt.key === "shopify" && shopifyLoading)}
-              onClick={() =>
-                !locked && !shopifyLoading && handleChoose(opt.key)
-              }
+              onClick={() => !locked && !shopifyLoading && handleChoose(opt.key)}
               title={opt.title}
               aria-label={opt.title}
               className={`flex flex-col items-center justify-center 
                 w-36 h-36 sm:w-40 sm:h-40
                 rounded-2xl border border-[#5EA68E] bg-white
                 transition-all 
-                ${
-                  locked
-                    ? "cursor-not-allowed opacity-60"
-                    : "hover:bg-emerald-50 hover:scale-105"
-                }`}
+                ${locked ? "cursor-not-allowed opacity-60" : "hover:bg-emerald-50 hover:scale-105"}`}
             >
               <img
                 src={opt.icon}
@@ -167,6 +170,22 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
           ))}
         </div>
       </div>
+
+      {/* Amazon Ads popup */}
+      {showAmazonAds && (
+        <AmazonAdsConnectLegacy
+          onClose={() => {
+            setShowAmazonAds(false);
+            // optional: keep integrations modal open
+            // onClose();
+          }}
+          onConnected={() => {
+            setShowAmazonAds(false);
+            onClose();
+            onConnected?.();
+          }}
+        />
+      )}
     </div>
   );
 
@@ -174,192 +193,3 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
 };
 
 export default IntegrationsModal;
-
-
-
-
-
-
-
-
-
-
-
-
-
-// "use client";
-
-// import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-// import React, { useEffect, useState } from "react";
-// import { createPortal } from "react-dom";
-// import { useSelector } from "react-redux";
-// import { useRouter } from "next/navigation";
-
-// type Provider = "amazon" | "shopify" | "amazon_ads";
-
-// type Props = {
-//   open: boolean;
-//   onClose: () => void;
-//   onConnected?: () => void;
-// };
-
-// const options: { key: Provider; title: string; icon: string }[] = [
-//   { key: "amazon", title: "Amazon ", icon: "/amazon.png" },
-//   { key: "shopify", title: "Shopify ", icon: "/shopify.png" },
-
-//   // ✅ NEW: Amazon Ads
-//   { key: "amazon_ads", title: "Amazon Ads", icon: "/amazon.png" },
-// ];
-
-// const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
-//   const [mounted, setMounted] = useState(false);
-//   const router = useRouter();
-//   const reduxToken = useSelector((state: any) => state.auth?.token);
-//   const [shopifyStore, setShopifyStore] = useState<any | null>(null);
-//   const [shopifyLoading, setShopifyLoading] = useState(false);
-//   const isShopifyConnected = !!(shopifyStore && shopifyStore.access_token);
-
-//   useEffect(() => {
-//     setMounted(true);
-//   }, []);
-
-//   useEffect(() => {
-//     const fetchShopifyStore = async () => {
-//       if (!reduxToken) return;
-
-//       try {
-//         setShopifyLoading(true);
-
-//         const res = await fetch(
-//           `${process.env.NEXT_PUBLIC_API_BASE_URL}/shopify/store`,
-//           {
-//             headers: {
-//               Authorization: `Bearer ${reduxToken}`,
-//             },
-//           }
-//         );
-
-//         const contentType = res.headers.get("content-type") || "";
-//         if (!contentType.includes("application/json")) return;
-
-//         const data = await res.json();
-//         console.log("Shopify store (header modal):", data);
-
-//         if (!res.ok || data?.error) return;
-
-//         setShopifyStore(data);
-//       } catch (err) {
-//         console.error(
-//           "Error fetching Shopify store in IntegrationsModal:",
-//           err
-//         );
-//       } finally {
-//         setShopifyLoading(false);
-//       }
-//     };
-
-//     fetchShopifyStore();
-//   }, [reduxToken]);
-
-//   if (!open || !mounted) return null;
-
-//   const buildShopifyOrdersUrl = () => {
-//     if (!shopifyStore?.shop_name || !shopifyStore?.access_token) {
-//       return "/orders";
-//     }
-
-//     const params = new URLSearchParams({
-//       shop: shopifyStore.shop_name,
-//       token: shopifyStore.access_token,
-//     });
-
-//     if (shopifyStore.email) params.set("email", shopifyStore.email);
-
-//     return `/orders?${params.toString()}`;
-//   };
-
-//   const handleChoose = (key: Provider) => {
-//     // Shopify header: if already connected, go straight to orders
-//     if (key === "shopify" && isShopifyConnected) {
-//       const url = buildShopifyOrdersUrl();
-//       console.log(
-//         "Header modal: Shopify already connected, redirecting to:",
-//         url
-//       );
-//       router.push(url);
-//       onClose();
-//       onConnected?.();
-//       return;
-//     }
-
-//     // ✅ Dispatch event (dashboard will open AmazonAdsConnectModal)
-//     window.dispatchEvent(
-//       new CustomEvent("integration:choose", {
-//         detail: { provider: key, origin: "header" },
-//       })
-//     );
-
-//     onClose();
-//   };
-
-//   const locked = false;
-
-//   const modalContent = (
-//     <div
-//       className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-//       role="dialog"
-//       aria-modal="true"
-//       onClick={onClose}
-//     >
-//       {/* Backdrop */}
-//       <div className="absolute inset-0 bg-black/40 " onClick={onClose} />
-
-//       {/* Modal box */}
-//       <div className="relative z-10 w-full max-w-md rounded-xl border border-gray-200 bg-white px-1 py-7 shadow-2xl dark:border-gray-800 dark:bg-gray-900">
-//         <PageBreadcrumb
-//           pageTitle="Select Your Integration"
-//           variant="table"
-//           textSize="2xl"
-//         />
-
-//         {/* Integration selection block */}
-//         <div className="flex flex-col sm:flex-row justify-center items-center gap-6 sm:gap-10 mt-6">
-//           {options.map((opt) => (
-//             <button
-//               key={opt.key}
-//               type="button"
-//               disabled={locked || (opt.key === "shopify" && shopifyLoading)}
-//               onClick={() =>
-//                 !locked && !shopifyLoading && handleChoose(opt.key)
-//               }
-//               title={opt.title}
-//               aria-label={opt.title}
-//               className={`flex flex-col items-center justify-center 
-//                 w-36 h-36 sm:w-40 sm:h-40
-//                 rounded-2xl border border-[#5EA68E] bg-white
-//                 transition-all 
-//                 ${
-//                   locked
-//                     ? "cursor-not-allowed opacity-60"
-//                     : "hover:bg-emerald-50 hover:scale-105"
-//                 }`}
-//             >
-//               <img
-//                 src={opt.icon}
-//                 alt={opt.title}
-//                 className="h-16 w-16 sm:h-20 sm:w-20 object-contain mb-3"
-//               />
-//               <span className="text-sm sm:text-base font-semibold text-charcoal-500 whitespace-nowrap">
-//                 {opt.title}
-//               </span>
-//             </button>
-//           ))}
-//         </div>
-//       </div>
-//     </div>
-//   );
-
-//   return createPortal(modalContent, document.body);
-// };
-
-// export default IntegrationsModal;

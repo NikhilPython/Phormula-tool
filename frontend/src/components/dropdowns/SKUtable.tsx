@@ -545,7 +545,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "amazon_breakdown",
       // label: "Marketplace Fees",
-      label: (
+       label: (
         <>
           Marketplace Fees <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />
         </>
@@ -744,7 +744,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     },
     [SIGN_PLUS, SIGN_MINUS]
   );
-
+  
   const buildSkuSheetModel = useCallback(
     (opts?: { allRows?: boolean }) => {
       const excelCols = buildExcelColumnsFromUI();
@@ -1320,21 +1320,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const topData = useMemo(() => getTop5Profitable(tableData), [tableData, getTop5Profitable]);
   const bottomData = useMemo(() => getBottom5Profitable(tableData), [tableData, getBottom5Profitable]);
 
-  // Keep Top/Bottom tables visually aligned even when fewer than 5 rows
-  const TOP_BOTTOM_TARGET_ROWS = 5;
-
-  const paddedTopRows = useMemo(() => {
-    const rows = topData.rows ?? [];
-    const missing = Math.max(0, TOP_BOTTOM_TARGET_ROWS - rows.length);
-    return [...rows, ...Array.from({ length: missing }, () => ({ __placeholder: true } as any))];
-  }, [topData.rows]);
-
-  const paddedBottomRows = useMemo(() => {
-    const rows = bottomData.rows ?? [];
-    const missing = Math.max(0, TOP_BOTTOM_TARGET_ROWS - rows.length);
-    return [...rows, ...Array.from({ length: missing }, () => ({ __placeholder: true } as any))];
-  }, [bottomData.rows]);
-
   /* --------- UI handlers --------- */
   const handleProductClick = useCallback((product: string) => {
     setSelectedProduct(product);
@@ -1514,28 +1499,28 @@ const SKUtable: React.FC<SKUtableProps> = ({
   //   onDownload?.();
   // }, [buildSkuSheetModel, range, month, quarter, yearShort, onDownload]);
 
-  const handleDownloadExcel = useCallback(async () => {
-    // ✅ export ALL rows (all SKUs)
-    const model = buildSkuSheetModel({ allRows: true });
+const handleDownloadExcel = useCallback(async () => {
+  // ✅ export ALL rows (all SKUs)
+  const model = buildSkuSheetModel({ allRows: true });
 
-    const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet("SKU Profitability");
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("SKU Profitability");
 
-    buildSkuWorksheetFromModel(ws, model);
+  buildSkuWorksheetFromModel(ws, model);
 
-    // ✅ Filename must match Dropdowns.tsx pattern:
-    // Amazon-PnL-${formattedMonthYear}.xlsx
-    const formattedMonthYear =
-      range === "monthly"
-        ? `${convertToAbbreviatedMonth(month)}'${yearShort}` // Dec'25
-        : range === "quarterly"
-          ? `${quarter}'${yearShort}` // Q4'25
-          : `${year}`; // 2025
+  // ✅ Filename must match Dropdowns.tsx pattern:
+  // Amazon-PnL-${formattedMonthYear}.xlsx
+  const formattedMonthYear =
+    range === "monthly"
+      ? `${convertToAbbreviatedMonth(month)}'${yearShort}` // Dec'25
+      : range === "quarterly"
+        ? `${quarter}'${yearShort}` // Q4'25
+        : `${year}`; // 2025
 
-    const filename = `Amazon-PnL-${formattedMonthYear}.xlsx`;
+  const filename = `Amazon-PnL-${formattedMonthYear}.xlsx`;
 
-    await downloadWorkbookAsXlsx(wb, filename);
-  }, [buildSkuSheetModel, range, month, quarter, year, yearShort, onDownload]);
+  await downloadWorkbookAsXlsx(wb, filename);
+}, [buildSkuSheetModel, range, month, quarter, year, yearShort, onDownload]);
 
 
   /* --------- Render guards --------- */
@@ -1821,16 +1806,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
           {/* Top 5 */}
-          <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 min-w-0">
             <div className="flex gap-2 text-lg sm:text-2xl md:text-2xl mb-2 md:mb-4 font-bold">
               <PageBreadcrumb pageTitle="Most 5 Profitable Products" variant="page" align="left" textSize="2xl" />
             </div>
 
-            <div className="flex-1 overflow-x-auto rounded-xl border border-gray-300 bg-white">
+            <div className="overflow-x-auto rounded-xl border border-gray-300">
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-green-500 font-bold text-[#f8edcf]">
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm break-words leading-snug">
+                    <th className="min-w-[150px] border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm break-words leading-snug">
                       Product Name
                     </th>
                     <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
@@ -1848,13 +1833,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {paddedTopRows.map((item: any, index) => (
-                    <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"} h-16`}>
-                      <td className="border border-gray-300 px-2 md:px-3 md:py-2 text-left text-xs 2xl:text-sm align-middle">
-                        <span
-                          title={item?.product_name}
-                          className="block max-w-[12rem] sm:max-w-[16rem] truncate whitespace-nowrap"
-                        >
+                  {topData.rows.map((item, index) => (
+                    <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm whitespace-normal break-words align-top">
+                        <span title={item.product_name} className="block">
                           {item.product_name || "-"}
                         </span>
                       </td>
@@ -1897,16 +1879,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
           </div>
 
           {/* Bottom 5 */}
-          <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-1 min-w-0">
             <div className="flex gap-2 text-lg sm:text-2xl md:text-2xl mb-2 md:mb-4 font-bold">
               <PageBreadcrumb pageTitle="Least 5 Profitable Products" variant="page" align="left" textSize="2xl" />
             </div>
 
-            <div className="flex-1 overflow-x-auto rounded-xl border border-gray-300 bg-white">
+            <div className="overflow-x-auto rounded-xl border border-gray-300">
               <table className="w-full table-auto border-collapse">
                 <thead>
                   <tr className="bg-[#B75A5A] font-bold text-[#f8edcf]">
-                    <th className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm break-words leading-snug">
+                    <th className="min-w-[150px] border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm break-words leading-snug">
                       Product Name
                     </th>
                     <th className="border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm break-words leading-snug">
@@ -1924,10 +1906,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {paddedBottomRows.map((item: any, index) => (
-                    <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"} h-16`}>
-
-                      <td className="border border-gray-300 px-2 md:px-3 md:py-2 text-left text-xs 2xl:text-sm align-middle">
+                  {bottomData.rows.map((item, index) => (
+                    <tr key={index} className={`${index % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
+                      <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm whitespace-normal break-words align-top">
                         <span title={item.product_name} className="block">
                           {item.product_name || "-"}
                         </span>
@@ -1987,6 +1968,3 @@ const SKUtable: React.FC<SKUtableProps> = ({
 };
 
 export default SKUtable;
-
-
-

@@ -1,145 +1,140 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { createPortal } from "react-dom";
+import React, { useEffect, useState } from "react";
+import { Modal } from "@/components/ui/modal";
+import { useSelector } from "react-redux";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-
-  adsStatusLoading: boolean;
-  adsStatus: any | null;
-
-  adsConnecting: boolean;
-  adsError: string | null;
-
-  onConnectOrSync: () => void;
-  disabled?: boolean;
 };
 
-export default function AmazonAdsConnectModal({
-  isOpen,
-  onClose,
-  adsStatusLoading,
-  adsStatus,
-  adsConnecting,
-  adsError,
-  onConnectOrSync,
-  disabled,
-}: Props) {
-  const connected = adsStatus?.status === "connected";
+export default function AmazonAdsConnectModal({ isOpen, onClose }: Props) {
+  const token = useSelector((state: any) => state.auth?.token);
 
-  // Escape key close (same behavior as your Modal)
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [status, setStatus] = useState<any | null>(null);
+
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  // (Optional) fetch status on open
   useEffect(() => {
     if (!isOpen) return;
+    if (!token) return;
 
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+    const run = async () => {
+      try {
+        setLoadingStatus(true);
+        setError(null);
+
+        const res = await fetch(`${baseUrl}/amazon-ads/status`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) return;
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || "Failed to load Ads status");
+
+        setStatus(data);
+      } catch (e: any) {
+        setError(e?.message || "Failed to load Amazon Ads status");
+      } finally {
+        setLoadingStatus(false);
+      }
     };
 
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
+    run();
+  }, [isOpen, token, baseUrl]);
 
-  // Lock scroll (same behavior as your Modal)
-  useEffect(() => {
-    if (!isOpen) return;
+  const onConnectOrSync = async () => {
+    if (!token) {
+      setError("Missing auth token");
+      return;
+    }
 
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    try {
+      setConnecting(true);
+      setError(null);
 
-    return () => {
-      document.body.style.overflow = prev || "unset";
-    };
-  }, [isOpen]);
+      // ✅ hit your backend route here
+      const res = await fetch(`${baseUrl}/amazon-ads/connect`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}), // add payload if needed
+      });
 
-  if (!isOpen) return null;
+      const contentType = res.headers.get("content-type") || "";
+      const data = contentType.includes("application/json") ? await res.json() : null;
 
-  const content = (
-    <div
-      className="fixed inset-0 flex items-center justify-center p-4"
-      style={{ zIndex: 99999 }}
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
+      if (!res.ok) throw new Error(data?.error || "Amazon Ads connect failed");
+
+      // optionally refresh status after success
+      setStatus(data || { connected: true });
+    } catch (e: any) {
+      setError(e?.message || "Amazon Ads connect failed");
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="m-4 max-w-xl"
+      showCloseButton
     >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40"
-        style={{ zIndex: 99999 }}
-      />
-
-      {/* Modal Card */}
-      <div
-        className="relative w-full max-w-xl rounded-3xl bg-white p-6 shadow-[6px_6px_7px_0px_#00000026] border border-[#D9D9D9] dark:bg-gray-900"
-        style={{ zIndex: 100000 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-xl font-semibold text-charcoal-500">
-          Amazon Ads Integration
-        </h3>
-
-        <p className="mt-2 text-sm text-gray-600">
-          Connect Amazon Ads to load Sponsored Products &amp; Sponsored Display
-          reports.
-        </p>
+      <div className="rounded-3xl bg-white p-6 dark:bg-gray-900">
+        <h2 className="text-xl font-semibold">Amazon Ads Integration</h2>
 
         <div className="mt-4 text-sm">
-          {adsStatusLoading ? (
-            <span className="text-gray-500">Checking status…</span>
-          ) : connected ? (
-            <span className="text-emerald-700 font-medium">
-              Status: connected
-            </span>
+          {loadingStatus ? (
+            <div>Loading status…</div>
+          ) : status ? (
+            <pre className="rounded-lg bg-gray-100 p-3 text-xs dark:bg-gray-800 overflow-auto">
+              {JSON.stringify(status, null, 2)}
+            </pre>
           ) : (
-            <span className="text-gray-700">Status: not connected</span>
+            <div className="text-gray-600 dark:text-gray-300">
+              Connect your Amazon Ads account to sync campaigns and spend.
+            </div>
           )}
-
-          {adsStatus?.saved?.amazon_ads_refresh_token_updated_at ? (
-            <span className="ml-2 text-gray-500">
-              (token updated:{" "}
-              {new Date(
-                adsStatus.saved.amazon_ads_refresh_token_updated_at
-              ).toLocaleString()}
-              )
-            </span>
-          ) : null}
         </div>
 
-        {adsError ? (
-          <div className="mt-3 text-sm text-red-600">{adsError}</div>
-        ) : null}
+        {error && (
+          <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
-        <div className="mt-6 flex items-center justify-end gap-3">
+        <div className="mt-6 flex gap-3 justify-end">
           <button
             type="button"
+            className="rounded-xl border px-4 py-2"
             onClick={onClose}
-            className="rounded-xl px-4 py-2 text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+            disabled={connecting}
           >
             Close
           </button>
 
           <button
             type="button"
+            className="rounded-xl bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
             onClick={onConnectOrSync}
-            disabled={disabled || adsConnecting}
-            className={`rounded-xl px-5 py-2 text-sm font-semibold text-white transition-all ${
-              disabled || adsConnecting
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-[#5EA68E] hover:opacity-90"
-            }`}
+            disabled={connecting}
           >
-            {adsConnecting
-              ? "Connecting…"
-              : connected
-              ? "Sync Ads Data"
-              : "Connect Amazon Ads"}
+            {connecting ? "Working…" : "Connect / Sync"}
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
-
-  // Portal ensures it’s not trapped under other stacking contexts
-  return createPortal(content, document.body);
 }

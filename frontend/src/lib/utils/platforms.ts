@@ -47,7 +47,6 @@ export const buildPlatformOptions = (
   return opts;
 };
 
-// Map platform → countryName used in your existing routes
 export const platformToCountryName = (platform: PlatformId): string => {
   switch (platform) {
     case "global":

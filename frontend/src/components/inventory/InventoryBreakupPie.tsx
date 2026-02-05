@@ -257,7 +257,7 @@ const getInventoryCount = (r: AnyRow) =>
                                 maxHeight: "100%",
                             }}
                         >
-                            <div className="flex flex-col gap-4">
+                            <div className="flex flex-col gap-1 2xl:gap-4">
                                 {(displayData || []).map((slice, i) => {
                                     const dot = COLORS[i % COLORS.length];
                                     const chart = chartRef.current;

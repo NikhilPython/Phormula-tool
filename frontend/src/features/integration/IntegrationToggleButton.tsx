@@ -18,7 +18,7 @@ const IntegrationToggleButton: React.FC = () => {
     active:scale-95 transition
   "
       >
-        <GrIntegration className="text-yellow-200 w-3 h-3 sm:w-3 sm:h-3 xl:w-2 xl:h-2 2xl:w-3 2xl:h-3" />
+        <GrIntegration className="text-yellow-200 w-3 h-3 sm:w-4 sm:h-4 2xl:w-3 2xl:h-3" />
       </button>
 
 
