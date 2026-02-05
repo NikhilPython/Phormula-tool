@@ -174,6 +174,45 @@ const normalizeYear = (y: string) => {
   return yy;
 };
 
+const DUMMY_ROWS: AnyRow[] = [
+  {
+    id: "dummy-1",
+    product_name: "Sample Product A",
+    msku: "SKU-001",
+    sellable_sum_first: 120,
+    expired_sum_first: 5,
+    beginning_total: 125,
+    sum_receipts: 40,
+    transit_total: 40,
+    sum_disposed: 2,
+    sum_damaged: 1,
+    sum_lost: 0,
+    sum_found: 0,
+    sold_total: 60,
+    ending_total: 104,
+    difference_total: 0,
+  },
+  {
+    id: "__TOTAL__",
+    product_name: "GRAND TOTAL",
+    msku: "GRAND TOTAL",
+    sellable_sum_first: 120,
+    expired_sum_first: 5,
+    beginning_total: 125,
+    sum_receipts: 40,
+    transit_total: 40,
+    sum_disposed: 2,
+    sum_damaged: 1,
+    sum_lost: 0,
+    sum_found: 0,
+    sold_total: 60,
+    ending_total: 104,
+    difference_total: 0,
+    __isTotal: true,
+  },
+];
+
+
 const monthToShort = (m: string) => {
   const mm = (m || "").toLowerCase().trim();
   const map: Record<string, string> = {
@@ -247,12 +286,26 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const [selectedYear, setSelectedYear] = useState<string>(yearParam || currentYear);
 const [exportTick, setExportTick] = useState(0);
 
+const isNA =
+  monthParam?.toLowerCase() === "na" ||
+  yearParam?.toLowerCase() === "na";
+
+const hasValidPeriod = !isNA;
+
+
 
   // ✅ IMPORTANT: sync state with URL params AFTER state exists
   useEffect(() => {
-    if (monthParam) setSelectedMonth(monthParam);
-    if (yearParam) setSelectedYear(yearParam);
-  }, [monthParam, yearParam]);
+  if (isNA) {
+    setSelectedMonth("");
+    setSelectedYear("");
+    return;
+  }
+
+  if (monthParam) setSelectedMonth(monthParam);
+  if (yearParam) setSelectedYear(yearParam);
+}, [monthParam, yearParam, isNA]);
+
 
 
 
@@ -287,6 +340,8 @@ const [exportTick, setExportTick] = useState(0);
   const [meta, setMeta] = useState<{ mode?: string; start_date?: string; end_date?: string; count?: number } | null>(
     null
   );
+
+  
 
   /* ================= AUTH ================= */
   const authHeaders = () => {
@@ -388,6 +443,11 @@ const [exportTick, setExportTick] = useState(0);
   const initializedRef = useRef(false);
 
   const runDBFetchForFilters = async () => {
+    if (!hasValidPeriod) {
+    setRows([]);     // real rows clear
+    setMeta(null);
+    return;
+  }
     setFetching(true);
     try {
       const country = countryName;
@@ -422,30 +482,38 @@ const [exportTick, setExportTick] = useState(0);
   }, []);
 
   // Seed once per year (only when year changes or first time) + fetch DB
-  useEffect(() => {
-    if (pageLoading) return;
+useEffect(() => {
+  if (pageLoading) return;
 
-    const doSeedThenFetch = async () => {
-      try {
-        await seedAmazonLedgerOnce(selectedYear);
-      } catch (e: any) {
-        console.error(e);
-        setModalMessage(e?.message || 'Seed failed');
-        setShowModal(true);
-      } finally {
-        await runDBFetchForFilters();
-      }
-    };
+  // 🚨 NA/NA case → NO seed, NO API
+  if (!hasValidPeriod) {
+    setRows([]);
+    setMeta(null);
+    return;
+  }
 
-    if (!initializedRef.current) {
-      initializedRef.current = true;
-      void doSeedThenFetch();
-      return;
+  const doSeedThenFetch = async () => {
+    try {
+      await seedAmazonLedgerOnce(selectedYear);
+    } catch (e: any) {
+      console.error(e);
+      setModalMessage(e?.message || "Seed failed");
+      setShowModal(true);
+    } finally {
+      await runDBFetchForFilters();
     }
+  };
 
+  if (!initializedRef.current) {
+    initializedRef.current = true;
     void doSeedThenFetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedYear, countryName, pageLoading]);
+    return;
+  }
+
+  void doSeedThenFetch();
+}, [selectedYear, countryName, pageLoading]);
+
+
 
   // When filters change (range/month/quarter/year), DO NOT seed again. Only DB fetch.
   useEffect(() => {
@@ -470,6 +538,8 @@ const [exportTick, setExportTick] = useState(0);
     if (!first) return [];
     return Object.keys(first);
   }, [rows]);
+
+  
 
   const displayRows = useMemo(() => {
     if (!rows || rows.length === 0) return [];
@@ -527,6 +597,11 @@ const [exportTick, setExportTick] = useState(0);
   }, [displayRows]);
 
   const pieSourceRow = selectedRow ?? totalRow;
+
+  const effectiveRows = useMemo(() => {
+  if (!hasValidPeriod) return DUMMY_ROWS;
+  return displayRows;
+}, [hasValidPeriod, displayRows]);
 
 
   // Sign row (stable sets)
@@ -1091,6 +1166,16 @@ const [exportTick, setExportTick] = useState(0);
     return cols;
   }, [leftCols, groups, singleCols]);
 
+  const pieRows = useMemo(() => {
+  return effectiveRows.filter(
+    (r) =>
+      !r?.__isTotal &&
+      String(r?.product_name || "").toUpperCase() !== "GRAND TOTAL" &&
+      String(r?.product_name || "").toUpperCase() !== "TOTAL" &&
+      String(r?.product_name || "").toUpperCase() !== "OTHERS"
+  );
+}, [effectiveRows]);
+
   // ✅ Build export rows using getValue() so Excel matches the UI cells
   const buildExcelRows = useCallback(() => {
     const cols = getExportColumns();
@@ -1263,36 +1348,30 @@ const [exportTick, setExportTick] = useState(0);
         ].join(" ")}
       >
 
-        {rows.length === 0 ? (
-          <div className="p-6 text-sm text-neutral-600">No rows returned.</div>
-        ) : (
-          // <div className="mt-2 rounded-xl flex-1 w-full max-w-full overflow-x-auto lg:overflow-x-hidden">
-          //   <div className="w-full min-w-0 [&_table]:w-full">
-          <GroupedCollapsibleTable
-            // rows={rows}
-            rows={displayRows}
-            getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
-            leftCols={leftCols}
-            groups={groups}
-            singleCols={singleCols}
-            getValue={getValue}
-            getRowClassName={getRowClassName}
-            onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+       {effectiveRows.length === 0 ? (
+  <div className="p-6 text-sm text-neutral-600">No rows returned.</div>
+) : (
+  <GroupedCollapsibleTable
+    rows={effectiveRows}
+    getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
+    leftCols={leftCols}
+    groups={groups}
+    singleCols={singleCols}
+    getValue={getValue}
+    getRowClassName={getRowClassName}
+    onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+    tableClassName={
+      anyExpanded
+        ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+        : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+    }
+    headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+    headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+    showSignRowInBody
+    getSignForCol={getSignForCol}
+  />
+)}
 
-            tableClassName={
-              anyExpanded
-                ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-                : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-            }
-
-            headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-            headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
-            showSignRowInBody
-            getSignForCol={getSignForCol}
-          />
-          //   </div>
-          // </div>
-        )}
       </div>
 
       <div className="mt-4" id="inventory-pie-export">
@@ -1304,7 +1383,7 @@ const [exportTick, setExportTick] = useState(0);
 
         <InventoryTopProductsPie
   key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
-  rows={displayRows}
+  rows={pieRows}
   title="Inventory Breakup"
   exportTick={exportTick} // ✅ NEW
   onExportBase64Ready={(b64) => setPieBase64(b64)}
