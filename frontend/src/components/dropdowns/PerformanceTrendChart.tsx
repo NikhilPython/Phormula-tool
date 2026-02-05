@@ -477,7 +477,7 @@ tooltip: {
           : "";
 
       return `
-        <div style="font-size:12px; line-height:1.4; color:#414042;">
+        <div style="font-size:12px; line-height:1.4; color:#44042;">
           ${p.marker}
           <span>${p.seriesName}${suffix}: </span>
           <span style="color:#414042;">${displayValue}</span>
@@ -487,7 +487,7 @@ tooltip: {
 
     return `
       <div style="font-size:12px; color:#414042;">
-        <div style="font-weight:600; margin-bottom:4px; color:#414042;">
+        <div style="font-weight:600; margin-bottom:4px; color:#1414042;">
           ${header}
         </div>
         ${lines.join("")}
