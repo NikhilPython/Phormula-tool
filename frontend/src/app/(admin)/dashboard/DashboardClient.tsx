@@ -4737,7 +4737,7 @@ export default function DashboardPage() {
                         // title="Download"
                         />
 
-                        <button
+                        {/* <button
                             type="button"
                             onClick={fetchAmazon}
                             disabled={loading}
@@ -4745,7 +4745,7 @@ export default function DashboardPage() {
                                 }`}
                         >
                             {loading ? "Loading…" : "Refresh"}
-                        </button>
+                        </button> */}
                     </div>
                 </div>
 
