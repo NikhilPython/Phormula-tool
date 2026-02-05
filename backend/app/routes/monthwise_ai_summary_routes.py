@@ -254,7 +254,11 @@ def summary():
         db.session.commit()
 
         # ---------------- Response ----------------
-        result["objective"] = final_objective
+        result["objective"] = {
+            "primary_goal": final_objective["primary_goal"],
+            "risk_level": final_objective["risk_level"],
+        }
+
         result["objective_changed"] = objective_changed
 
         return jsonify(result), 200
