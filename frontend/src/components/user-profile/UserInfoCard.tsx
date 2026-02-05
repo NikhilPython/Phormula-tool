@@ -55,8 +55,16 @@ type FormState = {
   address_zipcode: string;
 };
 
+type UserObjectiveForm = {
+  primary_goal: "profit" | "growth" | "inventory_dilution" | "balanced";
+  risk_level: "conservative" | "balanced" | "aggressive";
+  notes: string;
+  country: string;
+};
 
-type Section = "personal" | "company" | "targets";
+
+type Section = "personal" | "company" | "targets" | "objective";
+
 
 type CurrencyRateRow = {
   user_currency: string;       // normalized lower in backend
@@ -180,12 +188,15 @@ function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">{label}</p>
-      <p className="text-sm font-medium text-gray-800 dark:text-white/90">
+
+      {/* Use div so value can be anything (text, <p>, <span>, etc.) safely */}
+      <div className="text-sm font-medium text-gray-800 dark:text-white/90">
         {value}
-      </p>
+      </div>
     </div>
   );
 }
+
 
 
 
@@ -210,6 +221,16 @@ export default function UserInfoCard() {
     if (connected.shopify) ids.push("shopify");
     return ids;
   }, [connected.amazonUs, connected.amazonUk, connected.amazonCa, connected.shopify]);
+
+  const integratedCountries = useMemo(() => {
+  const countries: string[] = [];
+  if (connected.amazonUs) countries.push("us");
+  if (connected.amazonUk) countries.push("uk");
+  if (connected.amazonCa) countries.push("ca");
+  if (connected.shopify) countries.push("global");
+  return countries;
+}, [connected]);
+
 
   const pagePlatform: PlatformId = useMemo(() => {
     const c = (params?.country || "").toLowerCase();
@@ -284,6 +305,16 @@ export default function UserInfoCard() {
     fetchRates();
   }, [token]);
 
+  useEffect(() => {
+  if (!objective.country && integratedCountries.length) {
+    setObjective((prev) => ({
+      ...prev,
+      country: integratedCountries[0],
+    }));
+  }
+}, [integratedCountries]);
+
+
 
   const rateMap = useMemo(() => {
     // key: "usd|gb|uk"
@@ -339,6 +370,13 @@ export default function UserInfoCard() {
     address_state: "",
     address_zipcode: "",
   });
+
+  const [objective, setObjective] = useState<UserObjectiveForm>({
+  primary_goal: "balanced",
+  risk_level: "balanced",
+  notes: "",
+  country: "",
+});
 
 
   // ✅ per-section edit state
@@ -513,6 +551,32 @@ export default function UserInfoCard() {
     }
   };
 
+  const handleSaveObjective = async () => {
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(objective),
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to save objective");
+    }
+
+    closeModal();
+  } catch (e: any) {
+    alert(e.message);
+  }
+};
+
+
   const [forgotPassword, { isLoading: isSending, isSuccess }] =
     useForgotPasswordMutation();
 
@@ -539,6 +603,26 @@ export default function UserInfoCard() {
       maximumFractionDigits: 2,
     }).format(n);
   };
+
+  const RISK_LEVELS = ["conservative", "balanced", "aggressive"] as const;
+
+const riskMeta = {
+  conservative: {
+    label: "Conservative",
+    color: "text-green-600",
+    dot: "bg-green-600",
+  },
+  balanced: {
+    label: "Balanced",
+    color: "text-yellow-500",
+    dot: "bg-yellow-500",
+  },
+  aggressive: {
+    label: "Aggressive",
+    color: "text-red-600",
+    dot: "bg-red-600",
+  },
+};
 
   const modalTitle =
     activeSection === "personal"
@@ -788,6 +872,46 @@ export default function UserInfoCard() {
               </InfoCard>
             </div>
 
+            <div className="lg:col-span-2">
+  <InfoCard
+    title={
+      <PageBreadcrumb
+        pageTitle="Objective"
+        variant="table"
+        align="left"
+      />
+    }
+    action={
+      <button
+        onClick={() => openSection("objective")}
+        className="h-9 w-9 text-gray-700"
+        aria-label="Edit"
+      >
+        <FiEdit className="text-lg" />
+      </button>
+    }
+  >
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <InfoItem label="Primary Goal" value={objective.primary_goal} />
+      <InfoItem label="Risk Level" value={objective.risk_level} />
+      <InfoItem label="Country" value={objective.country?.toUpperCase() || "-"} />
+      <InfoItem
+  label="Notes"
+  value={
+    objective.notes ? (
+      <p className="line-clamp-1 text-sm text-gray-800 dark:text-white/90">
+        {objective.notes}
+      </p>
+    ) : (
+      "-"
+    )
+  }
+/>
+    </div>
+  </InfoCard>
+</div>
+
+
           </div>
         </div>
       </div>
@@ -991,6 +1115,106 @@ export default function UserInfoCard() {
                     </>
                   )}
 
+                  {activeSection === "objective" && (
+  <>
+    <div className="col-span-2 ">
+      <Label>Primary Goal</Label>
+      <select
+        value={objective.primary_goal}
+        onChange={(e) =>
+          setObjective({ ...objective, primary_goal: e.target.value as any })
+        }
+        className="w-full rounded-md border px-3 py-2"
+      >
+        <option value="profit">Profit</option>
+        <option value="growth">Growth</option>
+        <option value="inventory_dilution">Inventory Dilution</option>
+        <option value="balanced">Balanced</option>
+      </select>
+    </div>
+
+    <div className="col-span-2 ">
+       <Label>
+    Risk Level:{" "}
+    <span
+      className={`font-semibold capitalize ${riskMeta[objective.risk_level].color}`}
+    >
+      {riskMeta[objective.risk_level].label}
+    </span>
+  </Label>
+
+  {/* Slider */}
+  <input
+    type="range"
+    min={0}
+    max={2}
+    step={1}
+    value={RISK_LEVELS.indexOf(objective.risk_level)}
+    onChange={(e) =>
+      setObjective({
+        ...objective,
+        risk_level: RISK_LEVELS[Number(e.target.value)],
+      })
+    }
+    className="w-full mt-4"
+  />
+
+  {/* Points + labels */}
+  <div className="flex justify-between mt-2 text-xs font-medium">
+    {RISK_LEVELS.map((level, index) => {
+      const isActive = objective.risk_level === level;
+      return (
+        <div key={level} className="flex flex-col items-center w-1/3">
+          <div
+            className={`h-3 w-3 rounded-full ${
+              isActive ? riskMeta[level].dot : "bg-gray-300"
+            }`}
+          />
+          <span
+            className={`mt-1 capitalize ${
+              isActive ? riskMeta[level].color : "text-gray-400"
+            }`}
+          >
+            {riskMeta[level].label}
+          </span>
+        </div>
+      );
+    })}
+  </div>
+
+    </div>
+
+    <div className="col-span-2">
+      <Label>Notes (optional)</Label>
+      <Input
+        type="text"
+        value={objective.notes}
+        onChange={(e) =>
+          setObjective({ ...objective, notes: e.target.value })
+        }
+      />
+    </div>
+
+    <div className="col-span-2 ">
+      <Label>Country</Label>
+      <select
+        value={objective.country}
+        onChange={(e) =>
+          setObjective({ ...objective, country: e.target.value })
+        }
+        className="w-full rounded-md border px-3 py-2"
+      >
+        {integratedCountries.map((c) => (
+          <option key={c} value={c}>
+            {c.toUpperCase()}
+          </option>
+        ))}
+      </select>
+    </div>
+  </>
+)}
+
+
                 </div>
               </div>
             </div>
@@ -1004,7 +1228,14 @@ export default function UserInfoCard() {
               >
                 Close
               </Button>
-              <Button size="sm" onClick={handleSave} disabled={isSaving}>
+              <Button
+  size="sm"
+  onClick={
+    activeSection === "objective" ? handleSaveObjective : handleSave
+  }
+  disabled={isSaving}
+>
+
                 {isSaving ? "Saving…" : "Save Changes"}
               </Button>
             </div>

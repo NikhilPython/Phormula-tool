@@ -266,6 +266,99 @@ const monthNameToNumber = (m: string): string => {
   return typeof idx === "number" ? String(idx + 1) : "";
 };
 
+type ProductInsightBlock = {
+  name: string;
+  metrics: { label: string; value: string; color?: string }[];
+  insights: string[];
+  actions: string[];
+};
+
+const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
+  const metricLabels = [
+    "ASP",
+    "Units",
+    "Net sales",
+    "CM1 profit",
+    "CM1 profit per unit",
+  ];
+
+  const isMetric = (s: string) =>
+    metricLabels.some((m) => s.toLowerCase().startsWith(m.toLowerCase() + ":"));
+
+  const isAction = (s: string) => s.toLowerCase().startsWith("action:");
+
+  const blocks: ProductInsightBlock[] = [];
+  let current: ProductInsightBlock | null = null;
+
+  const pushCurrent = () => {
+    if (current && current.name.trim()) blocks.push(current);
+    current = null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+  const raw = lines[i];
+
+  const line = raw
+    .replace(/^[-•]\s+/, "")      // bullets
+    .replace(/^\d+\.\s*/, "")    // remove "1. ", "2. " etc
+    .trim();
+
+  if (!line) continue;
+
+  const nextLine = lines[i + 1]
+    ?.replace(/^[-•]\s+/, "")
+    .replace(/^\d+\.\s*/, "")
+    .trim();
+
+  // ✅ PRODUCT HEADER ONLY if next line is a metric
+  const isProductHeader =
+    !isMetric(line) &&
+    !isAction(line) &&
+    !!nextLine &&
+    isMetric(nextLine);
+
+  if (isProductHeader) {
+    pushCurrent();
+    current = { name: line, metrics: [], insights: [], actions: [] };
+    continue;
+  }
+
+  if (!current) continue;
+
+  if (isMetric(line)) {
+    const [label, ...rest] = line.split(":");
+    const value = rest.join(":").trim();
+
+    const num = value.match(/[-+]?[\d,.]+/g)?.[0]?.replace(/,/g, "");
+    const n = num ? Number(num) : NaN;
+    const color =
+      !isNaN(n)
+        ? n < 0
+          ? "#DC2626"
+          : n > 0
+          ? "#059669"
+          : "#414042"
+        : "#414042";
+
+    current.metrics.push({ label: label.trim(), value, color });
+    continue;
+  }
+
+  if (isAction(line)) {
+    current.actions.push(line.replace(/^action:\s*/i, "").trim());
+    continue;
+  }
+
+  // ✅ everything else = insight (NOT product, NOT numbered)
+  current.insights.push(line);
+}
+
+
+  pushCurrent();
+  return blocks;
+};
+
+
 const extractBullets = (md: string | null | undefined): string[] => {
   if (!md) return [];
   return md
@@ -355,6 +448,63 @@ const extractRecoAndInventoryBullets = (
   };
 };
 
+const ProductInsightsSection = ({ blocks }: { blocks: ProductInsightBlock[] }) => {
+  if (!blocks.length) return null;
+
+  return (
+    <div className="space-y-4">
+      <PageBreadcrumb pageTitle="PRODUCT INSIGHTS" variant="page" align="left" textSize="2xl" />
+
+      <div className="space-y-5">
+        {blocks.map((b, idx) => (
+          <div key={idx} className="space-y-2">
+            {/* 1. Product name */}
+            <div className="text-sm font-bold text-charcoal-600">
+              {idx + 1} . Product Name - {b.name}
+            </div>
+
+            {/* Metrics inline (no cards) */}
+            {b.metrics.length > 0 && (
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                {b.metrics.map((m, i) => (
+                  <div key={i} className="flex items-center gap-1">
+                    <span className="text-charcoal-600 text-xs">{m.label}:</span>
+                    <span className="font-semibold" style={{ color: m.color || "#414042" }}>
+                      {m.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Insights */}
+           {b.insights.length > 0 && (
+  <div
+    className="text-xs 2xl:text-sm text-charcoal-500"
+    dangerouslySetInnerHTML={{
+      __html: b.insights.map(t => t.trim()).join(" ")
+    }}
+  />
+)}
+
+            {/* Action inline */}
+            {b.actions.length > 0 && (
+              <div className="text-sm text-charcoal-600">
+                <span className="font-bold">Action – </span>
+                <span>{b.actions.join(" ")}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+
+
+
 type AiSingleInsightCardProps = {
   loading: boolean;
   error: string | null;
@@ -429,23 +579,54 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
     return null;
   }
 
+  // 🔹 Split summary into metrics + narrative
+const summaryMetrics = summaryBullets
+  .filter(b => /%|£|\$/.test(b))
+  .map(b => {
+    const [label, value] = b.split(":");
+    return {
+      label: label?.trim(),
+      value: value?.trim(),
+    };
+  });
+
+const narrativeInsight =
+  summaryBullets.find(b =>
+    b.toLowerCase().includes("business experienced")
+  );
+
+
   return (
-    <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
-      <Section
-        title="Month-end Business Summary"
-        bullets={summaryBullets}
-      />
+    <div className="flex gap-4">
+ <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
+     <div className="space-y-3">
+  <PageBreadcrumb
+    pageTitle="Business Summary"
+    variant="page"
+    align="left"
+    textSize="2xl"
+  />
 
-      <Section
-        title="Recommendations"
-        bullets={[...recommendationBullets, ...inventoryBullets]}
-      />
+  {/* Numeric points */}
+ <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
+  {summaryMetrics.map((p, i) => (
+    <li key={i}>
+      <span className="font-medium">{p.label}:</span>{" "}
+      <span>{p.value}</span>
+    </li>
+  ))}
+</ul>
 
-      <Section
-        title="PRODUCT INSIGHTS"
-        bullets={skuInsightsBullets}
-      />
+  {/* Narrative insight LAST */}
+  {narrativeInsight && (
+    <div className="mt-3 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
+      {narrativeInsight}
+    </div>
+  )}
+</div>
 
+
+      
       {/* Inventory shown only if still exists separately */}
       {inventoryBullets.length > 0 && (
         <Section
@@ -454,6 +635,12 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
         />
       )}
     </div>
+    <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 ">
+      <ProductInsightsSection blocks={parseProductInsightsBlocks(skuInsightsBullets)} />
+
+    </div>
+    </div>
+   
   );
 };
 
@@ -762,7 +949,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
- 
 
   const fetchPerformanceTrendFromHistory = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
@@ -1757,9 +1943,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           />
         </div>
       </div>
-
-     
-
 
       {/* WRAPPER: stacked layout */}
       <div className="flex flex-col gap-5 w-full mt-4">

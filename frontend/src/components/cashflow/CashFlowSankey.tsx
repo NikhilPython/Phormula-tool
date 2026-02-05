@@ -114,7 +114,7 @@ const prevMarketplaceFees =
 
   const getChangePercent = (curr?: number, prev?: number) => {
     if (curr === undefined || prev === undefined || prev === 0) return undefined;
-    return (((curr - prev) / Math.abs(prev)) * 100).toFixed(1);
+    return (((curr - prev) / Math.abs(prev)) * 100).toFixed(2);
   };
 
   const formatInteger = (val?: number) =>
@@ -387,7 +387,7 @@ links: rows.map((r) => ({
       {(
         ((Math.abs(c.value || 0)) / (data.gross_sales || 1)) *
         100
-      ).toFixed(1)}
+      ).toFixed(2)}
       %)
     </span>
   </>
@@ -448,7 +448,7 @@ links: rows.map((r) => ({
   {/* % change sirf tab jab previous data ho */}
   {hasPrevious && p && (
     <span
-      className={`text-nowrap ${
+      className={`text-nowrap font-bold ${
         Number(p) < 0 ? "text-red-600" : "text-green-600"
       }`}
     >
