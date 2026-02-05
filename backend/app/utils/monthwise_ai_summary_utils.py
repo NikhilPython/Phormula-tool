@@ -172,6 +172,7 @@ def is_latest_period(period, timeline, year, *, user_id, country):
     latest finalized precalc data available for the user.
     """
 
+    # ---------------- MONTHLY (DB-driven) ----------------
     if period == "monthly":
         latest_year, latest_month = resolve_latest_available_month(
             user_id=user_id,
@@ -179,14 +180,28 @@ def is_latest_period(period, timeline, year, *, user_id, country):
         )
         return year == latest_year and int(timeline) == latest_month
 
-    if period == "quarterly":
-        # keep calendar-based logic unless you also have
-        # finalized quarterly precalc detection
-        y, q = get_latest_completed_quarter()
-        return f"Q{q}" == timeline and y == year
 
+    # ---------------- QUARTERLY (DB-driven FIX) ----------------
+    if period == "quarterly":
+        # scan recent years & quarters to find latest existing table
+        for test_year in range(year + 1, year - 3, -1):
+            for q in (4, 3, 2, 1):
+                table = build_table_name(user_id, country, "quarterly", f"Q{q}", test_year)
+                try:
+                    pd.read_sql(
+                        f'SELECT 1 FROM public."{table}" LIMIT 1',
+                        phormula_engine
+                    )
+                    return timeline == f"Q{q}" and year == test_year
+                except Exception:
+                    continue
+        return False
+
+
+    # ---------------- YEARLY (keep simple rule) ----------------
     if period == "yearly":
         return year == date.today().year - 1
+
 
     return False
 

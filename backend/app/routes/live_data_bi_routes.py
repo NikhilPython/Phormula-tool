@@ -259,7 +259,7 @@ def live_mtd_vs_previous():
 
         if isinstance(user_objective, dict):
             primary_goal = user_objective.get("primary_goal")
-            primary_risk = user_objective.get("primary_risk")
+            primary_risk = user_objective.get("risk_level")
 
         # ---------------------------
         # DATE RANGE
