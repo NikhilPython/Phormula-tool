@@ -429,48 +429,74 @@ const LiveLineChart: React.FC<{
   const colorMap = useMemo(() => buildRecencyColorMap(series.map((s) => s.name)), [series]);
 
   const option = {
-    tooltip: {
-      trigger: "axis",
-      formatter: (params: any) => {
-        const rawX = params?.[0]?.axisValue ?? "";
+tooltip: {
+  trigger: "axis",
+  textStyle: {
+    fontSize: 12,
+    color: "#414042",
+  },
+  formatter: (params: any) => {
+    const rawX = params?.[0]?.axisValue ?? "";
 
-        // header
-        const header = isQuarterCompare
-          ? `Month ${rawX}`
-          : isDaily && isNumericAxis && !isNaN(Number(rawX))
-            ? `Day ${Number(rawX) + displayDayShift}`
-            : String(rawX);
+    // header like Chart.js tooltip title behavior
+    const header = isQuarterCompare
+      ? `Month ${rawX}`
+      : isDaily && isNumericAxis && !isNaN(Number(rawX))
+        ? `Day ${Number(rawX) + displayDayShift}`
+        : String(rawX);
 
-        const lines = (params || []).map((p: any) => {
-          // IMPORTANT: because we return { value, monthLabel } for quarterly
-          const valObj = p?.data;
-          const value =
-            valObj == null
-              ? null
-              : typeof valObj === "object" && "value" in valObj
-                ? valObj.value
-                : valObj;
+    const fmtNumber = (n: number) =>
+      n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-          const monthLabel =
-            typeof valObj === "object" && valObj?.monthLabel ? String(valObj.monthLabel) : null;
+    const lines = (params || []).map((p: any) => {
+      const valObj = p?.data;
 
-          const shown =
-            value == null
-              ? "-"
-              : metric === "net_sales"
-                ? `${currencySymbol ?? ""}${Number(value).toFixed(2)}`
-                : `${Number(value)}`;
+      const value =
+        valObj == null
+          ? null
+          : typeof valObj === "object" && "value" in valObj
+            ? valObj.value
+            : valObj;
 
-          const suffix =
-            isQuarterCompare && monthLabel ? ` <span style="color:#6B7280">(${monthLabel})</span>` : "";
+      const monthLabel =
+        typeof valObj === "object" && valObj?.monthLabel ? String(valObj.monthLabel) : null;
 
-          return `${p.marker}${p.seriesName}${suffix} <b>${shown}</b>`;
-        });
+      // Match Chart.js: "Label: ₹ 12,345.67" (or units without decimals)
+      const displayValue =
+        value == null
+          ? "-"
+          : metric === "net_sales"
+            ? `${currencySymbol ?? ""}${fmtNumber(Number(value))}`
 
-        return [header, ...lines].join("<br/>");
-      },
+            : `${Number(value).toLocaleString()}`;
 
-    },
+      // For quarter-compare, keep your month label hint (but keep main color consistent)
+      const suffix =
+        isQuarterCompare && monthLabel
+          ? ` <span style="color:#6B7280;">(${monthLabel})</span>`
+          : "";
+
+      return `
+        <div style="font-size:12px; line-height:1.4; color:#414042;">
+          ${p.marker}
+          <span>${p.seriesName}${suffix}: </span>
+          <span style="color:#414042;">${displayValue}</span>
+        </div>
+      `;
+    });
+
+    return `
+      <div style="font-size:12px; color:#414042;">
+        <div style="font-weight:600; margin-bottom:4px; color:#414042;">
+          ${header}
+        </div>
+        ${lines.join("")}
+      </div>
+    `;
+  },
+},
+
+
     legend: {
       top: 10,
       left: "left",
