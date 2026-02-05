@@ -249,7 +249,7 @@ def live_mtd_vs_previous():
         # ---------------------------
         # USER OBJECTIVE (SHARED WITH HISTORIC BI)
         # ---------------------------
-        user_objective = fetch_user_objective(user_id)
+        user_objective = fetch_user_objective(user_id, country)
         print("[LIVE BI] user_objective =", user_objective)
 
         # ---------------------------

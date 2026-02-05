@@ -432,55 +432,61 @@ def normalize_sales_mix(df: pd.DataFrame, mix_col="sales_mix", digits=2):
 
 
 
-def fetch_user_objective(user_id: int) -> dict:
+def fetch_user_objective(user_id: int, country: str = None) -> dict:
+    """
+    Fetch latest user objective from new table: user_objectives.
+    """
+
     query = text("""
         SELECT
             primary_goal,
             risk_level,
-            max_tacos,
-            max_price_increase_pct,
-            ad_budget_cap,
-            dont_change_price,
             notes
-        FROM historic_ai_summary
+        FROM user_objectives
         WHERE user_id = :user_id
-          AND primary_goal IS NOT NULL
-        ORDER BY id DESC
+          AND (:country IS NULL OR country = :country)
+        ORDER BY created_at DESC
         LIMIT 1
     """)
 
     try:
         with engine_chatbot.connect() as conn:
-            row = conn.execute(query, {"user_id": user_id}).fetchone()
-
+            row = conn.execute(query, {
+                "user_id": user_id,
+                "country": country,
+            }).fetchone()
     except Exception as e:
         print("[WARN] Failed to fetch user objective:", e)
         row = None
 
+    # -----------------------------
+    # Fallback
+    # -----------------------------
     if not row:
         return {
             "primary_goal": "profit",
             "risk_level": "balanced",
             "constraints": {
-                "max_tacos": None,
-                "max_price_increase_pct": None,
-                "ad_budget_cap": None,
+                "max_tacos": 0,
+                "max_price_increase_pct": 0,
+                "ad_budget_cap": 0,
                 "dont_change_price": False,
             },
             "notes": None,
         }
 
     return {
-        "primary_goal": row.primary_goal or "profit",
+        "primary_goal": row.primary_goal or "balanced",
         "risk_level": row.risk_level or "balanced",
         "constraints": {
-            "max_tacos": row.max_tacos,
-            "max_price_increase_pct": float(row.max_price_increase_pct) if row.max_price_increase_pct else None,
-            "ad_budget_cap": float(row.ad_budget_cap) if row.ad_budget_cap else None,
-            "dont_change_price": bool(row.dont_change_price),
+            "max_tacos": 0,
+            "max_price_increase_pct": 0,
+            "ad_budget_cap": 0,
+            "dont_change_price": False,
         },
         "notes": row.notes,
     }
+
 
 
 
