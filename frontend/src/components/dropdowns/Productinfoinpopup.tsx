@@ -500,7 +500,7 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
             {!isImprovementsPage && (
               <div className="flex justify-end">
                 <button
-                  className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-4 py-2 font-semibold text-amber-100 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  className="inline-flex justify-center items-center rounded-md bg-slate-800 px-4 py-2 font-semibold text-amber-100 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
                   onClick={() => {
                     // 🔹 Read last fetched month/year from localStorage
                     let lastFetchedMonth = month;
