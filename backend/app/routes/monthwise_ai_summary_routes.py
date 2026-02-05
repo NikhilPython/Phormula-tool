@@ -1,13 +1,15 @@
+import traceback
 from flask import Blueprint, json, request, jsonify
 import jwt
 from datetime import datetime
 from config import Config
 from app import db
-from app.models.user_models import HistoricAISummary
+from app.models.user_models import HistoricAISummary, UserObjective
 from app.utils.monthwise_ai_summary_utils import get_or_create_summary, DEFAULT_USER_OBJECTIVE
 from app.utils.history_graph_utils import get_performance_trend
 
 summary_bp = Blueprint("summary_bp", __name__)
+objective_bp = Blueprint("objective_bp", __name__)
 SECRET_KEY = Config.SECRET_KEY
 
 ALLOWED_PRIMARY_GOALS = {"profit", "growth", "rank", "inventory_clearance", "balanced"}
@@ -107,6 +109,7 @@ def _objective_from_row(row):
     }
 
 
+
 # @summary_bp.route("/summary", methods=["POST"])
 # def summary():
 #     auth_header = request.headers.get("Authorization")
@@ -121,7 +124,7 @@ def _objective_from_row(row):
 #         if not user_id:
 #             return jsonify({"error": "Invalid token payload: user_id missing"}), 401
 
-#         # Query params
+#         # ---------------- Query params ----------------
 #         country = (request.args.get("country", "uk") or "uk").strip().lower()
 #         marketplace_id = request.args.get("marketplace_id", type=int)
 
@@ -141,11 +144,11 @@ def _objective_from_row(row):
 #             if timeline not in ("Q1", "Q2", "Q3", "Q4"):
 #                 return jsonify({"error": "Invalid timeline for quarterly. Use 'Q1'..'Q4'"}), 400
 
-#         # Body JSON (objective from user)
+#         # ---------------- Body JSON (objective from user – OPTIONAL) ----------------
 #         body = request.get_json(silent=True) or {}
-#         objective = _norm_objective(body)
+#         request_objective = _norm_objective(body) if body else None
 
-#         # Find existing row
+#         # ---------------- Fetch existing DB row ----------------
 #         row = HistoricAISummary.query.filter_by(
 #             user_id=user_id,
 #             country=country,
@@ -155,34 +158,61 @@ def _objective_from_row(row):
 #             year=year,
 #         ).first()
 
-#         # Decide whether to regenerate summary if objective changed
-#         objective_changed = False
+#         # ---------------- Load objective from DB if exists ----------------
+#         db_objective = None
 #         if row:
-#             objective_changed = any([
-#                 row.primary_goal != objective["primary_goal"],
-#                 row.risk_level != objective["risk_level"],
-#                 row.max_tacos != objective["max_tacos"],
-#                 (float(row.max_price_increase_pct) if row.max_price_increase_pct is not None else None) != objective["max_price_increase_pct"],
-#                 (float(row.ad_budget_cap) if row.ad_budget_cap is not None else None) != objective["ad_budget_cap"],
-#                 bool(row.dont_change_price) != bool(objective["dont_change_price"]),
-#                 (row.notes or None) != (objective["notes"] or None),
-#             ])
+#             db_objective = {
+#                 "primary_goal": row.primary_goal,
+#                 "risk_level": row.risk_level,
+#                 "constraints": {
+#                     "max_tacos": row.max_tacos,
+#                     "max_price_increase_pct": float(row.max_price_increase_pct)
+#                         if row.max_price_increase_pct is not None else None,
+#                     "ad_budget_cap": float(row.ad_budget_cap)
+#                         if row.ad_budget_cap is not None else None,
+#                     "dont_change_price": bool(row.dont_change_price),
+#                 },
+#                 "notes": row.notes,
+#             }
 
-#         # Generate / fetch summary (pass objective into your generator)
-#         # IMPORTANT: you need to update get_or_create_summary to accept objective (see section 3)
-#         result = get_or_create_summary(
-#         user_id=user_id,
-#         country=country,
-#         marketplace_id=marketplace_id,
-#         period=period,
-#         timeline=timeline,
-#         year=year,
-#         objective=final_objective,   # ✅ DB-aware
-#         force_regenerate=objective_changed,
+#         # ---------------- FINAL objective resolution (SOURCE OF TRUTH) ----------------
+#         final_objective = (
+#             request_objective
+#             or db_objective
+#             or DEFAULT_USER_OBJECTIVE
 #         )
 
+#         # ---------------- Decide whether to regenerate summary ----------------
+#         objective_changed = False
 
-#         # Save objective + summary in DB (ensure DB is source of truth)
+#         if request_objective:
+#             db_objective_effective = _objective_from_row(row)
+
+#             # If no DB objective exists yet → first time save
+#             if db_objective_effective is None:
+#                 objective_changed = True
+#             else:
+#                 # 🔑 Deterministic comparison (no false positives)
+#                 objective_changed = request_objective != db_objective_effective
+        
+#         print("\n=== /summary ROUTE PARAMS ===")
+#         print("period:", period, type(period))
+#         print("timeline:", timeline, type(timeline))
+#         print("year:", year, type(year))
+
+#         # ---------------- Generate / fetch summary ----------------
+#         result = get_or_create_summary(
+#             user_id=user_id,
+#             country=country,
+#             marketplace_id=marketplace_id,
+#             period=period,
+#             timeline=timeline,
+#             year=year,
+#             objective=final_objective,
+#             force_regenerate=objective_changed,
+#         )
+
+#         # ---------------- Save objective + summary in DB ----------------
 #         if not row:
 #             row = HistoricAISummary(
 #                 user_id=user_id,
@@ -191,37 +221,31 @@ def _objective_from_row(row):
 #                 period=period,
 #                 timeline=timeline,
 #                 year=year,
-#                 summary=result.get("summary", "") or "",
-#                 recommendations=result.get("recommendations"),
 #             )
 #             db.session.add(row)
 
-#         # update fields
-#         row.primary_goal = objective["primary_goal"]
-#         row.risk_level = objective["risk_level"]
-#         row.max_tacos = objective["max_tacos"]
-#         row.max_price_increase_pct = objective["max_price_increase_pct"]
-#         row.ad_budget_cap = objective["ad_budget_cap"]
-#         row.dont_change_price = objective["dont_change_price"]
-#         row.notes = objective["notes"]
+#         # Update objective fields (from FINAL objective)
+#         row.primary_goal = final_objective["primary_goal"]
+#         row.risk_level = final_objective["risk_level"]
+#         row.max_tacos = final_objective["constraints"]["max_tacos"]
+#         row.max_price_increase_pct = final_objective["constraints"]["max_price_increase_pct"]
+#         row.ad_budget_cap = final_objective["constraints"]["ad_budget_cap"]
+#         row.dont_change_price = final_objective["constraints"]["dont_change_price"]
+#         row.notes = final_objective.get("notes")
 
+#         # Update summary output
 #         row.summary = result.get("summary", "") or row.summary
-#         row.recommendations = result.get("recommendations", row.recommendations)
+#         reco = result.get("recommendations")
+#         if isinstance(reco, dict):
+#             row.recommendations = json.dumps(reco)
+#         elif isinstance(reco, str):
+#             row.recommendations = reco
+
 
 #         db.session.commit()
 
-#         # Performance trend (unchanged)
-#         performance_trend = get_performance_trend(
-#             user_id=user_id,
-#             country=country,
-#             period=period,
-#             timeline=timeline,
-#             year=year,
-#         )
-
-#         # Response
-#         result["performance_trend"] = performance_trend
-#         result["objective"] = objective
+#         # ---------------- Response ----------------
+#         result["objective"] = final_objective
 
 #         return jsonify(result), 200
 
@@ -230,9 +254,17 @@ def _objective_from_row(row):
 #     except jwt.InvalidTokenError:
 #         return jsonify({"error": "Invalid token"}), 401
 #     except Exception as e:
-#         print("Unexpected error in /summary:", e)
+#         print("\n❌ UNEXPECTED ERROR IN /summary ❌")
+#         print("Error:", e)
+#         print("\n--- TRACEBACK START ---")
+#         traceback.print_exc()
+#         print("--- TRACEBACK END ---\n")
+
 #         db.session.rollback()
-#         return jsonify({"error": "Server error", "details": str(e)}), 500
+#         return jsonify({
+#             "error": "Server error",
+#             "details": str(e)
+#         }), 500
 
 @summary_bp.route("/summary", methods=["POST"])
 def summary():
@@ -272,7 +304,7 @@ def summary():
         body = request.get_json(silent=True) or {}
         request_objective = _norm_objective(body) if body else None
 
-        # ---------------- Fetch existing DB row ----------------
+        # ---------------- Fetch existing summary row ----------------
         row = HistoricAISummary.query.filter_by(
             user_id=user_id,
             country=country,
@@ -282,43 +314,50 @@ def summary():
             year=year,
         ).first()
 
-        # ---------------- Load objective from DB if exists ----------------
+        # =====================================================================
+        # NEW: Load LATEST objective from UserObjective table (source of truth)
+        # =====================================================================
+        latest_objective_row = (
+            UserObjective.query
+            .filter_by(user_id=user_id, country=country)
+            .order_by(UserObjective.created_at.desc())
+            .first()
+        )
+
         db_objective = None
-        if row:
+        if latest_objective_row:
             db_objective = {
-                "primary_goal": row.primary_goal,
-                "risk_level": row.risk_level,
-                "constraints": {
-                    "max_tacos": row.max_tacos,
-                    "max_price_increase_pct": float(row.max_price_increase_pct)
-                        if row.max_price_increase_pct is not None else None,
-                    "ad_budget_cap": float(row.ad_budget_cap)
-                        if row.ad_budget_cap is not None else None,
-                    "dont_change_price": bool(row.dont_change_price),
-                },
-                "notes": row.notes,
+                "primary_goal": latest_objective_row.primary_goal,
+                "risk_level": latest_objective_row.risk_level,
+                "constraints": DEFAULT_USER_OBJECTIVE["constraints"],
+                "notes": latest_objective_row.notes,
             }
 
-        # ---------------- FINAL objective resolution (SOURCE OF TRUTH) ----------------
+        # ---------------- FINAL objective resolution ----------------
         final_objective = (
             request_objective
             or db_objective
             or DEFAULT_USER_OBJECTIVE
         )
 
-        # ---------------- Decide whether to regenerate summary ----------------
+        # =====================================================================
+        # Decide whether to regenerate summary
+        # Regenerate ONLY if objective snapshot changed
+        # =====================================================================
         objective_changed = False
 
         if request_objective:
-            db_objective_effective = _objective_from_row(row)
+            stored_objective = _objective_from_row(row) if row else None
 
-            # If no DB objective exists yet → first time save
-            if db_objective_effective is None:
+            if stored_objective is None:
                 objective_changed = True
             else:
-                # 🔑 Deterministic comparison (no false positives)
-                objective_changed = request_objective != db_objective_effective
+                objective_changed = request_objective != stored_objective
 
+        print("\n=== /summary ROUTE PARAMS ===")
+        print("period:", period, type(period))
+        print("timeline:", timeline, type(timeline))
+        print("year:", year, type(year))
 
         # ---------------- Generate / fetch summary ----------------
         result = get_or_create_summary(
@@ -332,7 +371,7 @@ def summary():
             force_regenerate=objective_changed,
         )
 
-        # ---------------- Save objective + summary in DB ----------------
+        # ---------------- Save summary + objective snapshot ----------------
         if not row:
             row = HistoricAISummary(
                 user_id=user_id,
@@ -344,7 +383,7 @@ def summary():
             )
             db.session.add(row)
 
-        # Update objective fields (from FINAL objective)
+        # Objective SNAPSHOT (frozen for determinism)
         row.primary_goal = final_objective["primary_goal"]
         row.risk_level = final_objective["risk_level"]
         row.max_tacos = final_objective["constraints"]["max_tacos"]
@@ -353,7 +392,7 @@ def summary():
         row.dont_change_price = final_objective["constraints"]["dont_change_price"]
         row.notes = final_objective.get("notes")
 
-        # Update summary output
+        # Summary output
         row.summary = result.get("summary", "") or row.summary
         reco = result.get("recommendations")
         if isinstance(reco, dict):
@@ -361,11 +400,11 @@ def summary():
         elif isinstance(reco, str):
             row.recommendations = reco
 
-
         db.session.commit()
 
         # ---------------- Response ----------------
         result["objective"] = final_objective
+        result["objective_changed"] = objective_changed
 
         return jsonify(result), 200
 
@@ -374,6 +413,68 @@ def summary():
     except jwt.InvalidTokenError:
         return jsonify({"error": "Invalid token"}), 401
     except Exception as e:
-        print("Unexpected error in /summary:", e)
+        print("\n❌ UNEXPECTED ERROR IN /summary ❌")
+        print("Error:", e)
+        print("\n--- TRACEBACK START ---")
+        traceback.print_exc()
+        print("--- TRACEBACK END ---\n")
+
         db.session.rollback()
-        return jsonify({"error": "Server error", "details": str(e)}), 500
+        return jsonify({
+            "error": "Server error",
+            "details": str(e)
+        }), 500
+
+
+@summary_bp.route("/objective", methods=["POST"])
+def save_user_objective():
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authorization token is missing or invalid"}), 401
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        user_id = payload.get("user_id")
+        if not user_id:
+            return jsonify({"error": "Invalid token payload"}), 401
+
+        body = request.get_json() or {}
+
+        country = (body.get("country")).strip().lower()
+        primary_goal = body.get("primary_goal")
+        risk_level = body.get("risk_level")
+        notes = body.get("notes")
+
+        if not primary_goal:
+            return jsonify({"error": "primary_goal is required"}), 400
+
+        objective = UserObjective(
+            user_id=user_id,
+            country=country,
+            primary_goal=primary_goal,
+            risk_level=risk_level,
+            notes=notes,
+        )
+
+        db.session.add(objective)
+        db.session.commit()
+
+        return jsonify({
+            "message": "Objective saved successfully",
+            "objective": {
+                "user_id": user_id,
+                "country": country,
+                "primary_goal": primary_goal,
+                "risk_level": risk_level,
+                "notes": notes,
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "error": "Server error",
+            "details": str(e)
+        }), 500

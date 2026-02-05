@@ -183,28 +183,6 @@ class improvment(db.Model):
     row_index = Column(Integer, nullable=True)
 
 
-# class HistoricAISummary(db.Model):
-#     __tablename__ = 'historic_ai_summary'
-#     __bind_key__ = 'chatbot'
-
-#     id = Column(Integer, primary_key=True)
-#     user_id = Column(Integer, nullable=False)
-#     country = Column(String(255), nullable=False)
-#     marketplace_id = Column(Integer, nullable=True)
-#     period = Column(
-#         Enum('monthly', 'quarterly', 'yearly', name='period_enum'),
-#         nullable=False
-#     )
-#     timeline = Column(String(50), nullable=False)
-#     year = Column(Integer, nullable=False)
-#     summary = Column(Text, nullable=False)
-#     recommendations = Column(Text, nullable=True)
-
-#     def __repr__(self):
-#         return (
-#             f"<HistoricAISummary user_id={self.user_id}, "
-#             f"period={self.period}, timeline={self.timeline}, year={self.year}>"
-#         )
 
 class HistoricAISummary(db.Model):
     __tablename__ = 'historic_ai_summary'
@@ -239,7 +217,31 @@ class HistoricAISummary(db.Model):
             f"period={self.period}, timeline={self.timeline}, year={self.year}>"
         )
  
-    
+class UserObjective(db.Model):
+    __tablename__ = 'user_objectives'
+    __bind_key__ = 'chatbot'   # keep same bind unless you want a separate DB
+
+    id = Column(Integer, primary_key=True)
+
+    user_id = Column(Integer, nullable=False)
+    country = Column(String(255), nullable=False)
+
+    primary_goal = Column(String(50), nullable=False)    # profit | growth | etc
+    risk_level = Column(String(50), nullable=True)       # conservative | balanced | aggressive
+
+    notes = Column(Text, nullable=True)                  # 👈 NEW
+
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow
+    )
+
+    def __repr__(self):
+        return (
+            f"<UserObjective user_id={self.user_id}, "
+            f"country={self.country}, primary_goal={self.primary_goal}>"
+        )    
 # ------------------------------------------------- Shopify Models -------------------------------------------------
 
 class ShopifyStore(db.Model):

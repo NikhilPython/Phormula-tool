@@ -129,7 +129,7 @@ interface ApiResponse {
   };
 
   overall_actions?: string[];
-    recommended_actions_mtd?: Record<string, string>;
+  recommended_actions_mtd?: Record<string, string>;
 }
 
 // =========================
@@ -496,6 +496,7 @@ export default function LiveBusinessClient({
         },
       });
 
+      console.log('live_mtd_bi response:', res.data);
 
       const newPeriods = res.data.periods || null;
       const rawCat = res.data.categorized_growth || {
@@ -519,10 +520,9 @@ export default function LiveBusinessClient({
       const actionsFromApi = res.data.overall_actions || [];
       const recommendedActionsFromApi = res.data.recommended_actions_mtd || {};
 
-
-
       setSummaryText(summaryTextFromApi);
       setOverallSummary(summaryBulletsFromApi);
+      setOverallActions(actionsFromApi);              // ✅ ADD THIS
       setRecommendedActions(recommendedActionsFromApi);
 
       let finalSummary = overallSummary;
@@ -2552,6 +2552,7 @@ export default function LiveBusinessClient({
         /^Action\s*:|^(Increase|Maintain|Decrease|Check|Review)/i.test(l)
       );
   };
+  console.log("123", overallSummary, recommendedActions, skuInsights);
 
   // =========================
   // Render
@@ -2579,72 +2580,78 @@ export default function LiveBusinessClient({
         <div className="flex flex-col mt-4">
           {error && <p style={{ color: 'red' }}>{error}</p>}
 
-          {(overallSummary.length > 0 || overallActions.length > 0) && (
-            <div className="flex gap-4 flex-col md:flex-row">
-              {(summaryText || overallSummary.length > 0) && (
-                <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
-                  <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
+          {(summaryText ||
+            overallSummary.length > 0 ||
+            Object.keys(recommendedActions).length > 0 ||
+            overallActions.length > 0) && (
 
-                  {/* ✅ Executive paragraph */}
-                  {summaryText && (
-                    <p className="mb-2 text-sm text-charcoal-500">
-                      {summaryText}
-                    </p>
-                  )}
+              <div className="flex gap-4 flex-col md:flex-row">
+                {(summaryText || overallSummary.length > 0) && (
+                  <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
+                    <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
 
-                  {/* ✅ Metric bullets */}
-                  {overallSummary.length > 0 && (
-                    <ul className="list-disc pl-5 space-y-1 pt-2">
-                      {overallSummary.map((line, idx) => (
-                        <li key={idx}>{formatBulletLine(line)}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
+                    {/* ✅ Executive paragraph */}
+                    {summaryText && (
+                      <p className="mb-2 text-sm text-charcoal-500">
+                        {summaryText}
+                      </p>
+                    )}
 
-              {((recommendedActions && Object.keys(recommendedActions).length > 0) ||
-                (skuInsights && Object.keys(skuInsights).length > 0)) && (
-
-
-                  <div className="bg-[#F7F9FC] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
-                    <PageBreadcrumb
-                      pageTitle="Recommended Actions (MTD)"
-                      variant="page"
-                      align="left"
-                    />
-
-                    <div className="space-y-3 pt-2">
-
-                      {/* ✅ PREFERRED: AI Insights (rich text) */}
-                      {skuInsights && Object.keys(skuInsights).length > 0 ? (
-                        Object.values(skuInsights).map((insight, idx) => (
-                          <div key={idx} className="border-b pb-2 last:border-b-0">
-                            <div className="font-bold text-charcoal-500 mb-1">
-                              {insight.product_name}
-                            </div>
-                            <div className="text-sm">
-                              {renderAiActionLine(insight.insight)}
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-
-                        /* ✅ FALLBACK: overallActions (SKU → action) */
-                        Object.entries(recommendedActions || {}).map(([sku, action], idx) => (
-                          <div key={idx} className="text-sm text-charcoal-500">
-                            {renderAiActionLine(action)}
-                          </div>
-                        ))
-
-                      )}
-
-                    </div>
+                    {/* ✅ Metric bullets */}
+                    {overallSummary.length > 0 && (
+                      <ul className="list-disc pl-5 space-y-1 pt-2">
+                        {overallSummary.map((line, idx) => (
+                          <li key={idx}>{formatBulletLine(line)}</li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 )}
 
-            </div>
-          )}
+                {((recommendedActions && Object.keys(recommendedActions).length > 0) ||
+                  (skuInsights && Object.keys(skuInsights).length > 0)) && (
+
+
+                    <div className="bg-[#F7F9FC] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+                      <PageBreadcrumb
+                        pageTitle="Recommended Actions (MTD)"
+                        variant="page"
+                        align="left"
+                      />
+
+                      <div className="space-y-3 pt-2">
+
+                        {/* ✅ PREFERRED: AI Insights (rich text) */}
+                        {/* AI Insights (if present) */}
+                        {skuInsights && Object.keys(skuInsights).length > 0 &&
+                          Object.values(skuInsights).map((insight, idx) => (
+                            <div key={idx} className="border-b pb-2 last:border-b-0">
+                              <div className="font-bold text-charcoal-500 mb-1">
+                                {insight.product_name}
+                              </div>
+                              <div className="text-sm">
+                                {renderAiActionLine(insight.insight)}
+                              </div>
+                            </div>
+                          ))
+                        }
+
+                        {/* Fallback: Recommended Actions */}
+                        {Object.keys(recommendedActions).length > 0 &&
+                          Object.entries(recommendedActions).map(([sku, action], idx) => (
+                            <div key={`rec-${idx}`} className="text-sm text-charcoal-500">
+                              {renderAiActionLine(action)}
+                            </div>
+                          ))
+                        }
+
+
+                      </div>
+                    </div>
+                  )}
+
+              </div>
+            )}
 
           <div>
             <div className="mt-4 rounded-2xl border bg-white p-5 shadow-sm">

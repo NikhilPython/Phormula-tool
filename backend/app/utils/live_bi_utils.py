@@ -1703,91 +1703,59 @@ MANDATORY OUTPUT FORMAT (STRICT JSON)
 
 
 LIVE_BI_PROMPT_1_5_SUMMARY = """
-## LIVE BI — Prompt 1.5 (Executive Summary)
+You are an executive summary generator for Live (MTD) Amazon Business Intelligence.
 
-You are an **executive summary generator** for **Live (MTD) Amazon Business Intelligence**.
+Your task:
+Generate a concise executive performance summary using:
+- analysis_output (directional signals and causal chain)
+- numeric_context (percent changes, absolute deltas, costs, currency)
+- user_objective
 
----
+Important context:
+- Data is in-progress (MTD), not final.
+- Use cautious executive finance language.
 
-## 🎯 Your Task
-
-Generate a **concise EXECUTIVE PERFORMANCE SUMMARY** using:
-
-- `analysis_output` (directional signals and causal chain)
-- `numeric_context` (percent changes, absolute deltas, costs, currency)
-- `user_objective`
-
----
-
-## ⚠️ Important Context
-
-- Data is **IN-PROGRESS (MTD)**, not final
-- Use historic `movement_context` to label extremes
-  - `highest_24m`
-  - `lowest_24m`
-- Use **cautious executive finance language**
-
----
-
-## 🚨 MANDATORY METRIC COVERAGE (NON-NEGOTIABLE)
-
-You MUST explicitly cover **ALL FIVE metrics below**:
-
-1) **Units**
-2) **Net Sales**
-3) **CM1 Profit**
-4) **CM1 Profit per Unit**
-5) **ASP**
+Mandatory metric coverage:
+You must explicitly cover ALL five metrics:
+1) Units
+2) Net Sales
+3) CM1 Profit
+4) CM1 Profit per Unit
+5) ASP
 
 Rules:
-- EACH metric must be mentioned at least once in:
-  - `summary_text`, OR
-  - `metric_bullets`
-- CM1 Profit per Unit is **NOT optional**, even if flat or declining.
+- Each metric must appear at least once in either summary_text or metric_bullets.
+- CM1 Profit per Unit must be included even if flat or declining.
 - If a metric shows limited movement, explicitly state that it remained stable or broadly unchanged.
 
----
+Metric interpretation rules:
+- Units represent demand or volume momentum.
+- Net Sales represent volume multiplied by pricing.
+- CM1 Profit represents total contribution margin.
+- CM1 Profit per Unit represents margin efficiency per sale.
+- ASP represents pricing discipline and mix signal.
 
-## 📊 Metric Interpretation Rules (STRICT)
+Strict prohibitions:
+- Do not recommend actions.
+- Do not suggest changes.
+- Do not introduce new metrics.
+- Do not include explanations outside directional logic.
 
-Use the following meanings:
+Output rules:
+- Output MUST be valid JSON only.
+- Do not use markdown.
+- Do not include text outside the JSON object.
+- Do not include unescaped currency symbols outside strings.
 
-- Units → demand / volume momentum
-- Net Sales → volume × pricing
-- CM1 Profit → total contribution margin
-- CM1 Profit per Unit → margin efficiency per sale
-- ASP → pricing discipline and mix signal
-
-Do NOT:
-- Recommend actions
-- Suggest changes
-- Attribute causes beyond directional logic
-- Introduce new metrics not provided
-
----
-
-## 🚫 Strict Rules (Non-Negotiable)
-
-- Output **MUST** be valid **JSON**
-- **NO markdown**
-- **NO bullets** outside JSON arrays
-- **NO unescaped currency symbols** outside strings
-- **NO recommendations**
-- **NO actions**
-
----
-
-## 📦 Mandatory Output Format (STRICT)
-
-```json
+Mandatory output format:
 {
-  "summary_text": "string (2–3 sentences, executive tone, covering ALL five metrics)",
+  "summary_text": "2–3 sentences in executive tone covering all five metrics",
   "metric_bullets": [
-    "string (Units)",
-    "string (Net Sales)",
-    "string (CM1 Profit)",
-    "string (CM1 Profit per Unit)",
-    "string (ASP)"
+    "Units summary",
+    "Net Sales summary",
+    "CM1 Profit summary",
+    "CM1 Profit per Unit summary",
+    "ASP summary"
   ]
 }
 """
@@ -1843,7 +1811,7 @@ PRICING RULES:
    → "Decrease ASP"
 
 4) If mixed_signal
-   → "Maintain current pricing"
+   → "Monitor performance of this product."
 
 RISK ADJUSTMENT:
 - If confidence is LOW or risk_level = conservative
@@ -2411,7 +2379,7 @@ def run_live_prompt_1_5_summary(
             ],
             temperature=0,
             response_format={"type": "json_object"},
-            max_tokens=200,
+            max_tokens=300,
         )
 
         return json.loads(resp.choices[0].message.content)

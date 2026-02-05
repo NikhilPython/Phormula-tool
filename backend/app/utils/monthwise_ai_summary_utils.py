@@ -70,23 +70,25 @@ DEFAULT_USER_OBJECTIVE = {
     "notes": None
 }
 
-def get_objective_from_db(row) -> dict | None:
-    if not row:
-        return None
+def resolve_yearly_analysis_anchor(user_id: int, country: str, year: int):
+    """
+    For a yearly selection, anchor insights to the latest available month
+    within that year (e.g., Dec if present, else latest month with data).
+    Returns (year, month) or None if no monthly data exists for that year.
+    """
+    for m in range(12, 0, -1):
+        df = fetch_precalc_table(
+            user_id=user_id,
+            country=country,
+            period="monthly",
+            timeline=str(m),
+            year=year
+        )
+        if not df.empty:
+            return year, m
+    return None
 
-    return {
-        "primary_goal": row.primary_goal,
-        "risk_level": row.risk_level,
-        "constraints": {
-            "max_tacos": row.max_tacos,
-            "max_price_increase_pct": float(row.max_price_increase_pct)
-                if row.max_price_increase_pct is not None else None,
-            "ad_budget_cap": float(row.ad_budget_cap)
-                if row.ad_budget_cap is not None else None,
-            "dont_change_price": bool(row.dont_change_price),
-        },
-        "notes": row.notes,
-    }
+
 
 
 def severity_suffix(severity: str | None) -> str:
@@ -268,38 +270,6 @@ def fetch_precalc_table(user_id: int, country: str, period: str, timeline: str, 
     except Exception as e:
         print(f"[WARN] Could not read table {table}: {e}")
         return pd.DataFrame()
-    
-# def build_rolling_monthly_series(user_id: int, country: str, anchor_year: int, anchor_month: int):
-#     series = []
-#     anchor_year, anchor_month = resolve_latest_available_month(user_id, country)
-
-#     for y, m in rolling_months(anchor_year, anchor_month, 24):
-#         df = fetch_precalc_table(
-#             user_id=user_id,
-#             country=country,
-#             period="monthly",         # ✅ always monthly tables
-#             timeline=str(m),
-#             year=y
-#         )
-
-#         if df.empty:
-#             continue
-
-#         _, df_total = _split_total_row(df)
-#         if df_total.empty:
-#             continue
-
-#         snapshot = extract_total_snapshot(df_total)
-#         if not snapshot:
-#             continue
-
-#         series.append({
-#             "year": y,
-#             "month": m,
-#             "values": snapshot
-#         })
-
-#     return series
 
 
 def build_rolling_monthly_series(
@@ -308,10 +278,61 @@ def build_rolling_monthly_series(
     anchor_year: int,
     anchor_month: int
 ):
+    
+    print("\n=== build_rolling_monthly_series CALLED ===")
+    print("anchor_year:", anchor_year, type(anchor_year))
+    print("anchor_month:", anchor_month, type(anchor_month))
     series = []
 
     # ❌ REMOVED auto-latest override
     # anchor_year, anchor_month = resolve_latest_available_month(...)
+
+    for y, m in rolling_months(anchor_year, anchor_month, 24):
+        print(f"\n--- Rolling month {y}-{m} ---")
+        df = fetch_precalc_table(
+            user_id=user_id,
+            country=country,
+            period="monthly",
+            timeline=str(m),
+            year=y
+        )
+
+        if df.empty:
+            continue
+
+        _, df_total = _split_total_row(df)
+        print("df_total type:", type(df_total))
+        print("df_total empty:", df_total.empty)
+        if df_total.empty:
+            continue
+
+        snapshot = extract_total_snapshot(df_total)
+
+        print("snapshot type:", type(snapshot))
+        print("snapshot value:", snapshot)
+
+        # TEMPORARY SAFE CHECK (prevents crash so we can see prints)
+        if not isinstance(snapshot, dict) or not snapshot:
+            print("❌ Skipping due to invalid snapshot")
+            continue
+
+
+        series.append({
+            "year": y,
+            "month": m,
+            "values": snapshot
+        })
+
+    return series
+
+def build_rolling_sku_series(
+    user_id: int,
+    country: str,
+    sku: str,
+    anchor_year: int,
+    anchor_month: int
+):
+    series = []
 
     for y, m in rolling_months(anchor_year, anchor_month, 24):
         df = fetch_precalc_table(
@@ -325,56 +346,102 @@ def build_rolling_monthly_series(
         if df.empty:
             continue
 
-        _, df_total = _split_total_row(df)
-        if df_total.empty:
-            continue
+        df = _normalize_sku_col(df)
+        row = df[df["sku"] == sku]
 
-        snapshot = extract_total_snapshot(df_total)
-        if not snapshot:
+        if row.empty:
             continue
 
         series.append({
             "year": y,
             "month": m,
-            "values": snapshot
+            "units": safe_num(row["total_quantity"].iloc[0]),
+            "asp": safe_num(row["asp"].iloc[0]),
+            "cm1_profit": safe_num(row["profit"].iloc[0]),
         })
 
     return series
 
+def summarize_sku_rolling_trend(series):
+    if not series or len(series) < 6:
+        return None
+
+    mid = len(series) // 2
+    first, second = series[:mid], series[mid:]
+
+    def avg(col, rows):
+        vals = []
+
+        for r in rows:
+            if r is None:
+                continue
+
+            val = r.get(col) if isinstance(r, dict) else None
+
+            # 🔑 Force scalar if pandas sneaks in
+            if hasattr(val, "item"):
+                val = val.item()
+
+            if isinstance(val, (int, float)):
+                vals.append(val)
+
+        return sum(vals) / len(vals) if vals else None
+
+    u1, u2 = avg("units", first), avg("units", second)
+    a1, a2 = avg("asp", first), avg("asp", second)
+    c1, c2 = avg("cm1_profit", first), avg("cm1_profit", second)
+
+    return {
+        "units_trend": "up" if u1 is not None and u2 is not None and u2 > u1 else "down",
+        "asp_trend": "up" if a1 is not None and a2 is not None and a2 > a1 else "down",
+        "cm1_profit_trend": "up" if c1 is not None and c2 is not None and c2 > c1 else "down",
+    }
+
+
+
+
 
 def compute_generic_movement(series: list, col: str):
-    values = []
-    for row in series:
-        if col in row["values"]:
-            values.append(row["values"][col])
+    points = []
 
-    if len(values) < 2:
+    # Build MoM % series WITH month identity
+    for i in range(1, len(series)):
+        prev = series[i - 1]["values"].get(col)
+        cur = series[i]["values"].get(col)
+
+        if prev is None or prev == 0 or cur is None:
+            continue
+
+        pct = (cur - prev) / abs(prev) * 100
+
+        points.append({
+            "year": series[i]["year"],
+            "month": series[i]["month"],
+            "pct_change": pct
+        })
+
+    if len(points) < 1:
         return None
 
-    prev, cur = values[-2], values[-1]
-    if prev == 0:
-        return None
+    current = points[-1]
+    mom_pct = current["pct_change"]
 
-    mom_pct = (cur - prev) / abs(prev) * 100
+    # 🔑 GLOBAL extreme detection (not rolling-rank)
+    max_point = max(points, key=lambda x: abs(x["pct_change"]))
+    min_point = min(points, key=lambda x: abs(x["pct_change"]))
 
-    # Build rolling MoM % series
-    changes = []
-    for i in range(1, len(values)):
-        if values[i - 1] != 0:
-            changes.append((values[i] - values[i - 1]) / abs(values[i - 1]) * 100)
-
-    if not changes:
-        return None
-
-    # Rank by absolute magnitude (extreme movement detector)
-    sorted_changes = sorted(changes, key=lambda x: abs(x), reverse=True)
-    rank = sorted_changes.index(mom_pct) + 1 if mom_pct in sorted_changes else None
+    severity = "normal"
+    if mom_pct == max_point["pct_change"]:
+        severity = "highest_24m"
+    elif mom_pct == min_point["pct_change"]:
+        severity = "lowest_24m"
 
     direction = "up" if mom_pct > 0 else "down" if mom_pct < 0 else "flat"
 
+    # Pattern logic (unchanged)
     pattern = None
-    if len(changes) >= 2:
-        prev_change = changes[-2]
+    if len(points) >= 2:
+        prev_change = points[-2]["pct_change"]
         if prev_change > 0 and mom_pct < 0:
             pattern = "reversal_down"
         elif prev_change < 0 and mom_pct > 0:
@@ -387,10 +454,69 @@ def compute_generic_movement(series: list, col: str):
     return {
         "delta_pct": round(mom_pct, 2),
         "direction": direction,
-        "rank_in_rolling_window": rank,
-        "total_points": len(changes),
+        "severity": severity,
         "pattern": pattern
     }
+
+def extract_rolling_extremes(rolling_series: list):
+    """
+    Returns month-level extreme movements for executive synthesis.
+    """
+    extremes = {}
+
+    for col in MOVEMENT_COLUMNS:
+        points = []
+
+        for i in range(1, len(rolling_series)):
+            prev = rolling_series[i - 1]["values"].get(col)
+            cur = rolling_series[i]["values"].get(col)
+
+            if prev is None or prev == 0 or cur is None:
+                continue
+
+            pct = (cur - prev) / abs(prev) * 100
+
+            points.append({
+                "year": rolling_series[i]["year"],
+                "month": rolling_series[i]["month"],
+                "pct_change": round(pct, 2)
+            })
+
+        if not points:
+            continue
+
+        max_point = max(points, key=lambda x: abs(x["pct_change"]))
+
+        extremes[col] = {
+            "year": max_point["year"],
+            "month": max_point["month"],
+            "pct_change": max_point["pct_change"]
+        }
+
+    return extremes
+
+def compute_period_pct_changes(df_current_total, df_prev_total):
+    def pct(col):
+        cur = _total_value(df_current_total, col)
+        prev = _total_value(df_prev_total, col)
+        if cur is None or prev in (None, 0):
+            return None
+        return round((cur - prev) / abs(prev) * 100, 2)
+
+    return {
+        "units": pct("total_quantity"),
+        "net_sales": pct("net_sales"),
+        "asp": pct("asp"),
+        "cm1_profit": pct("profit"),
+        "cm1_profit_per_unit": pct("unit_wise_profitability"),
+        "cm2_profit": pct("cm2_profit"),
+        "advertising": pct("advertising_total"),
+        "storage_fees": pct("platform_fee_inventory_storage"),
+        "acos": pct("acos"),
+    }
+
+
+
 
 
 def build_movement_context(rolling_series: list):
@@ -444,6 +570,40 @@ def _total_value(df_total: pd.DataFrame, col: str):
     if df_total.empty or col not in df_total.columns:
         return None
     return float(pd.to_numeric(df_total[col], errors="coerce").fillna(0).iloc[0])
+
+def compute_period_absolute_changes(df_current_total, df_prev_total):
+    def diff(col):
+        cur = _total_value(df_current_total, col)
+        prev = _total_value(df_prev_total, col)
+        if cur is None or prev is None:
+            return None
+        return round(cur - prev, 2)
+
+    def pct_point_diff(col):
+        cur = _total_value(df_current_total, col)
+        prev = _total_value(df_prev_total, col)
+        if cur is None or prev is None:
+            return None
+        return round(cur - prev, 2)
+
+    return {
+        "units": diff("total_quantity"),
+        "net_sales": diff("net_sales"),
+        "asp": diff("asp"),
+
+        "cm1_profit": diff("profit"),
+        "cm1_profit_per_unit": diff("unit_wise_profitability"),
+        "cm2_profit": diff("cm2_profit"),
+
+        "advertising": diff("advertising_total"),
+        "storage_fees": diff("platform_fee_inventory_storage"),
+
+        "lost_total": diff("lost_total"),
+        "misc_transaction": diff("misc_transaction"),
+
+        "acos": pct_point_diff("acos"),
+    }
+
 
 
 def extract_total_snapshot(df_total: pd.DataFrame) -> dict:
@@ -610,7 +770,7 @@ def build_inventory_alerts(df: pd.DataFrame) -> dict:
         "storage_cost_next_month", "unfulfillable_qty"
     ]:
         if col in df.columns:
-            df[col] = safe_num(df[col])
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
     alerts = {}
 
@@ -758,6 +918,12 @@ def compare_sku_metrics(current: dict, previous: dict) -> dict:
     return output
 
 
+def compute_yoy_pct(df_current_total, df_prev_total, col):
+    cur = _total_value(df_current_total, col)
+    prev = _total_value(df_prev_total, col)
+    if cur is None or prev in (None, 0):
+        return None
+    return round((cur - prev) / abs(prev) * 100, 2)
 
 
 
@@ -819,6 +985,12 @@ The data you receive:
 - Includes a TOTAL row representing overall business performance.
 - Uses consistent column definitions across all users and all months.
 - Does NOT require recalculation, validation, or reconciliation.
+- period_absolute_changes:
+  Precomputed absolute deltas for the selected period vs comparison period.
+- period_pct_changes:
+  Precomputed percentage changes for YEARLY and QUARTERLY reporting only.
+
+
 
 You will also receive:
 - A defined reporting period (period_label).
@@ -888,6 +1060,57 @@ EXECUTIVE ANALYSIS PRINCIPLES (CRITICAL)
   like a pivot table when movement_context is present.
 - You must translate movement_context into categorical severity labels
 (e.g. highest_24m, steepest_24m), not descriptive language.
+
+YEARLY REPORTING OVERRIDE (CRITICAL)
+
+If the selected reporting period is YEARLY:
+- Year-over-year totals represent annual performance comparison only.
+- ALL movement_context signals are derived from MONTHLY data.
+- Severity labels (e.g. highest_24m, lowest_24m, largest_24m) ALWAYS refer
+  to individual MONTHS within the rolling 24-month window.
+- You MUST reference specific months (e.g. Dec 2025, Jun 2024) when
+  describing extreme movements.
+- You MUST NOT interpret severity, direction, or patterns as
+  year-level movements.
+- Percentage changes for YEARLY reporting MUST come ONLY from period_pct_changes.
+
+
+ABSOLUTE CHANGE SOURCE OF TRUTH (CRITICAL)
+
+If period_absolute_changes is provided in the input payload:
+- You MUST use period_absolute_changes for ALL "absolute_change" fields inside executive_summary_signals.
+- You MUST NOT infer or recompute absolute_change values from movement_context, rolling_extremes, sku_mom, or pct_change.
+- movement_context and rolling_extremes are used ONLY for severity labels and month attribution, not magnitude.
+  
+PERCENTAGE CHANGE SOURCE OF TRUTH (CRITICAL)
+
+If period_pct_changes is provided in the input payload:
+- You MUST use period_pct_changes for ALL "pct_change" fields
+  inside executive_summary_signals for YEARLY and QUARTERLY reports.
+- You MUST NOT infer, recompute, or approximate percentage changes
+  from absolute_change values.
+- You MUST NOT derive percentages from movement_context or rolling_extremes.
+
+If period_pct_changes is NOT provided:
+- You MAY use movement_context delta_pct values
+  ONLY for MONTHLY reporting.
+
+
+ROLLING EXTREMES USAGE (CRITICAL)
+
+If rolling_extremes is provided:
+- rolling_extremes contains the SINGLE most extreme
+  month-over-month movement for each metric
+  within the rolling 24-month window.
+- You MUST reference the specific MONTH and YEAR
+  (e.g. "Dec 2025", "Jun 2024") when citing extreme movements.
+- You MUST synthesize rolling monthly extremes
+  with the aggregate period outcome
+  (e.g. year-over-year or quarter-over-quarter results).
+- You MUST NOT describe extremes without month attribution.
+- You MUST NOT infer or guess months beyond what is provided.
+
+
 
 3) CAUSE → EFFECT DISCIPLINE
 Every insight MUST be decomposed into:
@@ -1645,7 +1868,42 @@ DIAGNOSIS_TEXT = {
     ]
 }
 
+def build_sku_movement_summary(trend: dict) -> str | None:
+    """
+    Converts rolling SKU trend into executive movement summary.
+    Used ONLY for yearly / quarterly.
+    """
+    if not trend:
+        return None
 
+    units = trend.get("units_trend")
+    asp = trend.get("asp_trend")
+    cm1 = trend.get("cm1_profit_trend")
+
+    # Strong → Weak pattern
+    if units == "up" and cm1 == "up" and asp == "down":
+        return (
+            "Performance was strong in the first half of the period, "
+            "with volume-led growth, before weakening as pricing pressure "
+            "and profitability deteriorated in the second half."
+        )
+
+    if units == "up" and cm1 == "down":
+        return (
+            "Unit momentum remained positive across the period, "
+            "but profitability weakened over time as pricing and per-unit economics deteriorated."
+        )
+
+    if units == "down" and asp == "up":
+        return (
+            "Performance deteriorated over the period as rising prices "
+            "coincided with sustained demand weakness."
+        )
+
+    return (
+        "Performance trends were mixed across the period with no sustained "
+        "improvement in demand or profitability."
+    )
 
 
 def render_month_end_summary(
@@ -1663,7 +1921,7 @@ def render_month_end_summary(
     strategy_actions: dict | None = None,
 ) -> str:
     """
-    Deterministic executive month-end summary renderer.
+    Deterministic executive month-end / year-end summary renderer.
     Presentation-only. Fully None-safe.
     """
 
@@ -1676,6 +1934,9 @@ def render_month_end_summary(
     def fmt_int(x):
         return f"{int(x)}" if isinstance(x, (int, float)) else "N/A"
 
+    is_yearly = period == "yearly"
+    is_long_period = period in ("yearly", "quarterly")
+
     comparison = build_comparison_label(period, timeline, year)
     lines: list[str] = []
 
@@ -1687,46 +1948,62 @@ def render_month_end_summary(
 
         es = analysis_insights.get("executive_summary_signals", {})
 
-        lines.append(f"Performance Summary ({comparison})")
+        # ----- Heading -----
+        if is_yearly:
+            lines.append(f"Year-over-Year Performance Summary ({comparison})")
+        else:
+            lines.append(f"Performance Summary ({comparison})")
+
         takeaway = analysis_insights.get("executive_takeaway")
-        if takeaway:
+        if isinstance(takeaway, str) and takeaway.strip():
             lines.append(takeaway)
 
+        # ----- Units -----
         u = es.get("units", {})
+        units_label = "Units sold (YoY)" if is_yearly else "Units sold"
         lines.append(
-            f"• Units sold: {fmt_pct(u.get('pct_change'))} "
+            f"• {units_label}: {fmt_pct(u.get('pct_change'))} "
             f"({fmt_int(u.get('absolute_change'))} units)"
             f"{severity_suffix(u.get('severity'))}"
         )
 
+        # ----- Net Sales -----
         ns = es.get("net_sales", {})
+        ns_label = "Net sales (YoY)" if is_yearly else "Net sales"
         lines.append(
-            f"• Net sales: {fmt_pct(ns.get('pct_change'))} "
+            f"• {ns_label}: {fmt_pct(ns.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(ns.get('absolute_change'))})"
             f"{severity_suffix(ns.get('severity'))}"
         )
 
+        # ----- ASP -----
         asp = es.get("asp", {})
+        asp_label = "ASP (YoY)" if is_yearly else "ASP"
         lines.append(
-            f"• ASP: {fmt_pct(asp.get('pct_change'))} "
+            f"• {asp_label}: {fmt_pct(asp.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(asp.get('absolute_change'))})"
             f"{severity_suffix(asp.get('severity'))}"
         )
 
+        # ----- CM1 Profit -----
         cm1 = es.get("cm1_profit", {})
+        cm1_label = "CM1 profit (YoY)" if is_yearly else "CM1 profit"
         lines.append(
-            f"• CM1 profit: {fmt_pct(cm1.get('pct_change'))} "
+            f"• {cm1_label}: {fmt_pct(cm1.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(cm1.get('absolute_change'))})"
             f"{severity_suffix(cm1.get('severity'))}"
         )
 
+        # ----- CM1 Profit per Unit -----
         ppu = es.get("cm1_profit_per_unit", {})
+        ppu_label = "CM1 profit per unit (YoY)" if is_yearly else "CM1 profit per unit"
         lines.append(
-            f"• CM1 profit per unit: {fmt_pct(ppu.get('pct_change'))} "
+            f"• {ppu_label}: {fmt_pct(ppu.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(ppu.get('absolute_change'))})"
             f"{severity_suffix(ppu.get('severity'))}"
         )
 
+        # ----- Cost Pressure -----
         cp = es.get("cost_pressure", {})
         ad = cp.get("advertising", {})
         lines.append(
@@ -1743,36 +2020,34 @@ def render_month_end_summary(
             f"{severity_suffix(st.get('severity'))}"
         )
 
+        # ----- CM2 Profit -----
         cm2 = es.get("cm2_profit", {})
+        cm2_label = "CM2 profit (YoY)" if is_yearly else "CM2 profit"
         lines.append(
-            f"• CM2 profit: {fmt_pct(cm2.get('pct_change'))} "
+            f"• {cm2_label}: {fmt_pct(cm2.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(cm2.get('absolute_change'))})"
             f"{severity_suffix(cm2.get('severity'))}"
         )
 
+        # ----- Reimbursements -----
         reimb = es.get("reimbursements", {})
-        if reimb.get("present"):
-            amt = reimb.get("amount")
-            if isinstance(amt, (int, float)):
-                lines.append(
-                    f"• Amazon reimbursements for lost inventory: "
-                    f"{currency_symbol}{abs(amt):.2f} (non-recurring recovery)"
-                )
+        if reimb.get("present") and isinstance(reimb.get("amount"), (int, float)):
+            lines.append(
+                f"• Amazon reimbursements for lost inventory: "
+                f"{currency_symbol}{abs(reimb['amount']):.2f} (non-recurring recovery)"
+            )
 
     # =========================================================
     # PRODUCT INSIGHTS
     # =========================================================
     lines.append("\n## PRODUCT INSIGHTS")
 
-    product_insights = (
-        analysis_insights.get("product_insights", {})
-        if analysis_insights is not None
-        else {}
-    )
+    product_insights = analysis_insights.get("product_insights", {}) if analysis_insights else {}
+    sku_rolling_trends = analysis_insights.get("sku_rolling_trends", {}) if analysis_insights else {}
 
     for sku in focus_skus:
         s = sku_mom.get(sku)
-        if not s:
+        if not isinstance(s, dict):
             continue
 
         name = s.get("product_name", sku)
@@ -1780,27 +2055,36 @@ def render_month_end_summary(
 
         def sku_fmt(metric, key="delta", pct_key="delta_pct"):
             m = s.get(metric, {})
+            if not isinstance(m, dict):
+                return "N/A (N/A)"
             return f"{fmt_num(m.get(key))} ({fmt_pct(m.get(pct_key))})"
 
         lines.append(f"• ASP: {currency_symbol}{sku_fmt('asp')}")
-        lines.append(f"• Units: {sku_fmt('total_quantity', key='delta', pct_key='delta_pct')}")
+        lines.append(f"• Units: {sku_fmt('total_quantity')}")
         lines.append(f"• Net sales: {currency_symbol}{sku_fmt('net_sales')}")
         lines.append(f"• CM1 profit: {currency_symbol}{sku_fmt('profit')}")
-        lines.append(
-            f"• CM1 profit per unit: {currency_symbol}"
-            f"{sku_fmt('unit_wise_profitability')}"
-        )
+        lines.append(f"• CM1 profit per unit: {currency_symbol}{sku_fmt('unit_wise_profitability')}")
 
         sku_diag = product_insights.get(sku, {})
         diagnosis_codes = sku_diag.get("diagnosis_codes", ["mixed_signal"])
 
-        for code in diagnosis_codes:
-            for line in DIAGNOSIS_TEXT.get(code, []):
-                lines.append(line)
+        if is_long_period:
+            movement_summary = (
+                sku_diag.get("movement_summary")
+                or sku_rolling_trends.get(sku, {}).get("movement_summary")
+            )
 
-        # ---------------------------------------------------------
-        # ACTION (INLINE, IMMEDIATELY AFTER DIAGNOSIS)
-        # ---------------------------------------------------------
+            # ✅ CRITICAL FIX — type-safe check
+            if isinstance(movement_summary, str) and movement_summary.strip():
+                lines.append(f"• Trend summary: {movement_summary}")
+
+            lines.append(f"Current-period diagnosis: {diagnosis_codes[0]}")
+        else:
+            for code in diagnosis_codes:
+                for line in DIAGNOSIS_TEXT.get(code, []):
+                    lines.append(line)
+
+        # ----- ACTION (MONTHLY ONLY) -----
         if strategy_actions and sku in strategy_actions:
             lines.append(f" Action: {strategy_actions[sku]}")
 
@@ -1838,7 +2122,6 @@ def render_month_end_summary(
 
 
 
-
 def get_or_create_summary(
     user_id,
     country,
@@ -1850,6 +2133,12 @@ def get_or_create_summary(
     target_sku: str | list | None = None,
     force_regenerate=False
 ):
+    
+    print("\n=== get_or_create_summary START ===")
+    print("period:", period, type(period))
+    print("timeline:", timeline, type(timeline))
+    print("year:", year, type(year))
+
     # ---------------- Objective defaults / normalize ----------------
     objective = objective or {}
     constraints = objective.get("constraints") or {}
@@ -1947,16 +2236,78 @@ def get_or_create_summary(
             }
 
     # ---------------- ROLLING CONTEXT ----------------
-    if single_sku_mode:
-        movement_context = {}
-    else:
-        rolling_series = build_rolling_monthly_series(
-            user_id=user_id,
-            country=country,
-            anchor_year=year,
-            anchor_month=int(timeline)
-        )
-        movement_context = build_movement_context(rolling_series)
+    movement_context = {}
+    rolling_extremes = {} 
+
+    if not single_sku_mode:
+        if period == "yearly":
+            anchor = resolve_yearly_analysis_anchor(user_id, country, year)
+            print("\n=== YEARLY ANCHOR RESOLUTION ===")
+            print("anchor:", anchor, type(anchor))
+
+            if anchor:
+                analysis_anchor_year, analysis_anchor_month = anchor
+            else:
+                analysis_anchor_year = analysis_anchor_month = None
+        else:
+            analysis_anchor_year = year
+
+            if period == "monthly":
+                analysis_anchor_month = int(timeline)
+
+            elif period == "quarterly":
+                QUARTER_TO_MONTH = {
+                    "Q1": 3,
+                    "Q2": 6,
+                    "Q3": 9,
+                    "Q4": 12,
+                }
+                analysis_anchor_month = QUARTER_TO_MONTH.get(timeline)
+
+            else:
+                analysis_anchor_month = None
+
+        print("\n=== ROLLING GUARD CHECK ===")
+        print("analysis_anchor_year:", analysis_anchor_year, type(analysis_anchor_year))
+        print("analysis_anchor_month:", analysis_anchor_month, type(analysis_anchor_month))
+
+        if analysis_anchor_year and analysis_anchor_month:
+            rolling_series = build_rolling_monthly_series(
+                user_id=user_id,
+                country=country,
+                anchor_year=analysis_anchor_year,
+                anchor_month=analysis_anchor_month
+            )
+            movement_context = build_movement_context(rolling_series)
+            rolling_extremes = extract_rolling_extremes(rolling_series)  # 👈 ADD
+        else:
+            movement_context = {}  # graceful fallback
+            rolling_extremes = {}
+
+    # ---------------- SKU ROLLING CONTEXT (YEARLY / QUARTERLY ONLY) ----------------
+    sku_rolling_trends = {}
+
+    if period in ("yearly", "quarterly") and not single_sku_mode:
+        for sku in top_5_skus:
+            series = build_rolling_sku_series(
+                user_id=user_id,
+                country=country,
+                sku=sku,
+                anchor_year=analysis_anchor_year,
+                anchor_month=analysis_anchor_month
+            )
+
+            trend = summarize_sku_rolling_trend(series)
+
+            if isinstance(trend, dict) and trend:
+                sku_rolling_trends[sku] = {
+                    **trend,
+                    "movement_summary": build_sku_movement_summary(trend)
+                }
+
+
+        
+
 
     # ---------------- INVENTORY ----------------
     lost_total_val = _total_value(df_current_total, "lost_total")
@@ -1973,25 +2324,56 @@ def get_or_create_summary(
     # ---------------- PREVIOUS PERIOD ----------------
     (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
     df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
-    df_prev_detail, _ = _split_total_row(df_prev)
+    df_prev_detail, df_prev_total = _split_total_row(df_prev)
 
+    # ---------------- PERIOD ABSOLUTE CHANGES (SOURCE OF TRUTH) ----------------
+    period_absolute_changes = {}
+    if not df_current_total.empty and not df_prev_total.empty:
+        period_absolute_changes = compute_period_absolute_changes(
+            df_current_total,
+            df_prev_total
+        )
+
+    # 👇 ADD THIS LINE
+    print("ABS DELTAS:", period_absolute_changes)
+
+    # ---------------- PERIOD % CHANGES (YEARLY / QUARTERLY ONLY) ----------------
+    period_pct_changes = {}
+
+    if period in ("yearly", "quarterly") \
+    and not df_current_total.empty \
+    and not df_prev_total.empty:
+
+        period_pct_changes = compute_period_pct_changes(
+            df_current_total,
+            df_prev_total
+        )
+
+    print("PERIOD %:", period_pct_changes)    
+
+    # ---------------- SKU COMPARISON ----------------
     sku_prev = compute_sku_precalc(df_prev_detail)
     sku_mom = compare_sku_metrics(sku_current, sku_prev)
 
     if single_sku_mode:
         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
 
+
     # ---------------- AI ----------------
     ai_payload = {
         "period": f"{period} {timeline} {year}",
         "period_label": period_label(period, timeline, year),
         "country": str(country).lower(),
+        "period_absolute_changes": period_absolute_changes,
+        "period_pct_changes": period_pct_changes,
+        "sku_rolling_trends": sku_rolling_trends,   # 👈 ADD THIS
         "inventory_lost": inventory_lost,
         "inventory_alerts": inventory_alerts,
         "sku_mom": sku_mom,
         "sku_yoy": None,
         "focus_skus": top_5_skus,
         "movement_context": movement_context,
+        "rolling_extremes": rolling_extremes,
         "scope": scope,
         "objective": {
             "primary_goal": primary_goal,
@@ -2012,11 +2394,12 @@ def get_or_create_summary(
         analysis_insights = json.loads(run_prompt_1_analysis(ai_payload))
 
     sku_actions = {}
-    if allow_reco and not single_sku_mode and analysis_insights:
+    if allow_reco and not single_sku_mode and analysis_insights and period != "yearly":
         strategy_raw = run_prompt_2_strategy(
             analysis_insights, ai_payload["objective"], top_5_skus
         )
         sku_actions = json.loads(strategy_raw).get("sku_actions") or {}
+
 
     # ---------------- RENDER ----------------
     final_text = render_month_end_summary(
