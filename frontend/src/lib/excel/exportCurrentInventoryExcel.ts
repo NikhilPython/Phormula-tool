@@ -470,8 +470,418 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
 
 
 
+/** Accepts "data:image/png;base64,...." or raw base64 */
+const parseBase64 = (b64?: string | null) => {
+  if (!b64) return null;
+  const m = b64.match(/^data:(image\/\w+);base64,(.*)$/i);
+  if (m) return { mime: m[1], base64: m[2] };
+  // assume already base64 png
+  return { mime: "image/png", base64: b64 };
+};
 
-export function exportInventoryReconExcel(params: {
+
+
+
+
+// export async function exportInventoryReconExcel(params: {
+//   filename: string;
+//   titleLine: string;
+
+//   countryName: string;
+//   titleCountry: string;
+//   platformLabel?: string;
+
+//   // expects already formatted like Dec'25
+//   periodLabel: string;
+
+//   companyName: string;
+//   brandName: string;
+
+//   dataRows: Record<string, any>[];
+
+//   // base64 data url from chart (jpeg/png)
+//   chartBase64?: string | null;
+//   chartMetrics?: { name: string; value: number; pct: number }[] | null;
+
+// }) {
+//   const {
+//     filename,
+//     titleLine,
+//     titleCountry,
+//     platformLabel = "Amazon",
+//     periodLabel,
+//     companyName,
+//     brandName,
+//     dataRows,
+//     chartBase64 = null,
+//     chartMetrics = null,
+
+//   } = params;
+
+//   if (!dataRows?.length) return;
+
+//   const headers = Object.keys(dataRows[0] || {});
+//   const headerCount = headers.length || 1;
+
+//   // find S.No + Product Name col indexes (0-based)
+//   const snoCol0 = headers.findIndex((h) => String(h).toLowerCase().includes("s. no"));
+//   const productNameCol0 = headers.findIndex((h) =>
+//     String(h).toLowerCase().includes("product name")
+//   );
+
+//   const wb = new ExcelJS.Workbook();
+//   wb.creator = "Skinelements";
+//   wb.created = new Date();
+
+//   /* =========================
+//      Sheet 1: Inventory Recon
+//   ========================= */
+//   const ws1 = wb.addWorksheet(safeSheetName("Inventory Recon"), {
+//     views: [{ state: "frozen", xSplit: 0, ySplit: 7 }], // will adjust below after we know rows
+//   });
+
+//   // Top block rows (1-based rows/cols in ExcelJS)
+//   // Row 1: merged title
+//   ws1.mergeCells(1, 1, 1, headerCount);
+//   ws1.getCell(1, 1).value = titleLine || "";
+//   ws1.getCell(1, 1).font = { bold: true, size: 14 };
+//   ws1.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+//   // Row 2: company left, brand right
+//   ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+//   ws1.getCell(2, 1).alignment = { horizontal: "left" };
+
+//   ws1.getCell(2, headerCount).value = `${brandName || ""}`;
+//   ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
+//   ws1.getCell(2, headerCount).font = { bold: true };
+
+//   // Row 3-5: meta
+//   ws1.getCell(3, 1).value = `Country : ${titleCountry}`;
+//   ws1.getCell(4, 1).value = `Platform : ${platformLabel}`;
+//   ws1.getCell(5, 1).value = `Period : ${periodLabel}`;
+
+//   // Spacer row 6
+//   // Header row index in ExcelJS:
+//   const headerRowNumber = 7;
+
+//   // Column headers row
+//   const headerRow = ws1.getRow(headerRowNumber);
+//   headers.forEach((h, i) => {
+//     const cell = headerRow.getCell(i + 1);
+//     cell.value = h;
+//     cell.font = { bold: true, size: 11 };
+//     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+//   });
+//   headerRow.height = 18;
+
+//   // Data rows start at row 8
+//   const startDataRow = headerRowNumber + 1;
+
+//   dataRows.forEach((r, idx) => {
+//     const row = ws1.getRow(startDataRow + idx);
+//     headers.forEach((h, c0) => {
+//       const cell = row.getCell(c0 + 1);
+//       const v = r?.[h] ?? "";
+
+//       // Keep S.No as TEXT
+//       if (c0 === snoCol0) {
+//         cell.value = v === null || v === undefined ? "" : String(v);
+//         cell.numFmt = "@";
+//         cell.alignment = { horizontal: "center" };
+//         return;
+//       }
+
+//       // try number coercion
+//       const n = toNumberLoose(v);
+//       if (n !== null) {
+//         cell.value = n;
+//         cell.numFmt = "#,##0.00";
+//         cell.alignment = { horizontal: "center" };
+//       } else {
+//         cell.value = v;
+//         cell.alignment = { horizontal: "center" };
+//       }
+//     });
+//   });
+
+//   // Freeze below headers (top block + header row)
+//   ws1.views = [{ state: "frozen", xSplit: 0, ySplit: headerRowNumber }];
+
+//   // Column widths
+//   ws1.columns = headers.map((h) => ({
+//     width: Math.min(Math.max(String(h).length + 2, 12), 55),
+//   }));
+
+//   // Bold TOTAL / GRAND TOTAL rows based on Product Name col (match your old logic)
+//   if (productNameCol0 >= 0) {
+//     const totalCandidates = new Set(["total", "grand total"]);
+
+//     for (let i = 0; i < dataRows.length; i++) {
+//       const rowNum = startDataRow + i;
+//       const cellVal = String(ws1.getCell(rowNum, productNameCol0 + 1).value ?? "")
+//         .trim()
+//         .toLowerCase();
+
+//       if (totalCandidates.has(cellVal)) {
+//         const row = ws1.getRow(rowNum);
+//         row.eachCell((cell) => {
+//           cell.font = { ...(cell.font || {}), bold: true, size: 11 };
+//         });
+//       }
+//     }
+//   }
+
+//   /* =========================
+//      Sheet 2: Inventory Breakup (Image)
+//   ========================= */
+//   const ws2 = wb.addWorksheet(safeSheetName("Inventory Breakup"));
+
+//   ws2.getCell("A1").value = `Inventory Breakup - ${periodLabel}`;
+//   ws2.getCell("A1").font = { bold: true, size: 14 };
+
+//   ws2.getCell("A2").value = `Company Name : ${companyName || ""}`;
+//   ws2.getCell("A3").value = `Brand : ${brandName || ""}`;
+//   ws2.getCell("A4").value = `Country : ${titleCountry}`;
+//   ws2.getCell("A5").value = `Platform : ${platformLabel}`;
+
+//   ws2.getColumn(1).width = 45;
+
+//   const img = parseBase64(chartBase64);
+//   if (img) {
+//     const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
+
+//     const imageId = wb.addImage({
+//       base64: `data:${img.mime};base64,${img.base64}`,
+//       extension: ext as "png" | "jpeg",
+//     });
+
+//     // Put image starting near row 7 col 1 (A7), sized for visibility
+//     ws2.addImage(imageId, {
+//       tl: { col: 0, row: 6 }, // 0-based
+//     ext: { width: 1000, height: 520 },
+
+//     });
+//   } else {
+//     ws2.getCell("A7").value = "No chart image available.";
+//   }
+
+//   /* =========================
+//      Save (browser)
+//   ========================= */
+//   const buf = await wb.xlsx.writeBuffer();
+//   saveAs(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
+// }
+
+
+
+// export async function exportInventoryReconExcel(params: {
+//   filename: string;
+//   titleLine: string;
+
+//   countryName: string;
+//   titleCountry: string;
+//   platformLabel?: string;
+
+//   // expects already formatted like Dec'25
+//   periodLabel: string;
+
+//   companyName: string;
+//   brandName: string;
+
+//   dataRows: Record<string, any>[];
+
+//   // base64 data url from chart (jpeg/png)
+//   chartBase64?: string | null;
+
+//   // ✅ legend/metrics (name, units, pct 0..100)
+//   chartMetrics?: { name: string; value: number; pct: number }[] | null;
+// }) {
+//   const {
+//     filename,
+//     titleLine,
+//     titleCountry,
+//     platformLabel = "Amazon",
+//     periodLabel,
+//     companyName,
+//     brandName,
+//     dataRows,
+//     chartBase64 = null,
+//     chartMetrics = null,
+//   } = params;
+
+//   if (!dataRows?.length) return;
+
+//   const headers = Object.keys(dataRows[0] || {});
+//   const headerCount = headers.length || 1;
+
+//   // find S.No + Product Name col indexes (0-based)
+//   const snoCol0 = headers.findIndex((h) =>
+//     String(h).toLowerCase().includes("s. no")
+//   );
+//   const productNameCol0 = headers.findIndex((h) =>
+//     String(h).toLowerCase().includes("product name")
+//   );
+
+//   const wb = new ExcelJS.Workbook();
+//   wb.creator = "Skinelements";
+//   wb.created = new Date();
+
+//   /* =========================
+//      Sheet 1: Inventory Recon
+//   ========================= */
+//   const ws1 = wb.addWorksheet(safeSheetName("Inventory Recon"), {
+//     views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+//   });
+
+//   // Row 1: merged title
+//   ws1.mergeCells(1, 1, 1, headerCount);
+//   ws1.getCell(1, 1).value = titleLine || "";
+//   ws1.getCell(1, 1).font = { bold: true, size: 14 };
+//   ws1.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+//   // Row 2: company left, brand right
+//   ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+//   ws1.getCell(2, 1).alignment = { horizontal: "left" };
+
+//   ws1.getCell(2, headerCount).value = `${brandName || ""}`;
+//   ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
+//   ws1.getCell(2, headerCount).font = { bold: true };
+
+//   // Row 3-5: meta
+//   ws1.getCell(3, 1).value = `Country : ${titleCountry}`;
+//   ws1.getCell(4, 1).value = `Platform : ${platformLabel}`;
+//   ws1.getCell(5, 1).value = `Period : ${periodLabel}`;
+
+//   // Header row index in ExcelJS:
+//   const headerRowNumber = 7;
+
+//   // Column headers row
+//   const headerRow = ws1.getRow(headerRowNumber);
+//   headers.forEach((h, i) => {
+//     const cell = headerRow.getCell(i + 1);
+//     cell.value = h;
+//     cell.font = { bold: true, size: 11 };
+//     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+//   });
+//   headerRow.height = 18;
+
+//   // Data rows start at row 8
+//   const startDataRow = headerRowNumber + 1;
+
+//   dataRows.forEach((r, idx) => {
+//     const row = ws1.getRow(startDataRow + idx);
+//     headers.forEach((h, c0) => {
+//       const cell = row.getCell(c0 + 1);
+//       const v = r?.[h] ?? "";
+
+//       // Keep S.No as TEXT
+//       if (c0 === snoCol0) {
+//         cell.value = v === null || v === undefined ? "" : String(v);
+//         cell.numFmt = "@";
+//         cell.alignment = { horizontal: "center" };
+//         return;
+//       }
+
+//       // try number coercion
+//       const n = toNumberLoose(v);
+//       if (n !== null) {
+//         cell.value = n;
+//         cell.numFmt = "#,##0.00";
+//         cell.alignment = { horizontal: "center" };
+//       } else {
+//         cell.value = v;
+//         cell.alignment = { horizontal: "center" };
+//       }
+//     });
+//   });
+
+//   // Freeze below headers (top block + header row)
+//   ws1.views = [{ state: "frozen", xSplit: 0, ySplit: headerRowNumber }];
+
+//   // Column widths
+//   ws1.columns = headers.map((h) => ({
+//     width: Math.min(Math.max(String(h).length + 2, 12), 55),
+//   }));
+
+//   // Bold TOTAL / GRAND TOTAL rows based on Product Name col
+//   if (productNameCol0 >= 0) {
+//     const totalCandidates = new Set(["total", "grand total"]);
+
+//     for (let i = 0; i < dataRows.length; i++) {
+//       const rowNum = startDataRow + i;
+//       const cellVal = String(ws1.getCell(rowNum, productNameCol0 + 1).value ?? "")
+//         .trim()
+//         .toLowerCase();
+
+//       if (totalCandidates.has(cellVal)) {
+//         const row = ws1.getRow(rowNum);
+//         row.eachCell((cell) => {
+//           cell.font = { ...(cell.font || {}), bold: true, size: 11 };
+//         });
+//       }
+//     }
+//   }
+
+//   /* =========================
+//      Sheet 2: Inventory Breakup (Image + Metrics Table)
+//   ========================= */
+//   const ws2 = wb.addWorksheet(safeSheetName("Inventory Breakup"));
+
+//   ws2.getCell("A1").value = `Inventory Breakup - ${periodLabel}`;
+//   ws2.getCell("A1").font = { bold: true, size: 14 };
+
+//   ws2.getCell("A2").value = `Company Name : ${companyName || ""}`;
+//   ws2.getCell("A3").value = `Brand : ${brandName || ""}`;
+//   ws2.getCell("A4").value = `Country : ${titleCountry}`;
+//   ws2.getCell("A5").value = `Platform : ${platformLabel}`;
+
+//   ws2.getColumn(1).width = 45;
+
+//   // ✅ add chart image
+//   const img = parseBase64(chartBase64);
+//   if (img) {
+//     const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
+
+//     const imageId = wb.addImage({
+//       base64: `data:${img.mime};base64,${img.base64}`,
+//       extension: ext as "png" | "jpeg",
+//     });
+
+//     // Put image starting near row 7 col 1 (A7)
+//     ws2.addImage(imageId, {
+//       tl: { col: 0, row: 6 }, // 0-based => A7
+//       ext: { width: 1400, height: 520 }, // keep as you had
+//     });
+//   } else {
+//     ws2.getCell("A7").value = "No chart image available.";
+//   }
+
+
+//   /* =========================
+//      Save (browser)
+//   ========================= */
+//   const buf = await wb.xlsx.writeBuffer();
+//   saveAs(
+//     new Blob([buf], {
+//       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+//     }),
+//     filename
+//   );
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function exportInventoryReconExcel(params: {
   filename: string;
   titleLine: string;
 
@@ -479,13 +889,15 @@ export function exportInventoryReconExcel(params: {
   titleCountry: string;
   platformLabel?: string;
 
-  // expects already formatted like Dec'25
   periodLabel: string;
 
   companyName: string;
   brandName: string;
 
-  dataRows: Record<string, any>[]; // YOU control headers + values
+  dataRows: Record<string, any>[];
+
+  chartBase64?: string | null;
+  chartMetrics?: { name: string; value: number; pct: number }[] | null; // (unused now)
 }) {
   const {
     filename,
@@ -496,6 +908,7 @@ export function exportInventoryReconExcel(params: {
     companyName,
     brandName,
     dataRows,
+    chartBase64 = null,
   } = params;
 
   if (!dataRows?.length) return;
@@ -503,142 +916,138 @@ export function exportInventoryReconExcel(params: {
   const headers = Object.keys(dataRows[0] || {});
   const headerCount = headers.length || 1;
 
-  /* =========================
-     Top block (same layout)
-  ========================= */
-  const topAoA: any[][] = [];
+  const snoCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("s. no")
+  );
+  const productNameCol0 = headers.findIndex((h) =>
+    String(h).toLowerCase().includes("product name")
+  );
 
-  // Row 1: Title (merged later)
-  const r1 = new Array(headerCount).fill("");
-  r1[0] = titleLine || "";
-  topAoA.push(r1);
-
-  // Row 2: Company left, Brand right
-  const r2 = new Array(headerCount).fill("");
-  r2[0] = `Company Name : ${companyName || ""}`;
-  r2[headerCount - 1] = `${brandName || ""}`;
-  topAoA.push(r2);
-
-  // Row 3-5: meta
-  topAoA.push(Object.assign(new Array(headerCount).fill(""), { 0: `Country : ${titleCountry}` }));
-  topAoA.push(Object.assign(new Array(headerCount).fill(""), { 0: `Platform : ${platformLabel}` }));
-  topAoA.push(Object.assign(new Array(headerCount).fill(""), { 0: `Period : ${periodLabel}` }));
-
-  // Spacer
-  topAoA.push(new Array(headerCount).fill(""));
-
-  const headerRowIndex = topAoA.length; // where column headers will be placed
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Skinelements";
+  wb.created = new Date();
 
   /* =========================
-     Body
+     Sheet 1: Inventory Recon
   ========================= */
-  const bodyAoA = dataRows.map((r) => headers.map((h) => r?.[h] ?? ""));
-  const sheetAoA = [...topAoA, headers, ...bodyAoA];
+  const ws1 = wb.addWorksheet(safeSheetName("Inventory Recon"), {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+  });
 
-  const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+  ws1.mergeCells(1, 1, 1, headerCount);
+  ws1.getCell(1, 1).value = titleLine || "";
+  ws1.getCell(1, 1).font = { bold: false };
+  ws1.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
 
-  /* =========================
-     Sheet options
-  ========================= */
-  ws["!merges"] = ws["!merges"] || [];
-  // merge title row A1 -> last col
-  ws["!merges"].push({ s: { r: 0, c: 0 }, e: { r: 0, c: headerCount - 1 } });
+  ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+  ws1.getCell(2, 1).alignment = { horizontal: "left" };
 
-  // freeze below column header row
-  ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
+  ws1.getCell(2, headerCount).value = `${brandName || ""}`;
+  ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
+  ws1.getCell(2, headerCount).font = { bold: true };
 
-  // widths
-  ws["!cols"] = headers.map((h) => ({
-    wch: Math.min(Math.max(String(h).length + 2, 12), 55),
+  ws1.getCell(3, 1).value = `Country : ${titleCountry}`;
+  ws1.getCell(4, 1).value = `Platform : ${platformLabel}`;
+  ws1.getCell(5, 1).value = `Period : ${periodLabel}`;
+
+  const headerRowNumber = 7;
+  const headerRow = ws1.getRow(headerRowNumber);
+
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { bold: true, size: 11 };
+    cell.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: true,
+    };
+  });
+  headerRow.height = 18;
+
+  const startDataRow = headerRowNumber + 1;
+
+  dataRows.forEach((r, idx) => {
+    const row = ws1.getRow(startDataRow + idx);
+    headers.forEach((h, c0) => {
+      const cell = row.getCell(c0 + 1);
+      const v = r?.[h] ?? "";
+
+      if (c0 === snoCol0) {
+        cell.value = v === null || v === undefined ? "" : String(v);
+        cell.numFmt = "@";
+        cell.alignment = { horizontal: "center" };
+        return;
+      }
+
+      const n = toNumberLoose(v);
+      if (n !== null) {
+        cell.value = n;
+        cell.numFmt = "#,##0.00";
+        cell.alignment = { horizontal: "center" };
+      } else {
+        cell.value = v;
+        cell.alignment = { horizontal: "center" };
+      }
+    });
+  });
+
+  ws1.views = [{ state: "frozen", xSplit: 0, ySplit: headerRowNumber }];
+
+  ws1.columns = headers.map((h) => ({
+    width: Math.min(Math.max(String(h).length + 2, 12), 55),
   }));
 
-  // align company + brand
-  const companyAddr = XLSX.utils.encode_cell({ r: 1, c: 0 });
-  if (ws[companyAddr]) ws[companyAddr].s = { ...(ws[companyAddr].s || {}), alignment: { horizontal: "left" } };
+  if (productNameCol0 >= 0) {
+    const totalCandidates = new Set(["total", "grand total"]);
+    for (let i = 0; i < dataRows.length; i++) {
+      const rowNum = startDataRow + i;
+      const cellVal = String(
+        ws1.getCell(rowNum, productNameCol0 + 1).value ?? ""
+      )
+        .trim()
+        .toLowerCase();
 
-  const brandAddr = XLSX.utils.encode_cell({ r: 1, c: headerCount - 1 });
-  if (ws[brandAddr]) ws[brandAddr].s = { ...(ws[brandAddr].s || {}), alignment: { horizontal: "right" } };
-
-  // bold column headers
-  for (let c = 0; c < headerCount; c++) {
-    const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
-    if (ws[addr]) {
-      ws[addr].s = {
-        ...(ws[addr].s || {}),
-        font: { bold: true, sz: 11 },
-        alignment: { horizontal: "center", vertical: "center" },
-      };
-    }
-  }
-
-  /* =========================
-     Formatting rules
-     - Keep S. No. as TEXT (no 1.00)
-     - Numbers => #,##0.00
-  ========================= */
-  const snoCol0 = headers.findIndex((h) => String(h).toLowerCase().includes("s. no"));
-  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
-
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      // ✅ don't coerce Sno column
-      if (c === snoCol0) continue;
-
-      const addr = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[addr];
-      if (!cell) continue;
-
-      const n = toNumberLoose(cell.v);
-      if (n !== null) {
-        cell.t = "n";
-        cell.v = n;
-        cell.z = "#,##0.00";
+      if (totalCandidates.has(cellVal)) {
+        const row = ws1.getRow(rowNum);
+        row.eachCell((cell) => {
+          cell.font = { ...(cell.font || {}), bold: true, size: 11 };
+        });
       }
     }
   }
 
   /* =========================
-     Bold TOTAL / GRAND TOTAL rows (after numeric coercion)
+     Sheet 2: Inventory Breakup (ONLY IMAGE)
   ========================= */
-  const applyBoldRow = (rowIndex: number) => {
-    const ref = ws["!ref"];
-    if (!ref) return;
-    const rr = XLSX.utils.decode_range(ref);
+  const ws2 = wb.addWorksheet(safeSheetName("Inventory Breakup"));
 
-    for (let c = rr.s.c; c <= rr.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({ r: rowIndex, c });
-      const cell = ws[addr] || { t: "s", v: "" };
-      ws[addr] = {
-        ...cell,
-        s: {
-          ...((cell as any).s || {}),
-          font: { ...(((cell as any).s)?.font || {}), bold: true, sz: 11 },
-        },
-      };
-    }
-  };
+  const img = parseBase64(chartBase64);
+  if (img) {
+    const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
 
-  const productNameCol0 = headers.findIndex((h) =>
-    String(h).toLowerCase().includes("product name")
-  );
+    const imageId = wb.addImage({
+      base64: `data:${img.mime};base64,${img.base64}`,
+      extension: ext as "png" | "jpeg",
+    });
 
-  if (productNameCol0 >= 0) {
-    const totalCandidates = new Set(["total", "grand total"]);
-
-    const startBodyRow = headerRowIndex + 1; // first data row
-    const endBodyRow = headerRowIndex + bodyAoA.length;
-
-    for (let r = startBodyRow; r <= endBodyRow; r++) {
-      const addr = XLSX.utils.encode_cell({ r, c: productNameCol0 });
-      const v = String(ws[addr]?.v ?? "").trim().toLowerCase();
-      if (totalCandidates.has(v)) applyBoldRow(r);
-    }
+    // ✅ Place image at A1 (no headings)
+    ws2.addImage(imageId, {
+      tl: { col: 0, row: 0 },
+      ext: { width: 1400, height: 520 },
+    });
+  } else {
+    ws2.getCell("A1").value = "No chart image available.";
   }
 
   /* =========================
      Save
   ========================= */
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, safeSheetName("Inventory Recon"));
-  XLSX.writeFile(wb, filename);
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename
+  );
 }

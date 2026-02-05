@@ -25,10 +25,16 @@ type Slice = {
 
 type Props = {
     title?: string;
-    rows: AnyRow[]; // ✅ pass your API rows (can be displayRows too, but MUST include Grand Total row)
+    rows: AnyRow[];
     height?: number;
     noDataFound?: boolean;
     onExportBase64Ready?: (base64: string | null) => void;
+
+    // ✅ NEW
+    exportTick?: number;
+
+    // optional if you still want it elsewhere
+    onExportMetricsReady?: (metrics: { name: string; value: number; pct: number }[] | null) => void;
 };
 
 const COLORS = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
@@ -51,22 +57,38 @@ const isGrandTotalRow = (row: AnyRow) => {
 };
 
 export default function InventoryTopProductsPie({
-    title = "Inventory Breakup",
+    title = "",
     rows,
     height = 280,
     noDataFound = false,
     onExportBase64Ready,
+    onExportMetricsReady,
+    exportTick = 0,
 }: Props) {
+
     const [isLaptop, setIsLaptop] = useState(false);
     const [isDesktop, setIsDesktop] = useState(false);
     const [legendTick, setLegendTick] = useState(0);
 
     const chartRef = useRef<any>(null);
+    const getChart = () => {
+        const refObj: any = chartRef.current;
+        return refObj?.chart ?? refObj ?? null;
+    };
+
+
+    const [pieMetrics, setPieMetrics] = useState<{ name: string; value: number; pct: number }[] | null>(null);
+    const pieMetricsRef = useRef<typeof pieMetrics>(null);
+
+    useEffect(() => {
+        pieMetricsRef.current = pieMetrics;
+    }, [pieMetrics]);
+
 
     // ✅ Choose what "inventory count" means.
     // Use "ending_total" because that's what you want breakup of (Inventory at month end -> Total)
-const getInventoryCount = (r: AnyRow) =>
-  toNum(r?.ending_total ?? r?.__ending_total ?? r?.EndingTotal ?? r?.endingTotal);
+    const getInventoryCount = (r: AnyRow) =>
+        toNum(r?.ending_total ?? r?.__ending_total ?? r?.EndingTotal ?? r?.endingTotal);
 
     const MIN_PRODUCTS = 5;
 
@@ -122,34 +144,238 @@ const getInventoryCount = (r: AnyRow) =>
         return { displayData: final, apiTotal: safeTotal };
     }, [rows]);
 
+    useEffect(() => {
+        if (!onExportMetricsReady) return;
+
+        if (!displayData?.length || apiTotal <= 0) {
+            onExportMetricsReady(null);
+            return;
+        }
+
+        // ✅ send legend rows to page
+        onExportMetricsReady(displayData.map(d => ({
+            name: d.name,
+            value: Number(d.value || 0),
+            pct: Number(d.pct || 0), // 0..100
+        })));
+    }, [displayData, apiTotal, onExportMetricsReady]);
+
+    const renderSquarePieForExport = (size: number) => {
+        const src = getChart();
+        if (!src) return null;
+
+        const dpr = window.devicePixelRatio || 1;
+
+        const c = document.createElement("canvas");
+        c.width = Math.floor(size * dpr);
+        c.height = Math.floor(size * dpr);
+        c.style.width = `${size}px`;
+        c.style.height = `${size}px`;
+
+        const ctx = c.getContext("2d");
+        if (!ctx) return null;
+
+        // Build an export-only chart config (square + non-responsive)
+        const exportConfig = {
+            type: "pie" as const,
+            data: JSON.parse(JSON.stringify(src.data)), // clone
+            options: {
+                ...(src.options || {}),
+                responsive: false,
+                maintainAspectRatio: true,
+                aspectRatio: 1,
+                animation: false,
+                plugins: {
+                    ...(src.options?.plugins || {}),
+                    legend: { display: false },
+                },
+            },
+        };
+
+        // Respect current slice visibility (legend toggles)
+        // Chart.js meta.hidden uses "null = visible, true = hidden"
+        const tmp = new ChartJS(ctx, exportConfig as any);
+
+        try {
+            for (let i = 0; i < (src.data?.datasets?.[0]?.data?.length ?? 0); i++) {
+                const visible = src.getDataVisibility(i);
+                if (!visible) tmp.toggleDataVisibility(i);
+            }
+            tmp.update("none");
+            return c;
+        } finally {
+            // We can't destroy before using canvas bitmap; return canvas, but destroy chart instance now
+            // (canvas keeps pixels)
+            tmp.destroy();
+        }
+    };
+
     const exportChartBase64 = () => {
         try {
-            const chart = chartRef.current;
+            const chart = getChart();
             if (!chart) return null;
 
             chart.update("none");
-            const srcCanvas = chart.canvas as HTMLCanvasElement;
 
-            const scale = 3;
+            const srcCanvas: HTMLCanvasElement | undefined = chart?.canvas;
+
+            if (!srcCanvas) return null;
+
+            // ===== Output size =====
+            const outW = 1400;
+            const outH = 520;
+
+            // Layout controls
+            const pad = 12;
+
+            // ✅ pie size in image (square so it stays circular)
+            const pieBox = 500; // 🔧 change this (420..520) to resize pie in PNG
+
+            // ✅ spacing between pie and legend
+            const gapPieLegend = 18;
+
+            const legendX = pad + pieBox + gapPieLegend;
+            const legendW = outW - legendX - pad;
+
             const out = document.createElement("canvas");
-            out.width = srcCanvas.width * scale;
-            out.height = srcCanvas.height * scale;
+            out.width = outW;
+            out.height = outH;
 
             const ctx = out.getContext("2d");
             if (!ctx) return null;
 
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = "high";
+            // background
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, outW, outH);
 
-            ctx.fillStyle = "#FFFFFF";
-            ctx.fillRect(0, 0, out.width, out.height);
-            ctx.drawImage(srcCanvas, 0, 0, out.width, out.height);
+            // ✅ NO TITLE / HEADING drawn into the image
 
-            return out.toDataURL("image/jpeg", 0.98);
-        } catch {
+            // draw pie (left) — ✅ crop to square first so it stays round
+            const pieX = pad;
+            const pieY = pad;
+
+
+            if (!srcCanvas) return null;
+
+            // Use the real pixel size of the source canvas
+            const sw = srcCanvas.width;
+            const sh = srcCanvas.height;
+
+            // Take a centered square crop from the source canvas
+            const s = Math.min(sw, sh);
+            const sx = Math.floor((sw - s) / 2);
+            const sy = Math.floor((sh - s) / 2);
+
+            // Draw that square crop into a square box in the output
+            ctx.drawImage(
+                srcCanvas,
+                sx, sy, s, s,          // source crop (square)
+                pieX, pieY, pieBox, pieBox // destination (square)
+            );
+
+            // legend style controls
+            const dotR = 5;
+            const gap = 8;
+            // const lineH = 16;
+            // const rowGap = 10;
+
+            ctx.font = "13px Arial";
+            ctx.textBaseline = "top";
+
+            const wrapText = (text: string, x: number, y: number, maxW: number) => {
+                const words = String(text || "").split(" ");
+                let line = "";
+                let yy = y;
+
+                for (const w of words) {
+                    const test = line ? `${line} ${w}` : w;
+                    if (ctx.measureText(test).width > maxW && line) {
+                        ctx.fillText(line, x, yy);
+                        line = w;
+                        yy += lineH;
+                    } else {
+                        line = test;
+                    }
+                }
+                if (line) ctx.fillText(line, x, yy);
+                return yy;
+            };
+
+            const strike = (x: number, y: number, text: string) => {
+                const w = ctx.measureText(text).width;
+                const midY = y + 7;
+                ctx.beginPath();
+                ctx.moveTo(x, midY);
+                ctx.lineTo(x + w, midY);
+                ctx.strokeStyle = "#414042";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            };
+
+            // ===== compute legend total height =====
+            const lineH = 16;
+            const rowGap = 10;
+
+            // estimate wrapped text height (safe average)
+            const avgLinesPerItem = 2; // name + value line
+            const rowHeight = avgLinesPerItem * lineH + rowGap;
+
+            const legendTotalHeight = (displayData?.length || 0) * rowHeight;
+
+            // legend rows
+            // ✅ vertically center legend relative to pie
+            let y =
+                pieY +
+                Math.max(
+                    0,
+                    (pieBox - legendTotalHeight) / 2
+                );
+
+            const textX = legendX + dotR * 2 + gap;
+            const maxTextW = legendW - (dotR * 2 + gap) - 10;
+
+            (displayData || []).forEach((slice, i) => {
+                const dot = COLORS[i % COLORS.length];
+                const isVisible = chart.getDataVisibility(i);
+
+                ctx.save();
+                ctx.globalAlpha = isVisible ? 1 : 0.4;
+
+                // dot
+                ctx.beginPath();
+                ctx.fillStyle = dot;
+                ctx.arc(legendX + dotR, y + dotR + 2, dotR, 0, Math.PI * 2);
+                ctx.fill();
+
+                // label
+                ctx.fillStyle = "#414042";
+                const startLabelY = y;
+                const endY = wrapText(slice.name, textX, startLabelY, maxTextW);
+
+                // value + pct
+                const metric = `${Number(slice.value || 0).toLocaleString()} (${Number(
+                    slice.pct || 0
+                ).toFixed(2)}%)`;
+
+                ctx.fillText(metric, textX, endY + lineH);
+
+                if (!isVisible) {
+                    strike(textX, startLabelY, slice.name);
+                    strike(textX, endY + lineH, metric);
+                }
+
+                ctx.restore();
+
+                y = endY + lineH + lineH + rowGap;
+            });
+
+            return out.toDataURL("image/png");
+        } catch (e) {
+            console.error("exportChartBase64 failed:", e);
             return null;
         }
     };
+
 
     const chartData = useMemo<ChartData<"pie", number[], string> | null>(() => {
         const labels = (displayData || []).map((d) => d.name);
@@ -215,13 +441,32 @@ const getInventoryCount = (r: AnyRow) =>
 
     useEffect(() => {
         if (!onExportBase64Ready) return;
-        if (!chartData) {
+
+        if (!chartData || apiTotal <= 0) {
             onExportBase64Ready(null);
             return;
         }
-        const t = setTimeout(() => onExportBase64Ready(exportChartBase64()), 300);
-        return () => clearTimeout(t);
-    }, [chartData, onExportBase64Ready]);
+
+        let cancelled = false;
+
+        const run = async () => {
+            // wait for the chart to paint at final size
+            await new Promise<void>((r) => requestAnimationFrame(() => r()));
+            await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+            if (cancelled) return;
+
+            const b64 = exportChartBase64(); // ✅ composed image: pie + legend metrics text
+            onExportBase64Ready(b64);
+        };
+
+        run();
+
+        return () => {
+            cancelled = true;
+        };
+        // ✅ regenerate every time download is clicked
+    }, [exportTick]);
 
     const showNoData = noDataFound || !chartData || apiTotal <= 0;
 
@@ -260,21 +505,28 @@ const getInventoryCount = (r: AnyRow) =>
                             <div className="flex flex-col gap-1 2xl:gap-4">
                                 {(displayData || []).map((slice, i) => {
                                     const dot = COLORS[i % COLORS.length];
-                                    const chart = chartRef.current;
+                                    const chart = getChart();
                                     const isVisible = chart ? chart.getDataVisibility(i) : true;
-
                                     return (
                                         <button
                                             key={`${slice.name}-${i}`}
                                             type="button"
                                             className="text-left"
-                                            onClick={() => {
-                                                const chart = chartRef.current;
+                                            onClick={async () => {
+                                                const chart = getChart();
                                                 if (!chart) return;
+
                                                 chart.toggleDataVisibility(i);
-                                                chart.update();
+                                                chart.update("none");
                                                 setLegendTick((t) => t + 1);
+
+                                                if (onExportBase64Ready) {
+                                                    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+                                                    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+                                                    onExportBase64Ready(exportChartBase64());
+                                                }
                                             }}
+
                                         >
                                             <div className={`flex items-start gap-3 ${isVisible ? "opacity-100" : "opacity-40"}`}>
                                                 <span

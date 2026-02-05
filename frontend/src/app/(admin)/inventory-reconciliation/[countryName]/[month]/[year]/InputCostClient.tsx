@@ -224,10 +224,17 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const yearParam = normalizeYear(decodeURIComponent(yearRaw ?? ""));
   const [pieBase64, setPieBase64] = useState<string | null>(null);
   const pieBase64Ref = useRef<string | null>(null);
+  const [pieMetrics, setPieMetrics] = useState<
+    { name: string; value: number; pct: number }[] | null
+  >(null);
+  const pieMetricsRef = useRef<typeof pieMetrics>(null);
 
   useEffect(() => {
     pieBase64Ref.current = pieBase64;
   }, [pieBase64]);
+  useEffect(() => {
+    pieMetricsRef.current = pieMetrics;
+  }, [pieMetrics]);
 
   /* ================= FILTER STATE ================= */
   const now = new Date();
@@ -238,6 +245,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const [selectedMonth, setSelectedMonth] = useState<string>(monthParam || currentMonth);
   const [selectedQuarter, setSelectedQuarter] = useState<string>("Q1");
   const [selectedYear, setSelectedYear] = useState<string>(yearParam || currentYear);
+const [exportTick, setExportTick] = useState(0);
 
 
   // ✅ IMPORTANT: sync state with URL params AFTER state exists
@@ -1136,24 +1144,62 @@ export default function InventoryReconciliationPage({ params }: Params) {
   }, [rows, getExpandedExportCols, getValue]);
 
 
-  const handleDownloadXLSX = async () => {
-    const dataRows = buildReconExportDataRows();
-    if (!dataRows.length) return;
+  // const handleDownloadXLSX = async () => {
+  //   const dataRows = buildReconExportDataRows();
+  //   if (!dataRows.length) return;
 
-    const periodLabel = formatPeriodLabel(selectedMonth, selectedYear); // ✅ Dec'25
+  //   const periodLabel = formatPeriodLabel(selectedMonth, selectedYear); // ✅ Dec'25
 
-    exportInventoryReconExcel({
-      filename: "Inventory_Reconciliation.xlsx",
-      titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
-      countryName,
-      titleCountry: countryName?.toUpperCase(),
-      platformLabel: "Amazon",
-      periodLabel,         // ✅ Dec'25
-      companyName,
-      brandName,
-      dataRows,
-    });
-  };
+  //   exportInventoryReconExcel({
+  //     filename: "Inventory_Reconciliation.xlsx",
+  //     titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
+  //     countryName,
+  //     titleCountry: countryName?.toUpperCase(),
+  //     platformLabel: "Amazon",
+  //     periodLabel,         // ✅ Dec'25
+  //     companyName,
+  //     brandName,
+  //     dataRows,
+  //   });
+  // };
+
+ const handleDownloadXLSX = async () => {
+  const dataRows = buildReconExportDataRows();
+  if (!dataRows.length) return;
+
+  const periodLabel = formatPeriodLabel(selectedMonth, selectedYear);
+
+  // ✅ force pie to regenerate a fresh composed image (pie + legend metrics)
+  setExportTick((t) => t + 1);
+
+  // wait 2 frames so chart canvas + composed export canvas are up-to-date
+  await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+  if (!pieBase64Ref.current) {
+    setModalMessage("Pie export image not ready. Please click Download again.");
+    setShowModal(true);
+    return;
+  }
+
+  exportInventoryReconExcel({
+    filename: "Inventory_Reconciliation.xlsx",
+    titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
+    countryName,
+    titleCountry: countryName?.toUpperCase(),
+    platformLabel: "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+    dataRows,
+
+    // ✅ only pass composed PNG (includes legend metrics inside the image)
+    chartBase64: pieBase64Ref.current,
+
+    // ❌ do NOT pass metrics for Excel cell text (keep tab2 clean)
+    // chartMetrics: pieMetricsRef.current,
+  });
+};
 
 
   if (pageLoading) {
@@ -1257,12 +1303,13 @@ export default function InventoryReconciliationPage({ params }: Params) {
         /> */}
 
         <InventoryTopProductsPie
-          key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
-          rows={displayRows}
-          title="Inventory Breakup"
-          onExportBase64Ready={(b64) => setPieBase64(b64)}
-        />
-
+  key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
+  rows={displayRows}
+  title="Inventory Breakup"
+  exportTick={exportTick} // ✅ NEW
+  onExportBase64Ready={(b64) => setPieBase64(b64)}
+  // onExportMetricsReady={(m) => setPieMetrics(m)} // optional: you can remove if not needed anywhere else
+/>
 
       </div>
 
