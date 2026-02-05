@@ -27,7 +27,7 @@ const SummaryMetricCard: React.FC<SummaryMetricCardProps> = ({
   return (
     <div
       className={[
-        "w-full rounded-2xl shadow-sm p-3 2xl:p-4 flex flex-col justify-between",
+        "w-full rounded-2xl shadow-sm p-3 2xl:p-3 flex flex-col justify-between",
         className,
       ].join(" ")}
     >

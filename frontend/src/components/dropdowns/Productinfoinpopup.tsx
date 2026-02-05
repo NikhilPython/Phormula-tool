@@ -19,6 +19,7 @@ import { useRouter, usePathname } from "next/navigation";
 
 // 🔹 NEW: use connected platforms
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
+import Loader from "../loader/Loader";
 
 ChartJS.register(
   CategoryScale,
@@ -45,6 +46,12 @@ type ApiResponse = {
   message?: string;
 };
 
+const normalizeCountryKey = (country: string) => {
+  // Handles: "uk_usd", "US_USD", "global_usd", etc.
+  const c = (country || "").toString().trim().toLowerCase();
+  return c.split("_")[0]; // "uk_usd" -> "uk"
+};
+
 const getCurrencySymbol = (country: string) => {
   switch (country.toLowerCase()) {
     case "uk":
@@ -65,10 +72,10 @@ const getCurrencySymbol = (country: string) => {
 
 const getCountryColor = (country: string) => {
   const colors: Record<string, string> = {
-    uk: "#AB64B5",
+    uk: "#7B9A6D",
     us: "#87AD12",
     ca: "#0EA5E9",
-    global: "#F47A00",
+    global: "#ED9F50",
   };
   return colors[country] || "#FF7C7C";
 };
@@ -180,22 +187,24 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
 
       setData(resp);
 
-      // 🔹 build visible country list based on:
-      //    1) what API actually returns
-      //    2) which platforms are connected
       const apiCountries = Object.keys(resp.data);
       const connectedSet = new Set(connected.map((c) => c.toLowerCase()));
 
-      const nonGlobal = apiCountries.filter(
-        (c) =>
-          c.toLowerCase() !== "global" &&
-          (connectedSet.size === 0 || connectedSet.has(c.toLowerCase()))
-      );
+      const globalKey =
+        apiCountries.find((k) => normalizeCountryKey(k) === "global") || "global";
+
+      const nonGlobal = apiCountries.filter((k) => {
+        const nk = normalizeCountryKey(k);
+        return (
+          nk !== "global" &&
+          (connectedSet.size === 0 || connectedSet.has(nk))
+        );
+      });
 
       const ordered =
         nonGlobal.length > 0
-          ? ["global", ...nonGlobal]
-          : apiCountries; // fallback if only GLOBAL is present
+          ? [globalKey, ...nonGlobal]
+          : apiCountries;
 
       setCountryOrder(ordered);
 
@@ -224,11 +233,14 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
     const apiCountries = Object.keys(data.data);
     const connectedSet = new Set(connectedCountries.map((c) => c.toLowerCase()));
 
-    const nonGlobal = apiCountries.filter(
-      (c) =>
-        c.toLowerCase() !== "global" &&
-        (connectedSet.size === 0 || connectedSet.has(c.toLowerCase()))
-    );
+    const nonGlobal = apiCountries.filter((k) => {
+      const nk = normalizeCountryKey(k);
+      return (
+        nk !== "global" &&
+        (connectedSet.size === 0 || connectedSet.has(nk))
+      );
+    });
+
 
     // Months from all non-global connected countries (or from global if none)
     const allMonths = new Set<string>();
@@ -276,9 +288,11 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
           0
         );
         point["global"] = sum;
-      } else if (apiCountries.includes("global")) {
-        // Fallback: only GLOBAL came back from API
-        const globalData = data.data!["global"] || [];
+      } else {
+        const globalKey =
+          apiCountries.find((k) => normalizeCountryKey(k) === "global") || "global";
+
+        const globalData = data.data![globalKey] || [];
         const found = globalData.find((d) => d.month === m);
         point["global"] = found ? Number(found.net_sales) : 0;
       }
@@ -305,44 +319,58 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
 
     const datasets = countryOrder
       .filter((country) => selectedCountries[country])
-      .map((country) => ({
-        label: formatCountryLabel(country),
-        data: raw.map((r: any) => (r[country] as number) || 0),
-        borderColor: getCountryColor(country),
-        backgroundColor: getCountryColor(country),
-        tension: 0.1,
-        pointRadius: 3,
-        fill: false,
-      }));
+      .map((country) => {
+        const normalized = normalizeCountryKey(country);
+        const color = getCountryColor(normalized);
+
+        return {
+          label: formatCountryLabel(normalized),
+          data: raw.map((r: any) => (r[country] as number) || 0),
+
+          // ✅ force chart to follow metric color
+          borderColor: color,
+          backgroundColor: color,
+          pointBackgroundColor: color,
+          pointBorderColor: color,
+          hoverBackgroundColor: color,
+          hoverBorderColor: color,
+
+          tension: 0.35,
+          pointRadius: 3,
+          fill: false,
+        };
+      });
+
+
 
     if (!datasets.length) return null;
     return { labels, datasets };
   }, [data, selectedCountries, countryOrder, connectedCountries]);
 
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false, // 👈 important
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false, // 👈 important
 
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      callbacks: {
-        label: (ctx: any) => {
-          const value = ctx.parsed.y;
-          return `${ctx.dataset.label}: ${formatCurrency(value)}`;
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx: any) => {
+            const value = ctx.parsed.y;
+            return `${ctx.dataset.label}: ${formatCurrency(value)}`;
+          },
         },
       },
     },
-  },
-  scales: {
-    x: { title: { display: true, text: "Month" } },
-    y: {
-      title: { display: true, text: `Amount (${currencySymbol})` },
-      min: 0,
-      ticks: { padding: 0 },
+    scales: {
+      x: { title: { display: true, text: "Month" } },
+      y: {
+        title: { display: true, text: `Amount (${currencySymbol})` },
+        min: 0,
+        ticks: { padding: 0 },
+      },
     },
-  },
-} as const;
+  } as const;
 
 
   const titleSuffix =
@@ -360,16 +388,7 @@ const chartOptions = {
       >
         {/* Loading */}
         {loading && (
-          <div className="py-12 text-center">
-            <video
-              src="/infinity2.webm"
-              autoPlay
-              loop
-              muted
-              playsInline
-              className="w-[150px] h-auto mx-auto"
-            />
-          </div>
+          <Loader fullscreen transparent />
         )}
 
         {/* Error */}
@@ -400,9 +419,11 @@ const chartOptions = {
 
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {countryOrder.map((country) => {
-                    const color = getCountryColor(country);
                     const isChecked = selectedCountries[country] ?? true;
-                    const label = formatCountryLabel(country);
+                    const normalized = normalizeCountryKey(country);
+                    const color = getCountryColor(normalized);
+                    const label = formatCountryLabel(normalized);
+
 
                     return (
                       <label
@@ -447,10 +468,10 @@ const chartOptions = {
               </div>
             </div>
 
-    {/* Chart */}
-<div className="mt-4 flex w-full justify-center">
-  <div
-    className="
+            {/* Chart */}
+            <div className="mt-4 flex w-full justify-center">
+              <div
+                className="
       relative 
       w-full 
       max-w-screen-lg      
@@ -458,20 +479,20 @@ const chartOptions = {
       sm:h-[45vh]
       md:h-[50vh]
     "
-  >
-    {chartJSData ? (
-      <Line
-        data={chartJSData}
-        options={chartOptions}
-        className="!w-full !h-full"  // force canvas to fill container
-      />
-    ) : (
-      <p className="flex h-full items-center justify-center text-sm text-gray-500">
-        No chart data available.
-      </p>
-    )}
-  </div>
-</div>
+              >
+                {chartJSData ? (
+                  <Line
+                    data={chartJSData}
+                    options={chartOptions}
+                    className="!w-full !h-full"  // force canvas to fill container
+                  />
+                ) : (
+                  <p className="flex h-full items-center justify-center text-sm text-gray-500">
+                    No chart data available.
+                  </p>
+                )}
+              </div>
+            </div>
 
 
             {/* CTA */}

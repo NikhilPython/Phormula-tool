@@ -2727,8 +2727,8 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "fba_fees", label: "FBA Fees", align: "center" as const },
                 { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+                { key: "fba_fees", label: "FBA Fees", align: "center" as const },
                 {
                     key: "marketplace_total",
                     label: "Total",

@@ -77,6 +77,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
           ...ds,
           fill: false,
           borderDash: isCm1OrProfit ? [6, 6] : [], // dotted for CM1/Profit
+          tension:0.35,
         };
       });
 
@@ -108,6 +109,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
           ...ds,
           fill: false,
           borderDash: isCm1OrProfit ? [6, 6] : [],
+           tension: 0.35,
         };
       });
 
@@ -115,6 +117,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
         ...ds,
         fill: false,
         borderDash: [6, 6],
+        tension:0.35
       }));
 
       return {
