@@ -678,9 +678,13 @@ def live_mtd_vs_previous():
         # ---------------------------
         # AI INSIGHTS (SKU LEVEL)
         # ---------------------------
-        insights = {}
+        insights = {}  
         if generate_ai_insights:
             skus_for_ai = top_80_skus + new_reviving + other_skus
+
+            # month2 = current MTD month in YYYY-MM format
+            month2 = f"{curr_start.year}-{curr_start.month:02d}"
+
             with ThreadPoolExecutor(max_workers=10) as executor:
                 for future in as_completed([
                     executor.submit(
@@ -689,11 +693,14 @@ def live_mtd_vs_previous():
                         country,
                         prev_label,
                         curr_label,
+                        user_id,   # ✅ NEW
+                        month2,    # ✅ NEW
                     )
                     for item in skus_for_ai
                 ]):
                     key, res = future.result()
                     insights[key] = res
+            
 
         # ---------------------------
         # TOTALS (ALIGNED)
