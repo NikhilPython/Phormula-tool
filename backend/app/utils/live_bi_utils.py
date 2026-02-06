@@ -2436,7 +2436,7 @@ def build_ai_summary(
     # Objective defaults (UNCHANGED)
     # =========================================================
     user_objective = user_objective or {
-        "primary_goal": "profit",
+        "primary_goal": "balanced",
         "risk_level": "balanced",
         "constraints": {},
     }

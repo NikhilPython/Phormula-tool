@@ -2755,7 +2755,7 @@ const summaryNarrative =
         <div>
           <span className="font-semibold">Primary Goal:</span>{" "}
           <span className="capitalize">
-            {objectiveContext.primary_goal}
+            {objectiveContext.primary_goal.replace("_", " ")}
           </span>
         </div>
       )}

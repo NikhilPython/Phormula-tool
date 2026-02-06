@@ -490,7 +490,7 @@ const ProductInsightsSection = ({
             <div>
               <span className="font-semibold">Primary Goal:</span>{" "}
               <span className="capitalize">
-                {objective.primary_goal}
+                {objective.primary_goal.replace("_", " ")}
               </span>
             </div>
 
