@@ -500,44 +500,29 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
               <div className="flex justify-end">
                 <Button 
                 size="sm"
-                onClick={() => {
-                  // 🔹 Read last fetched month/year from localStorage
-                  let lastFetchedMonth = month;
-                  let lastFetchedYear = String(year);
+           onClick={() => {
+  let lastFetchedMonth = month;
+  let lastFetchedYear = String(year);
 
-                  if (typeof window !== "undefined") {
-                    const raw = window.localStorage.getItem("latestFetchedPeriod");
-                    if (raw) {
-                      try {
-                        const parsed = JSON.parse(raw) as {
-                          month?: string;
-                          year?: string | number;
-                        };
+  if (typeof window !== "undefined") {
+    const raw = window.localStorage.getItem("latestFetchedPeriod");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { month?: string; year?: string | number };
+        if (parsed.month) lastFetchedMonth = String(parsed.month).toLowerCase();
+        if (parsed.year) lastFetchedYear = String(parsed.year);
+      } catch {}
+    }
+  }
 
-                        if (parsed.month) {
-                          // store as slug just like AmazonFinancialDashboard does (e.g. "september")
-                          lastFetchedMonth = String(parsed.month).toLowerCase();
-                        }
-                        if (parsed.year) {
-                          lastFetchedYear = String(parsed.year);
-                        }
-                      } catch {
-                        // ignore parse errors and just fall back to current month/year
-                      }
-                    }
-                  }
-
-                  // 🔹 Now push with extra params for last fetched period
-                  router.push(
-                    `/skuwiseprofit/${encodeURIComponent(
-                      productname
-                    )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
-                      month
-                    )}/${encodeURIComponent(
-                      lastFetchedMonth
-                    )}/${encodeURIComponent(lastFetchedYear)}`
-                  );
-                }}>
+  // ✅ Use lastFetchedMonth as the month param (don’t pass month twice)
+  router.push(
+    `/skuwiseprofit/${encodeURIComponent(productname)}/${encodeURIComponent(
+      countryName
+    )}/${encodeURIComponent(lastFetchedMonth)}/${encodeURIComponent(lastFetchedYear)}`
+  );
+}}
+>
                   Check Full Performance
                   <i className="fa-solid fa-arrow-up-right-from-square" />
                 </Button >
