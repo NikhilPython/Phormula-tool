@@ -266,10 +266,11 @@ export default function UserInfoCard() {
   );
 
   const { data, isLoading, isError } = useGetUserDataQuery();
+  
+
   console.log("User data123:", data);
 
   const token = useSelector((state: any) => state.auth?.token);
-
 
   useEffect(() => {
     if (!token) return; // ✅ wait for redux token
@@ -551,7 +552,7 @@ export default function UserInfoCard() {
     }
   };
 
-  const handleSaveObjective = async () => {
+const handleSaveObjective = async () => {
   try {
     const res = await fetch(
       `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`,
@@ -570,11 +571,29 @@ export default function UserInfoCard() {
       throw new Error(err.error || "Failed to save objective");
     }
 
+    // ✅ LOCAL STORAGE SAVE
+    localStorage.setItem("user_objective", JSON.stringify(objective));
+
     closeModal();
   } catch (e: any) {
     alert(e.message);
   }
 };
+
+useEffect(() => {
+  const saved = localStorage.getItem("user_objective");
+  if (!saved) return;
+
+  try {
+    const parsed = JSON.parse(saved);
+    setObjective((prev) => ({
+      ...prev,
+      ...parsed,
+    }));
+  } catch (e) {
+    console.error("Failed to parse objective from localStorage");
+  }
+}, []);
 
 
   const [forgotPassword, { isLoading: isSending, isSuccess }] =

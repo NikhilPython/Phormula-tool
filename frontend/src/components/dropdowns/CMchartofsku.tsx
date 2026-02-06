@@ -327,20 +327,24 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
     if (!labels.length || values.every((v) => v === 0)) return null;
 
+    const bg = labels.map((_, i) => COLORS[i % COLORS.length]);
+
     return {
       labels,
       datasets: [
         {
           data: values,
-          backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]),
+          backgroundColor: bg,
+          hoverBackgroundColor: bg, // ✅ same on hover = no color change
           borderWidth: 0,
           borderColor: "transparent",
           spacing: 0,
-          hoverOffset: 4,
+          hoverOffset: 4, // ✅ keep pop-out
           offset: 0,
         },
       ],
     };
+
   }, [slices]);
 
   const options = useMemo<ChartOptions<"pie">>(() => {
@@ -448,7 +452,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                 maxHeight: "100%",
               }}
             >
-               <div className="flex flex-col gap-1 2xl:gap-4">
+              <div className="flex flex-col gap-1 2xl:gap-4">
                 {slices.map((slice, i) => {
                   const dot = COLORS[i % COLORS.length];
                   const chart = chartRef.current;

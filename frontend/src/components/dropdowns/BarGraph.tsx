@@ -16,14 +16,62 @@ import {
   type ChartOptions,
   type TooltipItem,
 } from "chart.js";
-
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
-
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import Loader from "@/components/loader/Loader";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
 import { ProfitChartExportApi } from "@/lib/utils/exportTypes";
+
+const hoverPopPlugin = {
+  id: "hoverPopPlugin",
+  afterDatasetsDraw(chart: any) {
+    const active = chart.getActiveElements?.() || [];
+    if (!active.length) return;
+
+    const { datasetIndex, index } = active[0];
+    const meta = chart.getDatasetMeta(datasetIndex);
+    const bar = meta?.data?.[index];
+    if (!bar) return;
+
+    const ctx = chart.ctx;
+
+    const props = bar.getProps(
+      ["x", "y", "base", "width", "height"],
+      true
+    );
+
+    const x = props.x;
+    const y = props.y;
+    const base = props.base;
+    const w = props.width;
+
+    // Pop scale
+    const popW = w * 1.18;
+    const left = x - popW / 2;
+
+    const top = Math.min(y, base);
+    const height = Math.abs(base - y);
+
+    ctx.save();
+
+    const bg = chart.data.datasets?.[datasetIndex]?.backgroundColor;
+    const fill =
+      Array.isArray(bg) ? bg[index] : bg || "rgba(0,0,0,0.2)";
+
+    // Draw enlarged bar
+    ctx.fillStyle = fill as any;
+    ctx.fillRect(left, top, popW, height);
+
+    // Optional clean outline (no shadow)
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.strokeRect(left, top, popW, height);
+
+    ctx.restore();
+  },
+};
+
 
 ChartJS.register(
   CategoryScale,
@@ -34,6 +82,8 @@ ChartJS.register(
   Tooltip,
   Legend
 );
+
+ChartJS.register(hoverPopPlugin);
 
 type BargraphProps = {
   range: "monthly" | "quarterly" | "yearly";
@@ -398,17 +448,32 @@ const Bargraph: React.FC<BargraphProps> = ({
             label: formattedMonthYear,
             data: computedValues,
             maxBarThickness: barWidthInPixels,
+
             backgroundColor: computedMetricsToShow.map((l) => colorMapping[l]),
+
+            // ✅ hover styles
+            hoverBackgroundColor: computedMetricsToShow.map(
+              (l) => `${colorMapping[l]}4D`
+            ),
+
+            hoverBorderWidth: 1,
+
             borderWidth: 0,
           },
         ],
+
       };
 
       const options: ChartOptions<"bar"> = {
         responsive: true,
+        interaction: {
+          mode: "index",
+          intersect: true,
+        },
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
+
           // tooltip: {
           //   intersect: false,
           //   callbacks: {
@@ -519,7 +584,7 @@ const Bargraph: React.FC<BargraphProps> = ({
           y: {
             title: { display: true, text: `Amount (${currencySymbol})` },
             grid: {
-              display: true, 
+              display: true,
             },
           },
         },
