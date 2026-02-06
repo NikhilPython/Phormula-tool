@@ -270,20 +270,24 @@ export default function Cm1ProfitBreakdownPie({
 
     if (!labels.length || values.every((v) => v === 0)) return null;
 
+    const bg = labels.map((_, i) => COLORS[i % COLORS.length]);
+
     return {
       labels,
       datasets: [
         {
           data: values,
-          backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]),
+          backgroundColor: bg,
+          hoverBackgroundColor: bg, // ✅ lock hover color (no change)
           borderWidth: 0,
           borderColor: "transparent",
           spacing: 0,
-          hoverOffset: 4,
+          hoverOffset: 4, // ✅ keep pop-out
           offset: 0,
         },
       ],
     };
+
   }, [displayData]);
 
   useEffect(() => {

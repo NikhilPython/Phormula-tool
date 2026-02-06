@@ -215,6 +215,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
 
     const s = uploadsData.summary;
 
+    const colors = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
+
     const next: ChartData<"pie", number[], string> = {
       labels: ["COGS", "Amazon Fees", "Tax and credits", "Ads", "Others", "CM2 Profit"],
       datasets: [
@@ -227,7 +229,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
             Math.abs(s.otherwplatform || 0),
             Math.abs(s.cm2_profit || 0),
           ],
-          backgroundColor: ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"],
+          backgroundColor: colors,
+          hoverBackgroundColor: colors, // ✅ SAME COLORS ON HOVER (no change)
           borderWidth: 0,
           borderColor: "transparent",
           spacing: 0,
@@ -252,6 +255,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
     const isZero = vals.every((v) => v === 0);
     setAllValuesZero(isZero);
 
+    const colors = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
+
     if (isZero) {
       const dummyValues = [25, 20, 15, 10, 18, 12];
       const dummy: ChartData<"pie", number[], string> = {
@@ -259,9 +264,11 @@ const CircleChart: React.FC<CircleChartProps> = ({
         datasets: [
           {
             data: dummyValues,
-            backgroundColor: ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"],
+            backgroundColor: colors,
+            hoverBackgroundColor: colors, // ✅ SAME ON HOVER
             borderWidth: 0,
             borderColor: "transparent",
+            hoverOffset: 4,
           },
         ],
       };
@@ -297,7 +304,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
       elements: {
         arc: {
           borderWidth: 0,
-          hoverOffset: 4,
+          hoverOffset: 0,
         },
       },
 
@@ -404,7 +411,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
                 options={options}
                 // redraw
                 className="!block"
-                 style={{ width: "100%", height: "100%" }}
+                style={{ width: "100%", height: "100%" }}
               />
             </div>
 

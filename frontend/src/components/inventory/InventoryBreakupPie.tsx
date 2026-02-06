@@ -383,18 +383,22 @@ export default function InventoryTopProductsPie({
 
         if (!labels.length || values.every((v) => v === 0)) return null;
 
+        const bg = labels.map((_, i) => COLORS[i % COLORS.length]);
+
         return {
             labels,
             datasets: [
                 {
                     data: values,
-                    backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]),
+                    backgroundColor: bg,
+                    hoverBackgroundColor: bg, // ✅ same color on hover (no change)
                     borderWidth: 0,
                     borderColor: "transparent",
-                    hoverOffset: 4,
+                    hoverOffset: 4, // ✅ keep pop-out
                 },
             ],
         };
+
     }, [displayData]);
 
     useEffect(() => {

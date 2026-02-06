@@ -14,7 +14,52 @@ import {
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, ChartTitle);
+const hoverPopPlugin = {
+  id: "hoverPopPlugin",
+  afterDatasetsDraw(chart: any) {
+    const active = chart.getActiveElements?.() || [];
+    if (!active.length) return;
+
+    const { datasetIndex, index } = active[0];
+    const meta = chart.getDatasetMeta(datasetIndex);
+    const bar = meta?.data?.[index];
+    if (!bar) return;
+
+    const ctx = chart.ctx;
+
+    const props = bar.getProps(["x", "y", "base", "width"], true);
+    const x = props.x;
+    const y = props.y;
+    const base = props.base;
+    const w = props.width;
+
+    // pop width
+    const popW = w * 1.18;
+    const left = x - popW / 2;
+
+    const top = Math.min(y, base);
+    const height = Math.abs(base - y);
+
+    ctx.save();
+
+    // pick the correct color for the hovered dataset + bar index
+    const bg = chart.data.datasets?.[datasetIndex]?.backgroundColor;
+    const fill =
+      Array.isArray(bg) ? bg[index] : bg || "rgba(0,0,0,0.2)";
+
+    ctx.fillStyle = fill as any;
+    ctx.fillRect(left, top, popW, height);
+
+    // clean outline (no shadow)
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.strokeRect(left, top, popW, height);
+
+    ctx.restore();
+  },
+};
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend, ChartTitle, hoverPopPlugin);
 
 type SimpleBarChartProps = {
   labels: string[];
@@ -120,6 +165,10 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
 
 
   const options: ChartOptions<"bar"> = {
+    interaction: {
+      mode: "nearest",
+      intersect: true,
+    },
     responsive: true,
     maintainAspectRatio: false,
 

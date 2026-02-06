@@ -2776,7 +2776,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   </button> */}
 
-                  <div className="h-[50vh]">
+                  <div className="">
                     <PerformanceTrendChart
                       range={range}
                       month={selectedMonth}
@@ -2955,7 +2955,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   </button>
 
-                  <div className="h-[50vh]">
+                  <div className="">
                     <PerformanceTrendChart
                       range={range}
                       quarter={selectedQuarter}
@@ -3147,7 +3147,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     )}
 
                   </button>
-                  <div className="h-[50vh]">
+                  <div className="">
                     <PerformanceTrendChart
                       range={range}
                       year={selectedYear}

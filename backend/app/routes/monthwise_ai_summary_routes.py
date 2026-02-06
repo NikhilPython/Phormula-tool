@@ -195,13 +195,11 @@ def summary():
         # Decide whether to regenerate summary
         # Regenerate ONLY if objective snapshot changed
         # =====================================================================
+        # =====================================================================
         stored_objective = _objective_from_row(row) if row else None
         objective_changed = stored_objective != final_objective
 
-        print("\n=== /summary ROUTE PARAMS ===")
-        print("period:", period, type(period))
-        print("timeline:", timeline, type(timeline))
-        print("year:", year, type(year))
+       
 
         # ---------------- Generate / fetch summary ----------------
         result = get_or_create_summary(
@@ -261,12 +259,9 @@ def summary():
     except jwt.InvalidTokenError:
         return jsonify({"error": "Invalid token"}), 401
     except Exception as e:
-        print("\n❌ UNEXPECTED ERROR IN /summary ❌")
-        print("Error:", e)
-        print("\n--- TRACEBACK START ---")
+      
         traceback.print_exc()
-        print("--- TRACEBACK END ---\n")
-
+       
         db.session.rollback()
         return jsonify({
             "error": "Server error",
