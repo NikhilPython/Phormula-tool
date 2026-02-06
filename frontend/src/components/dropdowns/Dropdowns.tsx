@@ -306,62 +306,62 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
   };
 
   for (let i = 0; i < lines.length; i++) {
-  const raw = lines[i];
+    const raw = lines[i];
 
-  const line = raw
-    .replace(/^[-•]\s+/, "")      // bullets
-    .replace(/^\d+\.\s*/, "")    // remove "1. ", "2. " etc
-    .trim();
+    const line = raw
+      .replace(/^[-•]\s+/, "")      // bullets
+      .replace(/^\d+\.\s*/, "")    // remove "1. ", "2. " etc
+      .trim();
 
-  if (!line) continue;
+    if (!line) continue;
 
-  const nextLine = lines[i + 1]
-    ?.replace(/^[-•]\s+/, "")
-    .replace(/^\d+\.\s*/, "")
-    .trim();
+    const nextLine = lines[i + 1]
+      ?.replace(/^[-•]\s+/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim();
 
-  // ✅ PRODUCT HEADER ONLY if next line is a metric
-  const isProductHeader =
-    !isMetric(line) &&
-    !isAction(line) &&
-    !!nextLine &&
-    isMetric(nextLine);
+    // ✅ PRODUCT HEADER ONLY if next line is a metric
+    const isProductHeader =
+      !isMetric(line) &&
+      !isAction(line) &&
+      !!nextLine &&
+      isMetric(nextLine);
 
-  if (isProductHeader) {
-    pushCurrent();
-    current = { name: line, metrics: [], insights: [], actions: [] };
-    continue;
+    if (isProductHeader) {
+      pushCurrent();
+      current = { name: line, metrics: [], insights: [], actions: [] };
+      continue;
+    }
+
+    if (!current) continue;
+
+    if (isMetric(line)) {
+      const [label, ...rest] = line.split(":");
+      const value = rest.join(":").trim();
+
+      const num = value.match(/[-+]?[\d,.]+/g)?.[0]?.replace(/,/g, "");
+      const n = num ? Number(num) : NaN;
+      const color =
+        !isNaN(n)
+          ? n < 0
+            ? "#DC2626"
+            : n > 0
+              ? "#059669"
+              : "#414042"
+          : "#414042";
+
+      current.metrics.push({ label: label.trim(), value, color });
+      continue;
+    }
+
+    if (isAction(line)) {
+      current.actions.push(line.replace(/^action:\s*/i, "").trim());
+      continue;
+    }
+
+    // ✅ everything else = insight (NOT product, NOT numbered)
+    current.insights.push(line);
   }
-
-  if (!current) continue;
-
-  if (isMetric(line)) {
-    const [label, ...rest] = line.split(":");
-    const value = rest.join(":").trim();
-
-    const num = value.match(/[-+]?[\d,.]+/g)?.[0]?.replace(/,/g, "");
-    const n = num ? Number(num) : NaN;
-    const color =
-      !isNaN(n)
-        ? n < 0
-          ? "#DC2626"
-          : n > 0
-          ? "#059669"
-          : "#414042"
-        : "#414042";
-
-    current.metrics.push({ label: label.trim(), value, color });
-    continue;
-  }
-
-  if (isAction(line)) {
-    current.actions.push(line.replace(/^action:\s*/i, "").trim());
-    continue;
-  }
-
-  // ✅ everything else = insight (NOT product, NOT numbered)
-  current.insights.push(line);
-}
 
 
   pushCurrent();
@@ -473,7 +473,7 @@ const ProductInsightsSection = ({
   return (
     <div className="space-y-4">
       <PageBreadcrumb
-        pageTitle="PRODUCT INSIGHTS"
+        pageTitle="Product Insights"
         variant="page"
         align="left"
         textSize="2xl"
@@ -481,18 +481,31 @@ const ProductInsightsSection = ({
 
       {/* ✅ OBJECTIVE META */}
       {objective?.primary_goal && (
-        <div className="text-xs 2xl:text-sm text-charcoal-500 bg-slate-100 rounded-lg px-3 py-2">
-          <span className="font-semibold text-charcoal-600">Objective:</span>{" "}
-          {objective.primary_goal.toUpperCase()}
-          {objective.risk_level && (
-            <>
-              {" "}
-              | <span className="font-semibold">Risk:</span>{" "}
-              {objective.risk_level.toUpperCase()}
-            </>
-          )}
+        <div className="p-3 rounded-lg bg-white border border-[#E5E7EB] mt-3">
+          <div className="text-xs text-gray-500 font-semibold mb-1">
+            Objective
+          </div>
+
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs 2xl:text-sm text-charcoal-600">
+            <div>
+              <span className="font-semibold">Primary Goal:</span>{" "}
+              <span className="capitalize">
+                {objective.primary_goal}
+              </span>
+            </div>
+
+            {objective.risk_level && (
+              <div>
+                <span className="font-semibold">Risk:</span>{" "}
+                <span className="capitalize">
+                  {objective.risk_level}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
+
 
       {/* EXISTING PRODUCT BLOCKS */}
       <div className="space-y-5">
@@ -503,12 +516,14 @@ const ProductInsightsSection = ({
             </div>
 
             {b.metrics.length > 0 && (
-              <div className="flex flex-wrap gap-x-6 gap-y-1 2xl:text-sm text-xs">
+              <div className="grid 2xl:grid-cols-3 grid-cols-2 gap-x-7 gap-y-2 text-xs 2xl:text-sm">
                 {b.metrics.map((m, i) => (
                   <div key={i} className="flex items-center gap-1">
-                    <span className="text-charcoal-600 text-xs">{m.label}:</span>
+                    <span className="text-charcoal-600 whitespace-nowrap">
+                      {m.label}:
+                    </span>
                     <span
-                      className="font-semibold"
+                      className="font-semibold whitespace-nowrap"
                       style={{ color: m.color || "#414042" }}
                     >
                       {m.value}
@@ -528,7 +543,7 @@ const ProductInsightsSection = ({
             )}
 
             {b.actions.length > 0 && (
-              <div className="text-sm text-charcoal-600">
+              <div className="2xl:text-sm text-xs text-charcoal-600">
                 <span className="font-bold">Action – </span>
                 {b.actions.join(" ")}
               </div>
@@ -625,75 +640,75 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   }
 
   // 🔹 Split summary into metrics + narrative
-const summaryMetrics = summaryBullets
-  .filter((l) => l.includes(":"))
-  .map((l) => {
-    const [label, ...rest] = l.split(":");
-    return {
-      label: label.trim(),
-      value: rest.join(":").trim(),
-    };
-  });
+  const summaryMetrics = summaryBullets
+    .filter((l) => l.includes(":"))
+    .map((l) => {
+      const [label, ...rest] = l.split(":");
+      return {
+        label: label.trim(),
+        value: rest.join(":").trim(),
+      };
+    });
 
-const narrativeInsights = summaryBullets.filter(
-  (l) => !l.includes(":")
-);
+  const narrativeInsights = summaryBullets.filter(
+    (l) => !l.includes(":")
+  );
 
 
 
 
   return (
     <div className="flex gap-4">
- <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
-     <div className="space-y-3">
-  <PageBreadcrumb
-    pageTitle="Business Summary"
-    variant="page"
-    align="left"
-    textSize="2xl"
-  />
+      <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
+        <div className="space-y-3">
+          <PageBreadcrumb
+            pageTitle="Business Summary"
+            variant="page"
+            align="left"
+            textSize="2xl"
+          />
 
-  {/* Numeric points */}
- <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-  {summaryMetrics.map((p, i) => (
-    <li key={i}>
-      <span className="font-medium">{p.label}:</span>{" "}
-      <span>{p.value}</span>
-    </li>
-  ))}
-</ul>
+          {/* Numeric points */}
+          <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
+            {summaryMetrics.map((p, i) => (
+              <li key={i}>
+                <span className="font-medium">{p.label}:</span>{" "}
+                <span>{p.value}</span>
+              </li>
+            ))}
+          </ul>
 
-  {/* Narrative insight LAST */}
-  {narrativeInsights.length > 0 && (
-  <div className="mt-3 space-y-2 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
-    {narrativeInsights.map((line, i) => (
-      <p key={i}>{line}</p>
-    ))}
-  </div>
-)}
+          {/* Narrative insight LAST */}
+          {narrativeInsights.length > 0 && (
+            <div className="mt-3 space-y-2 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
+              {narrativeInsights.map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
+            </div>
+          )}
 
-</div>
+        </div>
 
 
-      
-      {/* Inventory shown only if still exists separately */}
-      {inventoryBullets.length > 0 && (
-        <Section
-          title="Inventory"
-          bullets={inventoryBullets}
+
+        {/* Inventory shown only if still exists separately */}
+        {inventoryBullets.length > 0 && (
+          <Section
+            title="Inventory"
+            bullets={inventoryBullets}
+          />
+        )}
+      </div>
+      <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 ">
+        <ProductInsightsSection
+          blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+          objective={objective}
         />
-      )}
-    </div>
-    <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 ">
-      <ProductInsightsSection
-  blocks={parseProductInsightsBlocks(skuInsightsBullets)}
-  objective={objective}
-/>
 
 
+      </div>
     </div>
-    </div>
-   
+
   );
 };
 
@@ -980,21 +995,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       const sections = parseMdSections(data.summary);
 
-const summaryLines = sections["SUMMARY"] ?? [];
-const inventoryLines = sections["INVENTORY"] ?? [];
-const productLines = sections["PRODUCT INSIGHTS"] ?? [];
+      const summaryLines = sections["SUMMARY"] ?? [];
+      const inventoryLines = sections["INVENTORY"] ?? [];
+      const productLines = sections["PRODUCT INSIGHTS"] ?? [];
       const { recommendationBullets, inventoryBullets } =
         extractRecoAndInventoryBullets(data.recommendations);
 
       setAiPanel({
-  summaryBullets: summaryLines,
-  skuInsightsBullets: productLines,
-  recommendationBullets,
-  inventoryBullets: inventoryLines,
-  objective: data.objective,
-  rawSummary: data.summary ?? null,
-  rawRecommendations: data.recommendations ?? null,
-});
+        summaryBullets: summaryLines,
+        skuInsightsBullets: productLines,
+        recommendationBullets,
+        inventoryBullets: inventoryLines,
+        objective: data.objective,
+        rawSummary: data.summary ?? null,
+        rawRecommendations: data.recommendations ?? null,
+      });
 
     } catch (e: any) {
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
@@ -2725,8 +2740,8 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
-                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                    "cursor-default select-none",
+                    focusedChart === "trend" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
@@ -2784,10 +2799,10 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
+                    "cursor-default select-none",
                     "min-h-0 overflow-hidden",
                     "flex flex-col",
-                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                    focusedChart === "pnl" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
                 >
@@ -2840,6 +2855,7 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                       hideDownloadButton
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                      isCollapsed={pnlCollapsed}
                     />
                   </div>
                 </div>
@@ -2915,8 +2931,8 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
-                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                    "cursor-default select-none",
+                    focusedChart === "trend" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
@@ -2962,10 +2978,10 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
+                    "cursor-default select-none",
                     "min-h-0 overflow-hidden",
                     "flex flex-col",
-                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                    focusedChart === "pnl" ? "cursor-default" : "",
                   ].join(" ")}
                 >
                   <div className="shrink-0 flex items-center justify-between gap-3">
@@ -3108,8 +3124,8 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
-                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                    "cursor-default select-none",
+                    focusedChart === "trend" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
@@ -3164,10 +3180,10 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                   // onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
+                    "cursor-default select-none",
                     "min-h-0 overflow-hidden",
                     "flex flex-col",
-                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                    focusedChart === "pnl" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
                 >

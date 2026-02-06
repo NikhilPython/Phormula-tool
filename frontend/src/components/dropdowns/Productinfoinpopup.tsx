@@ -20,6 +20,7 @@ import { useRouter, usePathname } from "next/navigation";
 // 🔹 NEW: use connected platforms
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import Loader from "../loader/Loader";
+import Button from "../ui/button/Button";
 
 ChartJS.register(
   CategoryScale,
@@ -494,55 +495,81 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
               </div>
             </div>
 
-
-            {/* CTA */}
             {/* CTA */}
             {!isImprovementsPage && (
               <div className="flex justify-end">
-                <button
-                  className="inline-flex justify-center items-center rounded-md bg-slate-800 px-4 py-2 font-semibold text-amber-100 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                  onClick={() => {
-                    // 🔹 Read last fetched month/year from localStorage
-                    let lastFetchedMonth = month;
-                    let lastFetchedYear = String(year);
+                <Button 
+                size="sm"
+           onClick={() => {
+  let lastFetchedMonth = month;
+  let lastFetchedYear = String(year);
 
-                    if (typeof window !== "undefined") {
-                      const raw = window.localStorage.getItem("latestFetchedPeriod");
-                      if (raw) {
-                        try {
-                          const parsed = JSON.parse(raw) as {
-                            month?: string;
-                            year?: string | number;
-                          };
+  if (typeof window !== "undefined") {
+    const raw = window.localStorage.getItem("latestFetchedPeriod");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { month?: string; year?: string | number };
+        if (parsed.month) lastFetchedMonth = String(parsed.month).toLowerCase();
+        if (parsed.year) lastFetchedYear = String(parsed.year);
+      } catch {}
+    }
+  }
 
-                          if (parsed.month) {
-                            // store as slug just like AmazonFinancialDashboard does (e.g. "september")
-                            lastFetchedMonth = String(parsed.month).toLowerCase();
-                          }
-                          if (parsed.year) {
-                            lastFetchedYear = String(parsed.year);
-                          }
-                        } catch {
-                          // ignore parse errors and just fall back to current month/year
-                        }
-                      }
-                    }
-
-                    // 🔹 Now push with extra params for last fetched period
-                    router.push(
-                      `/skuwiseprofit/${encodeURIComponent(
-                        productname
-                      )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
-                        month
-                      )}/${encodeURIComponent(
-                        lastFetchedMonth
-                      )}/${encodeURIComponent(lastFetchedYear)}`
-                    );
-                  }}
-                >
+  // ✅ Use lastFetchedMonth as the month param (don’t pass month twice)
+  router.push(
+    `/skuwiseprofit/${encodeURIComponent(productname)}/${encodeURIComponent(
+      countryName
+    )}/${encodeURIComponent(lastFetchedMonth)}/${encodeURIComponent(lastFetchedYear)}`
+  );
+}}
+>
                   Check Full Performance
                   <i className="fa-solid fa-arrow-up-right-from-square" />
-                </button>
+                </Button >
+                {/* <button
+                    className="inline-flex justify-center items-center rounded-md bg-slate-800 px-4 py-2 font-semibold text-amber-100 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    onClick={() => {
+                      // 🔹 Read last fetched month/year from localStorage
+                      let lastFetchedMonth = month;
+                      let lastFetchedYear = String(year);
+
+                      if (typeof window !== "undefined") {
+                        const raw = window.localStorage.getItem("latestFetchedPeriod");
+                        if (raw) {
+                          try {
+                            const parsed = JSON.parse(raw) as {
+                              month?: string;
+                              year?: string | number;
+                            };
+
+                            if (parsed.month) {
+                              // store as slug just like AmazonFinancialDashboard does (e.g. "september")
+                              lastFetchedMonth = String(parsed.month).toLowerCase();
+                            }
+                            if (parsed.year) {
+                              lastFetchedYear = String(parsed.year);
+                            }
+                          } catch {
+                            // ignore parse errors and just fall back to current month/year
+                          }
+                        }
+                      }
+
+                      // 🔹 Now push with extra params for last fetched period
+                      router.push(
+                        `/skuwiseprofit/${encodeURIComponent(
+                          productname
+                        )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
+                          month
+                        )}/${encodeURIComponent(
+                          lastFetchedMonth
+                        )}/${encodeURIComponent(lastFetchedYear)}`
+                      );
+                    }}
+                  >
+                    Check Full Performance
+                    <i className="fa-solid fa-arrow-up-right-from-square" />
+                  </button> */}
               </div>
             )}
 

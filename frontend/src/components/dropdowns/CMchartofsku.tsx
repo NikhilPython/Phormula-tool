@@ -444,7 +444,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
             <div
               className="shrink-0 overflow-auto pr-1"
               style={{
-                width: isDesktop ? 260 : isLaptop ? 170 : 240,
+                width: isDesktop ? 260 : isLaptop ? 180 : 240,
                 maxHeight: "100%",
               }}
             >
