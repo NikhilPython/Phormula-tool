@@ -45,6 +45,7 @@ type BargraphProps = {
   onNoDataChange?: (noData: boolean) => void;
   onExportApiReady?: (api: ProfitChartExportApi) => void;   // ✅ add
   hideDownloadButton?: boolean;
+  isCollapsed?: boolean;
 };
 
 type UploadRow = {
@@ -92,7 +93,8 @@ const Bargraph: React.FC<BargraphProps> = ({
   homeCurrency,
   onNoDataChange,
   onExportApiReady,
-  hideDownloadButton
+  hideDownloadButton,
+  isCollapsed = false,
 }) => {
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
@@ -311,6 +313,17 @@ const Bargraph: React.FC<BargraphProps> = ({
     "CM2 Profit",
   ] as const;
 
+  const shortLabelMap: Record<(typeof preferredOrder)[number], string> = {
+    "Net Sales": "Sales",
+    "COGS": "COGS",
+    "Amazon Fees": "Fees",
+    "Taxes & Credits": "Tax",
+    "CM1 Profit": "CM1",
+    "Advertising Cost": "Ads",
+    "Other": "Other",
+    "CM2 Profit": "CM2",
+  };
+
   const { chartData, chartOptions, exportToExcel, allValuesZero, metricsToShow, values } =
     useMemo(() => {
       if (!data || data.length === 0) {
@@ -358,7 +371,14 @@ const Bargraph: React.FC<BargraphProps> = ({
           .filter(Boolean) as (typeof preferredOrder)[number][]
       ).sort((a, b) => preferredOrder.indexOf(a) - preferredOrder.indexOf(b));
 
-      const labels = computedMetricsToShow as string[];
+      // const labels = computedMetricsToShow as string[];
+
+      const fullLabels = computedMetricsToShow; // full names always
+
+      const labels = computedMetricsToShow.map((k) =>
+        isCollapsed ? shortLabelMap[k] : k
+      );
+
 
       const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
       const barWidthInPixels = viewportWidth * 0.05;
@@ -389,40 +409,117 @@ const Bargraph: React.FC<BargraphProps> = ({
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
+          // tooltip: {
+          //   intersect: false,
+          //   callbacks: {
+          //     title: (tooltipItems: TooltipItem<"bar">[]) =>
+          //       tooltipItems[0]?.label ?? "",
+          //     label: (context: TooltipItem<"bar">) => {
+          //       const value = Number(context.raw ?? 0);
+          //       const salesIndex = labels.findIndex((l) => l === "Net Sales");
+          //       const salesValue =
+          //         salesIndex >= 0
+          //           ? Number((chartData.datasets[0].data as number[])[salesIndex] ?? 1)
+          //           : 1;
+          //       const percentage = (value / (salesValue || 1)) * 100;
+          //       const metricLabel = String(context.label ?? "");
+          //       const formattedValue = Number(value.toFixed(2)).toLocaleString();
+          //       return `${metricLabel}: ${currencySymbol}${formattedValue} (${percentage.toFixed(
+          //         1
+          //       )}%)`;
+          //     },
+          //   },
+          // },
           tooltip: {
             intersect: false,
             callbacks: {
-              title: (tooltipItems: TooltipItem<"bar">[]) =>
-                tooltipItems[0]?.label ?? "",
-              label: (context: TooltipItem<"bar">) => {
+              title: (items) => {
+                const i = items[0]?.dataIndex ?? 0;
+                return fullLabels[i] ?? "";
+              },
+              label: (context) => {
+                const i = context.dataIndex;
                 const value = Number(context.raw ?? 0);
-                const salesIndex = labels.findIndex((l) => l === "Net Sales");
+
+                const salesIndex = fullLabels.findIndex((l) => l === "Net Sales");
                 const salesValue =
                   salesIndex >= 0
                     ? Number((chartData.datasets[0].data as number[])[salesIndex] ?? 1)
                     : 1;
+
                 const percentage = (value / (salesValue || 1)) * 100;
-                const metricLabel = String(context.label ?? "");
+                const metricLabel = fullLabels[i] ?? "";
+
                 const formattedValue = Number(value.toFixed(2)).toLocaleString();
-                return `${metricLabel}: ${currencySymbol}${formattedValue} (${percentage.toFixed(
-                  1
-                )}%)`;
+                return `${metricLabel}: ${currencySymbol}${formattedValue} (${percentage.toFixed(1)}%)`;
               },
             },
           },
+
         },
         scales: {
           x: {
-            ticks: { callback: (_value, index) => String(labels[index] ?? "") },
-            grid: {
-              display: false, // ✅ remove horizontal grid lines
+            ticks: {
+              maxRotation: 0,
+              minRotation: 0,
+              autoSkip: false,
+              padding: 8,
+              // callback: (_value, index) => {
+              //   const label = String(labels[index] ?? "");
+
+              //   // wrap by words into 2 lines (tweak maxLineLength if needed)
+              //   const maxLineLength = 10; // characters per line
+              //   const words = label.split(" ");
+              //   const lines: string[] = [];
+
+              //   let line = "";
+              //   for (const w of words) {
+              //     const test = line ? `${line} ${w}` : w;
+              //     if (test.length > maxLineLength && line) {
+              //       lines.push(line);
+              //       line = w;
+              //     } else {
+              //       line = test;
+              //     }
+              //   }
+              //   if (line) lines.push(line);
+
+              //   return lines; // ✅ multi-line label
+              // },
+              callback: (_value, index) => {
+                // ✅ choose label source explicitly
+                const raw = isCollapsed
+                  ? String(labels[index] ?? "")           // short labels
+                  : String(fullLabels[index] ?? "");      // full labels
+
+                if (isCollapsed) return raw; // no wrap in collapsed
+
+                // wrap expanded labels
+                const maxLineLength = 10;
+                const words = raw.split(" ");
+                const lines: string[] = [];
+
+                let line = "";
+                for (const w of words) {
+                  const test = line ? `${line} ${w}` : w;
+                  if (test.length > maxLineLength && line) {
+                    lines.push(line);
+                    line = w;
+                  } else {
+                    line = test;
+                  }
+                }
+                if (line) lines.push(line);
+                return lines;
+              },
             },
-            // title: { display: true, text: formattedMonthYear },
+            grid: { display: false },
           },
+
           y: {
             title: { display: true, text: `Amount (${currencySymbol})` },
             grid: {
-              display: false, // ✅ remove horizontal grid lines
+              display: true, 
             },
           },
         },
@@ -504,6 +601,7 @@ const Bargraph: React.FC<BargraphProps> = ({
       isGlobalPage,
       userData?.brand_name,
       userData?.company_name,
+      isCollapsed,
     ]);
 
   useEffect(() => {
@@ -525,7 +623,7 @@ const Bargraph: React.FC<BargraphProps> = ({
         <div className="w-full h-full min-h-0">
           {loading ? (
             <div className="flex h-full items-center justify-center">
-                         <Loader fullscreen transparent />
+              <Loader fullscreen transparent />
             </div>
           ) : (
             chartData.datasets.length > 0 && (

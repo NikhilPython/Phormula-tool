@@ -95,7 +95,7 @@ def severity_suffix(severity: str | None, *, period: str | None = None) -> str:
     """
     Suppress rolling 24-month severity labels for YEARLY reports.
     """
-    if period == "yearly":
+    if period in ("yearly", "quarterly"):
         return ""
 
     if not severity or severity == "normal":
@@ -200,10 +200,21 @@ def is_latest_period(period, timeline, year, *, user_id, country):
 
     # ---------------- YEARLY (keep simple rule) ----------------
     if period == "yearly":
-        return year == date.today().year - 1
+        # Detect latest yearly table that actually exists in DB
+        for test_year in range(date.today().year + 1, date.today().year - 5, -1):
+            table = build_table_name(user_id, country, "yearly", "ALL", test_year)
+            try:
+                pd.read_sql(
+                    f'SELECT 1 FROM public."{table}" LIMIT 1',
+                    phormula_engine
+                )
+                # First existing table = TRUE latest year
+                return year == test_year
+            except Exception:
+                continue
 
+        return False
 
-    return False
 
 
 def fetch_existing_summary(user_id, country, marketplace_id, period, timeline, year):

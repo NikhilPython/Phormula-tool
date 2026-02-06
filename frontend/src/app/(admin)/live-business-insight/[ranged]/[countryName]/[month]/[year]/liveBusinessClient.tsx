@@ -127,6 +127,10 @@ interface ApiResponse {
     summary_text: string;
     metric_bullets: string[];
   };
+  objective_context?: {
+    primary_goal?: string;
+    primary_risk?: string;
+  };
 
   overall_actions?: string[];
   recommended_actions_mtd?: Record<string, string>;
@@ -257,6 +261,10 @@ export default function LiveBusinessClient({
   const [fbText, setFbText] = useState<string>('');
   const [fbSubmitting, setFbSubmitting] = useState<boolean>(false);
   const [fbSuccess, setFbSuccess] = useState<boolean>(false);
+  const [objectiveContext, setObjectiveContext] = useState<{
+  primary_goal?: string;
+  primary_risk?: string;
+} | null>(null);
 
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const isGlobalData = () => normalizedCountry === 'global';
@@ -452,6 +460,9 @@ export default function LiveBusinessClient({
         if (saved.overallActions) setOverallActions(saved.overallActions);
         if (saved.summaryText) setSummaryText(saved.summaryText);
         if (saved.overallSummary) setOverallSummary(saved.overallSummary);
+        if (saved.objectiveContext) {
+    setObjectiveContext(saved.objectiveContext); // ✅ HERE
+  }
 
         setInsightDate(todayKey);
       }
@@ -519,6 +530,8 @@ export default function LiveBusinessClient({
 
       const actionsFromApi = res.data.overall_actions || [];
       const recommendedActionsFromApi = res.data.recommended_actions_mtd || {};
+      const objectiveFromApi = res.data.objective_context || null;
+setObjectiveContext(objectiveFromApi);
 
       setSummaryText(summaryTextFromApi);
       setOverallSummary(summaryBulletsFromApi);
@@ -565,6 +578,7 @@ export default function LiveBusinessClient({
         overallSummary: summaryBulletsFromApi,
         summaryText: summaryTextFromApi,
         insightDate: todayKey,
+        objectiveContext: objectiveFromApi,
       });
     } catch (err: any) {
       console.error('live_mtd_bi error:', err?.response?.data || err.message);
@@ -2712,7 +2726,7 @@ const summaryNarrative =
 
 {/* ✅ Executive summary LAST */}
 {summaryText && (
-  <div className="mt-3 text-sm text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
+  <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
     {summaryText}
   </div>
 )}
@@ -2730,7 +2744,35 @@ const summaryNarrative =
                         align="left"
                       />
 
-                      <div className="space-y-3 pt-2">
+                      {objectiveContext && (
+  <div className=" p-3 rounded-lg bg-white border border-[#E5E7EB] mt-3">
+    <div className="text-xs text-gray-500 font-semibold mb-1">
+      Objective
+    </div>
+
+    <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs 2xl:text-sm text-charcoal-600">
+      {objectiveContext.primary_goal && (
+        <div>
+          <span className="font-semibold">Primary Goal:</span>{" "}
+          <span className="capitalize">
+            {objectiveContext.primary_goal}
+          </span>
+        </div>
+      )}
+
+      {objectiveContext.primary_risk && (
+        <div>
+          <span className="font-semibold">Risk:</span>{" "}
+          <span className="capitalize">
+            {objectiveContext.primary_risk}
+          </span>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+                      <div className="space-y-3 ">
 
                        <div className="bg-[#]  rounded-xl p-2 space-y-4">
   {Object.entries(recommendedActions).map(([_, text], idx) => {
@@ -2739,12 +2781,12 @@ const summaryNarrative =
     return (
       <div key={idx} className="space-y-2">
         {/* Product title */}
-        <div className="font-bold text-sm text-charcoal-600">
+        <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
           {idx + 1}. Product Name – {parsed.productName}
         </div>
 
         {/* Metrics */}
-       <div className="flex flex-wrap  gap-x-2 gap-y-1 text-sm ">
+       <div className="flex flex-wrap  gap-x-2 gap-y-1 text-xs 2xl:text-sm ">
   {parsed.metrics.map((m, i) => (
     <div key={i} className="flex items-center gap-1">
       <span className="text-charcoal-600 text-xs">
@@ -2762,13 +2804,13 @@ const summaryNarrative =
 
 
         {/* Insight */}
-        <p className="text-sm text-charcoal-600">
+        <p className="text-xs 2xl:text-sm text-charcoal-600">
           {parsed.insight}
         </p>
 
         {/* Action */}
         {parsed.actions.length > 0 && (
-          <div className="text-sm text-charcoal-600">
+          <div className="text-xs 2xl:text-sm text-charcoal-600">
             <span className="font-bold">Action – </span>
             <span>{parsed.actions.join(" ")}</span>
           </div>
