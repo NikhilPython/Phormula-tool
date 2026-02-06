@@ -109,6 +109,8 @@ def _objective_from_row(row):
     }
 
 
+
+
 @summary_bp.route("/summary", methods=["GET"])
 def summary():
     auth_header = request.headers.get("Authorization")
@@ -142,6 +144,12 @@ def summary():
         elif period == "quarterly":
             if timeline not in ("Q1", "Q2", "Q3", "Q4"):
                 return jsonify({"error": "Invalid timeline for quarterly. Use 'Q1'..'Q4'"}), 400
+
+        elif period == "yearly":
+            # 🔒 Production safety: enforce deterministic yearly key
+            if timeline not in ("ALL", ""):
+                return jsonify({"error": "Invalid timeline for yearly. Use 'ALL'"}), 400    
+
 
         # ---------------- Body JSON (objective from user – OPTIONAL) ----------------
         body = request.get_json(silent=True) or {}
@@ -246,7 +254,11 @@ def summary():
         db.session.commit()
 
         # ---------------- Response ----------------
-        result["objective"] = final_objective
+        result["objective"] = {
+            "primary_goal": final_objective["primary_goal"],
+            "risk_level": final_objective["risk_level"],
+        }
+
         result["objective_changed"] = objective_changed
 
         return jsonify(result), 200

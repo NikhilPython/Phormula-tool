@@ -249,8 +249,17 @@ def live_mtd_vs_previous():
         # ---------------------------
         # USER OBJECTIVE (SHARED WITH HISTORIC BI)
         # ---------------------------
-        user_objective = fetch_user_objective(user_id)
+        user_objective = fetch_user_objective(user_id, country)
         print("[LIVE BI] user_objective =", user_objective)
+        # ---------------------------
+        # PRIMARY GOAL & RISK (FOR UI)
+        # ---------------------------
+        primary_goal = None
+        primary_risk = None
+
+        if isinstance(user_objective, dict):
+            primary_goal = user_objective.get("primary_goal")
+            primary_risk = user_objective.get("risk_level")
 
         # ---------------------------
         # DATE RANGE
@@ -709,6 +718,11 @@ def live_mtd_vs_previous():
         # ---------------------------
         response_payload = {
             "message": "Live MTD vs previous-month-same-period comparison",
+            "objective_context": {   # 👈 NEW
+                "primary_goal": primary_goal,
+                "primary_risk": primary_risk,
+            },
+
             "periods": {
                 "previous": {"label": prev_label},
                 "previous_full": {"label": prev_label_full},
