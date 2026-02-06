@@ -250,7 +250,7 @@ def live_mtd_vs_previous():
         # USER OBJECTIVE (SHARED WITH HISTORIC BI)
         # ---------------------------
         user_objective = fetch_user_objective(user_id, country)
-        print("[LIVE BI] user_objective =", user_objective)
+    
         # ---------------------------
         # PRIMARY GOAL & RISK (FOR UI)
         # ---------------------------
@@ -308,8 +308,6 @@ def live_mtd_vs_previous():
 
         movement_context = build_movement_context(movement_series)
 
-        # DEBUG (remove after verification)
-        print("[LIVE BI] movement_context =", movement_context)
 
 
         # FULL previous month (charts)
@@ -569,18 +567,13 @@ def live_mtd_vs_previous():
 
         
 
-        # 🔍 DEBUG 1 — payload sanity
-        print("PAYLOAD → Prompt-1 keys:", payload_ai.keys())
-
 
         # ---------------------------
         # PROMPT-1 (ANALYSIS)
         # ---------------------------
         analysis = run_live_prompt_1_analysis(payload_ai)
 
-        # 🔍 DEBUG 2 — analysis output
-        print("ANALYSIS (P1):", json.dumps(analysis, indent=2))
-
+       
         # ---------------------------
         # PROMPT-1.5 (EXECUTIVE SUMMARY)
         # ---------------------------
@@ -597,9 +590,7 @@ def live_mtd_vs_previous():
             user_objective=user_objective,
         )
 
-        # 🔍 DEBUG 2.5 — summary output
-        print("SUMMARY (P1.5):", json.dumps(summary_out, indent=2))
-
+     
         # ===========================
         # EXTRACT EXECUTIVE SUMMARY  ✅ (THIS IS STEP 3)
         # ===========================
@@ -617,8 +608,6 @@ def live_mtd_vs_previous():
             user_objective=user_objective,
         )
 
-        # 🔍 DEBUG 3 — actions output
-        print("ACTIONS (P2):", json.dumps(actions, indent=2))
 
         # ===========================
         # BUILD RECOMMENDED ACTIONS (HISTORIC LOGIC CLONE)

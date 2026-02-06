@@ -59,7 +59,7 @@ def rolling_months(anchor_year: int, anchor_month: int, max_months: int = 24):
 
 
 DEFAULT_USER_OBJECTIVE = {
-    "primary_goal": "profit",   # profit | growth | rank | inventory_clearance | balanced
+    "primary_goal": "balanced",   # profit | growth | rank | inventory_clearance | balanced
     "risk_level": "balanced",   # conservative | balanced | aggressive
     "constraints": {
         "max_tacos": None,

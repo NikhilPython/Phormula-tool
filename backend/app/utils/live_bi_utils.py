@@ -1643,9 +1643,9 @@ PRODUCT-LEVEL DIAGNOSIS (MANDATORY)
 ────────────────────────────────────────
 
 For each SKU in focus_skus:
-- Assign diagnosis codes explaining performance pattern.
-- Use ONLY allowed diagnosis codes.
-- Select the MINIMUM number of codes needed.
+- Assign diagnosis codes explaining the dominant commercial pattern.
+- Use ONLY the allowed diagnosis codes.
+- Select the MINIMUM number of codes required.
 
 ALLOWED DIAGNOSIS CODES:
 - pricing_supports_volume
@@ -1654,11 +1654,40 @@ ALLOWED DIAGNOSIS CODES:
 - visibility_constraint
 - mixed_signal
 
-DIAGNOSIS RULES (STRICT):
-- If units are increasing → visibility_constraint is INVALID.
-- If ASP is declining AND units + sales are declining →
-  classify as visibility_constraint.
-- demand_weakness is allowed ONLY if pricing is stable or rising.
+DIAGNOSTIC DEFINITIONS (DETERMINISTIC):
+
+- pricing_supports_volume
+  → unit growth positive AND CM1 profit per unit declining
+
+- pricing_effective
+  → unit growth positive AND CM1 profit per unit stable or increasing
+
+- demand_weakness
+  → units and net sales declining while pricing is NOT reduced
+
+- visibility_constraint
+  → units and net sales declining while pricing is reduced
+
+- mixed_signal
+  → no dominant pricing or demand signal
+
+
+DIAGNOSIS PRECEDENCE (STRICT):
+
+1) UNIT DOMINANCE RULE  
+   If unit growth is positive, visibility_constraint is NOT allowed.
+
+2) PRICE-CUT FAILURE RULE  
+   If units and net sales decline AND pricing is reduced,  
+   classify as visibility_constraint (NOT demand_weakness).
+
+3) DEMAND WEAKNESS ELIGIBILITY  
+   demand_weakness is allowed ONLY when pricing is NOT reduced.
+
+
+Each SKU may have:
+- 1 primary diagnosis
+- Maximum 2 diagnosis codes.
 
 ────────────────────────────────────────
 OUTPUT RULES (NON-NEGOTIABLE)
@@ -1728,10 +1757,12 @@ You must explicitly cover ALL five metrics:
 3) CM1 Profit
 4) CM1 Profit per Unit
 5) ASP
+6) ACOS (Advertising Cost of Sales — advertising efficiency)
 
 Rules:
 - Each metric must appear at least once in either summary_text or metric_bullets.
 - CM1 Profit per Unit must be included even if flat or declining.
+- ACOS must be explicitly mentioned at least once.
 - If a metric shows limited movement, explicitly state that it remained stable or broadly unchanged.
 
 Metric interpretation rules:
@@ -1740,6 +1771,8 @@ Metric interpretation rules:
 - CM1 Profit represents total contribution margin.
 - CM1 Profit per Unit represents margin efficiency per sale.
 - ASP represents pricing discipline and mix signal.
+- ACOS represents advertising efficiency (lower ACOS = better efficiency, higher ACOS = weaker efficiency).
+
 
 Strict prohibitions:
 - Do not recommend actions.
@@ -1761,7 +1794,9 @@ Mandatory output format:
     "Net Sales summary",
     "CM1 Profit summary",
     "CM1 Profit per Unit summary",
-    "ASP summary"
+    "ASP summary",
+    "ACOS summary"
+
   ]
 }
 """
@@ -2351,6 +2386,8 @@ def _overall_3_bullets(qty_prev, qty_curr, sales_prev, sales_curr, prof_prev, pr
         f"Net sales {us} from {_fmt_money(sales_prev, symbol)} to {_fmt_money(sales_curr, symbol)} by {sp}.",
         f"CM1 profit {up} from {_fmt_money(prof_prev, symbol)} to {_fmt_money(prof_curr, symbol)} by {pp}.",
     ]
+
+
 def run_live_prompt_1_analysis(payload: dict) -> dict:
     resp = oa_client.chat.completions.create(
         model="gpt-4o",
@@ -2436,7 +2473,7 @@ def build_ai_summary(
     # Objective defaults (UNCHANGED)
     # =========================================================
     user_objective = user_objective or {
-        "primary_goal": "profit",
+        "primary_goal": "balanced",
         "risk_level": "balanced",
         "constraints": {},
     }
