@@ -496,7 +496,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                         className={`flex items-start gap-3 min-w-0 ${isVisible ? "opacity-100" : "opacity-40"}`}
                       >
                         <span
-                          className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full"
+                          className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full flex-none shrink-0"
+
                           style={{ backgroundColor: dot }}
                         />
 

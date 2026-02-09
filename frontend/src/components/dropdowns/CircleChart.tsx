@@ -449,7 +449,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
 
                       >
                         <span
-                          className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full"
+                          className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full flex-none shrink-0"
                           style={{ backgroundColor: item.color }}
                         />
 
