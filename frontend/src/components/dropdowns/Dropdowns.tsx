@@ -2745,38 +2745,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
-                  {/* <button
-                    type="button"
-                    data-no-expand
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFocus("trend");
-                    }}
-                    aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
-                    title={focusedChart === "trend" ? "Collapse" : "Expand"}
-                    className="rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md"
-                  >
-                    {focusedChart === "trend" ? (
-                      <CgPushLeft size={18} className="font-extrabold" />
-                    ) : (
-                      <CgPushRight size={18} className="font-extrabold" />
-                    )}
-
-                  </button> */}
-
-                  <div className="h-[50vh]">
+                  <div className={focusedChart === "trend" ? "h-[50vh]" : "h-[360px]"}>
                     <PerformanceTrendChart
                       range={range}
                       month={selectedMonth}
@@ -2791,6 +2760,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       onToggleExpand={() => toggleFocus("trend")}
                     />
                   </div>
+
                 </div>
               )}
 
@@ -2955,7 +2925,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   </button>
 
-                  <div className="h-[50vh]">
+                  <div className={focusedChart === "trend" ? "h-[50vh]" : "h-[360px]"}>
                     <PerformanceTrendChart
                       range={range}
                       quarter={selectedQuarter}
@@ -3147,8 +3117,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     )}
 
                   </button>
-                  <div className="h-[50vh]">
-                    <PerformanceTrendChart
+                  <div className={focusedChart === "trend" ? "h-[50vh]" : "h-[360px]"}>
+                    <PerformanceTrendChart 
                       range={range}
                       year={selectedYear}
                       countryName={initialCountryName}
