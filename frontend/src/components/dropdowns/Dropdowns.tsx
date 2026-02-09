@@ -2851,8 +2851,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4 mb-4">
-            <div className="flex-1 min-w-[300px]">
+          <div className="flex flex-col lg:flex-row gap-6 md:gap-4 mb-4">
+            <div className="w-full lg:flex-1">
               <CircleChart
                 range={range}
                 month={selectedMonth}
@@ -2862,7 +2862,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 onExportBase64Ready={setExpenseBreakdownPieBase64}
               />
             </div>
-            <div className="flex-1 min-w-[300px]">
+
+            <div className="w-full lg:flex-1">
               <CMchartofsku
                 range={range}
                 month={selectedMonth}
@@ -3044,8 +3045,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
-            <div className="flex-1 min-w-[300px]">
+          <div className="flex flex-col lg:flex-row gap-6 md:gap-4 mb-4">
+            <div className="w-full lg:flex-1">
               <CircleChart
                 range={range}
                 selectedQuarter={selectedQuarter}
@@ -3055,7 +3056,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 onExportBase64Ready={setExpenseBreakdownPieBase64}
               />
             </div>
-            <div className="flex-1 min-w-[300px]">
+            <div className="w-full lg:flex-1">
               <CMchartofsku
                 range={range}
                 selectedQuarter={selectedQuarter}
@@ -3118,7 +3119,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   </button>
                   <div className={focusedChart === "trend" ? "h-[50vh]" : "h-[360px]"}>
-                    <PerformanceTrendChart 
+                    <PerformanceTrendChart
                       range={range}
                       year={selectedYear}
                       countryName={initialCountryName}
@@ -3247,8 +3248,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
-            <div className="flex-1 min-w-[300px]">
+          <div className="flex flex-col lg:flex-row gap-6 md:gap-4 mb-4">
+            <div className="w-full lg:flex-1">
               <CircleChart
                 range={range}
                 year={selectedYear}
@@ -3258,7 +3259,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               />
             </div>
 
-            <div className="flex-1 min-w-[300px]">
+            <div className="w-full lg:flex-1">
               <CMchartofsku
                 range={range}
                 year={selectedYear}
