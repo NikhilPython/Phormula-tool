@@ -1399,11 +1399,6 @@ export default function InventoryReconciliationPage({ params }: Params) {
       </div>
 
       <div className="mt-4" id="inventory-pie-export">
-        {/* <InventoryTopProductsPie
-          key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
-          rows={displayRows}
-          title="Inventory Breakup"
-        /> */}
 
         <InventoryTopProductsPie
           key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
@@ -1411,11 +1406,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
           title="Inventory Breakup"
           exportTick={exportTick} // ✅ NEW
           onExportBase64Ready={(b64) => setPieBase64(b64)}
-        // onExportMetricsReady={(m) => setPieMetrics(m)} // optional: you can remove if not needed anywhere else
         />
-
       </div>
-
 
       {/* Multi-country modal (kept) */}
       {showMultiuseCountry && (

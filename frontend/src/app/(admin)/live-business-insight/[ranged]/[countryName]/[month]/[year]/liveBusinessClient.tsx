@@ -262,9 +262,9 @@ export default function LiveBusinessClient({
   const [fbSubmitting, setFbSubmitting] = useState<boolean>(false);
   const [fbSuccess, setFbSuccess] = useState<boolean>(false);
   const [objectiveContext, setObjectiveContext] = useState<{
-  primary_goal?: string;
-  primary_risk?: string;
-} | null>(null);
+    primary_goal?: string;
+    primary_risk?: string;
+  } | null>(null);
 
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const isGlobalData = () => normalizedCountry === 'global';
@@ -461,8 +461,8 @@ export default function LiveBusinessClient({
         if (saved.summaryText) setSummaryText(saved.summaryText);
         if (saved.overallSummary) setOverallSummary(saved.overallSummary);
         if (saved.objectiveContext) {
-    setObjectiveContext(saved.objectiveContext); // ✅ HERE
-  }
+          setObjectiveContext(saved.objectiveContext); // ✅ HERE
+        }
 
         setInsightDate(todayKey);
       }
@@ -531,7 +531,7 @@ export default function LiveBusinessClient({
       const actionsFromApi = res.data.overall_actions || [];
       const recommendedActionsFromApi = res.data.recommended_actions_mtd || {};
       const objectiveFromApi = res.data.objective_context || null;
-setObjectiveContext(objectiveFromApi);
+      setObjectiveContext(objectiveFromApi);
 
       setSummaryText(summaryTextFromApi);
       setOverallSummary(summaryBulletsFromApi);
@@ -1718,105 +1718,105 @@ setObjectiveContext(objectiveFromApi);
   };
 
   const ActionCard = ({
-  title,
-  metrics,
-  insight,
-  actions,
-}: {
-  title: string;
-  metrics: { label: string; value: string; color?: string }[];
-  insight: string;
-  actions: string[];
-}) => {
-  return (
-    <div className="bg-[#F5F7FA] border border-[#D9D9D9] rounded-xl p-4 space-y-2">
-      {/* Title */}
-      <div className="font-bold text-sm text-charcoal-600">
-       Product Name - {title}
-      </div>
-
-      {/* Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {metrics.map((m, i) => (
-          <div
-            key={i}
-            className="bg-white rounded-lg p-2 text-center shadow-sm"
-          >
-            <div className="text-xs text-gray-500">{m.label}</div>
-            <div
-              className="font-bold text-sm"
-              style={{ color: m.color || "#414042" }}
-            >
-              {m.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Insight */}
-      <p className="text-sm text-charcoal-600">
-        {insight}
-      </p>
-
-      {/* Actions */}
-      {actions.length > 0 && (
-  <div className="text-sm text-charcoal-600">
-    <span className="font-bold">Action – </span>
-    <span>{actions.join(" ")}</span>
-  </div>
-)}
-    </div>
-  );
-};
-
-const parseRecommendedAction = (raw: string) => {
-  const lines = raw
-    .split("\n")
-    .map(l => l.trim())
-    .filter(Boolean);
-
-  // 1️⃣ Product name = first non-empty line
-  const productName = lines[0];
-
-  const metrics: { label: string; value: string; color?: string }[] = [];
-  const actions: string[] = [];
-  const insightLines: string[] = [];
-
-  const metricRegex =
-    /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit)\s*:\s*(.+)$/i;
-
-  for (const line of lines.slice(1)) {
-    // 2️⃣ Metrics
-    const metricMatch = line.match(metricRegex);
-    if (metricMatch) {
-      const label = metricMatch[1];
-      const value = metricMatch[2];
-
-      metrics.push({
-        label,
-        value,
-        color: value.includes("-") ? "#FF5C5C" : "#5EA68E",
-      });
-      continue;
-    }
-
-    // 3️⃣ Action
-    if (line.toLowerCase().startsWith("action:")) {
-      actions.push(line.replace(/action\s*:\s*/i, ""));
-      continue;
-    }
-
-    // 4️⃣ Insight text
-    insightLines.push(line);
-  }
-
-  return {
-    productName,
+    title,
     metrics,
-    insight: insightLines.join(" "),
+    insight,
     actions,
+  }: {
+    title: string;
+    metrics: { label: string; value: string; color?: string }[];
+    insight: string;
+    actions: string[];
+  }) => {
+    return (
+      <div className="bg-[#F5F7FA] border border-[#D9D9D9] rounded-xl p-4 space-y-2">
+        {/* Title */}
+        <div className="font-bold text-sm text-charcoal-600">
+          Product Name - {title}
+        </div>
+
+        {/* Metrics */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {metrics.map((m, i) => (
+            <div
+              key={i}
+              className="bg-white rounded-lg p-2 text-center shadow-sm"
+            >
+              <div className="text-xs text-gray-500">{m.label}</div>
+              <div
+                className="font-bold text-sm"
+                style={{ color: m.color || "#414042" }}
+              >
+                {m.value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Insight */}
+        <p className="text-sm text-charcoal-600">
+          {insight}
+        </p>
+
+        {/* Actions */}
+        {actions.length > 0 && (
+          <div className="text-sm text-charcoal-600">
+            <span className="font-bold">Action – </span>
+            <span>{actions.join(" ")}</span>
+          </div>
+        )}
+      </div>
+    );
   };
-};
+
+  const parseRecommendedAction = (raw: string) => {
+    const lines = raw
+      .split("\n")
+      .map(l => l.trim())
+      .filter(Boolean);
+
+    // 1️⃣ Product name = first non-empty line
+    const productName = lines[0];
+
+    const metrics: { label: string; value: string; color?: string }[] = [];
+    const actions: string[] = [];
+    const insightLines: string[] = [];
+
+    const metricRegex =
+      /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit)\s*:\s*(.+)$/i;
+
+    for (const line of lines.slice(1)) {
+      // 2️⃣ Metrics
+      const metricMatch = line.match(metricRegex);
+      if (metricMatch) {
+        const label = metricMatch[1];
+        const value = metricMatch[2];
+
+        metrics.push({
+          label,
+          value,
+          color: value.includes("-") ? "#FF5C5C" : "#5EA68E",
+        });
+        continue;
+      }
+
+      // 3️⃣ Action
+      if (line.toLowerCase().startsWith("action:")) {
+        actions.push(line.replace(/action\s*:\s*/i, ""));
+        continue;
+      }
+
+      // 4️⃣ Insight text
+      insightLines.push(line);
+    }
+
+    return {
+      productName,
+      metrics,
+      insight: insightLines.join(" "),
+      actions,
+    };
+  };
 
 
   const formatBulletLine = (line: string) => {
@@ -2316,24 +2316,24 @@ const parseRecommendedAction = (raw: string) => {
         width: COMMON_WIDTH,
       },
       {
-  key: 'unitProfit',
-  header: isNewRev ? 'Unit Profit (%)' : 'CM1 Profit Per Unit (%)',
-  width: '190px',
-},
-{
-  key: 'profit',
-  header: isNewRev ? 'Profit (%)' : 'CM1 Profit Impact (%)',
-  width: '200px',
-},
-...(showAI
-  ? [
-      {
-        key: 'ai',
-        header: 'AI Insight',
-        width: '150px',
+        key: 'unitProfit',
+        header: isNewRev ? 'Unit Profit (%)' : 'CM1 Profit Per Unit (%)',
+        width: '190px',
       },
-    ]
-  : []),
+      {
+        key: 'profit',
+        header: isNewRev ? 'Profit (%)' : 'CM1 Profit Impact (%)',
+        width: '200px',
+      },
+      ...(showAI
+        ? [
+          {
+            key: 'ai',
+            header: 'AI Insight',
+            width: '150px',
+          },
+        ]
+        : []),
 
     ];
 
@@ -2670,14 +2670,14 @@ const parseRecommendedAction = (raw: string) => {
 
 
   const summaryMetricPoints = overallSummary.filter(
-  (b) => /%|£|\$/.test(b)
-);
+    (b) => /%|£|\$/.test(b)
+  );
 
-const summaryNarrative =
-  overallSummary.find((b) =>
-    b.toLowerCase().includes("business experienced")
-  ) ||
-  overallSummary[overallSummary.length - 1]; // safe fallback
+  const summaryNarrative =
+    overallSummary.find((b) =>
+      b.toLowerCase().includes("business experienced")
+    ) ||
+    overallSummary[overallSummary.length - 1]; // safe fallback
   console.log("123", overallSummary, recommendedActions, skuInsights);
 
   // =========================
@@ -2717,19 +2717,19 @@ const summaryNarrative =
                     <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
 
                     {summaryMetricPoints.length > 0 && (
-  <ul className="list-disc pl-5 space-y-1 pt-2">
-    {summaryMetricPoints.map((line, idx) => (
-      <li key={idx}>{formatBulletLine(line)}</li>
-    ))}
-  </ul>
-)}
+                      <ul className="list-disc pl-5 space-y-1 pt-2">
+                        {summaryMetricPoints.map((line, idx) => (
+                          <li key={idx}>{formatBulletLine(line)}</li>
+                        ))}
+                      </ul>
+                    )}
 
-{/* ✅ Executive summary LAST */}
-{summaryText && (
-  <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
-    {summaryText}
-  </div>
-)}
+                    {/* ✅ Executive summary LAST */}
+                    {summaryText && (
+                      <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
+                        {summaryText}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2745,80 +2745,80 @@ const summaryNarrative =
                       />
 
                       {objectiveContext && (
-  <div className=" p-3 rounded-lg bg-white border border-[#E5E7EB] mt-3">
-    <div className="text-xs text-gray-500 font-semibold mb-1">
-      Objective
-    </div>
+                        <div className=" p-3 rounded-lg bg-white border border-[#E5E7EB] mt-3">
+                          <div className="text-xs text-gray-500 font-semibold mb-1">
+                            Objective
+                          </div>
 
-    <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs 2xl:text-sm text-charcoal-600">
-      {objectiveContext.primary_goal && (
-        <div>
-          <span className="font-semibold">Primary Goal:</span>{" "}
-          <span className="capitalize">
-            {objectiveContext.primary_goal.replace("_", " ")}
-          </span>
-        </div>
-      )}
+                          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs 2xl:text-sm text-charcoal-600">
+                            {objectiveContext.primary_goal && (
+                              <div>
+                                <span className="font-semibold">Primary Goal:</span>{" "}
+                                <span className="capitalize">
+                                  {objectiveContext.primary_goal.replace("_", " ")}
+                                </span>
+                              </div>
+                            )}
 
-      {objectiveContext.primary_risk && (
-        <div>
-          <span className="font-semibold">Risk:</span>{" "}
-          <span className="capitalize">
-            {objectiveContext.primary_risk}
-          </span>
-        </div>
-      )}
-    </div>
-  </div>
-)}
+                            {objectiveContext.primary_risk && (
+                              <div>
+                                <span className="font-semibold">Risk:</span>{" "}
+                                <span className="capitalize">
+                                  {objectiveContext.primary_risk}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="space-y-3 ">
 
-                       <div className="bg-[#]  rounded-xl p-2 space-y-4">
-  {Object.entries(recommendedActions).map(([_, text], idx) => {
-    const parsed = parseRecommendedAction(text);
+                        <div className="bg-[#]  rounded-xl p-2 space-y-4">
+                          {Object.entries(recommendedActions).map(([_, text], idx) => {
+                            const parsed = parseRecommendedAction(text);
 
-    return (
-      <div key={idx} className="space-y-2">
-        {/* Product title */}
-        <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
-          {idx + 1}. Product Name – {parsed.productName}
-        </div>
+                            return (
+                              <div key={idx} className="space-y-2">
+                                {/* Product title */}
+                                <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
+                                  {idx + 1}. Product Name – {parsed.productName}
+                                </div>
 
-        {/* Metrics */}
-       <div className="flex flex-wrap  gap-x-2 gap-y-1 text-xs 2xl:text-sm ">
-  {parsed.metrics.map((m, i) => (
-    <div key={i} className="flex items-center gap-1">
-      <span className="text-charcoal-600 text-xs">
-        {m.label}:
-      </span>
-      <span
-        className="font-semibold"
-        style={{ color: m.color || "#414042" }}
-      >
-        {m.value}
-      </span>
-    </div>
-  ))}
-</div>
+                                {/* Metrics */}
+                                <div className="flex flex-wrap  gap-x-2 gap-y-1 text-xs 2xl:text-sm ">
+                                  {parsed.metrics.map((m, i) => (
+                                    <div key={i} className="flex items-center gap-1">
+                                      <span className="text-charcoal-600 text-xs">
+                                        {m.label}:
+                                      </span>
+                                      <span
+                                        className="font-semibold"
+                                        style={{ color: m.color || "#414042" }}
+                                      >
+                                        {m.value}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
 
 
-        {/* Insight */}
-        <p className="text-xs 2xl:text-sm text-charcoal-600">
-          {parsed.insight}
-        </p>
+                                {/* Insight */}
+                                <p className="text-xs 2xl:text-sm text-charcoal-600">
+                                  {parsed.insight}
+                                </p>
 
-        {/* Action */}
-        {parsed.actions.length > 0 && (
-          <div className="text-xs 2xl:text-sm text-charcoal-600">
-            <span className="font-bold">Action – </span>
-            <span>{parsed.actions.join(" ")}</span>
-          </div>
-        )}
-      </div>
-    );
-  })}
-</div>
+                                {/* Action */}
+                                {parsed.actions.length > 0 && (
+                                  <div className="text-xs 2xl:text-sm text-charcoal-600">
+                                    <span className="font-bold">Action – </span>
+                                    <span>{parsed.actions.join(" ")}</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
 
 
                       </div>
@@ -2834,13 +2834,13 @@ const summaryNarrative =
               <div className="flex flex-col 2xl:flex-row gap-4  xl:items-left xl:justify-between">
                 {/* <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" /> */}
                 <div className="flex flex-wrap items-baseline gap-2 font-bold ">
-              
+
                   <PageBreadcrumb
                     pageTitle={`SKU Analysis MTD`}
                     variant="page"
                     align="left"
                   />
-                 
+
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-between">
@@ -2895,7 +2895,7 @@ const summaryNarrative =
                     data={tableData}
                     stickyHeader
                     scrollY
-                    maxHeight="60vh"
+                    // maxHeight="60vh"
                     paginate={false} // ✅ total row always visible at bottom
                     className="rounded-xl"
                     tableClassName="w-full"
@@ -2909,7 +2909,14 @@ const summaryNarrative =
 
               )}
               <div className="flex justify-center mt-2">
-                <div className="flex items-center gap-10 flex-wrap text-xs 2xl:text-sm text-[#414042] mt-1">
+                <div
+                  className="
+      grid grid-cols-2 gap-3
+      sm:grid-cols-4 
+      lg:flex lg:items-center lg:gap-10 lg:flex-wrap
+      text-xs 2xl:text-sm text-[#414042] mt-1
+    "
+                >
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-flex items-center gap-2 text-[#5EA68E] font-bold">
                       <FaArrowUp className="text-[10px] 2xl:text-xs" /> High growth
@@ -2936,6 +2943,7 @@ const summaryNarrative =
                   </span>
                 </div>
               </div>
+
 
             </div>
           </div>

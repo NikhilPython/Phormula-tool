@@ -99,63 +99,12 @@ export default function InventoryTopProductsPie({
         toNum(r?.ending_total ?? r?.__ending_total ?? r?.EndingTotal ?? r?.endingTotal);
 
     const MIN_PRODUCTS = 5;
-
-    //   const { displayData, apiTotal } = useMemo(() => {
-    //     const all = rows || [];
-    //     if (!all.length) return { displayData: [] as Slice[], apiTotal: 0 };
-
-    //     const totalRow = all.find(isGrandTotalRow) || null;
-    //     const apiTotalVal = totalRow ? getInventoryCount(totalRow) : 0;
-
-    //     // Only actual products (exclude total/others rows)
-    //     const productRows = all.filter(
-    //       (r) => !isGrandTotalRow(r) && String(r?.msku || "").toUpperCase() !== "OTHERS"
-    //     );
-
-    //     const items = productRows
-    //       .map((r) => ({
-    //         name: String(r?.product_name || r?.msku || "Unknown"),
-    //         value: getInventoryCount(r),
-    //       }))
-    //       .filter((x) => x.value > 0);
-
-    //     // If API total is missing, fallback to sum of all products (last resort)
-    //     const safeTotal = apiTotalVal > 0 ? apiTotalVal : items.reduce((s, d) => s + d.value, 0);
-
-    //     if (!items.length || safeTotal <= 0) {
-    //       return { displayData: [] as Slice[], apiTotal: safeTotal };
-    //     }
-
-    //     // Sort desc
-    //     const sorted = [...items].sort((a, b) => b.value - a.value);
-
-    //     // Keep top MIN_PRODUCTS
-    //     const kept = sorted.slice(0, Math.min(MIN_PRODUCTS, sorted.length));
-    //     const keptSum = kept.reduce((s, d) => s + d.value, 0);
-
-    //     // Others must be "API Total - keptSum"
-    //     const othersValue = Math.max(0, safeTotal - keptSum);
-
-    //     const rebuiltKept: Slice[] = kept.map((d) => ({
-    //       ...d,
-    //       pct: (d.value / safeTotal) * 100,
-    //     }));
-
-    //     const final: Slice[] =
-    //       othersValue > 0
-    //         ? [...rebuiltKept, { name: "Others", value: othersValue, pct: (othersValue / safeTotal) * 100 }]
-    //         : rebuiltKept;
-
-    //     return { displayData: final, apiTotal: safeTotal };
-    //   }, [rows]);
-
     const TOP_N = 5;
 
     const { displayData, apiTotal } = useMemo(() => {
         const all = rows || [];
         if (!all.length) return { displayData: [] as Slice[], apiTotal: 0 };
 
-        // Only actual products (exclude total/others rows)
         const productRows = all.filter(
             (r) =>
                 !isGrandTotalRow(r) &&
@@ -439,7 +388,7 @@ export default function InventoryTopProductsPie({
 
     return (
         <div className="relative w-full h-full rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 flex flex-col">
-            <div className="mb-1 w-fit mx-auto md:mx-0">
+            <div className="mb-1 w-fit mx-right md:mx-0">
                 <PageBreadcrumb pageTitle={title} variant="page" align="left" textSize="2xl" />
             </div>
 
