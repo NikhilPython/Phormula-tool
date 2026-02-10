@@ -640,7 +640,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
 return (
   <div
     className={`w-full min-h-0 overflow-hidden flex flex-col ${
-      props.isExpanded ? "h-[470px]" : "h-[500px]"
+      props.isExpanded ? "h-[310px] 2xl:h-[470px]" : "h-[375px] 2xl:h-[500px]"
     }`}
   >
     <div className="shrink-0 flex flex-col md:flex-row items-center md:items-start justify-between gap-3">

@@ -658,7 +658,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
 
   return (
-    <div className="flex gap-4">
+    <div className="flex flex-col md:flex-row gap-4">
       <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
         <div className="space-y-3">
           <PageBreadcrumb
