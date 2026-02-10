@@ -374,7 +374,7 @@ return (
         {/* ✅ same as other chart: column on tablet/below, row on xl+ */}
         <div className="relative w-full h-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
           {/* LEFT: PIE */}
-          <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[4460px]">
+          <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[460px]">
             <Pie
               ref={chartRef}
               data={chartData}
