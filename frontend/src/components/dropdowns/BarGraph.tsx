@@ -529,37 +529,12 @@ const Bargraph: React.FC<BargraphProps> = ({
               minRotation: 0,
               autoSkip: false,
               padding: 8,
-              // callback: (_value, index) => {
-              //   const label = String(labels[index] ?? "");
-
-              //   // wrap by words into 2 lines (tweak maxLineLength if needed)
-              //   const maxLineLength = 10; // characters per line
-              //   const words = label.split(" ");
-              //   const lines: string[] = [];
-
-              //   let line = "";
-              //   for (const w of words) {
-              //     const test = line ? `${line} ${w}` : w;
-              //     if (test.length > maxLineLength && line) {
-              //       lines.push(line);
-              //       line = w;
-              //     } else {
-              //       line = test;
-              //     }
-              //   }
-              //   if (line) lines.push(line);
-
-              //   return lines; // ✅ multi-line label
-              // },
               callback: (_value, index) => {
-                // ✅ choose label source explicitly
                 const raw = isCollapsed
                   ? String(labels[index] ?? "")           // short labels
                   : String(fullLabels[index] ?? "");      // full labels
 
                 if (isCollapsed) return raw; // no wrap in collapsed
-
-                // wrap expanded labels
                 const maxLineLength = 10;
                 const words = raw.split(" ");
                 const lines: string[] = [];

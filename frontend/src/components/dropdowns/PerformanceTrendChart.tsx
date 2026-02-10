@@ -638,10 +638,8 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
   }, [props.data]);
 
   return (
-    <div
-      className={`w-full min-h-0 overflow-hidden flex flex-col ${props.isExpanded ? "h-[310px] 2xl:h-[470px]" : "h-[375px] 2xl:h-[500px]"
-        }`}
-    >
+  <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
+
       <div className="shrink-0 flex items-center justify-between gap-3 w-full">
 
         <PageBreadcrumb pageTitle="Performance Trend" variant="page" textSize="2xl" />
