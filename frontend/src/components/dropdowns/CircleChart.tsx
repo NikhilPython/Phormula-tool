@@ -336,7 +336,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
       animation: { duration: 0 },
 
       // radius: isLaptop ? "91%" : "100%",
-      radius: isLaptop ? "100%" : isDesktop ? "95%" : "100%",
+      radius: isLaptop ? "92%" : isDesktop ? "95%" : "100%",
 
       elements: {
         arc: {
@@ -439,7 +439,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
         {displayChartData && legendModel ? (
           <div className="relative w-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
             {/* LEFT: PIE */}
-            <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[360px]">
+            <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[287px] xl:h-[300px] 2xl:h-[360px]">
 
               <Pie
                 // className="!block"
@@ -456,7 +456,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
             <div
               className="w-full xl:shrink-0 xl:self-center overflow-y-auto overflow-x-hidden pr-1 flex justify-center xl:justify-start"
               style={{
-                width: isDesktop ? 260 : isLaptop ? 180 : "100%",
+                width: isDesktop ? 260 : isLaptop ? 170 : "100%",
                 maxHeight: "100%",
               }}
             >

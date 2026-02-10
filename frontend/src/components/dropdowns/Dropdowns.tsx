@@ -3238,7 +3238,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
+          <div className="flex flex-wrap justify-between gap-6 items-stretch md:gap-4">
             <div className="flex-1 min-w-[300px]">
               <CircleChart
                 range={range}
