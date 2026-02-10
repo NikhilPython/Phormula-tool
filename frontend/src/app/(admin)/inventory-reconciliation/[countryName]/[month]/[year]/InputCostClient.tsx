@@ -229,6 +229,27 @@ const formatPeriodLabel = (monthName: string, year4: string) => {
 };
 
 
+const formatQuarterLabel = (q: string, year4: string) => {
+  const yy = String(year4 || "").slice(-2);
+  const qq = String(q || "").toUpperCase().trim(); // "Q1"..."Q4"
+  return `${qq}'${yy}`;
+};
+
+const buildReconFilename = (range: Range, opts: {
+  month: string;
+  quarter: string;
+  year: string;
+}) => {
+  if (range === "monthly") {
+    return `Inventory Reconciliation ${formatPeriodLabel(opts.month, opts.year)}`;
+  }
+  if (range === "quarterly") {
+    return `Inventory Reconciliation ${formatQuarterLabel(opts.quarter, opts.year)}`;
+  }
+  // yearly
+  return `Inventory Reconciliation ${opts.year}`;
+};
+
 export default function InventoryReconciliationPage({ params }: Params) {
 
   // ✅ profile data (API)
@@ -284,27 +305,27 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const [selectedMonth, setSelectedMonth] = useState<string>(monthParam || currentMonth);
   const [selectedQuarter, setSelectedQuarter] = useState<string>("Q1");
   const [selectedYear, setSelectedYear] = useState<string>(yearParam || currentYear);
-const [exportTick, setExportTick] = useState(0);
+  const [exportTick, setExportTick] = useState(0);
 
-const isNA =
-  monthParam?.toLowerCase() === "na" ||
-  yearParam?.toLowerCase() === "na";
+  const isNA =
+    monthParam?.toLowerCase() === "na" ||
+    yearParam?.toLowerCase() === "na";
 
-const hasValidPeriod = !isNA;
+  const hasValidPeriod = !isNA;
 
 
 
   // ✅ IMPORTANT: sync state with URL params AFTER state exists
   useEffect(() => {
-  if (isNA) {
-    setSelectedMonth("");
-    setSelectedYear("");
-    return;
-  }
+    if (isNA) {
+      setSelectedMonth("");
+      setSelectedYear("");
+      return;
+    }
 
-  if (monthParam) setSelectedMonth(monthParam);
-  if (yearParam) setSelectedYear(yearParam);
-}, [monthParam, yearParam, isNA]);
+    if (monthParam) setSelectedMonth(monthParam);
+    if (yearParam) setSelectedYear(yearParam);
+  }, [monthParam, yearParam, isNA]);
 
 
 
@@ -341,7 +362,7 @@ const hasValidPeriod = !isNA;
     null
   );
 
-  
+
 
   /* ================= AUTH ================= */
   const authHeaders = () => {
@@ -444,10 +465,10 @@ const hasValidPeriod = !isNA;
 
   const runDBFetchForFilters = async () => {
     if (!hasValidPeriod) {
-    setRows([]);     // real rows clear
-    setMeta(null);
-    return;
-  }
+      setRows([]);     // real rows clear
+      setMeta(null);
+      return;
+    }
     setFetching(true);
     try {
       const country = countryName;
@@ -482,36 +503,36 @@ const hasValidPeriod = !isNA;
   }, []);
 
   // Seed once per year (only when year changes or first time) + fetch DB
-useEffect(() => {
-  if (pageLoading) return;
+  useEffect(() => {
+    if (pageLoading) return;
 
-  // 🚨 NA/NA case → NO seed, NO API
-  if (!hasValidPeriod) {
-    setRows([]);
-    setMeta(null);
-    return;
-  }
-
-  const doSeedThenFetch = async () => {
-    try {
-      await seedAmazonLedgerOnce(selectedYear);
-    } catch (e: any) {
-      console.error(e);
-      setModalMessage(e?.message || "Seed failed");
-      setShowModal(true);
-    } finally {
-      await runDBFetchForFilters();
+    // 🚨 NA/NA case → NO seed, NO API
+    if (!hasValidPeriod) {
+      setRows([]);
+      setMeta(null);
+      return;
     }
-  };
 
-  if (!initializedRef.current) {
-    initializedRef.current = true;
+    const doSeedThenFetch = async () => {
+      try {
+        await seedAmazonLedgerOnce(selectedYear);
+      } catch (e: any) {
+        console.error(e);
+        setModalMessage(e?.message || "Seed failed");
+        setShowModal(true);
+      } finally {
+        await runDBFetchForFilters();
+      }
+    };
+
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      void doSeedThenFetch();
+      return;
+    }
+
     void doSeedThenFetch();
-    return;
-  }
-
-  void doSeedThenFetch();
-}, [selectedYear, countryName, pageLoading]);
+  }, [selectedYear, countryName, pageLoading]);
 
 
 
@@ -539,20 +560,28 @@ useEffect(() => {
     return Object.keys(first);
   }, [rows]);
 
-  
+
 
   const displayRows = useMemo(() => {
     if (!rows || rows.length === 0) return [];
 
     // Separate out any backend GRAND TOTAL row (if present)
     const grandTotalRow = rows.find(isTotalRow) || null;
+
+    // Only actual products (exclude total rows)
     const dataRows = rows.filter((r) => !isTotalRow(r));
 
-    // Take first 9 data rows
-    const top = dataRows.slice(0, 9);
-    const remaining = dataRows.slice(9);
+    // ✅ Sort products by "Inventory at month end" (Total) DESC
+    // Using ending_total since that is the month-end total shown in your group.
+    const sortedDataRows = [...dataRows].sort((a, b) => {
+      return toNum(b?.ending_total) - toNum(a?.ending_total);
+    });
 
-    // Keys we should sum for numeric totals (sum all numeric-like keys seen in data)
+    // Take first 9 data rows
+    const top = sortedDataRows.slice(0, 9);
+    const remaining = sortedDataRows.slice(9);
+
+    // Keys we should sum for numeric totals
     const keys = Array.from(
       new Set(
         dataRows.flatMap((r) =>
@@ -574,8 +603,7 @@ useEffect(() => {
       out.push(others);
     }
 
-    // Add TOTAL at end
-    // Prefer backend grand total if available, else compute from all dataRows
+    // Add TOTAL at end (prefer backend grand total)
     const total =
       grandTotalRow
         ? { ...grandTotalRow, id: '__TOTAL__', __isTotal: true }
@@ -591,6 +619,7 @@ useEffect(() => {
     return out;
   }, [rows]);
 
+
   const totalRow = useMemo(() => {
     const r = displayRows?.find((x) => x?.__isTotal === true) || null;
     return r;
@@ -599,9 +628,9 @@ useEffect(() => {
   const pieSourceRow = selectedRow ?? totalRow;
 
   const effectiveRows = useMemo(() => {
-  if (!hasValidPeriod) return DUMMY_ROWS;
-  return displayRows;
-}, [hasValidPeriod, displayRows]);
+    if (!hasValidPeriod) return DUMMY_ROWS;
+    return displayRows;
+  }, [hasValidPeriod, displayRows]);
 
 
   // Sign row (stable sets)
@@ -1166,15 +1195,21 @@ useEffect(() => {
     return cols;
   }, [leftCols, groups, singleCols]);
 
+  // const pieRows = useMemo(() => {
+  //   return effectiveRows.filter(
+  //     (r) =>
+  //       !r?.__isTotal &&
+  //       String(r?.product_name || "").toUpperCase() !== "GRAND TOTAL" &&
+  //       String(r?.product_name || "").toUpperCase() !== "TOTAL" &&
+  //       String(r?.product_name || "").toUpperCase() !== "OTHERS"
+  //   );
+  // }, [effectiveRows]);
+
   const pieRows = useMemo(() => {
-  return effectiveRows.filter(
-    (r) =>
-      !r?.__isTotal &&
-      String(r?.product_name || "").toUpperCase() !== "GRAND TOTAL" &&
-      String(r?.product_name || "").toUpperCase() !== "TOTAL" &&
-      String(r?.product_name || "").toUpperCase() !== "OTHERS"
-  );
-}, [effectiveRows]);
+    const dataOnly = (rows || []).filter((r) => !isTotalRow(r));
+    return [...dataOnly].sort((a, b) => toNum(b?.ending_total) - toNum(a?.ending_total));
+  }, [rows]);
+
 
   // ✅ Build export rows using getValue() so Excel matches the UI cells
   const buildExcelRows = useCallback(() => {
@@ -1228,63 +1263,51 @@ useEffect(() => {
     });
   }, [rows, getExpandedExportCols, getValue]);
 
+  const handleDownloadXLSX = async () => {
+    const dataRows = buildReconExportDataRows();
+    if (!dataRows.length) return;
 
-  // const handleDownloadXLSX = async () => {
-  //   const dataRows = buildReconExportDataRows();
-  //   if (!dataRows.length) return;
+    const periodLabel =
+      range === "monthly"
+        ? formatPeriodLabel(selectedMonth, selectedYear)
+        : range === "quarterly"
+          ? formatQuarterLabel(selectedQuarter, selectedYear)
+          : selectedYear;
 
-  //   const periodLabel = formatPeriodLabel(selectedMonth, selectedYear); // ✅ Dec'25
 
-  //   exportInventoryReconExcel({
-  //     filename: "Inventory_Reconciliation.xlsx",
-  //     titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
-  //     countryName,
-  //     titleCountry: countryName?.toUpperCase(),
-  //     platformLabel: "Amazon",
-  //     periodLabel,         // ✅ Dec'25
-  //     companyName,
-  //     brandName,
-  //     dataRows,
-  //   });
-  // };
+    // ✅ force pie to regenerate a fresh composed image (pie + legend metrics)
+    setExportTick((t) => t + 1);
 
- const handleDownloadXLSX = async () => {
-  const dataRows = buildReconExportDataRows();
-  if (!dataRows.length) return;
+    // wait 2 frames so chart canvas + composed export canvas are up-to-date
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
-  const periodLabel = formatPeriodLabel(selectedMonth, selectedYear);
+    if (!pieBase64Ref.current) {
+      setModalMessage("Pie export image not ready. Please click Download again.");
+      setShowModal(true);
+      return;
+    }
 
-  // ✅ force pie to regenerate a fresh composed image (pie + legend metrics)
-  setExportTick((t) => t + 1);
+    const filenameBase = buildReconFilename(range, {
+      month: selectedMonth,
+      quarter: selectedQuarter,
+      year: selectedYear,
+    });
 
-  // wait 2 frames so chart canvas + composed export canvas are up-to-date
-  await new Promise<void>((r) => requestAnimationFrame(() => r()));
-  await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    exportInventoryReconExcel({
+      filename: `${filenameBase}.xlsx`,
+      titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
+      countryName,
+      titleCountry: countryName?.toUpperCase(),
+      platformLabel: "Amazon",
+      periodLabel,
+      companyName,
+      brandName,
+      dataRows,
+      chartBase64: pieBase64Ref.current,
+    });
 
-  if (!pieBase64Ref.current) {
-    setModalMessage("Pie export image not ready. Please click Download again.");
-    setShowModal(true);
-    return;
-  }
-
-  exportInventoryReconExcel({
-    filename: "Inventory_Reconciliation.xlsx",
-    titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
-    countryName,
-    titleCountry: countryName?.toUpperCase(),
-    platformLabel: "Amazon",
-    periodLabel,
-    companyName,
-    brandName,
-    dataRows,
-
-    // ✅ only pass composed PNG (includes legend metrics inside the image)
-    chartBase64: pieBase64Ref.current,
-
-    // ❌ do NOT pass metrics for Excel cell text (keep tab2 clean)
-    // chartMetrics: pieMetricsRef.current,
-  });
-};
+  };
 
 
   if (pageLoading) {
@@ -1344,33 +1367,34 @@ useEffect(() => {
       <div
         className={[
           "mt-5 w-full rounded-lg border border-gray-200 bg-white",
-          anyExpanded ? "overflow-x-auto" : "overflow-x-hidden",
+          "overflow-x-auto",
+          "[-webkit-overflow-scrolling:touch]",
         ].join(" ")}
       >
 
-       {effectiveRows.length === 0 ? (
-  <div className="p-6 text-sm text-neutral-600">No rows returned.</div>
-) : (
-  <GroupedCollapsibleTable
-    rows={effectiveRows}
-    getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
-    leftCols={leftCols}
-    groups={groups}
-    singleCols={singleCols}
-    getValue={getValue}
-    getRowClassName={getRowClassName}
-    onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
-    tableClassName={
-      anyExpanded
-        ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-        : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-    }
-    headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-    headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
-    showSignRowInBody
-    getSignForCol={getSignForCol}
-  />
-)}
+        {effectiveRows.length === 0 ? (
+          <div className="p-6 text-sm text-neutral-600">No rows returned.</div>
+        ) : (
+          <GroupedCollapsibleTable
+            rows={effectiveRows}
+            getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
+            leftCols={leftCols}
+            groups={groups}
+            singleCols={singleCols}
+            getValue={getValue}
+            getRowClassName={getRowClassName}
+            onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+            tableClassName={
+              anyExpanded
+                ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+            }
+            headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+            headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+            showSignRowInBody
+            getSignForCol={getSignForCol}
+          />
+        )}
 
       </div>
 
@@ -1382,13 +1406,13 @@ useEffect(() => {
         /> */}
 
         <InventoryTopProductsPie
-  key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
-  rows={pieRows}
-  title="Inventory Breakup"
-  exportTick={exportTick} // ✅ NEW
-  onExportBase64Ready={(b64) => setPieBase64(b64)}
-  // onExportMetricsReady={(m) => setPieMetrics(m)} // optional: you can remove if not needed anywhere else
-/>
+          key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
+          rows={pieRows}
+          title="Inventory Breakup"
+          exportTick={exportTick} // ✅ NEW
+          onExportBase64Ready={(b64) => setPieBase64(b64)}
+        // onExportMetricsReady={(m) => setPieMetrics(m)} // optional: you can remove if not needed anywhere else
+        />
 
       </div>
 
