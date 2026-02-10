@@ -1530,33 +1530,9 @@ const handleDownloadExcel = useCallback(async () => {
   return (
     <>
       <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex  gap-3 flex-row items-center justify-between">
           <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
             <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" />
-            {/* <PageBreadcrumb
-              pageTitle={
-                range === "monthly" ? (
-                  <>
-                    Monthly P&amp;L - Product Breakdown{" "}
-                  
-                  </>
-                ) : range === "quarterly" ? (
-                  <>
-                    Quarterly P&amp;L - Product Breakdown{" "}
-                  
-                  </>
-                ) : (
-                  <>
-                    Yearly P&amp;L - Product Breakdown{" "}
-                   
-                  </>
-                )
-              }
-              variant="page"
-              align="left"
-              textSize="2xl"
-            /> */}
-
             <span className="text-[#5EA68E] text-lg sm:text-2xl md:text-2xl font-bold">({currencySymbol})</span>
           </div>
 

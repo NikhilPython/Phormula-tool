@@ -1978,10 +1978,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     relative
   "
     >
-      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4  border-b border-gray-200 ">
+      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 ">
 
         {/* LEFT: Title + Subtitle */}
-        <div className="flex flex-col leading-tight w-full md:w-auto mb-5">
+        <div className="flex flex-col leading-tight w-full md:w-auto md:mb-5">
           <div className="flex items-baseline gap-2">
             <PageBreadcrumb
               pageTitle="Financial Metrics -"
@@ -2793,7 +2793,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       }}
                       aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
                       title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className="rounded-md
+                      className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -2973,7 +2973,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       }}
                       aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
                       title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className="rounded-md
+                      className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -3108,7 +3108,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     }}
                     aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
                     title={focusedChart === "trend" ? "Collapse" : "Expand"}
-                    className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
+                    className=" absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
                   >
                     {focusedChart === "trend" ? (
                       <CgPushLeft size={18} className="font-extrabold" />
@@ -3139,15 +3139,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {/* RIGHT card (PnL) */}
               {(focusedChart === null || focusedChart === "pnl") && (
                 <div
-                  // role="button"
-                  // tabIndex={0}
-                  // onClick={(e) => {
-                  //   const t = e.target as HTMLElement;
-                  //   if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                  //   toggleFocus("pnl");
-                  // }}
-
-                  // onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
                     "cursor-default select-none",
@@ -3176,7 +3167,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       }}
                       aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
                       title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className="rounded-md
+                      className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
