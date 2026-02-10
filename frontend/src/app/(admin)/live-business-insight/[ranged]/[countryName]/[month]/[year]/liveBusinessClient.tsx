@@ -2853,7 +2853,7 @@ const summaryNarrative =
                     value={activeTab}
                     options={tabOptions}
                     onChange={handleTabChange}
-                    className="bg-white border border-[#D9D9D9E5] shadow-sm"
+                    className="bg-white"
                     textSizeClass="text-xs 2xl:text-sm"
                   />
 
