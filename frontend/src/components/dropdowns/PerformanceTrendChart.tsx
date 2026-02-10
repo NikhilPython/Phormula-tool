@@ -638,12 +638,11 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
   }, [props.data]);
 
 return (
-  // <div
-  //   className={`w-full min-h-0 overflow-hidden flex flex-col ${
-  //     props.isExpanded ? "h-[310px]" : "h-[335px]"
-  //   }`}
-  // >
-   <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
+  <div
+    className={`w-full min-h-0 overflow-hidden flex flex-col ${
+      props.isExpanded ? "h-[470px]" : "h-[500px]"
+    }`}
+  >
     <div className="shrink-0 flex flex-col md:flex-row items-center md:items-start justify-between gap-3">
       <PageBreadcrumb pageTitle="Performance Trend" variant="page" textSize="2xl" />
 

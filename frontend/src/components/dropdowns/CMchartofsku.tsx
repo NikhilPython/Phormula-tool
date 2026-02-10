@@ -504,7 +504,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                         <div className="min-w-0">
                           {/* line 1: Product name */}
                           <div
-                            className={`truncate text-[10px]  ${isVisible ? "" : "line-through"}`}
+                            className={`truncate text-[10px] 2xl:text-xs ${isVisible ? "" : "line-through"}`}
                             style={{ color: "#414042" }}
                             title={slice.name}
                           >
@@ -513,7 +513,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
 
                           {/* line 2: (value)(% share)(% change) */}
-                          <div className="text-[10px] break-words" style={{ color: "#414042" }}>
+                          <div className="text-[10px] 2xl:text-xs break-words" style={{ color: "#414042" }}>
                             {currencySymbol}
                             {value.toLocaleString(undefined, {
                               minimumFractionDigits: 2,
