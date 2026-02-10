@@ -400,10 +400,10 @@ const CircleChart: React.FC<CircleChartProps> = ({
         className={`flex-1 min-h-0 w-full ${allValuesZero ? "opacity-30" : "opacity-100"} transition-opacity duration-300`}
       >
         {displayChartData && legendModel ? (
-          <div className="relative w-full h-full flex items-center gap-6">
-
+          <div className="relative w-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
             {/* LEFT: PIE */}
-            <div className="flex-1 min-w-0 h-[260px] sm:h-[280px] md:h-[300px] 2xl:h-[360px]">
+            <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[360px]">
+
               <Pie
                 // className="!block"
                 ref={chartRef}
@@ -417,13 +417,15 @@ const CircleChart: React.FC<CircleChartProps> = ({
 
             {/* RIGHT: CUSTOM LEGEND (like CM1 breakdown style) */}
             <div
-              className="shrink-0 overflow-auto pr-1"
+              className="w-full xl:shrink-0 xl:self-center overflow-y-auto overflow-x-hidden pr-1 flex justify-center xl:justify-start"
               style={{
-                width: isDesktop ? 260 : isLaptop ? 120 : 240,
+                width: isDesktop ? 260 : isLaptop ? 180 : "100%",
                 maxHeight: "100%",
               }}
             >
-              <div className="flex flex-col gap-1 2xl:gap-4">
+              <div className="grid grid-cols-3 md:grid-cols-3 xl:flex xl:flex-col gap-x-10 gap-y-2 xl:gap-y-1 2xl:gap-y-4 w-fit">
+
+
                 {legendModel.map((item) => {
                   const chart = chartRef.current;
                   const isVisible = chart ? chart.getDataVisibility(item.index) : true;
@@ -432,7 +434,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
                     <button
                       key={`${item.fullLabel}-${item.index}`}
                       type="button"
-                      className="text-left"
+                      className="text-left w-full min-w-0"
+
                       onClick={() => {
                         const c = chartRef.current;
                         if (!c) return;
@@ -442,36 +445,26 @@ const CircleChart: React.FC<CircleChartProps> = ({
                       }}
                     >
                       <div
-                        className={`flex items-start gap-3 ${isVisible ? "opacity-100" : "opacity-40"
-                          }`}
+                        className={`flex items-start gap-3 min-w-0 ${isVisible ? "opacity-100" : "opacity-40"}`}
+
                       >
                         <span
-                          className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full"
+                          className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full flex-none shrink-0"
                           style={{ backgroundColor: item.color }}
                         />
 
                         <div className="min-w-0">
                           {/* line 1: Label */}
                           <div
-                            className={`truncate ${isVisible ? "" : "line-through"
-                              }`}
-                            style={{
-                              fontSize: isLaptop ? 10 : 12,
-                              color: "#414042",
-                            }}
+                            className={`truncate text-[10px] ${isVisible ? "" : "line-through"}`}
+                            style={{ color: "#414042" }}
                             title={item.fullLabel}
                           >
                             {item.label}
                           </div>
 
                           {/* line 2: (value) (percentage) */}
-                          <div
-                            className="whitespace-nowrap"
-                            style={{
-                              fontSize: isLaptop ? 10 : 12,
-                              color: "#414042",
-                            }}
-                          >
+                          <div className="text-[10px] break-words" style={{ color: "#414042" }}>
                             {currencySymbol}
                             {item.value.toLocaleString(undefined, {
                               minimumFractionDigits: 2,

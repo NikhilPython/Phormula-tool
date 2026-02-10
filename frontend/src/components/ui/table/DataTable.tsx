@@ -40,11 +40,6 @@ type DataTableProps<T extends Row> = {
   loading?: boolean;
   loaderHeight?: number | string;
 
-  /**
-   * ✅ New: header wrap control
-   * This sets the default max-width for headers so they wrap naturally
-   * instead of forcing horizontal scroll.
-   */
   headerMaxWidth?: number; // default 140
 };
 
@@ -66,7 +61,7 @@ export default function DataTable<T extends Row>({
   onPageChange,
   loading = false,
   loaderHeight = 260,
-  headerMaxWidth = 110, // ✅ tune this (120–180 usually best)
+  headerMaxWidth = 110,
 }: DataTableProps<T>) {
   const containerStyle: React.CSSProperties = {
     maxHeight: scrollY
@@ -108,7 +103,7 @@ export default function DataTable<T extends Row>({
         )}
         style={{ minHeight: loaderStyleHeight }}
       >
-                   <Loader fullscreen transparent />
+        <Loader fullscreen transparent />
       </div>
     );
   }
@@ -136,7 +131,6 @@ export default function DataTable<T extends Row>({
 
   const pageItems = getPageItems(page, totalPages);
 
-  // keep your existing capitalization behavior (but NO "()" splitting)
   const formatHeader = (header: React.ReactNode) => {
     if (typeof header !== "string") return header;
 
@@ -160,17 +154,19 @@ export default function DataTable<T extends Row>({
   };
 
   const thStyle = (col: ColumnDef<T>): React.CSSProperties | undefined => {
-    if (!col.width) return undefined; // ✅ don't force widths globally
+    if (!col.width) return undefined;
     return { width: col.width, maxWidth: col.width };
   };
-
 
   return (
     <div
       className={clsx(
         "relative w-full max-w-full border border-slate-200 bg-white shadow-sm",
-        // ✅ allow scroll ONLY when truly needed
-        "overflow-x-auto",
+
+        // ✅ Mobile/Tablet: scroll horizontally
+        // ✅ Desktop+: no horizontal scroll (keeps current look)
+        "overflow-x-auto lg:overflow-x-hidden",
+
         scrollY && "overflow-y-auto",
         className
       )}
@@ -178,12 +174,16 @@ export default function DataTable<T extends Row>({
     >
       <table
         className={clsx(
-          "w-full border-collapse text-xs 2xl:text-sm text-slate-700",
-          "table-fixed lg:table-auto", // ✅ fixed on small (wrap), auto on large (full width)
+          "border-collapse text-xs 2xl:text-sm text-slate-700",
+
+          // ✅ On small screens: keep natural width so it can scroll
+          // ✅ On desktop: allow it to fit container normally
+          "min-w-max lg:min-w-0 w-full",
+
+          "table-fixed lg:table-auto",
           tableClassName
         )}
       >
-
         <thead
           className={clsx(
             "bg-[#5EA68E] text-yellow-200 font-bold",
@@ -197,30 +197,23 @@ export default function DataTable<T extends Row>({
                 onClick={col.onHeaderClick}
                 className={clsx(
                   "border border-gray-300 px-2 py-2 text-center align-middle",
-                  // ✅ wrap on small screens
                   "whitespace-normal break-words leading-snug",
-                  // ✅ on large screens, don’t wrap + let it expand naturally
                   "2xl:whitespace-nowrap",
                   col.headerClassName,
                   col.onHeaderClick && "cursor-pointer select-none"
                 )}
                 style={thStyle(col)}
-
               >
                 <div
                   className={clsx(
                     "mx-auto max-w-full overflow-hidden text-ellipsis",
-                    // clamp to 2 lines on small screens
                     "[display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]",
-                    // on large screens show full header in one line
                     "lg:[display:block] lg:[-webkit-line-clamp:unset] lg:overflow-visible"
                   )}
                 >
                   {formatHeader(col.header)}
                 </div>
-
               </th>
-
             ))}
           </tr>
         </thead>
@@ -228,10 +221,7 @@ export default function DataTable<T extends Row>({
         <tbody>
           {!hasData && (
             <tr>
-              <td
-                className="px-3 py-8 text-center text-slate-400"
-                colSpan={columns.length}
-              >
+              <td className="px-3 py-8 text-center text-slate-400" colSpan={columns.length}>
                 {emptyMessage}
               </td>
             </tr>
@@ -251,26 +241,38 @@ export default function DataTable<T extends Row>({
                       : ""
                 )}
               >
-
                 {columns.map((col, ci) => {
                   const value = (row as Record<string, React.ReactNode>)[String(col.key)];
+
+                  const keyStr = String(col.key);
+                  const isTextCol = keyStr === "productName" || keyStr === "alert";
 
                   return (
                     <td
                       key={String(col.key) + ci}
                       className={clsx(
                         "border border-[#e1e5ea] px-2 py-2 align-middle text-center",
-                        "whitespace-nowrap",
+                        "min-w-0", // ✅ important so wrapping can actually work
+                        isTextCol ? "whitespace-normal break-words" : "whitespace-nowrap",
                         col.cellClassName
                       )}
                       title={showCellTitle ? String(value ?? "\u00A0") : undefined}
                     >
-                      {col.render
-                        ? col.render(row as any, value, (page - 1) * pageSize + ri)
-                        : value ?? "\u00A0"}
+                      {isTextCol ? (
+                        <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
+                          {col.render
+                            ? col.render(row as any, value, (page - 1) * pageSize + ri)
+                            : value ?? "\u00A0"}
+                        </div>
+                      ) : (
+                        col.render
+                          ? col.render(row as any, value, (page - 1) * pageSize + ri)
+                          : value ?? "\u00A0"
+                      )}
                     </td>
                   );
                 })}
+
               </tr>
             ))}
         </tbody>

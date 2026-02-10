@@ -4289,23 +4289,8 @@ export default function DashboardPage() {
                                 </div>
                             </div>
 
-                            {/* {showLiveBI && isCountryMode && (
-                  <div className="w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
-                    <div className="w-full max-w-full min-w-0">
-                      <LiveBiLineGraph
-                        dailySeries={biDailySeries}
-                        periods={biPeriods}
-                        loading={biLoading}
-                        error={biError}
-                        selectedStartDay={selectedStartDay}
-                        selectedEndDay={selectedEndDay}
-                      />
-                    </div>
-                  </div>
-                )} */}
+                           
 
-
-                            {/* Live BI graph */}
                             {/* Live BI graph */}
                             {showLiveBI && isCountryMode && (
                                 <div className="w-full rounded-2xl border bg-white p-3 lg:p-3 2xl:p-5 shadow-sm overflow-x-hidden">
