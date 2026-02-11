@@ -931,6 +931,7 @@ export default function DashboardPage() {
 
     const [adsSeeded, setAdsSeeded] = useState(false);
     const [adsSeedError, setAdsSeedError] = useState<string | null>(null);
+    const [adsLoading, setAdsLoading] = useState(false);
 
 
     const fetchMonthlySp = useCallback(async () => {
@@ -1169,11 +1170,14 @@ export default function DashboardPage() {
     }, [isCountryMode, forcedRegion]);
 
     const didAdsManagerSeedRef = useRef(false);
+
     useEffect(() => {
         let cancelled = false;
 
         const run = async () => {
             try {
+                setAdsLoading(true); // ✅ START header line
+
                 if (platform === "shopify") {
                     if (!cancelled) setAdsSeeded(true);
                     return;
@@ -1196,9 +1200,10 @@ export default function DashboardPage() {
             } catch (e: any) {
                 if (!cancelled) {
                     setAdsSeedError(e?.message || "Ads seed failed");
-                    // you can still allow monthly call, but safest is keep false
                     setAdsSeeded(false);
                 }
+            } finally {
+                if (!cancelled) setAdsLoading(false); // ✅ END header line
             }
         };
 
@@ -1208,7 +1213,8 @@ export default function DashboardPage() {
         return () => {
             cancelled = true;
         };
-    }, [platform]);
+    }, [platform, baseURL]);
+
 
 
     const didMonthlyAdsSyncRef = useRef(false);
@@ -1270,112 +1276,6 @@ export default function DashboardPage() {
             cancelled = true;
         };
     }, [adsSeeded, platform, baseURL, fetchMonthlySp]);
-
-
-    // useEffect(() => {
-    //   if (didMonthlyAdsSyncRef.current) return;
-    //   didMonthlyAdsSyncRef.current = true;
-
-    //   const run = async () => {
-    //     try {
-    //       const jwtToken =
-    //         typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-    //       if (!jwtToken) return;
-
-    //       // decide country based on platform (match your app logic)
-    //       const country =
-    //         platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
-
-    //       const { monthName, year } = getISTYearMonth();
-
-    //       const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
-    //         method: "POST",
-    //         headers: {
-    //           Authorization: `Bearer ${jwtToken}`,
-    //           Accept: "application/json",
-    //           "Content-Type": "application/json",
-    //         },
-    //         body: JSON.stringify({
-    //           month: monthToNumber(monthName.toLowerCase()),
-    //           year,
-    //           country:"UK",
-    //         }),
-    //       });
-
-    //       const json = await res.json().catch(() => ({}));
-    //       console.log("json", json)
-    //       if (!res.ok) throw new Error(json?.error || "monthly_sp_to_db failed");
-    //     } catch (e) {
-    //       console.error("monthly_sp_to_db error:", e);
-    //     }
-    //   };
-
-    //   run();
-    // }, [platform, baseURL]);
-
-    // useEffect(() => {
-    //     if (didMonthlyAdsSyncRef.current) return;
-    //     didMonthlyAdsSyncRef.current = true;
-
-    //     const run = async () => {
-    //         try {
-    //             const jwtToken =
-    //                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-    //             if (!jwtToken) return;
-
-    //             // decide country based on platform (match your app logic)
-    //             const country =
-    //                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
-
-    //             const { monthName, year } = getISTYearMonth();
-    //             const month = monthToNumber(monthName.toLowerCase()); // 1..12
-
-    //             const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
-    //                 method: "POST",
-    //                 headers: {
-    //                     Authorization: `Bearer ${jwtToken}`,
-    //                     Accept: "application/json",
-    //                     "Content-Type": "application/json",
-    //                 },
-    //                 body: JSON.stringify({
-    //                     month: monthToNumber(monthName.toLowerCase()),
-    //                     year,
-    //                     country: "UK",
-    //                     include: ["SP", "SD"],
-    //                     // month: 1,
-    //                     // year: 2026,
-    //                     // country: "UK"
-
-
-    //                 }),
-    //             });
-
-    //             const json = await res.json().catch(() => ({}));
-    //             console.log("monthly_sp_sd_to_db response:", json);
-
-    //             // ✅ If no rows found, treat as normal "no data" state (don't throw)
-    //             if (res.status === 404 && json?.error?.includes("No rows found")) {
-    //                 console.warn(
-    //                     `No monthly ads rows for ${country} ${month}/${year}. Skipping.`
-    //                 );
-    //                 // Optional: set some state here so UI can show "No data"
-    //                 // setMonthlyAdsRows([]);
-    //                 // setMonthlyAdsMessage("No ads data found for this month.");
-    //                 return;
-    //             }
-
-    //             // ✅ Any other error should be surfaced
-    //             if (!res.ok) throw new Error(json?.error || "monthly_sp_sd_to_db failed");
-
-    //             // Optional: if you want to use returned items immediately
-    //             // setMonthlyAdsRows(json.items || []);
-    //         } catch (e) {
-    //             console.error("monthly_sp_sd_to_db error:", e);
-    //         }
-    //     };
-
-    //     run();
-    // }, [platform, baseURL]);
 
 
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
@@ -2539,41 +2439,6 @@ export default function DashboardPage() {
         [values]
     );
 
-    // const monthlyAdsSpentRows = useMemo<MonthlyAdsSpentRow[]>(() => {
-    //   const items = (data as any)?.skuwise_items ?? [];
-    //   if (!Array.isArray(items)) return [];
-
-    //   const body = items.filter((r: any) => r?.sku && r.sku !== "GRAND_TOTAL");
-    //   const total = items.find((r: any) => r?.sku === "GRAND_TOTAL");
-
-    //   const mapSpend = (r: any) =>
-    //     Number(
-    //       r.ad_spend ??
-    //       r.advertising_spend ??
-    //       r.advertising_fees ??
-    //       r.advertising_cost ??
-    //       0
-    //     );
-
-    //   const mappedBody = body.map((r: any, idx: number) => ({
-    //     sno: idx + 1,
-    //     sku: String(r.sku),
-    //     ad_spend: mapSpend(r),
-    //     isTotal: false,
-    //   }));
-
-    //   if (total) {
-    //     mappedBody.push({
-    //       sno: undefined,
-    //       sku: "GRAND_TOTAL",
-    //       ad_spend: mapSpend(total),
-    //       isTotal: true,
-    //     });
-    //   }
-
-    //   return mappedBody;
-    // }, [data]);
-
     const monthlySkuwiseRows = useMemo<MonthlySkuwiseRow[]>(() => {
         const items = (data as any)?.skuwise_items ?? [];
         if (!Array.isArray(items)) return [];
@@ -2631,9 +2496,7 @@ export default function DashboardPage() {
             .join(", ");
     };
 
-    // Limit table body to Top 9 SKUs + one "Others" aggregate row + Grand Total
-    // "Others" aggregates all remaining SKUs (after sorting by Net Sales desc).
-    // For ASP, we show an average (computed as Net Sales / Quantity when Quantity > 0).
+
     const monthlySkuwiseRowsForTable = useMemo<MonthlySkuwiseTableRow[]>(() => {
         if (!monthlySkuwiseRows || monthlySkuwiseRows.length === 0) return [];
 
@@ -3464,128 +3327,6 @@ export default function DashboardPage() {
         return null;
     }, []);
 
-    /* ===================== ✅ EXCEL EXPORT: P&L Productwise Breakdown MTD ===================== */
-    // const handleDownloadPlProductwiseMtd = useCallback(() => {
-    //     try {
-    //         // Export ALL rows from API (no "Others" aggregate row), keep GRAND_TOTAL.
-    //         const rows = (monthlySkuwiseRows || []).filter((r) => {
-    //             const sku = String(r.sku || "").toUpperCase();
-    //             const pn = String((r as any).product_name || "").toLowerCase();
-    //             const isOthers = (r as any).isOthers === true;
-    //             return !isOthers && !(sku === "OTHERS" && pn === "others");
-    //         });
-
-    //         if (!rows.length) return;
-
-    //         const periodLabel = formattedMonthYear;
-    //         const titleCountry = countryName === "global" ? "Global" : countryName.toUpperCase();
-    //         const companyName =
-    //             (userData as any)?.companyName ||
-    //             (userData as any)?.company_name ||
-    //             (userData as any)?.company ||
-    //             "";
-
-    //         const dataRows = rows.map((r) => {
-    //             const marketplaceTotal = Math.abs(Number(r.fba_fees || 0)) + Math.abs(Number(r.selling_fees || 0));
-    //             return {
-    //                 "S.No": r.isTotal ? "" : (r.sno ?? ""),
-    //                 "Product Name": r.isTotal ? "Total" : (r.product_name ?? ""),
-    //                 SKU: r.isTotal ? "" : (r.sku ?? ""),
-    //                 "Net Units Sold": Number(r.quantity || 0),
-    //                 ASP: Number(r.asp || 0),
-    //                 "Net Sales": Number(r.net_sales || 0),
-    //                 COGS: Number(r.cogs || 0),
-    //                 "FBA Fees": Number(r.fba_fees || 0),
-    //                 "Selling Fees": Number(r.selling_fees || 0),
-    //                 "Marketplace Fees Total": marketplaceTotal,
-    //                 "Net Taxes": Number(r.tax || 0),
-    //                 "Net Credits": Number(r.credits || 0),
-    //                 "Tax & Credits": Number(r.tax_and_credits || 0),
-    //                 "CM1 Profit %": Number(r.cm1_profit_per || 0),
-    //                 "CM1 Profit Per Unit": Number(r.cm1_profit_per_unit || 0),
-    //                 "CM1 Profit": Number(r.profit || 0),
-    //                 "Ads Spend": Number(r.ads_spend || 0),
-    //                 "CM2 Profit": Number(r.cm2_profit || 0),
-    //                 "CM2 Profit %": Number(r.cm2_profit_per || 0),
-    //                 "CM2 Profit Per Unit": Number(r.cm2_profit_per_unit || 0),
-    //             };
-    //         });
-
-    //         const summaryRows = [
-    //             ...(countryName === "us" || countryName === "global"
-    //                 ? [
-    //                     {
-    //                         label: "Shipment Charges (-)",
-    //                         value: Number((plSummaryTotals as any)?.shipment_charges ?? 0),
-    //                     },
-    //                 ]
-    //                 : []),
-    //             {
-    //                 label: "Cost of Advertisement",
-    //                 value: Number(costOfAdsForSummary ?? 0),
-    //             },
-    //             {
-    //                 label: "Other Transactions",
-    //                 value: Number((plSummaryTotals as any)?.other_transactions ?? 0),
-    //             },
-    //             {
-    //                 label: "CM2 Profit/Loss",
-    //                 value: Number((plSummaryTotals as any)?.cm2_profit ?? 0),
-    //             },
-    //             {
-    //                 label: "CM2 Margins",
-    //                 value: `${Number(cm2MarginPctForSummary ?? 0)}%`,
-    //             },
-    //             {
-    //                 label: "TACoS (Total Advertising Cost of Sale)",
-    //                 value: `${Number(tacosPctForSummary ?? 0)}%`,
-    //             },
-    //             {
-    //                 label: "Net Reimbursement",
-    //                 value: Number(reimbursementForSummary ?? 0),
-    //             },
-    //             {
-    //                 label: "Reimbursement vs CM2 Margins",
-    //                 value: `${Number(reimbursementVsCm2PctForSummary ?? 0)}%`,
-    //             },
-    //             {
-    //                 label: "Reimbursement vs Sales",
-    //                 value: `${Number(reimbursementVsSalesPctForSummary ?? 0)}%`,
-    //             },
-    //         ];
-
-    //         exportPnLProductwiseBreakdownMtdExcel({
-    //             filename: `Amazon-PnL-Productwise-MTD-${periodLabel}.xlsx`,
-    //             titleLine: `Amazon ${titleCountry} - P&L Productwise Breakdown MTD - ${periodLabel}`,
-    //             countryName: countryName,
-    //             titleCountry,
-    //             platformLabel: "Amazon",
-    //             periodLabel,
-    //             companyName,
-    //             brandName: String(brandName || ""),
-    //             homeCurrencyCode: profileHomeCurrency,
-    //             dataRows,
-    //             summaryRows,
-    //         });
-    //     } catch (err) {
-    //         console.error("Error exporting P&L Productwise Breakdown MTD", err);
-    //     }
-    // }, [
-    //     monthlySkuwiseRows,
-    //     formattedMonthYear,
-    //     countryName,
-    //     plSummaryTotals,
-    //     costOfAdsForSummary,
-    //     cm2MarginPctForSummary,
-    //     tacosPctForSummary,
-    //     reimbursementForSummary,
-    //     reimbursementVsCm2PctForSummary,
-    //     reimbursementVsSalesPctForSummary,
-    //     userData,
-    //     brandName,
-    //     profileHomeCurrency,
-    // ]);
-
     const handleDownloadPlProductwiseMtd = useCallback(() => {
         try {
             const rows = (monthlySkuwiseRows || []).filter((r) => {
@@ -3705,14 +3446,6 @@ export default function DashboardPage() {
                 <>
                     <div className="fixed inset-0 z-40 bg-white/70" />
                     <div className="fixed inset-0 z-50 flex items-center justify-center">
-                        {/* <Loader
-              src="/infinityNew.gif"
-              label="Loading sales dashboard…"
-              size={240}
-              roundedClass="rounded-xl"
-              backgroundClass="bg-transparent"
-              respectReducedMotion
-            /> */}
                         <Loader fullscreen transparent />
                     </div>
                 </>
@@ -4289,7 +4022,7 @@ export default function DashboardPage() {
                                 </div>
                             </div>
 
-                           
+
 
                             {/* Live BI graph */}
                             {showLiveBI && isCountryMode && (
@@ -4693,48 +4426,41 @@ export default function DashboardPage() {
 
 
             <div id="pnl-mtd" className="scroll-mt-[80px] mt-4 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                        <span>
-                            <PageBreadcrumb
-                                pageTitle="P&L Productwise Breakdown"
-                                variant="page"
-                                align="left"
-                                textSize="2xl"
-                            />
-                        </span>
+               <div className="mb-3 relative flex items-center justify-between gap-3">
 
-                        <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
-                            ({currencySymbol})
-                        </span>
-                    </div>
+  {/* LEFT: Title */}
+  <div className="flex items-center gap-2">
+    <PageBreadcrumb
+      pageTitle="P&L Productwise Breakdown"
+      variant="page"
+      align="left"
+      textSize="2xl"
+    />
 
+    <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
+      ({currencySymbol})
+    </span>
+  </div>
 
-                    <div className="flex items-center gap-2">
-                        <DownloadIconButton
-                            onClick={handleDownloadPlProductwiseMtd}
-                            aria-label="Download P&L Productwise Breakdown MTD"
-                            className="transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md"
-                        // title="Download"
-                        />
+  {/* CENTER: Ads loading message */}
+  {adsLoading && (
+    <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-500 font-medium">
+      <span className="inline-block h-2.5 w-2.5 rounded-full bg-charcoal-500 animate-pulse" />
+      Ads data is being fetched, please wait…
+    </div>
+  )}
 
-                        {/* <button
-                            type="button"
-                            onClick={fetchAmazon}
-                            disabled={loading}
-                            className={`rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm ${loading ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400" : "border-gray-300 bg-white hover:bg-gray-50"
-                                }`}
-                        >
-                            {loading ? "Loading…" : "Refresh"}
-                        </button> */}
-                    </div>
-                </div>
+  {/* RIGHT: Download */}
+  <div className="flex items-center gap-2">
+    <DownloadIconButton
+      onClick={handleDownloadPlProductwiseMtd}
+      aria-label="Download P&L Productwise Breakdown MTD"
+      className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+    />
+  </div>
+
+</div>
+
 
                 {error ? (
                     <div className="text-sm text-red-600">{error}</div>
