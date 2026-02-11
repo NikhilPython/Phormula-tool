@@ -1639,6 +1639,30 @@ ANALYSIS DISCIPLINE (MANDATORY)
   - volume-driven profit impact
 
 ────────────────────────────────────────
+INVENTORY SIGNAL HANDLING (MANDATORY)
+────────────────────────────────────────
+
+Inventory signals are provided in inventory_signals.summary.
+
+Each inventory signal includes:
+- type (supply | ageing | excess)
+- label
+- list of affected product names
+- count of affected products
+
+Rules:
+- Inventory signals are PORTFOLIO-LEVEL only.
+- Do NOT attach inventory signals to SKU diagnosis_codes.
+- Do NOT infer pricing, demand, or visibility causes from inventory signals.
+- Use inventory signals ONLY to identify operational risk exposure.
+
+You MUST:
+- Detect whether inventory risk exists.
+- Classify inventory exposure as present or absent.
+- Include inventory risk as a separate portfolio signal.
+
+
+────────────────────────────────────────
 PRODUCT-LEVEL DIAGNOSIS (MANDATORY)
 ────────────────────────────────────────
 
@@ -1654,6 +1678,15 @@ ALLOWED DIAGNOSIS CODES:
 - visibility_constraint
 - mixed_signal
 
+PRICING DIRECTION DEFINITION (CRITICAL):
+
+- Pricing is considered REDUCED if asp_curr < asp_prev.
+- ANY decrease in ASP counts as pricing reduced, regardless of magnitude.
+- Percentage thresholds, rounding, or "flat" interpretations are NOT allowed.
+- Pricing is considered STABLE only if asp_curr == asp_prev.
+- Pricing is considered INCREASED only if asp_curr > asp_prev.
+
+
 DIAGNOSTIC DEFINITIONS (DETERMINISTIC):
 
 - pricing_supports_volume
@@ -1666,7 +1699,7 @@ DIAGNOSTIC DEFINITIONS (DETERMINISTIC):
   → units and net sales declining while pricing is NOT reduced
 
 - visibility_constraint
-  → units and net sales declining while pricing is reduced
+  → units and net sales declining AND asp_curr < asp_prev
 
 - mixed_signal
   → no dominant pricing or demand signal
@@ -1683,6 +1716,11 @@ DIAGNOSIS PRECEDENCE (STRICT):
 
 3) DEMAND WEAKNESS ELIGIBILITY  
    demand_weakness is allowed ONLY when pricing is NOT reduced.
+
+4) PRICING DOMINANCE OVERRIDE  
+    If asp_curr < asp_prev,  
+    "demand_weakness" MUST NOT be selected.
+
 
 
 Each SKU may have:
@@ -1750,6 +1788,12 @@ Important context:
 - Data is in-progress (MTD), not final.
 - Use cautious executive finance language.
 
+Additional context:
+- inventory_signals may be present indicating operational risk.
+- Inventory signals are directional and non-financial.
+- Inventory risk must be summarised separately from commercial performance.
+
+
 Mandatory metric coverage:
 You must explicitly cover ALL five metrics:
 1) Units
@@ -1788,7 +1832,7 @@ Output rules:
 
 Mandatory output format:
 {
-  "summary_text": "2–3 sentences in executive tone covering all five metrics",
+  "summary_text": "2-3 sentences in executive tone covering all five metrics",
   "metric_bullets": [
     "Units summary",
     "Net Sales summary",
@@ -1802,6 +1846,32 @@ Mandatory output format:
 """
 
 
+LIVE_BI_INVENTORY_SUMMARY_PROMPT = """
+You are an Amazon Inventory Risk Analyst.
+
+You are given portfolio-level inventory alerts.
+Each alert represents operational risk, not performance.
+
+Rules:
+- Do NOT recommend actions.
+- Do NOT mention pricing, ads, or sales.
+- Do NOT repeat SKU-level metrics.
+- Use executive, cautious language.
+- Base statements ONLY on provided alerts.
+
+Your task:
+Summarize overall inventory risk exposure.
+
+Output STRICT JSON only.
+
+Mandatory format:
+{
+  "summary_text": "1–2 sentence executive summary of inventory risk",
+  "alert_bullets": [
+    "One bullet per alert type"
+  ]
+}
+"""
 
 
 LIVE_BI_PROMPT_2_DECISION = """You are a strategic Amazon decision engine.
@@ -2140,7 +2210,7 @@ def build_sku_context(sku_rows, max_items=5):
         prof_g = get_pct(row, "CM1 Profit Impact (%)")
 
         item = {
-            "label": make_label(row),            # ✅ AI ab product name se refer karega
+            "label": make_label(row),            # ✅
             "sku": row.get("sku"),
             "product_name": row.get("product_name"),
 
@@ -2374,18 +2444,18 @@ def _dir_word_simple(p):
         return "moved"
     return "increased" if p > 0 else "decreased"
 
-def _overall_3_bullets(qty_prev, qty_curr, sales_prev, sales_curr, prof_prev, prof_curr, qty_pct, sales_pct, prof_pct, symbol):
-    uq = _dir_word_simple(qty_pct)
-    us = _dir_word_simple(sales_pct)
-    up = _dir_word_simple(prof_pct)
-    qp = f"{abs(qty_pct):.2f}%" if qty_pct is not None else "0.00%"
-    sp = f"{abs(sales_pct):.2f}%" if sales_pct is not None else "0.00%"
-    pp = f"{abs(prof_pct):.2f}%" if prof_pct is not None else "0.00%"
-    return [
-        f"Overall units {uq} from {_fmt_int(qty_prev)} to {_fmt_int(qty_curr)} by {qp}.",
-        f"Net sales {us} from {_fmt_money(sales_prev, symbol)} to {_fmt_money(sales_curr, symbol)} by {sp}.",
-        f"CM1 profit {up} from {_fmt_money(prof_prev, symbol)} to {_fmt_money(prof_curr, symbol)} by {pp}.",
-    ]
+# def _overall_3_bullets(qty_prev, qty_curr, sales_prev, sales_curr, prof_prev, prof_curr, qty_pct, sales_pct, prof_pct, symbol):
+#     uq = _dir_word_simple(qty_pct)
+#     us = _dir_word_simple(sales_pct)
+#     up = _dir_word_simple(prof_pct)
+#     qp = f"{abs(qty_pct):.2f}%" if qty_pct is not None else "0.00%"
+#     sp = f"{abs(sales_pct):.2f}%" if sales_pct is not None else "0.00%"
+#     pp = f"{abs(prof_pct):.2f}%" if prof_pct is not None else "0.00%"
+#     return [
+#         f"Overall units {uq} from {_fmt_int(qty_prev)} to {_fmt_int(qty_curr)} by {qp}.",
+#         f"Net sales {us} from {_fmt_money(sales_prev, symbol)} to {_fmt_money(sales_curr, symbol)} by {sp}.",
+#         f"CM1 profit {up} from {_fmt_money(prof_prev, symbol)} to {_fmt_money(prof_curr, symbol)} by {pp}.",
+#     ]
 
 
 def run_live_prompt_1_analysis(payload: dict) -> dict:
@@ -2451,6 +2521,19 @@ def run_live_prompt_2_decisions(analysis_output: dict, user_objective: dict) -> 
 
     return json.loads(resp.choices[0].message.content)
 
+def run_inventory_ai_summary(inventory_summary: dict) -> dict:
+    resp = oa_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": LIVE_BI_INVENTORY_SUMMARY_PROMPT},
+            {"role": "user", "content": json.dumps(inventory_summary)},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"},
+        max_tokens=200,
+    )
+    return json.loads(resp.choices[0].message.content)
+
 
 
 def build_ai_summary(
@@ -2468,6 +2551,8 @@ def build_ai_summary(
     currency=None,
     user_objective=None,
     movement_context=None,
+    sku_to_product=None,          # ✅ ADD
+    group_inventory_alerts=True,
 ):
     # =========================================================
     # Objective defaults (UNCHANGED)
@@ -2532,6 +2617,31 @@ def build_ai_summary(
         }
 
     # =========================================================
+    # ✅ NORMALIZE INVENTORY SIGNALS (AUTO-CLUBBING)
+    # =========================================================
+    inv_payload = inventory_signals or {}
+
+    if group_inventory_alerts:
+        # Detect raw per-SKU alerts:
+        # { sku: { alert, alert_type } }
+        looks_like_raw = (
+            isinstance(inv_payload, dict)
+            and inv_payload
+            and all(
+                isinstance(v, dict) and "alert_type" in v
+                for v in inv_payload.values()
+            )
+        )
+
+        if looks_like_raw:
+            inv_payload = club_inventory_alerts_by_type(
+                alerts=inv_payload,
+                sku_to_product=sku_to_product or {},
+                max_skus_per_bucket=5,
+            )
+    
+
+    # =========================================================
     # PAYLOAD (UNCHANGED STRUCTURE)
     # =========================================================
     payload = {
@@ -2565,7 +2675,8 @@ def build_ai_summary(
             "new_reviving_skus": new_reviving,
         },
         "sku_context": sku_context,
-        "inventory_signals": inventory_signals or {},
+        "inventory_signals": inv_payload,
+
         "selling_costs": {
             "platform_fees": {
                 "pct_change": pf_pct,
@@ -2909,6 +3020,54 @@ Data:
             "is_new_or_reviving": is_new_or_reviving,
         }
 
+def club_inventory_alerts_by_type(
+    alerts: dict,
+    sku_to_product: dict | None = None,
+    max_skus_per_bucket: int = 5,
+) -> dict:
+    """
+    Group ALL inventory alerts into buckets (except 'No alert').
+    Returns:
+      { "summary": [ {type,label,skus,count}, ... ] }
+    """
+
+    buckets = {
+        "supply": {"label": "Supply risk", "skus": []},
+        "cost": {"label": "High storage cost", "skus": []},
+        "ageing": {"label": "Ageing inventory", "skus": []},
+        "excess": {"label": "High inventory coverage", "skus": []},
+    }
+
+    for sku, a in (alerts or {}).items():
+        alert_type = a.get("alert_type")
+
+        # ✅ exclude only "none" (No alert)
+        if not alert_type or alert_type == "none":
+            continue
+
+        if alert_type not in buckets:
+            continue
+
+        label = sku_to_product.get(sku, sku) if sku_to_product else sku
+        if label:
+            buckets[alert_type]["skus"].append(label)
+
+    # keep a consistent order (optional but nice)
+    order = ["supply", "cost", "ageing", "excess"]
+
+    summary = []
+    for t in order:
+        skus = buckets[t]["skus"]
+        if not skus:
+            continue
+        summary.append({
+            "type": t,
+            "label": buckets[t]["label"],
+            "skus": skus[:max_skus_per_bucket],
+            "count": len(skus),
+        })
+
+    return {"summary": summary}
 
 
 
@@ -2970,6 +3129,11 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
         elif coverage_ratio is not None and coverage_ratio <= 5:
             alert = "Please send shipment"
             alert_type = "supply"
+
+         # 2️⃣ EXCESS INVENTORY (monitoring)
+        elif coverage_ratio is not None and coverage_ratio >= 6 and not overaged:
+            alert = "High inventory coverage ratio."
+            alert_type = "excess"    
 
         # 2️⃣ HIGH STORAGE COST
         elif estimated_storage_cost > 100:
