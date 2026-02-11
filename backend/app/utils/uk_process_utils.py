@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from config import basedir
 import os
 import pandas as pd

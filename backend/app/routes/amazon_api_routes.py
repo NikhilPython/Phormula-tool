@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import jwt, requests
 from config import Config
-UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from dotenv import find_dotenv, load_dotenv
 from flask import Blueprint, jsonify, make_response, request
 from app import db
