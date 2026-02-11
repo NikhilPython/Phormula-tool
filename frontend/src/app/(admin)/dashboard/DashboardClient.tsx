@@ -518,7 +518,7 @@ const ensureSpReportSeedOncePerDay = async (
 
     const lockKey = `${storageKey}_lock`;
 
-    await withLocalStorageLock(lockKey, async () => {
+    const didRun = await withLocalStorageLock(lockKey, async () => {
         // re-check after lock to avoid race
         if (localStorage.getItem(storageKey) === "1") return;
 
@@ -530,20 +530,22 @@ const ensureSpReportSeedOncePerDay = async (
             return_excel: false,
         };
 
-        const res = await fetch(`${baseUrl}/api/ads/manager/sp_advertised_product_report`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${jwtToken}`,
-                Accept: "application/json",
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
+        const res = await fetch(
+            `${baseUrl}/api/ads/manager/sp_advertised_product_report`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${jwtToken}`,
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(body),
+            }
+        );
 
-        // ✅ If backend returns duplicate constraint error, treat as success (frontend workaround)
         if (!res.ok) {
             const errJson = await res.json().catch(() => ({}));
-            const msg = String(errJson?.error || "");
+            const msg = String(errJson?.error || errJson?.message || "");
 
             const isDuplicate =
                 msg.toLowerCase().includes("uniqueviolation") ||
@@ -555,58 +557,69 @@ const ensureSpReportSeedOncePerDay = async (
                 return;
             }
 
-            throw new Error(msg || "Failed to seed Sponsored Products report");
+            throw new Error(msg || `Failed to seed SP report (${res.status})`);
         }
 
         localStorage.setItem(storageKey, "1");
     });
-};
 
+    // ✅ IMPORTANT: if another tab/render is running it, don't error, just exit
+    if (didRun === null) return;
+};
 
 const ensureSdReportSeedOncePerDay = async (
     baseUrl: string,
     jwtToken: string,
-    country?: string // optional; include if SD report is region/country scoped
+    country: string // "UK" | "US"
 ) => {
     const userId = decodeJwtUserId(jwtToken) || "unknown";
     const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
-    const storageKey = `sd_report_seed_daily_${userId}_${country || "ALL"}_${end_date}`;
+    // once per user + country + day
+    const storageKey = `sd_report_seed_daily_${userId}_${country}_${end_date}`;
     if (localStorage.getItem(storageKey) === "1") return;
 
     const lockKey = `${storageKey}_lock`;
 
-    await withLocalStorageLock(lockKey, async () => {
+    const didRun = await withLocalStorageLock(lockKey, async () => {
+        // re-check after lock to avoid race
         if (localStorage.getItem(storageKey) === "1") return;
 
-        const body: any = {
+        // ✅ BODY EXACTLY AS REQUESTED (same keys/shape)
+        const body = {
             start_date,
             end_date,
             time_unit: "SUMMARY",
-            max_wait_seconds: 20,
-            poll_every_seconds: 5,
+            countries: [country], // ["UK"] or ["US"]
+            max_wait_seconds: 900,
+            poll_every_seconds: 10,
         };
 
-        if (country) body.countries = [country];
+        const res = await fetch(
+            `${baseUrl}/api/ads/manager/sd_advertised_product_report/sync`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${jwtToken}`,
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(body),
+            }
+        );
 
-        const res = await fetch(`${baseUrl}/api/ads/manager/sd_advertised_product_report/sync`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${jwtToken}`,
-                Accept: "application/json",
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
-
-        if (res.status === 202 || res.ok) {
+        if (res.ok) {
             localStorage.setItem(storageKey, "1");
             return;
         }
 
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || "Failed to seed SD advertised product report");
+        const errJson = await res.json().catch(() => ({}));
+        const msg = String(errJson?.error || errJson?.message || "");
+        throw new Error(msg || `Failed to seed SD /sync (${res.status})`);
     });
+
+    // ✅ IMPORTANT: if another tab/render is running it, don't error, just exit
+    if (didRun === null) return;
 };
 
 
@@ -960,7 +973,7 @@ export default function DashboardPage() {
                 body: JSON.stringify({
                     month: monthToNumber(monthName.toLowerCase()),
                     year,
-                    country: "UK",
+                    country,
                     // month: 1,
                     // year: 2026,
                     // country: "UK"
@@ -1171,12 +1184,14 @@ export default function DashboardPage() {
 
     const didAdsManagerSeedRef = useRef(false);
 
+    // ===================== EFFECTS =====================
+
     useEffect(() => {
         let cancelled = false;
 
         const run = async () => {
             try {
-                setAdsLoading(true); // ✅ START header line
+                setAdsLoading(true);
 
                 if (platform === "shopify") {
                     if (!cancelled) setAdsSeeded(true);
@@ -1185,13 +1200,24 @@ export default function DashboardPage() {
 
                 const jwtToken =
                     typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-                if (!jwtToken) return;
+
+                if (!jwtToken) {
+                    if (!cancelled) {
+                        setAdsSeeded(false);
+                        setAdsSeedError("No token found. Please sign in.");
+                    }
+                    return;
+                }
 
                 const country =
                     platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
                 await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
-                await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+
+                // ✅ SD supports UK/US only
+                if (country === "UK" || country === "US") {
+                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+                }
 
                 if (!cancelled) {
                     setAdsSeedError(null);
@@ -1203,7 +1229,7 @@ export default function DashboardPage() {
                     setAdsSeeded(false);
                 }
             } finally {
-                if (!cancelled) setAdsLoading(false); // ✅ END header line
+                if (!cancelled) setAdsLoading(false);
             }
         };
 
@@ -1219,8 +1245,9 @@ export default function DashboardPage() {
 
     const didMonthlyAdsSyncRef = useRef(false);
 
+
     useEffect(() => {
-        if (!adsSeeded) return;        // ✅ hard gate: monthly runs only after seed is done
+        if (!adsSeeded) return; // ✅ monthly runs only after seed succeeds
         if (platform === "shopify") return;
 
         let cancelled = false;
@@ -1237,6 +1264,8 @@ export default function DashboardPage() {
                 const { monthName, year } = getISTYearMonth();
                 const month = monthToNumber(monthName.toLowerCase());
 
+                const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
+
                 const res = await fetch(`${baseURL}/api/ads/monthly_sp_sd_to_db`, {
                     method: "POST",
                     headers: {
@@ -1244,12 +1273,7 @@ export default function DashboardPage() {
                         Accept: "application/json",
                         "Content-Type": "application/json",
                     },
-                    body: JSON.stringify({
-                        month,
-                        year,
-                        country,                 // ✅ IMPORTANT: don't hardcode "UK"
-                        include: ["SP", "SD"],
-                    }),
+                    body: JSON.stringify({ month, year, country, include }),
                 });
 
                 const json = await res.json().catch(() => ({}));
@@ -1263,7 +1287,6 @@ export default function DashboardPage() {
 
                 if (cancelled) return;
 
-                // ✅ optional: now that DB is ready, fetch UI table
                 await fetchMonthlySp();
             } catch (e) {
                 console.error("monthly_sp_sd_to_db error:", e);
@@ -1276,8 +1299,7 @@ export default function DashboardPage() {
             cancelled = true;
         };
     }, [adsSeeded, platform, baseURL, fetchMonthlySp]);
-
-
+    
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
     const convertToDisplayCurrency = useCallback(
         (value: number | null | undefined, from: CurrencyCode) => {
@@ -4426,40 +4448,40 @@ export default function DashboardPage() {
 
 
             <div id="pnl-mtd" className="scroll-mt-[80px] mt-4 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
-               <div className="mb-3 relative flex items-center justify-between gap-3">
+                <div className="mb-3 relative flex items-center justify-between gap-3">
 
-  {/* LEFT: Title */}
-  <div className="flex items-center gap-2">
-    <PageBreadcrumb
-      pageTitle="P&L Productwise Breakdown"
-      variant="page"
-      align="left"
-      textSize="2xl"
-    />
+                    {/* LEFT: Title */}
+                    <div className="flex items-center gap-2">
+                        <PageBreadcrumb
+                            pageTitle="P&L Productwise Breakdown"
+                            variant="page"
+                            align="left"
+                            textSize="2xl"
+                        />
 
-    <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
-      ({currencySymbol})
-    </span>
-  </div>
+                        <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
+                            ({currencySymbol})
+                        </span>
+                    </div>
 
-  {/* CENTER: Ads loading message */}
-  {adsLoading && (
-    <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-00 font-medium">
-      <span className="inline-block h-2.5 w-2.5 rounded-full bg-charcoal-500 animate-pulse" />
-      Ads data is being fetched, please wait…
-    </div>
-  )}
+                    {/* CENTER: Ads loading message */}
+                    {adsLoading && (
+                        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-700 font-medium">
+                            <span className="inline-block h-2.5 w-2.5 rounded-full bg-charcoal-500 animate-pulse" />
+                            Ads data is being fetched, please wait…
+                        </div>
+                    )}
 
-  {/* RIGHT: Download */}
-  <div className="flex items-center gap-2">
-    <DownloadIconButton
-      onClick={handleDownloadPlProductwiseMtd}
-      aria-label="Download P&L Productwise Breakdown MTD"
-      className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-    />
-  </div>
+                    {/* RIGHT: Download */}
+                    <div className="flex items-center gap-2">
+                        <DownloadIconButton
+                            onClick={handleDownloadPlProductwiseMtd}
+                            aria-label="Download P&L Productwise Breakdown MTD"
+                            className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                        />
+                    </div>
 
-</div>
+                </div>
 
 
                 {error ? (

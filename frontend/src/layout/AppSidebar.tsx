@@ -652,7 +652,7 @@ if (country) {
         {
           name: "Inventory Forecast",
           path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-          onClick: handleInventoryForecastFetch,
+          // onClick: handleInventoryForecastFetch,
         },
         {
           name: "P&L Forecast",
