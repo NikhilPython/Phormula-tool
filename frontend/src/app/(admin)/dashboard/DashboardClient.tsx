@@ -4444,7 +4444,7 @@ export default function DashboardPage() {
 
   {/* CENTER: Ads loading message */}
   {adsLoading && (
-    <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-500 font-medium">
+    <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-00 font-medium">
       <span className="inline-block h-2.5 w-2.5 rounded-full bg-charcoal-500 animate-pulse" />
       Ads data is being fetched, please wait…
     </div>
