@@ -1,11 +1,11 @@
 import io
 from datetime import datetime , date
-import calendar
+import calendar, json
 import re
 from sqlalchemy import text
 import jwt, time
 import pandas as pd
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file, Response
 from app import db
 from config import Config
 from app.models.user_models import amazon_user, amazon_sponsored_products , amazon_sponsored_display_advertised_products
@@ -58,89 +58,8 @@ def ads_connect_url():
         return jsonify({"error": str(e)}), 400
 
 
-# @advertisement_api_routes_bp.route("/api/ads/callback", methods=["GET"])
-# def ads_callback():
-#     """
-#     - exchange code -> refresh_token
-#     - store refresh token
-#     - refresh -> access_token
-#     - list top profiles (no scope) -> find manager profile id (if any)
-#     - if manager exists: list child advertiser profiles via scope
-#       else: child profiles == top profiles
-#     - save best-effort UK/US/CA advertiser profile IDs
-#     """
-#     try:
-#         code = request.args.get("code")
-#         state = request.args.get("state") or ""
-
-#         if not code:
-#             return jsonify({"error": "Missing code"}), 400
-#         if not state.startswith("user:"):
-#             return jsonify({"error": "Invalid state"}), 400
-
-#         user_id = int(state.split("user:")[1])
-
-#         tokens = exchange_code_for_tokens(code)
-#         refresh_token = tokens.get("refresh_token")
-
-#         if not refresh_token:
-#             return jsonify({
-#                 "error": "Missing refresh_token from Amazon. Reconnect with prompt=consent.",
-#                 "token_response": tokens
-#             }), 400
-
-#         u = _get_user_row(user_id)
-#         u.amazon_ads_refresh_token = refresh_token
-#         u.amazon_ads_refresh_token_updated_at = datetime.utcnow()
-
-#         access_token = get_ads_access_token_from_refresh(refresh_token)
-
-#         # 1) Top-level profiles across regions (no scope)
-#         top_profiles_by_region = list_top_level_profiles_all_regions(access_token)
-#         manager_profile_id = find_manager_profile_id(top_profiles_by_region)
-#         u.amazon_ads_manager_profile_id = manager_profile_id
-
-#         # 2) Child profiles (advertisers) if manager; otherwise top-level is your advertisers
-#         if manager_profile_id:
-#             child_profiles_by_region = list_child_profiles_all_regions(access_token, manager_profile_id)
-#         else:
-#             child_profiles_by_region = top_profiles_by_region
-
-#         # Save best-effort advertiser profile IDs by country
-#         eu_child = child_profiles_by_region.get("EU", []) or []
-#         na_child = child_profiles_by_region.get("NA", []) or []
-
-#         # Amazon uses GB for UK
-#         u.amazon_ads_profile_id_uk = pick_profile_id(eu_child, {"GB", "UK"})
-#         u.amazon_ads_profile_id_us = pick_profile_id(na_child, {"US"})
-#         u.amazon_ads_profile_id_ca = pick_profile_id(na_child, {"CA"})
-
-#         db.session.commit()
-
-#         # helpful counts for debugging
-#         return jsonify({
-#             "message": "Amazon Ads connected successfully",
-#             "saved": {
-#                 "amazon_ads_refresh_token_updated_at": u.amazon_ads_refresh_token_updated_at.isoformat()
-#                 if u.amazon_ads_refresh_token_updated_at else None,
-#                 "amazon_ads_manager_profile_id": u.amazon_ads_manager_profile_id,
-#                 "amazon_ads_profile_id_uk": u.amazon_ads_profile_id_uk,
-#                 "amazon_ads_profile_id_us": u.amazon_ads_profile_id_us,
-#                 "amazon_ads_profile_id_ca": u.amazon_ads_profile_id_ca,
-#             },
-#             "counts": {
-#                 "top_level": {k: len(v or []) for k, v in top_profiles_by_region.items()},
-#                 "child": {k: len(v or []) for k, v in child_profiles_by_region.items()},
-#             },
-#         })
-
-#     except Exception as e:
-#         return jsonify({"error": str(e)}), 400
 
 
-from flask import request, jsonify, Response
-from datetime import datetime
-import json
 
 @advertisement_api_routes_bp.route("/api/ads/callback", methods=["GET"])
 def ads_callback():
@@ -419,12 +338,6 @@ def _pick(df: pd.DataFrame, *candidates, default=None):
             return df[norm_map[k]]
     return default
 
-
-
-# def _to_date(x):
-#     if pd.isna(x) or x is None or x == "":
-#         return None
-#     return pd.to_datetime(x).date()
 
 def _to_date(x, strict: bool = False, field_name: str = "date"):
     """
@@ -760,13 +673,6 @@ def _to_int(x):
 #         return jsonify({"error": str(e)}), 500
 
 
-from flask import request, jsonify, send_file
-import io
-import pandas as pd
-from datetime import datetime
-import jwt
-
-from sqlalchemy.dialects.postgresql import insert
 
 @advertisement_api_routes_bp.route("/api/ads/manager/sp_advertised_product_report", methods=["POST"])
 def manager_sp_advertised_product_report():
@@ -2431,39 +2337,590 @@ def sp_advertised_product_report_period():
 #         return jsonify({"error": str(e)}), 500
 
 
-@advertisement_api_routes_bp.route("/api/ads/manager/sd_advertised_product_report/sync", methods=["POST"])
-def manager_sd_advertised_product_report_sync():
+# @advertisement_api_routes_bp.route("/api/ads/manager/sd_advertised_product_report/sync", methods=["POST"])
+# def manager_sd_advertised_product_report_sync():
+#     """
+#     POST body (create mode):
+#     {
+#       "start_date": "YYYY-MM-DD",
+#       "end_date": "YYYY-MM-DD",
+#       "time_unit": "SUMMARY" | "DAILY",
+#       "countries": ["UK","US"],
+
+#       "max_wait_seconds": 60,
+#       "poll_every_seconds": 5
+#     }
+
+#     POST body (reuse mode):
+#     {
+#       "start_date": "YYYY-MM-DD",
+#       "end_date": "YYYY-MM-DD",
+#       "time_unit": "SUMMARY" | "DAILY",
+
+#       "reports": [
+#         {"region":"EU","country":"UK","profile_id":"...","report_id":"..."}
+#       ],
+
+#       "max_wait_seconds": 60,
+#       "poll_every_seconds": 5
+#     }
+
+#     - If reports[] is provided -> we reuse those report_ids (NO new create).
+#     - Else -> create report(s) from countries filter.
+#     - Poll until done or timeout.
+#     - If pending -> return 202 with same reports[] so Postman can retry with same report_id.
+#     - If completed -> download, save to DB, return 200.
+#     """
+
+#     try:
+#         user_id = _require_jwt_user_id()
+#         u = _get_user_row(user_id)
+
+#         data = request.get_json(force=True) or {}
+
+#         start_date = data.get("start_date")
+#         end_date = data.get("end_date")
+#         time_unit = (data.get("time_unit") or "SUMMARY").upper()
+
+#         max_wait_seconds = int(data.get("max_wait_seconds") or 60)
+#         poll_every_seconds = int(data.get("poll_every_seconds") or 5)
+
+#         if time_unit not in {"DAILY", "SUMMARY"}:
+#             return jsonify({"error": "time_unit must be DAILY or SUMMARY"}), 400
+#         if not start_date or not end_date:
+#             return jsonify({"error": "start_date and end_date required"}), 400
+#         if not u.amazon_ads_refresh_token:
+#             return jsonify({"error": "Amazon Ads not connected"}), 400
+
+#         access_token = get_ads_access_token_from_refresh(u.amazon_ads_refresh_token)
+
+#         # ------------------------------------------------------------
+#         # MODE A: reuse existing report(s) if client sent them
+#         # ------------------------------------------------------------
+#         reports = data.get("reports")
+#         if reports:
+#             # normalize minimal fields
+#             normalized = []
+#             for r in reports:
+#                 region = (r.get("region") or "").upper()
+#                 if region not in ADS_ENDPOINTS:
+#                     continue
+#                 if not r.get("profile_id") or not r.get("report_id"):
+#                     continue
+#                 normalized.append({
+#                     "region": region,
+#                     "country": r.get("country") or "",
+#                     "profile_id": str(r["profile_id"]),
+#                     "report_id": str(r["report_id"]),
+#                 })
+
+#             if not normalized:
+#                 return jsonify({"error": "reports[] provided but invalid/empty"}), 400
+
+#             reports = normalized
+
+#         # ------------------------------------------------------------
+#         # MODE B: create reports if none provided
+#         # ------------------------------------------------------------
+#         else:
+#             wanted_countries = {str(c).upper() for c in (data.get("countries") or [])}
+
+#             regions_to_use = set()
+#             if "UK" in wanted_countries or "GB" in wanted_countries:
+#                 regions_to_use.add("EU")
+#             if "US" in wanted_countries or "CA" in wanted_countries:
+#                 regions_to_use.add("NA")
+#             if not regions_to_use:
+#                 regions_to_use = {"EU", "NA"}
+
+#             top_profiles = list_top_level_profiles_all_regions(access_token)
+#             manager_profile_id = find_manager_profile_id(top_profiles)
+#             child_by_region = (
+#                 list_child_profiles_all_regions(access_token, manager_profile_id)
+#                 if manager_profile_id else top_profiles
+#             )
+
+#             reports = []
+#             for region, profiles in (child_by_region or {}).items():
+#                 if region not in regions_to_use:
+#                     continue
+
+#                 for p in profiles or []:
+#                     profile_id = p.get("profileId")
+#                     if not profile_id:
+#                         continue
+
+#                     cc = (p.get("countryCode") or "").upper()
+#                     country_label = "UK" if cc == "GB" else cc
+
+#                     if wanted_countries and country_label not in wanted_countries:
+#                         continue
+
+#                     auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
+#                     ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[region], auth=auth, timeout=60)
+
+#                     report_id = ads.create_sd_advertised_product_report(start_date, end_date, time_unit)
+
+#                     reports.append({
+#                         "region": region,
+#                         "country": country_label,
+#                         "profile_id": str(profile_id),
+#                         "report_id": str(report_id),
+#                     })
+
+#             if not reports:
+#                 return jsonify({"error": "No advertiser profiles found for your filter"}), 400
+
+#         # ------------------------------------------------------------
+#         # Poll statuses
+#         # ------------------------------------------------------------
+#         deadline = time.time() + max_wait_seconds
+#         status_map = {}
+
+#         while time.time() < deadline:
+#             all_done = True
+
+#             for r in reports:
+#                 auth = AmazonAdsAuthContext(access_token=access_token, profile_id=r["profile_id"])
+#                 ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[r["region"]], auth=auth, timeout=60)
+
+#                 st = ads.get_report_status(r["report_id"])
+#                 status_map[r["report_id"]] = st
+
+#                 status = (st.get("status") or "").upper()
+#                 if status not in {"COMPLETED", "SUCCESS"}:
+#                     all_done = False
+
+#             if all_done:
+#                 break
+
+#             time.sleep(poll_every_seconds)
+
+#         # If any pending, return 202 with SAME reports[] (so next retry reuses)
+#         pending = []
+#         completed = []
+#         for r in reports:
+#             st = status_map.get(r["report_id"]) or {}
+#             status = (st.get("status") or "").upper()
+
+#             if status in {"COMPLETED", "SUCCESS"}:
+#                 completed.append({**r, "status": status})
+#             else:
+#                 pending.append({**r, "status": status or "UNKNOWN", "report": st})
+
+#         if pending:
+#             return jsonify({
+#                 "message": "Some reports are not ready yet. Retry the SAME endpoint using the returned reports[] (do NOT create new).",
+#                 "start_date": start_date,
+#                 "end_date": end_date,
+#                 "time_unit": time_unit,
+#                 "completed": completed,
+#                 "pending": pending,
+#                 "reports": reports,  # 👈 important: send back so client can reuse
+#             }), 202
+
+#         # ------------------------------------------------------------
+#         # Download rows (all completed)
+#         # ------------------------------------------------------------
+#         rows_all = []
+#         for r in reports:
+#             st = status_map.get(r["report_id"]) or {}
+#             url = st.get("url") or st.get("location")
+#             if not url:
+#                 return jsonify({"error": f"Report completed but url missing for report_id={r['report_id']}", "report": st}), 500
+
+#             auth = AmazonAdsAuthContext(access_token=access_token, profile_id=r["profile_id"])
+#             ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[r["region"]], auth=auth, timeout=60)
+
+#             rows = ads.download_gzip_json(url)
+#             for row in (rows or []):
+#                 if isinstance(row, dict):
+#                     row["_profileId"] = r["profile_id"]
+#                     row["_country"] = r["country"]
+#                     rows_all.append(row)
+
+#         if not rows_all:
+#             return jsonify({"error": "Report completed but returned no rows"}), 400
+
+#         df = pd.DataFrame(rows_all)
+
+#         # Delete existing for user/date-range (same behavior as your original)
+#         db.session.query(amazon_sponsored_display_advertised_products).filter(
+#             amazon_sponsored_display_advertised_products.user_id == user_id,
+#             amazon_sponsored_display_advertised_products.start_date == _to_date(start_date),
+#             amazon_sponsored_display_advertised_products.end_date == _to_date(end_date),
+#         ).delete(synchronize_session=False)
+#         db.session.commit()
+
+#         # numeric conversions
+#         for col in ["impressions", "clicks", "cost", "sales", "purchases", "unitsSold"]:
+#             if col in df.columns:
+#                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+#         def _safe_div(a, b):
+#             a = float(a or 0.0)
+#             b = float(b or 0.0)
+#             return (a / b) if b else 0.0
+
+#         now = datetime.utcnow()
+#         inserts = []
+
+#         for rec in df.to_dict("records"):
+#             cost = _to_float(rec.get("cost"))
+#             clicks = _to_int(rec.get("clicks"))
+#             impressions = _to_int(rec.get("impressions"))
+#             sales = _to_float(rec.get("sales"))
+
+#             inserts.append({
+#                 "user_id": user_id,
+#                 "created_at": now,
+#                 "updated_at": now,
+#                 "start_date": _to_date(start_date),
+#                 "end_date": _to_date(end_date),
+
+#                 "country": rec.get("_country"),
+#                 "profile_id": str(rec.get("_profileId") or ""),
+
+#                 "campaign_id": str(rec.get("campaignId") or ""),
+#                 "campaign_name": rec.get("campaignName"),
+#                 "ad_group_id": str(rec.get("adGroupId") or ""),
+#                 "ad_group_name": rec.get("adGroupName"),
+
+#                 "advertised_sku": rec.get("promotedSku"),
+#                 "advertised_asin": rec.get("promotedAsin"),
+
+#                 "currency": rec.get("campaignBudgetCurrencyCode"),
+
+#                 "impressions": impressions,
+#                 "clicks": clicks,
+#                 "spend": cost,
+
+#                 "cpc": _safe_div(cost, clicks),
+#                 "ctr": _safe_div(clicks, impressions),
+
+#                 "sales_14d": sales,
+#                 "orders_14d": _to_int(rec.get("purchases")),
+#                 "units_14d": _to_int(rec.get("unitsSold")),
+
+#                 "acos": _safe_div(cost, sales),
+#                 "roas": _safe_div(sales, cost),
+#             })
+
+#         if inserts:
+#             db.session.bulk_insert_mappings(amazon_sponsored_display_advertised_products, inserts)
+#             db.session.commit()
+
+#         return jsonify({
+#             "message": "SD advertised product report synced and saved",
+#             "start_date": start_date,
+#             "end_date": end_date,
+#             "time_unit": time_unit,
+#             "profiles_used": len(reports),
+#             "rows_saved": len(inserts),
+#         }), 200
+
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({"error": str(e)}), 500
+
+
+# @advertisement_api_routes_bp.route(
+#     "/api/ads/manager/sd_advertised_product_report/sync",
+#     methods=["POST"]
+# )
+# def manager_sd_advertised_product_report_sync_one_hit_country_only():
+#     """
+#     ONE-HIT (blocking) + COUNTRY ONLY:
+#     Request body:
+#     {
+#       "start_date": "YYYY-MM-DD",
+#       "end_date": "YYYY-MM-DD",
+#       "time_unit": "SUMMARY" | "DAILY",
+#       "countries": ["UK"] or ["US"] or ["UK","US"],
+#       "max_wait_seconds": 240,
+#       "poll_every_seconds": 10
+#     }
+
+#     - Requires countries[]
+#     - Only creates reports for the requested countries
+#     - Polls until done (or 504 timeout)
+#     - Downloads + saves to DB, returns 200
+#     """
+
+#     try:
+#         user_id = _require_jwt_user_id()
+#         u = _get_user_row(user_id)
+
+#         data = request.get_json(force=True) or {}
+
+#         start_date = data.get("start_date")
+#         end_date = data.get("end_date")
+#         time_unit = (data.get("time_unit") or "SUMMARY").upper()
+
+#         max_wait_seconds = int(data.get("max_wait_seconds") or 240)   # 4 minutes default
+#         poll_every_seconds = int(data.get("poll_every_seconds") or 10)
+
+#         if time_unit not in {"DAILY", "SUMMARY"}:
+#             return jsonify({"error": "time_unit must be DAILY or SUMMARY"}), 400
+#         if not start_date or not end_date:
+#             return jsonify({"error": "start_date and end_date required"}), 400
+#         if not u.amazon_ads_refresh_token:
+#             return jsonify({"error": "Amazon Ads not connected"}), 400
+
+#         # ✅ REQUIRE countries
+#         raw_countries = data.get("countries") or []
+#         wanted_countries = {str(c).upper() for c in raw_countries if str(c).strip()}
+#         if not wanted_countries:
+#             return jsonify({"error": "countries[] is required. Example: {\"countries\":[\"UK\"]}"}), 400
+
+#         # normalize GB->UK
+#         if "GB" in wanted_countries:
+#             wanted_countries.discard("GB")
+#             wanted_countries.add("UK")
+
+#         # map countries -> regions
+#         regions_to_use = set()
+#         if "UK" in wanted_countries:
+#             regions_to_use.add("EU")
+#         if "US" in wanted_countries:
+#             regions_to_use.add("NA")
+
+#         if not regions_to_use:
+#             return jsonify({
+#                 "error": "Unsupported countries. Use UK and/or US (optionally GB for UK).",
+#                 "countries_received": sorted(list(wanted_countries))
+#             }), 400
+
+#         access_token = get_ads_access_token_from_refresh(u.amazon_ads_refresh_token)
+
+#         # -----------------------------
+#         # Find profiles (manager -> child)
+#         # -----------------------------
+#         top_profiles = list_top_level_profiles_all_regions(access_token)
+#         manager_profile_id = find_manager_profile_id(top_profiles)
+
+#         child_by_region = (
+#             list_child_profiles_all_regions(access_token, manager_profile_id)
+#             if manager_profile_id else top_profiles
+#         )
+
+#         # -----------------------------
+#         # Create report(s) ONLY for wanted countries
+#         # -----------------------------
+#         reports = []
+#         for region, profiles in (child_by_region or {}).items():
+#             if region not in regions_to_use:
+#                 continue
+
+#             for p in profiles or []:
+#                 profile_id = p.get("profileId")
+#                 if not profile_id:
+#                     continue
+
+#                 cc = (p.get("countryCode") or "").upper()
+#                 country_label = "UK" if cc == "GB" else cc
+
+#                 # ✅ strict filter by requested countries
+#                 if country_label not in wanted_countries:
+#                     continue
+
+#                 auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
+#                 ads = AmazonAdsReportingClient(
+#                     base_url=ADS_ENDPOINTS[region],
+#                     auth=auth,
+#                     timeout=60
+#                 )
+
+#                 report_id = ads.create_sd_advertised_product_report(start_date, end_date, time_unit)
+
+#                 reports.append({
+#                     "region": region,
+#                     "country": country_label,
+#                     "profile_id": str(profile_id),
+#                     "report_id": str(report_id),
+#                 })
+
+#         if not reports:
+#             return jsonify({
+#                 "error": "No advertiser profiles found for your requested countries.",
+#                 "countries": sorted(list(wanted_countries)),
+#                 "regions_used": sorted(list(regions_to_use)),
+#             }), 400
+
+#         # -----------------------------
+#         # Poll until ALL completed (blocking)
+#         # -----------------------------
+#         deadline = time.time() + max_wait_seconds
+#         status_map = {}
+
+#         while True:
+#             all_done = True
+
+#             for r in reports:
+#                 auth = AmazonAdsAuthContext(access_token=access_token, profile_id=r["profile_id"])
+#                 ads = AmazonAdsReportingClient(
+#                     base_url=ADS_ENDPOINTS[r["region"]],
+#                     auth=auth,
+#                     timeout=60
+#                 )
+
+#                 st = ads.get_report_status(r["report_id"])
+#                 status_map[r["report_id"]] = st
+
+#                 status = (st.get("status") or "").upper()
+#                 if status not in {"COMPLETED", "SUCCESS"}:
+#                     all_done = False
+
+#             if all_done:
+#                 break
+
+#             if time.time() >= deadline:
+#                 pending_debug = []
+#                 for r in reports:
+#                     st = status_map.get(r["report_id"]) or {}
+#                     pending_debug.append({
+#                         "region": r["region"],
+#                         "country": r["country"],
+#                         "profile_id": r["profile_id"],
+#                         "report_id": r["report_id"],
+#                         "status": (st.get("status") or "UNKNOWN"),
+#                         "report": st,
+#                     })
+
+#                 return jsonify({
+#                     "error": "Report not ready within max_wait_seconds. Increase max_wait_seconds and retry.",
+#                     "start_date": start_date,
+#                     "end_date": end_date,
+#                     "time_unit": time_unit,
+#                     "countries": sorted(list(wanted_countries)),
+#                     "max_wait_seconds": max_wait_seconds,
+#                     "poll_every_seconds": poll_every_seconds,
+#                     "pending": pending_debug,
+#                 }), 504
+
+#             time.sleep(poll_every_seconds)
+
+#         # -----------------------------
+#         # Download rows (all completed)
+#         # -----------------------------
+#         rows_all = []
+#         for r in reports:
+#             st = status_map.get(r["report_id"]) or {}
+#             url = st.get("url") or st.get("location")
+#             if not url:
+#                 return jsonify({
+#                     "error": f"Report completed but url missing for report_id={r['report_id']}",
+#                     "report": st
+#                 }), 500
+
+#             auth = AmazonAdsAuthContext(access_token=access_token, profile_id=r["profile_id"])
+#             ads = AmazonAdsReportingClient(
+#                 base_url=ADS_ENDPOINTS[r["region"]],
+#                 auth=auth,
+#                 timeout=60
+#             )
+
+#             rows = ads.download_gzip_json(url)
+#             for row in (rows or []):
+#                 if isinstance(row, dict):
+#                     row["_profileId"] = r["profile_id"]
+#                     row["_country"] = r["country"]
+#                     rows_all.append(row)
+
+#         if not rows_all:
+#             return jsonify({"error": "Report completed but returned no rows"}), 400
+
+#         df = pd.DataFrame(rows_all)
+
+#         # Delete existing for user/date-range
+#         db.session.query(amazon_sponsored_display_advertised_products).filter(
+#             amazon_sponsored_display_advertised_products.user_id == user_id,
+#             amazon_sponsored_display_advertised_products.start_date == _to_date(start_date),
+#             amazon_sponsored_display_advertised_products.end_date == _to_date(end_date),
+#         ).delete(synchronize_session=False)
+#         db.session.commit()
+
+#         # numeric conversions
+#         for col in ["impressions", "clicks", "cost", "sales", "purchases", "unitsSold"]:
+#             if col in df.columns:
+#                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+#         def _safe_div(a, b):
+#             a = float(a or 0.0)
+#             b = float(b or 0.0)
+#             return (a / b) if b else 0.0
+
+#         now = datetime.utcnow()
+#         inserts = []
+
+#         for rec in df.to_dict("records"):
+#             cost = _to_float(rec.get("cost"))
+#             clicks = _to_int(rec.get("clicks"))
+#             impressions = _to_int(rec.get("impressions"))
+#             sales = _to_float(rec.get("sales"))
+
+#             inserts.append({
+#                 "user_id": user_id,
+#                 "created_at": now,
+#                 "updated_at": now,
+#                 "start_date": _to_date(start_date),
+#                 "end_date": _to_date(end_date),
+
+#                 "country": rec.get("_country"),
+#                 "profile_id": str(rec.get("_profileId") or ""),
+
+#                 "campaign_id": str(rec.get("campaignId") or ""),
+#                 "campaign_name": rec.get("campaignName"),
+#                 "ad_group_id": str(rec.get("adGroupId") or ""),
+#                 "ad_group_name": rec.get("adGroupName"),
+
+#                 "advertised_sku": rec.get("promotedSku"),
+#                 "advertised_asin": rec.get("promotedAsin"),
+
+#                 "currency": rec.get("campaignBudgetCurrencyCode"),
+
+#                 "impressions": impressions,
+#                 "clicks": clicks,
+#                 "spend": cost,
+
+#                 "cpc": _safe_div(cost, clicks),
+#                 "ctr": _safe_div(clicks, impressions),
+
+#                 "sales_14d": sales,
+#                 "orders_14d": _to_int(rec.get("purchases")),
+#                 "units_14d": _to_int(rec.get("unitsSold")),
+
+#                 "acos": _safe_div(cost, sales),
+#                 "roas": _safe_div(sales, cost),
+#             })
+
+#         if inserts:
+#             db.session.bulk_insert_mappings(amazon_sponsored_display_advertised_products, inserts)
+#             db.session.commit()
+
+#         return jsonify({
+#             "message": "SD advertised product report synced and saved (one-hit, country-only)",
+#             "start_date": start_date,
+#             "end_date": end_date,
+#             "time_unit": time_unit,
+#             "countries": sorted(list(wanted_countries)),
+#             "profiles_used": len(reports),
+#             "rows_saved": len(inserts),
+#         }), 200
+
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({"error": str(e)}), 500
+
+@advertisement_api_routes_bp.route("/api/ads/manager/sd_advertised_product_report/sync",methods=["POST"])
+def manager_sd_advertised_product_report_sync_one_hit_country_only():
     """
-    POST body (create mode):
-    {
-      "start_date": "YYYY-MM-DD",
-      "end_date": "YYYY-MM-DD",
-      "time_unit": "SUMMARY" | "DAILY",
-      "countries": ["UK","US"],
-
-      "max_wait_seconds": 60,
-      "poll_every_seconds": 5
-    }
-
-    POST body (reuse mode):
-    {
-      "start_date": "YYYY-MM-DD",
-      "end_date": "YYYY-MM-DD",
-      "time_unit": "SUMMARY" | "DAILY",
-
-      "reports": [
-        {"region":"EU","country":"UK","profile_id":"...","report_id":"..."}
-      ],
-
-      "max_wait_seconds": 60,
-      "poll_every_seconds": 5
-    }
-
-    - If reports[] is provided -> we reuse those report_ids (NO new create).
-    - Else -> create report(s) from countries filter.
-    - Poll until done or timeout.
-    - If pending -> return 202 with same reports[] so Postman can retry with same report_id.
-    - If completed -> download, save to DB, return 200.
+    ONE-HIT (blocking) + COUNTRY ONLY:
+    - Requires countries[]: ["UK"] / ["US"] / ["UK","US"]
+    - Creates report(s) only for those countries
+    - Polls until COMPLETED/SUCCESS or timeout
+    - Downloads + saves to DB
+    - Never returns 202
     """
 
     try:
@@ -2476,8 +2933,9 @@ def manager_sd_advertised_product_report_sync():
         end_date = data.get("end_date")
         time_unit = (data.get("time_unit") or "SUMMARY").upper()
 
-        max_wait_seconds = int(data.get("max_wait_seconds") or 60)
-        poll_every_seconds = int(data.get("poll_every_seconds") or 5)
+        # ✅ Increase default window for real "one hit"
+        max_wait_seconds = int(data.get("max_wait_seconds") or 900)  # 15 min
+        poll_every_seconds = int(data.get("poll_every_seconds") or 10)
 
         if time_unit not in {"DAILY", "SUMMARY"}:
             return jsonify({"error": "time_unit must be DAILY or SUMMARY"}), 400
@@ -2486,142 +2944,162 @@ def manager_sd_advertised_product_report_sync():
         if not u.amazon_ads_refresh_token:
             return jsonify({"error": "Amazon Ads not connected"}), 400
 
+        # ✅ REQUIRE countries
+        wanted = {str(c).upper().strip() for c in (data.get("countries") or []) if str(c).strip()}
+        if not wanted:
+            return jsonify({"error": "countries[] is required. Example: {\"countries\":[\"UK\"]}"}), 400
+
+        # normalize
+        if "GB" in wanted:
+            wanted.discard("GB")
+            wanted.add("UK")
+
+        # map countries -> regions (your logic)
+        regions_to_use = set()
+        if "UK" in wanted:
+            regions_to_use.add("EU")
+        if "US" in wanted:
+            regions_to_use.add("NA")
+
+        if not regions_to_use:
+            return jsonify({"error": "Unsupported countries. Use UK and/or US (or GB for UK)."}), 400
+
         access_token = get_ads_access_token_from_refresh(u.amazon_ads_refresh_token)
 
-        # ------------------------------------------------------------
-        # MODE A: reuse existing report(s) if client sent them
-        # ------------------------------------------------------------
-        reports = data.get("reports")
-        if reports:
-            # normalize minimal fields
-            normalized = []
-            for r in reports:
-                region = (r.get("region") or "").upper()
-                if region not in ADS_ENDPOINTS:
+        # -----------------------------
+        # Find profiles (manager -> child)
+        # -----------------------------
+        top_profiles = list_top_level_profiles_all_regions(access_token)
+        manager_profile_id = find_manager_profile_id(top_profiles)
+        child_by_region = (
+            list_child_profiles_all_regions(access_token, manager_profile_id)
+            if manager_profile_id else top_profiles
+        )
+
+        # -----------------------------
+        # Create report(s) ONLY for wanted countries
+        # -----------------------------
+        reports = []
+        for region, profiles in (child_by_region or {}).items():
+            if region not in regions_to_use:
+                continue
+
+            for p in profiles or []:
+                profile_id = p.get("profileId")
+                if not profile_id:
                     continue
-                if not r.get("profile_id") or not r.get("report_id"):
+
+                cc = (p.get("countryCode") or "").upper()
+                country_label = "UK" if cc == "GB" else cc
+
+                # strict filter
+                if country_label not in wanted:
                     continue
-                normalized.append({
+
+                auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
+                ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[region], auth=auth, timeout=60)
+
+                report_id = ads.create_sd_advertised_product_report(start_date, end_date, time_unit)
+
+                reports.append({
                     "region": region,
-                    "country": r.get("country") or "",
-                    "profile_id": str(r["profile_id"]),
-                    "report_id": str(r["report_id"]),
+                    "country": country_label,
+                    "profile_id": str(profile_id),
+                    "report_id": str(report_id),
                 })
 
-            if not normalized:
-                return jsonify({"error": "reports[] provided but invalid/empty"}), 400
+        if not reports:
+            return jsonify({
+                "error": "No advertiser profiles found for requested countries.",
+                "countries": sorted(list(wanted)),
+                "regions_used": sorted(list(regions_to_use)),
+            }), 400
 
-            reports = normalized
-
-        # ------------------------------------------------------------
-        # MODE B: create reports if none provided
-        # ------------------------------------------------------------
-        else:
-            wanted_countries = {str(c).upper() for c in (data.get("countries") or [])}
-
-            regions_to_use = set()
-            if "UK" in wanted_countries or "GB" in wanted_countries:
-                regions_to_use.add("EU")
-            if "US" in wanted_countries or "CA" in wanted_countries:
-                regions_to_use.add("NA")
-            if not regions_to_use:
-                regions_to_use = {"EU", "NA"}
-
-            top_profiles = list_top_level_profiles_all_regions(access_token)
-            manager_profile_id = find_manager_profile_id(top_profiles)
-            child_by_region = (
-                list_child_profiles_all_regions(access_token, manager_profile_id)
-                if manager_profile_id else top_profiles
-            )
-
-            reports = []
-            for region, profiles in (child_by_region or {}).items():
-                if region not in regions_to_use:
-                    continue
-
-                for p in profiles or []:
-                    profile_id = p.get("profileId")
-                    if not profile_id:
-                        continue
-
-                    cc = (p.get("countryCode") or "").upper()
-                    country_label = "UK" if cc == "GB" else cc
-
-                    if wanted_countries and country_label not in wanted_countries:
-                        continue
-
-                    auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
-                    ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[region], auth=auth, timeout=60)
-
-                    report_id = ads.create_sd_advertised_product_report(start_date, end_date, time_unit)
-
-                    reports.append({
-                        "region": region,
-                        "country": country_label,
-                        "profile_id": str(profile_id),
-                        "report_id": str(report_id),
-                    })
-
-            if not reports:
-                return jsonify({"error": "No advertiser profiles found for your filter"}), 400
-
-        # ------------------------------------------------------------
-        # Poll statuses
-        # ------------------------------------------------------------
+        # -----------------------------
+        # Poll (robust): backoff + fail-fast
+        # -----------------------------
         deadline = time.time() + max_wait_seconds
         status_map = {}
 
-        while time.time() < deadline:
+        # start with poll_every_seconds, then back off up to 60s
+        interval = max(2, poll_every_seconds)
+        max_interval = 60
+
+        DONE = {"COMPLETED", "SUCCESS"}
+        FAIL = {"FAILURE", "FAILED", "CANCELLED", "CANCELED"}
+
+        while True:
             all_done = True
+            any_failed = False
+            failed_list = []
 
             for r in reports:
                 auth = AmazonAdsAuthContext(access_token=access_token, profile_id=r["profile_id"])
                 ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[r["region"]], auth=auth, timeout=60)
 
-                st = ads.get_report_status(r["report_id"])
+                st = ads.get_report_status(r["report_id"]) or {}
                 status_map[r["report_id"]] = st
 
                 status = (st.get("status") or "").upper()
-                if status not in {"COMPLETED", "SUCCESS"}:
+
+                if status in FAIL:
+                    any_failed = True
+                    failed_list.append({**r, "status": status, "report": st})
+
+                if status not in DONE:
                     all_done = False
+
+            if any_failed:
+                return jsonify({
+                    "error": "One or more reports failed.",
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "time_unit": time_unit,
+                    "failed": failed_list,
+                }), 502
 
             if all_done:
                 break
 
-            time.sleep(poll_every_seconds)
+            if time.time() >= deadline:
+                pending_debug = []
+                for r in reports:
+                    st = status_map.get(r["report_id"]) or {}
+                    pending_debug.append({
+                        "region": r["region"],
+                        "country": r["country"],
+                        "profile_id": r["profile_id"],
+                        "report_id": r["report_id"],
+                        "status": (st.get("status") or "UNKNOWN"),
+                        "report": st,
+                    })
 
-        # If any pending, return 202 with SAME reports[] (so next retry reuses)
-        pending = []
-        completed = []
-        for r in reports:
-            st = status_map.get(r["report_id"]) or {}
-            status = (st.get("status") or "").upper()
+                return jsonify({
+                    "error": "Report not ready within max_wait_seconds. Increase max_wait_seconds.",
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "time_unit": time_unit,
+                    "countries": sorted(list(wanted)),
+                    "max_wait_seconds": max_wait_seconds,
+                    "last_poll_interval_seconds": interval,
+                    "pending": pending_debug,
+                }), 504
 
-            if status in {"COMPLETED", "SUCCESS"}:
-                completed.append({**r, "status": status})
-            else:
-                pending.append({**r, "status": status or "UNKNOWN", "report": st})
+            time.sleep(interval)
+            interval = min(max_interval, int(interval * 1.5))  # backoff
 
-        if pending:
-            return jsonify({
-                "message": "Some reports are not ready yet. Retry the SAME endpoint using the returned reports[] (do NOT create new).",
-                "start_date": start_date,
-                "end_date": end_date,
-                "time_unit": time_unit,
-                "completed": completed,
-                "pending": pending,
-                "reports": reports,  # 👈 important: send back so client can reuse
-            }), 202
-
-        # ------------------------------------------------------------
-        # Download rows (all completed)
-        # ------------------------------------------------------------
+        # -----------------------------
+        # Download
+        # -----------------------------
         rows_all = []
         for r in reports:
             st = status_map.get(r["report_id"]) or {}
             url = st.get("url") or st.get("location")
             if not url:
-                return jsonify({"error": f"Report completed but url missing for report_id={r['report_id']}", "report": st}), 500
+                return jsonify({
+                    "error": f"Report completed but url missing for report_id={r['report_id']}",
+                    "report": st
+                }), 500
 
             auth = AmazonAdsAuthContext(access_token=access_token, profile_id=r["profile_id"])
             ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[r["region"]], auth=auth, timeout=60)
@@ -2638,7 +3116,7 @@ def manager_sd_advertised_product_report_sync():
 
         df = pd.DataFrame(rows_all)
 
-        # Delete existing for user/date-range (same behavior as your original)
+        # Delete existing
         db.session.query(amazon_sponsored_display_advertised_products).filter(
             amazon_sponsored_display_advertised_products.user_id == user_id,
             amazon_sponsored_display_advertised_products.start_date == _to_date(start_date),
@@ -2685,7 +3163,7 @@ def manager_sd_advertised_product_report_sync():
 
                 "currency": rec.get("campaignBudgetCurrencyCode"),
 
-                "impressions": impressions,
+                "impressions": _to_int(rec.get("impressions")),
                 "clicks": clicks,
                 "spend": cost,
 
@@ -2705,10 +3183,11 @@ def manager_sd_advertised_product_report_sync():
             db.session.commit()
 
         return jsonify({
-            "message": "SD advertised product report synced and saved",
+            "message": "SD advertised product report synced and saved (one-hit, country-only)",
             "start_date": start_date,
             "end_date": end_date,
             "time_unit": time_unit,
+            "countries": sorted(list(wanted)),
             "profiles_used": len(reports),
             "rows_saved": len(inserts),
         }), 200
@@ -2716,5 +3195,4 @@ def manager_sd_advertised_product_report_sync():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
 
