@@ -730,8 +730,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     selectedCountries,
   ]);
 
-  // helper to format "October" + 2025 -> "Oct '25"
-  const formatAxisMonth = (monthName: string, year: number | "" | string) => {
+  // helper to format "October" -> "Oct"  ✅ (NO YEAR)
+  const formatAxisMonth = (monthName: string) => {
     if (!monthName) return "";
 
     const fullNames = [
@@ -766,18 +766,14 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
     const lower = monthName.toLowerCase();
     let idx = fullNames.indexOf(lower);
+
     if (idx === -1) {
-      idx = fullNames.findIndex((full) =>
-        lower.startsWith(full.slice(0, 3))
-      );
+      idx = fullNames.findIndex((full) => lower.startsWith(full.slice(0, 3)));
     }
 
-    const abbr = idx >= 0 ? abbrs[idx] : monthName.slice(0, 3);
-    const yStr = year === "" ? "" : String(year);
-    const shortYear = yStr ? yStr.slice(-2) : "";
-
-    return shortYear ? `${abbr} '${shortYear}` : abbr;
+    return idx >= 0 ? abbrs[idx] : monthName.slice(0, 3);
   };
+
 
 
   /* ---------- chart options (currency-aware) ---------- */
@@ -831,13 +827,13 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       },
       scales: {
         x: {
-          title: { display: true, text: "Month" },
+          title: { display: false, text: "Month" },
           ticks: {
             callback: function (val: any) {
               // "this" is the X scale; get the raw label ("October", etc.)
               // @ts-expect-error -- Chart.js scale context typing is incorrect for getLabelForValue
               const rawLabel = this.getLabelForValue(val) as string;
-              return formatAxisMonth(rawLabel, selectedYear || "");
+              return formatAxisMonth(rawLabel);
             },
           },
         },
@@ -922,8 +918,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       })
 
       .map(([country, rawArray]) => {
-        const backendKey = country.toLowerCase();         
-        const normKey = normalizeCountryKey(backendKey);  
+        const backendKey = country.toLowerCase();
+        const normKey = normalizeCountryKey(backendKey);
 
         const monthly: MonthDatum[] = Array.isArray(rawArray)
           ? (rawArray as MonthDatum[])
