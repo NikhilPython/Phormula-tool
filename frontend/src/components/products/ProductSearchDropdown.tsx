@@ -148,17 +148,22 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
           type="text"
           placeholder="Search products, SKUs..."
           className="
-    w-full
-    rounded-lg
-    border border-[#C4C4C4]
-    bg-[#FBFBFB]
-    px-4 py-2 pl-9
-    text-sm text-charcoal-500
-    outline-none
-    shadow-sm
-    focus:border-[#C4C4C4]
-    focus:ring-0
-  "
+  w-full
+  rounded-lg
+  border border-[#C4C4C4]
+  bg-[#FBFBFB]
+  shadow-sm
+  outline-none
+  focus:border-[#C4C4C4]
+  focus:ring-0
+
+  text-xs sm:text-sm
+  px-3 sm:px-4
+  py-1.5 sm:py-2
+  pl-8 sm:pl-9
+  text-charcoal-500
+"
+
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onFocus={() => {
@@ -222,7 +227,7 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => handleSelect(p)}
               >
-                <div className="text-gray-800">{p.product_name}</div>
+                <div className="text-gray-800 text-xs sm:text-sm">{p.product_name}</div>
               </button>
             ))
           ) : (

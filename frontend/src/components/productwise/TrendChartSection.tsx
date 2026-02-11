@@ -15,6 +15,7 @@ import { saveAs } from "file-saver";
 import SegmentedToggle from "../ui/SegmentedToggle";
 import ProductSearchDropdown from "@/components/products/ProductSearchDropdown";
 import { AiButton } from "../ui/button/AiButton";
+import PageBreadcrumb from "../common/PageBreadCrumb";
 
 const Line = dynamic(() => import("react-chartjs-2").then((m) => m.Line), {
   ssr: false,
@@ -77,7 +78,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
           ...ds,
           fill: false,
           borderDash: isCm1OrProfit ? [6, 6] : [], // dotted for CM1/Profit
-          tension:0.35,
+          tension: 0.35,
         };
       });
 
@@ -109,7 +110,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
           ...ds,
           fill: false,
           borderDash: isCm1OrProfit ? [6, 6] : [],
-           tension: 0.35,
+          tension: 0.35,
         };
       });
 
@@ -117,7 +118,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
         ...ds,
         fill: false,
         borderDash: [6, 6],
-        tension:0.35
+        tension: 0.35
       }));
 
       return {
@@ -247,102 +248,163 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
 
   return (
     <div className="w-full rounded-xl border border-slate-200 bg-[#D9D9D933] p-4 sm:p-5 shadow-sm">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        {/* LEFT: Title + country toggles */}
-        <div className="flex-1">
-          <h3 className="m-0 text-xl font-bold text-[#414042]">
-            Product Name -{" "}
-            <b className="text-green-500 capitalize">{productname}</b>
-          </h3>
+      {/* TOP SECTION */}
+      <div className="flex flex-col gap-3">
+        {/* ✅ MOBILE/TABLET (below md) */}
+        <div className="flex flex-col gap-3 md:hidden">
+          {/* Row 1: Heading + Download */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <PageBreadcrumb
+                pageTitle="Product Name -"
+                variant="page"
+                textSize="2xl"
+              />
 
-          <div className="my-4 flex flex-wrap items-center gap-3">
-            {["global", ...nonEmptyCountriesFromApi].map((country) => {
-              const normalized = normalizeCountryKey(country);
-              const color = getCountryColor(normalized);
-              const isChecked =
-                selectedCountries[country as CountryKey] ?? true;
-              const label = formatCountryLabel(normalized);
+              <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-semibold text-[#5EA68E]">
+                {productname}
+              </span>
+            </div>
 
-              return (
-                <label
-                  key={country}
-                  className={[
-                    "shrink-0",
-                    "flex items-center gap-1 sm:gap-1.5",
-                    "font-semibold select-none whitespace-nowrap",
-                    "text-[9px] sm:text-[10px] md:text-[11px] lg:text-xs xl:text-sm",
-                    "text-charcoal-500",
-                    isChecked ? "opacity-100" : "opacity-40",
-                    "cursor-pointer",
-                  ].join(" ")}
-                  onClick={() => onToggleCountry(country as CountryKey)}
-                >
-                  <span
-                    className="
-                      flex items-center justify-center
-                      h-3 w-3 sm:h-3.5 sm:w-3.5
-                      rounded-sm border transition
-                    "
-                    style={{
-                      borderColor: color,
-                      backgroundColor: isChecked ? color : "white",
-                    }}
-                  >
-                    {isChecked && (
-                      <svg
-                        viewBox="0 0 24 24"
-                        width="14"
-                        height="14"
-                        className="text-white"
-                      >
-                        <path
-                          fill="currentColor"
-                          d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
-                        />
-                      </svg>
-                    )}
-                  </span>
-
-                  <span className="text-charcoal-500">{label}</span>
-                </label>
-              );
-            })}
+            <DownloadIconButton onClick={handleDownload} />
           </div>
-        </div>
 
-        {/* RIGHT: Search dropdown + Segmented toggle + AI button */}
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-          <div className="w-full lg:w-72">
+          {/* ✅ Row 2: Search dropdown (always visible in mobile/tablet) */}
+          <div className="w-full">
             <ProductSearchDropdown
               authToken={authToken}
               onProductSelect={onProductSelect}
             />
           </div>
 
-          <div className="w-full sm:w-auto">
+          {/* Row 3: Toggle + AI */}
+          <div className="flex items-center justify-between gap-3">
             <SegmentedToggle<TrendTab>
               value={activeTab}
               onChange={setActiveTab}
               textSizeClass="text-xs sm:text-sm"
-              className="w-full sm:w-auto"
+              className="w-auto"
               options={[
                 { value: "sales_cm1", label: "Sales & CM1 Profit" },
                 { value: "units", label: "Units" },
               ]}
             />
+
+            {onViewBusinessInsights && (
+              <AiButton
+                onClick={handleAiInsightsClick}
+                disabled={insightsLoading}
+                loading={insightsLoading || isPreviewMode}
+              >
+                {insightsLoading ? "Generating..." : "AI Insights"}
+              </AiButton>
+            )}
+          </div>
+        </div>
+
+        {/* ✅ DESKTOP (md and above) — keep as before */}
+        <div className="hidden md:flex md:flex-row md:items-start md:justify-between md:gap-3">
+          {/* LEFT: Title + country toggles */}
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <PageBreadcrumb
+                pageTitle="Product Name -"
+                variant="page"
+                textSize="2xl"
+              />
+
+              <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-semibold text-[#5EA68E]">
+                {productname}
+              </span>
+            </div>
+
+            <div className="my-4 flex flex-wrap items-center gap-3">
+              {["global", ...nonEmptyCountriesFromApi].map((country) => {
+                const normalized = normalizeCountryKey(country);
+                const color = getCountryColor(normalized);
+                const isChecked = selectedCountries[country as CountryKey] ?? true;
+                const label = formatCountryLabel(normalized);
+
+                return (
+                  <label
+                    key={country}
+                    className={[
+                      "shrink-0",
+                      "flex items-center gap-1 sm:gap-1.5",
+                      "font-semibold select-none whitespace-nowrap",
+                      "text-[9px] sm:text-[10px] md:text-[11px] lg:text-xs xl:text-sm",
+                      "text-charcoal-500",
+                      isChecked ? "opacity-100" : "opacity-40",
+                      "cursor-pointer",
+                    ].join(" ")}
+                    onClick={() => onToggleCountry(country as CountryKey)}
+                  >
+                    <span
+                      className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
+                      style={{
+                        borderColor: color,
+                        backgroundColor: isChecked ? color : "white",
+                      }}
+                    >
+                      {isChecked && (
+                        <svg
+                          viewBox="0 0 24 24"
+                          width="14"
+                          height="14"
+                          className="text-white"
+                        >
+                          <path
+                            fill="currentColor"
+                            d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                          />
+                        </svg>
+                      )}
+                    </span>
+
+                    <span className="text-charcoal-500">{label}</span>
+                  </label>
+                );
+              })}
+            </div>
           </div>
 
-          {onViewBusinessInsights && (
-            <AiButton
-              onClick={handleAiInsightsClick}
-              disabled={insightsLoading}
-              loading={insightsLoading || isPreviewMode}
-            >
-              {insightsLoading ? "Generating..." : "AI Insights"}
-            </AiButton>
-          )}
+          {/* RIGHT: Search + Toggle + AI + Download */}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+            <div className="w-full lg:w-72">
+              <ProductSearchDropdown
+                authToken={authToken}
+                onProductSelect={onProductSelect}
+              />
+            </div>
+
+            <div className="w-full sm:w-auto">
+              <SegmentedToggle<TrendTab>
+                value={activeTab}
+                onChange={setActiveTab}
+                textSizeClass="text-xs sm:text-sm"
+                className="w-full sm:w-auto"
+                options={[
+                  { value: "sales_cm1", label: "Sales & CM1 Profit" },
+                  { value: "units", label: "Units" },
+                ]}
+              />
+            </div>
+
+            {onViewBusinessInsights && (
+              <AiButton
+                onClick={handleAiInsightsClick}
+                disabled={insightsLoading}
+                loading={insightsLoading || isPreviewMode}
+              >
+                {insightsLoading ? "Generating..." : "AI Insights"}
+              </AiButton>
+            )}
+
+            <DownloadIconButton onClick={handleDownload} />
+          </div>
         </div>
       </div>
+
 
       {/* CHART AREA */}
       <div className="mt-4 h-[260px] sm:h-[300px] md:h-[340px] lg:h-[380px] xl:h-[420px]">
@@ -364,27 +426,33 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="flex-1 flex justify-center">
           {activeTab === "sales_cm1" ? (
-            <div className="flex flex-wrap justify-center items-center gap-6 text-sm sm:text-base font-semibold text-gray-700">
+            <div className="flex flex-wrap justify-center items-center gap-4 
+                text-[10px] sm:text-xs md:text-sm lg:text-base 
+                font-semibold text-charcoal-500">
+
               <div className="flex items-center gap-2">
-                <span className="h-[2px] w-10 bg-gray-800" />
+                <span className="h-[2px] w-10 bg-charcoal-500" />
                 <span>Net Sales</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-10 border-t border-dashed border-gray-800" />
+                <span className="w-10 border-t border-dashed border-charcoal-500" />
                 <span>CM1 Profit</span>
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-700">
+            <div className="flex items-center gap-2 
+                text-[10px] sm:text-xs md:text-sm 
+                text-charcoal-500">
+
               <span className="h-[2px] w-10 bg-gray-800" />
               <span>Units</span>
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <DownloadIconButton onClick={handleDownload} />
-        </div>
+        </div> */}
       </div>
     </div>
   );
