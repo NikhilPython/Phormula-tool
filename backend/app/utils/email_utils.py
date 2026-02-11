@@ -656,6 +656,187 @@ def parse_actions_to_cards(actions: list) -> list:
 #         print(f"[INFO] Live BI email sent to {to_email}")
 #     except Exception as e:
 #         print(f"[ERROR] Email send failed: {e}")
+# def send_live_bi_email(
+#     to_email,
+#     overall_summary,
+#     country,
+#     prev_label,
+#     curr_label,
+#     deep_link_token=None,
+#     overall_actions=None,   # ✅ bullets (strings)
+#     sku_actions=None,       # ✅ dict: { sku -> rendered_text }
+# ):
+#     if not to_email:
+#         print("[WARN] No email provided.")
+#         return
+
+#     subject = f"[Phormula] Live MTD Business Insights - {country.upper()} ({curr_label})"
+
+#     # ✅ FIX 1: overall_summary is a dict → use metric_bullets
+#     summary_html = "".join(
+#         f"<li>{s}</li>"
+#         for s in (overall_summary or {}).get("metric_bullets", [])
+#     )
+
+#     # --------------------------------------------------
+#     # SKU ACTIONS SECTION
+#     # --------------------------------------------------
+#     sku_section_html = ""
+
+#     # ✅ FIX 2: sku_actions is a dict {sku -> text}, not a list
+#     if sku_actions:
+#         sku_section_html = "".join(
+#             render_sku_card(
+#                 {
+#                     "sku": sku_key,
+#                     "product": sku_key,  # ✅ fallback product label
+#                     "action_text": action_text,
+#                 },
+#                 idx,
+#             )
+#             for idx, (sku_key, action_text) in enumerate(sku_actions.items())
+#         )
+
+
+#     elif overall_actions:
+#         parsed_cards = parse_actions_to_cards(overall_actions)
+#         if parsed_cards:
+#             sku_section_html = "".join(
+#                 render_sku_card(card, idx)
+#                 for idx, card in enumerate(parsed_cards)
+#             )
+#         else:
+#             # fallback: plain bullets (should be rare)
+#             sku_section_html = f"""
+#             <ul style="font-size:14px; color:#555;">
+#               {''.join(f"<li>{a}</li>" for a in overall_actions)}
+#             </ul>
+#             """
+#     else:
+#         sku_section_html = """
+#         <p style="font-size:13px; color:#777;">
+#           No SKU-wise actions available for this run.
+#         </p>
+#         """
+
+#     # --------------------------------------------------
+#     # DEEP LINK
+#     # --------------------------------------------------
+#     deep_link_html = ""
+#     if deep_link_token:
+#         dashboard_url = f"https://app.phormula.io/live-bi?token={deep_link_token}&country={country}"
+#         deep_link_html = f"""
+#         <p style="text-align:center; margin-top:24px;">
+#           <a href="{dashboard_url}"
+#              style="display:inline-block; background:#37455F; color:#f8edcf;
+#                     padding:10px 24px; text-decoration:none; border-radius:8px;
+#                     font-size:14px;">
+#             Open Live BI Dashboard
+#           </a>
+#         </p>
+#         """
+
+#     # --------------------------------------------------
+#     # EMAIL BODY
+#     # --------------------------------------------------
+#     html_body = f"""
+#     <html>
+#     <body style="font-family:Lato,Arial,sans-serif; background:#f4f4f4; padding:20px;">
+#       <div style="max-width:700px; margin:auto; background:#fff;
+#                   padding:24px; border-radius:10px; border:2px solid #5EA68E;">
+
+#         <img src="https://i.postimg.cc/43T3k86Z/logo.png"
+#              style="width:180px; display:block; margin:0 auto 16px;" />
+
+#         <h2 style="text-align:center; color:#37455F;">
+#           Live MTD vs Previous Period – Business Insights
+#         </h2>
+
+#        <div style="text-align:center; margin-bottom:16px;">
+#   <div style="
+#     font-size:18px;
+#     font-weight:700;
+#     color:#37455F;
+#     background:#EAF3F0;
+#     display:inline-block;
+#     padding:6px 16px;
+#     border-radius:20px;
+#     margin-bottom:8px;
+#   ">
+#      Country: {country.upper()}
+#   </div>
+
+#   <div style="margin-top:10px;">
+#     <span style="
+#       font-size:14px;
+#       font-weight:600;
+#       color:#37455F;
+#       background:#F3F4F6;
+#       padding:4px 10px;
+#       border-radius:12px;
+#       margin-right:6px;
+#       display:inline-block;
+#     ">
+#       Previous: {prev_label}
+#     </span>
+
+#     <span style="
+#       font-size:14px;
+#       font-weight:600;
+#       color:#ffffff;
+#       background:#37455F;
+#       padding:4px 10px;
+#       border-radius:12px;
+#       display:inline-block;
+#     ">
+#       Current: {curr_label}
+#     </span>
+#   </div>
+# </div>
+
+#         <hr style="margin:20px 0; border:none; border-top:1px solid #eee;" />
+
+#         <h3 style="color:#37455F; display:flex; align-items:center;">
+#           📊 <span style="margin-left:8px;">Overall Summary</span>
+#         </h3>
+
+#         <ul style="font-size:14px; color:#555;">
+#           {summary_html}
+#         </ul>
+
+#         <h3 style="color:#37455F; margin-top:28px;">
+#           🎯 Actions
+#         </h3>
+
+#         {sku_section_html}
+
+#         {deep_link_html}
+
+#         <p style="font-size:12px; color:#999; margin-top:24px;">
+#           This email was auto-generated from Live BI.
+#         </p>
+#         <p style="font-size:12px; color:#999;">
+#           Support: <a href="mailto:care@phormula.io">care@phormula.io</a>
+#         </p>
+#       </div>
+#     </body>
+#     </html>
+#     """
+
+#     msg = Message(
+#         subject,
+#         sender=("Phormula Care Team", "care@phormula.io"),
+#         recipients=[to_email],
+#     )
+#     msg.html = html_body
+
+#     try:
+#         mail.send(msg)
+#         print(f"[INFO] Live BI email sent to {to_email}")
+#     except Exception as e:
+#         print(f"[ERROR] Email send failed: {e}")
+
+
 def send_live_bi_email(
     to_email,
     overall_summary,
@@ -663,63 +844,131 @@ def send_live_bi_email(
     prev_label,
     curr_label,
     deep_link_token=None,
-    overall_actions=None,   # ✅ bullets (strings)
-    sku_actions=None,       # ✅ dict: { sku -> rendered_text }
+    overall_actions=None,     # dict or bullets, depending on your pipeline
+    sku_actions=None,         # ✅ dict: { sku -> rendered_text } (text/html)
+    sku_to_product=None,      # optional: dict {sku -> product_name}
 ):
+    import traceback
+
     if not to_email:
         print("[WARN] No email provided.")
         return
 
     subject = f"[Phormula] Live MTD Business Insights - {country.upper()} ({curr_label})"
 
-    # ✅ FIX 1: overall_summary is a dict → use metric_bullets
-    summary_html = "".join(
-        f"<li>{s}</li>"
-        for s in (overall_summary or {}).get("metric_bullets", [])
-    )
+    # ---------------------------
+    # Overall summary bullets
+    # ---------------------------
+    metric_bullets = (overall_summary or {}).get("metric_bullets", []) or []
+    summary_html = "".join(f"<li>{s}</li>" for s in metric_bullets)
 
-    # --------------------------------------------------
+    # ---------------------------
+    # Helpers
+    # ---------------------------
+    def safe_product_name(sku: str) -> str:
+        if not sku:
+            return "Unknown"
+        if sku_to_product and isinstance(sku_to_product, dict):
+            return sku_to_product.get(sku) or sku
+        return sku
+
+    def render_simple_action_card(sku: str, action_text: str) -> str:
+        # action_text may already contain HTML from render_live_recommended_action
+        # If it is plain text, it will still render fine.
+        product = safe_product_name(sku)
+        action_text = action_text or ""
+
+        return f"""
+        <div style="border:1px solid #E5E7EB; background:#FFFFFF; padding:14px 14px;
+                    border-radius:10px; margin:12px 0; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:14px; font-weight:800; color:#37455F;">{product}</div>
+            <div style="font-size:11px; font-weight:700; color:#6B7280; background:#F3F4F6;
+                        padding:3px 8px; border-radius:999px;">SKU: {sku}</div>
+          </div>
+          <div style="margin-top:10px; font-size:13px; line-height:1.55; color:#37455F;">
+            {action_text}
+          </div>
+        </div>
+        """
+
+    # ---------------------------
     # SKU ACTIONS SECTION
-    # --------------------------------------------------
+    # ---------------------------
     sku_section_html = ""
 
-    # ✅ FIX 2: sku_actions is a dict {sku -> text}, not a list
-    if sku_actions:
-        sku_section_html = "".join(
-            render_sku_card(
-                {
-                    "sku": sku_key,
-                    "action_text": action_text,
-                },
-                idx,
-            )
-            for idx, (sku_key, action_text) in enumerate(sku_actions.items())
-        )
-
-    elif overall_actions:
-        parsed_cards = parse_actions_to_cards(overall_actions)
-        if parsed_cards:
-            sku_section_html = "".join(
-                render_sku_card(card, idx)
-                for idx, card in enumerate(parsed_cards)
-            )
-        else:
-            # fallback: plain bullets (should be rare)
-            sku_section_html = f"""
-            <ul style="font-size:14px; color:#555;">
-              {''.join(f"<li>{a}</li>" for a in overall_actions)}
-            </ul>
+    try:
+        # ✅ Primary path: sku_actions is dict {sku -> rendered_text}
+        # We DO NOT call render_sku_card here because your dict doesn't contain "metrics"
+        # and render_sku_card expects structured cards.
+        if sku_actions and isinstance(sku_actions, dict):
+            cards = []
+            for sku_key, action_text in sku_actions.items():
+                if not sku_key:
+                    continue
+                cards.append(render_simple_action_card(sku_key, action_text))
+            sku_section_html = "".join(cards) if cards else """
+                <p style="font-size:13px; color:#777;">
+                  No SKU-wise actions available for this run.
+                </p>
             """
-    else:
+
+        # Fallback path: overall_actions exists (old pipeline)
+        elif overall_actions:
+            parsed_cards = parse_actions_to_cards(overall_actions)
+            if parsed_cards:
+                rendered = []
+                for idx, card in enumerate(parsed_cards):
+                    # harden the card schema so render_sku_card won't crash on missing keys
+                    if isinstance(card, dict):
+                        card.setdefault("sku", card.get("sku") or card.get("product") or "Unknown")
+                        card.setdefault("product", card.get("product") or card.get("product_name") or card.get("sku") or "Unknown")
+                        card.setdefault("metrics", card.get("metrics") or {})
+                        card.setdefault("action_text", card.get("action_text") or card.get("action") or "")
+                    try:
+                        rendered.append(render_sku_card(card, idx))
+                    except Exception as e:
+                        print(f"[WARN] render_sku_card failed idx={idx}: {e}")
+                        traceback.print_exc()
+                        # final fallback: show a simple card
+                        sku_fallback = (card.get("sku") if isinstance(card, dict) else "Unknown")
+                        action_fallback = (card.get("action_text") if isinstance(card, dict) else str(card))
+                        rendered.append(render_simple_action_card(sku_fallback, action_fallback))
+
+                sku_section_html = "".join(rendered)
+            else:
+                # fallback: plain bullets if overall_actions is iterable of strings
+                if isinstance(overall_actions, (list, tuple)):
+                    sku_section_html = f"""
+                    <ul style="font-size:14px; color:#555;">
+                      {''.join(f"<li>{a}</li>" for a in overall_actions)}
+                    </ul>
+                    """
+                else:
+                    sku_section_html = """
+                    <p style="font-size:13px; color:#777;">
+                      No SKU-wise actions available for this run.
+                    </p>
+                    """
+        else:
+            sku_section_html = """
+            <p style="font-size:13px; color:#777;">
+              No SKU-wise actions available for this run.
+            </p>
+            """
+
+    except Exception as e:
+        print("[WARN] Failed building SKU section:", e)
+        traceback.print_exc()
         sku_section_html = """
         <p style="font-size:13px; color:#777;">
-          No SKU-wise actions available for this run.
+          Actions section unavailable due to a rendering error.
         </p>
         """
 
-    # --------------------------------------------------
+    # ---------------------------
     # DEEP LINK
-    # --------------------------------------------------
+    # ---------------------------
     deep_link_html = ""
     if deep_link_token:
         dashboard_url = f"https://app.phormula.io/live-bi?token={deep_link_token}&country={country}"
@@ -734,9 +983,9 @@ def send_live_bi_email(
         </p>
         """
 
-    # --------------------------------------------------
+    # ---------------------------
     # EMAIL BODY
-    # --------------------------------------------------
+    # ---------------------------
     html_body = f"""
     <html>
     <body style="font-family:Lato,Arial,sans-serif; background:#f4f4f4; padding:20px;">
@@ -750,47 +999,44 @@ def send_live_bi_email(
           Live MTD vs Previous Period – Business Insights
         </h2>
 
-       <div style="text-align:center; margin-bottom:16px;">
-  <div style="
-    font-size:18px;
-    font-weight:700;
-    color:#37455F;
-    background:#EAF3F0;
-    display:inline-block;
-    padding:6px 16px;
-    border-radius:20px;
-    margin-bottom:8px;
-  ">
-     Country: {country.upper()}
-  </div>
+        <div style="text-align:center; margin-bottom:16px;">
+          <div style="
+            font-size:18px;
+            font-weight:700;
+            color:#37455F;
+            background:#EAF3F0;
+            display:inline-block;
+            padding:6px 16px;
+            border-radius:20px;
+            margin-bottom:8px;">
+            Country: {country.upper()}
+          </div>
 
-  <div style="margin-top:10px;">
-    <span style="
-      font-size:14px;
-      font-weight:600;
-      color:#37455F;
-      background:#F3F4F6;
-      padding:4px 10px;
-      border-radius:12px;
-      margin-right:6px;
-      display:inline-block;
-    ">
-      Previous: {prev_label}
-    </span>
+          <div style="margin-top:10px;">
+            <span style="
+              font-size:14px;
+              font-weight:600;
+              color:#37455F;
+              background:#F3F4F6;
+              padding:4px 10px;
+              border-radius:12px;
+              margin-right:6px;
+              display:inline-block;">
+              Previous: {prev_label}
+            </span>
 
-    <span style="
-      font-size:14px;
-      font-weight:600;
-      color:#ffffff;
-      background:#37455F;
-      padding:4px 10px;
-      border-radius:12px;
-      display:inline-block;
-    ">
-      Current: {curr_label}
-    </span>
-  </div>
-</div>
+            <span style="
+              font-size:14px;
+              font-weight:600;
+              color:#ffffff;
+              background:#37455F;
+              padding:4px 10px;
+              border-radius:12px;
+              display:inline-block;">
+              Current: {curr_label}
+            </span>
+          </div>
+        </div>
 
         <hr style="margin:20px 0; border:none; border-top:1px solid #eee;" />
 
@@ -833,6 +1079,8 @@ def send_live_bi_email(
         print(f"[INFO] Live BI email sent to {to_email}")
     except Exception as e:
         print(f"[ERROR] Email send failed: {e}")
+        traceback.print_exc()
+
 
 
 

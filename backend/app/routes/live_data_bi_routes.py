@@ -573,8 +573,6 @@ def live_mtd_vs_previous():
             sku_to_product=sku_to_product, 
         )
 
-        print("FINAL inventory_signals:", payload_ai.get("inventory_signals"))
-
         # ---------------------------
         # INVENTORY AI SUMMARY (PORTFOLIO LEVEL)
         # ---------------------------
@@ -807,12 +805,14 @@ def live_mtd_vs_previous():
                             to_email=user_email,
                             overall_summary=response_payload["overall_summary"],
                             overall_actions=response_payload["overall_actions"],
-                            sku_actions=recommended_actions_mtd,  # 👈 FIX
+                            sku_actions=recommended_actions_mtd,   # ✅ dict {sku -> rendered_text}
                             country=country,
                             prev_label=prev_label,
                             curr_label=curr_label,
                             deep_link_token=email_token,
                         )
+
+
 
                         mark_bi_email_sent(user_id, country)
                         _SENT_EMAIL_CACHE.add(cache_key)
