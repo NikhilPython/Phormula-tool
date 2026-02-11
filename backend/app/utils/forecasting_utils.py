@@ -12,6 +12,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
+from io import BytesIO
 import os, base64, warnings
 from app.models.user_models import Inventory
 import json
@@ -26,7 +27,7 @@ from multiprocessing import cpu_count
 
 warnings.filterwarnings("ignore")
 
-UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 
 # ============================== ENV / CONFIG ==============================
 load_dotenv()
@@ -1477,10 +1478,17 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
             ignore_index=True
         )
 
-    forecast_path = os.path.join(UPLOAD_FOLDER, f'forecasts_for_{user_id}_{country}.xlsx')
+    # ---- Build "forecasts_for" file bytes (used later by PnL) ----
+    forecast_filename = f'forecasts_for_{user_id}_{country}.xlsx'
+
     _af = all_forecasts.copy()
     _af.rename(columns={'Month': 'month', 'Forecast': 'forecast'}, inplace=True)
-    _af[['sku', 'month', 'forecast', 'price_in_gbp']].to_excel(forecast_path, index=False)
+
+    forecast_buf = BytesIO()
+    _af[['sku', 'month', 'forecast', 'price_in_gbp']].to_excel(forecast_buf, index=False, engine='openpyxl')
+    forecast_buf.seek(0)
+    forecast_bytes = forecast_buf.getvalue()
+
 
     all_forecasts['Month'] = pd.to_datetime(all_forecasts['Month'], errors='coerce')
     all_forecasts = all_forecasts.dropna(subset=['Month'])
@@ -1805,14 +1813,24 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     inventory_forecast = inventory_forecast[final_columns]
 
     # ----------------- Save -----------------
+    # ---- Build inventory forecast XLSX bytes (the file you download) ----
     current_month = datetime.now().strftime("%b").lower()
-    inventory_output_path = os.path.join(
-        UPLOAD_FOLDER, f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
-    )
-    inventory_forecast.to_excel(inventory_output_path, index=False)
+    inventory_filename = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
 
-    inventory_forecast_base64 = encode_file_to_base64(inventory_output_path)
-    return jsonify({'message': 'Inventory processed successfully', 'file_path': inventory_output_path}), 200
+    inv_buf = BytesIO()
+    inventory_forecast.to_excel(inv_buf, index=False, engine='openpyxl')
+    inv_buf.seek(0)
+    inventory_bytes = inv_buf.getvalue()
+
+    # IMPORTANT: utils should not jsonify; return raw objects to the route
+    return {
+        "forecast_filename": forecast_filename,
+        "forecast_bytes": forecast_bytes,
+        "inventory_filename": inventory_filename,
+        "inventory_bytes": inventory_bytes,
+        "model_winner": model_winner,  # optional (useful for debugging)
+    }
+
 
 
 # ============================== FILE ENCODER ==============================

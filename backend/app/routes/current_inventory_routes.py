@@ -20,7 +20,7 @@ from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
 
 # ===== Setup =====
 SECRET_KEY = Config.SECRET_KEY
-UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 
 load_dotenv()
 db_url = os.getenv("DATABASE_URL")
