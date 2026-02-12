@@ -637,75 +637,71 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
     return mapBackendTrendToSeries(props.data);
   }, [props.data]);
 
-return (
-  // <div
-  //   className={`w-full min-h-0 overflow-hidden flex flex-col ${
-  //     props.isExpanded ? "h-[310px]" : "h-[335px]"
-  //   }`}
-  // >
-   <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
-    <div className="shrink-0 flex flex-col md:flex-row items-center md:items-start justify-between gap-3">
-      <PageBreadcrumb pageTitle="Performance Trend" variant="page" textSize="2xl" />
+  return (
+  <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
 
-      <div
-        className="w-full md:w-auto"
-        data-no-expand
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <SegmentedToggle<ChartMetric>
-            value={chartMetric}
-            onChange={setChartMetric}
-            options={[
-              { value: "net_sales", label: "Net Sales" },
-              { value: "units", label: "Units" },
-            ]}
-            textSizeClass="text-xs"
-            className="border-[#D9D9D9E5] bg-white"
-          />
+      <div className="shrink-0 flex items-center justify-between gap-3 w-full">
 
-          {props.onToggleExpand && (
-            <button
-              type="button"
-              onClick={props.onToggleExpand}
-              aria-label={props.isExpanded ? "Collapse chart" : "Expand chart"}
-              title={props.isExpanded ? "Collapse" : "Expand"}
-              className="rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-            >
-              {props.isExpanded ? (
-                <CgPushLeft size={18} className="font-extrabold" />
-              ) : (
-                <CgPushRight size={18} className="font-extrabold" />
-              )}
-            </button>
-          )}
+        <PageBreadcrumb pageTitle="Performance Trend" variant="page" textSize="2xl" />
+
+        <div className="flex items-center shrink-0"
+          data-no-expand
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <SegmentedToggle<ChartMetric>
+              value={chartMetric}
+              onChange={setChartMetric}
+              options={[
+                { value: "net_sales", label: "Net Sales" },
+                { value: "units", label: "Units" },
+              ]}
+              textSizeClass="text-xs"
+              className="border-[#D9D9D9E5] bg-white"
+            />
+
+            {props.onToggleExpand && (
+              <button
+                type="button"
+                onClick={props.onToggleExpand}
+                aria-label={props.isExpanded ? "Collapse chart" : "Expand chart"}
+                title={props.isExpanded ? "Collapse" : "Expand"}
+                className=" hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+              >
+                {props.isExpanded ? (
+                  <CgPushLeft size={18} className="font-extrabold" />
+                ) : (
+                  <CgPushRight size={18} className="font-extrabold" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      <div className="mt-2 flex-1 min-h-0 overflow-hidden">
+        {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
+        {error && <div className="text-sm text-red-500">{error}</div>}
+
+        {!loading && !error && mapped.series.length > 0 && (
+          <LiveLineChart
+            xAxisData={mapped.xAxis}
+            series={mapped.series}
+            metric={chartMetric}
+            currencySymbol={props.currencySymbol}
+            selectedStartDay={props.selectedStartDay}
+            selectedEndDay={props.selectedEndDay}
+            onExportApiReady={props.onExportApiReady}
+          />
+        )}
+
+        {!loading && !error && mapped.series.length === 0 && (
+          <div className="text-sm text-gray-500">Loading...</div>
+        )}
+      </div>
     </div>
-
-    <div className="mt-2 flex-1 min-h-0 overflow-hidden">
-      {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
-      {error && <div className="text-sm text-red-500">{error}</div>}
-
-      {!loading && !error && mapped.series.length > 0 && (
-        <LiveLineChart
-          xAxisData={mapped.xAxis}
-          series={mapped.series}
-          metric={chartMetric}
-          currencySymbol={props.currencySymbol}
-          selectedStartDay={props.selectedStartDay}
-          selectedEndDay={props.selectedEndDay}
-          onExportApiReady={props.onExportApiReady}
-        />
-      )}
-
-      {!loading && !error && mapped.series.length === 0 && (
-        <div className="text-sm text-gray-500">Loading...</div>
-      )}
-    </div>
-  </div>
-);
+  );
 
 }
 

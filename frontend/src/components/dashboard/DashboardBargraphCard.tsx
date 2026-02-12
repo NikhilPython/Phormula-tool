@@ -88,8 +88,6 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
               yTitle={`Amount (${currencySymbol})`}
               showPrev={expanded}
             />
-
-
           )}
         </div>
       </div>

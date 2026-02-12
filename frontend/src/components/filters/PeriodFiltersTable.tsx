@@ -91,6 +91,34 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
     }
   };
 
+  const handleMonthChange = (m: string) => {
+  const mIdx = months.indexOf(m.toLowerCase());
+
+  if (selectedYearNum === currentYear && mIdx >= currentMonthIndex) {
+    // Invalid for current year → switch to previous year
+    onYearChange(String(currentYear - 1));
+  }
+
+  onMonthChange(m);
+};
+
+const handleQuarterChange = (q: string) => {
+  const qNum = Number(q.replace("Q", ""));
+  const quarterStartMonth = (qNum - 1) * 3;
+
+  if (
+    selectedYearNum === currentYear &&
+    quarterStartMonth >= currentMonthIndex
+  ) {
+    // Invalid quarter for current year → switch to previous year
+    onYearChange(String(currentYear - 1));
+  }
+
+  onQuarterChange(q);
+};
+
+
+
   /* =========================
      Helpers: historic month normalization + allowed month list
      ========================= */
@@ -253,30 +281,30 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
      Guard: if URL/parent passes an invalid month/year, snap to allowed historic
      ========================= */
 
-  React.useEffect(() => {
-    if (safeRange !== "monthly") return;
-    if (!selectedYearNum || Number.isNaN(selectedYearNum)) return;
-    if (!selectedMonth) return;
+  // React.useEffect(() => {
+  //   if (safeRange !== "monthly") return;
+  //   if (!selectedYearNum || Number.isNaN(selectedYearNum)) return;
+  //   if (!selectedMonth) return;
 
-    const allowed = getAllowedMonthsForYear(selectedYearNum);
-    const mLower = selectedMonth.toLowerCase();
+  //   const allowed = getAllowedMonthsForYear(selectedYearNum);
+  //   const mLower = selectedMonth.toLowerCase();
 
-    if (!allowed.includes(mLower)) {
-      // Snap to last allowed month in that year (or to Dec of previous year if none)
-      if (selectedYearNum === currentYear) {
-        if (currentMonthIndex === 0) {
-          // Jan: no historic months in current year
-          onYearChange(String(currentYear - 1));
-          onMonthChange("december");
-        } else {
-          onMonthChange(months[currentMonthIndex - 1]);
-        }
-      } else if (allowed.length > 0) {
-        onMonthChange(allowed[allowed.length - 1]);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [safeRange, selectedMonth, selectedYearNum, currentYear, currentMonthIndex]);
+  //   if (!allowed.includes(mLower)) {
+  //     // Snap to last allowed month in that year (or to Dec of previous year if none)
+  //     if (selectedYearNum === currentYear) {
+  //       if (currentMonthIndex === 0) {
+  //         // Jan: no historic months in current year
+  //         onYearChange(String(currentYear - 1));
+  //         onMonthChange("december");
+  //       } else {
+  //         onMonthChange(months[currentMonthIndex - 1]);
+  //       }
+  //     } else if (allowed.length > 0) {
+  //       onMonthChange(allowed[allowed.length - 1]);
+  //     }
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [safeRange, selectedMonth, selectedYearNum, currentYear, currentMonthIndex]);
 
   /* -------- UI classes -------- */
   const wrapCls =
@@ -316,30 +344,31 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
         <div className={wrapCls}>
           <select
             value={safeRange === "monthly" ? selectedMonth : selectedQuarter}
-            onChange={(e) =>
-              safeRange === "monthly"
-                ? onMonthChange(e.target.value)
-                : onQuarterChange(e.target.value)
-            }
+           onChange={(e) =>
+  safeRange === "monthly"
+    ? handleMonthChange(e.target.value)
+    : handleQuarterChange(e.target.value)
+}
             className={selectCls}
           >
             <option value="">Range</option>
 
             {/* ✅ Monthly: ONLY show allowed (historic) months */}
             {safeRange === "monthly" &&
-              getAllowedMonthsForYear(selectedYearNum).map((m) => (
-                <option key={m} value={m} disabled={isMonthDisabled(m)}>
-                  {cap(m)}
-                </option>
-              ))}
+  months.map((m) => (
+    <option key={m} value={m}>
+      {cap(m)}
+    </option>
+  ))}
 
             {/* Quarterly: still show all, but disable as needed */}
             {safeRange === "quarterly" &&
               ["Q1", "Q2", "Q3", "Q4"].map((q) => (
-                <option key={q} value={q} disabled={isQuarterDisabled(q)}>
-                  {q}
-                </option>
-              ))}
+  <option key={q} value={q}>
+    {q}
+  </option>
+))
+}
           </select>
 
           <span className="pointer-events-none absolute inset-y-0 right-5 flex items-center text-[10px]">

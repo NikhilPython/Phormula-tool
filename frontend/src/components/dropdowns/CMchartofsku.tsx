@@ -404,7 +404,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
   return (
     <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col">
-      <div className="mb-1 w-fit mx-auto md:mx-0">
+      <div className="mb-2 2xl:mb-1 w-fit mx-left md:mx-0">
         <PageBreadcrumb
           pageTitle="CM1 Profit Breakdown"
           variant="page"
@@ -435,7 +435,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
           <div className="relative w-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
 
             {/* LEFT: PIE */}
-            <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[360px]">
+            <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[287px] xl:h-[300px] 2xl:h-[360px]">
 
               <Pie
                 ref={chartRef}
@@ -504,7 +504,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                         <div className="min-w-0">
                           {/* line 1: Product name */}
                           <div
-                            className={`truncate text-[10px]  ${isVisible ? "" : "line-through"}`}
+                            className={`truncate text-[10px] 2xl:text-xs ${isVisible ? "" : "line-through"}`}
                             style={{ color: "#414042" }}
                             title={slice.name}
                           >
@@ -513,7 +513,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
 
                           {/* line 2: (value)(% share)(% change) */}
-                          <div className="text-[10px] break-words" style={{ color: "#414042" }}>
+                          <div className="text-[10px] 2xl:text-xs break-words" style={{ color: "#414042" }}>
                             {currencySymbol}
                             {value.toLocaleString(undefined, {
                               minimumFractionDigits: 2,

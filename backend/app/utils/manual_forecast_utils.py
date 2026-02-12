@@ -16,7 +16,7 @@ import re
 
 # ====== CONFIG / GLOBALS ======
 warnings.filterwarnings("ignore")
-UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 
 db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
 db_url2 = os.getenv('DATABASE_AMAZON_URL')

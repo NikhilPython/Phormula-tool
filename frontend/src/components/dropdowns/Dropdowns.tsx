@@ -658,7 +658,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
 
   return (
-    <div className="flex gap-4">
+    <div className="flex flex-col md:flex-row gap-4">
       <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
         <div className="space-y-3">
           <PageBreadcrumb
@@ -1968,6 +1968,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     );
   };
 
+  const getTrendWrapperHeight = () => {
+    if (focusedChart === "trend") return "h-[50vh]";
+    // monthly stays perfect
+    if (range === "monthly") return "h-[360px]";
+    // restore previous intended size for quarterly/yearly
+    return "h-[375px] 2xl:h-[500px]";
+  };
+
 
   return (
     <div
@@ -1978,10 +1986,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     relative
   "
     >
-      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4  border-b border-gray-200 ">
+      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 ">
 
         {/* LEFT: Title + Subtitle */}
-        <div className="flex flex-col leading-tight w-full md:w-auto mb-5">
+        <div className="flex flex-col leading-tight w-full md:w-auto md:mb-5">
           <div className="flex items-baseline gap-2">
             <PageBreadcrumb
               pageTitle="Financial Metrics -"
@@ -2067,92 +2075,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}%`;
-
-
-            // const renderTacosComparisons = () => {
-            //   const yNum = Number(selectedYear);
-
-            //   const label =
-            //     range === "monthly"
-            //       ? selectedMonth && yNum
-            //         ? getPrevMonthLabel(selectedMonth, yNum)
-            //         : "Prev month"
-            //       : range === "quarterly"
-            //         ? selectedQuarter && yNum
-            //           ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-            //           : "Prev quarter"
-            //         : yNum
-            //           ? getPrevYearLabel(yNum)
-            //           : "Prev year";
-
-            //   const prevVal =
-            //     range === "monthly"
-            //       ? comparisons?.lastMonth
-            //         ? getRoas(comparisons.lastMonth)
-            //         : undefined
-            //       : range === "quarterly"
-            //         ? comparisons?.lastQuarter
-            //           ? getRoas(comparisons.lastQuarter)
-            //           : undefined
-            //         : comparisons?.lastYear
-            //           ? getRoas(comparisons.lastYear)
-            //           : undefined;
-
-            //   const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-
-            //   const delta = hasPrev ? roas - prevVal! : null;
-
-            //   const deltaColor =
-            //     typeof delta === "number"
-            //       ? delta > 0
-            //         ? "text-red-600"        // higher TACoS = worse
-            //         : delta < 0
-            //           ? "text-emerald-600"  // lower TACoS = better
-            //           : "text-gray-400"
-            //       : "text-gray-400";
-
-            //   // delta = current - prev
-            //   const arrow =
-            //     typeof delta === "number"
-            //       ? delta > 0
-            //         ? "▼" // ✅ TACoS increased (bad) -> show DOWN
-            //         : delta < 0
-            //           ? "▲" // ✅ TACoS decreased (good) -> show UP
-            //           : ""
-            //       : "";
-
-
-            //   const formatDelta = (v: number) =>
-            //     `${Math.abs(v).toLocaleString(undefined, {
-            //       minimumFractionDigits: 2,
-            //       maximumFractionDigits: 2,
-            //     })}%`;
-
-            //   return (
-            //     <div className="mt-3 space-y-1.5">
-            //       <div className="flex items-end justify-between text-charcoal-500 gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
-            //         <div className="min-w-0">
-            //           <div className="whitespace-nowrap">
-            //             {label}:
-            //           </div>
-            //           <div className="whitespace-nowrap">
-            //             {hasPrev ? formatRoas(prevVal!) : "-"}
-            //           </div>
-            //         </div>
-
-            //         <span className={`font-bold whitespace-nowrap ${deltaColor}`}>
-            //           {typeof delta === "number" ? (
-            //             <>
-            //               {arrow} {formatDelta(delta)}
-            //             </>
-            //           ) : (
-            //             "-"
-            //           )}
-            //         </span>
-            //       </div>
-            //     </div>
-            //   );
-            // };
 
             const buildTacosComparisonRows = () => {
               const yNum = Number(selectedYear);
@@ -2745,7 +2667,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
-                  <div className={focusedChart === "trend" ? "h-[50vh]" : "h-[360px]"}>
+                  <div className={getTrendWrapperHeight()}>
                     <PerformanceTrendChart
                       range={range}
                       month={selectedMonth}
@@ -2793,7 +2715,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       }}
                       aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
                       title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className="rounded-md
+                      className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -2851,8 +2773,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           )}
 
-          <div className="flex flex-col lg:flex-row gap-6 md:gap-4 mb-4">
-            <div className="w-full lg:flex-1">
+          <div className="flex flex-wrap justify-between gap-6 md:gap-4 mb-4">
+            <div className="flex-1 min-w-[300px]">
               <CircleChart
                 range={range}
                 month={selectedMonth}
@@ -2862,8 +2784,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 onExportBase64Ready={setExpenseBreakdownPieBase64}
               />
             </div>
-
-            <div className="w-full lg:flex-1">
+            <div className="flex-1 min-w-[300px]">
               <CMchartofsku
                 range={range}
                 month={selectedMonth}
@@ -2926,7 +2847,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   </button>
 
-                  <div className={focusedChart === "trend" ? "h-[50vh]" : "h-[360px]"}>
+                  <div className={getTrendWrapperHeight()}>
                     <PerformanceTrendChart
                       range={range}
                       quarter={selectedQuarter}
@@ -2974,7 +2895,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       }}
                       aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
                       title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className="rounded-md
+                      className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -3045,8 +2966,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           )}
 
-          <div className="flex flex-col lg:flex-row gap-6 md:gap-4 mb-4">
-            <div className="w-full lg:flex-1">
+          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
+            <div className="flex-1 min-w-[300px]">
               <CircleChart
                 range={range}
                 selectedQuarter={selectedQuarter}
@@ -3056,7 +2977,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 onExportBase64Ready={setExpenseBreakdownPieBase64}
               />
             </div>
-            <div className="w-full lg:flex-1">
+            <div className="flex-1 min-w-[300px]">
               <CMchartofsku
                 range={range}
                 selectedQuarter={selectedQuarter}
@@ -3109,7 +3030,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     }}
                     aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
                     title={focusedChart === "trend" ? "Collapse" : "Expand"}
-                    className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
+                    className=" absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
                   >
                     {focusedChart === "trend" ? (
                       <CgPushLeft size={18} className="font-extrabold" />
@@ -3118,7 +3039,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     )}
 
                   </button>
-                  <div className={focusedChart === "trend" ? "h-[50vh]" : "h-[360px]"}>
+                  <div className={getTrendWrapperHeight()}>
                     <PerformanceTrendChart
                       range={range}
                       year={selectedYear}
@@ -3140,15 +3061,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {/* RIGHT card (PnL) */}
               {(focusedChart === null || focusedChart === "pnl") && (
                 <div
-                  // role="button"
-                  // tabIndex={0}
-                  // onClick={(e) => {
-                  //   const t = e.target as HTMLElement;
-                  //   if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                  //   toggleFocus("pnl");
-                  // }}
-
-                  // onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
                     "cursor-default select-none",
@@ -3177,7 +3089,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       }}
                       aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
                       title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className="rounded-md
+                      className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -3248,8 +3160,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           )}
 
-          <div className="flex flex-col lg:flex-row gap-6 md:gap-4 mb-4">
-            <div className="w-full lg:flex-1">
+          <div className="flex flex-wrap justify-between gap-6 items-stretch md:gap-4">
+            <div className="flex-1 min-w-[300px]">
               <CircleChart
                 range={range}
                 year={selectedYear}
@@ -3259,7 +3171,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               />
             </div>
 
-            <div className="w-full lg:flex-1">
+            <div className="flex-1 min-w-[300px]">
               <CMchartofsku
                 range={range}
                 year={selectedYear}

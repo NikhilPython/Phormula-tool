@@ -1,4 +1,5 @@
 from datetime import datetime
+from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Enum
 from app import db
 from sqlalchemy.sql import func
@@ -143,6 +144,28 @@ class Email(db.Model):
 
     __table_args__ = (
         UniqueConstraint("user_id", "country", name="uq_email_user_country"),
+    )
+
+class StoredFile(db.Model):
+    __tablename__ = "stored_files"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    country = db.Column(db.String(32), nullable=False, index=True)
+
+    # optional metadata to help filtering
+    kind = db.Column(db.String(64), nullable=False, index=True)  # e.g. 'forecast', 'pnl'
+    month = db.Column(db.String(16), nullable=True, index=True)  # e.g. 'january'
+    year = db.Column(db.String(8), nullable=True, index=True)
+
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(128), nullable=False, default="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    data = db.Column(db.LargeBinary, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "country", "filename", name="uq_stored_files_user_country_filename"),
     )
 
 

@@ -48,7 +48,7 @@ export default function DataTable<T extends Row>({
   data,
   className,
   tableClassName,
-  maxHeight = "60vh",
+  maxHeight,
   stickyHeader = true,
   zebra = true,
   emptyMessage = "No data found.",

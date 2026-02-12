@@ -374,7 +374,7 @@ return (
         {/* ✅ same as other chart: column on tablet/below, row on xl+ */}
         <div className="relative w-full h-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
           {/* LEFT: PIE */}
-          <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[360px]">
+          <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[460px]">
             <Pie
               ref={chartRef}
               data={chartData}
@@ -444,7 +444,7 @@ return (
                       <div className="min-w-0">
                         {/* line 1 */}
                         <div
-                          className={`truncate text-[10px]  ${
+                          className={`truncate text-[10px] 2xl:text-xs ${
                             isVisible ? "" : "line-through"
                           }`}
                           style={{ color: "#414042" }}
@@ -455,7 +455,7 @@ return (
 
                         {/* line 2 */}
                         <div
-                          className="text-[10px] break-words"
+                          className="text-[10px] 2xl:text-xs break-words"
                           style={{ color: "#414042" }}
                         >
                           {currencySymbol}

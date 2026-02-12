@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from config import Config
-UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from dotenv import find_dotenv, load_dotenv
 from flask import request
 from sqlalchemy.dialects.postgresql import insert

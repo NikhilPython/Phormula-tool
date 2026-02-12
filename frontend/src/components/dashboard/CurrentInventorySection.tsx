@@ -358,6 +358,29 @@ export default function CurrentInventorySection({
     [userData]
   );
 
+
+  const hitAgedInventoryOnce = useCallback(async (baseUrl: string, jwtToken: string) => {
+    const res = await fetch(`${baseUrl}/amazon_api/inventory/aged`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${jwtToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      let msg = `Aged Inventory API Error: ${res.status}`;
+      try {
+        const j = await res.json();
+        if (j?.error) msg = j.error;
+      } catch { }
+      throw new Error(msg);
+    }
+
+    return res.json().catch(() => ({}));
+  }, []);
+
+
   const getCurrentInventoryEndpoint = useCallback(() => {
     return inventoryCountry === "global"
       ? `${baseURL}/current_inventory_global`
@@ -399,7 +422,6 @@ export default function CurrentInventorySection({
     [invRows]
   );
 
-  // 🔁 Fetch inventory from backend
   const fetchCurrentInventory = useCallback(async () => {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -414,8 +436,15 @@ export default function CurrentInventorySection({
     setInvError("");
 
     try {
-      const endpoint = getCurrentInventoryEndpoint();
       const { month, year } = invMonthYear;
+
+      // ✅ 1) ALWAYS hit aged inventory first
+      // If you want /current_inventory to still run even if aged fails,
+      // wrap this in try/catch and continue.
+      await hitAgedInventoryOnce(baseURL, token);
+
+      // ✅ 2) THEN hit current inventory endpoint
+      const endpoint = getCurrentInventoryEndpoint();
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -428,9 +457,7 @@ export default function CurrentInventorySection({
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(
-          errJson?.error || "Failed to fetch CurrentInventory data"
-        );
+        throw new Error(errJson?.error || "Failed to fetch CurrentInventory data");
       }
 
       const json = await res.json();
@@ -455,8 +482,7 @@ export default function CurrentInventorySection({
       for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
         const slice = byteCharacters.slice(offset, offset + 1024);
         const byteNumbers = new Array(slice.length);
-        for (let i = 0; i < slice.length; i++)
-          byteNumbers[i] = slice.charCodeAt(i);
+        for (let i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
         buffers.push(new Uint8Array(byteNumbers).buffer as ArrayBuffer);
       }
 
@@ -483,7 +509,9 @@ export default function CurrentInventorySection({
     } finally {
       setInvLoading(false);
     }
-  }, [getCurrentInventoryEndpoint, invMonthYear, inventoryCountry]);
+  }, [getCurrentInventoryEndpoint, invMonthYear, inventoryCountry, hitAgedInventoryOnce]);
+
+
 
   useEffect(() => {
     fetchCurrentInventory();
@@ -755,7 +783,7 @@ export default function CurrentInventorySection({
       } = c;
 
       const alertText = inventoryAlerts[normalizeSku(row["SKU"])]?.alert || "";
-      
+
       return {
         rowType: "normal",
         sno: idx + 1,

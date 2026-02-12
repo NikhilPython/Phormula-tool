@@ -55,34 +55,6 @@ interface ProductwisePerformanceProps {
   productname?: string;
 }
 
-/* ---------- Slug helpers ---------- */
-// const toSlug = (name: string) =>
-//   name
-//     .trim()
-//     .toLowerCase()
-//     .replace(/\s*\+\s*/g, " plus ")
-//     .replace(/\s+/g, "-");
-
-// const fromSlug = (slug: string) =>
-//   slug
-//     .replace(/-/g, " ")
-//     .replace(/\bplus\b/gi, "+")
-//     .replace(/\s+/g, " ")
-//     .trim();
-
-// const normalizeProductSlug = (slug?: string) => {
-//   if (!slug) return undefined;
-
-//   try {
-//     const decoded = decodeURIComponent(slug);
-//     if (!decoded.trim()) return undefined;
-//     return fromSlug(decoded);
-//   } catch {
-//     if (!slug.trim()) return undefined;
-//     return fromSlug(slug);
-//   }
-// };
-
 /* ---------- URL-safe helpers (NO "plus" text conversion) ---------- */
 const toSlug = (name: string) => encodeURIComponent(name.trim());
 
@@ -98,7 +70,6 @@ const normalizeProductSlug = (slug?: string) => {
   }
 };
 
-
 const normalizeCountryKey = (key: string): CountryKey => {
   const lower = key.toLowerCase();
 
@@ -109,7 +80,6 @@ const normalizeCountryKey = (key: string): CountryKey => {
 
   return lower as CountryKey;
 };
-
 
 const months = [
   "january",
@@ -128,14 +98,13 @@ const months = [
 
 const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : "");
 
-/** latest fetched month from localStorage (for Last 12 Months) */
 const getLatestFetchedMonth = (): string | null => {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem("latestFetchedPeriod");
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { month?: string; year?: string };
-    return parsed.month ? parsed.month.toLowerCase() : null; // e.g. "november"
+    return parsed.month ? parsed.month.toLowerCase() : null;
   } catch {
     return null;
   }
@@ -188,106 +157,105 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
 
-  // If your drawer expects sku-based mapping, we’ll store it like that.
   const [selectedSku, setSelectedSku] = useState<string | null>(null);
   const [skuInsights, setSkuInsights] = useState<
     Record<string, { product_name: string; insight: string }>
   >({});
 
-const handleViewBusinessInsights = async () => {
-  const { key: identifier, isSku } = resolveProductKey(productname, selectedSku);
+  const handleViewBusinessInsights = async () => {
+    const { key: identifier, isSku } = resolveProductKey(productname, selectedSku);
 
-  if (!identifier) return;
+    if (!identifier) return;
 
-  const countryForApi = (platformCountryName || "global").toLowerCase();
-  const cacheKey = buildInsightsCacheKey(identifier, countryForApi);
+    const countryForApi = (platformCountryName || "global").toLowerCase();
+    const cacheKey = buildInsightsCacheKey(identifier, countryForApi);
 
-  // 1️⃣ Open drawer immediately
-  setIsDrawerOpen(true);
-  setInsightsError(null);
+    // 1️⃣ Open drawer immediately
+    setIsDrawerOpen(true);
+    setInsightsError(null);
 
-  // 2️⃣ Cache check
-  if (typeof window !== "undefined") {
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached) as {
-          product_name: string;
-          insight: string;
-          cachedAt: number;
-        };
+    // 2️⃣ Cache check
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as {
+            product_name: string;
+            insight: string;
+            cachedAt: number;
+          };
 
-        setSkuInsights({
-          [identifier]: {
-            product_name: parsed.product_name,
-            insight: parsed.insight,
-          },
-        });
-        setSelectedSku(identifier);
-        setInsightsLoading(false);
-        return;
-      } catch {
-        localStorage.removeItem(cacheKey);
+          setSkuInsights({
+            [identifier]: {
+              product_name: parsed.product_name,
+              insight: parsed.insight,
+            },
+          });
+          setSelectedSku(identifier);
+          setInsightsLoading(false);
+          return;
+        } catch {
+          localStorage.removeItem(cacheKey);
+        }
       }
     }
-  }
 
-  // 3️⃣ No cache → call API
-  setInsightsLoading(true);
+    // 3️⃣ No cache → call API
+    setInsightsLoading(true);
 
-  try {
-    const payload: any = {
-      country: countryForApi,
-    };
+    try {
+      const payload: any = {
+        country: countryForApi,
+      };
 
-    if (isSku) {
-      payload.sku = identifier;
-    } else {
-      payload.product_name = identifier;
+      if (isSku) {
+        payload.sku = identifier;
+      } else {
+        payload.product_name = identifier;
+      }
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwiseGrowthAI`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken ?? ""}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
+
+      const returnedName = json.product_name || identifier;
+      const insightText = json.ai_insights || "";
+
+      setSkuInsights({
+        [identifier]: {
+          product_name: returnedName,
+          insight: insightText,
+        },
+      });
+      setSelectedSku(identifier);
+
+      // 4️⃣ Save cache
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          product_name: returnedName,
+          insight: insightText,
+          cachedAt: Date.now(),
+        })
+      );
+    } catch (e: any) {
+      console.error("Growth AI Error:", e);
+      setInsightsError(e?.message || "Failed to load insights");
+    } finally {
+      setInsightsLoading(false);
     }
-
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwiseGrowthAI`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${authToken ?? ""}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const json = await res.json().catch(() => null);
-
-    if (!res.ok || !json?.success) {
-      throw new Error(json?.error || `HTTP ${res.status}`);
-    }
-
-    const returnedName = json.product_name || identifier;
-    const insightText = json.ai_insights || "";
-
-    setSkuInsights({
-      [identifier]: {
-        product_name: returnedName,
-        insight: insightText,
-      },
-    });
-    setSelectedSku(identifier);
-
-    // 4️⃣ Save cache
-    localStorage.setItem(
-      cacheKey,
-      JSON.stringify({
-        product_name: returnedName,
-        insight: insightText,
-        cachedAt: Date.now(),
-      })
-    );
-  } catch (e: any) {
-    console.error("Growth AI Error:", e);
-    setInsightsError(e?.message || "Failed to load insights");
-  } finally {
-    setInsightsLoading(false);
-  }
-};
+  };
 
   // NEW: active platform, default "global"
   const [activePlatform, setActivePlatform] = useState<PlatformId>("global");
@@ -325,35 +293,35 @@ const handleViewBusinessInsights = async () => {
   const yearParam = (params?.year as string) || undefined;
 
   const DUMMY_PRODUCTWISE_DATA: APIResponse = {
-  success: true,
-  data: {
-    global: [
-      { month: "January", net_sales: 42000, quantity: 320, profit: 9800 },
-      { month: "February", net_sales: 46000, quantity: 350, profit: 11200 },
-      { month: "March", net_sales: 52000, quantity: 380, profit: 13500 },
-    ],
-    uk: [
-      { month: "January", net_sales: 18000, quantity: 140, profit: 4200 },
-      { month: "February", net_sales: 20000, quantity: 150, profit: 5100 },
-      { month: "March", net_sales: 23000, quantity: 170, profit: 6400 },
-    ],
-    us: [
-      { month: "January", net_sales: 24000, quantity: 180, profit: 5600 },
-      { month: "February", net_sales: 26000, quantity: 200, profit: 6100 },
-      { month: "March", net_sales: 29000, quantity: 210, profit: 7100 },
-    ],
-    global_gbp: [],
-    global_inr: [],
-    global_cad: [],
-    ca: [],
-    india: []
-  },
-};
+    success: true,
+    data: {
+      global: [
+        { month: "January", net_sales: 42000, quantity: 320, profit: 9800 },
+        { month: "February", net_sales: 46000, quantity: 350, profit: 11200 },
+        { month: "March", net_sales: 52000, quantity: 380, profit: 13500 },
+      ],
+      uk: [
+        { month: "January", net_sales: 18000, quantity: 140, profit: 4200 },
+        { month: "February", net_sales: 20000, quantity: 150, profit: 5100 },
+        { month: "March", net_sales: 23000, quantity: 170, profit: 6400 },
+      ],
+      us: [
+        { month: "January", net_sales: 24000, quantity: 180, profit: 5600 },
+        { month: "February", net_sales: 26000, quantity: 200, profit: 6100 },
+        { month: "March", net_sales: 29000, quantity: 210, profit: 7100 },
+      ],
+      global_gbp: [],
+      global_inr: [],
+      global_cad: [],
+      ca: [],
+      india: []
+    },
+  };
 
 
   const isPreviewMode =
-  monthParam?.toUpperCase() === "NA" &&
-  yearParam?.toUpperCase() === "NA";
+    monthParam?.toUpperCase() === "NA" &&
+    yearParam?.toUpperCase() === "NA";
 
   const productname = propProductName || urlProductName || "";
 
@@ -472,20 +440,20 @@ const handleViewBusinessInsights = async () => {
   );
 
   // ✅ default to YEARLY + set default year once
-useEffect(() => {
-  // force yearly only once (in case URL param set etc.)
-  setRange("yearly");
+  useEffect(() => {
+    // force yearly only once (in case URL param set etc.)
+    setRange("yearly");
 
-  // if year not selected, pick latest available
-  if (selectedYear === "" && years?.length) {
-    setSelectedYear(Math.max(...years));
-  }
+    // if year not selected, pick latest available
+    if (selectedYear === "" && years?.length) {
+      setSelectedYear(Math.max(...years));
+    }
 
-  // optional: also seed quarter/month empty
-  setSelectedMonth("");
-  setSelectedQuarter("Q1");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+    // optional: also seed quarter/month empty
+    setSelectedMonth("");
+    setSelectedQuarter("Q1");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isProductSelected = !!productname;
   const hasYear = selectedYear !== "" && selectedYear !== undefined;
@@ -661,12 +629,12 @@ useEffect(() => {
 
 
   /* ---------- chart data (Last 12 Months + FX) ---------- */
-const chartDataList = useMemo(() => {
-  const sourceData = isPreviewMode
-    ? DUMMY_PRODUCTWISE_DATA.data
-    : data?.data;
+  const chartDataList = useMemo(() => {
+    const sourceData = isPreviewMode
+      ? DUMMY_PRODUCTWISE_DATA.data
+      : data?.data;
 
-  if (!sourceData) return [null, null, null];
+    if (!sourceData) return [null, null, null];
 
     // 1) Collect all months we have from the API
     const allMonthsSet = new Set<string>();
@@ -732,22 +700,22 @@ const chartDataList = useMemo(() => {
     return metrics.map(({ metric, suffix }) => {
       const visibleCountries: CountryKey[] = [];
 
-if (isPreviewMode) {
-  // ✅ PREVIEW MODE: hardcode correct keys
-  visibleCountries.push("global");
-  visibleCountries.push("uk");
-} else {
-  // 🔹 NORMAL MODE (existing logic)
-  if (selectedCountries[globalKey] ?? true) {
-    visibleCountries.push(globalKey);
-  }
+      if (isPreviewMode) {
+        // ✅ PREVIEW MODE: hardcode correct keys
+        visibleCountries.push("global");
+        visibleCountries.push("uk");
+      } else {
+        // 🔹 NORMAL MODE (existing logic)
+        if (selectedCountries[globalKey] ?? true) {
+          visibleCountries.push(globalKey);
+        }
 
-  visibleCountries.push(
-    ...nonEmptyCountriesFromApi.filter(
-      (c) => selectedCountries[c] ?? true
-    )
-  );
-}
+        visibleCountries.push(
+          ...nonEmptyCountriesFromApi.filter(
+            (c) => selectedCountries[c] ?? true
+          )
+        );
+      }
 
       const datasets = visibleCountries.map((country) =>
         makeDataset(country, metric, suffix)
@@ -762,8 +730,8 @@ if (isPreviewMode) {
     selectedCountries,
   ]);
 
-  // helper to format "October" + 2025 -> "Oct '25"
-  const formatAxisMonth = (monthName: string, year: number | "" | string) => {
+  // helper to format "October" -> "Oct"  ✅ (NO YEAR)
+  const formatAxisMonth = (monthName: string) => {
     if (!monthName) return "";
 
     const fullNames = [
@@ -798,18 +766,14 @@ if (isPreviewMode) {
 
     const lower = monthName.toLowerCase();
     let idx = fullNames.indexOf(lower);
+
     if (idx === -1) {
-      idx = fullNames.findIndex((full) =>
-        lower.startsWith(full.slice(0, 3))
-      );
+      idx = fullNames.findIndex((full) => lower.startsWith(full.slice(0, 3)));
     }
 
-    const abbr = idx >= 0 ? abbrs[idx] : monthName.slice(0, 3);
-    const yStr = year === "" ? "" : String(year);
-    const shortYear = yStr ? yStr.slice(-2) : "";
-
-    return shortYear ? `${abbr} '${shortYear}` : abbr;
+    return idx >= 0 ? abbrs[idx] : monthName.slice(0, 3);
   };
+
 
 
   /* ---------- chart options (currency-aware) ---------- */
@@ -854,22 +818,22 @@ if (isPreviewMode) {
 
               // 💰 still using home-currency formatter you already have
               if (isPreviewMode) {
-  return `${datasetLabel}: ${value.toLocaleString()}`;
-}
-return `${datasetLabel}: ${formatHomeAmount(value)}`;
+                return `${datasetLabel}: ${value.toLocaleString()}`;
+              }
+              return `${datasetLabel}: ${formatHomeAmount(value)}`;
             },
           },
         },
       },
       scales: {
         x: {
-          title: { display: true, text: "Month" },
+          title: { display: false, text: "Month" },
           ticks: {
             callback: function (val: any) {
               // "this" is the X scale; get the raw label ("October", etc.)
-             // @ts-expect-error -- Chart.js scale context typing is incorrect for getLabelForValue
+              // @ts-expect-error -- Chart.js scale context typing is incorrect for getLabelForValue
               const rawLabel = this.getLabelForValue(val) as string;
-              return formatAxisMonth(rawLabel, selectedYear || "");
+              return formatAxisMonth(rawLabel);
             },
           },
         },
@@ -904,17 +868,6 @@ return `${datasetLabel}: ${formatHomeAmount(value)}`;
       : `Year'${yearShort}`;
   };
 
-
-
-  // const getHeadingPeriod = () => {
-  //   if (range === "yearly") return `Last 12 Months'${yearShort}`;
-  //   if (range === "quarterly") return `Q${selectedQuarter}'${yearShort}`;
-  //   if (range === "monthly" && selectedMonth) {
-  //     return `${cap(selectedMonth)}'${yearShort}`;
-  //   }
-  //   return "";
-  // };
-
   const getHeadingPeriod = () => {
     if (range === "yearly") return `Last 12 Months'${yearShort}`;
     if (range === "quarterly") return `${selectedQuarter}'${yearShort}`;
@@ -925,19 +878,18 @@ return `${datasetLabel}: ${formatHomeAmount(value)}`;
   };
 
   useEffect(() => {
-  if (isPreviewMode) {
-    setData(DUMMY_PRODUCTWISE_DATA);
-  }
-}, [isPreviewMode]);
-
+    if (isPreviewMode) {
+      setData(DUMMY_PRODUCTWISE_DATA);
+    }
+  }, [isPreviewMode]);
 
   /* ---------- summary cards ---------- */
   const cards = useMemo(() => {
-  const sourceData = isPreviewMode
-    ? DUMMY_PRODUCTWISE_DATA.data
-    : data?.data;
+    const sourceData = isPreviewMode
+      ? DUMMY_PRODUCTWISE_DATA.data
+      : data?.data;
 
-  if (!sourceData) return [];
+    if (!sourceData) return [];
 
     const connectedSet = new Set(
       connectedCountries.map((c) => c.toLowerCase())
@@ -946,28 +898,28 @@ return `${datasetLabel}: ${formatHomeAmount(value)}`;
     return Object.entries(sourceData)
       // keep global + only connected real countries (but normalised)
       .filter(([country, rawArray]) => {
-  const norm = normalizeCountryKey(country);
-  const rows = Array.isArray(rawArray) ? rawArray : [];
+        const norm = normalizeCountryKey(country);
+        const rows = Array.isArray(rawArray) ? rawArray : [];
 
-  // 🔥 PREVIEW MODE: only GLOBAL + UK with data
-  if (isPreviewMode) {
-    return (
-      (norm === "global" || norm === "uk") &&
-      rows.some(
-        (m: MonthDatum) =>
-          m.net_sales !== 0 || m.quantity !== 0 || m.profit !== 0
-      )
-    );
-  }
+        // 🔥 PREVIEW MODE: only GLOBAL + UK with data
+        if (isPreviewMode) {
+          return (
+            (norm === "global" || norm === "uk") &&
+            rows.some(
+              (m: MonthDatum) =>
+                m.net_sales !== 0 || m.quantity !== 0 || m.profit !== 0
+            )
+          );
+        }
 
-  // 🔹 NORMAL MODE (existing logic)
-  if (norm === "global") return true;
-  return connectedSet.has(norm);
-})
+        // 🔹 NORMAL MODE (existing logic)
+        if (norm === "global") return true;
+        return connectedSet.has(norm);
+      })
 
       .map(([country, rawArray]) => {
-        const backendKey = country.toLowerCase();         // e.g. "uk_usd"
-        const normKey = normalizeCountryKey(backendKey);  // e.g. "uk"
+        const backendKey = country.toLowerCase();
+        const normKey = normalizeCountryKey(backendKey);
 
         const monthly: MonthDatum[] = Array.isArray(rawArray)
           ? (rawArray as MonthDatum[])
@@ -1006,8 +958,6 @@ return `${datasetLabel}: ${formatHomeAmount(value)}`;
           normKey === "global" || connectedSet.has(normKey);
 
         return {
-          // store the backend key (so data.data[country] works),
-          // but we will normalize it for label/color inside CountryCard
           country: backendKey,
           stats: {
             totalSales,
@@ -1038,35 +988,35 @@ return `${datasetLabel}: ${formatHomeAmount(value)}`;
     <div className="w-full">
       {/* Header + filters row */}
       {/* 🔒 STICKY HEADER */}
-<div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-2">
-    <ProductwiseHeader
-      canShowResults={canShowResults}
-      countryName={countryName}
-      productname={productname}
-      headingPeriod={getHeadingPeriod()}
-    />
+      <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-2">
+          <ProductwiseHeader
+            canShowResults={canShowResults}
+            countryName={countryName}
+            productname={productname}
+            headingPeriod={getHeadingPeriod()}
+          />
 
-    <FiltersAndSearchRow
-      range={range}
-      selectedMonth={selectedMonth}
-      selectedQuarter={selectedQuarter}
-      selectedYear={selectedYear}
-      years={years}
-      onRangeChange={setRange}
-      onMonthChange={setSelectedMonth}
-      onQuarterChange={(val) => {
-        setSelectedQuarter(val || "Q1");
-      }}
-      onYearChange={(val) => {
-        setSelectedYear(val ? Number(val) : "");
-      }}
-    />
-  </div>
-</div>
+          <FiltersAndSearchRow
+            range={range}
+            selectedMonth={selectedMonth}
+            selectedQuarter={selectedQuarter}
+            selectedYear={selectedYear}
+            years={years}
+            onRangeChange={setRange}
+            onMonthChange={setSelectedMonth}
+            onQuarterChange={(val) => {
+              setSelectedQuarter(val || "Q1");
+            }}
+            onYearChange={(val) => {
+              setSelectedYear(val ? Number(val) : "");
+            }}
+          />
+        </div>
+      </div>
 
-{/* ⬇️ margin moved HERE */}
-<div className="mb-6 mt-5" />
+      {/* ⬇️ margin moved HERE */}
+      <div className="mb-6 mt-5" />
 
 
       {!canShowResults && (
@@ -1083,7 +1033,7 @@ return `${datasetLabel}: ${formatHomeAmount(value)}`;
 
       {canShowResults && loading && (
         <div className="flex flex-col items-center justify-center py-12 textcenter">
-                   <Loader fullscreen transparent />
+          <Loader fullscreen transparent />
         </div>
       )}
 
@@ -1110,8 +1060,8 @@ return `${datasetLabel}: ${formatHomeAmount(value)}`;
             authToken={authToken}
             onProductSelect={handleProductSelect}
             onViewBusinessInsights={handleViewBusinessInsights}
-             insightsLoading={insightsLoading}
-             isPreviewMode={isPreviewMode}
+            insightsLoading={insightsLoading}
+            isPreviewMode={isPreviewMode}
           />
 
           <InsightSideDrawer
@@ -1121,7 +1071,7 @@ return `${datasetLabel}: ${formatHomeAmount(value)}`;
             onClose={() => setIsDrawerOpen(false)}
             enableFeedback={false} getInsightByProductName={function (productName: string): [string, SkuInsight] | null {
               throw new Error("Function not implemented.");
-            } }          />
+            }} />
 
           {isDrawerOpen && insightsError && (
             <div className="fixed right-6 top-16 z-[9999] rounded bg-red-50 px-3 py-2 shadow text-sm text-red-700">
