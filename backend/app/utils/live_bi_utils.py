@@ -2444,18 +2444,6 @@ def _dir_word_simple(p):
         return "moved"
     return "increased" if p > 0 else "decreased"
 
-# def _overall_3_bullets(qty_prev, qty_curr, sales_prev, sales_curr, prof_prev, prof_curr, qty_pct, sales_pct, prof_pct, symbol):
-#     uq = _dir_word_simple(qty_pct)
-#     us = _dir_word_simple(sales_pct)
-#     up = _dir_word_simple(prof_pct)
-#     qp = f"{abs(qty_pct):.2f}%" if qty_pct is not None else "0.00%"
-#     sp = f"{abs(sales_pct):.2f}%" if sales_pct is not None else "0.00%"
-#     pp = f"{abs(prof_pct):.2f}%" if prof_pct is not None else "0.00%"
-#     return [
-#         f"Overall units {uq} from {_fmt_int(qty_prev)} to {_fmt_int(qty_curr)} by {qp}.",
-#         f"Net sales {us} from {_fmt_money(sales_prev, symbol)} to {_fmt_money(sales_curr, symbol)} by {sp}.",
-#         f"CM1 profit {up} from {_fmt_money(prof_prev, symbol)} to {_fmt_money(prof_curr, symbol)} by {pp}.",
-#     ]
 
 
 def run_live_prompt_1_analysis(payload: dict) -> dict:
