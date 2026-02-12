@@ -2593,7 +2593,7 @@ export default function DashboardPage() {
 
     const SKUWISE_LEFT_COLS = [
         { key: "sno", label: "S.No", align: "center" as const },
-        { key: "product_name", label: "Product Name", align: "center" as const },
+        { key: "product_name", label: "Product Name", align: "left" as const },
     ];
 
     const SKUWISE_GROUPS = [
@@ -4326,7 +4326,7 @@ export default function DashboardPage() {
                                                         options={graphRegions.map((r) => ({ value: r }))}
                                                         onChange={setGraphRegion}
                                                     />
-                                                    <DownloadIconButton onClick={handleDownload} />
+                                                    {/* <DownloadIconButton onClick={handleDownload} /> */}
                                                 </>
                                             )}
                                             <span className="relative group shrink-0">

@@ -461,29 +461,28 @@ const LiveLineChart: React.FC<{
           const monthLabel =
             typeof valObj === "object" && valObj?.monthLabel ? String(valObj.monthLabel) : null;
 
-          // Match Chart.js: "Label: ₹ 12,345.67" (or units without decimals)
+          const fmtNumber = (n: number) =>
+            n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
           const displayValue =
             value == null
               ? "-"
               : metric === "net_sales"
                 ? `${currencySymbol ?? ""}${fmtNumber(Number(value))}`
-
                 : `${Number(value).toLocaleString()}`;
 
-          // For quarter-compare, keep your month label hint (but keep main color consistent)
           const suffix =
-            isQuarterCompare && monthLabel
-              ? ` <span style="color:#6B7280;">(${monthLabel})</span>`
-              : "";
+            isQuarterCompare && monthLabel ? ` <span style="color:#6B7280;">(${monthLabel})</span>` : "";
 
           return `
-        <div style="font-size:12px; line-height:1.4; color:#44042;">
-          ${p.marker}
-          <span>${p.seriesName}${suffix}: </span>
-          <span style="color:#414042;">${displayValue}</span>
-        </div>
-      `;
+    <div style="font-size:12px; line-height:1.4; color:#44042;">
+      <span style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${p.color};border-radius:0;"></span>
+      <span>${p.seriesName}${suffix}: </span>
+      <span style="color:#414042;">${displayValue}</span>
+    </div>
+  `;
         });
+
 
         return `
       <div style="font-size:12px; color:#414042;">
@@ -501,9 +500,9 @@ const LiveLineChart: React.FC<{
       top: 10,
       left: "left",
       orient: "horizontal",
-      icon: "rect",
-      itemWidth: 12,
-      itemHeight: 12,
+      icon: "rect",          // square/rect marker
+      itemWidth: 10,         // ✅ same as height => square
+      itemHeight: 10,        // ✅ same as width => square
       itemGap: 14,
       textStyle: {
         fontSize: 12,
@@ -512,6 +511,7 @@ const LiveLineChart: React.FC<{
       },
       data: series.map((s) => s.name),
     },
+
     grid: { left: 46, right: 16, top: 62, bottom: 44 },
     xAxis: {
       type: "category",
@@ -638,7 +638,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
   }, [props.data]);
 
   return (
-  <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
+    <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
 
       <div className="shrink-0 flex items-center justify-between gap-3 w-full">
 

@@ -364,7 +364,7 @@ const Productinfoinpopup: React.FC<ProductInfoInPopupProps> = ({
       },
     },
     scales: {
-      x: { title: { display: true, text: "Month" } },
+      x: { title: { display: false, text: "Month" } },
       y: {
         title: { display: true, text: `Amount (${currencySymbol})` },
         min: 0,
