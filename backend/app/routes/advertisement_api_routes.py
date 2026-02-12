@@ -2,7 +2,7 @@ import io
 from datetime import datetime , date
 import calendar, json
 import re
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
 import jwt, time
 import pandas as pd
@@ -1030,6 +1030,25 @@ def _safe_div(a, b):
     b = float(b or 0.0)
     return 0.0 if b == 0.0 else (a / b)
 
+def _latest_end_date_for_month(model, user_id, country, first_day, last_day):
+    """
+    Picks latest end_date for rows whose start_date falls within [first_day, last_day].
+    This prevents double-counting when you have multiple runs like:
+      2026-02-01 -> 2026-02-11
+      2026-02-01 -> 2026-02-12   (latest)
+    """
+    return (
+        db.session.query(func.max(model.end_date))
+        .filter(
+            model.user_id == user_id,
+            model.country == country,
+            model.start_date >= first_day,
+            model.start_date <= last_day,
+        )
+        .scalar()
+    )
+
+
 # --- ROUTE ---
 @advertisement_api_routes_bp.route("/api/ads/monthly_sp_sd_to_db", methods=["POST"])
 def monthly_sp_sd_to_db():
@@ -1037,13 +1056,10 @@ def monthly_sp_sd_to_db():
     Save monthly aggregated Sponsored Products + Sponsored Display data into a DB table:
       public.adsmonthly_{user_id}_{country}_{month}_{year}
 
-    Request JSON:
-      {
-        "month": 12,
-        "year": 2025,
-        "country": "UK",
-        "include": ["SP","SD"]   // optional; default both
-      }
+    IMPORTANT:
+    - Does NOT delete previous raw report rows in amazon_sponsored_products / amazon_sponsored_display tables.
+    - To avoid double-counting, it aggregates ONLY the latest run for that month
+      (latest end_date for the month/user/country).
     """
     try:
         user_id = _require_jwt_user_id()
@@ -1075,16 +1091,23 @@ def monthly_sp_sd_to_db():
         # 1) Sponsored Products (SP)
         # =========================
         if "SP" in include:
-            sp_rows = (
-                amazon_sponsored_products.query
-                .filter(
-                    amazon_sponsored_products.user_id == user_id,
-                    amazon_sponsored_products.country == country,
-                    amazon_sponsored_products.start_date >= first_day,
-                    amazon_sponsored_products.start_date <= last_day,
-                )
-                .all()
+            sp_latest_end = _latest_end_date_for_month(
+                amazon_sponsored_products, user_id, country, first_day, last_day
             )
+
+            sp_rows = []
+            if sp_latest_end:
+                sp_rows = (
+                    amazon_sponsored_products.query
+                    .filter(
+                        amazon_sponsored_products.user_id == user_id,
+                        amazon_sponsored_products.country == country,
+                        amazon_sponsored_products.start_date >= first_day,
+                        amazon_sponsored_products.start_date <= last_day,
+                        amazon_sponsored_products.end_date == sp_latest_end,  # ✅ ONLY latest run
+                    )
+                    .all()
+                )
 
             if sp_rows:
                 sp_df = pd.DataFrame([{
@@ -1097,6 +1120,7 @@ def monthly_sp_sd_to_db():
                     "clicks": int(r.clicks or 0),
                     "spend": float(r.spend or 0.0),
 
+                    # SP uses 7d attribution in your schema
                     "sales": float(getattr(r, "sales_7d", 0.0) or 0.0),
                     "orders": float(getattr(r, "orders_7d", 0.0) or 0.0),
                     "units": float(getattr(r, "units_7d", 0.0) or 0.0),
@@ -1113,16 +1137,23 @@ def monthly_sp_sd_to_db():
         # 2) Sponsored Display (SD)
         # =========================
         if "SD" in include:
-            sd_rows = (
-                amazon_sponsored_display_advertised_products.query
-                .filter(
-                    amazon_sponsored_display_advertised_products.user_id == user_id,
-                    amazon_sponsored_display_advertised_products.country == country,
-                    amazon_sponsored_display_advertised_products.start_date >= first_day,
-                    amazon_sponsored_display_advertised_products.start_date <= last_day,
-                )
-                .all()
+            sd_latest_end = _latest_end_date_for_month(
+                amazon_sponsored_display_advertised_products, user_id, country, first_day, last_day
             )
+
+            sd_rows = []
+            if sd_latest_end:
+                sd_rows = (
+                    amazon_sponsored_display_advertised_products.query
+                    .filter(
+                        amazon_sponsored_display_advertised_products.user_id == user_id,
+                        amazon_sponsored_display_advertised_products.country == country,
+                        amazon_sponsored_display_advertised_products.start_date >= first_day,
+                        amazon_sponsored_display_advertised_products.start_date <= last_day,
+                        amazon_sponsored_display_advertised_products.end_date == sd_latest_end,  # ✅ ONLY latest run
+                    )
+                    .all()
+                )
 
             if sd_rows:
                 sd_df = pd.DataFrame([{
@@ -1135,6 +1166,7 @@ def monthly_sp_sd_to_db():
                     "clicks": int(r.clicks or 0),
                     "spend": float(getattr(r, "spend", 0.0) or 0.0),
 
+                    # SD uses 14d attribution in your schema
                     "sales": float(getattr(r, "sales_14d", 0.0) or 0.0),
                     "orders": float(getattr(r, "orders_14d", 0.0) or 0.0),
                     "units": float(getattr(r, "units_14d", 0.0) or 0.0),
@@ -1148,7 +1180,9 @@ def monthly_sp_sd_to_db():
                 frames.append(sd_df)
 
         if not frames:
-            return jsonify({"error": "No rows found for this user/country/month"}), 404
+            return jsonify({
+                "error": "No rows found for this user/country/month (or no latest end_date found)."
+            }), 404
 
         df = pd.concat(frames, ignore_index=True)
 
@@ -1168,12 +1202,12 @@ def monthly_sp_sd_to_db():
             "source": lambda s: ",".join(sorted(set([str(x).upper() for x in s if x])))
         })
 
-
         # ---- output in your monthly table shape ----
         out = pd.DataFrame()
         out["sno"] = range(1, len(g) + 1)
         out["products"] = g["advertised_sku"]
         out["asin"] = g["advertised_asin"]
+
         def _ad_type_from_source(src: str) -> str:
             parts = set((src or "").split(","))
             has_sp = "SP" in parts
@@ -1187,7 +1221,6 @@ def monthly_sp_sd_to_db():
             return None
 
         out["ad_type"] = g["source"].apply(_ad_type_from_source)
-
         out["match_type"] = None
 
         out["impressions"] = g["impressions"].astype(int)
@@ -1317,10 +1350,9 @@ def monthly_sp_sd_to_db():
         try:
             db.session.execute(text(create_sql))
 
-            # ✅ IMPORTANT FIX: wipe table before inserting (prevents double)
+            # ✅ IMPORTANT: wipe monthly output table before inserting (prevents double in monthly table)
             db.session.execute(text(f"TRUNCATE TABLE public.{table_name};"))
 
-            # build params list and bulk execute
             params = []
             for r in items:
                 params.append({
@@ -1363,7 +1395,7 @@ def monthly_sp_sd_to_db():
             raise
 
         return jsonify({
-            "message": "Monthly ads table saved to DB successfully (SP + SD)",
+            "message": "Monthly ads table saved to DB successfully (SP + SD) using ONLY latest end_date run",
             "table_name": f"public.{table_name}",
             "country": country,
             "month": month,
@@ -1382,6 +1414,7 @@ def monthly_sp_sd_to_db():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
 
 
 
