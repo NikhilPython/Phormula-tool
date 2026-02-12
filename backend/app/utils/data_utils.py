@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 import os
 import pandas as pd
 import numpy as np 
@@ -41,6 +41,66 @@ def create_user_session(db_url):
 
 
 
+from app.models.user_models import StoredFile  
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+def _guess_kind_from_filename(file_name: str) -> str:
+    name = (file_name or "").lower()
+    if name.startswith("inventory_forecast_"):
+        return "inventory_forecast"
+    if name.startswith("forecasts_for_"):
+        return "forecasts_for"
+    if name.startswith("forecastpnl_"):
+        return "pnl_forecast"
+    if name.startswith("pnlforecast_"):
+        return "pnl_forecast_upload"
+    return "file"
+
+def send_forecast_email(user_id, file_name, month, year, *, country=None):
+    try:
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            raise ValueError(f"No user found with ID {user_id}")
+
+        user_email = user.email
+
+        msg = Message(
+            'Your Forecast Report',
+            sender=current_app.config.get('MAIL_DEFAULT_SENDER'),
+            recipients=[user_email]
+        )
+
+        msg.body = f"""
+Dear {user.email},
+
+Please find attached the forecast report for {month} {year} that you requested.
+
+Best regards,
+The Phormula Team
+"""
+
+        # ✅ Load bytes from DB
+        q = StoredFile.query.filter_by(user_id=user_id, filename=file_name)
+        if country:
+            q = q.filter_by(country=country.lower())
+        stored = q.first()
+
+        if not stored:
+            # helpful debug: try to locate by user+kind if filename differs
+            raise FileNotFoundError(f"File not found in DB for user_id={user_id}, filename={file_name}")
+
+        content_type = stored.content_type or XLSX_MIME
+        msg.attach(file_name, content_type, stored.data)
+
+        mail.send(msg)
+        print(f"✅ Forecast email sent to {user_email} (attached from DB: {file_name})")
+
+    except Exception as e:
+        print(f"Failed to send forecast email: {e}")
+        raise
+
+
 
 def generate_pnl_report(year: int, month: str) -> dict:
     """
@@ -74,87 +134,48 @@ def generate_pnl_report(year: int, month: str) -> dict:
     }
 
 
-def send_forecast_email(user_id, file_name, month, year):
+
+def send_pnlforecast_email(user_id, file_name, month, year, *, country=None):
     try:
-        # Get the user's email from the database using the user_id
         user = User.query.filter_by(id=user_id).first()
         if not user:
             raise ValueError(f"No user found with ID {user_id}")
 
         user_email = user.email
 
-        # Create the message
         msg = Message(
-            'Your Forecast Report',
-            sender=current_app.config['MAIL_DEFAULT_SENDER'],
+            'Your PnL Forecast Report',
+            sender=current_app.config.get('MAIL_DEFAULT_SENDER'),
             recipients=[user_email]
         )
-        
+
         msg.body = f"""
-        Dear {user.email},
+Dear {user.email},
 
-        Please find attached the forecast report for {month} {year} that you requested.
+Please find attached the PNL forecast report for next 3 months of {month} {year} that you requested.
 
-        Best regards,
-        The Phormula Team
-        """
+Best regards,
+The Phormula Team
+"""
 
-        # File path of the forecast to be attached
-        file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file_name)
+        # ✅ Load bytes from DB
+        q = StoredFile.query.filter_by(user_id=user_id, filename=file_name)
+        if country:
+            q = q.filter_by(country=country.lower())
+        stored = q.first()
 
-        # Attach the file
-        with open(file_path, 'rb') as f:
-            msg.attach(file_name, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', f.read())
+        if not stored:
+            raise FileNotFoundError(f"PnL file not found in DB for user_id={user_id}, filename={file_name}")
 
-        # Send the email
+        content_type = stored.content_type or XLSX_MIME
+        msg.attach(file_name, content_type, stored.data)
+
         mail.send(msg)
-        print(f"Forecast email sent to user {user_email}")
+        print(f"✅ PnL email sent to {user_email} (attached from DB: {file_name})")
 
     except Exception as e:
-        print(f"Failed to send forecast email: {e}")
-        raise e  # Propagate the exception to be handled in the route
-
-
-def send_pnlforecast_email(user_id, file_name, month, year):
-    try:
-        # Get the user's email from the database using the user_id
-        user = User.query.filter_by(id=user_id).first()
-        if not user:
-            raise ValueError(f"No user found with ID {user_id}")
-
-        user_email = user.email
-
-        # Create the message
-        msg = Message(
-            'Your Forecast Report',
-            sender=current_app.config['MAIL_DEFAULT_SENDER'],
-            recipients=[user_email]
-        )
-        
-        msg.body = f"""
-        Dear {user.email},
-
-        Please find attached the PNL forecast report for next 3 months of {month} {year} that you requested.
-
-        Best regards,
-        The Phormula Team
-        """
-
-        # File path of the forecast to be attached
-        file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file_name)
-
-        # Attach the file
-        with open(file_path, 'rb') as f:
-            msg.attach(file_name, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', f.read())
-
-        # Send the email
-        mail.send(msg)
-        print(f"Forecast email sent to user {user_email}")
-
-    except Exception as e:
-        print(f"Failed to send forecast email: {e}")
-        raise e  # Propagate the exception to be handled in the route
-
+        print(f"Failed to send pnl forecast email: {e}")
+        raise
 
 
 

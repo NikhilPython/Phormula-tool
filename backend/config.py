@@ -42,36 +42,7 @@ class Config:
     SQLALCHEMY_DATABASE_CHATBOT_URL= _env("DATABASE_Chatbot_URL")
     SQLALCHEMY_DATABASE_AMAZON_URL = _env("DATABASE_AMAZON_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-
-    # # --- Session ---
-    # SESSION_COOKIE_SECURE   = _env_bool("SESSION_COOKIE_SECURE", True)
-    # SESSION_COOKIE_HTTPONLY = True
-    # SESSION_COOKIE_SAMESITE = "Lax"
-    # SESSION_COOKIE_NAME     = "chatbot_session"
-    # PERMANENT_SESSION_DURATION = timedelta(hours=_env_int("SESSION_HOURS", 6) or 6)
-
-    # --- Uploads ---
-    @staticmethod
-    def _create_upload_folder(base_path):
-        try:
-            folder = _env("UPLOAD_FOLDER", os.path.join(base_path, "uploads"))
-            os.makedirs(folder, exist_ok=True)
-            if not os.access(folder, os.W_OK):
-                raise PermissionError(f"No write permissions for: {folder}")
-            return folder
-        except (OSError, PermissionError) as e:
-            logging.error(f"Error creating upload folder: {e}")
-            fallback = os.path.join(os.path.expanduser("~"), "phormula_uploads")
-            try:
-                os.makedirs(fallback, exist_ok=True)
-                logging.warning(f"Created fallback upload folder: {fallback}")
-                return fallback
-            except Exception as fe:
-                logging.critical(f"Cannot create uploads folder. Error: {fe}")
-                raise RuntimeError("Unable to create uploads folder") from fe
-
-    UPLOAD_FOLDER = _create_upload_folder.__func__(basedir)  # call staticmethod
-
+    
     # --- Email (Gmail App Password / SMTP) ---
     MAIL_SERVER         = _env("MAIL_SERVER", "smtp.gmail.com")
     MAIL_PORT           = _env_int("MAIL_PORT", 587)               

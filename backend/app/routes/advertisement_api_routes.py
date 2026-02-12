@@ -3,6 +3,7 @@ from datetime import datetime , date
 import calendar, json
 import re
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import insert
 import jwt, time
 import pandas as pd
 from flask import Blueprint, jsonify, request, send_file, Response

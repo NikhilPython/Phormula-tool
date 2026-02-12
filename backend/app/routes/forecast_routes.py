@@ -1,15 +1,15 @@
 from flask import Blueprint, request, jsonify , send_file , send_from_directory
 import jwt
 import os
-from sqlalchemy import create_engine, MetaData, text , inspect, table, Table
+from sqlalchemy import create_engine, MetaData, text, inspect, Table
 import pandas as pd
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from app.utils.data_utils import MONTHS_MAP, MONTHS_REVERSE_MAP 
 from app.utils.data_utils import send_forecast_email, send_pnlforecast_email 
 from app.utils.forecasting_utils import process_forecasting
-from app.models.user_models import UploadHistory , User, CountryProfile
+from app.models.user_models import UploadHistory , User, CountryProfile, StoredFile, db
 from app.utils.manual_forecast_utils import generate_manual_forecast
 from calendar import month_name
 from dateutil.relativedelta import relativedelta
@@ -26,6 +26,170 @@ load_dotenv()
 db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
 db_url1= os.getenv('DATABASE_ADMIN_URL', 'postgresql://postgres:password@localhost:5432/admin_db')
 forecast_bp = Blueprint('forecast_bp', __name__)
+
+
+
+from io import BytesIO
+from sqlalchemy.exc import IntegrityError
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+def send_db_file(stored: StoredFile, download_name: str):
+    """Return a StoredFile as flask send_file response."""
+    return send_file(
+        BytesIO(stored.data),
+        mimetype=stored.content_type or XLSX_MIME,
+        as_attachment=True,
+        download_name=download_name
+    )
+
+import tempfile
+from pathlib import Path
+
+def ingest_xlsx_path_to_db(*, path: str, user_id, country, filename, kind, month=None, year=None, content_type=XLSX_MIME):
+    """Read XLSX from a filesystem path (anywhere), store into DB, then delete it."""
+    with open(path, "rb") as f:
+        file_bytes = f.read()
+
+    save_file_to_db(
+        user_id=user_id,
+        country=country,
+        filename=filename,
+        file_bytes=file_bytes,
+        kind=kind,
+        month=month,
+        year=year,
+        content_type=content_type,
+    )
+
+    try:
+        os.remove(path)
+    except Exception as e:
+        print(f"⚠ Could not delete temp file {path}: {e}")
+
+    return file_bytes
+
+
+def find_latest_matching_file(pattern: str, search_dirs: list[str]) -> str | None:
+    """
+    Search for the newest file matching pattern in provided directories.
+    pattern can include wildcards: e.g. 'inventory_forecast_12_us_*.xlsx'
+    """
+    newest_path = None
+    newest_mtime = -1
+
+    for d in search_dirs:
+        try:
+            for p in Path(d).glob(pattern):
+                try:
+                    mt = p.stat().st_mtime
+                    if mt > newest_mtime:
+                        newest_mtime = mt
+                        newest_path = str(p)
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    return newest_path
+
+
+def default_temp_dirs():
+    """
+    Places where legacy utils might write.
+    Add more if your deployment uses a fixed folder.
+    """
+    dirs = [tempfile.gettempdir(), os.getcwd()]
+    # optional: if you have env-configured temp output folder
+    extra = os.getenv("FORECAST_TEMP_DIR")
+    if extra:
+        dirs.insert(0, extra)
+    return dirs
+
+
+def ingest_disk_xlsx_to_db(*, path: str, user_id, country, filename, kind, month=None, year=None):
+    """Read XLSX from disk, store into DB, delete disk file."""
+    with open(path, "rb") as f:
+        file_bytes = f.read()
+
+    save_file_to_db(
+        user_id=user_id,
+        country=country,
+        filename=filename,
+        file_bytes=file_bytes,
+        kind=kind,
+        month=month,
+        year=year,
+        content_type=XLSX_MIME,
+    )
+
+    try:
+        os.remove(path)
+    except Exception as e:
+        print(f"⚠ Could not delete temp file {path}: {e}")
+
+    return file_bytes
+
+def load_forecast_df(*, user_id, country, filename, disk_fallback_path=None):
+    """Return (df, bytes) from DB if present; else try disk fallback if provided."""
+    stored = load_file_from_db(user_id=user_id, country=country, filename=filename)
+    if stored:
+        b = stored.data
+        return pd.read_excel(BytesIO(b)), b
+
+    if disk_fallback_path and os.path.exists(disk_fallback_path):
+        with open(disk_fallback_path, "rb") as f:
+            b = f.read()
+        return pd.read_excel(BytesIO(b)), b
+
+    return None, None
+
+
+def save_file_to_db(*, user_id, country, filename, file_bytes, kind, month=None, year=None, content_type=None):
+    if content_type is None:
+        content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    # UPSERT-like behavior (update if exists)
+    existing = StoredFile.query.filter_by(user_id=user_id, country=country, filename=filename).first()
+    if existing:
+        existing.data = file_bytes
+        existing.kind = kind
+        existing.month = month
+        existing.year = str(year) if year is not None else existing.year
+        existing.content_type = content_type
+        db.session.commit()
+        return existing
+
+    row = StoredFile(
+        user_id=user_id,
+        country=country,
+        filename=filename,
+        data=file_bytes,
+        kind=kind,
+        month=month,
+        year=str(year) if year is not None else None,
+        content_type=content_type,
+    )
+    db.session.add(row)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        # race-safe update
+        row2 = StoredFile.query.filter_by(user_id=user_id, country=country, filename=filename).first()
+        row2.data = file_bytes
+        row2.kind = kind
+        row2.month = month
+        row2.year = str(year) if year is not None else row2.year
+        row2.content_type = content_type
+        db.session.commit()
+        return row2
+    return row
+
+
+def load_file_from_db(*, user_id, country, filename):
+    row = StoredFile.query.filter_by(user_id=user_id, country=country, filename=filename).first()
+    return row  # None if not found
 
 
 @forecast_bp.route('/api/forecast_allmonths', methods=['GET']) 
@@ -53,47 +217,19 @@ def forecast_allmonths():
         # NOTE: utils currently writes file using current month suffix (+2).
         current_month = datetime.now().strftime("%b").lower()
 
+        
         output_file = (
             f'inventory_forecast_{user_id}_global_{current_month}+2.xlsx'
             if country == 'global'
             else f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
         )
-        output_path = os.path.join(UPLOAD_FOLDER, output_file)
 
-        # If global file missing, try to build from available UK/US outputs
-        if country == 'global' and not os.path.exists(output_path):
-            countries = ['uk', 'us']
-            dfs, present = [], []
+        stored = load_file_from_db(user_id=user_id, country=country, filename=output_file)
+        if not stored:
+            return jsonify({'error': 'Forecast file not found in DB. Please generate it first.'}), 404
 
-            for c in countries:
-                p = os.path.join(UPLOAD_FOLDER, f'inventory_forecast_{user_id}_{c}_{current_month}+2.xlsx')
-                if os.path.exists(p):
-                    try:
-                        dfs.append(pd.read_excel(p))
-                        present.append(c)
-                    except Exception as e:
-                        print(f"Failed reading {p}: {e}")
+        df = pd.read_excel(BytesIO(stored.data))
 
-            if not dfs:
-                return jsonify({'error': 'Forecast file not found. Please generate it first.'}), 404
-
-            if len(dfs) == 1:
-                df = dfs[0]
-            else:
-                df1, df2 = dfs
-                month_pattern = re.compile(r"[A-Za-z]{3}'\d{2}")
-                forecast_cols = [col for col in df1.columns if month_pattern.match(str(col))]
-                merged = pd.merge(df1, df2, on=['Product Name', 'sku'], how='outer', suffixes=('_uk', '_us'))
-                for col in forecast_cols:
-                    uk, us = f"{col}_uk", f"{col}_us"
-                    merged[col] = merged.get(uk, 0).fillna(0) + merged.get(us, 0).fillna(0)
-                keep = ['Product Name', 'sku'] + forecast_cols
-                df = merged[keep]
-                df.to_excel(output_path, index=False)
-        else:
-            if not os.path.exists(output_path):
-                return jsonify({'error': 'Forecast file not found. Please generate it first.'}), 404
-            df = pd.read_excel(output_path)
 
         # Identify month columns (normalize if needed)
         month_columns = []
@@ -189,12 +325,13 @@ def forecast_monthrange():
             if country == 'global'
             else f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
         )
-        output_path = os.path.join(UPLOAD_FOLDER, output_file)
 
-        if not os.path.exists(output_path):
-            return jsonify({'error': 'Forecast file not found. Please generate it first.'}), 404
+        stored = load_file_from_db(user_id=user_id, country=country, filename=output_file)
+        if not stored:
+            return jsonify({'error': 'Forecast file not found in DB. Please generate it first.'}), 404
 
-        df = pd.read_excel(output_path)
+        df = pd.read_excel(BytesIO(stored.data))
+
 
         month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}$")
         month_columns = [col for col in df.columns if month_pattern.match(str(col))]
@@ -226,6 +363,70 @@ def forecast_monthrange():
         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
 
 
+# @forecast_bp.route('/api/forecast', methods=['GET'])
+# def get_forecast():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         user_id = payload.get('user_id')
+
+#         if not user_id:
+#             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
+
+#         country = request.args.get('country')
+#         mv = request.args.get('month')
+#         year = request.args.get('year')
+
+#         if not all([country, mv, year]):
+#             return jsonify({'error': 'Missing required parameters: country, month, or year'}), 400
+
+#         # NOTE: filename convention is still current-month +2 to match utils
+#         current_month = datetime.now().strftime("%b").lower()
+#         output_file = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
+#         output_path = os.path.join(UPLOAD_FOLDER, output_file)
+
+#         if os.path.exists(output_path):
+#             print(f"Forecast already exists for user {user_id}, returning cached file.")
+#             return send_from_directory(UPLOAD_FOLDER, output_file, as_attachment=True)
+
+#         print(f"Starting forecast generation for user {user_id} and country {country}, month {mv}, year {year}")
+
+#         engine = create_engine(db_url)
+#         meta = MetaData()
+#         meta.reflect(bind=engine)
+
+#         # This calls your utils to: pull data, fit ARIMA, output 3 fixed months after (mv, year),
+#         # and fill remaining months with the new growth rules (no CAGR).
+#         process_forecasting(user_id, country, mv, year, engine)
+
+#         print(f"Checking if forecast file exists at: {output_path}")
+#         if not os.path.exists(output_path):
+#             return jsonify({'error': 'Forecast file was not generated successfully.'}), 500
+
+#         try:
+#             send_forecast_email(user_id, output_file, mv, year)
+#             print(f"Forecast email sent to user {user_id}")
+#         except Exception as e:
+#             print(f"Email sending failed: {str(e)}")
+#             return jsonify({'error': 'Failed to send forecast email', 'message': str(e)}), 500
+
+#         return send_from_directory(UPLOAD_FOLDER, output_file, as_attachment=True)
+
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+#     except Exception as e:
+#         import traceback
+#         print("Unexpected error during forecast generation:")
+#         print(traceback.format_exc())
+#         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
+
 @forecast_bp.route('/api/forecast', methods=['GET'])
 def get_forecast():
     auth_header = request.headers.get('Authorization')
@@ -237,48 +438,73 @@ def get_forecast():
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
         user_id = payload.get('user_id')
-
         if not user_id:
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
         country = request.args.get('country')
         mv = request.args.get('month')
         year = request.args.get('year')
-
         if not all([country, mv, year]):
             return jsonify({'error': 'Missing required parameters: country, month, or year'}), 400
 
-        # NOTE: filename convention is still current-month +2 to match utils
         current_month = datetime.now().strftime("%b").lower()
-        output_file = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
-        output_path = os.path.join(UPLOAD_FOLDER, output_file)
+        inventory_filename = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
 
-        if os.path.exists(output_path):
-            print(f"Forecast already exists for user {user_id}, returning cached file.")
-            return send_from_directory(UPLOAD_FOLDER, output_file, as_attachment=True)
+        # ✅ DB-first cache (inventory file)
+        stored = load_file_from_db(user_id=user_id, country=country, filename=inventory_filename)
+        if stored:
+            return send_db_file(stored, download_name=inventory_filename)
 
-        print(f"Starting forecast generation for user {user_id} and country {country}, month {mv}, year {year}")
-
+        # ✅ Generate in-memory (no UPLOAD_FOLDER, no disk)
         engine = create_engine(db_url)
-        meta = MetaData()
-        meta.reflect(bind=engine)
+        result = process_forecasting(user_id, country, mv, year, engine)
 
-        # This calls your utils to: pull data, fit ARIMA, output 3 fixed months after (mv, year),
-        # and fill remaining months with the new growth rules (no CAGR).
-        process_forecasting(user_id, country, mv, year, engine)
+        if not result or "inventory_bytes" not in result or not result["inventory_bytes"]:
+            return jsonify({'error': 'Forecast generation failed (no output bytes).'}), 500
 
-        print(f"Checking if forecast file exists at: {output_path}")
-        if not os.path.exists(output_path):
-            return jsonify({'error': 'Forecast file was not generated successfully.'}), 500
+        # ✅ Save BOTH artifacts to DB (inventory + forecasts_for used by PnL)
+        # 1) forecasts_for (PnL depends on this later)
+        if result.get("forecast_bytes") and result.get("forecast_filename"):
+            save_file_to_db(
+                user_id=user_id,
+                country=country,
+                filename=result["forecast_filename"],
+                file_bytes=result["forecast_bytes"],
+                kind="forecasts_for",
+                month=mv.lower(),
+                year=str(year),
+                content_type=XLSX_MIME
+            )
+
+        # 2) inventory forecast (this route returns this)
+        save_file_to_db(
+            user_id=user_id,
+            country=country,
+            filename=result.get("inventory_filename", inventory_filename),
+            file_bytes=result["inventory_bytes"],
+            kind="inventory_forecast",
+            month=mv.lower(),
+            year=str(year),
+            content_type=XLSX_MIME
+        )
+
+        # Reload and return
+        stored = load_file_from_db(
+            user_id=user_id,
+            country=country,
+            filename=result.get("inventory_filename", inventory_filename)
+        )
+        if not stored:
+            return jsonify({'error': 'Saved forecast not found in DB after generation.'}), 500
 
         try:
-            send_forecast_email(user_id, output_file, mv, year)
-            print(f"Forecast email sent to user {user_id}")
+            # NOTE: if your email function expects to read from disk,
+            # update it to read from DB using load_file_from_db.
+            send_forecast_email(user_id, stored.filename, mv, year)
         except Exception as e:
             print(f"Email sending failed: {str(e)}")
-            return jsonify({'error': 'Failed to send forecast email', 'message': str(e)}), 500
 
-        return send_from_directory(UPLOAD_FOLDER, output_file, as_attachment=True)
+        return send_db_file(stored, download_name=stored.filename)
 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
@@ -286,9 +512,11 @@ def get_forecast():
         return jsonify({'error': 'Invalid token'}), 401
     except Exception as e:
         import traceback
-        print("Unexpected error during forecast generation:")
         print(traceback.format_exc())
         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
+
+
+
 
 
 @forecast_bp.route('/forecast_global', methods=['GET', 'POST'])
@@ -304,59 +532,102 @@ def forecast_global():
         token = auth_header.split(' ')[1]
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
         user_id = payload.get('user_id')
-
         if not user_id:
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
         mv = request.args.get('month')
         year = request.args.get('year')
-
         if not all([mv, year]):
             return jsonify({'error': 'Missing required parameters: month or year'}), 400
 
         current_month = datetime.now().strftime("%b").lower()
-        countries = ['uk', 'us']
 
-        dfs = []
-        present_countries = []
+        # filenames used by your utils
+        uk_name = f'inventory_forecast_{user_id}_uk_{current_month}+2.xlsx'
+        us_name = f'inventory_forecast_{user_id}_us_{current_month}+2.xlsx'
+        global_name = f'inventory_forecast_{user_id}_global_{current_month}+2.xlsx'
 
-        for country in countries:
-            file_name = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
-            file_path = os.path.join(UPLOAD_FOLDER, file_name)
-            if os.path.exists(file_path):
-                try:
-                    df = pd.read_excel(file_path)
-                    dfs.append(df)
-                    present_countries.append(country)
-                except Exception as e:
-                    print(f"Failed to read {file_name}: {e}")
+        # optional disk fallback (legacy util still writes to disk sometimes)
+        search_dirs = default_temp_dirs()
 
-        if not dfs:
+        uk_disk = None
+        us_disk = None
+        for d in search_dirs:
+            p1 = os.path.join(d, uk_name)
+            p2 = os.path.join(d, us_name)
+            if not uk_disk and os.path.exists(p1): uk_disk = p1
+            if not us_disk and os.path.exists(p2): us_disk = p2
+
+
+        df_uk, uk_bytes = load_forecast_df(
+            user_id=user_id, country='uk', filename=uk_name, disk_fallback_path=uk_disk
+        )
+        df_us, us_bytes = load_forecast_df(
+            user_id=user_id, country='us', filename=us_name, disk_fallback_path=us_disk
+        )
+
+        present = []
+        if df_uk is not None: present.append('uk')
+        if df_us is not None: present.append('us')
+
+        if not present:
             return jsonify({'error': 'No forecast files found for global processing'}), 404
 
-        if len(dfs) == 1:
-            print(f"Only one country file found: {present_countries[0]}")
-            return send_from_directory(UPLOAD_FOLDER, f'inventory_forecast_{user_id}_{present_countries[0]}_{current_month}+2.xlsx', as_attachment=True)
+        # If only one exists, just return it (and ensure it’s saved in DB if it came from disk)
+        if len(present) == 1:
+            only = present[0]
+            if only == 'uk':
+                if uk_bytes and not load_file_from_db(user_id=user_id, country='uk', filename=uk_name):
+                    save_file_to_db(user_id=user_id, country='uk', filename=uk_name,
+                                    file_bytes=uk_bytes, kind="inventory_forecast",
+                                    month=mv.lower(), year=str(year), content_type=XLSX_MIME)
+                stored = load_file_from_db(user_id=user_id, country='uk', filename=uk_name)
+                return send_db_file(stored, download_name=uk_name)
 
-        df1, df2 = dfs[0], dfs[1]
-        month_pattern = re.compile(r"[A-Za-z]{3}'\d{2}")
-        forecast_cols = [col for col in df1.columns if month_pattern.match(str(col))]
+            if only == 'us':
+                if us_bytes and not load_file_from_db(user_id=user_id, country='us', filename=us_name):
+                    save_file_to_db(user_id=user_id, country='us', filename=us_name,
+                                    file_bytes=us_bytes, kind="inventory_forecast",
+                                    month=mv.lower(), year=str(year), content_type=XLSX_MIME)
+                stored = load_file_from_db(user_id=user_id, country='us', filename=us_name)
+                return send_db_file(stored, download_name=us_name)
 
-        merged_df = pd.merge(df1, df2, on=['Product Name', 'sku'], how='outer', suffixes=('_uk', '_us'))
+        # Both exist -> merge
+        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}$")
+        # Use union of month cols (in case one file has extra)
+        month_cols_uk = [c for c in df_uk.columns if month_pattern.match(str(c))]
+        month_cols_us = [c for c in df_us.columns if month_pattern.match(str(c))]
+        forecast_cols = sorted(set(month_cols_uk) | set(month_cols_us))
+
+        merged = pd.merge(df_uk, df_us, on=['Product Name', 'sku'], how='outer', suffixes=('_uk', '_us'))
+
         for col in forecast_cols:
-            col_uk = f"{col}_uk" if f"{col}_uk" in merged_df.columns else col
-            col_us = f"{col}_us" if f"{col}_us" in merged_df.columns else col
-            merged_df[col] = merged_df.get(col_uk, 0).fillna(0) + merged_df.get(col_us, 0).fillna(0)
+            col_uk = f"{col}_uk" if f"{col}_uk" in merged.columns else col
+            col_us = f"{col}_us" if f"{col}_us" in merged.columns else col
+            merged[col] = merged.get(col_uk, 0).fillna(0) + merged.get(col_us, 0).fillna(0)
 
         keep_cols = ['Product Name', 'sku'] + forecast_cols
-        global_df = merged_df[keep_cols]
+        global_df = merged[keep_cols].copy()
 
-        global_filename = f'inventory_forecast_{user_id}_global_{current_month}+2.xlsx'
-        global_path = os.path.join(UPLOAD_FOLDER, global_filename)
-        global_df.to_excel(global_path, index=False)
+        # Write to bytes + save to DB
+        buf = BytesIO()
+        global_df.to_excel(buf, index=False, engine='openpyxl')
+        buf.seek(0)
+        file_bytes = buf.getvalue()
 
-        print(f"✅ Global forecast created by merging UK & US: {global_filename}")
-        return send_from_directory(UPLOAD_FOLDER, global_filename, as_attachment=True)
+        save_file_to_db(
+            user_id=user_id,
+            country='global',
+            filename=global_name,
+            file_bytes=file_bytes,
+            kind="inventory_forecast",
+            month=mv.lower(),
+            year=str(year),
+            content_type=XLSX_MIME,
+        )
+
+        stored = load_file_from_db(user_id=user_id, country='global', filename=global_name)
+        return send_db_file(stored, download_name=global_name)
 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
@@ -606,12 +877,43 @@ def manual_forecast():
 
         requested_token = datetime(req_year, mv_num, 1).strftime("%b").lower()
         output_file = f'inventory_forecast_{user_id}_{country}_{requested_token}+2.xlsx'
-        full_path = os.path.join(UPLOAD_FOLDER, output_file)
+        requested_token = datetime(req_year, mv_num, 1).strftime("%b").lower()
+        output_file = f'inventory_forecast_{user_id}_{country}_{requested_token}+2.xlsx'
 
-        if not os.path.exists(full_path):
-            return resp, status  # util likely returned JSON path already
+        # If util already saved into DB elsewhere, just return it
+        stored = load_file_from_db(user_id=user_id, country=country, filename=output_file)
+        if stored:
+            return send_db_file(stored, download_name=output_file)
 
-        return send_from_directory(UPLOAD_FOLDER, output_file, as_attachment=True)
+        # Otherwise, find file on disk (no UPLOAD_FOLDER)
+        search_dirs = default_temp_dirs()
+        disk_path = None
+        for d in search_dirs:
+            p = os.path.join(d, output_file)
+            if os.path.exists(p):
+                disk_path = p
+                break
+
+        if not disk_path:
+            disk_path = find_latest_matching_file(output_file, search_dirs)
+
+        if not disk_path or not os.path.exists(disk_path):
+            return resp, status  # util likely returned JSON already
+
+        # Ingest into DB + delete disk file
+        ingest_xlsx_path_to_db(
+            path=disk_path,
+            user_id=user_id,
+            country=country,
+            filename=output_file,
+            kind="inventory_forecast",
+            month=mv_lower,
+            year=str(req_year),
+        )
+
+        stored = load_file_from_db(user_id=user_id, country=country, filename=output_file)
+        return send_db_file(stored, download_name=output_file)
+
 
     except Exception as e:
         import traceback
@@ -647,12 +949,15 @@ def Pnlforecast():
         current_month = datetime.now().strftime("%b").lower()
 
         # Load the forecasted sales data
-        forecast_file = os.path.join(UPLOAD_FOLDER, f'forecasts_for_{user_id}_{country}.xlsx')
 
-        if not os.path.exists(forecast_file):
-            return jsonify({'error': f'Forecast file for user {user_id} not found'}), 404
+        forecast_filename = f'forecasts_for_{user_id}_{country}.xlsx'
+        stored = load_file_from_db(user_id=user_id, country=country, filename=forecast_filename)
 
-        df = pd.read_excel(forecast_file, engine='openpyxl')
+        if not stored:
+            return jsonify({'error': f'Forecast file for user {user_id} not found in DB'}), 404
+
+        df = pd.read_excel(BytesIO(stored.data), engine='openpyxl')
+
 
         # Normalize column names to lowercase for case-insensitive matching
         df.columns = [col.lower() for col in df.columns]
@@ -1209,37 +1514,29 @@ def Pnlforecast():
             final_df = pd.concat([df_pivot] + additional_dfs, ignore_index=True)
 
             # Generate output filename
-            new_filename = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_{country}_{month}_{year}_table.xlsx')
+            output_filename = f'forecastpnl_{user_id}_{country}_{month}_{year}_table.xlsx'
 
-            try:
-                final_df.to_excel(new_filename, index=False, engine='openpyxl')
-                print(f"✅ Excel file successfully updated: {new_filename}")
+            buf = BytesIO()
+            final_df.to_excel(buf, index=False, engine='openpyxl')
+            buf.seek(0)
 
-                if upload_history:
-                    if upload_history.pnl_email_sent:
-                        print("📭 Email already sent for this upload. Skipping...")
-                    else:
-                        try:
-                            from app import db
-                            filename = f'forecastpnl_{user_id}_{country}_{month}_{year}_table.xlsx'
-                            send_pnlforecast_email(user_id, filename, month, year)
-                            upload_history.pnl_email_sent = True
-                            db.session.commit()
-                            print("✅ Email sent and status updated.")
-                        except Exception as e:
-                            print(f"❌ Error sending email: {str(e)}")
+            save_file_to_db(
+                user_id=user_id,
+                country=country,
+                filename=output_filename,
+                file_bytes=buf.getvalue(),
+                kind="pnl_forecast",
+                month=month.lower() if month else None,
+                year=str(year),
+            )
 
-                return send_file(
-                    new_filename,
-                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    as_attachment=True,
-                    download_name=f'PnL_forecast_{country}_{month}_{year}.xlsx'
-                )
-
-            except Exception as e:
-                print(f"❌ Error while saving Excel file: {str(e)}")
-                return jsonify({'error': f'Error while saving Excel file: {str(e)}'}), 500
-
+            buf.seek(0)
+            return send_file(
+                buf,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                as_attachment=True,
+                download_name=f'PnL_forecast_{country}_{month}_{year}.xlsx'
+            )
         else:
             return jsonify({'error': 'No upload history found for specified parameters'}), 404
 
@@ -1255,27 +1552,235 @@ def Pnlforecast():
 
 
 
+# @forecast_bp.route('/api/Pnlforecast/global', methods=['GET', 'POST'])
+# def Pnlforecasts():
+    
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+    
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         user_id = payload.get('user_id')
+#         if not user_id:
+#             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
+        
+#         country = 'global'
+#         month = request.args.get('month')
+#         year = request.args.get('year')
+        
+#         if not month or not year:
+#             return jsonify({'error': 'Missing required parameters: month or year'}), 400
+        
+#         # Conversion Rate Helper
+#         def get_usd_conversion_rate(month, year):
+#             try:
+#                 engine_conv = create_engine(db_url1)
+#                 with engine_conv.connect() as conn:
+#                     query = text("""
+#                         SELECT conversion_rate
+#                         FROM currency_conversion
+#                         WHERE lower(country) = 'us' AND lower(month) = :month AND year = :year
+#                         LIMIT 1
+#                     """)
+#                     result = conn.execute(query, {"month": month.lower(), "year": int(year)}).fetchone()
+#                     return result[0] if result else 1.0
+#             except Exception as e:
+#                 print(f"❌ Error fetching conversion rate: {str(e)}")
+#                 return 1.0
+        
+#         # Load files
+#         month = month.lower()
+#         year = int(year)
+        
+#         # Check for existing files
+#         global_path = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_global_{month}_{year}_table.xlsx')
+#         path_uk = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_uk_{month}_{year}_table.xlsx')
+#         path_us = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_us_{month}_{year}_table.xlsx')
+        
+#         uk_exists = os.path.exists(path_uk)
+#         us_exists = os.path.exists(path_us)
+#         global_exists = os.path.exists(global_path)
+        
+#         print(f"📁 File status - UK: {uk_exists}, US: {us_exists}, Global: {global_exists}")
+        
+#         # Function to get file creation/modification time
+#         def get_file_timestamp(file_path):
+#             if os.path.exists(file_path):
+#                 return os.path.getmtime(file_path)
+#             return 0
+        
+#         # Get timestamps of all files
+#         uk_timestamp = get_file_timestamp(path_uk) if uk_exists else 0
+#         us_timestamp = get_file_timestamp(path_us) if us_exists else 0
+#         global_timestamp = get_file_timestamp(global_path) if global_exists else 0
+        
+#         # Determine if global file needs to be regenerated
+#         needs_regeneration = False
+#         current_scenario = None
+        
+#         if not uk_exists and not us_exists:
+#             return jsonify({'error': 'No PnL forecast files found for UK or US'}), 404
+        
+#         # Determine current scenario and check if regeneration is needed
+#         if uk_exists and us_exists:
+#             current_scenario = "both"
+#             # If both files exist, check if global is newer than both country files
+#             latest_country_timestamp = max(uk_timestamp, us_timestamp)
+#             if not global_exists or global_timestamp < latest_country_timestamp:
+#                 needs_regeneration = True
+#                 print("🔄 Both UK and US files found - Global needs regeneration")
+#             else:
+#                 print("✅ Global file is up-to-date with both countries")
+                
+#         elif us_exists and not uk_exists:
+#             current_scenario = "us_only"
+#             # If only US exists, check if global is newer than US file
+#             if not global_exists or global_timestamp < us_timestamp:
+#                 needs_regeneration = True
+#                 print("🔄 Only US file found - Global needs regeneration")
+#             else:
+#                 print("✅ Global file is up-to-date with US data")
+                
+#         elif uk_exists and not us_exists:
+#             current_scenario = "uk_only"
+#             # If only UK exists, check if global is newer than UK file
+#             if not global_exists or global_timestamp < uk_timestamp:
+#                 needs_regeneration = True
+#                 print("🔄 Only UK file found - Global needs regeneration")
+#             else:
+#                 print("✅ Global file is up-to-date with UK data")
+        
+#         # If global file exists and is up-to-date, return it
+#         if global_exists and not needs_regeneration:
+#             print("✅ Returning existing up-to-date global file")
+#             return send_file(
+#                 global_path,
+#                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+#                 as_attachment=True,
+#                 download_name=f'PnL_forecast_global_{month}_{year}.xlsx'
+#             )
+        
+#         # Generate/Regenerate global file based on current scenario
+#         print(f"🔄 Regenerating global file for scenario: {current_scenario}")
+        
+#         # Get conversion rate for UK data conversion
+#         conversion_rate = get_usd_conversion_rate(month, year)
+#         print(f"🔄 Using conversion rate: {conversion_rate}")
+        
+#         # Handle different scenarios
+#         if current_scenario == "both":
+#             print("📊 Creating combined global forecast from UK and US data")
+#             df_uk_original = pd.read_excel(path_uk, engine='openpyxl')
+#             df_us_original = pd.read_excel(path_us, engine='openpyxl')
+            
+#             # Create copies for processing
+#             df_uk = df_uk_original.copy()
+#             df_us = df_us_original.copy()
+            
+#             # Add country identifier for tracking
+#             df_uk['country'] = 'UK'
+#             df_us['country'] = 'US'
+            
+#             # Convert UK data to USD
+#             df_uk_converted = convert_uk_to_usd(df_uk, conversion_rate)
+            
+#             # Process the combined data
+#             df_global = process_combined_forecast_data(df_us, df_uk_converted)
+            
+#         elif current_scenario == "us_only":
+#             print("🇺🇸 Creating global forecast from US data only (no conversion needed)")
+#             df_us_original = pd.read_excel(path_us, engine='openpyxl')
+#             df_global = df_us_original.copy()
+            
+#         elif current_scenario == "uk_only":
+#             print("🇬🇧 Creating global forecast from UK data only (converting to USD)")
+#             df_uk_original = pd.read_excel(path_uk, engine='openpyxl')
+#             df_uk = df_uk_original.copy()
+#             df_uk['country'] = 'UK'
+            
+#             # Convert UK data to USD
+#             df_global = convert_uk_to_usd(df_uk, conversion_rate)
+        
+#         # Drop the temporary country column if it exists
+#         if 'country' in df_global.columns:
+#             df_global = df_global.drop('country', axis=1)
+        
+#         # Save the global forecast file
+#         output_path = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_global_{month}_{year}_table.xlsx')
+        
+#         # Remove existing file if it exists
+#         if os.path.exists(output_path):
+#             try:
+#                 os.remove(output_path)
+#                 print(f"🗑️ Removed old global file for regeneration")
+#             except PermissionError:
+#                 import time
+#                 timestamp = int(time.time())
+#                 output_path = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_global_{month}_{year}_{timestamp}_table.xlsx')
+#                 print(f"⚠️ File locked, using timestamped path: {output_path}")
+        
+#         # Save with error handling
+#         try:
+#             with pd.ExcelWriter(output_path, engine='openpyxl', mode='w') as writer:
+#                 df_global.to_excel(writer, index=False)
+#             print(f"✅ Global PnL forecast file {'regenerated' if needs_regeneration else 'created'} successfully: {output_path}")
+            
+#         except PermissionError as e:
+#             print(f"❌ Permission error: {str(e)}")
+#             import tempfile
+#             import shutil
+            
+#             with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_file:
+#                 temp_path = temp_file.name
+#                 df_global.to_excel(temp_path, index=False, engine='openpyxl')
+            
+#             try:
+#                 shutil.move(temp_path, output_path)
+#                 print(f"✅ Global PnL file created via temp file: {output_path}")
+#             except Exception as move_error:
+#                 print(f"❌ Error moving temp file: {str(move_error)}")
+#                 output_path = temp_path
+        
+#         return send_file(
+#             output_path,
+#             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+#             as_attachment=True,
+#             download_name=f'PnL_forecast_global_{month}_{year}.xlsx'
+#         )
+    
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+#     except Exception as e:
+#         print(f"❌ Error in Pnlforecasts route: {str(e)}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({'error': str(e)}), 500
+
 @forecast_bp.route('/api/Pnlforecast/global', methods=['GET', 'POST'])
 def Pnlforecasts():
-    
+
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-    
+
     token = auth_header.split(' ')[1]
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
         user_id = payload.get('user_id')
         if not user_id:
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-        
+
         country = 'global'
         month = request.args.get('month')
         year = request.args.get('year')
-        
+
         if not month or not year:
             return jsonify({'error': 'Missing required parameters: month or year'}), 400
-        
+
         # Conversion Rate Helper
         def get_usd_conversion_rate(month, year):
             try:
@@ -1288,171 +1793,151 @@ def Pnlforecasts():
                         LIMIT 1
                     """)
                     result = conn.execute(query, {"month": month.lower(), "year": int(year)}).fetchone()
-                    return result[0] if result else 1.0
+                    return float(result[0]) if result and result[0] is not None else 1.0
             except Exception as e:
                 print(f"❌ Error fetching conversion rate: {str(e)}")
                 return 1.0
-        
-        # Load files
+
+        # Normalize
         month = month.lower()
         year = int(year)
-        
-        # Check for existing files
-        global_path = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_global_{month}_{year}_table.xlsx')
-        path_uk = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_uk_{month}_{year}_table.xlsx')
-        path_us = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_us_{month}_{year}_table.xlsx')
-        
-        uk_exists = os.path.exists(path_uk)
-        us_exists = os.path.exists(path_us)
-        global_exists = os.path.exists(global_path)
-        
-        print(f"📁 File status - UK: {uk_exists}, US: {us_exists}, Global: {global_exists}")
-        
-        # Function to get file creation/modification time
-        def get_file_timestamp(file_path):
-            if os.path.exists(file_path):
-                return os.path.getmtime(file_path)
+
+        # Filenames (same names you were using on disk)
+        global_filename = f'forecastpnl_{user_id}_global_{month}_{year}_table.xlsx'
+        uk_filename = f'forecastpnl_{user_id}_uk_{month}_{year}_table.xlsx'
+        us_filename = f'forecastpnl_{user_id}_us_{month}_{year}_table.xlsx'
+
+        # ✅ Load from DB instead of disk
+        uk_stored = load_file_from_db(user_id=user_id, country='uk', filename=uk_filename)
+        us_stored = load_file_from_db(user_id=user_id, country='us', filename=us_filename)
+        global_stored = load_file_from_db(user_id=user_id, country='global', filename=global_filename)
+
+        uk_exists = uk_stored is not None
+        us_exists = us_stored is not None
+        global_exists = global_stored is not None
+
+        print(f"📁 DB File status - UK: {uk_exists}, US: {us_exists}, Global: {global_exists}")
+
+        # Timestamp helper (works only if your StoredFile model has updated_at/created_at)
+        def get_db_timestamp(stored_obj):
+            if not stored_obj:
+                return 0
+            # Try common timestamp fields
+            for attr in ("updated_at", "modified_at", "created_at", "timestamp"):
+                if hasattr(stored_obj, attr) and getattr(stored_obj, attr) is not None:
+                    try:
+                        return getattr(stored_obj, attr).timestamp()
+                    except Exception:
+                        pass
             return 0
-        
-        # Get timestamps of all files
-        uk_timestamp = get_file_timestamp(path_uk) if uk_exists else 0
-        us_timestamp = get_file_timestamp(path_us) if us_exists else 0
-        global_timestamp = get_file_timestamp(global_path) if global_exists else 0
-        
-        # Determine if global file needs to be regenerated
+
+        uk_ts = get_db_timestamp(uk_stored) if uk_exists else 0
+        us_ts = get_db_timestamp(us_stored) if us_exists else 0
+        global_ts = get_db_timestamp(global_stored) if global_exists else 0
+
+        # Determine scenario
+        if not uk_exists and not us_exists:
+            return jsonify({'error': 'No PnL forecast files found for UK or US in DB'}), 404
+
         needs_regeneration = False
         current_scenario = None
-        
-        if not uk_exists and not us_exists:
-            return jsonify({'error': 'No PnL forecast files found for UK or US'}), 404
-        
-        # Determine current scenario and check if regeneration is needed
+
         if uk_exists and us_exists:
             current_scenario = "both"
-            # If both files exist, check if global is newer than both country files
-            latest_country_timestamp = max(uk_timestamp, us_timestamp)
-            if not global_exists or global_timestamp < latest_country_timestamp:
+            latest_country_ts = max(uk_ts, us_ts)
+            # If we have timestamps, check freshness. If we don't, regenerate only if missing.
+            if (global_ts and latest_country_ts and global_ts < latest_country_ts) or (not global_exists):
                 needs_regeneration = True
-                print("🔄 Both UK and US files found - Global needs regeneration")
+                print("🔄 Both UK and US found - Global needs regeneration")
             else:
-                print("✅ Global file is up-to-date with both countries")
-                
+                print("✅ Global is up-to-date with both countries")
+
         elif us_exists and not uk_exists:
             current_scenario = "us_only"
-            # If only US exists, check if global is newer than US file
-            if not global_exists or global_timestamp < us_timestamp:
+            if (global_ts and us_ts and global_ts < us_ts) or (not global_exists):
                 needs_regeneration = True
-                print("🔄 Only US file found - Global needs regeneration")
+                print("🔄 Only US found - Global needs regeneration")
             else:
-                print("✅ Global file is up-to-date with US data")
-                
+                print("✅ Global is up-to-date with US data")
+
         elif uk_exists and not us_exists:
             current_scenario = "uk_only"
-            # If only UK exists, check if global is newer than UK file
-            if not global_exists or global_timestamp < uk_timestamp:
+            if (global_ts and uk_ts and global_ts < uk_ts) or (not global_exists):
                 needs_regeneration = True
-                print("🔄 Only UK file found - Global needs regeneration")
+                print("🔄 Only UK found - Global needs regeneration")
             else:
-                print("✅ Global file is up-to-date with UK data")
-        
-        # If global file exists and is up-to-date, return it
+                print("✅ Global is up-to-date with UK data")
+
+        # If global exists and up-to-date, return from DB
         if global_exists and not needs_regeneration:
-            print("✅ Returning existing up-to-date global file")
-            return send_file(
-                global_path,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
+            print("✅ Returning existing up-to-date global file from DB")
+            return send_db_file(
+                global_stored,
                 download_name=f'PnL_forecast_global_{month}_{year}.xlsx'
             )
-        
-        # Generate/Regenerate global file based on current scenario
+
+        # Generate/Regenerate global file based on scenario
         print(f"🔄 Regenerating global file for scenario: {current_scenario}")
-        
-        # Get conversion rate for UK data conversion
+
         conversion_rate = get_usd_conversion_rate(month, year)
         print(f"🔄 Using conversion rate: {conversion_rate}")
-        
-        # Handle different scenarios
+
+        # Read excel from DB bytes
         if current_scenario == "both":
-            print("📊 Creating combined global forecast from UK and US data")
-            df_uk_original = pd.read_excel(path_uk, engine='openpyxl')
-            df_us_original = pd.read_excel(path_us, engine='openpyxl')
-            
-            # Create copies for processing
+            print("📊 Creating combined global forecast from UK and US data (DB)")
+            df_uk_original = pd.read_excel(BytesIO(uk_stored.data), engine='openpyxl')
+            df_us_original = pd.read_excel(BytesIO(us_stored.data), engine='openpyxl')
+
             df_uk = df_uk_original.copy()
             df_us = df_us_original.copy()
-            
-            # Add country identifier for tracking
+
             df_uk['country'] = 'UK'
             df_us['country'] = 'US'
-            
-            # Convert UK data to USD
+
             df_uk_converted = convert_uk_to_usd(df_uk, conversion_rate)
-            
-            # Process the combined data
             df_global = process_combined_forecast_data(df_us, df_uk_converted)
-            
+
         elif current_scenario == "us_only":
-            print("🇺🇸 Creating global forecast from US data only (no conversion needed)")
-            df_us_original = pd.read_excel(path_us, engine='openpyxl')
-            df_global = df_us_original.copy()
-            
+            print("🇺🇸 Creating global forecast from US data only (DB)")
+            df_global = pd.read_excel(BytesIO(us_stored.data), engine='openpyxl')
+
         elif current_scenario == "uk_only":
-            print("🇬🇧 Creating global forecast from UK data only (converting to USD)")
-            df_uk_original = pd.read_excel(path_uk, engine='openpyxl')
+            print("🇬🇧 Creating global forecast from UK data only (DB) and converting to USD")
+            df_uk_original = pd.read_excel(BytesIO(uk_stored.data), engine='openpyxl')
             df_uk = df_uk_original.copy()
             df_uk['country'] = 'UK'
-            
-            # Convert UK data to USD
             df_global = convert_uk_to_usd(df_uk, conversion_rate)
-        
-        # Drop the temporary country column if it exists
+
+        else:
+            return jsonify({'error': 'Unexpected scenario while generating global PnL'}), 500
+
+        # Drop temp country column
         if 'country' in df_global.columns:
             df_global = df_global.drop('country', axis=1)
-        
-        # Save the global forecast file
-        output_path = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_global_{month}_{year}_table.xlsx')
-        
-        # Remove existing file if it exists
-        if os.path.exists(output_path):
-            try:
-                os.remove(output_path)
-                print(f"🗑️ Removed old global file for regeneration")
-            except PermissionError:
-                import time
-                timestamp = int(time.time())
-                output_path = os.path.join(UPLOAD_FOLDER, f'forecastpnl_{user_id}_global_{month}_{year}_{timestamp}_table.xlsx')
-                print(f"⚠️ File locked, using timestamped path: {output_path}")
-        
-        # Save with error handling
-        try:
-            with pd.ExcelWriter(output_path, engine='openpyxl', mode='w') as writer:
-                df_global.to_excel(writer, index=False)
-            print(f"✅ Global PnL forecast file {'regenerated' if needs_regeneration else 'created'} successfully: {output_path}")
-            
-        except PermissionError as e:
-            print(f"❌ Permission error: {str(e)}")
-            import tempfile
-            import shutil
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_file:
-                temp_path = temp_file.name
-                df_global.to_excel(temp_path, index=False, engine='openpyxl')
-            
-            try:
-                shutil.move(temp_path, output_path)
-                print(f"✅ Global PnL file created via temp file: {output_path}")
-            except Exception as move_error:
-                print(f"❌ Error moving temp file: {str(move_error)}")
-                output_path = temp_path
-        
-        return send_file(
-            output_path,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
+
+        # Save global to DB as bytes
+        buf = BytesIO()
+        df_global.to_excel(buf, index=False, engine='openpyxl')
+        buf.seek(0)
+
+        save_file_to_db(
+            user_id=user_id,
+            country='global',
+            filename=global_filename,
+            file_bytes=buf.getvalue(),
+            kind="pnl_forecast",
+            month=month,
+            year=str(year),
+            content_type=XLSX_MIME
+        )
+
+        # Return from DB
+        global_stored = load_file_from_db(user_id=user_id, country='global', filename=global_filename)
+        return send_db_file(
+            global_stored,
             download_name=f'PnL_forecast_global_{month}_{year}.xlsx'
         )
-    
+
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -1462,6 +1947,7 @@ def Pnlforecasts():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
 
 
 def convert_uk_to_usd(df_uk, conversion_rate):
@@ -1902,6 +2388,56 @@ def Pnlforecast_previous_months():
     
 
 
+# @forecast_bp.route('/api/save_pnl_forecast', methods=['POST'])
+# def save_pnl_forecast():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         user_id = payload.get('user_id')
+#         if not user_id:
+#             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     file = request.files.get('file')
+#     if not file:
+#         return jsonify({"error": "No file uploaded"}), 400
+    
+#     month = request.form.get('month')
+#     year = request.form.get('year')
+#     country = request.form.get('country')
+#     print(f"Received Month: {month}, Year: {year}, Country: {country}")
+
+#     # Save file to uploads folder
+#     new_filename = f"PNLforecast_{user_id}_{month}_{year}.xlsx"
+#     save_path = os.path.join(UPLOAD_FOLDER, new_filename)
+#     os.makedirs(os.path.dirname(save_path), exist_ok=True)
+#     file.save(save_path)
+
+#     upload_history = UploadHistory.query.filter_by(user_id=user_id, country=country, month=month, year=year).first()
+
+#     if upload_history:
+#         if upload_history.pnl_email_sent:
+#             print("📭 Email already sent for this upload. Skipping...")
+#         else:
+#             try:
+#                 from app import db
+#                 filename = f'PNLforecast_{user_id}_{month}_{year}.xlsx'
+#                 send_pnlforecast_email(user_id, filename, month, year)
+#                 upload_history.pnl_email_sent = True
+#                 db.session.commit()
+#                 print("✅ Email sent and status updated.")
+#             except Exception as e:
+#                 print(f"❌ Error sending email: {str(e)}")
+
+#     return jsonify({"message": "PNL forecast saved and email sent successfully", "path": save_path}), 200
+
 @forecast_bp.route('/api/save_pnl_forecast', methods=['POST'])
 def save_pnl_forecast():
     auth_header = request.headers.get('Authorization')
@@ -1922,19 +2458,46 @@ def save_pnl_forecast():
     file = request.files.get('file')
     if not file:
         return jsonify({"error": "No file uploaded"}), 400
-    
+
     month = request.form.get('month')
     year = request.form.get('year')
     country = request.form.get('country')
     print(f"Received Month: {month}, Year: {year}, Country: {country}")
 
-    # Save file to uploads folder
-    new_filename = f"PNLforecast_{user_id}_{month}_{year}.xlsx"
-    save_path = os.path.join(UPLOAD_FOLDER, new_filename)
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    file.save(save_path)
+    if not all([month, year, country]):
+        return jsonify({"error": "month, year, and country are required"}), 400
 
-    upload_history = UploadHistory.query.filter_by(user_id=user_id, country=country, month=month, year=year).first()
+    # ✅ Read bytes directly (no disk)
+    file_bytes = file.read()
+    if not file_bytes:
+        return jsonify({"error": "Uploaded file is empty"}), 400
+
+    # Keep your naming
+    new_filename = f"PNLforecast_{user_id}_{month}_{year}.xlsx"
+
+    # ✅ Save to DB instead of UPLOAD_FOLDER
+    try:
+        save_file_to_db(
+            user_id=user_id,
+            country=country.lower(),
+            filename=new_filename,
+            file_bytes=file_bytes,
+            kind="pnl_forecast_upload",
+            month=month.lower(),
+            year=str(year),
+            content_type=file.mimetype or XLSX_MIME
+        )
+        print(f"✅ Saved PNL forecast to DB: {new_filename}")
+    except Exception as e:
+        print(f"❌ Error saving file to DB: {str(e)}")
+        return jsonify({"error": "Failed to save file to DB", "message": str(e)}), 500
+
+    upload_history = UploadHistory.query.filter_by(
+        user_id=user_id,
+        country=country,
+        month=month,
+        year=year
+    ).first()
 
     if upload_history:
         if upload_history.pnl_email_sent:
@@ -1942,22 +2505,19 @@ def save_pnl_forecast():
         else:
             try:
                 from app import db
-                filename = f'PNLforecast_{user_id}_{month}_{year}.xlsx'
-                send_pnlforecast_email(user_id, filename, month, year)
+                # NOTE: your email util currently receives a filename.
+                # If it reads from disk, you must update it to read from DB using load_file_from_db.
+                send_pnlforecast_email(user_id, new_filename, month, year)
                 upload_history.pnl_email_sent = True
                 db.session.commit()
                 print("✅ Email sent and status updated.")
             except Exception as e:
                 print(f"❌ Error sending email: {str(e)}")
 
-
-    
-    
- 
-
     return jsonify({
-        "message": "PNL forecast saved and email sent successfully",
-        "path": save_path
+        "message": "PNL forecast saved successfully",
+        "filename": new_filename,
+        "stored_in": "db"
     }), 200
 
-    return jsonify({"message": "PNL forecast saved successfully", "path": save_path}), 200
+
