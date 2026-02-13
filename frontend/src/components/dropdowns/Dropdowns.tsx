@@ -84,32 +84,50 @@ type PerformanceTrendPayload = {
 };
 
 type AiSummaryResponse = {
-  summary?: string | null;
-  recommendations?: string | null;
+  summary?: string | null; // can be markdown OR JSON string
+  recommendations?: string | RecommendationsMap | null; // ✅ nested map
 
-  // ✅ NEW
   performance_trend?: PerformanceTrendPayload;
   performance_trend_metric?: "net_sales" | "units";
 
-  objective?: {
-    primary_goal?: string;
-    risk_level?: string;
-  };
+  objective?: ObjectiveSnapshot;
+  objective_changed?: boolean;
 };
-
 
 type AiPanelData = {
   summaryBullets: string[];
-  skuInsightsBullets: string[];     // NEW
+  skuInsightsBullets: string[];
   recommendationBullets: string[];
-  inventoryBullets: string[];       // NEW
-  rawSummary?: string | null;
-  rawRecommendations?: string | null;
-  objective?: {
-    primary_goal?: string;
-    risk_level?: string;
-  };
+  inventoryBullets: string[];
 
+  rawSummary?: string | null;
+  rawRecommendations?: string | RecommendationsMap | null;
+
+  objective?: ObjectiveSnapshot;
+  objective_changed?: boolean;
+};
+
+type RecommendationDetail = {
+  impact_summary: string;
+  journey_narrative: string;
+  recommendation: string;
+  turning_point: string;
+};
+
+type RecommendationsMap = Record<string, RecommendationDetail>;
+
+type SummaryJson = {
+  sku_actions?: RecommendationsMap;
+  // later you can add: summary?: string[], inventory?: string[], etc if backend sends
+};
+
+type ObjectiveSnapshot = {
+  growth_intent: "conservative" | "balanced" | "aggressive";
+  profit_priority: "high" | "protect_growth" | "sacrifice_short_term";
+  inventory_clearance_priority: boolean;
+  business_context: string | null;
+  country: string;
+  time_horizon: string; // "1_month"
 };
 
 
@@ -173,6 +191,18 @@ const markFetched = (year: string, month?: string) => {
   // keep latestFetchedPeriod updated (used by PeriodFiltersTable too)
   if (m) {
     localStorage.setItem("latestFetchedPeriod", JSON.stringify({ year: y, month: m }));
+  }
+};
+
+const tryParseSummaryJson = (s?: string | null): SummaryJson | null => {
+  if (!s || typeof s !== "string") return null;
+  const trimmed = s.trim();
+  if (!trimmed.startsWith("{")) return null;
+
+  try {
+    return JSON.parse(trimmed) as SummaryJson;
+  } catch {
+    return null;
   }
 };
 
@@ -378,10 +408,14 @@ const extractBullets = (md: string | null | undefined): string[] => {
     .map((l) => l.replace(/^-\s+/, "").trim())
     .filter(Boolean);
 };
+
 const renderMarkdownInline = (text: string) => {
-  const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
+  const html = text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>") // **bold**
+    .replace(/__(.+?)__/g, "<strong>$1</strong>");    // __bold__
   return { __html: html };
 };
+
 // Pull only bullets under "## SUMMARY" section if present; otherwise fallback to all bullets
 // --- NEW: split markdown into sections by "## " headings
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
@@ -434,40 +468,55 @@ const extractSummaryAndSkuBullets = (md?: string | null) => {
   };
 };
 
-const extractRecoAndInventoryBullets = (
-  mdOrObj?: string | Record<string, string> | null
-) => {
-  // ✅ Case 1: object-based recommendations (new API)
+const extractRecoBullets = (mdOrObj?: string | Record<string, string> | null) => {
   if (mdOrObj && typeof mdOrObj === "object") {
-    return {
-      recommendationBullets: Object.values(mdOrObj),
-      inventoryBullets: [],
-    };
+    return Object.values(mdOrObj);
   }
-
-  // ✅ Case 2: markdown (old API)
-  if (!mdOrObj || typeof mdOrObj !== "string") {
-    return { recommendationBullets: [], inventoryBullets: [] };
-  }
+  if (!mdOrObj || typeof mdOrObj !== "string") return [];
 
   const sections = parseMdSections(mdOrObj);
+  return sections["ROOT"] ?? [];
+};
 
-  return {
-    recommendationBullets: sections["ROOT"] ?? [],
-    inventoryBullets: sections["INVENTORY"] ?? [],
-  };
+const extractRecoBulletsV2 = (reco?: string | RecommendationsMap | null): string[] => {
+  if (!reco) return [];
+
+  // old markdown mode
+  if (typeof reco === "string") {
+    const sections = parseMdSections(reco);
+    return sections["ROOT"] ?? [];
+  }
+
+  // new object mode: { sku: {impact_summary,...} }
+  return Object.entries(reco).flatMap(([sku, d]) => [
+    `**${sku}**: ${d.impact_summary}`,
+    `Action: ${d.recommendation}`,
+    `Turning point: ${d.turning_point}`,
+  ]);
+};
+
+const PROFIT_LABEL_BY_VALUE: Record<ObjectiveSnapshot["profit_priority"], string> = {
+  high: "Yes, profit is high priority",
+  protect_growth: "Okay with current profit to grow sales",
+  sacrifice_short_term: "Okay with short-term losses for high growth",
+};
+
+const GROWTH_LABEL_BY_VALUE: Record<ObjectiveSnapshot["growth_intent"], string> = {
+  conservative: "Conservative",
+  balanced: "Balanced",
+  aggressive: "Aggressive",
 };
 
 const ProductInsightsSection = ({
   blocks,
   objective,
+  objectiveChanged,
 }: {
   blocks: ProductInsightBlock[];
-  objective?: {
-    primary_goal?: string;
-    risk_level?: string;
-  };
+  objective?: ObjectiveSnapshot;
+  objectiveChanged?: boolean;
 }) => {
+
   if (!blocks.length) return null;
 
   return (
@@ -479,32 +528,46 @@ const ProductInsightsSection = ({
         textSize="2xl"
       />
 
-      {/* ✅ OBJECTIVE META */}
-      {objective?.primary_goal && (
+      {objective && (
         <div className="p-3 rounded-lg bg-white border border-[#E5E7EB] mt-3">
-          <div className="text-xs text-gray-500 font-semibold mb-1">
-            Objective
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-gray-500 font-semibold">Objective</div>
+
+            {objectiveChanged ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">
+                Updated for this summary
+              </span>
+            ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs 2xl:text-sm text-charcoal-600">
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs 2xl:text-sm text-charcoal-600">
             <div>
-              <span className="font-semibold">Primary Goal:</span>{" "}
-              <span className="capitalize">
-                {objective.primary_goal.replace("_", " ")}
-              </span>
+              <span className="font-semibold">Growth:</span>{" "}
+              <span>{GROWTH_LABEL_BY_VALUE[objective.growth_intent]}</span>
             </div>
 
-            {objective.risk_level && (
-              <div>
-                <span className="font-semibold">Risk:</span>{" "}
-                <span className="capitalize">
-                  {objective.risk_level}
-                </span>
+            <div>
+              <span className="font-semibold">Profit:</span>{" "}
+              <span>{PROFIT_LABEL_BY_VALUE[objective.profit_priority]}</span>
+            </div>
+
+            <div>
+              <span className="font-semibold">Inventory Dilution:</span>{" "}
+              <span>{objective.inventory_clearance_priority ? "Yes" : "No"}</span>
+            </div>
+
+
+
+            {objective.business_context ? (
+              <div className="sm:col-span-2">
+                <span className="font-semibold">Business Context:</span>{" "}
+                <span>{objective.business_context}</span>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
+
 
 
       {/* EXISTING PRODUCT BLOCKS */}
@@ -555,11 +618,6 @@ const ProductInsightsSection = ({
   );
 };
 
-
-
-
-
-
 type AiSingleInsightCardProps = {
   loading: boolean;
   error: string | null;
@@ -567,10 +625,9 @@ type AiSingleInsightCardProps = {
   recommendationBullets: string[];
   skuInsightsBullets: string[];
   inventoryBullets: string[];
-  objective?: {
-    primary_goal?: string;
-    risk_level?: string;
-  };
+  objective?: ObjectiveSnapshot;
+  objectiveChanged?: boolean;
+  showObjective?: boolean;
 };
 
 const Section = ({
@@ -613,6 +670,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   skuInsightsBullets,
   inventoryBullets,
   objective,
+  objectiveChanged,
+  showObjective,
 }) => {
   if (loading) {
     return (
@@ -702,7 +761,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
       <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 ">
         <ProductInsightsSection
           blocks={parseProductInsightsBlocks(skuInsightsBullets)}
-          objective={objective}
+          objective={showObjective ? objective : undefined}
+          objectiveChanged={showObjective ? objectiveChanged : undefined}
         />
 
 
@@ -992,14 +1052,34 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       // setPerformanceTrend(data.performance_trend ?? null);
       // setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
+      const summaryJson = tryParseSummaryJson(data.summary);
 
-      const sections = parseMdSections(data.summary);
+      // if markdown → old behavior
+      const mdSections = typeof data.summary === "string" ? parseMdSections(data.summary) : {};
 
-      const summaryLines = sections["SUMMARY"] ?? [];
-      const inventoryLines = sections["INVENTORY"] ?? [];
-      const productLines = sections["PRODUCT INSIGHTS"] ?? [];
-      const { recommendationBullets, inventoryBullets } =
-        extractRecoAndInventoryBullets(data.recommendations);
+      const summaryLines =
+        summaryJson
+          ? ["SKU insights generated (see right panel)."] // or make nicer
+          : (mdSections["SUMMARY"] ?? []);
+
+      const inventoryLines = summaryJson ? [] : (mdSections["INVENTORY"] ?? []);
+
+      const productLines =
+        summaryJson?.sku_actions
+          ? Object.entries(summaryJson.sku_actions).flatMap(([sku, d]) => [
+            sku,
+            `ASP: -`,
+            `Units: -`,
+            `Net sales: -`,
+            `CM1 profit: -`,
+            `CM1 profit per unit: -`,
+            d.journey_narrative,
+            `Action: ${d.recommendation}`,
+          ])
+          : (mdSections["PRODUCT INSIGHTS"] ?? []);
+
+      const recommendationBullets = extractRecoBulletsV2(data.recommendations);
+
 
       setAiPanel({
         summaryBullets: summaryLines,
@@ -1007,9 +1087,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         recommendationBullets,
         inventoryBullets: inventoryLines,
         objective: data.objective,
+        objective_changed: data.objective_changed ?? false,
         rawSummary: data.summary ?? null,
         rawRecommendations: data.recommendations ?? null,
       });
+
 
     } catch (e: any) {
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
@@ -2769,6 +2851,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 objective={aiPanel?.objective}
+                objectiveChanged={aiPanel?.objective_changed}
+                showObjective={true}
+
               />
             </div>
           )}
@@ -2962,6 +3047,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 objective={aiPanel?.objective}
+                objectiveChanged={aiPanel?.objective_changed}  // ✅ ADD THIS
+                showObjective={true}
+
               />
             </div>
           )}
@@ -3156,6 +3244,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 objective={aiPanel?.objective}
+                objectiveChanged={aiPanel?.objective_changed}
+                showObjective={false}
+
               />
             </div>
           )}
@@ -3262,3 +3353,5 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 };
 
 export default Dropdowns;
+
+

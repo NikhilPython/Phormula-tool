@@ -1299,7 +1299,7 @@ export default function DashboardPage() {
             cancelled = true;
         };
     }, [adsSeeded, platform, baseURL, fetchMonthlySp]);
-    
+
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
     const convertToDisplayCurrency = useCallback(
         (value: number | null | undefined, from: CurrencyCode) => {
@@ -3461,6 +3461,11 @@ export default function DashboardPage() {
         profileHomeCurrency,
     ]);
 
+
+    const grandTotalRow = monthlySkuwiseRowsForTable.find((r) => r.isTotal);
+    const adsSpendTotal = Math.abs(Number(grandTotalRow?.ads_spend ?? 0)); // 521.31
+
+
     return (
         <div className="relative w-full">
             <HashScroll offset={80} />
@@ -4579,7 +4584,7 @@ export default function DashboardPage() {
                                         {
                                             id: "ads",
                                             label: "Cost of Advertisement",
-                                            endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
+                                            endValue: formatSummaryValue(adsSpendTotal, "advertising_total"),
                                             defaultCollapsed: true,
                                             children: [
                                                 {

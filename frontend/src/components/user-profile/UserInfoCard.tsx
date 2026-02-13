@@ -56,10 +56,12 @@ type FormState = {
 };
 
 type UserObjectiveForm = {
-  primary_goal: "profit" | "growth" | "inventory_dilution" | "balanced";
-  risk_level: "conservative" | "balanced" | "aggressive";
-  notes: string;
-  country: string;
+  growth_intent: "conservative" | "balanced" | "aggressive";
+  profit_priority: "high" | "protect_growth" | "sacrifice_short_term";
+  inventory_clearance_priority: boolean; // yes/no -> true/false
+  business_context: string; // mandatory in UI
+  country: string; // mandatory in UI
+  time_horizon: "1_month"; // fixed for now (or make dropdown later)
 };
 
 
@@ -223,13 +225,13 @@ export default function UserInfoCard() {
   }, [connected.amazonUs, connected.amazonUk, connected.amazonCa, connected.shopify]);
 
   const integratedCountries = useMemo(() => {
-  const countries: string[] = [];
-  if (connected.amazonUs) countries.push("us");
-  if (connected.amazonUk) countries.push("uk");
-  if (connected.amazonCa) countries.push("ca");
-  if (connected.shopify) countries.push("global");
-  return countries;
-}, [connected]);
+    const countries: string[] = [];
+    if (connected.amazonUs) countries.push("us");
+    if (connected.amazonUk) countries.push("uk");
+    if (connected.amazonCa) countries.push("ca");
+    if (connected.shopify) countries.push("global");
+    return countries;
+  }, [connected]);
 
 
   const pagePlatform: PlatformId = useMemo(() => {
@@ -266,7 +268,7 @@ export default function UserInfoCard() {
   );
 
   const { data, isLoading, isError } = useGetUserDataQuery();
-  
+
 
   console.log("User data123:", data);
 
@@ -305,17 +307,6 @@ export default function UserInfoCard() {
 
     fetchRates();
   }, [token]);
-
-  useEffect(() => {
-  if (!objective.country && integratedCountries.length) {
-    setObjective((prev) => ({
-      ...prev,
-      country: integratedCountries[0],
-    }));
-  }
-}, [integratedCountries]);
-
-
 
   const rateMap = useMemo(() => {
     // key: "usd|gb|uk"
@@ -373,11 +364,24 @@ export default function UserInfoCard() {
   });
 
   const [objective, setObjective] = useState<UserObjectiveForm>({
-  primary_goal: "balanced",
-  risk_level: "balanced",
-  notes: "",
-  country: "",
-});
+    growth_intent: "aggressive",
+    profit_priority: "protect_growth",
+    inventory_clearance_priority: false,
+    business_context: "",
+    country: "",
+    time_horizon: "1_month",
+  });
+
+
+  const GROWTH_OPTIONS = ["conservative", "balanced", "aggressive"] as const;
+
+  const PROFIT_OPTIONS: Array<{ label: string; value: UserObjectiveForm["profit_priority"] }> = [
+    { label: "Yes Profit is high priority", value: "high" },
+    { label: "I'm Okay with current profit if it helps me grow my sales", value: "protect_growth" },
+    { label: "I'm Okay with short term losses if it helps in high growth numbers", value: "sacrifice_short_term" },
+  ];
+
+  const INVENTORY_DILUTION_OPTIONS = ["yes", "no"] as const;
 
 
   // ✅ per-section edit state
@@ -552,48 +556,87 @@ export default function UserInfoCard() {
     }
   };
 
-const handleSaveObjective = async () => {
-  try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`,
-      {
+  const handleSaveObjective = async () => {
+    try {
+      // basic validation to prevent backend crash on country None
+      if (!objective.country?.trim()) {
+        alert("Please select Country.");
+        return;
+      }
+      if (!objective.profit_priority) {
+        alert("Please select Profit.");
+        return;
+      }
+
+      if (!token) {
+        alert("Token missing. Please login again.");
+        return;
+      }
+
+      const payload = {
+        country: objective.country.trim().toLowerCase(),
+        growth_intent: objective.growth_intent,
+        profit_priority: objective.profit_priority,
+        inventory_clearance_priority: objective.inventory_clearance_priority,
+        business_context: objective.business_context?.trim() || null,
+        time_horizon: objective.time_horizon, 
+      };
+
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(objective),
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || err?.message || "Failed to save objective");
       }
-    );
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Failed to save objective");
+      // store BOTH: backend payload + ui state (so you can show it later)
+      localStorage.setItem("user_objective", JSON.stringify(objective));
+      localStorage.setItem("user_objective_backend", JSON.stringify(payload));
+
+      closeModal();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Failed to save objective");
     }
+  };
 
-    // ✅ LOCAL STORAGE SAVE
-    localStorage.setItem("user_objective", JSON.stringify(objective));
 
-    closeModal();
-  } catch (e: any) {
-    alert(e.message);
-  }
-};
+  useEffect(() => {
+    const saved = localStorage.getItem("user_objective");
+    if (!saved) return;
 
-useEffect(() => {
-  const saved = localStorage.getItem("user_objective");
-  if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
 
-  try {
-    const parsed = JSON.parse(saved);
-    setObjective((prev) => ({
-      ...prev,
-      ...parsed,
-    }));
-  } catch (e) {
-    console.error("Failed to parse objective from localStorage");
-  }
-}, []);
+      setObjective((prev) => ({
+        ...prev,
+        ...parsed,
+        // ✅ if older/newer payload shapes exist, normalize them:
+        profit_priority: parsed.profit_priority ?? parsed.primary_goal ?? prev.profit_priority,
+        growth_intent: parsed.growth_intent ?? parsed.risk_level ?? prev.growth_intent,
+      }));
+    } catch (e) {
+      console.error("Failed to parse objective from localStorage");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!objective.country && integratedCountries.length) {
+      setObjective((prev) => ({
+        ...prev,
+        country: integratedCountries[0],
+      }));
+    }
+  }, [integratedCountries, objective.country]);
+
 
 
   const [forgotPassword, { isLoading: isSending, isSuccess }] =
@@ -625,37 +668,42 @@ useEffect(() => {
 
   const RISK_LEVELS = ["conservative", "balanced", "aggressive"] as const;
 
-const riskMeta = {
-  conservative: {
-    label: "Conservative",
-    color: "text-green-600",
-    dot: "bg-green-600",
-  },
-  balanced: {
-    label: "Balanced",
-    color: "text-yellow-500",
-    dot: "bg-yellow-500",
-  },
-  aggressive: {
-    label: "Aggressive",
-    color: "text-red-600",
-    dot: "bg-red-600",
-  },
-};
+  const riskMeta = {
+    conservative: {
+      label: "Conservative",
+      color: "text-green-600",
+      dot: "bg-green-600",
+    },
+    balanced: {
+      label: "Balanced",
+      color: "text-yellow-500",
+      dot: "bg-yellow-500",
+    },
+    aggressive: {
+      label: "Aggressive",
+      color: "text-red-600",
+      dot: "bg-red-600",
+    },
+  };
 
   const modalTitle =
     activeSection === "personal"
       ? "Edit Personal Info"
       : activeSection === "company"
         ? "Edit Company Info"
-        : "Edit Monthly Targets";
+        : activeSection === "targets"
+          ? "Edit Monthly Targets"
+          : "Edit Objective";
 
   const modalSubtitle =
     activeSection === "personal"
       ? "Update your contact and password settings."
       : activeSection === "company"
         ? "Update your company and business details."
-        : "Update your marketplace targets.";
+        : activeSection === "targets"
+          ? "Update your marketplace targets."
+          : "For AI to help and create insights for you, we require you to answer a few questions.";
+
 
   return (
     <div className="">
@@ -892,43 +940,45 @@ const riskMeta = {
             </div>
 
             <div className="lg:col-span-2">
-  <InfoCard
-    title={
-      <PageBreadcrumb
-        pageTitle="Objective"
-        variant="table"
-        align="left"
-      />
-    }
-    action={
-      <button
-        onClick={() => openSection("objective")}
-        className="h-9 w-9 text-gray-700"
-        aria-label="Edit"
-      >
-        <FiEdit className="text-lg" />
-      </button>
-    }
-  >
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <InfoItem label="Primary Goal" value={objective.primary_goal} />
-      <InfoItem label="Risk Level" value={objective.risk_level} />
-      <InfoItem label="Country" value={objective.country?.toUpperCase() || "-"} />
-      <InfoItem
-  label="Notes"
-  value={
-    objective.notes ? (
-      <p className="line-clamp-1 text-sm text-gray-800 dark:text-white/90">
-        {objective.notes}
-      </p>
-    ) : (
-      "-"
-    )
-  }
-/>
-    </div>
-  </InfoCard>
-</div>
+              <InfoCard
+                title={
+                  <PageBreadcrumb
+                    pageTitle="Objective"
+                    variant="table"
+                    align="left"
+                  />
+                }
+                action={
+                  <button
+                    onClick={() => openSection("objective")}
+                    className="h-9 w-9 text-gray-700"
+                    aria-label="Edit"
+                  >
+                    <FiEdit className="text-lg" />
+                  </button>
+                }
+              >
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <InfoItem label="Growth" value={objective.growth_intent} />
+                  <InfoItem label="Profit" value={objective.profit_priority} />
+                  <InfoItem label="Inventory Dilution" value={objective.inventory_clearance_priority ? "Yes" : "No"} />
+                  <InfoItem label="Country" value={objective.country?.toUpperCase() || "-"} />
+                  <InfoItem
+                    label="Business Context"
+                    value={
+                      objective.business_context ? (
+                        <p className="line-clamp-1 text-sm text-gray-800 dark:text-white/90">
+                          {objective.business_context}
+                        </p>
+                      ) : (
+                        "-"
+                      )
+                    }
+                  />
+
+                </div>
+              </InfoCard>
+            </div>
 
 
           </div>
@@ -1133,105 +1183,110 @@ const riskMeta = {
                       </div>
                     </>
                   )}
-
                   {activeSection === "objective" && (
-  <>
-    <div className="col-span-2 ">
-      <Label>Primary Goal</Label>
-      <select
-        value={objective.primary_goal}
-        onChange={(e) =>
-          setObjective({ ...objective, primary_goal: e.target.value as any })
-        }
-        className="w-full rounded-md border px-3 py-2"
-      >
-        <option value="profit">Profit</option>
-        <option value="growth">Growth</option>
-        <option value="inventory_dilution">Inventory Dilution</option>
-        <option value="balanced">Balanced</option>
-      </select>
-    </div>
+                    <>
+                      {/* 1) Country (full width) */}
+                      <div className="col-span-2">
+                        <Label>Country</Label>
+                        <select
+                          value={objective.country}
+                          onChange={(e) =>
+                            setObjective((prev) => ({ ...prev, country: e.target.value }))
+                          }
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          required
+                        >
+                          <option value="" disabled>
+                            Select Country
+                          </option>
+                          {integratedCountries.map((c) => (
+                            <option key={c} value={c}>
+                              {c.toUpperCase()}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-    <div className="col-span-2 ">
-       <Label>
-    Risk Level:{" "}
-    <span
-      className={`font-semibold capitalize ${riskMeta[objective.risk_level].color}`}
-    >
-      {riskMeta[objective.risk_level].label}
-    </span>
-  </Label>
+                      {/* 2) Growth + Inventory in single row on lg (half + half) */}
+                      <div className="col-span-2 lg:col-span-1">
+                        <Label>Growth</Label>
+                        <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">(sub heading)</p>
+                        <select
+                          value={objective.growth_intent}
+                          onChange={(e) =>
+                            setObjective((prev) => ({
+                              ...prev,
+                              growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
+                            }))
+                          }
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          required
+                        >
+                          {GROWTH_OPTIONS.map((v) => (
+                            <option key={v} value={v}>
+                              {v.charAt(0).toUpperCase() + v.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-  {/* Slider */}
-  <input
-    type="range"
-    min={0}
-    max={2}
-    step={1}
-    value={RISK_LEVELS.indexOf(objective.risk_level)}
-    onChange={(e) =>
-      setObjective({
-        ...objective,
-        risk_level: RISK_LEVELS[Number(e.target.value)],
-      })
-    }
-    className="w-full mt-4"
-  />
+                      <div className="col-span-2 lg:col-span-1">
+                        <Label>Inventory Dilution</Label>
+                        <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">(subheading)</p>
+                        <select
+                          value={objective.inventory_clearance_priority ? "yes" : "no"}
+                          onChange={(e) =>
+                            setObjective((prev) => ({
+                              ...prev,
+                              inventory_clearance_priority: e.target.value === "yes",
+                            }))
+                          }
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          required
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </div>
 
-  {/* Points + labels */}
-  <div className="flex justify-between mt-2 text-xs font-medium">
-    {RISK_LEVELS.map((level, index) => {
-      const isActive = objective.risk_level === level;
-      return (
-        <div key={level} className="flex flex-col items-center w-1/3">
-          <div
-            className={`h-3 w-3 rounded-full ${
-              isActive ? riskMeta[level].dot : "bg-gray-300"
-            }`}
-          />
-          <span
-            className={`mt-1 capitalize ${
-              isActive ? riskMeta[level].color : "text-gray-400"
-            }`}
-          >
-            {riskMeta[level].label}
-          </span>
-        </div>
-      );
-    })}
-  </div>
+                      {/* 3) Profit (full width) */}
+                      <div className="col-span-2">
+                        <Label>Profit</Label>
+                        <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">(subheading)</p>
+                        <select
+                          value={objective.profit_priority}
+                          onChange={(e) =>
+                            setObjective((prev) => ({
+                              ...prev,
+                              profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
+                            }))
+                          }
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          required
+                        >
+                          {PROFIT_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-    </div>
-
-    <div className="col-span-2">
-      <Label>Notes (optional)</Label>
-      <Input
-        type="text"
-        value={objective.notes}
-        onChange={(e) =>
-          setObjective({ ...objective, notes: e.target.value })
-        }
-      />
-    </div>
-
-    <div className="col-span-2 ">
-      <Label>Country</Label>
-      <select
-        value={objective.country}
-        onChange={(e) =>
-          setObjective({ ...objective, country: e.target.value })
-        }
-        className="w-full rounded-md border px-3 py-2"
-      >
-        {integratedCountries.map((c) => (
-          <option key={c} value={c}>
-            {c.toUpperCase()}
-          </option>
-        ))}
-      </select>
-    </div>
-  </>
-)}
+                      {/* 4) Business Overview (full width) */}
+                      <div className="col-span-2">
+                        <Label>Business Overview</Label>
+                        <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">(user input for text)</p>
+                        <Input
+                          type="text"
+                          value={objective.business_context}
+                          onChange={(e) =>
+                            setObjective((prev) => ({ ...prev, business_context: e.target.value }))
+                          }
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
 
 
                 </div>
@@ -1248,12 +1303,12 @@ const riskMeta = {
                 Close
               </Button>
               <Button
-  size="sm"
-  onClick={
-    activeSection === "objective" ? handleSaveObjective : handleSave
-  }
-  disabled={isSaving}
->
+                size="sm"
+                onClick={
+                  activeSection === "objective" ? handleSaveObjective : handleSave
+                }
+                disabled={isSaving}
+              >
 
                 {isSaving ? "Saving…" : "Save Changes"}
               </Button>
