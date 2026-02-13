@@ -26,7 +26,7 @@ export interface DisplayInventoryForecastProps {
   month: string;
   year: string;
   data: Array<Record<string, any>>;
-  isDemoMode?: Boolean
+  isDemoMode?: boolean;
 }
 
 /* -------------------- Constants -------------------- */
@@ -313,20 +313,16 @@ const chartOptions = useMemo(
     responsive: true,
     maintainAspectRatio: false,
     layout: {
-      // 👇 Legend aur actual chart area ke beech ka gap
-      padding: {
-        top: 0,
-        bottom: 24, // yahan se chart niche jayega, legend se gap banega
-      },
+      padding: { top: 0, bottom: 24 },
     },
     plugins: {
       legend: {
-        position: 'top'  as const,
-        align: 'center' as const, // legend items center align (top pe)
+        position: 'top' as const,
+        align: 'center' as const,
         labels: {
-          padding: 20,     // 70 se kam, taaki items khud tight rahein
-          boxWidth: 14,    // thoda bada square
-          boxHeight: 14,   // square ko text ke equal height pe
+          padding: 20,
+          boxWidth: 14,
+          boxHeight: 14,
           font: {
             size: 12,
           },
@@ -342,12 +338,36 @@ const chartOptions = useMemo(
       },
     },
     scales: {
-      x: { title: { display: true, text: 'Months' } },
-      y: { title: { display: true, text: 'Units' }, beginAtZero: true },
+      x: {
+        title: {
+          display: true,
+          text: 'Months',
+          font: { size: 12 }, // ✅ mobile label size
+        },
+        ticks: {
+          font: {
+            size: window.innerWidth < 768 ? 12 : 14, // ✅ mobile ticks 12px
+          },
+        },
+      },
+      y: {
+        title: {
+          display: true,
+          text: 'Units',
+          font: { size: 12 }, // ✅ mobile label size
+        },
+        ticks: {
+          font: {
+            size: window.innerWidth < 768 ? 12 : 14, // ✅ mobile ticks 12px
+          },
+        },
+        beginAtZero: true,
+      },
     },
   }),
   [countryName]
 );
+
 
  const forecastPlugin = {
   id: 'forecastBackground',
@@ -586,41 +606,53 @@ const chartOptions = useMemo(
       {/* Chart: Top 5 SKUs + Total */}
       <div className=" p-4 border border-[#000000] rounded-lg mt-5">
         
-        <div className='flex justify-between items-center '>
- <div>
-          <h2 className='2xl:text-2xl text-[18px] text-[#414042] font-semibold'>Top 5 SKUs Inventory Trend</h2>
-        <p className='2xl:text-sm text-xs '>Historical data vs forecasted trends</p>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-6 2xl:text-xs text-[10px]">
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-8 border-b-2 border-black" />
-          <span>Last 3 months (Actual)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-8 border-b-2 border-black border-dashed" />
-          <span>Next 3 months (Forecast)</span>
-        </div>
-        <div className="flex justify-end gap-3">
-        <button
-  onClick={handleDownload}
-  disabled={demoMode}
-  className={`bg-white border border-[#8B8585] px-1 rounded-sm ${
-    demoMode ? 'opacity-50 cursor-not-allowed' : ''
-  }`}
->
-                                 <IoDownload size={27} />
-        </button>
+        <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
+  {/* Left: Title + subtitle */}
+  <div className="text-left">
+    <h2 className="text-base sm:text-lg md:text-2xl text-[#414042] font-semibold leading-snug">
+      Top 5 SKUs Inventory Trend
+    </h2>
+    <p className="text-[11px] sm:text-xs md:text-sm leading-snug">
+      Historical data vs forecasted trends
+    </p>
+  </div>
+
+  {/* Right: legend + actions */}
+  <div className="flex flex-col sm:flex-row gap-4 md:items-center">
+    {/* Legend */}
+    <div className="flex flex-wrap gap-4 text-[11px] sm:text-xs md:text-xs">
+      <div className="flex items-center gap-2">
+        <span className="inline-block w-8 border-b-2 border-black" />
+        <span className="whitespace-nowrap">Last 3 months (Actual)</span>
       </div>
-      <div className="flex justify-end gap-3">
-        <button
-          onClick={handleDownload}
-          className="bg-[#37455F] text-sm text-[#F8EDCE] font-bold px-6 py-2 rounded-lg shadow-[0px_4px_4px_0px_#00000040]"
-        >
-         Raise PO
-        </button>
+      <div className="flex items-center gap-2">
+        <span className="inline-block w-8 border-b-2 border-black border-dashed" />
+        <span className="whitespace-nowrap">Next 3 months (Forecast)</span>
       </div>
-      </div>
-        </div>
+    </div>
+
+    {/* Actions */}
+    <div className="flex items-center justify-end gap-3">
+      <button
+        onClick={handleDownload}
+        disabled={demoMode}
+        className={`bg-white border border-[#8B8585] px-1 rounded-sm ${
+          demoMode ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
+      >
+        <IoDownload size={24} className="md:w-[27px] md:h-[27px]" />
+      </button>
+
+      <button
+        onClick={handleDownload}
+        className="bg-[#37455F] text-xs sm:text-sm text-[#F8EDCE] font-bold px-4 sm:px-6 py-2 rounded-lg shadow-[0px_4px_4px_0px_#00000040]"
+      >
+        Raise PO
+      </button>
+    </div>
+  </div>
+</div>
+
        <div className='w-full h-[550px]'>
  <Line ref={chartRef} data={chartData} options={chartOptions} plugins={[forecastPlugin]} />
      

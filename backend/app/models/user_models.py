@@ -884,6 +884,66 @@ class amazon_sponsored_display_advertised_products(db.Model):
     )
 
 
+class amazon_sponsored_brands_keywords(db.Model):
+    __tablename__ = "amazon_sponsored_brands_keywords"
+    __bind_key__ = "amazon"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # ownership / traceability
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # report dimensions
+    start_date = db.Column(db.Date, nullable=False, index=True)
+    end_date = db.Column(db.Date, nullable=False, index=True)
+
+    country = db.Column(db.String(8), nullable=True, index=True)
+    profile_id = db.Column(db.String(32), nullable=True, index=True)
+
+    # ✅ IDs (critical to avoid overwriting rows)
+    campaign_id = db.Column(db.String(64), nullable=True, index=True)
+    ad_group_id = db.Column(db.String(64), nullable=True, index=True)
+    keyword_id = db.Column(db.String(64), nullable=True, index=True)
+    targeting_id = db.Column(db.String(64), nullable=True, index=True)
+
+    portfolio_name = db.Column(db.String(255), nullable=True)
+    currency = db.Column(db.String(16), nullable=True)
+
+    campaign_name = db.Column(db.String(512), nullable=True, index=True)
+    ad_group_name = db.Column(db.String(512), nullable=True)
+
+    targeting = db.Column(db.Text, nullable=True)
+    match_type = db.Column(db.String(64), nullable=True)
+    cost_type = db.Column(db.String(64), nullable=True)
+
+    # metrics
+    impressions = db.Column(db.BigInteger, nullable=True)
+    top_of_search_impression_share = db.Column(db.Float, nullable=True)
+    viewable_impressions = db.Column(db.BigInteger, nullable=True)
+
+    clicks = db.Column(db.BigInteger, nullable=True)
+    ctr = db.Column(db.Float, nullable=True)   # % value
+    spend = db.Column(db.Float, nullable=True)
+    cpc = db.Column(db.Float, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "start_date",
+            "end_date",
+            "country",
+            "profile_id",
+            "campaign_id",
+            "ad_group_id",
+            "keyword_id",
+            "targeting_id",
+            name="uq_sb_keyword_row",
+        ),
+    )
+
+
 class Product(db.Model):
     __tablename__ = 'products'
     __bind_key__ = 'amazon'

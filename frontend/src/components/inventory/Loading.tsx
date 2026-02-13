@@ -29,7 +29,7 @@ export default function Loading() {
       <div className="bg-white rounded-2xl shadow-[0px_8px_24px_rgba(0,0,0,0.10)] p-6 w-full max-w-md text-center font-[Lato]">
 
         {/* Animated Logo */}
-                    <Loader fullscreen transparent />
+                    <Loader  transparent />
 
         {/* Animated Dots */}
         <div className="flex justify-center my-3">
