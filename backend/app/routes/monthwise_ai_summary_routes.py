@@ -328,7 +328,7 @@ def summary():
             }
         else:
             objective_snapshot = {
-                "growth_intent": "balanced",
+                "growth_intent": "aggressive",
                 "profit_priority": "protect_growth",
                 "inventory_clearance_priority": False,
                 "business_context": None,
@@ -441,25 +441,36 @@ def save_user_objective():
 
         body = request.get_json() or {}
 
-        country = (body.get("country") or "").strip().lower()
+        # ✅ safe country handling
+        country_raw = body.get("country", "")
+        country = country_raw.strip().lower()
         if not country:
             return jsonify({"error": "country is required"}), 400
 
-        growth_intent = body.get("growth_intent") or "balanced"
-        profit_priority = body.get("profit_priority") or "protect_growth"
-        inventory_clearance_priority = bool(body.get("inventory_clearance_priority", False))
+        # ✅ match your model fields
+        growth_intent = body.get("growth_intent", "balanced")
+        profit_priority = body.get("profit_priority", "protect_growth")
+        inventory_clearance_priority = body.get("inventory_clearance_priority", False)
         business_context = body.get("business_context")
 
-        # ✅ upsert (because UniqueConstraint user_id + country)
+        # ✅ upsert (because unique constraint user_id+country)
         objective = UserObjective.query.filter_by(user_id=user_id, country=country).first()
-        if not objective:
-            objective = UserObjective(user_id=user_id, country=country)
-            db.session.add(objective)
 
-        objective.growth_intent = growth_intent
-        objective.profit_priority = profit_priority
-        objective.inventory_clearance_priority = inventory_clearance_priority
-        objective.business_context = business_context
+        if objective:
+            objective.growth_intent = growth_intent
+            objective.profit_priority = profit_priority
+            objective.inventory_clearance_priority = inventory_clearance_priority
+            objective.business_context = business_context
+        else:
+            objective = UserObjective(
+                user_id=user_id,
+                country=country,
+                growth_intent=growth_intent,
+                profit_priority=profit_priority,
+                inventory_clearance_priority=inventory_clearance_priority,
+                business_context=business_context,
+            )
+            db.session.add(objective)
 
         db.session.commit()
 

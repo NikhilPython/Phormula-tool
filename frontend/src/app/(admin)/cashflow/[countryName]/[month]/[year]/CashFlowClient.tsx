@@ -511,6 +511,12 @@ const allValuesZero =
     typeof window !== "undefined" ? window.innerWidth : 1200;
   const barWidthInPixels = Math.max(viewportWidth * 0.05, 40);
 
+  const isMobile = viewportWidth < 640;
+
+const axisFontSize = isMobile ? 10 : 14;
+const axisTitleFontSize = isMobile ? 11 : 16;
+
+
   const getLineChartData = () => {
     let labels: string[] = [];
     const datasets: any[] = [];
@@ -621,13 +627,17 @@ const allValuesZero =
     },
     scales: {
       x: {
-        title: { display: true, text: xAxisTitle },
+        title: { display: true, text: xAxisTitle, font: { size: axisTitleFontSize }, },
+        ticks: {
+      font: { size: axisFontSize },        // 👈 ADD
+    },
         offset: true,
       },
       y: {
         beginAtZero: true,
-        title: { display: true, text: `Amount (${currencySymbol})` },
+        title: { display: true, text: `Amount (${currencySymbol})`, font: { size: axisTitleFontSize }, },
         ticks: {
+          font: { size: axisFontSize },
           callback: (value: any) =>
             `${currencySymbol}${Number(value).toLocaleString()}`,
         },
@@ -765,22 +775,23 @@ const allValuesZero =
     <div className="w-full">
       {/* Header */}
       <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-2">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between sm:gap-4 gap-2 mb-2">
 
           {/* LEFT: Title */}
           <div className="mb-2 flex flex-wrap items-start gap-2">
             <div>
-              <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
+              <div className="flex flex-wrap items-baseline gap-2 justify-start">
                 <PageBreadcrumb
                   pageTitle="Cash Flow –"
                   variant="page"
                   align="left"
                   className=""
                 />
-
-                <span className="text-[#5EA68E] font-bold text-lg 2xl:text-2xl">
-                  {effectiveCountryForCurrency.toUpperCase()}
-                </span>
+                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              Amazon {countryName?.toLowerCase() === "global"
+                ? "Global"
+                : countryName?.toUpperCase()}
+            </span>
               </div>
 
               <p className="2xl:text-sm text-xs">
@@ -791,7 +802,7 @@ const allValuesZero =
 
           {/* RIGHT: Filters */}
           <div className="mb-2">
-            <div className="flex flex-col md:flex-row items-center gap-[0.5vw]">
+            <div className="flex flex-col md:flex-row sm:items-center  gap-[0.5vw]">
               <PeriodFiltersTable
                 range={periodType}
                 selectedMonth={month.toLowerCase()}

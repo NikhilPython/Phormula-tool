@@ -147,6 +147,14 @@ const MonthsforBI: React.FC = () => {
   const [year1, setYear1] = useState<string>('');
   const [month2, setMonth2] = useState<string>('');
   const [year2, setYear2] = useState<string>('');
+  const [isMobile, setIsMobile] = useState(false);
+
+useEffect(() => {
+  const check = () => setIsMobile(window.innerWidth < 768);
+  check();
+  window.addEventListener("resize", check);
+  return () => window.removeEventListener("resize", check);
+}, []);
 
   // Data + UI state
   const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>({
@@ -583,10 +591,11 @@ useEffect(() => {
         color: ['#7B9A6D', '#3a8ea4', '#ed9F50',], // Net Sales palette
         xAxis: {
           type: 'category',
-          boundaryGap: false,
+          boundaryGap: false,  
           data: x,
           axisLabel: {
             interval: 0,
+            fontSize: isMobile ? 10 : 16,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -618,6 +627,7 @@ useEffect(() => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
+            fontSize: isMobile ? 10 : 16,
             formatter: (v: number) => `${Math.round(v).toLocaleString()}`
           }
         },
@@ -773,6 +783,7 @@ useEffect(() => {
           data: x,
           axisLabel: {
             interval: 0,
+            fontSize: isMobile ? 10 : 16,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -804,6 +815,7 @@ useEffect(() => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
+            fontSize: isMobile ? 10 : 16,
             formatter: (v: number) => `${Math.round(v).toLocaleString()}`
           }
         },
@@ -953,6 +965,7 @@ useEffect(() => {
           data: x,
           axisLabel: {
             interval: 0,
+            fontSize: isMobile ? 10 : 16,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -974,6 +987,7 @@ useEffect(() => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
+            fontSize: isMobile ? 10 : 16,
             formatter: (v: number) => `${Math.round(v).toLocaleString()}`
           }
         }
@@ -1125,6 +1139,7 @@ useEffect(() => {
           data: x,
           axisLabel: {
             interval: 0,
+            fontSize: isMobile ? 10 : 16,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -1146,6 +1161,7 @@ useEffect(() => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
+            fontSize: isMobile ? 10 : 16,
             formatter: (value: number) => {
               if (!value) return '0';
               return Number.isInteger(value)
@@ -3415,15 +3431,20 @@ useEffect(() => {
                   <h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] text-nowrap">SKU Analysis MTD</h2>
                   <div className='flex flex-col md:flex-row 2xl:justify-end justify-between 2xl:gap-3 mt-2 2xl:mt-0 w-full'>
 
-                    <div
-                      style={{
-                        border: '1px solid #D9D9D9E5',
-                        borderRadius: 8,
-                        display: 'inline-flex',
-                        overflow: 'hidden'
-                      }}
-                      className="p-1 gap-2"
-                    >
+<div
+  className="
+    inline-flex
+    p-1 gap-2
+    overflow-x-auto
+    whitespace-nowrap
+    scroll-smooth
+    no-scrollbar
+  "
+  style={{
+    border: "1px solid #D9D9D9E5",
+    borderRadius: 8,
+  }}
+>
                       {(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).map(key => {
                         const isActive = activeTab === key
 
@@ -3432,15 +3453,17 @@ useEffect(() => {
                             key={key}
                             onClick={() => setActiveTab(key)}
                             className={`
-          md:text-sm text-xs
-          px-3 py-[3px]
-          rounded-[5px]
-          transition-colors duration-200
-          ${isActive
-                                ? 'bg-[#5EA68E80] font-semibold'
-                                : 'bg-white hover:bg-[#5EA68E33] font-normal '
-                              }
-        `}
+  shrink-0
+  md:text-sm text-xs
+  px-3 py-[3px]
+  rounded-[5px]
+  transition-colors duration-200
+  whitespace-nowrap py-1
+  ${isActive
+    ? 'bg-[#5EA68E80] font-semibold'
+    : 'bg-white hover:bg-[#5EA68E33] font-normal'
+  }
+`}
                             style={{
                               color: '#414042',
                               border: 'none'
@@ -3454,7 +3477,7 @@ useEffect(() => {
 
 
 
-                    <div className='flex gap-3'>
+                    <div className='flex gap-3 mt-3 sm:mt-0'>
                       <button
                         onClick={analyzeSkus}
                         disabled={
@@ -3492,29 +3515,6 @@ useEffect(() => {
                         />
                         {loadingInsight ? "Generating..." : "AI Insights"}
                       </button>
-
-                      {/* <button
-                        onClick={() => {
-                          const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
-                          const allRows = getAllSkusForExport();
-                          exportToExcel(allRows, file);
-                        }}
-                        className="
-    bg-white border border-[#8B8585]
-    px-1 rounded-sm
-    transition-all duration-200 ease-out
-    hover:-translate-y-[2px]
-    hover:shadow-lg
-    active:translate-y-0
-    active:shadow-md
-  "
-                        style={{
-                          boxShadow: "0px 4px 4px 0px #00000040"
-                        }}
-                      >
-                        <IoDownload size={27} color="#414042" />
-                      </button> */}
-
                       <DownloadIconButton disabled={isPreviewMode} onClick={() => {
                         const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
                         const allRows = getAllSkusForExport();
@@ -3530,343 +3530,7 @@ useEffect(() => {
               </div>
 
               <div className="table-wrapper pt-4">
-                {/* <table className="tablec w-full border-collapse md:text-sm text-xs 2xl:min-w-full xl:min-w-[1000px]">
-                  <thead className="theadc">
-                    <tr >
-                      <th className='px-1 !w-[50px]'>S.No.</th>
-                      <th className="text-left px-1" style={{ textAlign: 'left' }}>Product Name</th>
-                      <th className='px-1'>Sales Mix ({month2Label || 'Month 2'})</th>
-
-                      {activeTab !== 'new_or_reviving_skus' && <th>Sales Mix Change (%)</th>}
-
-                      <th className='px-1'>Unit Growth (%)</th>
-                      <th className='px-1'>ASP Growth (%)</th>
-                      <th className='px-1'>Net Sales Growth (%)</th>
-
-                      <th className='px-1'>CM1 Profit Impact (%)</th>
-                      <th
-                        className="max-w-[120px] truncate whitespace-nowrap"
-                        title="CM1 Profit Per Unit (%)"
-                      >
-                        CM1 Profit Per Unit (%)
-                      </th>
-
-                      {Object.keys(skuInsights).length > 0 && <th>AI Insight</th>}
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {(() => {
-                      const isNewRev = activeTab === 'new_or_reviving_skus';
-                      const hasSkus = (currentTabData?.length ?? 0) > 0;
-                      const showInsight = Object.keys(skuInsights).length > 0;
-
-                      // ✅ Case 1: New/Reviving AND no SKUs => show 1 dummy row with ---
-                      if (isNewRev && !hasSkus) {
-                        return (
-                          <tr>
-                            <td className="border border-[#414042] px-2 py-2.5 text-center text-[#414042]">1</td>
-                            <td className="border border-[#414042] px-2 py-2.5 text-left text-[#414042]" style={{ textAlign: 'left' }}>
-                              ---
-                            </td>
-
-                            <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
-
-
-                            <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
-                            <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
-                            <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
-                            <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
-                            <td className="border border-[#414042] px-2 py-2.5 text-center">---</td>
-
-                            {showInsight && (
-                              <td className="border border-[#414042] px-2 text-nowrap py-2.5 text-center">---</td>
-                            )}
-                          </tr>
-                        );
-                      }
-
-                      // ✅ Case 2 (default): render SKU rows as-is (your existing code)
-                      return currentTabData?.map((item, idx) => (
-                        <tr key={idx} className="">
-                          <td className="border border-[#414042] px-2 py-2.5 text-center text-[#414042]">
-                            {idx + 1}
-                          </td>
-
-                          <td
-                            className="border border-[#414042] px-2 py-2.5 text-left text-[#414042]"
-                            style={{ textAlign: 'left' }}
-                          >
-                            {String(item.product_name).trim() === '0' ? (
-                              <span className="sku-zero-wrap">
-                                <span className="sku-zero">{item.sku || 'N/A'}</span>
-                              </span>
-                            ) : (
-                              item.product_name
-                            )}
-                          </td>
-
-                          <td className="border border-[#414042] px-2 py-2.5 text-center">
-                            {item['Sales Mix (Month2)'] != null
-                              ? `${Number(item['Sales Mix (Month2)']).toFixed(2)}%`
-                              : 'N/A'}
-                          </td>
-
-                          {[
-                            ...(activeTab !== 'new_or_reviving_skus' ? [{ field: 'Sales Mix Change' }] : []),
-                            { field: 'Unit Growth' },
-                            { field: 'ASP Growth' },
-                            { field: 'Net Sales Growth' },
-                            { field: 'CM1 Profit Impact' },
-                            { field: 'Profit Per Unit' },
-                          ].map(({ field }) => {
-                            const growth = item[field] as GrowthCategory | undefined;
-
-                            if (!growth || growth.value == null) {
-                              return (
-                                <td key={field} className="border border-[#414042] px-2 py-2.5 text-center">
-                                  N/A
-                                </td>
-                              );
-                            }
-
-                            const val = Number(growth.value);
-                            const sign = val > 0 ? '+' : '';
-                            const text = `${sign}${val.toFixed(2)}%`;
-
-                            if (growth.category === 'High Growth') {
-                              return (
-                                <td
-                                  key={field}
-                                  className="border border-[#414042] px-2 py-2.5 text-center"
-                                  style={{ fontWeight: 600 }}
-                                >
-                                  <span className="flex items-center justify-center gap-2 w-full font-semibold text-[#5EA68E]">
-                                    <span className="w-4 flex justify-center shrink-0">
-                                      <FaArrowUp size={12} />
-                                    </span>
-
-                                    <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
-                                      {text}
-                                    </span>
-                                  </span>
-
-                                </td>
-                              );
-                            }
-
-                            if (growth.category === 'Negative Growth') {
-                              return (
-                                <td
-                                  key={field}
-                                  className="border border-[#414042] px-2 py-2.5 text-center"
-                                  style={{ fontWeight: 600 }}
-                                >
-                                  <span className="flex items-center justify-center gap-2 w-full font-semibold text-[#FF5C5C]">
-                                    <span className="w-4 flex justify-center shrink-0">
-                                      <FaArrowDown size={12} />
-                                    </span>
-
-                                    <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
-                                      {text}
-                                    </span>
-                                  </span>
-
-                                </td>
-                              );
-                            }
-
-                            // Low Growth / No Growth / No Data etc.
-                            return (
-                              <td
-                                key={field}
-                                className="border border-[#414042] px-2 py-2.5 text-center text-[#414042]"
-                                style={{ fontWeight: 600, color: '#414042' }}
-                              >
-                                <span className="flex items-center justify-center gap-2 w-full font-semibold text-[#414042]">
-                                  <span className="w-4 flex justify-center shrink-0">
-                                    {val > 0 ? <FaArrowUp size={12} /> : val < 0 ? <FaArrowDown size={12} /> : null}
-                                  </span>
-
-                                  <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
-                                    {text}
-                                  </span>
-                                </span>
-
-                              </td>
-                            );
-                          })}
-
-                          {Object.keys(skuInsights).length > 0 && (
-                            <td className="border border-[#414042] px-2 text-nowrap py-2.5 text-center">
-                              {(() => {
-                                // ✅ Only for All SKUs tab + Others row => show expand button
-                                if (
-                                  activeTab === 'all_skus' &&
-                                  String(item?.product_name ?? '').toLowerCase().trim() === 'others'
-                                ) {
-                                  return (
-                                    <button
-                                      className="font-semibold underline text-[#414042]"
-                                      style={{ margin: 0 }}
-                                      onClick={() => setExpandAllSkusOthers(true)}
-                                    >
-                                      Expand SKUs
-                                    </button>
-                                  );
-                                }
-
-                                // Normal insight behavior
-                                const entry = getInsightForItem(item);
-
-                                if (entry) {
-                                  return (
-                                    <button
-                                      className="font-semibold underline text-[#414042]"
-                                      style={{ margin: 0 }}
-                                      onClick={() => {
-                                        setSelectedSku(entry[0]);
-                                        setModalOpen(true);
-                                        setFbType(null);
-                                        setFbText('');
-                                        setFbSuccess(false);
-                                      }}
-                                    >
-                                      View Insights
-                                    </button>
-                                  );
-                                }
-
-                                return (
-                                  <em style={{ color: '#888' }}>
-                                    --
-                                    <br />
-                                  </em>
-                                );
-                              })()}
-                            </td>
-                          )}
-                        </tr>
-                      ));
-                    })()}
-                  </tbody>
-
-                  <tfoot>
-                    <tr className="bg-[#D9D9D9E5]">
-                      <td className="border border-[#414042] px-2 py-2.5 text-center"></td>
-
-                      <td className="border border-[#414042] px-2 py-2.5 text-left font-bold " style={{ textAlign: 'left' }}>
-                        <strong>Total</strong>
-                      </td>
-
-                      <td className="border border-[#414042] px-2 py-2.5 text-center font-bold">
-                        {(() => {
-                          const rows = (categorizedGrowth[activeTab] || []) as any[];
-                          const sum = rows.reduce(
-                            (s, r) => s + Number(r?.['Sales Mix (Month2)'] ?? 0),
-                            0
-                          );
-                          const rounded = Number(sum.toFixed(2));
-                          const fixed = Math.abs(rounded - 100) < 0.05 ? 100 : rounded;
-                          return `${fixed.toFixed(2)}%`;
-                        })()}
-                      </td>
-
-                      {(() => {
-                        const rows = (categorizedGrowth[activeTab] || []) as any[];
-
-                        const sum = (k: string) =>
-                          rows.reduce((s, r) => s + Number(r?.[k] ?? 0), 0);
-
-                        const pct = (m1: number, m2: number) => {
-                          if (m1 === 0) return 0;
-                          return ((m2 - m1) / m1) * 100;
-                        };
-
-                        const cells = [
-                          ...(activeTab !== 'new_or_reviving_skus'
-                            ? [0]
-                            : []),
-                          pct(sum('total_quantity_month1'), sum('total_quantity_month2')),
-                          pct(sum('asp_month1'), sum('asp_month2')),
-                          pct(sum('net_sales_month1'), sum('net_sales_month2')),
-                          pct(sum('unit_wise_profitability_month1'), sum('unit_wise_profitability_month2')),
-                          pct(sum('profit_month1'), sum('profit_month2')),
-                        ];
-
-                        return cells.map((v, i) => {
-                          const val = Number(v);
-                          const sign = val > 0 ? '+' : '';
-                          const text = `${sign}${val.toFixed(2)}%`;
-
-                          // ✅ Total row classification:
-                          // High Growth: val >= 5
-                          // Negative Growth: val < 0
-                          // Low Growth: 0 <= val < 5 (or any other neutral)
-                          if (val >= 5) {
-                            return (
-                              <td
-                                key={i}
-                                className="border border-[#414042] px-2 py-2.5 text-center font-bold"
-                                style={{ fontWeight: 600 }}
-                              >
-                                <span className="flex items-center justify-center gap-2 w-full font-semibold text-[#5EA68E]">
-                                  <span className="w-4 flex justify-center shrink-0">
-                                    <FaArrowUp size={12} />
-                                  </span>
-                                  <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
-                                    {text}
-                                  </span>
-                                </span>
-                              </td>
-                            );
-                          }
-
-                          if (val < 0) {
-                            return (
-                              <td
-                                key={i}
-                                className="border border-[#414042] px-2 py-2.5 text-center font-bold"
-                                style={{ fontWeight: 600 }}
-                              >
-                                <span className="flex items-center justify-center gap-2 w-full font-semibold text-[#FF5C5C]">
-                                  <span className="w-4 flex justify-center shrink-0">
-                                    <FaArrowDown size={12} />
-                                  </span>
-                                  <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
-                                    {text}
-                                  </span>
-                                </span>
-                              </td>
-                            );
-                          }
-
-                          return (
-                            <td
-                              key={i}
-                              className="border border-[#414042] px-2 py-2.5 text-center font-bold"
-                              style={{ fontWeight: 600, color: '#414042' }}
-                            >
-                              <span className="flex items-center justify-center gap-2 w-full font-semibold text-[#414042]">
-                                <span className="w-4 flex justify-center shrink-0">
-                                  {val > 0 ? <FaArrowUp size={12} /> : val < 0 ? <FaArrowDown size={12} /> : null}
-                                </span>
-                                <span className="tabular-nums inline-block w-[50px] 2xl:w-[60px] text-right">
-                                  {text}
-                                </span>
-                              </span>
-                            </td>
-                          );
-                        });
-                      })()}
-
-                      {Object.keys(skuInsights).length > 0 && (
-                        <td className="border border-[#414042] px-2 py-2.5 text-center font-bold"></td>
-                      )}
-                    </tr>
-                  </tfoot>
-
-                </table> */}
+                
                 <div className="pt-4">
                   <DataTable<TableRow>
                     columns={columns}
@@ -3891,10 +3555,11 @@ useEffect(() => {
                     alignItems: 'center',
                     gap: 14,
                     flexWrap: 'wrap',
-                    fontSize: 14,
+                    
                     color: '#414042',
                     marginTop: 6,
                   }}
+                  className='sm:text-sm text-xs'
                 >
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5EA68E', fontWeight: 700 }}>
