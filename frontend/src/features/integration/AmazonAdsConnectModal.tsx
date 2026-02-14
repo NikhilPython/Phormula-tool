@@ -7,9 +7,26 @@ import { useSelector } from "react-redux";
 type Props = {
   isOpen: boolean;
   onClose: () => void;
+
+  // ✅ controlled props from parent (optional)
+  adsStatusLoading?: boolean;
+  adsStatus?: any | null;
+  adsConnecting?: boolean;
+  adsError?: string | null;
+  onConnectOrSync?: () => void | Promise<void>;
 };
 
-export default function AmazonAdsConnectModal({ isOpen, onClose }: Props) {
+
+export default function AmazonAdsConnectModal({
+  isOpen,
+  onClose,
+  adsStatusLoading,
+  adsStatus,
+  adsConnecting,
+  adsError,
+
+}: Props) {
+
   const token = useSelector((state: any) => state.auth?.token);
 
   const [loadingStatus, setLoadingStatus] = useState(false);

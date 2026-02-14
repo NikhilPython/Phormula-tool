@@ -1,7 +1,7 @@
 // components/PnlForecastChart.tsx
 'use client';
 
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useEffect, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -44,6 +44,18 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
 
   // ✅ NEW: Forecast/Current+Forecast region should start from first NON-historical month (e.g. Dec)
   const forecastStartIndex = chartData.findIndex(d => !d.isHistorical);
+
+  // Responsive font sizes (mobile vs desktop)
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const axisFontSize = isMobile ? 12 : 16;
 
   const labels = chartData.map(item => {
     let suffix = '';
@@ -153,15 +165,21 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
       x: {
         title: {
           display: true,
-          text: 'Months'
-        }
+          text: 'Months',
+          font: { size: axisFontSize },
+        },
+        ticks: {
+          font: { size: axisFontSize },
+        },
       },
       y: {
         title: {
           display: true,
-          text: `Amount (${currencySymbol})`
+          text: `Amount (${currencySymbol})`,
+          font: { size: axisFontSize },
         },
         ticks: {
+          font: { size: axisFontSize },
           callback: function (tickValue: string | number) {
             return typeof tickValue === 'number' ? tickValue.toLocaleString() : tickValue;
           }
@@ -200,14 +218,15 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
       }
 
  .checkbox-group label {
-    font-size: 0.7vw; /* Smaller font */
-    font-weight: 600;
-      text-decoration-thickness: 1.2px;
-    display: flex;
-    align-items: center;
-    gap: 0.2vw; /* Tighter spacing */
-    white-space: nowrap;
-  }
+  font-size: 16px;          /* ✅ desktop default */
+  font-weight: 600;
+  text-decoration-thickness: 1.2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 
   input[type="checkbox"] {
     appearance: none;
@@ -343,6 +362,97 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
   box-shadow: 0 0 0 2px white, 0 1px 3px #414042;
 }
 
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+/* checkbox group desktop */
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  width: auto;          /* ✅ remove fixed 30% */
+  gap: 10px;
+}
+
+/* checkbox label desktop */
+.checkbox-group label {
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+/* checkbox size desktop */
+input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  position: relative;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+/* checkmark desktop */
+input[type="checkbox"]:checked::before {
+  content: '✓';
+  font-size: 12px;
+  font-weight: 900;
+  color: white;
+  position: absolute;
+  left: 3px;
+  top: -2px;
+}
+
+/* ✅ MOBILE: stack legend + checkbox, make checkbox bigger */
+@media (max-width: 768px) {
+  .topbar {
+    flex-direction: column;      /* ✅ flex-col */
+    align-items: flex-start;
+  }
+
+  .forecast-legend {
+    flex-direction: column;      /* ✅ legend items one below another */
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .forecast-legend-item {
+    font-size: 12px;             /* ✅ you wanted 12px on mobile */
+  }
+
+  .checkbox-group {
+    width: 100%;
+    justify-content: flex-start; /* ✅ start from left */
+    gap: 12px;
+  }
+
+  .checkbox-group label {
+    font-size: 12px;             /* ✅ mobile labels 12px */
+    gap: 10px;
+  }
+
+  input[type="checkbox"] {
+    width: 18px;                 /* ✅ bigger checkbox on mobile */
+    height: 18px;
+    border-radius: 4px;
+  }
+
+  input[type="checkbox"]:checked::before {
+    font-size: 14px;
+    left: 4px;
+    top: -3px;
+  }
+}
+
+
 /* Animations */
 // @keyframes dotted-pulse {
 //   0%, 100% { opacity: 0.7; }
@@ -366,6 +476,15 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
   .forecast-legend-item {
     font-size: 13px;
   }
+
+  .checkbox-group label {
+    font-size: 12px;        /* ✅ mobile */
+    gap: 6px;
+  }
+
+  .forecast-legend-item {
+    font-size: 12px;        /* ✅ mobile legend text */
+  }
   
   .solid-line,
   .dotted-line {
@@ -379,7 +498,7 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
       `}</style>
 
 <br/>
-<div className='flex justify-between items-center mx-5 '>
+<div className="topbar mx-5">
    <div className="forecast-legend">
         <div className="forecast-legend-item">
           <div className="solid-line"></div>

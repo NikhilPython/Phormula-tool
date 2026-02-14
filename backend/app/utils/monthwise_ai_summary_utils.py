@@ -9,12 +9,12 @@ from datetime import date, datetime, timedelta
 from openai import OpenAI
 import json
 import pandas as pd
-from app.models.user_models import HistoricAISummary
+import numpy as np
+from app.models.user_models import HistoricAISummary, UserObjective
 from app.utils.formulas_utils import safe_num
+from app.utils.uk_prompts_utils import AI_SYSTEM_PROMPT_1, AI_SYSTEM_PROMPT_2, AI_SYSTEM_PROMPT_3_POLISHER
 from app import db
 from openai import OpenAIError
-
-
 
 
 
@@ -58,17 +58,15 @@ def rolling_months(anchor_year: int, anchor_month: int, max_months: int = 24):
     return list(reversed(months))  # oldest → newest
 
 
-DEFAULT_USER_OBJECTIVE = {
-    "primary_goal": "profit",   # profit | growth | rank | inventory_clearance | balanced
-    "risk_level": "balanced",   # conservative | balanced | aggressive
-    "constraints": {
-        "max_tacos": None,
-        "max_price_increase_pct": None,
-        "ad_budget_cap": None,
-        "dont_change_price": False
-    },
-    "notes": None
+DEFAULT_OBJECTIVE_V2 = {
+    "growth_intent": "aggressive",  # conservative | balanced | aggressive
+    "profit_priority": "high",  # high | protect_growth | sacrifice_short_term
+    "inventory_clearance_priority": False,
+    "business_context": None,
+    "country": None,
+    "time_horizon": "1_month"
 }
+
 
 def resolve_yearly_analysis_anchor(user_id: int, country: str, year: int):
     """
@@ -91,13 +89,7 @@ def resolve_yearly_analysis_anchor(user_id: int, country: str, year: int):
 
 
 
-def severity_suffix(severity: str | None, *, period: str | None = None) -> str:
-    """
-    Suppress rolling 24-month severity labels for YEARLY reports.
-    """
-    if period == "yearly":
-        return ""
-
+def severity_suffix(severity: str | None) -> str:
     if not severity or severity == "normal":
         return ""
 
@@ -200,10 +192,21 @@ def is_latest_period(period, timeline, year, *, user_id, country):
 
     # ---------------- YEARLY (keep simple rule) ----------------
     if period == "yearly":
-        return year == date.today().year - 1
-
+        # Detect latest yearly table that actually exists in DB
+        for test_year in range(date.today().year + 1, date.today().year - 5, -1):
+            table = build_table_name(user_id, country, "yearly", "ALL", test_year)
+            try:
+                pd.read_sql(
+                    f'SELECT 1 FROM public."{table}" LIMIT 1',
+                    phormula_engine
+                )
+                # First existing table = TRUE latest year
+                return year == test_year
+            except Exception:
+                continue
 
     return False
+
 
 
 def fetch_existing_summary(user_id, country, marketplace_id, period, timeline, year):
@@ -420,232 +423,8 @@ def summarize_sku_rolling_trend(series):
         "cm1_profit_trend": "up" if c1 is not None and c2 is not None and c2 > c1 else "down",
     }
 
-def summarize_sku_yearly_journey(series: list) -> str | None:
-    """
-    Produces concise CFO-grade yearly journey narrative per SKU.
-    Deterministic, causal, and non-vague.
-    """
-
-    if not series or len(series) < 6:
-        return None
-
-    mid = len(series) // 2
-
-    def _avg(col, subset):
-        vals = [r.get(col) for r in subset if isinstance(r.get(col), (int, float))]
-        return sum(vals) / len(vals) if vals else None
-
-    # ---------- H1 vs H2 averages ----------
-    h1_units = _avg("units", series[:mid])
-    h2_units = _avg("units", series[mid:])
-
-    h1_cm1 = _avg("cm1_profit", series[:mid])
-    h2_cm1 = _avg("cm1_profit", series[mid:])
-
-    h1_asp = _avg("asp", series[:mid])
-    h2_asp = _avg("asp", series[mid:])
-
-    if None in (h1_units, h2_units, h1_cm1, h2_cm1, h1_asp, h2_asp):
-        return None
-
-    # ==========================================================
-    # EXECUTIVE JOURNEY CLASSIFICATION (ORDER MATTERS)
-    # ==========================================================
-
-    # ---------- True acceleration ----------
-    if h2_units > h1_units and h2_cm1 > h1_cm1:
-        if h2_asp >= h1_asp:
-            return (
-                "Growth accelerated in the second half as stronger demand "
-                "combined with stable pricing lifted CM1 profitability."
-            )
-        else:
-            return (
-                "Second-half demand strengthened despite lower pricing, "
-                "with CM1 profitability expanding through volume leverage."
-            )
-
-    # ---------- Profit compression ----------
-    if h2_units >= h1_units and h2_cm1 < h1_cm1:
-        if h2_asp < h1_asp:
-            return (
-                "Units remained resilient into the second half, but pricing pressure "
-                "compressed CM1 profitability and limited margin expansion."
-            )
-        else:
-            return (
-                "Stable demand in the second half was offset by rising cost pressure, "
-                "leading to CM1 profitability deterioration."
-            )
-
-    # ---------- Demand deterioration ----------
-    if h2_units < h1_units and h2_cm1 <= h1_cm1:
-        if h2_asp > h1_asp:
-            return (
-                "Demand weakened in the second half following price increases, "
-                "driving declines in both units and CM1 profitability."
-            )
-        else:
-            return (
-                "Second-half demand contraction reduced scale and CM1 profitability, "
-                "indicating sustained commercial weakness."
-            )
-
-    # ---------- Margin recovery without demand ----------
-    if h2_units < h1_units and h2_cm1 > h1_cm1:
-        return (
-            "Profitability improved in the second half despite softer demand, "
-            "reflecting pricing discipline and margin recovery."
-        )
-
-    # ---------- Flat profile ----------
-    return (
-        "Performance remained broadly stable across the year, "
-        "with no sustained shift in demand or CM1 profitability."
-    )
 
 
-def summarize_sku_yearly_phases(series: list) -> str | None:
-    """
-    Phase-based yearly SKU journey.
-    Detects peak → decline → recovery structure using real month positions.
-    Deterministic, production-safe, zero AI.
-    """
-
-    if not series or len(series) < 6:
-        return None
-
-    # ----------------------------------------------------------
-    # Extract usable numeric timeline
-    # ----------------------------------------------------------
-    timeline = [
-        {
-            "month_index": i,
-            "units": r.get("units"),
-            "cm1": r.get("cm1_profit"),
-            "asp": r.get("asp"),
-        }
-        for i, r in enumerate(series)
-        if isinstance(r.get("units"), (int, float))
-        and isinstance(r.get("cm1_profit"), (int, float))
-        and isinstance(r.get("asp"), (int, float))
-    ]
-
-    if len(timeline) < 6:
-        return None
-
-    # ----------------------------------------------------------
-    # Identify structural points
-    # ----------------------------------------------------------
-    peak = max(timeline, key=lambda x: x["units"])
-    trough = min(timeline, key=lambda x: x["units"])
-
-    start = timeline[0]
-    end = timeline[-1]
-
-    # ----------------------------------------------------------
-    # Direction after peak
-    # ----------------------------------------------------------
-    post_peak = [p for p in timeline if p["month_index"] > peak["month_index"]]
-
-    if not post_peak:
-        return None
-
-    end_units = end["units"]
-    end_cm1 = end["cm1"]
-    end_asp = end["asp"]
-
-    peak_units = peak["units"]
-    peak_cm1 = peak["cm1"]
-    peak_asp = peak["asp"]
-
-    # ----------------------------------------------------------
-    # Phase classifications (ORDER MATTERS)
-    # ----------------------------------------------------------
-
-    # 1️⃣ Peak → sustained decline
-    if end_units < peak_units and end_cm1 <= peak_cm1:
-        if end_asp > peak_asp:
-            return (
-                "Demand peaked mid-year before declining through the later months, "
-                "with price increases accelerating CM1 profit compression."
-            )
-        else:
-            return (
-                "After a mid-year demand peak, units and CM1 profitability "
-                "declined steadily into year end, indicating weakening momentum."
-            )
-
-    # 2️⃣ Peak → recovery into year end
-    if end_units >= peak_units and end_cm1 >= peak_cm1:
-        if end_asp >= peak_asp:
-            return (
-                "Second-half recovery lifted demand beyond the mid-year peak, "
-                "with stable pricing supporting CM1 profit expansion."
-            )
-        else:
-            return (
-                "Demand recovered into year end despite lower pricing, "
-                "with volume growth restoring CM1 profitability."
-            )
-
-    # 3️⃣ Units recover but CM1 lags
-    if end_units >= peak_units and end_cm1 < peak_cm1:
-        return (
-            "Unit demand recovered toward year end, but CM1 profitability "
-            "remained below peak levels, indicating margin pressure."
-        )
-
-    # 4️⃣ Profit recovery without demand
-    if end_units < peak_units and end_cm1 > trough["cm1"]:
-        return (
-            "Profitability improved from trough levels in the second half, "
-            "though demand failed to return to peak scale."
-        )
-
-    # 5️⃣ Flat structural year
-    return (
-        "Demand and CM1 profitability fluctuated within a narrow range "
-        "throughout the year without a sustained directional shift."
-    )
-def summarize_sku_quarterly_phases(series: list) -> str | None:
-    """
-    Deterministic quarterly journey based on true month-to-month direction.
-    Works reliably with exactly 3 months.
-    """
-
-    if not series or len(series) < 3:
-        return None
-
-    m1, m2, m3 = series[-3:]
-
-    def _v(row, key):
-        v = row.get(key)
-        return v if isinstance(v, (int, float)) else None
-
-    u1, u2, u3 = _v(m1, "units"), _v(m2, "units"), _v(m3, "units")
-    p1, p2, p3 = _v(m1, "cm1_profit"), _v(m2, "cm1_profit"), _v(m3, "cm1_profit")
-
-    if None in (u1, u2, u3, p1, p2, p3):
-        return None
-
-    # Continuous deterioration
-    if u1 > u2 > u3 and p1 > p2 > p3:
-        return "Performance deteriorated steadily across the quarter as demand and CM1 profitability weakened month by month."
-
-    # Continuous improvement
-    if u1 < u2 < u3 and p1 < p2 < p3:
-        return "Performance strengthened progressively through the quarter with improving demand and CM1 profitability."
-
-    # Late recovery
-    if u2 < u3 and p2 < p3:
-        return "Performance weakened early in the quarter but partially recovered in the final month."
-
-    # Late deterioration
-    if u2 > u3 and p2 > p3:
-        return "Performance remained stable early in the quarter before weakening in the final month."
-
-    return "Performance remained mixed across the quarter without a clear directional trend."
 
 
 def compute_generic_movement(series: list, col: str):
@@ -856,7 +635,6 @@ def compute_period_pct_changes(df_current_total, df_prev_total):
         # ✅ FIXED
         "acos": pct_point("acos"),
     }
-
 
 
 
@@ -1270,20 +1048,6 @@ def compute_yoy_pct(df_current_total, df_prev_total, col):
 
 
 
-def compare_metrics(current, previous):
-    out = {}
-    for k, v in current.items():
-        prev = previous.get(k, 0.0)
-        delta = v - prev
-        pct = (delta / prev * 100) if prev != 0 else None
-
-        out[k] = {
-            "current": round(v, 2),
-            "previous": round(prev, 2),
-            "delta": round(delta, 2),
-            "delta_pct": round(pct, 2) if pct else None
-        }
-    return out
 
 def period_label(period: str, timeline: str, year: int) -> str:
     if period == "monthly":
@@ -1331,10 +1095,7 @@ The data you receive:
 - period_absolute_changes:
   Precomputed absolute deltas for the selected period vs comparison period.
 - period_pct_changes:
-  Precomputed percentage changes for the selected reporting period.
-  This is the single deterministic source of truth for percentage
-  movement across MONTHLY, QUARTERLY, and YEARLY analysis.
-
+  Precomputed percentage changes for YEARLY and QUARTERLY reporting only.
 
 
 
@@ -1370,19 +1131,9 @@ business outcome.
 This takeaway MUST:
 - Be derived ONLY from the primary_causal_chain
 - Reflect business quality impact (not metric narration)
-- Be written in decisive executive finance language
+- Be written in executive finance language
 - Be maximum 2 sentences
-- Follow a strict two-sentence structure:
-  • Sentence 1 → Scale outcome (units, net sales, CM1 profit, timing such as H1 peak month)
-  • Sentence 2 → Profitability quality outcome (ACOS, CM2 trajectory, efficiency deterioration or improvement)
-- State the final business condition explicitly using
-  clear financial language such as:
-  “profitability strengthened”, “efficiency deteriorated”,
-  “CM2 expansion accelerated”, or “margin pressure emerged”.
-- Avoid vague phrases like:
-  “stronger position”, “improved condition”, or “better performance”.
 - Contain NO recommendations or actions
-
 
 
 You MUST express insights as structured classifications,
@@ -1429,48 +1180,6 @@ If the selected reporting period is YEARLY:
 - You MUST NOT interpret severity, direction, or patterns as
   year-level movements.
 - Percentage changes for YEARLY reporting MUST come ONLY from period_pct_changes.
-
-YEARLY WORDING PRECISION (ABSOLUTE)
-
-When period = YEARLY:
-
-- All total performance comparisons MUST be expressed using:
-  “year-over-year”, “vs prior year”, or “annual”.
-
-- You MUST NOT describe yearly totals using:
-  “24 months”, “two-year”, “rolling”, or similar multi-year phrasing.
-
-- References to “24 months” are allowed ONLY when:
-  • describing rolling monthly extremity
-  • citing severity labels derived from movement_context
-  • NOT when describing yearly totals.
-
-
-YEARLY TEMPORAL STORYTELLING (CRITICAL)
-
-If yearly_temporal_signals is provided in the input payload:
-
-- yearly_temporal_signals contains:
-  • peak_month_sales (year, month of highest net sales)
-  • weak_month_sales (year, month of lowest net sales)
-  • h1_vs_h2_direction (improving | softening | flat)
-  • acos_trend_direction (improving | deteriorating | flat)
-  • cm2_trend_direction (improving | declining | flat)
-
-You MUST:
-
-- Incorporate timing context into the executive_takeaway.
-- Mention the strongest phase of the year when materially relevant.
-- Mention mid-year or late-year softening when supported by signals.
-- Reflect efficiency or profitability trajectory using:
-  ACOS trend and CM2 trend direction.
-
-You MUST NOT:
-
-- Add extra sentences beyond the 2-sentence limit.
-- Invent timing not present in yearly_temporal_signals.
-- Ignore yearly_temporal_signals when they are provided.
-
 
 
 ABSOLUTE CHANGE SOURCE OF TRUTH (CRITICAL)
@@ -2326,16 +2035,9 @@ def render_month_end_summary(
     def fmt_pct(x):
         return f"{x:+.2f}%" if isinstance(x, (int, float)) else "N/A"
 
-    def fmt_num(x, decimals=2):
-        return f"{x:+.{decimals}f}" if isinstance(x, (int, float)) else "N/A"
-
-    def fmt_int(x):
-        return f"{int(x)}" if isinstance(x, (int, float)) else "N/A"
-
     is_yearly = period == "yearly"
-    is_long_period = period in ("yearly", "quarterly")
-
     comparison = build_comparison_label(period, timeline, year)
+
     lines: list[str] = []
     # =========================================================
     # REPORT TITLE (PERIOD-AWARE)  ⭐ CRITICAL FIX
@@ -2349,15 +2051,13 @@ def render_month_end_summary(
 
 
     # =========================================================
-    # SUMMARY — PORTFOLIO ONLY
+    # REPORT TITLE
     # =========================================================
-    if analysis_insights:
-
+    if analysis_insights is not None:
         lines.append("## SUMMARY")
 
         es = analysis_insights.get("executive_summary_signals", {})
 
-        # ----- Heading -----
         if is_yearly:
             lines.append(f"Year-over-Year Performance Summary ({comparison})")
         else:
@@ -2367,78 +2067,79 @@ def render_month_end_summary(
         if isinstance(takeaway, str) and takeaway.strip():
             lines.append(takeaway)
 
-        # ----- Units -----
+        # Units
         u = es.get("units", {})
         units_label = "Units sold (YoY)" if is_yearly else "Units sold"
         lines.append(
             f"• {units_label}: {fmt_pct(u.get('pct_change'))} "
             f"({fmt_int(u.get('absolute_change'))} units)"
-            f"{severity_suffix(u.get('severity'), period=period)}"
+            f"{severity_suffix(u.get('severity'))}"
         )
 
-        # ----- Net Sales -----
+        # Net Sales
         ns = es.get("net_sales", {})
         ns_label = "Net sales (YoY)" if is_yearly else "Net sales"
         lines.append(
             f"• {ns_label}: {fmt_pct(ns.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(ns.get('absolute_change'))})"
-            f"{severity_suffix(ns.get('severity'), period=period)}"
+            f"{severity_suffix(ns.get('severity'))}"
         )
 
-        # ----- ASP -----
+        # ASP
         asp = es.get("asp", {})
         asp_label = "ASP (YoY)" if is_yearly else "ASP"
         lines.append(
             f"• {asp_label}: {fmt_pct(asp.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(asp.get('absolute_change'))})"
-            f"{severity_suffix(asp.get('severity'), period=period)}"
+            f"{severity_suffix(asp.get('severity'))}"
         )
 
-        # ----- CM1 Profit -----
+        # CM1 Profit
         cm1 = es.get("cm1_profit", {})
         cm1_label = "CM1 profit (YoY)" if is_yearly else "CM1 profit"
         lines.append(
             f"• {cm1_label}: {fmt_pct(cm1.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(cm1.get('absolute_change'))})"
-            f"{severity_suffix(cm1.get('severity'), period=period)}"
+            f"{severity_suffix(cm1.get('severity'))}"
         )
 
-        # ----- CM1 Profit per Unit -----
+        # CM1 Profit per Unit
         ppu = es.get("cm1_profit_per_unit", {})
         ppu_label = "CM1 profit per unit (YoY)" if is_yearly else "CM1 profit per unit"
         lines.append(
             f"• {ppu_label}: {fmt_pct(ppu.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(ppu.get('absolute_change'))})"
-            f"{severity_suffix(ppu.get('severity'), period=period)}"
+            f"{severity_suffix(ppu.get('severity'))}"
         )
 
-        # ----- Cost Pressure -----
+        # Advertising
         cp = es.get("cost_pressure", {})
         ad = cp.get("advertising", {})
         lines.append(
             f"• Advertising spends: {fmt_pct(ad.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(ad.get('absolute_change'))})"
-            f"{severity_suffix(ad.get('severity'), period=period)}, "
+            f"{severity_suffix(ad.get('severity'))}, "
             f"with ACOS change of {fmt_pct(ad.get('acos_delta'))}"
         )
 
+        # Storage
         st = cp.get("storage_fees", {})
         lines.append(
             f"• Platform inventory storage fees: {fmt_pct(st.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(st.get('absolute_change'))})"
-            f"{severity_suffix(st.get('severity'), period=period)}"
+            f"{severity_suffix(st.get('severity'))}"
         )
 
-        # ----- CM2 Profit -----
+        # CM2 Profit
         cm2 = es.get("cm2_profit", {})
         cm2_label = "CM2 profit (YoY)" if is_yearly else "CM2 profit"
         lines.append(
             f"• {cm2_label}: {fmt_pct(cm2.get('pct_change'))} "
             f"({currency_symbol}{fmt_num(cm2.get('absolute_change'))})"
-            f"{severity_suffix(cm2.get('severity'), period=period)}"
+            f"{severity_suffix(cm2.get('severity'))}"
         )
 
-        # ----- Reimbursements -----
+        # Reimbursements
         reimb = es.get("reimbursements", {})
         if reimb.get("present") and isinstance(reimb.get("amount"), (int, float)):
             lines.append(
@@ -2447,12 +2148,11 @@ def render_month_end_summary(
             )
 
     # =========================================================
-    # PRODUCT INSIGHTS
+    # PRODUCT INSIGHTS (PERCENTAGE ONLY)
     # =========================================================
     lines.append("\n## PRODUCT INSIGHTS")
 
-    product_insights = analysis_insights.get("product_insights", {}) if analysis_insights else {}
-    sku_rolling_trends = analysis_insights.get("sku_rolling_trends", {}) if analysis_insights else {}
+    sku_actions = strategy_actions or {}
 
     for sku in focus_skus:
         s = sku_mom.get(sku)
@@ -2462,17 +2162,17 @@ def render_month_end_summary(
         name = s.get("product_name", sku)
         lines.append(f"\n{name}")
 
-        def sku_fmt(metric, key="delta", pct_key="delta_pct"):
+        def sku_pct(metric):
             m = s.get(metric, {})
             if not isinstance(m, dict):
-                return "N/A (N/A)"
-            return f"{fmt_num(m.get(key))} ({fmt_pct(m.get(pct_key))})"
+                return "N/A"
+            return fmt_pct(m.get("delta_pct"))
 
-        lines.append(f"• ASP: {currency_symbol}{sku_fmt('asp')}")
-        lines.append(f"• Units: {sku_fmt('total_quantity')}")
-        lines.append(f"• Net sales: {currency_symbol}{sku_fmt('net_sales')}")
-        lines.append(f"• CM1 profit: {currency_symbol}{sku_fmt('profit')}")
-        lines.append(f"• CM1 profit per unit: {currency_symbol}{sku_fmt('unit_wise_profitability')}")
+        lines.append(f"• ASP: {sku_pct('asp')}")
+        lines.append(f"• Units: {sku_pct('total_quantity')}")
+        lines.append(f"• Net sales: {sku_pct('net_sales')}")
+        lines.append(f"• CM1 profit: {sku_pct('profit')}")
+        lines.append(f"• CM1 profit per unit: {sku_pct('unit_wise_profitability')}")
 
         sku_diag = product_insights.get(sku, {})
         diagnosis_codes = sku_diag.get("diagnosis_codes", ["mixed_signal"])
@@ -2483,16 +2183,15 @@ def render_month_end_summary(
                 or sku_rolling_trends.get(sku, {}).get("movement_summary")
             )
 
-            # Show concise yearly/quarterly journey ONLY
+            # ✅ CRITICAL FIX — type-safe check
             if isinstance(movement_summary, str) and movement_summary.strip():
                 lines.append(f"• Trend summary: {movement_summary}")
 
-            # ❌ Do NOT show diagnosis for yearly/quarterly
+            lines.append(f"Current-period diagnosis: {diagnosis_codes[0]}")
         else:
             for code in diagnosis_codes:
                 for line in DIAGNOSIS_TEXT.get(code, []):
                     lines.append(line)
-
 
         # ----- ACTION (MONTHLY ONLY) -----
         if strategy_actions and sku in strategy_actions:
@@ -2530,6 +2229,8 @@ def render_month_end_summary(
     return "\n".join(lines)
 
 
+
+
 def get_or_create_summary(
     user_id,
     country,
@@ -2541,27 +2242,41 @@ def get_or_create_summary(
     target_sku: str | list | None = None,
     force_regenerate=False
 ):
-
+    
     print("\n=== get_or_create_summary START ===")
     print("period:", period, type(period))
     print("timeline:", timeline, type(timeline))
     print("year:", year, type(year))
 
-    # ---------------- Objective defaults / normalize ----------------
-    objective = objective or {}
-    constraints = objective.get("constraints") or {}
+    # ============================================================
+    # LOAD OBJECTIVE FROM DB
+    # ============================================================
+    user_objective_row = UserObjective.query.filter_by(
+        user_id=user_id,
+        country=country
+    ).first()
 
-    primary_goal = objective.get("primary_goal", "profit")
-    risk_level = objective.get("risk_level", "balanced")
-
-    max_tacos = constraints.get("max_tacos")
-    max_price_increase_pct = constraints.get("max_price_increase_pct")
-    ad_budget_cap = constraints.get("ad_budget_cap")
-    dont_change_price = constraints.get("dont_change_price", False)
-    notes = objective.get("notes")
+    if user_objective_row:
+        objective_v2 = {
+            "growth_intent": user_objective_row.growth_intent,
+            "profit_priority": user_objective_row.profit_priority,
+            "inventory_clearance_priority": user_objective_row.inventory_clearance_priority,
+            "business_context": user_objective_row.business_context,
+            "country": str(country).lower(),
+            "time_horizon": "1_month"
+        }
+    else:
+        objective_v2 = {
+            "growth_intent": "aggressive",
+            "profit_priority": "protect_growth",
+            "inventory_clearance_priority": False,
+            "business_context": None,
+            "country": str(country).lower(),
+            "time_horizon": "1_month"
+        }
 
     # ============================================================
-    # 🔑 DETECT USER-SELECTED PERIOD
+    # PERIOD RESOLUTION
     # ============================================================
     user_selected = bool(period and timeline and year)
 
@@ -2570,22 +2285,22 @@ def get_or_create_summary(
         timeline = str(month)
         period = "monthly"
 
-    is_latest = is_latest_period(period, timeline, year, user_id=user_id, country=country)
+    allow_reco = is_latest_period(period,timeline,year,user_id=user_id,country=country)
 
+    # 🔥 NEW CONTROL FLAGS
     allow_inventory = False
-    allow_actions = False
+    allow_recommendations = False
 
     if period in ("monthly", "quarterly"):
         allow_inventory = is_latest
-        allow_actions = is_latest
+        allow_recommendations = is_latest
 
     elif period == "yearly":
         allow_inventory = is_latest
-        allow_actions = False
-
+        allow_recommendations = False
 
     # ============================================================
-    # CACHE LOOKUP
+    # CACHE CHECK
     # ============================================================
     cached = fetch_existing_summary(
         user_id, country, marketplace_id, period, timeline, year
@@ -2600,29 +2315,21 @@ def get_or_create_summary(
             ),
             "source": "db",
             "scope": "portfolio",
-            "objective": {
-                "primary_goal": cached.primary_goal,
-                "risk_level": cached.risk_level,
-                "constraints": {
-                    "max_tacos": cached.max_tacos,
-                    "max_price_increase_pct": float(cached.max_price_increase_pct)
-                        if cached.max_price_increase_pct is not None else None,
-                    "ad_budget_cap": float(cached.ad_budget_cap)
-                        if cached.ad_budget_cap is not None else None,
-                    "dont_change_price": cached.dont_change_price,
-                },
-                "notes": cached.notes
-            }
+            "objective": objective_v2
         }
 
-    # ---------------- CURRENT DATA ----------------
+    # ============================================================
+    # CURRENT DATA
+    # ============================================================
     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
     df_current_detail, df_current_total = _split_total_row(df_current)
 
     sku_current = compute_sku_precalc(df_current_detail)
     top_5_skus = select_top_5_skus_by_current_cm1_profit(sku_current)
 
-    # ---------------- SINGLE SKU MODE ----------------
+    # ============================================================
+    # SINGLE SKU MODE
+    # ============================================================
     single_sku_mode = False
     scope = "portfolio"
 
@@ -2647,36 +2354,41 @@ def get_or_create_summary(
                 "sku_current": {},
                 "sku_mom": {},
                 "sku_yoy": None,
-                "objective": objective,
+                "objective": objective_v2,
                 "sku_actions": {},
                 "scope": "sku",
                 "source": "no_data",
             }
 
-    # ---------------- ROLLING CONTEXT ----------------
+    # ============================================================
+    # ROLLING CONTEXT
+    # ============================================================
     movement_context = {}
-    rolling_extremes = {}
-    yearly_temporal_signals = None   # ✅ NEW SAFE INIT
+    rolling_extremes = {} 
 
     if not single_sku_mode:
+
         if period == "yearly":
             anchor = resolve_yearly_analysis_anchor(user_id, country, year)
+            print("\n=== YEARLY ANCHOR RESOLUTION ===")
+            print("anchor:", anchor, type(anchor))
 
             if anchor:
                 analysis_anchor_year, analysis_anchor_month = anchor
-            else:
-                analysis_anchor_year = analysis_anchor_month = None
         else:
             analysis_anchor_year = year
-
             if period == "monthly":
                 analysis_anchor_month = int(timeline)
-
             elif period == "quarterly":
                 QUARTER_TO_MONTH = {"Q1": 3, "Q2": 6, "Q3": 9, "Q4": 12}
                 analysis_anchor_month = QUARTER_TO_MONTH.get(timeline)
+
             else:
                 analysis_anchor_month = None
+
+        print("\n=== ROLLING GUARD CHECK ===")
+        print("analysis_anchor_year:", analysis_anchor_year, type(analysis_anchor_year))
+        print("analysis_anchor_month:", analysis_anchor_month, type(analysis_anchor_month))
 
         if analysis_anchor_year and analysis_anchor_month:
             rolling_series = build_rolling_monthly_series(
@@ -2687,18 +2399,12 @@ def get_or_create_summary(
             )
 
             movement_context = build_movement_context(rolling_series)
-            rolling_extremes = extract_rolling_extremes(rolling_series)
-
-            # ✅ YEARLY TEMPORAL SIGNALS (NEW)
-            if period == "yearly":
-                yearly_temporal_signals = build_yearly_temporal_signals(rolling_series) or None
-
+            rolling_extremes = extract_rolling_extremes(rolling_series)  # 👈 ADD
         else:
-            movement_context = {}
+            movement_context = {}  # graceful fallback
             rolling_extremes = {}
-            yearly_temporal_signals = None
 
-    # ---------------- SKU ROLLING CONTEXT ----------------
+    # ---------------- SKU ROLLING CONTEXT (YEARLY / QUARTERLY ONLY) ----------------
     sku_rolling_trends = {}
 
     if period in ("yearly", "quarterly") and not single_sku_mode:
@@ -2712,71 +2418,63 @@ def get_or_create_summary(
             )
 
             trend = summarize_sku_rolling_trend(series)
-            yearly_journey = summarize_sku_yearly_journey(series)
-            yearly_phase = summarize_sku_yearly_phases(series)
-            quarterly_phase = summarize_sku_quarterly_phases(series)
-
 
             if isinstance(trend, dict) and trend:
-
-                # -------- PERIOD-SAFE MOVEMENT SUMMARY --------
-                if period == "yearly":
-                    movement_summary = (
-                        yearly_phase
-                        or yearly_journey
-                        or build_sku_movement_summary(trend)
-                    )
-
-                elif period == "quarterly":
-                    movement_summary = (
-                        quarterly_phase
-                        or build_sku_movement_summary(trend)
-                    )
-
-                else:
-                    movement_summary = None
-
                 sku_rolling_trends[sku] = {
                     **trend,
-                    "movement_summary": movement_summary
+                    "movement_summary": build_sku_movement_summary(trend)
                 }
 
 
+        
 
 
     # ---------------- INVENTORY ----------------
     lost_total_val = _total_value(df_current_total, "lost_total")
     inventory_lost = round(abs(lost_total_val), 2) if lost_total_val is not None else 0.0
+
     if single_sku_mode:
         inventory_lost = 0.0
 
     inventory_alerts = {}
-    if allow_inventory and not single_sku_mode:
-
+    if allow_reco and not single_sku_mode:
         inventory_aged_df = fetch_inventory_aged_by_user(user_id)
         if not inventory_aged_df.empty:
             inventory_alerts = build_inventory_alerts(inventory_aged_df)
 
-    # ---------------- PREVIOUS PERIOD ----------------
+    # ============================================================
+    # PREVIOUS PERIOD
+    # ============================================================
     (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
     df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
     df_prev_detail, df_prev_total = _split_total_row(df_prev)
 
-    # ---------------- PERIOD ABSOLUTE CHANGES ----------------
+    # ---------------- PERIOD ABSOLUTE CHANGES (SOURCE OF TRUTH) ----------------
     period_absolute_changes = {}
+    period_pct_changes = None
+
     if not df_current_total.empty and not df_prev_total.empty:
         period_absolute_changes = compute_period_absolute_changes(
             df_current_total,
             df_prev_total
         )
 
-    # ---------------- PERIOD % CHANGES ----------------
-    period_pct_changes = None
-    if not df_current_total.empty and not df_prev_total.empty:
+    # 👇 ADD THIS LINE
+    print("ABS DELTAS:", period_absolute_changes)
+
+    # ---------------- PERIOD % CHANGES (YEARLY / QUARTERLY ONLY) ----------------
+    period_pct_changes = {}
+
+    if period in ("yearly", "quarterly") \
+    and not df_current_total.empty \
+    and not df_prev_total.empty:
+
         period_pct_changes = compute_period_pct_changes(
             df_current_total,
             df_prev_total
         )
+
+    print("PERIOD %:", period_pct_changes)    
 
     # ---------------- SKU COMPARISON ----------------
     sku_prev = compute_sku_precalc(df_prev_detail)
@@ -2785,6 +2483,7 @@ def get_or_create_summary(
     if single_sku_mode:
         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
 
+
     # ---------------- AI ----------------
     ai_payload = {
         "period": f"{period} {timeline} {year}",
@@ -2792,8 +2491,7 @@ def get_or_create_summary(
         "country": str(country).lower(),
         "period_absolute_changes": period_absolute_changes,
         "period_pct_changes": period_pct_changes,
-        "sku_rolling_trends": sku_rolling_trends,
-        "yearly_temporal_signals": yearly_temporal_signals,  # ✅ NEW
+        "sku_rolling_trends": sku_rolling_trends,   # 👈 ADD THIS
         "inventory_lost": inventory_lost,
         "inventory_alerts": inventory_alerts,
         "sku_mom": sku_mom,
@@ -2818,34 +2516,22 @@ def get_or_create_summary(
 
     analysis_insights = None
     if not single_sku_mode:
-        analysis_raw = run_prompt_1_analysis(ai_payload)
-
-        try:
-            analysis_insights = json.loads(analysis_raw)
-        except Exception:
-            print("\n❌ Prompt-1 JSON PARSE FAILED")
-            print("RAW OUTPUT:\n", analysis_raw)
-            analysis_insights = {}   # ← prevents summary disappearance
-
-        # preserve deterministic SKU rolling narratives
-        if isinstance(analysis_insights, dict):
-            analysis_insights["sku_rolling_trends"] = sku_rolling_trends
-
-#------------------ STRATEGY ----------------
+        analysis_insights = json.loads(run_prompt_1_analysis(ai_payload))
 
     sku_actions = {}
-    if allow_actions and not single_sku_mode and analysis_insights:
+    if allow_reco and not single_sku_mode and analysis_insights and period != "yearly":
         strategy_raw = run_prompt_2_strategy(
             analysis_insights, ai_payload["objective"], top_5_skus
         )
         sku_actions = json.loads(strategy_raw).get("sku_actions") or {}
+
 
     # ---------------- RENDER ----------------
     final_text = render_month_end_summary(
         period=period,
         timeline=timeline,
         year=year,
-        analysis_insights={} if single_sku_mode else (analysis_insights or {}),
+        analysis_insights=None if single_sku_mode else analysis_insights,
         mom=None,
         sku_mom=sku_mom,
         focus_skus=top_5_skus,
@@ -2855,7 +2541,7 @@ def get_or_create_summary(
         strategy_actions=sku_actions if not single_sku_mode else None
     )
 
-    # ---------------- SAVE ----------------
+
     save_summary_to_db({
         "user_id": user_id,
         "country": country,
@@ -2863,13 +2549,6 @@ def get_or_create_summary(
         "period": period,
         "timeline": timeline,
         "year": year,
-        "primary_goal": primary_goal,
-        "risk_level": risk_level,
-        "max_tacos": max_tacos,
-        "max_price_increase_pct": max_price_increase_pct,
-        "ad_budget_cap": ad_budget_cap,
-        "dont_change_price": dont_change_price,
-        "notes": notes,
         "summary": final_text,
         "recommendations": json.dumps(sku_actions or {}),
         "upsert": True
@@ -2877,15 +2556,18 @@ def get_or_create_summary(
 
     return {
         "summary": final_text,
-        "recommendations": sku_actions,
+        # "overall_month_summary": overall_month_summary,
+        "portfolio_level_narrative": portfolio_level_narrative,
+        "recommendations": sku_actions if allow_recommendations else {},
         "inventory_lost": inventory_lost,
-        "inventory_alerts": inventory_alerts,
+        "inventory_alerts": inventory_alerts if allow_inventory else {},
         "sku_current": sku_current,
         "sku_mom": sku_mom,
         "sku_yoy": None,
-        "objective": ai_payload["objective"],
+        "objective": objective_v2,
         "sku_actions": sku_actions,
         "scope": scope,
         "source": "ai",
     }
+
 

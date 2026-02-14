@@ -429,81 +429,80 @@ const LiveLineChart: React.FC<{
   const colorMap = useMemo(() => buildRecencyColorMap(series.map((s) => s.name)), [series]);
 
   const option = {
-tooltip: {
-  trigger: "axis",
-  textStyle: {
-    fontSize: 12,
-    color: "#414042",
-  },
-  formatter: (params: any) => {
-    const rawX = params?.[0]?.axisValue ?? "";
+    tooltip: {
+      trigger: "axis",
+      textStyle: {
+        fontSize: 12,
+        color: "#414042",
+      },
+      formatter: (params: any) => {
+        const rawX = params?.[0]?.axisValue ?? "";
 
-    // header like Chart.js tooltip title behavior
-    const header = isQuarterCompare
-      ? `Month ${rawX}`
-      : isDaily && isNumericAxis && !isNaN(Number(rawX))
-        ? `Day ${Number(rawX) + displayDayShift}`
-        : String(rawX);
+        // header like Chart.js tooltip title behavior
+        const header = isQuarterCompare
+          ? `Month ${rawX}`
+          : isDaily && isNumericAxis && !isNaN(Number(rawX))
+            ? `Day ${Number(rawX) + displayDayShift}`
+            : String(rawX);
 
-    const fmtNumber = (n: number) =>
-      n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const fmtNumber = (n: number) =>
+          n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    const lines = (params || []).map((p: any) => {
-      const valObj = p?.data;
+        const lines = (params || []).map((p: any) => {
+          const valObj = p?.data;
 
-      const value =
-        valObj == null
-          ? null
-          : typeof valObj === "object" && "value" in valObj
-            ? valObj.value
-            : valObj;
+          const value =
+            valObj == null
+              ? null
+              : typeof valObj === "object" && "value" in valObj
+                ? valObj.value
+                : valObj;
 
-      const monthLabel =
-        typeof valObj === "object" && valObj?.monthLabel ? String(valObj.monthLabel) : null;
+          const monthLabel =
+            typeof valObj === "object" && valObj?.monthLabel ? String(valObj.monthLabel) : null;
 
-      // Match Chart.js: "Label: ₹ 12,345.67" (or units without decimals)
-      const displayValue =
-        value == null
-          ? "-"
-          : metric === "net_sales"
-            ? `${currencySymbol ?? ""}${fmtNumber(Number(value))}`
+          const fmtNumber = (n: number) =>
+            n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-            : `${Number(value).toLocaleString()}`;
+          const displayValue =
+            value == null
+              ? "-"
+              : metric === "net_sales"
+                ? `${currencySymbol ?? ""}${fmtNumber(Number(value))}`
+                : `${Number(value).toLocaleString()}`;
 
-      // For quarter-compare, keep your month label hint (but keep main color consistent)
-      const suffix =
-        isQuarterCompare && monthLabel
-          ? ` <span style="color:#6B7280;">(${monthLabel})</span>`
-          : "";
+          const suffix =
+            isQuarterCompare && monthLabel ? ` <span style="color:#6B7280;">(${monthLabel})</span>` : "";
 
-      return `
-        <div style="font-size:12px; line-height:1.4; color:#414042;">
-          ${p.marker}
-          <span>${p.seriesName}${suffix}: </span>
-          <span style="color:#414042;">${displayValue}</span>
-        </div>
-      `;
-    });
+          return `
+    <div style="font-size:12px; line-height:1.4; color:#44042;">
+      <span style="display:inline-block;width:10px;height:10px;margin-right:6px;background:${p.color};border-radius:0;"></span>
+      <span>${p.seriesName}${suffix}: </span>
+      <span style="color:#414042;">${displayValue}</span>
+    </div>
+  `;
+        });
 
-    return `
+
+        return `
       <div style="font-size:12px; color:#414042;">
-        <div style="font-weight:600; margin-bottom:4px; color:#414042;">
+        <div style="font-weight:600; margin-bottom:4px; color:#1414042;">
           ${header}
         </div>
         ${lines.join("")}
       </div>
     `;
-  },
-},
+      },
+    },
 
 
     legend: {
       top: 10,
       left: "left",
       orient: "horizontal",
-      icon: "rect",
-      itemWidth: 12,
-      itemHeight: 12,
+      icon: "rect",          // square/rect marker
+      itemWidth: 10,         // ✅ same as height => square
+      itemHeight: 10,        // ✅ same as width => square
       itemGap: 14,
       textStyle: {
         fontSize: 12,
@@ -512,6 +511,7 @@ tooltip: {
       },
       data: series.map((s) => s.name),
     },
+
     grid: { left: 46, right: 16, top: 62, bottom: 44 },
     xAxis: {
       type: "category",
@@ -605,7 +605,8 @@ tooltip: {
 
 
   return (
-    <div ref={containerRef} style={{ width: "100%", height: "100%" }}>
+    <div ref={containerRef} className="w-full h-full min-h-0 overflow-hidden">
+
       <ReactECharts
         option={option}
         style={{ width: "100%", height: "100%" }}
@@ -636,17 +637,14 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
     return mapBackendTrendToSeries(props.data);
   }, [props.data]);
 
-
-
-
   return (
-    <div className="w-full h-full min-h-0 flex flex-col">
+    <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
 
-      <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-3">
+      <div className="shrink-0 flex items-center justify-between gap-3 w-full">
+
         <PageBreadcrumb pageTitle="Performance Trend" variant="page" textSize="2xl" />
 
-        <div
-          className="w-full md:w-auto"
+        <div className="flex items-center shrink-0"
           data-no-expand
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
@@ -669,19 +667,7 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
                 onClick={props.onToggleExpand}
                 aria-label={props.isExpanded ? "Collapse chart" : "Expand chart"}
                 title={props.isExpanded ? "Collapse" : "Expand"}
-                className="rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md"
+                className=" hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
               >
                 {props.isExpanded ? (
                   <CgPushLeft size={18} className="font-extrabold" />
@@ -693,8 +679,6 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
           </div>
         </div>
       </div>
-
-      {/* <div className="mt-2 h-[450px] md:h-[520px] lg:h-[600px] overflow-hidden"> */}
 
       <div className="mt-2 flex-1 min-h-0 overflow-hidden">
         {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
@@ -716,8 +700,8 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
           <div className="text-sm text-gray-500">Loading...</div>
         )}
       </div>
-
     </div>
   );
+
 }
 

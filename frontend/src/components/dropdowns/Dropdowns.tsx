@@ -84,32 +84,50 @@ type PerformanceTrendPayload = {
 };
 
 type AiSummaryResponse = {
-  summary?: string | null;
-  recommendations?: string | null;
+  summary?: string | null; // can be markdown OR JSON string
+  recommendations?: string | RecommendationsMap | null; // ✅ nested map
 
-  // ✅ NEW
   performance_trend?: PerformanceTrendPayload;
   performance_trend_metric?: "net_sales" | "units";
 
-  objective?: {
-    primary_goal?: string;
-    risk_level?: string;
-  };
+  objective?: ObjectiveSnapshot;
+  objective_changed?: boolean;
 };
-
 
 type AiPanelData = {
   summaryBullets: string[];
-  skuInsightsBullets: string[];     // NEW
+  skuInsightsBullets: string[];
   recommendationBullets: string[];
-  inventoryBullets: string[];       // NEW
-  rawSummary?: string | null;
-  rawRecommendations?: string | null;
-  objective?: {
-    primary_goal?: string;
-    risk_level?: string;
-  };
+  inventoryBullets: string[];
 
+  rawSummary?: string | null;
+  rawRecommendations?: string | RecommendationsMap | null;
+
+  objective?: ObjectiveSnapshot;
+  objective_changed?: boolean;
+};
+
+type RecommendationDetail = {
+  impact_summary: string;
+  journey_narrative: string;
+  recommendation: string;
+  turning_point: string;
+};
+
+type RecommendationsMap = Record<string, RecommendationDetail>;
+
+type SummaryJson = {
+  sku_actions?: RecommendationsMap;
+  // later you can add: summary?: string[], inventory?: string[], etc if backend sends
+};
+
+type ObjectiveSnapshot = {
+  growth_intent: "conservative" | "balanced" | "aggressive";
+  profit_priority: "high" | "protect_growth" | "sacrifice_short_term";
+  inventory_clearance_priority: boolean;
+  business_context: string | null;
+  country: string;
+  time_horizon: string; // "1_month"
 };
 
 
@@ -173,6 +191,18 @@ const markFetched = (year: string, month?: string) => {
   // keep latestFetchedPeriod updated (used by PeriodFiltersTable too)
   if (m) {
     localStorage.setItem("latestFetchedPeriod", JSON.stringify({ year: y, month: m }));
+  }
+};
+
+const tryParseSummaryJson = (s?: string | null): SummaryJson | null => {
+  if (!s || typeof s !== "string") return null;
+  const trimmed = s.trim();
+  if (!trimmed.startsWith("{")) return null;
+
+  try {
+    return JSON.parse(trimmed) as SummaryJson;
+  } catch {
+    return null;
   }
 };
 
@@ -306,62 +336,62 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
   };
 
   for (let i = 0; i < lines.length; i++) {
-  const raw = lines[i];
+    const raw = lines[i];
 
-  const line = raw
-    .replace(/^[-•]\s+/, "")      // bullets
-    .replace(/^\d+\.\s*/, "")    // remove "1. ", "2. " etc
-    .trim();
+    const line = raw
+      .replace(/^[-•]\s+/, "")      // bullets
+      .replace(/^\d+\.\s*/, "")    // remove "1. ", "2. " etc
+      .trim();
 
-  if (!line) continue;
+    if (!line) continue;
 
-  const nextLine = lines[i + 1]
-    ?.replace(/^[-•]\s+/, "")
-    .replace(/^\d+\.\s*/, "")
-    .trim();
+    const nextLine = lines[i + 1]
+      ?.replace(/^[-•]\s+/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim();
 
-  // ✅ PRODUCT HEADER ONLY if next line is a metric
-  const isProductHeader =
-    !isMetric(line) &&
-    !isAction(line) &&
-    !!nextLine &&
-    isMetric(nextLine);
+    // ✅ PRODUCT HEADER ONLY if next line is a metric
+    const isProductHeader =
+      !isMetric(line) &&
+      !isAction(line) &&
+      !!nextLine &&
+      isMetric(nextLine);
 
-  if (isProductHeader) {
-    pushCurrent();
-    current = { name: line, metrics: [], insights: [], actions: [] };
-    continue;
+    if (isProductHeader) {
+      pushCurrent();
+      current = { name: line, metrics: [], insights: [], actions: [] };
+      continue;
+    }
+
+    if (!current) continue;
+
+    if (isMetric(line)) {
+      const [label, ...rest] = line.split(":");
+      const value = rest.join(":").trim();
+
+      const num = value.match(/[-+]?[\d,.]+/g)?.[0]?.replace(/,/g, "");
+      const n = num ? Number(num) : NaN;
+      const color =
+        !isNaN(n)
+          ? n < 0
+            ? "#DC2626"
+            : n > 0
+              ? "#059669"
+              : "#414042"
+          : "#414042";
+
+      current.metrics.push({ label: label.trim(), value, color });
+      continue;
+    }
+
+    if (isAction(line)) {
+      current.actions.push(line.replace(/^action:\s*/i, "").trim());
+      continue;
+    }
+
+    // ✅ everything else = insight (NOT product, NOT numbered)
+    current.insights.push(line);
   }
-
-  if (!current) continue;
-
-  if (isMetric(line)) {
-    const [label, ...rest] = line.split(":");
-    const value = rest.join(":").trim();
-
-    const num = value.match(/[-+]?[\d,.]+/g)?.[0]?.replace(/,/g, "");
-    const n = num ? Number(num) : NaN;
-    const color =
-      !isNaN(n)
-        ? n < 0
-          ? "#DC2626"
-          : n > 0
-          ? "#059669"
-          : "#414042"
-        : "#414042";
-
-    current.metrics.push({ label: label.trim(), value, color });
-    continue;
-  }
-
-  if (isAction(line)) {
-    current.actions.push(line.replace(/^action:\s*/i, "").trim());
-    continue;
-  }
-
-  // ✅ everything else = insight (NOT product, NOT numbered)
-  current.insights.push(line);
-}
 
 
   pushCurrent();
@@ -378,10 +408,14 @@ const extractBullets = (md: string | null | undefined): string[] => {
     .map((l) => l.replace(/^-\s+/, "").trim())
     .filter(Boolean);
 };
+
 const renderMarkdownInline = (text: string) => {
-  const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
+  const html = text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>") // **bold**
+    .replace(/__(.+?)__/g, "<strong>$1</strong>");    // __bold__
   return { __html: html };
 };
+
 // Pull only bullets under "## SUMMARY" section if present; otherwise fallback to all bullets
 // --- NEW: split markdown into sections by "## " headings
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
@@ -434,65 +468,107 @@ const extractSummaryAndSkuBullets = (md?: string | null) => {
   };
 };
 
-const extractRecoAndInventoryBullets = (
-  mdOrObj?: string | Record<string, string> | null
-) => {
-  // ✅ Case 1: object-based recommendations (new API)
+const extractRecoBullets = (mdOrObj?: string | Record<string, string> | null) => {
   if (mdOrObj && typeof mdOrObj === "object") {
-    return {
-      recommendationBullets: Object.values(mdOrObj),
-      inventoryBullets: [],
-    };
+    return Object.values(mdOrObj);
   }
-
-  // ✅ Case 2: markdown (old API)
-  if (!mdOrObj || typeof mdOrObj !== "string") {
-    return { recommendationBullets: [], inventoryBullets: [] };
-  }
+  if (!mdOrObj || typeof mdOrObj !== "string") return [];
 
   const sections = parseMdSections(mdOrObj);
+  return sections["ROOT"] ?? [];
+};
 
-  return {
-    recommendationBullets: sections["ROOT"] ?? [],
-    inventoryBullets: sections["INVENTORY"] ?? [],
-  };
+const extractRecoBulletsV2 = (reco?: string | RecommendationsMap | null): string[] => {
+  if (!reco) return [];
+
+  // old markdown mode
+  if (typeof reco === "string") {
+    const sections = parseMdSections(reco);
+    return sections["ROOT"] ?? [];
+  }
+
+  // new object mode: { sku: {impact_summary,...} }
+  return Object.entries(reco).flatMap(([sku, d]) => [
+    `**${sku}**: ${d.impact_summary}`,
+    `Action: ${d.recommendation}`,
+    `Turning point: ${d.turning_point}`,
+  ]);
+};
+
+const PROFIT_LABEL_BY_VALUE: Record<ObjectiveSnapshot["profit_priority"], string> = {
+  high: "Yes, profit is high priority",
+  protect_growth: "Okay with current profit to grow sales",
+  sacrifice_short_term: "Okay with short-term losses for high growth",
+};
+
+const GROWTH_LABEL_BY_VALUE: Record<ObjectiveSnapshot["growth_intent"], string> = {
+  conservative: "Conservative",
+  balanced: "Balanced",
+  aggressive: "Aggressive",
 };
 
 const ProductInsightsSection = ({
   blocks,
   objective,
+  objectiveChanged,
 }: {
   blocks: ProductInsightBlock[];
-  objective?: {
-    primary_goal?: string;
-    risk_level?: string;
-  };
+  objective?: ObjectiveSnapshot;
+  objectiveChanged?: boolean;
 }) => {
+
   if (!blocks.length) return null;
 
   return (
     <div className="space-y-4">
       <PageBreadcrumb
-        pageTitle="PRODUCT INSIGHTS"
+        pageTitle="Product Insights"
         variant="page"
         align="left"
         textSize="2xl"
       />
 
-      {/* ✅ OBJECTIVE META */}
-      {objective?.primary_goal && (
-        <div className="text-xs 2xl:text-sm text-charcoal-500 bg-slate-100 rounded-lg px-3 py-2">
-          <span className="font-semibold text-charcoal-600">Objective:</span>{" "}
-          {objective.primary_goal.toUpperCase()}
-          {objective.risk_level && (
-            <>
-              {" "}
-              | <span className="font-semibold">Risk:</span>{" "}
-              {objective.risk_level.toUpperCase()}
-            </>
-          )}
+      {objective && (
+        <div className="p-3 rounded-lg bg-white border border-[#E5E7EB] mt-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-gray-500 font-semibold">Objective</div>
+
+            {objectiveChanged ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">
+                Updated for this summary
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs 2xl:text-sm text-charcoal-600">
+            <div>
+              <span className="font-semibold">Growth:</span>{" "}
+              <span>{GROWTH_LABEL_BY_VALUE[objective.growth_intent]}</span>
+            </div>
+
+            <div>
+              <span className="font-semibold">Profit:</span>{" "}
+              <span>{PROFIT_LABEL_BY_VALUE[objective.profit_priority]}</span>
+            </div>
+
+            <div>
+              <span className="font-semibold">Inventory Dilution:</span>{" "}
+              <span>{objective.inventory_clearance_priority ? "Yes" : "No"}</span>
+            </div>
+
+
+
+            {objective.business_context ? (
+              <div className="sm:col-span-2">
+                <span className="font-semibold">Business Context:</span>{" "}
+                <span>{objective.business_context}</span>
+              </div>
+            ) : null}
+          </div>
         </div>
       )}
+
+
 
       {/* EXISTING PRODUCT BLOCKS */}
       <div className="space-y-5">
@@ -503,12 +579,14 @@ const ProductInsightsSection = ({
             </div>
 
             {b.metrics.length > 0 && (
-              <div className="flex flex-wrap gap-x-6 gap-y-1 2xl:text-sm text-xs">
+              <div className="grid 2xl:grid-cols-3 grid-cols-2 gap-x-7 gap-y-2 text-xs 2xl:text-sm">
                 {b.metrics.map((m, i) => (
                   <div key={i} className="flex items-center gap-1">
-                    <span className="text-charcoal-600 text-xs">{m.label}:</span>
+                    <span className="text-charcoal-600 whitespace-nowrap">
+                      {m.label}:
+                    </span>
                     <span
-                      className="font-semibold"
+                      className="font-semibold whitespace-nowrap"
                       style={{ color: m.color || "#414042" }}
                     >
                       {m.value}
@@ -528,7 +606,7 @@ const ProductInsightsSection = ({
             )}
 
             {b.actions.length > 0 && (
-              <div className="text-sm text-charcoal-600">
+              <div className="2xl:text-sm text-xs text-charcoal-600">
                 <span className="font-bold">Action – </span>
                 {b.actions.join(" ")}
               </div>
@@ -540,11 +618,6 @@ const ProductInsightsSection = ({
   );
 };
 
-
-
-
-
-
 type AiSingleInsightCardProps = {
   loading: boolean;
   error: string | null;
@@ -552,10 +625,9 @@ type AiSingleInsightCardProps = {
   recommendationBullets: string[];
   skuInsightsBullets: string[];
   inventoryBullets: string[];
-  objective?: {
-    primary_goal?: string;
-    risk_level?: string;
-  };
+  objective?: ObjectiveSnapshot;
+  objectiveChanged?: boolean;
+  showObjective?: boolean;
 };
 
 const Section = ({
@@ -598,6 +670,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   skuInsightsBullets,
   inventoryBullets,
   objective,
+  objectiveChanged,
+  showObjective,
 }) => {
   if (loading) {
     return (
@@ -625,75 +699,76 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   }
 
   // 🔹 Split summary into metrics + narrative
-const summaryMetrics = summaryBullets
-  .filter((l) => l.includes(":"))
-  .map((l) => {
-    const [label, ...rest] = l.split(":");
-    return {
-      label: label.trim(),
-      value: rest.join(":").trim(),
-    };
-  });
+  const summaryMetrics = summaryBullets
+    .filter((l) => l.includes(":"))
+    .map((l) => {
+      const [label, ...rest] = l.split(":");
+      return {
+        label: label.trim(),
+        value: rest.join(":").trim(),
+      };
+    });
 
-const narrativeInsights = summaryBullets.filter(
-  (l) => !l.includes(":")
-);
+  const narrativeInsights = summaryBullets.filter(
+    (l) => !l.includes(":")
+  );
 
 
 
 
   return (
-    <div className="flex gap-4">
- <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
-     <div className="space-y-3">
-  <PageBreadcrumb
-    pageTitle="Business Summary"
-    variant="page"
-    align="left"
-    textSize="2xl"
-  />
+    <div className="flex flex-col md:flex-row gap-4">
+      <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
+        <div className="space-y-3">
+          <PageBreadcrumb
+            pageTitle="Business Summary"
+            variant="page"
+            align="left"
+            textSize="2xl"
+          />
 
-  {/* Numeric points */}
- <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-  {summaryMetrics.map((p, i) => (
-    <li key={i}>
-      <span className="font-medium">{p.label}:</span>{" "}
-      <span>{p.value}</span>
-    </li>
-  ))}
-</ul>
+          {/* Numeric points */}
+          <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
+            {summaryMetrics.map((p, i) => (
+              <li key={i}>
+                <span className="font-medium">{p.label}:</span>{" "}
+                <span>{p.value}</span>
+              </li>
+            ))}
+          </ul>
 
-  {/* Narrative insight LAST */}
-  {narrativeInsights.length > 0 && (
-  <div className="mt-3 space-y-2 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
-    {narrativeInsights.map((line, i) => (
-      <p key={i}>{line}</p>
-    ))}
-  </div>
-)}
+          {/* Narrative insight LAST */}
+          {narrativeInsights.length > 0 && (
+            <div className="mt-3 space-y-2 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
+              {narrativeInsights.map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
+            </div>
+          )}
 
-</div>
+        </div>
 
 
-      
-      {/* Inventory shown only if still exists separately */}
-      {inventoryBullets.length > 0 && (
-        <Section
-          title="Inventory"
-          bullets={inventoryBullets}
+
+        {/* Inventory shown only if still exists separately */}
+        {inventoryBullets.length > 0 && (
+          <Section
+            title="Inventory"
+            bullets={inventoryBullets}
+          />
+        )}
+      </div>
+      <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 ">
+        <ProductInsightsSection
+          blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+          objective={showObjective ? objective : undefined}
+          objectiveChanged={showObjective ? objectiveChanged : undefined}
         />
-      )}
-    </div>
-    <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 ">
-      <ProductInsightsSection
-  blocks={parseProductInsightsBlocks(skuInsightsBullets)}
-  objective={objective}
-/>
 
 
+      </div>
     </div>
-    </div>
-   
+
   );
 };
 
@@ -977,24 +1052,46 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       // setPerformanceTrend(data.performance_trend ?? null);
       // setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
+      const summaryJson = tryParseSummaryJson(data.summary);
 
-      const sections = parseMdSections(data.summary);
+      // if markdown → old behavior
+      const mdSections = typeof data.summary === "string" ? parseMdSections(data.summary) : {};
 
-const summaryLines = sections["SUMMARY"] ?? [];
-const inventoryLines = sections["INVENTORY"] ?? [];
-const productLines = sections["PRODUCT INSIGHTS"] ?? [];
-      const { recommendationBullets, inventoryBullets } =
-        extractRecoAndInventoryBullets(data.recommendations);
+      const summaryLines =
+        summaryJson
+          ? ["SKU insights generated (see right panel)."] // or make nicer
+          : (mdSections["SUMMARY"] ?? []);
+
+      const inventoryLines = summaryJson ? [] : (mdSections["INVENTORY"] ?? []);
+
+      const productLines =
+        summaryJson?.sku_actions
+          ? Object.entries(summaryJson.sku_actions).flatMap(([sku, d]) => [
+            sku,
+            `ASP: -`,
+            `Units: -`,
+            `Net sales: -`,
+            `CM1 profit: -`,
+            `CM1 profit per unit: -`,
+            d.journey_narrative,
+            `Action: ${d.recommendation}`,
+          ])
+          : (mdSections["PRODUCT INSIGHTS"] ?? []);
+
+      const recommendationBullets = extractRecoBulletsV2(data.recommendations);
+
 
       setAiPanel({
-  summaryBullets: summaryLines,
-  skuInsightsBullets: productLines,
-  recommendationBullets,
-  inventoryBullets: inventoryLines,
-  objective: data.objective,
-  rawSummary: data.summary ?? null,
-  rawRecommendations: data.recommendations ?? null,
-});
+        summaryBullets: summaryLines,
+        skuInsightsBullets: productLines,
+        recommendationBullets,
+        inventoryBullets: inventoryLines,
+        objective: data.objective,
+        objective_changed: data.objective_changed ?? false,
+        rawSummary: data.summary ?? null,
+        rawRecommendations: data.recommendations ?? null,
+      });
+
 
     } catch (e: any) {
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
@@ -1953,6 +2050,14 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
     );
   };
 
+  const getTrendWrapperHeight = () => {
+    if (focusedChart === "trend") return "h-[50vh]";
+    // monthly stays perfect
+    if (range === "monthly") return "h-[360px]";
+    // restore previous intended size for quarterly/yearly
+    return "h-[375px] 2xl:h-[500px]";
+  };
+
 
   return (
     <div
@@ -1963,10 +2068,10 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
     relative
   "
     >
-      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4  border-b border-gray-200 ">
+      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 ">
 
         {/* LEFT: Title + Subtitle */}
-        <div className="flex flex-col leading-tight w-full md:w-auto mb-5">
+        <div className="flex flex-col leading-tight w-full md:w-auto md:mb-5">
           <div className="flex items-baseline gap-2">
             <PageBreadcrumb
               pageTitle="Financial Metrics -"
@@ -2052,92 +2157,6 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}%`;
-
-
-            // const renderTacosComparisons = () => {
-            //   const yNum = Number(selectedYear);
-
-            //   const label =
-            //     range === "monthly"
-            //       ? selectedMonth && yNum
-            //         ? getPrevMonthLabel(selectedMonth, yNum)
-            //         : "Prev month"
-            //       : range === "quarterly"
-            //         ? selectedQuarter && yNum
-            //           ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-            //           : "Prev quarter"
-            //         : yNum
-            //           ? getPrevYearLabel(yNum)
-            //           : "Prev year";
-
-            //   const prevVal =
-            //     range === "monthly"
-            //       ? comparisons?.lastMonth
-            //         ? getRoas(comparisons.lastMonth)
-            //         : undefined
-            //       : range === "quarterly"
-            //         ? comparisons?.lastQuarter
-            //           ? getRoas(comparisons.lastQuarter)
-            //           : undefined
-            //         : comparisons?.lastYear
-            //           ? getRoas(comparisons.lastYear)
-            //           : undefined;
-
-            //   const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-
-            //   const delta = hasPrev ? roas - prevVal! : null;
-
-            //   const deltaColor =
-            //     typeof delta === "number"
-            //       ? delta > 0
-            //         ? "text-red-600"        // higher TACoS = worse
-            //         : delta < 0
-            //           ? "text-emerald-600"  // lower TACoS = better
-            //           : "text-gray-400"
-            //       : "text-gray-400";
-
-            //   // delta = current - prev
-            //   const arrow =
-            //     typeof delta === "number"
-            //       ? delta > 0
-            //         ? "▼" // ✅ TACoS increased (bad) -> show DOWN
-            //         : delta < 0
-            //           ? "▲" // ✅ TACoS decreased (good) -> show UP
-            //           : ""
-            //       : "";
-
-
-            //   const formatDelta = (v: number) =>
-            //     `${Math.abs(v).toLocaleString(undefined, {
-            //       minimumFractionDigits: 2,
-            //       maximumFractionDigits: 2,
-            //     })}%`;
-
-            //   return (
-            //     <div className="mt-3 space-y-1.5">
-            //       <div className="flex items-end justify-between text-charcoal-500 gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
-            //         <div className="min-w-0">
-            //           <div className="whitespace-nowrap">
-            //             {label}:
-            //           </div>
-            //           <div className="whitespace-nowrap">
-            //             {hasPrev ? formatRoas(prevVal!) : "-"}
-            //           </div>
-            //         </div>
-
-            //         <span className={`font-bold whitespace-nowrap ${deltaColor}`}>
-            //           {typeof delta === "number" ? (
-            //             <>
-            //               {arrow} {formatDelta(delta)}
-            //             </>
-            //           ) : (
-            //             "-"
-            //           )}
-            //         </span>
-            //       </div>
-            //     </div>
-            //   );
-            // };
 
             const buildTacosComparisonRows = () => {
               const yNum = Number(selectedYear);
@@ -2725,43 +2744,12 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
-                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                    "cursor-default select-none",
+                    focusedChart === "trend" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
-                  {/* <button
-                    type="button"
-                    data-no-expand
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFocus("trend");
-                    }}
-                    aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
-                    title={focusedChart === "trend" ? "Collapse" : "Expand"}
-                    className="rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md"
-                  >
-                    {focusedChart === "trend" ? (
-                      <CgPushLeft size={18} className="font-extrabold" />
-                    ) : (
-                      <CgPushRight size={18} className="font-extrabold" />
-                    )}
-
-                  </button> */}
-
-                  <div className="h-[50vh]">
+                  <div className={getTrendWrapperHeight()}>
                     <PerformanceTrendChart
                       range={range}
                       month={selectedMonth}
@@ -2776,6 +2764,7 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                       onToggleExpand={() => toggleFocus("trend")}
                     />
                   </div>
+
                 </div>
               )}
 
@@ -2784,10 +2773,10 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
+                    "cursor-default select-none",
                     "min-h-0 overflow-hidden",
                     "flex flex-col",
-                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                    focusedChart === "pnl" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
                 >
@@ -2808,7 +2797,7 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                       }}
                       aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
                       title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className="rounded-md
+                      className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -2840,6 +2829,7 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                       hideDownloadButton
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                      isCollapsed={pnlCollapsed}
                     />
                   </div>
                 </div>
@@ -2861,6 +2851,9 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 objective={aiPanel?.objective}
+                objectiveChanged={aiPanel?.objective_changed}
+                showObjective={true}
+
               />
             </div>
           )}
@@ -2915,8 +2908,8 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
-                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                    "cursor-default select-none",
+                    focusedChart === "trend" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
@@ -2939,7 +2932,7 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
 
                   </button>
 
-                  <div className="h-[50vh]">
+                  <div className={getTrendWrapperHeight()}>
                     <PerformanceTrendChart
                       range={range}
                       quarter={selectedQuarter}
@@ -2962,10 +2955,10 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
+                    "cursor-default select-none",
                     "min-h-0 overflow-hidden",
                     "flex flex-col",
-                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                    focusedChart === "pnl" ? "cursor-default" : "",
                   ].join(" ")}
                 >
                   <div className="shrink-0 flex items-center justify-between gap-3">
@@ -2987,7 +2980,7 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                       }}
                       aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
                       title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className="rounded-md
+                      className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -3054,6 +3047,9 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 objective={aiPanel?.objective}
+                objectiveChanged={aiPanel?.objective_changed}  // ✅ ADD THIS
+                showObjective={true}
+
               />
             </div>
           )}
@@ -3108,8 +3104,8 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 <div
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
-                    focusedChart === "trend" ? "cursor-zoom-out" : "",
+                    "cursor-default select-none",
+                    focusedChart === "trend" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
@@ -3122,7 +3118,7 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                     }}
                     aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
                     title={focusedChart === "trend" ? "Collapse" : "Expand"}
-                    className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
+                    className=" absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
                   >
                     {focusedChart === "trend" ? (
                       <CgPushLeft size={18} className="font-extrabold" />
@@ -3131,7 +3127,7 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                     )}
 
                   </button>
-                  <div className="h-[50vh]">
+                  <div className={getTrendWrapperHeight()}>
                     <PerformanceTrendChart
                       range={range}
                       year={selectedYear}
@@ -3153,21 +3149,12 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
               {/* RIGHT card (PnL) */}
               {(focusedChart === null || focusedChart === "pnl") && (
                 <div
-                  // role="button"
-                  // tabIndex={0}
-                  // onClick={(e) => {
-                  //   const t = e.target as HTMLElement;
-                  //   if (t.closest("button, a, input, select, textarea, [data-no-expand]")) return;
-                  //   toggleFocus("pnl");
-                  // }}
-
-                  // onKeyDown={(e) => e.key === "Enter" && toggleFocus("pnl")}
                   className={[
                     "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-zoom-in select-none",
+                    "cursor-default select-none",
                     "min-h-0 overflow-hidden",
                     "flex flex-col",
-                    focusedChart === "pnl" ? "cursor-zoom-out" : "",
+                    focusedChart === "pnl" ? "cursor-default" : "",
                   ].join(" ")}
                   title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
                 >
@@ -3190,7 +3177,7 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                       }}
                       aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
                       title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className="rounded-md
+                      className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -3257,11 +3244,14 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
                 skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 objective={aiPanel?.objective}
+                objectiveChanged={aiPanel?.objective_changed}
+                showObjective={false}
+
               />
             </div>
           )}
 
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
+          <div className="flex flex-wrap justify-between gap-6 items-stretch md:gap-4">
             <div className="flex-1 min-w-[300px]">
               <CircleChart
                 range={range}
@@ -3363,3 +3353,5 @@ const productLines = sections["PRODUCT INSIGHTS"] ?? [];
 };
 
 export default Dropdowns;
+
+

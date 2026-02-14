@@ -1639,13 +1639,37 @@ ANALYSIS DISCIPLINE (MANDATORY)
   - volume-driven profit impact
 
 ────────────────────────────────────────
+INVENTORY SIGNAL HANDLING (MANDATORY)
+────────────────────────────────────────
+
+Inventory signals are provided in inventory_signals.summary.
+
+Each inventory signal includes:
+- type (supply | ageing | excess)
+- label
+- list of affected product names
+- count of affected products
+
+Rules:
+- Inventory signals are PORTFOLIO-LEVEL only.
+- Do NOT attach inventory signals to SKU diagnosis_codes.
+- Do NOT infer pricing, demand, or visibility causes from inventory signals.
+- Use inventory signals ONLY to identify operational risk exposure.
+
+You MUST:
+- Detect whether inventory risk exists.
+- Classify inventory exposure as present or absent.
+- Include inventory risk as a separate portfolio signal.
+
+
+────────────────────────────────────────
 PRODUCT-LEVEL DIAGNOSIS (MANDATORY)
 ────────────────────────────────────────
 
 For each SKU in focus_skus:
-- Assign diagnosis codes explaining performance pattern.
-- Use ONLY allowed diagnosis codes.
-- Select the MINIMUM number of codes needed.
+- Assign diagnosis codes explaining the dominant commercial pattern.
+- Use ONLY the allowed diagnosis codes.
+- Select the MINIMUM number of codes required.
 
 ALLOWED DIAGNOSIS CODES:
 - pricing_supports_volume
@@ -1654,11 +1678,54 @@ ALLOWED DIAGNOSIS CODES:
 - visibility_constraint
 - mixed_signal
 
-DIAGNOSIS RULES (STRICT):
-- If units are increasing → visibility_constraint is INVALID.
-- If ASP is declining AND units + sales are declining →
-  classify as visibility_constraint.
-- demand_weakness is allowed ONLY if pricing is stable or rising.
+PRICING DIRECTION DEFINITION (CRITICAL):
+
+- Pricing is considered REDUCED if asp_curr < asp_prev.
+- ANY decrease in ASP counts as pricing reduced, regardless of magnitude.
+- Percentage thresholds, rounding, or "flat" interpretations are NOT allowed.
+- Pricing is considered STABLE only if asp_curr == asp_prev.
+- Pricing is considered INCREASED only if asp_curr > asp_prev.
+
+
+DIAGNOSTIC DEFINITIONS (DETERMINISTIC):
+
+- pricing_supports_volume
+  → unit growth positive AND CM1 profit per unit declining
+
+- pricing_effective
+  → unit growth positive AND CM1 profit per unit stable or increasing
+
+- demand_weakness
+  → units and net sales declining while pricing is NOT reduced
+
+- visibility_constraint
+  → units and net sales declining AND asp_curr < asp_prev
+
+- mixed_signal
+  → no dominant pricing or demand signal
+
+
+DIAGNOSIS PRECEDENCE (STRICT):
+
+1) UNIT DOMINANCE RULE  
+   If unit growth is positive, visibility_constraint is NOT allowed.
+
+2) PRICE-CUT FAILURE RULE  
+   If units and net sales decline AND pricing is reduced,  
+   classify as visibility_constraint (NOT demand_weakness).
+
+3) DEMAND WEAKNESS ELIGIBILITY  
+   demand_weakness is allowed ONLY when pricing is NOT reduced.
+
+4) PRICING DOMINANCE OVERRIDE  
+    If asp_curr < asp_prev,  
+    "demand_weakness" MUST NOT be selected.
+
+
+
+Each SKU may have:
+- 1 primary diagnosis
+- Maximum 2 diagnosis codes.
 
 ────────────────────────────────────────
 OUTPUT RULES (NON-NEGOTIABLE)
@@ -1721,6 +1788,12 @@ Important context:
 - Data is in-progress (MTD), not final.
 - Use cautious executive finance language.
 
+Additional context:
+- inventory_signals may be present indicating operational risk.
+- Inventory signals are directional and non-financial.
+- Inventory risk must be summarised separately from commercial performance.
+
+
 Mandatory metric coverage:
 You must explicitly cover ALL five metrics:
 1) Units
@@ -1728,10 +1801,12 @@ You must explicitly cover ALL five metrics:
 3) CM1 Profit
 4) CM1 Profit per Unit
 5) ASP
+6) ACOS (Advertising Cost of Sales — advertising efficiency)
 
 Rules:
 - Each metric must appear at least once in either summary_text or metric_bullets.
 - CM1 Profit per Unit must be included even if flat or declining.
+- ACOS must be explicitly mentioned at least once.
 - If a metric shows limited movement, explicitly state that it remained stable or broadly unchanged.
 
 Metric interpretation rules:
@@ -1740,6 +1815,8 @@ Metric interpretation rules:
 - CM1 Profit represents total contribution margin.
 - CM1 Profit per Unit represents margin efficiency per sale.
 - ASP represents pricing discipline and mix signal.
+- ACOS represents advertising efficiency (lower ACOS = better efficiency, higher ACOS = weaker efficiency).
+
 
 Strict prohibitions:
 - Do not recommend actions.
@@ -1755,18 +1832,46 @@ Output rules:
 
 Mandatory output format:
 {
-  "summary_text": "2–3 sentences in executive tone covering all five metrics",
+  "summary_text": "2-3 sentences in executive tone covering all five metrics",
   "metric_bullets": [
     "Units summary",
     "Net Sales summary",
     "CM1 Profit summary",
     "CM1 Profit per Unit summary",
-    "ASP summary"
+    "ASP summary",
+    "ACOS summary"
+
   ]
 }
 """
 
 
+LIVE_BI_INVENTORY_SUMMARY_PROMPT = """
+You are an Amazon Inventory Risk Analyst.
+
+You are given portfolio-level inventory alerts.
+Each alert represents operational risk, not performance.
+
+Rules:
+- Do NOT recommend actions.
+- Do NOT mention pricing, ads, or sales.
+- Do NOT repeat SKU-level metrics.
+- Use executive, cautious language.
+- Base statements ONLY on provided alerts.
+
+Your task:
+Summarize overall inventory risk exposure.
+
+Output STRICT JSON only.
+
+Mandatory format:
+{
+  "summary_text": "1–2 sentence executive summary of inventory risk",
+  "alert_bullets": [
+    "One bullet per alert type"
+  ]
+}
+"""
 
 
 LIVE_BI_PROMPT_2_DECISION = """You are a strategic Amazon decision engine.
@@ -2105,7 +2210,7 @@ def build_sku_context(sku_rows, max_items=5):
         prof_g = get_pct(row, "CM1 Profit Impact (%)")
 
         item = {
-            "label": make_label(row),            # ✅ AI ab product name se refer karega
+            "label": make_label(row),            # ✅
             "sku": row.get("sku"),
             "product_name": row.get("product_name"),
 
@@ -2339,18 +2444,20 @@ def _dir_word_simple(p):
         return "moved"
     return "increased" if p > 0 else "decreased"
 
-def _overall_3_bullets(qty_prev, qty_curr, sales_prev, sales_curr, prof_prev, prof_curr, qty_pct, sales_pct, prof_pct, symbol):
-    uq = _dir_word_simple(qty_pct)
-    us = _dir_word_simple(sales_pct)
-    up = _dir_word_simple(prof_pct)
-    qp = f"{abs(qty_pct):.2f}%" if qty_pct is not None else "0.00%"
-    sp = f"{abs(sales_pct):.2f}%" if sales_pct is not None else "0.00%"
-    pp = f"{abs(prof_pct):.2f}%" if prof_pct is not None else "0.00%"
-    return [
-        f"Overall units {uq} from {_fmt_int(qty_prev)} to {_fmt_int(qty_curr)} by {qp}.",
-        f"Net sales {us} from {_fmt_money(sales_prev, symbol)} to {_fmt_money(sales_curr, symbol)} by {sp}.",
-        f"CM1 profit {up} from {_fmt_money(prof_prev, symbol)} to {_fmt_money(prof_curr, symbol)} by {pp}.",
-    ]
+# def _overall_3_bullets(qty_prev, qty_curr, sales_prev, sales_curr, prof_prev, prof_curr, qty_pct, sales_pct, prof_pct, symbol):
+#     uq = _dir_word_simple(qty_pct)
+#     us = _dir_word_simple(sales_pct)
+#     up = _dir_word_simple(prof_pct)
+#     qp = f"{abs(qty_pct):.2f}%" if qty_pct is not None else "0.00%"
+#     sp = f"{abs(sales_pct):.2f}%" if sales_pct is not None else "0.00%"
+#     pp = f"{abs(prof_pct):.2f}%" if prof_pct is not None else "0.00%"
+#     return [
+#         f"Overall units {uq} from {_fmt_int(qty_prev)} to {_fmt_int(qty_curr)} by {qp}.",
+#         f"Net sales {us} from {_fmt_money(sales_prev, symbol)} to {_fmt_money(sales_curr, symbol)} by {sp}.",
+#         f"CM1 profit {up} from {_fmt_money(prof_prev, symbol)} to {_fmt_money(prof_curr, symbol)} by {pp}.",
+#     ]
+
+
 def run_live_prompt_1_analysis(payload: dict) -> dict:
     resp = oa_client.chat.completions.create(
         model="gpt-4o",
@@ -2414,6 +2521,19 @@ def run_live_prompt_2_decisions(analysis_output: dict, user_objective: dict) -> 
 
     return json.loads(resp.choices[0].message.content)
 
+def run_inventory_ai_summary(inventory_summary: dict) -> dict:
+    resp = oa_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": LIVE_BI_INVENTORY_SUMMARY_PROMPT},
+            {"role": "user", "content": json.dumps(inventory_summary)},
+        ],
+        temperature=0,
+        response_format={"type": "json_object"},
+        max_tokens=200,
+    )
+    return json.loads(resp.choices[0].message.content)
+
 
 
 def build_ai_summary(
@@ -2431,12 +2551,14 @@ def build_ai_summary(
     currency=None,
     user_objective=None,
     movement_context=None,
+    sku_to_product=None,          # ✅ ADD
+    group_inventory_alerts=True,
 ):
     # =========================================================
     # Objective defaults (UNCHANGED)
     # =========================================================
     user_objective = user_objective or {
-        "primary_goal": "profit",
+        "primary_goal": "balanced",
         "risk_level": "balanced",
         "constraints": {},
     }
@@ -2495,6 +2617,31 @@ def build_ai_summary(
         }
 
     # =========================================================
+    # ✅ NORMALIZE INVENTORY SIGNALS (AUTO-CLUBBING)
+    # =========================================================
+    inv_payload = inventory_signals or {}
+
+    if group_inventory_alerts:
+        # Detect raw per-SKU alerts:
+        # { sku: { alert, alert_type } }
+        looks_like_raw = (
+            isinstance(inv_payload, dict)
+            and inv_payload
+            and all(
+                isinstance(v, dict) and "alert_type" in v
+                for v in inv_payload.values()
+            )
+        )
+
+        if looks_like_raw:
+            inv_payload = club_inventory_alerts_by_type(
+                alerts=inv_payload,
+                sku_to_product=sku_to_product or {},
+                max_skus_per_bucket=5,
+            )
+    
+
+    # =========================================================
     # PAYLOAD (UNCHANGED STRUCTURE)
     # =========================================================
     payload = {
@@ -2528,7 +2675,8 @@ def build_ai_summary(
             "new_reviving_skus": new_reviving,
         },
         "sku_context": sku_context,
-        "inventory_signals": inventory_signals or {},
+        "inventory_signals": inv_payload,
+
         "selling_costs": {
             "platform_fees": {
                 "pct_change": pf_pct,
@@ -2565,241 +2713,256 @@ def build_ai_summary(
 #-----------------------------------------------------------------------------
 # ChatGPT insight generator for live MTD vs previous (per-SKU)
 #-----------------------------------------------------------------------------
-def generate_live_insight(item, country, prev_label, curr_label):
+def get_sku_monthly_history(user_id, country_lower, sku_key, end_year, end_month, n=24):
+    history = []
+
+    for i in range(n):
+        y = end_year
+        m = end_month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+
+        month_str = month_name[m].lower()
+        table = f"skuwisemonthly_{user_id}_{country_lower}_{month_str}{y}"
+
+        try:
+            q = text(f"""
+                SELECT total_quantity, net_sales, profit, asp
+                FROM {table}
+                WHERE sku = :k
+                LIMIT 1
+            """)
+            with engine_hist.connect() as conn:
+                r = conn.execute(q, {"k": sku_key}).first()
+
+            if r:
+                history.append({
+                    "period": f"{y:04d}-{m:02d}",
+                    "units": float(r.total_quantity or 0),
+                    "sales": float(r.net_sales or 0),
+                    "profit": float(r.profit or 0),
+                    "asp": float(r.asp or 0),
+                })
+
+        except Exception:
+            continue
+
+    return sorted(history, key=lambda x: x["period"])
+
+
+def generate_live_insight(item, country, prev_label, curr_label, user_id, month2):
     """
     Generate AI insight for a single SKU row from live_mtd_vs_previous growth_data.
-    item: one dict from growth_data/top_80_skus/new_reviving/etc.
+
+    NEW:
+    - Pulls 24-month historical trend using get_sku_monthly_history()
+    - Injects history into prompts for true causal diagnosis
     """
+
     sku = safe_strip(item.get("sku"), default=None)
     product_name = safe_strip(item.get("product_name"), default="this product")
 
-
-    # ✅ single, deterministic key (no global logic)
+    # deterministic key
     key = sku or product_name
-
     is_new_or_reviving = item.get("new_or_reviving", False)
 
-    # Data for the model (includes fields like quantity_prev/curr, net_sales_prev/curr, growth %, etc.)
+    # ---------------------------------------------------------
+    # 🔹 Attach 24-month historical trend (same as historic BI)
+    # ---------------------------------------------------------
+    try:
+        year2 = int(month2.split("-")[0])
+        month2_num = int(month2.split("-")[1])
+        country_lower = country.lower()
+
+        monthly_history = get_sku_monthly_history(
+            user_id, country_lower, key, year2, month2_num, 24
+        )
+    except Exception as e:
+        print("[HISTORY ERROR]", e)
+        monthly_history = []
+
+    item["historical_trend"] = monthly_history
+
+    # Data block for model
     data_block = json.dumps(item, indent=2)
 
+    # =========================================================
+    # 🔹 PROMPT: NEW / REVIVING SKU  (PURE ANALYSIS ONLY)
+    # =========================================================
     if is_new_or_reviving:
-        # New / reviving SKU prompt
+
         prompt = f"""
-    You are a senior ecommerce business analyst. The following is a new or reviving product (no meaningful previous-period baseline).
-    Compare it only within the current period and talk about its launch strength.
+You are a senior ecommerce data analyst.
 
-    Context:
-    - Country: {country}
-    - Previous period label: {prev_label}
-    - Current period label: {curr_label}
+You are analysing the product: "{product_name}".
 
-    Details for '{product_name}'
+This is a newly launched or recently revived product.
+Provide ONLY analytical observations based on available data.
 
-    Observations:
-    - List the 2–3 most important observations about this product's current performance
-    (units sold, ASP, net sales, profit per unit, etc.) using absolute values from the data.
-    - Comment on launch/return momentum—e.g., strong debut, moderate start, slow start.
-    - Call out any potential red flags (e.g., high ASP but very low volume, low unit profitability, etc.).
+STRICT RULES:
+- Do NOT provide recommendations.
+- Do NOT suggest actions or next steps.
+- Do NOT give a verdict.
+- Only explain performance analytically.
+- Each bullet MUST reference "{product_name}" naturally.
 
-    Improvements:
-    - Suggest clear, concrete next actions for:
-    • Marketing
-    • Sales / Commercial
-    • Operations / Supply
-    - Make each action specific and easy to execute.
+Analyse:
 
-    Sales Volume:
-    • Comment on volume and what it says about early traction.
-    • Suggest one commercial lever to improve or scale volume.
+1) Current launch strength
+- Units, Net Sales, ASP and Profit level of "{product_name}".
+- Whether the debut looks strong, moderate, or weak based purely on numbers.
 
-    ASP:
-    • Comment on price positioning; suggest whether to test price up/down or hold.
+2) Early commercial signals
+- Whether pricing appears premium, discounted, or neutral.
+- Whether profitability is healthy or thin.
+- Whether volume indicates real demand or weak traction.
 
-    Profitability:
-    • Comment on profit per unit or total profit; suggest if costs or pricing need optimization.
+3) Historical context (CRITICAL)
+- Use the 24-month historical_trend if present.
+- Identify whether "{product_name}" is:
+  • a true new launch  
+  • a revival after inactivity  
+  • a weak re-entry attempt
+- Explain how current performance compares to its own past levels.
+- Mention direction vs historical peak (higher, lower, flat).
 
-    End with one line:
-    • Verdict: should this SKU be scaled quickly, tested more, or carefully repositioned? And why?
-
-    Instructions:
-    - Use plain text with bullet points only.
-    - DO NOT use Markdown formatting (no **bold**, no headings).
-    - Do NOT compare to previous periods (assume no baseline).
-    - Use actual numbers or percentages from the data whenever they are present.
-
-    Data:
-    {data_block}
-    """
-    else:
-        # Existing SKU with prev vs current
-        prompt = f"""
-You are a senior ecommerce business analyst. The data below shows a product's performance
-comparing a previous period vs the current MTD.
-
-Context:
-- Country: {country}
-- Previous period: {prev_label}
-- Current period: {curr_label}
-
-Details for '{product_name}'
-
-IMPORTANT FILTER:
-- Ignore any row where product_name is "Total" or contains "Total".
-
-Observations:
-- List the 2–3 most important changes using ONLY the given metrics:
-• quantity_prev vs quantity_curr
-• net_sales_prev vs net_sales_curr
-• profit_prev vs profit_curr
-• asp_prev vs asp_curr
-• unit_wise_profitability_prev vs unit_wise_profitability_curr
-• and % fields like "Unit Growth (%)", "Sales Growth (%)", etc.
-- Use the exact causal tone wherever % values exist:
-"The increase/decrease in ASP by X% resulted in a dip/growth in units by Y%, which also resulted in sales falling/increasing by Z%."
-- In at least one observation, mention Sales Mix Change (%) direction if present (up/down).
-- Do NOT add assumptions like stock issues, supply constraints, replenishment, OOS, or fulfillment problems
-in observations or metric explanations.
-
-
-PRIMARY ACTION SELECTION (MANDATORY):
-
-- Select EXACTLY ONE primary action based on the Decision Guidance below.
-- The primary action represents the margin-optimal default recommendation.
-- The primary action MUST be reused verbatim:
-  • once in the Improvements section
-  • once in each metric-level action bullet
-- Do NOT select different actions for different metrics.
-- If multiple rules seem relevant, apply the FIRST matching rule in the order given.
-- The secondary strategy sentence (rank-only) is OPTIONAL and EXEMPT from primary action reuse.
-
-
-Improvements:
-- List the PRIMARY ACTION only ONCE.
-- Do NOT repeat the same action sentence multiple times.
-- Do NOT add the secondary strategy sentence here.
-- The action MUST be chosen ONLY from the list below, verbatim:
-• "Check ads and visibility campaigns for this product."
-• "Review the visibility setup for this product."
-• "Reduce ASP slightly to improve traction."
-• "Increase ASP slightly to strengthen margins."
-• "Maintain current ASP and monitor performance."
-• "Monitor performance closely for now."
-- Do NOT add any other recommendations or explanations.
-- Do NOT mention stock, inventory, supply, operations, OOS, logistics, replenishment, or warehousing.
-
-
-Decision Guidance (APPLY IN ORDER — FIRST MATCH WINS, MUTUALLY EXCLUSIVE):
-
-
-CASE C — HEALTHY GROWTH (OVERRIDE):
-• Apply IF ALL of the following are TRUE:
-  - Unit Growth (%) is POSITIVE
-  - Sales Growth (%) is POSITIVE
-  - Profit Growth (%) is POSITIVE
-• This indicates efficient, scalable growth.
-• OVERRIDE all other cases below.
-• Primary Action:
-  "Maintain current ASP and monitor performance."
-
-
-CASE A — MARGIN DILUTION:
-• Apply IF ALL of the following are TRUE:
-  - ASP change is NEGATIVE by more than 10%
-  - Unit Growth (%) is POSITIVE
-  - Sales Growth (%) is FLAT or NEGATIVE
-  - Profit Growth (%) is NEGATIVE
-• This indicates pricing drove volume but hurt overall profitability.
-• Primary Action:
-  "Increase ASP slightly to strengthen margins."
-
-
-CASE B — PRICE RESISTANCE:
-• Apply IF ALL of the following are TRUE:
-  - ASP change is POSITIVE by more than 10%
-  - Unit Growth (%) is NEGATIVE
-  - Sales Growth (%) is NEGATIVE
-• This indicates customers are resisting higher prices.
-• Primary Action:
-  "Reduce ASP slightly to improve traction."
-
-
-PRICE EXHAUSTION OVERRIDE:
-• Apply IF:
-  - ASP change is NEGATIVE by more than 10%
-  AND
-  - Unit Growth (%) is NEGATIVE by more than 60%
-• In this case:
-  "Review the visibility setup for this product."
-
-
-SECONDARY STRATEGY RULE (RANK-ONLY, OPTIONAL):
-
-• Add the following sentence ONLY IF:
-  - Unit Growth (%) is POSITIVE
-  AND
-  - ASP and Units are moving in opposite directions
-  AND
-  - SKU-level Profit (%) is NEGATIVE
-• Use EXACTLY this sentence:
-  "If your objective is to boost rank, you may continue with the current pricing setup but monitor performance closely."
-• This sentence MUST:
-  - Appear ONLY under Unit Growth
-  - Be the FINAL bullet in that section
-  - Appear exactly ONCE
-• This sentence is ALLOWED even though it contains the words "monitor performance closely".
-
-
-Then, for each metric, add:
-
-Unit Growth:
-• Explain the growth or decline using ONLY unit trend vs ASP trend.
-• Repeat the PRIMARY ACTION verbatim.
-• Add the secondary strategy sentence ONLY if triggered.
-
-ASP:
-• Explain the ASP change using ONLY pricing, discounting, or mix signals.
-• Repeat the PRIMARY ACTION verbatim.
-
-Sales:
-• Describe sales as Units × ASP.
-• Repeat the PRIMARY ACTION verbatim.
-
-Profit:
-• Explain profit using sales movement and realized pricing/mix only.
-• Do NOT mention COGS or costs.
-• Repeat the PRIMARY ACTION verbatim.
-
-Unit Profitability:
-• Explain per-unit profit using realized price or mix.
-• Do NOT mention COGS.
-• Repeat the PRIMARY ACTION verbatim.
-
-
-Inventory:
-- Add ONE inventory sentence ONLY IF inventory_signals indicate an issue.
-- The sentence MUST start with "Inventory:" and use EXACTLY one of:
-• "Inventory: Initiate inventory replenishment as current cover is below lead time."
-• "Inventory: Push promotions or ads to clear around <aged_units> units of aged inventory and reduce storage costs."
-• "Inventory: Amazon has flagged this SKU for inventory optimization; review the recommendation in Seller Central."
-- Do NOT let inventory influence pricing or sales logic.
-
-
-Instructions:
-- Use plain text with bullets only.
-- DO NOT use Markdown.
-- Use % values and trends wherever available.
-- Keep insights concise and business-actionable.
+OUTPUT:
+- Plain bullet points only.
+- Maximum 5 bullets.
+- No advice, no strategy, no recommendations.
+- Every bullet must mention "{product_name}".
 
 Data:
 {data_block}
 """
 
+    # =========================================================
+    # 🔹 PROMPT: EXISTING SKU (CAUSAL + HISTORICAL DIAGNOSIS)
+    # =========================================================
+    else:
+
+        prompt = f"""
+You are a Senior Amazon Business Analyst performing a
+CAUSAL PERFORMANCE DIAGNOSIS for a single product.
+
+Product under analysis: "{product_name}"
+Marketplace: "{country}"
+
+You are given:
+- Pre-calculated performance comparing the previous-period-same-days vs current MTD
+- A rolling 24-month historical_trend for this product
+- Pre-computed growth and profitability metrics
+
+Your responsibility is to identify:
+
+WHAT materially changed,
+WHY it changed,
+and WHAT business impact it created
+for "{product_name}".
+
+STRICT ANALYTICAL RULES:
+
+1) MATERIALITY FIRST  
+Ignore normal fluctuations.  
+Focus only on movements that are:
+• extreme  
+• trend-defining  
+• profitability-impacting  
+• abnormal versus the product’s own history  
+
+2) CAUSE → EFFECT DISCIPLINE  
+Every insight MUST follow:
+
+Movement → Primary Driver → Business Impact
+
+Valid causal drivers are LIMITED to:
+• ASP change (pricing realization)  
+• unit demand change  
+• sales mix shift  
+• per-unit profitability movement  
+
+Do NOT introduce any other drivers.
+
+3) LONG-TERM TREND DIAGNOSIS (MANDATORY)  
+Using historical_trend:
+
+Classify the trajectory of "{product_name}" as:
+• sustained growth  
+• structural decline  
+• volatility  
+• flat / stagnant  
+
+Also:
+• identify clear turning points  
+• compare current MTD performance vs:
+  – recent 3-month direction  
+  – historical peak level  
+
+At least ONE bullet MUST include a historical comparison.
+
+4) RECENT MOVEMENT DIAGNOSIS (LIVE PERIOD)  
+
+For the **current MTD vs previous-period-same-days**:
+
+• State the dominant commercial change.  
+• Identify the SINGLE strongest driver:
+  – pricing movement  
+  – unit demand movement  
+  – mix shift  
+  – per-unit profitability change  
+
+• Conclude ONLY using one of these impact phrases:
+  – profitability strengthened  
+  – margin pressure emerged  
+  – efficiency deteriorated  
+  – stable but weak growth  
+
+METRIC INTERPRETATION RULES (SKU LEVEL):
+
+• total_quantity = net units sold after returns  
+• net_sales = realised topline revenue  
+• asp = realised selling price per unit  
+• profit = CM1 profit  
+• unit_wise_profitability = CM1 profit per unit  
+
+CM2 ATTRIBUTION CONSTRAINT (STRICT):
+
+CM2 movement can ONLY be driven by:
+• advertising_total  
+• platform fees  
+• storage fees  
+• reimbursements  
+
+Do NOT attribute CM2 change to any other cost element.  
+If CM2 change is unexplained by the allowed drivers,
+do NOT infer additional causes.
+
+FORBIDDEN CONTENT (ABSOLUTE):
+
+• No recommendations  
+• No actions  
+• No strategy  
+• No forward-looking suggestions  
+• No operational or inventory assumptions  
+• No speculation beyond provided data  
+
+OUTPUT FORMAT:
+
+• Plain text bullet points only  
+• Maximum 5 bullets  
+• Each bullet MUST reference "{product_name}" naturally  
+• Each bullet MUST follow Movement → Driver → Impact logic  
+• No headings, no markdown, no paragraphs  
+
+Data:
+{json.dumps(item, indent=2)}
+"""
 
 
-
-
-
-
+    # =========================================================
+    # 🔹 OPENAI CALL
+    # =========================================================
     try:
         ai_response = oa_client.chat.completions.create(
             model="gpt-4o",
@@ -2820,12 +2983,12 @@ Data:
 
         ai_text = ai_response.choices[0].message.content.strip()
 
-        # ===== DEBUG =====
-        print("\n================ AI INSIGHT DEBUG ================")
+        # DEBUG
+        print("\n================ LIVE AI INSIGHT DEBUG ================")
         print("KEY:", key, "| SKU:", sku, "| Product:", product_name, "| New/Reviving:", is_new_or_reviving)
-        print("INSIGHT (raw):\n", ai_text)
-        print("INSIGHT (repr):\n", repr(ai_text))
-        print("==================================================\n")
+        print("HISTORY POINTS:", len(monthly_history))
+        print("INSIGHT:\n", ai_text)
+        print("=======================================================\n")
 
         return key, {
             "sku": sku,
@@ -2836,34 +2999,75 @@ Data:
         }
 
     except OpenAIError as e:
-        # 🔴 CREDIT / BILLING / QUOTA ERROR
         print("[AI BILLING ERROR]", e)
 
         return key, {
             "sku": sku,
             "product_name": product_name,
-            "insight": (
-                "AI insights are temporarily unavailable.",
-                "Please contact us at care@phormula.io for assistance."
-            ),
+            "insight": "AI insights are temporarily unavailable. Please contact care@phormula.io.",
             "key_used": key,
             "is_new_or_reviving": is_new_or_reviving,
         }
 
     except Exception as e:
-        # 🟡 NON-BILLING FAILURE → SAFE FALLBACK
         print("[AI ERROR] Insight generation failed:", e)
 
         return key, {
             "sku": sku,
             "product_name": product_name,
-            "insight": (
-                "AI insight could not be generated at the moment. "
-                "Please try again later."
-            ),
+            "insight": "AI insight could not be generated at the moment. Please try again later.",
             "key_used": key,
             "is_new_or_reviving": is_new_or_reviving,
         }
+
+def club_inventory_alerts_by_type(
+    alerts: dict,
+    sku_to_product: dict | None = None,
+    max_skus_per_bucket: int = 5,
+) -> dict:
+    """
+    Group ALL inventory alerts into buckets (except 'No alert').
+    Returns:
+      { "summary": [ {type,label,skus,count}, ... ] }
+    """
+
+    buckets = {
+        "supply": {"label": "Supply risk", "skus": []},
+        "cost": {"label": "High storage cost", "skus": []},
+        "ageing": {"label": "Ageing inventory", "skus": []},
+        "excess": {"label": "High inventory coverage", "skus": []},
+    }
+
+    for sku, a in (alerts or {}).items():
+        alert_type = a.get("alert_type")
+
+        # ✅ exclude only "none" (No alert)
+        if not alert_type or alert_type == "none":
+            continue
+
+        if alert_type not in buckets:
+            continue
+
+        label = sku_to_product.get(sku, sku) if sku_to_product else sku
+        if label:
+            buckets[alert_type]["skus"].append(label)
+
+    # keep a consistent order (optional but nice)
+    order = ["supply", "cost", "ageing", "excess"]
+
+    summary = []
+    for t in order:
+        skus = buckets[t]["skus"]
+        if not skus:
+            continue
+        summary.append({
+            "type": t,
+            "label": buckets[t]["label"],
+            "skus": skus[:max_skus_per_bucket],
+            "count": len(skus),
+        })
+
+    return {"summary": summary}
 
 
 
@@ -2925,6 +3129,11 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
         elif coverage_ratio is not None and coverage_ratio <= 5:
             alert = "Please send shipment"
             alert_type = "supply"
+
+         # 2️⃣ EXCESS INVENTORY (monitoring)
+        elif coverage_ratio is not None and coverage_ratio >= 6 and not overaged:
+            alert = "High inventory coverage ratio."
+            alert_type = "excess"    
 
         # 2️⃣ HIGH STORAGE COST
         elif estimated_storage_cost > 100:

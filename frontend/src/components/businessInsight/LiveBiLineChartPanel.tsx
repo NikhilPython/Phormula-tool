@@ -256,8 +256,9 @@ export default function LiveBiLineChartPanel({
 
   return (
     <div className="w-full">
-      <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-3">
-        <div>
+      <div className="flex flex-row md:items-start justify-between gap-3">
+        {/* Title */}
+        <div className="w-full md:w-auto flex justify-center md:justify-start">
           <PageBreadcrumb
             pageTitle="Performance Trend"
             variant="page"
@@ -265,19 +266,23 @@ export default function LiveBiLineChartPanel({
           />
         </div>
 
-        <div className="w-full md:w-auto">
-          <SegmentedToggle<ChartMetric>
-            value={chartMetric}
-            onChange={setChartMetric}
-            options={[
-              { value: "net_sales", label: "Net Sales" },
-              { value: "quantity", label: "Units" },
-            ]}
-            textSizeClass="text-xs"
-            className="border-[#D9D9D9E5] bg-white"
-          />
+        {/* Toggle */}
+        <div className="w-full md:w-auto flex justify-center md:justify-end">
+          <div className="w-fit">
+            <SegmentedToggle<ChartMetric>
+              value={chartMetric}
+              onChange={setChartMetric}
+              options={[
+                { value: "net_sales", label: "Net Sales" },
+                { value: "quantity", label: "Units" },
+              ]}
+              textSizeClass="text-xs"
+              className="border-[#D9D9D9E5] bg-white w-fit"
+            />
+          </div>
         </div>
       </div>
+
 
       <div className="" style={{ marginTop: "-5px" }}>
         {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
@@ -290,7 +295,7 @@ export default function LiveBiLineChartPanel({
             metric={chartMetric}
             prevLabel={prevLegend}
             currLabel={currLegend}
-            currencySymbol={currencySymbol}  
+            currencySymbol={currencySymbol}
             selectedStartDay={selectedStartDay}
             selectedEndDay={selectedEndDay}
           />

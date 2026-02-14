@@ -1,4 +1,5 @@
 from datetime import datetime
+from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Enum
 from app import db
 from sqlalchemy.sql import func
@@ -145,6 +146,28 @@ class Email(db.Model):
         UniqueConstraint("user_id", "country", name="uq_email_user_country"),
     )
 
+class StoredFile(db.Model):
+    __tablename__ = "stored_files"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    country = db.Column(db.String(32), nullable=False, index=True)
+
+    # optional metadata to help filtering
+    kind = db.Column(db.String(64), nullable=False, index=True)  # e.g. 'forecast', 'pnl'
+    month = db.Column(db.String(16), nullable=True, index=True)  # e.g. 'january'
+    year = db.Column(db.String(8), nullable=True, index=True)
+
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(128), nullable=False, default="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    data = db.Column(db.LargeBinary, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "country", "filename", name="uq_stored_files_user_country_filename"),
+    )
+
 
 # -----------------------------  Chat History -----------------------------
 
@@ -218,18 +241,27 @@ class HistoricAISummary(db.Model):
         )
  
 class UserObjective(db.Model):
-    __tablename__ = 'user_objectives'
-    __bind_key__ = 'chatbot'   # keep same bind unless you want a separate DB
+    __tablename__ = "user_objectives"
+    __bind_key__ = "chatbot"
 
     id = Column(Integer, primary_key=True)
 
     user_id = Column(Integer, nullable=False)
-    country = Column(String(255), nullable=False)
+    country = Column(String(50), nullable=False)
 
-    primary_goal = Column(String(50), nullable=False)    # profit | growth | etc
-    risk_level = Column(String(50), nullable=True)       # conservative | balanced | aggressive
+    # ---------------- STRATEGIC AXES ----------------
 
-    notes = Column(Text, nullable=True)                  # 👈 NEW
+    # conservative | balanced | aggressive
+    growth_intent = Column(String(50), nullable=False, default="balanced")
+
+    # high | protect_growth | sacrifice_short_term
+    profit_priority = Column(String(50), nullable=False, default="protect_growth")
+
+    # True if user wants to dilute 180+ day inventory
+    inventory_clearance_priority = Column(Boolean, nullable=False, default=False)
+
+    # Free text business strategy context
+    business_context = Column(Text, nullable=True)
 
     created_at = Column(
         DateTime,
@@ -237,11 +269,22 @@ class UserObjective(db.Model):
         default=datetime.utcnow
     )
 
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "country",
+            name="unique_user_country_objective"
+        ),
+    )
+
     def __repr__(self):
         return (
             f"<UserObjective user_id={self.user_id}, "
-            f"country={self.country}, primary_goal={self.primary_goal}>"
-        )    
+            f"country={self.country}, "
+            f"growth_intent={self.growth_intent}, "
+            f"profit_priority={self.profit_priority}>"
+        )
+    
 # ------------------------------------------------- Shopify Models -------------------------------------------------
 
 class ShopifyStore(db.Model):
@@ -837,6 +880,66 @@ class amazon_sponsored_display_advertised_products(db.Model):
             "campaign_id",
             "advertised_sku",
             name="uq_sd_adv_product",
+        ),
+    )
+
+
+class amazon_sponsored_brands_keywords(db.Model):
+    __tablename__ = "amazon_sponsored_brands_keywords"
+    __bind_key__ = "amazon"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # ownership / traceability
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # report dimensions
+    start_date = db.Column(db.Date, nullable=False, index=True)
+    end_date = db.Column(db.Date, nullable=False, index=True)
+
+    country = db.Column(db.String(8), nullable=True, index=True)
+    profile_id = db.Column(db.String(32), nullable=True, index=True)
+
+    # ✅ IDs (critical to avoid overwriting rows)
+    campaign_id = db.Column(db.String(64), nullable=True, index=True)
+    ad_group_id = db.Column(db.String(64), nullable=True, index=True)
+    keyword_id = db.Column(db.String(64), nullable=True, index=True)
+    targeting_id = db.Column(db.String(64), nullable=True, index=True)
+
+    portfolio_name = db.Column(db.String(255), nullable=True)
+    currency = db.Column(db.String(16), nullable=True)
+
+    campaign_name = db.Column(db.String(512), nullable=True, index=True)
+    ad_group_name = db.Column(db.String(512), nullable=True)
+
+    targeting = db.Column(db.Text, nullable=True)
+    match_type = db.Column(db.String(64), nullable=True)
+    cost_type = db.Column(db.String(64), nullable=True)
+
+    # metrics
+    impressions = db.Column(db.BigInteger, nullable=True)
+    top_of_search_impression_share = db.Column(db.Float, nullable=True)
+    viewable_impressions = db.Column(db.BigInteger, nullable=True)
+
+    clicks = db.Column(db.BigInteger, nullable=True)
+    ctr = db.Column(db.Float, nullable=True)   # % value
+    spend = db.Column(db.Float, nullable=True)
+    cpc = db.Column(db.Float, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "start_date",
+            "end_date",
+            "country",
+            "profile_id",
+            "campaign_id",
+            "ad_group_id",
+            "keyword_id",
+            "targeting_id",
+            name="uq_sb_keyword_row",
         ),
     )
 

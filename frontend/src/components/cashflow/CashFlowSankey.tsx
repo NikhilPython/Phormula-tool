@@ -67,12 +67,14 @@ React.useEffect(() => {
 
 const is2XL = screenWidth >= 1536;
 const isXL = screenWidth >= 1280 && screenWidth < 1536;
+const isMobile = screenWidth < 640;
 const sankeyCols = {
-  label: is2XL ? 150 : isXL ? 80 : 80,
-  sign:  is2XL ? 28  : 24,
-  amount:is2XL ? 90  : isXL ? 65 : 60,
-  pct:   is2XL ? 60  : 50,
+  label: isMobile ? 90 : is2XL ? 150 : isXL ? 100 : 100,
+  sign: isMobile ? 18 : is2XL ? 28 : 24,
+  amount: isMobile ? 60 : is2XL ? 90 : isXL ? 70 : 65,
+  pct: isMobile ? 45 : is2XL ? 60 : 50,
 };
+
   
 
   const formatNumber = (val?: number) =>
@@ -263,7 +265,7 @@ label: {
   show: true,
   position: "right",
   overflow: "none",
-  width: is2XL ? 300 : isXL ? 215 : 210,
+  width: isMobile ? 170 : is2XL ? 300 : isXL ? 215 : 210,
 formatter: (n: any) => {
   if (isPreviewSankey) {
     return `{label|${n.name}}`;
@@ -285,14 +287,14 @@ formatter: (n: any) => {
     `{label|${row.name}}` +
     (showSign ? `{${signKey}|(${row.sign})}` : `{signEmpty| }`) +
     `{amount|${currency}${Number(n.value).toFixed(2)}}` +
-    `{pct|(${pct.toFixed(1)}%)}`
+    `${!isMobile ? `{pct|(${pct.toFixed(1)}%)}` : ""}`
   );
 },
 rich: {
   label: {
     width: sankeyCols.label,
     align: "left",
-    fontSize: is2XL ? 12 : 11,
+    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
     color: "#374151",
     fontWeight: 500,
   },
@@ -300,7 +302,7 @@ rich: {
   signPlus: {
     width: sankeyCols.sign,
     align: "center",
-    fontSize: is2XL ? 12 : 11,
+    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
     fontWeight: 700,
     color: "#2E7D32", // 🟢 green
   },
@@ -308,7 +310,7 @@ rich: {
   signMinus: {
     width: sankeyCols.sign,
     align: "center",
-    fontSize: is2XL ? 12 : 11,
+    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
     fontWeight: 700,
     color: "#D32F2F", // 🔴 red
   },
@@ -320,7 +322,7 @@ rich: {
   amount: {
     width: sankeyCols.amount,
     align: "right",
-    fontSize: is2XL ? 12 : 11,
+    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
     fontWeight: 700,
     color: "#111827",
   },
@@ -328,7 +330,7 @@ rich: {
   pct: {
     width: sankeyCols.pct,
     align: "right",
-    fontSize: is2XL ? 12 : 11,
+    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
     fontWeight: 600,
     color: "#6B7280",
   },
@@ -362,7 +364,7 @@ links: rows.map((r) => ({
 
   return (
     <div>
-       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         
         {cards.map((c) => {
          const p = getChangePercent(c.value, c.prev);
@@ -466,7 +468,7 @@ links: rows.map((r) => ({
      
 
       {/* SANKEY */}
-      <div className="h-[520px]  overflow-x-auto">
+      <div className="sm:h-[520px] h-[350px]  overflow-x-auto">
         <ReactECharts option={option} style={{ height: "100%" }} />
       </div>
       {isPreviewSankey && (

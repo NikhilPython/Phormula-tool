@@ -627,6 +627,55 @@ def print_comparison_range():
         print("Unexpected error:", e)
         return jsonify({'error': 'Server error', 'details': str(e)}), 500
 
+def get_sku_monthly_history(user_id, country_lower, sku_key, end_year, end_month, n=24):
+    history = []
+    periods = last_n_months_set(end_year, end_month, n)
+
+    if country_lower == "global":
+        pattern = f"skuwisemonthly_{user_id}_global_%"
+        where_col = "product_name"
+    else:
+        pattern = f"skuwisemonthly_{user_id}_{country_lower}_%"
+        where_col = "sku"
+
+    q_tables = text("""
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema='public'
+          AND table_name LIKE :pattern
+    """)
+
+    with engine.connect() as conn:
+        tables = [r[0] for r in conn.execute(q_tables, {"pattern": pattern})]
+
+    for t in tables:
+        p = parse_period_from_table_name(t, user_id, country_lower)
+        if not p or p not in periods:
+            continue
+
+        try:
+            q = text(f"""
+                SELECT total_quantity, net_sales, profit, asp
+                FROM {t}
+                WHERE {where_col} = :k
+                LIMIT 1
+            """)
+            with engine.connect() as conn:
+                r = conn.execute(q, {"k": sku_key}).first()
+
+            if r:
+                history.append({
+                    "period": p,
+                    "units": float(r.total_quantity or 0),
+                    "sales": float(r.net_sales or 0),
+                    "profit": float(r.profit or 0),
+                    "asp": float(r.asp or 0),
+                })
+
+        except Exception as e:
+            print("History read error:", e)
+
+    return sorted(history, key=lambda x: x["period"])
 
 
 
@@ -666,215 +715,194 @@ def analyze_skus():
             
            
             is_global = country.lower() == 'global'
-            
+
+            # ✅ DEFINE KEY FIRST (CRITICAL)
             if is_global and not sku:
-                key = product_name  # Use product name as key for global data
+                key = product_name
             elif sku:
-                key = sku  # Use SKU as key for country-specific data
+                key = sku
             else:
-                key = product_name  # Fallback to product name
+                key = product_name
+
+            # --- attach 24-month historical trend (SAFE parsing) ---
+            try:
+                if "-" in str(month2):
+                    # format: "YYYY-MM"
+                    year2 = int(str(month2).split("-")[0])
+                    month2_num = int(str(month2).split("-")[1])
+                else:
+                    # format: month="01", year2 provided separately
+                    year2 = int(data.get("year2"))
+                    month2_num = int(month2)
+
+                country_lower = country.lower()
+
+                monthly_history = get_sku_monthly_history(
+                    user_id, country_lower, key, year2, month2_num, 24
+                )
+
+                item["historical_trend"] = monthly_history
+
+            except Exception as e:
+                print("❌ Historical trend error → SKU:", key, "| month2:", month2, "| year2:", data.get("year2"))
+                raise e
+
+
+            # --------------------------------------------
+
             
             
 
             if item.get('new_or_reviving'):  # New/reviving SKU
                 prompt = f"""
-You are a senior business analyst. The following is a new or reviving product (not present in the previous period, or newly launched). Based on the latest available data, generate AI insights as follows:
+                You are a senior ecommerce data analyst.
 
-Details for '{product_name}'
+                You are analysing the product: "{product_name}".
 
-Observations:
-- List the 2-3 most important observations about this product's current launch/return, using absolute values (units sold, ASP, profit, etc.) from the data.
-- Comment on launch/return momentum—e.g., strong debut, moderate start, etc.
-- Highlight any potential (or warning) sign based on first-period performance (high ASP but low volume, etc.)
+                This is a newly launched or recently revived product.
+                Provide ONLY analytical observations based on available data.
 
-Improvements:
-- Recommend focused next actions for Marketing, Sales, or Operations to maximize this product's success in the coming months (e.g., increase awareness, optimize pricing, gather early customer reviews).
-- Make each suggestion clear and actionable.
+                STRICT RULES:
+                - Do NOT provide recommendations.
+                - Do NOT suggest actions or next steps.
+                - Do NOT give a verdict.
+                - Only explain launch performance analytically.
+                - Each bullet point MUST reference the product name "{product_name}" naturally in the sentence.
 
-Then, add a bullet each for:
+                Analyse:
 
-Sales Volume:
-• Comment on units sold and what it means for launch traction. Suggest a commercial action.
+                1) Launch strength
+                - Units, Sales, ASP and Profit level for "{product_name}".
+                - Whether the debut of "{product_name}" looks strong, moderate, or weak based purely on numbers.
 
-ASP:
-• Note the price point; suggest if it should be tested higher/lower.
+                2) Early signals
+                - Whether pricing of "{product_name}" seems premium or discounted.
+                - Whether profitability of "{product_name}" is healthy or thin.
+                - Whether volume of "{product_name}" indicates real demand or limited traction.
 
-Profitability:
-• Note profit per unit or overall. Suggest if costs or pricing can be optimized.
+                3) If historical_trend exists:
+                - Explain revival pattern of "{product_name}" versus earlier months.
 
-⚠️ End with a one-line verdict: Should this product be scaled quickly, tested more, or repositioned? Justify your answer.
+                OUTPUT:
+                - Plain bullet points only.
+                - No advice.
+                - No strategy.
+                - No recommendations.
+                - Mention "{product_name}" in the explanation where relevant.
 
-Instructions:
-- Use plain text with bullets only.
-- DO NOT use Markdown formatting (no **bold**, no italics, no headers).
-- Do NOT compare to previous periods (since there's no baseline).
-- Use actual values from the data.
-- Make all advice easy for business teams to implement.
+                Data:
+                {json.dumps(item, indent=2)}
+                """
 
-Data:
-{json.dumps(item, indent=2)}
-"""
             else:  # Regular SKU
                 prompt = f"""
-You are a senior ecommerce business analyst. The data below shows a product's performance
-comparing a previous period vs the current MTD.
+You are a Senior Amazon Business Analyst performing a
+CAUSAL PERFORMANCE DIAGNOSIS for a single product.
 
-Context:
-- Country: {country}
+Product under analysis: "{product_name}"
+Marketplace: "{country}"
 
+You are given:
+- Final, pre-calculated monthly performance data
+- A rolling historical trend of up to 24 months
+- Month-over-month movement already computed
 
-Details for '{product_name}'
+Your responsibility is to identify:
 
-IMPORTANT FILTER:
-- Ignore any row where product_name is "Total" or contains "Total".
+WHAT materially changed,
+WHY it changed,
+and WHAT business impact it created
+for "{product_name}".
 
-Observations:
-- List the 2–3 most important changes using ONLY the given metrics:
-• quantity_prev vs quantity_curr
-• net_sales_prev vs net_sales_curr
-• profit_prev vs profit_curr
-• asp_prev vs asp_curr
-• unit_wise_profitability_prev vs unit_wise_profitability_curr
-• and % fields like "Unit Growth (%)", "Sales Growth (%)", etc.
-- Use the exact causal tone wherever % values exist:
-"The increase/decrease in ASP by X% resulted in a dip/growth in units by Y%, which also resulted in sales falling/increasing by Z%."
-- In at least one observation, mention Sales Mix Change (%) direction if present (up/down).
-- Do NOT add assumptions like stock issues, supply constraints, replenishment, OOS, or fulfillment problems
-in observations or metric explanations.
+STRICT ANALYTICAL RULES:
 
+1) MATERIALITY FIRST  
+- Ignore minor or normal fluctuations.  
+- Focus only on movements that are:
+  • extreme  
+  • trend-defining  
+  • profitability-impacting  
+  • abnormal versus history  
 
-PRIMARY ACTION SELECTION (MANDATORY):
+2) CAUSE → EFFECT DISCIPLINE  
+Every insight must clearly follow:
 
-- Select EXACTLY ONE primary action based on the Decision Guidance below.
-- The primary action represents the margin-optimal default recommendation.
-- The primary action MUST be reused verbatim:
-  • once in the Improvements section
-  • once in each metric-level action bullet
-- Do NOT select different actions for different metrics.
-- If multiple rules seem relevant, apply the FIRST matching rule in the order given.
-- The secondary strategy sentence (rank-only) is OPTIONAL and EXEMPT from primary action reuse.
+Movement → Primary Driver → Business Impact
 
+Examples of valid causal logic:
+- ASP decline → unit growth → CM1 profit pressure  
+- Stable pricing → unit decline → demand weakness  
+- Unit growth with stable CM1/unit → healthy expansion  
 
-Improvements:
-- List the PRIMARY ACTION only ONCE.
-- Do NOT repeat the same action sentence multiple times.
-- Do NOT add the secondary strategy sentence here.
-- The action MUST be chosen ONLY from the list below, verbatim:
-• "Check ads and visibility campaigns for this product."
-• "Review the visibility setup for this product."
-• "Reduce ASP slightly to improve traction."
-• "Increase ASP slightly to strengthen margins."
-• "Maintain current ASP and monitor performance."
-• "Monitor performance closely for now."
-- Do NOT add any other recommendations or explanations.
-- Do NOT mention stock, inventory, supply, operations, OOS, logistics, replenishment, or warehousing.
+3) LONG-TERM TREND INTERPRETATION  
+Using the historical_trend:
 
+- Classify the trajectory of "{product_name}" as:
+  • sustained growth  
+  • structural decline  
+  • volatility  
+  • flat/stagnant  
 
-Decision Guidance (APPLY IN ORDER — FIRST MATCH WINS, MUTUALLY EXCLUSIVE):
+- Identify **clear turning points** in the trend.
 
+4) RECENT MOVEMENT DIAGNOSIS  
+For the latest month vs previous month:
 
-CASE C — HEALTHY GROWTH (OVERRIDE):
-• Apply IF ALL of the following are TRUE:
-  - Unit Growth (%) is POSITIVE
-  - Sales Growth (%) is POSITIVE
-  - Profit Growth (%) is POSITIVE
-• This indicates efficient, scalable growth.
-• OVERRIDE all other cases below.
-• Primary Action:
-  "Maintain current ASP and monitor performance."
+- State the **dominant commercial change**.
+- Explain the **single strongest driver**:
+  • pricing movement  
+  • unit movement  
+  • sales mix shift  
+  • per-unit profitability change  
 
+- Conclude with the **business quality impact**:
+  • profitability strengthened  
+  • margin pressure emerged  
+  • efficiency deteriorated  
+  • stable but weak growth  
 
-CASE A — MARGIN DILUTION:
-• Apply IF ALL of the following are TRUE:
-  - ASP change is NEGATIVE by more than 10%
-  - Unit Growth (%) is POSITIVE
-  - Sales Growth (%) is FLAT or NEGATIVE
-  - Profit Growth (%) is NEGATIVE
-• This indicates pricing drove volume but hurt overall profitability.
-• Primary Action:
-  "Increase ASP slightly to strengthen margins."
+METRIC INTERPRETATION RULES (SKU LEVEL)
 
+- total_quantity represents net units sold after returns.
+- net_sales represents realised topline revenue.
+- asp represents realised selling price per unit.
+- profit represents CM1 profit.
+- unit_wise_profitability represents CM1 profit per unit.
 
-CASE B — PRICE RESISTANCE:
-• Apply IF ALL of the following are TRUE:
-  - ASP change is POSITIVE by more than 10%
-  - Unit Growth (%) is NEGATIVE
-  - Sales Growth (%) is NEGATIVE
-• This indicates customers are resisting higher prices.
-• Primary Action:
-  "Reduce ASP slightly to improve traction."
+CM2 ATTRIBUTION CONSTRAINT:
+
+- CM2 profit movement can ONLY be driven by:
+  • advertising_total
+  • platform fees
+  • storage fees
+  • reimbursements
+
+- Do NOT attribute CM2 change to any other cost component.
+- If CM2 movement is unexplained by the allowed drivers,
+  do NOT infer additional causes.
 
 
-PRICE EXHAUSTION OVERRIDE:
-• Apply IF:
-  - ASP change is NEGATIVE by more than 10%
-  AND
-  - Unit Growth (%) is NEGATIVE by more than 60%
-• In this case:
-  "Review the visibility setup for this product."
+FORBIDDEN CONTENT (ABSOLUTE):
 
+- No recommendations  
+- No actions  
+- No strategy  
+- No future suggestions  
+- No operational or inventory commentary  
 
-SECONDARY STRATEGY RULE (RANK-ONLY, OPTIONAL):
+OUTPUT FORMAT:
 
-• Add the following sentence ONLY IF:
-  - Unit Growth (%) is POSITIVE
-  AND
-  - ASP and Units are moving in opposite directions
-  AND
-  - SKU-level Profit (%) is NEGATIVE
-• Use EXACTLY this sentence:
-  "If your objective is to boost rank, you may continue with the current pricing setup but monitor performance closely."
-• This sentence MUST:
-  - Appear ONLY under Unit Growth
-  - Be the FINAL bullet in that section
-  - Appear exactly ONCE
-• This sentence is ALLOWED even though it contains the words "monitor performance closely".
-
-
-Then, for each metric, add:
-
-Unit Growth:
-• Explain the growth or decline using ONLY unit trend vs ASP trend.
-• Repeat the PRIMARY ACTION verbatim.
-• Add the secondary strategy sentence ONLY if triggered.
-
-ASP:
-• Explain the ASP change using ONLY pricing, discounting, or mix signals.
-• Repeat the PRIMARY ACTION verbatim.
-
-Sales:
-• Describe sales as Units × ASP.
-• Repeat the PRIMARY ACTION verbatim.
-
-Profit:
-• Explain profit using sales movement and realized pricing/mix only.
-• Do NOT mention COGS or costs.
-• Repeat the PRIMARY ACTION verbatim.
-
-Unit Profitability:
-• Explain per-unit profit using realized price or mix.
-• Do NOT mention COGS.
-• Repeat the PRIMARY ACTION verbatim.
-
-
-Inventory:
-- Add ONE inventory sentence ONLY IF inventory_signals indicate an issue.
-- The sentence MUST start with "Inventory:" and use EXACTLY one of:
-• "Inventory: Initiate inventory replenishment as current cover is below lead time."
-• "Inventory: Push promotions or ads to clear around <aged_units> units of aged inventory and reduce storage costs."
-• "Inventory: Amazon has flagged this SKU for inventory optimization; review the recommendation in Seller Central."
-- Do NOT let inventory influence pricing or sales logic.
-
-
-Instructions:
-- Use plain text with bullets only.
-- DO NOT use Markdown.
-- Use % values and trends wherever available.
-- Keep insights concise and business-actionable.
+- Plain text bullet points only  
+- Maximum 5 bullets  
+- Each bullet must reference "{product_name}" naturally  
+- Each bullet must follow **Movement → Driver → Impact** reasoning  
+- No headings, no markdown, no narrative paragraphs  
 
 Data:
 {json.dumps(item, indent=2)}
 """
+
+
 
             try:
                 ai_response = oa_client.chat.completions.create(  # ✅ call the instance you created
@@ -948,7 +976,14 @@ Data:
                     item = future_to_sku[future]
                     sku = item.get('sku', 'N/A')
                     product_name = item.get('product_name', 'N/A')
+                     # ✅ PRINT REAL ERROR (CRITICAL)
+                    print("THREAD ERROR → SKU:", sku, "| PRODUCT:", product_name)
+                    print("ERROR MESSAGE:", str(e))
 
+
+            # ✅ ADD DEBUG PRINTS HERE
+        print("Insights generated:", len(insights))
+        print("Errors:", error_count)
 
         return jsonify({'insights': insights}), 200
 

@@ -456,72 +456,110 @@ class AmazonAdsReportingClient:
         data = json.loads(raw)
         return _normalize(data)
 
+    # def create_sb_keyword_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
+    #     """
+    #     Sponsored Brands - Keyword report (v3)
+    #     NOTE: reportTypeId differs by account; most commonly sbKeywords.
+    #     """
+    #     payload = {
+    #         "name": f"SB Keyword {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
+    #         "startDate": start_date,
+    #         "endDate": end_date,
+    #         "configuration": {
+    #             "adProduct": "SPONSORED_BRANDS",
+    #             "reportTypeId": "sbTargeting",   # <- if your account uses different id, change here
+    #             "timeUnit": time_unit,
+    #             "format": "GZIP_JSON",
+    #             "groupBy": ["targeting"],
+    #             "columns": [
+    #                 "startDate", "endDate",
+    #                 "portfolioName",
+    #                 "currency",
+    #                 "campaignName",
+    #                 "adGroupName",
+    #                 "targeting",
+    #                 "matchType",
+    #                 "costType",
+    #                 "impressions",
+    #                 "topOfSearchImpressionShare",
+    #                 "viewableImpressions",
+    #                 "clicks",
+    #                 "clickThroughRate",
+    #                 "cost",
+    #                 "costPerClick",
+    #                 "vCPM",
+    #                 "acos",
+    #                 "roas",
+    #                 "sales14d",
+    #                 "purchases14d",
+    #                 "unitsSold14d",
+    #                 "conversionRate14d",
+    #                 "viewThroughRate",
+    #                 "vctr",
+    #                 "videoFirstQuartileViews",
+    #                 "videoMidpointViews",
+    #                 "videoThirdQuartileViews",
+    #                 "videoCompleteViews",
+    #                 "videoUnmutes",
+    #                 "views5s",
+    #                 "viewRate5s",
+    #                 "brandedSearches14d",
+    #                 "detailPageViews14d",
+    #                 "newToBrandPurchases14d",
+    #                 "newToBrandPurchasesPercentage14d",
+    #                 "newToBrandSales14d",
+    #                 "newToBrandSalesPercentage14d",
+    #                 "newToBrandUnitsSold14d",
+    #                 "newToBrandUnitsSoldPercentage14d",
+    #                 "newToBrandOrderRate14d",
+    #                 "acosClicks14d",
+    #                 "roasClicks14d",
+    #                 "salesClicks14d",
+    #                 "purchasesClicks14d",
+    #                 "unitsSoldClicks14d",
+    #                 "brandTotalDetailPageViewsClicks14d",
+    #             ],
+    #         },
+    #     }
+    #     return self._create_report(payload)
+
     def create_sb_keyword_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
-        """
-        Sponsored Brands - Keyword report (v3)
-        NOTE: reportTypeId differs by account; most commonly sbKeywords.
-        """
         payload = {
-            "name": f"SB Keyword {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
+            "name": f"SB Targeting {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
             "startDate": start_date,
             "endDate": end_date,
             "configuration": {
                 "adProduct": "SPONSORED_BRANDS",
-                "reportTypeId": "sbKeywords",   # <- if your account uses different id, change here
+                "reportTypeId": "sbTargeting",
                 "timeUnit": time_unit,
                 "format": "GZIP_JSON",
-                "groupBy": ["advertiser"],
+                "groupBy": ["targeting"],     # keep
                 "columns": [
                     "startDate", "endDate",
-                    "portfolioName",
-                    "currency",
-                    "campaignName",
-                    "adGroupName",
-                    "targeting",
+                    "campaignId", "campaignName",
+                    "adGroupId", "adGroupName",
+
+                    # targeting/keyword fields (pick what Amazon actually fills)
+                    "keywordText",
+                    "targetingText",
+                    "targetingExpression",
                     "matchType",
                     "costType",
+
+                    # currency
+                    "campaignBudgetCurrencyCode",
+
+                    # metrics
                     "impressions",
-                    "topOfSearchImpressionShare",
                     "viewableImpressions",
+                    "topOfSearchImpressionShare",
                     "clicks",
-                    "clickThroughRate",
                     "cost",
-                    "costPerClick",
-                    "vCPM",
-                    "acos",
-                    "roas",
-                    "sales14d",
-                    "purchases14d",
-                    "unitsSold14d",
-                    "conversionRate14d",
-                    "viewThroughRate",
-                    "vctr",
-                    "videoFirstQuartileViews",
-                    "videoMidpointViews",
-                    "videoThirdQuartileViews",
-                    "videoCompleteViews",
-                    "videoUnmutes",
-                    "views5s",
-                    "viewRate5s",
-                    "brandedSearches14d",
-                    "detailPageViews14d",
-                    "newToBrandPurchases14d",
-                    "newToBrandPurchasesPercentage14d",
-                    "newToBrandSales14d",
-                    "newToBrandSalesPercentage14d",
-                    "newToBrandUnitsSold14d",
-                    "newToBrandUnitsSoldPercentage14d",
-                    "newToBrandOrderRate14d",
-                    "acosClicks14d",
-                    "roasClicks14d",
-                    "salesClicks14d",
-                    "purchasesClicks14d",
-                    "unitsSoldClicks14d",
-                    "brandTotalDetailPageViewsClicks14d",
                 ],
             },
         }
         return self._create_report(payload)
+
 
     # def create_sd_campaign_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
     #     payload = {

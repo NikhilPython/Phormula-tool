@@ -17,7 +17,7 @@ from config import Config
 
 # --- App config / auth
 SECRET_KEY = Config.SECRET_KEY
-UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 
 # --- load .env robustly (works no matter where you run `flask run`) ---
 dotenv_path = find_dotenv(filename=".env", usecwd=True)

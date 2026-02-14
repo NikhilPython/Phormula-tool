@@ -85,6 +85,33 @@ const toNum = (v: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const moveLabelToEnd = (
+  labels: string[],
+  values: number[],
+  colors: string[],
+  targetLabel: string
+) => {
+  const idx = labels.findIndex(
+    (l) => l.trim().toLowerCase() === targetLabel.trim().toLowerCase()
+  );
+  if (idx === -1) return { labels, values, colors };
+
+  const nextLabels = [...labels];
+  const nextValues = [...values];
+  const nextColors = [...colors];
+
+  const [lbl] = nextLabels.splice(idx, 1);
+  const [val] = nextValues.splice(idx, 1);
+  const [col] = nextColors.splice(idx, 1);
+
+  nextLabels.push(lbl);
+  nextValues.push(val);
+  nextColors.push(col);
+
+  return { labels: nextLabels, values: nextValues, colors: nextColors };
+};
+
+
 const CircleChart: React.FC<CircleChartProps> = ({
   range,
   month,
@@ -215,19 +242,29 @@ const CircleChart: React.FC<CircleChartProps> = ({
 
     const s = uploadsData.summary;
 
+    // const colors = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
+    const labelsRaw = ["COGS", "Amazon Fees", "Tax and credits", "Ads", "Others", "CM2 Profit"];
+    const valuesRaw = [
+      Math.abs(s.total_cous || 0),
+      Math.abs(s.total_amazon_fee || 0),
+      Math.abs(s.taxncredit || 0),
+      Math.abs(s.advertising_total || 0),
+      Math.abs(s.otherwplatform || 0),
+      Math.abs(s.cm2_profit || 0),
+    ];
+
+    const colorsRaw = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
+
+    // ✅ force Others to last
+    const { labels, values, colors } = moveLabelToEnd(labelsRaw, valuesRaw, colorsRaw, "Others");
+
     const next: ChartData<"pie", number[], string> = {
-      labels: ["COGS", "Amazon Fees", "Tax and credits", "Ads", "Others", "CM2 Profit"],
+      labels,
       datasets: [
         {
-          data: [
-            Math.abs(s.total_cous || 0),
-            Math.abs(s.total_amazon_fee || 0),
-            Math.abs(s.taxncredit || 0),
-            Math.abs(s.advertising_total || 0),
-            Math.abs(s.otherwplatform || 0),
-            Math.abs(s.cm2_profit || 0),
-          ],
-          backgroundColor: ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"],
+          data: values,
+          backgroundColor: colors,
+          hoverBackgroundColor: colors,
           borderWidth: 0,
           borderColor: "transparent",
           spacing: 0,
@@ -236,6 +273,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
         },
       ],
     };
+
+    setChartData(next);
 
     setChartData(next);
   }, [uploadsData]);
@@ -252,6 +291,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
     const isZero = vals.every((v) => v === 0);
     setAllValuesZero(isZero);
 
+    const colors = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
+
     if (isZero) {
       const dummyValues = [25, 20, 15, 10, 18, 12];
       const dummy: ChartData<"pie", number[], string> = {
@@ -259,9 +300,11 @@ const CircleChart: React.FC<CircleChartProps> = ({
         datasets: [
           {
             data: dummyValues,
-            backgroundColor: ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"],
+            backgroundColor: colors,
+            hoverBackgroundColor: colors, // ✅ SAME ON HOVER
             borderWidth: 0,
             borderColor: "transparent",
+            hoverOffset: 4,
           },
         ],
       };
@@ -292,12 +335,13 @@ const CircleChart: React.FC<CircleChartProps> = ({
       maintainAspectRatio: false,
       animation: { duration: 0 },
 
-      radius: isLaptop ? "91%" : "100%",
+      // radius: isLaptop ? "91%" : "100%",
+      radius: isLaptop ? "92%" : isDesktop ? "95%" : "100%",
 
       elements: {
         arc: {
           borderWidth: 0,
-          hoverOffset: 4,
+          hoverOffset: 0,
         },
       },
 
@@ -379,7 +423,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
   return (
     <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col">
       {/* Heading */}
-      <div className="mb-1 w-fit mx-auto md:mx-0">
+      <div className="mb-1 w-fit mx-right md:mx-0">
         <PageBreadcrumb
           pageTitle="Expense Breakup"
           variant="page"
@@ -393,10 +437,10 @@ const CircleChart: React.FC<CircleChartProps> = ({
         className={`flex-1 min-h-0 w-full ${allValuesZero ? "opacity-30" : "opacity-100"} transition-opacity duration-300`}
       >
         {displayChartData && legendModel ? (
-          <div className="relative w-full h-full flex items-center gap-6">
-
+          <div className="relative w-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
             {/* LEFT: PIE */}
-            <div className="flex-1 min-w-0 h-[260px] sm:h-[280px] md:h-[300px] 2xl:h-[360px]">
+            <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[287px] xl:h-[300px] 2xl:h-[360px]">
+
               <Pie
                 // className="!block"
                 ref={chartRef}
@@ -404,19 +448,21 @@ const CircleChart: React.FC<CircleChartProps> = ({
                 options={options}
                 // redraw
                 className="!block"
-                 style={{ width: "100%", height: "100%" }}
+                style={{ width: "100%", height: "100%" }}
               />
             </div>
 
             {/* RIGHT: CUSTOM LEGEND (like CM1 breakdown style) */}
             <div
-              className="shrink-0 overflow-auto pr-1"
+              className="w-full xl:shrink-0 xl:self-center overflow-y-auto overflow-x-hidden pr-1 flex justify-center xl:justify-start"
               style={{
-                width: isDesktop ? 260 : isLaptop ? 120 : 240,
+                width: isDesktop ? 260 : isLaptop ? 170 : "100%",
                 maxHeight: "100%",
               }}
             >
-              <div className="flex flex-col gap-1 2xl:gap-4">
+              <div className="grid grid-cols-3 md:grid-cols-3 xl:flex xl:flex-col gap-x-10 gap-y-2 xl:gap-y-1 2xl:gap-y-4 w-fit">
+
+
                 {legendModel.map((item) => {
                   const chart = chartRef.current;
                   const isVisible = chart ? chart.getDataVisibility(item.index) : true;
@@ -425,7 +471,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
                     <button
                       key={`${item.fullLabel}-${item.index}`}
                       type="button"
-                      className="text-left"
+                      className="text-left w-full min-w-0"
+
                       onClick={() => {
                         const c = chartRef.current;
                         if (!c) return;
@@ -435,36 +482,26 @@ const CircleChart: React.FC<CircleChartProps> = ({
                       }}
                     >
                       <div
-                        className={`flex items-start gap-3 ${isVisible ? "opacity-100" : "opacity-40"
-                          }`}
+                        className={`flex items-start gap-3 min-w-0 ${isVisible ? "opacity-100" : "opacity-40"}`}
+
                       >
                         <span
-                          className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full"
+                          className="mt-1.5 inline-block h-2.5 w-2.5 rounded-full flex-none shrink-0"
                           style={{ backgroundColor: item.color }}
                         />
 
                         <div className="min-w-0">
                           {/* line 1: Label */}
                           <div
-                            className={`truncate ${isVisible ? "" : "line-through"
-                              }`}
-                            style={{
-                              fontSize: isLaptop ? 10 : 12,
-                              color: "#414042",
-                            }}
+                            className={`truncate text-[10px] 2xl:text-xs ${isVisible ? "" : "line-through"}`}
+                            style={{ color: "#414042" }}
                             title={item.fullLabel}
                           >
                             {item.label}
                           </div>
 
                           {/* line 2: (value) (percentage) */}
-                          <div
-                            className="whitespace-nowrap"
-                            style={{
-                              fontSize: isLaptop ? 10 : 12,
-                              color: "#414042",
-                            }}
-                          >
+                          <div className="text-[10px] 2xl:text-xs break-words" style={{ color: "#414042" }}>
                             {currencySymbol}
                             {item.value.toLocaleString(undefined, {
                               minimumFractionDigits: 2,
