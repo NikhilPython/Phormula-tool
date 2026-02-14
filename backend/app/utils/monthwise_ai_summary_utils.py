@@ -59,8 +59,8 @@ def rolling_months(anchor_year: int, anchor_month: int, max_months: int = 24):
 
 
 DEFAULT_OBJECTIVE_V2 = {
-    "growth_intent": "balanced",  # conservative | balanced | aggressive
-    "profit_priority": "protect_growth",  # high | protect_growth | sacrifice_short_term
+    "growth_intent": "aggressive",  # conservative | balanced | aggressive
+    "profit_priority": "high",  # high | protect_growth | sacrifice_short_term
     "inventory_clearance_priority": False,
     "business_context": None,
     "country": None,
@@ -311,9 +311,9 @@ def build_rolling_monthly_series(
     anchor_month: int
 ):
     
-    print("\n=== build_rolling_monthly_series CALLED ===")
-    print("anchor_year:", anchor_year, type(anchor_year))
-    print("anchor_month:", anchor_month, type(anchor_month))
+    # print("\n=== build_rolling_monthly_series CALLED ===")
+    # print("anchor_year:", anchor_year, type(anchor_year))
+    # print("anchor_month:", anchor_month, type(anchor_month))
     series = []
 
     # ❌ REMOVED auto-latest override
@@ -333,15 +333,15 @@ def build_rolling_monthly_series(
             continue
 
         _, df_total = _split_total_row(df)
-        print("df_total type:", type(df_total))
-        print("df_total empty:", df_total.empty)
+        # print("df_total type:", type(df_total))
+        # print("df_total empty:", df_total.empty)
         if df_total.empty:
             continue
 
         snapshot = extract_total_snapshot(df_total)
 
-        print("snapshot type:", type(snapshot))
-        print("snapshot value:", snapshot)
+        # print("snapshot type:", type(snapshot))
+        # print("snapshot value:", snapshot)
 
         # TEMPORARY SAFE CHECK (prevents crash so we can see prints)
         if not isinstance(snapshot, dict) or not snapshot:
@@ -1111,7 +1111,7 @@ def run_prompt_2_strategy(
             {"role": "system", "content": AI_SYSTEM_PROMPT_2},
             {"role": "user", "content": json.dumps(safe_payload, separators=(",", ":"))},
         ],
-        temperature=0.3,
+        temperature=0.2,
     )
 
     return resp.choices[0].message.content.strip()
@@ -1125,7 +1125,7 @@ def run_prompt_3_polish(bullets: dict) -> dict:
             {"role": "system", "content": AI_SYSTEM_PROMPT_3_POLISHER},
             {"role": "user", "content": json.dumps(bullets, separators=(",", ":"))}
         ],
-        temperature=0.0,
+        temperature=0.2,
     )
     return json.loads(resp.choices[0].message.content)
 
@@ -1173,577 +1173,208 @@ def build_comparison_label(period: str, timeline: str, year: int):
 
 
 
-# def render_month_end_summary(
-#     *,
-#     period: str,
-#     timeline: str,
-#     year: int,
-#     analysis_insights: dict | None,
-#     mom: dict,
-#     sku_mom: dict,
-#     focus_skus: list,
-#     inventory_alerts: dict,
-#     inventory_lost: float,
-#     currency_symbol: str,
-#     strategy_actions: dict | None = None,
-# ) -> str:
-#     """
-#     Deterministic executive month-end / year-end summary renderer.
-#     Presentation-only. Fully None-safe.
-#     """
-
-#     def fmt_pct(x):
-#         return f"{x:+.2f}%" if isinstance(x, (int, float)) else "N/A"
-
-#     def fmt_num(x, decimals=2):
-#         return f"{x:+.{decimals}f}" if isinstance(x, (int, float)) else "N/A"
-
-#     def fmt_int(x):
-#         return f"{int(x)}" if isinstance(x, (int, float)) else "N/A"
-
-#     is_yearly = period == "yearly"
-#     is_long_period = period in ("yearly", "quarterly")
-
-#     comparison = build_comparison_label(period, timeline, year)
-#     lines: list[str] = []
-#     # =========================================================
-#     # REPORT TITLE (PERIOD-AWARE)  ⭐ CRITICAL FIX
-#     # =========================================================
-#     if period == "yearly":
-#         lines.append("Yearly Business Summary")
-#     elif period == "quarterly":
-#         lines.append("Quarterly Business Summary")
-#     else:
-#         lines.append("Month-end Business Summary")
-
-
-#     # =========================================================
-#     # SUMMARY — PORTFOLIO ONLY
-#     # =========================================================
-#     if analysis_insights:
-
-#         lines.append("## SUMMARY")
-
-#         es = analysis_insights.get("executive_summary_signals", {})
-
-#         # ----- Heading -----
-#         if is_yearly:
-#             lines.append(f"Year-over-Year Performance Summary ({comparison})")
-#         else:
-#             lines.append(f"Performance Summary ({comparison})")
-
-#         takeaway = analysis_insights.get("executive_takeaway")
-#         if isinstance(takeaway, str) and takeaway.strip():
-#             lines.append(takeaway)
-
-#         # ----- Units -----
-#         u = es.get("units", {})
-#         units_label = "Units sold (YoY)" if is_yearly else "Units sold"
-#         lines.append(
-#             f"• {units_label}: {fmt_pct(u.get('pct_change'))} "
-#             f"({fmt_int(u.get('absolute_change'))} units)"
-#             f"{severity_suffix(u.get('severity'), period=period)}"
-#         )
-
-#         # ----- Net Sales -----
-#         ns = es.get("net_sales", {})
-#         ns_label = "Net sales (YoY)" if is_yearly else "Net sales"
-#         lines.append(
-#             f"• {ns_label}: {fmt_pct(ns.get('pct_change'))} "
-#             f"({currency_symbol}{fmt_num(ns.get('absolute_change'))})"
-#             f"{severity_suffix(ns.get('severity'), period=period)}"
-#         )
-
-#         # ----- ASP -----
-#         asp = es.get("asp", {})
-#         asp_label = "ASP (YoY)" if is_yearly else "ASP"
-#         lines.append(
-#             f"• {asp_label}: {fmt_pct(asp.get('pct_change'))} "
-#             f"({currency_symbol}{fmt_num(asp.get('absolute_change'))})"
-#             f"{severity_suffix(asp.get('severity'), period=period)}"
-#         )
-
-#         # ----- CM1 Profit -----
-#         cm1 = es.get("cm1_profit", {})
-#         cm1_label = "CM1 profit (YoY)" if is_yearly else "CM1 profit"
-#         lines.append(
-#             f"• {cm1_label}: {fmt_pct(cm1.get('pct_change'))} "
-#             f"({currency_symbol}{fmt_num(cm1.get('absolute_change'))})"
-#             f"{severity_suffix(cm1.get('severity'), period=period)}"
-#         )
-
-#         # ----- CM1 Profit per Unit -----
-#         ppu = es.get("cm1_profit_per_unit", {})
-#         ppu_label = "CM1 profit per unit (YoY)" if is_yearly else "CM1 profit per unit"
-#         lines.append(
-#             f"• {ppu_label}: {fmt_pct(ppu.get('pct_change'))} "
-#             f"({currency_symbol}{fmt_num(ppu.get('absolute_change'))})"
-#             f"{severity_suffix(ppu.get('severity'), period=period)}"
-#         )
-
-#         # ----- Cost Pressure -----
-#         cp = es.get("cost_pressure", {})
-#         ad = cp.get("advertising", {})
-#         lines.append(
-#             f"• Advertising spends: {fmt_pct(ad.get('pct_change'))} "
-#             f"({currency_symbol}{fmt_num(ad.get('absolute_change'))})"
-#             f"{severity_suffix(ad.get('severity'), period=period)}, "
-#             f"with ACOS change of {fmt_pct(ad.get('acos_delta'))}"
-#         )
-
-#         st = cp.get("storage_fees", {})
-#         lines.append(
-#             f"• Platform inventory storage fees: {fmt_pct(st.get('pct_change'))} "
-#             f"({currency_symbol}{fmt_num(st.get('absolute_change'))})"
-#             f"{severity_suffix(st.get('severity'), period=period)}"
-#         )
-
-#         # ----- CM2 Profit -----
-#         cm2 = es.get("cm2_profit", {})
-#         cm2_label = "CM2 profit (YoY)" if is_yearly else "CM2 profit"
-#         lines.append(
-#             f"• {cm2_label}: {fmt_pct(cm2.get('pct_change'))} "
-#             f"({currency_symbol}{fmt_num(cm2.get('absolute_change'))})"
-#             f"{severity_suffix(cm2.get('severity'), period=period)}"
-#         )
-
-#         # ----- Reimbursements -----
-#         reimb = es.get("reimbursements", {})
-#         if reimb.get("present") and isinstance(reimb.get("amount"), (int, float)):
-#             lines.append(
-#                 f"• Amazon reimbursements for lost inventory: "
-#                 f"{currency_symbol}{abs(reimb['amount']):.2f} (non-recurring recovery)"
-#             )
-
-#     # =========================================================
-#     # PRODUCT INSIGHTS
-#     # =========================================================
-#     lines.append("\n## PRODUCT INSIGHTS")
-
-#     product_insights = analysis_insights.get("product_insights", {}) if analysis_insights else {}
-#     sku_rolling_trends = analysis_insights.get("sku_rolling_trends", {}) if analysis_insights else {}
-
-#     for sku in focus_skus:
-#         s = sku_mom.get(sku)
-#         if not isinstance(s, dict):
-#             continue
-
-#         name = s.get("product_name", sku)
-#         lines.append(f"\n{name}")
-
-#         def sku_fmt(metric, key="delta", pct_key="delta_pct"):
-#             m = s.get(metric, {})
-#             if not isinstance(m, dict):
-#                 return "N/A (N/A)"
-#             return f"{fmt_num(m.get(key))} ({fmt_pct(m.get(pct_key))})"
-
-#         lines.append(f"• ASP: {currency_symbol}{sku_fmt('asp')}")
-#         lines.append(f"• Units: {sku_fmt('total_quantity')}")
-#         lines.append(f"• Net sales: {currency_symbol}{sku_fmt('net_sales')}")
-#         lines.append(f"• CM1 profit: {currency_symbol}{sku_fmt('profit')}")
-#         lines.append(f"• CM1 profit per unit: {currency_symbol}{sku_fmt('unit_wise_profitability')}")
-
-#         sku_diag = product_insights.get(sku, {})
-#         diagnosis_codes = sku_diag.get("diagnosis_codes", ["mixed_signal"])
-
-#         if is_long_period:
-#             movement_summary = (
-#                 sku_diag.get("movement_summary")
-#                 or sku_rolling_trends.get(sku, {}).get("movement_summary")
-#             )
-
-#             # Show concise yearly/quarterly journey ONLY
-#             if isinstance(movement_summary, str) and movement_summary.strip():
-#                 lines.append(f"• Trend summary: {movement_summary}")
-
-#             # ❌ Do NOT show diagnosis for yearly/quarterly
-#         else:
-#             for code in diagnosis_codes:
-#                 for line in DIAGNOSIS_TEXT.get(code, []):
-#                     lines.append(line)
-
-
-#         # ----- ACTION (MONTHLY ONLY) -----
-#         if strategy_actions and sku in strategy_actions:
-#             lines.append(f" Action: {strategy_actions[sku]}")
-
-#     # =========================================================
-#     # INVENTORY
-#     # =========================================================
-#     if inventory_alerts:
-#         lines.append("\n## INVENTORY")
-
-#         if "aged_inventory_181_plus" in inventory_alerts:
-#             lines.append(
-#                 f"• Aged inventory (181+ days): "
-#                 f"{inventory_alerts['aged_inventory_181_plus']['total_units']} units"
-#             )
-
-#         if "unfulfillable_inventory" in inventory_alerts:
-#             lines.append(
-#                 f"• Unfulfillable inventory: "
-#                 f"{inventory_alerts['unfulfillable_inventory']['total_units']} units"
-#             )
-
-#         if "storage_cost_risk" in inventory_alerts:
-#             lines.append(
-#                 f"• Storage cost risk: Estimated "
-#                 f"{currency_symbol}{inventory_alerts['storage_cost_risk']['estimated_next_month_cost']:.2f} "
-#                 f"next month"
-#             )
-
-#         lines.append(
-#             "• For detailed inventory insights, please refer to the Inventory Reconciliation tab."
-#         )
-
-#     return "\n".join(lines)
-
-
-# def get_or_create_summary(
-#     user_id,
-#     country,
-#     marketplace_id,
-#     period,
-#     timeline,
-#     year,
-#     objective=None,
-#     target_sku: str | list | None = None,
-#     force_regenerate=False
-# ):
-
-#     print("\n=== get_or_create_summary START ===")
-#     print("period:", period, type(period))
-#     print("timeline:", timeline, type(timeline))
-#     print("year:", year, type(year))
-
-#     # ---------------- Objective defaults / normalize ----------------
-#     raw_objective = objective or {}
-
-#     growth_intent = raw_objective.get("growth_intent", "balanced")
-#     profit_priority = raw_objective.get("profit_priority", "protect_growth")
-#     inventory_clearance_priority = raw_objective.get("inventory_clearance_priority", False)
-#     business_context = raw_objective.get("business_context")
-
-
-#     # ============================================================
-#     # 🔑 DETECT USER-SELECTED PERIOD
-#     # ============================================================
-#     user_selected = bool(period and timeline and year)
-
-#     if not user_selected:
-#         year, month = resolve_latest_available_month(user_id, country)
-#         timeline = str(month)
-#         period = "monthly"
-
-#     is_latest = is_latest_period(period, timeline, year, user_id=user_id, country=country)
-
-#     allow_inventory = False
-#     allow_actions = False
-
-#     if period in ("monthly", "quarterly"):
-#         allow_inventory = is_latest
-#         allow_actions = is_latest
-
-#     elif period == "yearly":
-#         allow_inventory = is_latest
-#         allow_actions = False
-
-
-#     # ============================================================
-#     # CACHE LOOKUP
-#     # ============================================================
-#     cached = fetch_existing_summary(
-#         user_id, country, marketplace_id, period, timeline, year
-#     )
-
-#     if cached and not force_regenerate and not target_sku:
-#         return {
-#             "summary": cached.summary,
-#             "recommendations": (
-#                 json.loads(cached.recommendations)
-#                 if cached.recommendations else {}
-#             ),
-#             "source": "db",
-#             "scope": "portfolio",
-#             "objective": {
-#                 "primary_goal": cached.primary_goal,
-#                 "risk_level": cached.risk_level,
-#                 "constraints": {
-#                     "max_tacos": cached.max_tacos,
-#                     "max_price_increase_pct": float(cached.max_price_increase_pct)
-#                         if cached.max_price_increase_pct is not None else None,
-#                     "ad_budget_cap": float(cached.ad_budget_cap)
-#                         if cached.ad_budget_cap is not None else None,
-#                     "dont_change_price": cached.dont_change_price,
-#                 },
-#                 "notes": cached.notes
-#             }
-#         }
-
-#     # ---------------- CURRENT DATA ----------------
-#     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
-#     df_current_detail, df_current_total = _split_total_row(df_current)
-
-#     sku_current = compute_sku_precalc(df_current_detail)
-#     top_5_skus = select_top_5_skus_by_current_cm1_profit(sku_current)
-
-#     # ---------------- SINGLE SKU MODE ----------------
-#     single_sku_mode = False
-#     scope = "portfolio"
-
-#     if target_sku:
-#         single_sku_mode = True
-#         scope = "sku"
-
-#         if isinstance(target_sku, list):
-#             target_sku = target_sku[0]
-
-#         target_sku = str(target_sku).strip()
-
-#         if target_sku in sku_current:
-#             top_5_skus = [target_sku]
-#             sku_current = {target_sku: sku_current[target_sku]}
-#         else:
-#             return {
-#                 "summary": f"I couldn’t find SKU '{target_sku}' in the selected period.",
-#                 "recommendations": {},
-#                 "inventory_lost": 0.0,
-#                 "inventory_alerts": {},
-#                 "sku_current": {},
-#                 "sku_mom": {},
-#                 "sku_yoy": None,
-#                 "objective": objective,
-#                 "sku_actions": {},
-#                 "scope": "sku",
-#                 "source": "no_data",
-#             }
-
-#     # ---------------- ROLLING CONTEXT ----------------
-#     movement_context = {}
-#     rolling_extremes = {}
-#     yearly_temporal_signals = None   # ✅ NEW SAFE INIT
-
-#     if not single_sku_mode:
-#         if period == "yearly":
-#             anchor = resolve_yearly_analysis_anchor(user_id, country, year)
-
-#             if anchor:
-#                 analysis_anchor_year, analysis_anchor_month = anchor
-#             else:
-#                 analysis_anchor_year = analysis_anchor_month = None
-#         else:
-#             analysis_anchor_year = year
-
-#             if period == "monthly":
-#                 analysis_anchor_month = int(timeline)
-
-#             elif period == "quarterly":
-#                 QUARTER_TO_MONTH = {"Q1": 3, "Q2": 6, "Q3": 9, "Q4": 12}
-#                 analysis_anchor_month = QUARTER_TO_MONTH.get(timeline)
-#             else:
-#                 analysis_anchor_month = None
-
-#         if analysis_anchor_year and analysis_anchor_month:
-#             rolling_series = build_rolling_monthly_series(
-#                 user_id=user_id,
-#                 country=country,
-#                 anchor_year=analysis_anchor_year,
-#                 anchor_month=analysis_anchor_month
-#             )
-
-#             movement_context = build_movement_context(rolling_series)
-#             rolling_extremes = extract_rolling_extremes(rolling_series)
-
-#             # ✅ YEARLY TEMPORAL SIGNALS (NEW)
-#             if period == "yearly":
-#                 yearly_temporal_signals = build_yearly_temporal_signals(rolling_series) or None
-
-#         else:
-#             movement_context = {}
-#             rolling_extremes = {}
-#             yearly_temporal_signals = None
-
-#     # ---------------- SKU ROLLING CONTEXT ----------------
-#     sku_rolling_trends = {}
-
-#     if period in ("yearly", "quarterly") and not single_sku_mode:
-#         for sku in top_5_skus:
-#             series = build_rolling_sku_series(
-#                 user_id=user_id,
-#                 country=country,
-#                 sku=sku,
-#                 anchor_year=analysis_anchor_year,
-#                 anchor_month=analysis_anchor_month
-#             )
-
-#             trend = summarize_sku_rolling_trend(series)
-#             yearly_journey = summarize_sku_yearly_journey(series)
-#             yearly_phase = summarize_sku_yearly_phases(series)
-#             quarterly_phase = summarize_sku_quarterly_phases(series)
-
-
-#             if isinstance(trend, dict) and trend:
-
-#                 # -------- PERIOD-SAFE MOVEMENT SUMMARY --------
-#                 if period == "yearly":
-#                     movement_summary = (
-#                         yearly_phase
-#                         or yearly_journey
-#                         or build_sku_movement_summary(trend)
-#                     )
-
-#                 elif period == "quarterly":
-#                     movement_summary = (
-#                         quarterly_phase
-#                         or build_sku_movement_summary(trend)
-#                     )
-
-#                 else:
-#                     movement_summary = None
-
-#                 sku_rolling_trends[sku] = {
-#                     **trend,
-#                     "movement_summary": movement_summary
-#                 }
-
-
-
-
-#     # ---------------- INVENTORY ----------------
-#     lost_total_val = _total_value(df_current_total, "lost_total")
-#     inventory_lost = round(abs(lost_total_val), 2) if lost_total_val is not None else 0.0
-#     if single_sku_mode:
-#         inventory_lost = 0.0
-
-#     inventory_alerts = {}
-#     if allow_inventory and not single_sku_mode:
-
-#         inventory_aged_df = fetch_inventory_aged_by_user(user_id)
-#         if not inventory_aged_df.empty:
-#             inventory_alerts = build_inventory_alerts(inventory_aged_df)
-
-#     # ---------------- PREVIOUS PERIOD ----------------
-#     (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
-#     df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
-#     df_prev_detail, df_prev_total = _split_total_row(df_prev)
-
-#     # ---------------- PERIOD ABSOLUTE CHANGES ----------------
-#     period_absolute_changes = {}
-#     if not df_current_total.empty and not df_prev_total.empty:
-#         period_absolute_changes = compute_period_absolute_changes(
-#             df_current_total,
-#             df_prev_total
-#         )
-
-#     # ---------------- PERIOD % CHANGES ----------------
-#     period_pct_changes = None
-#     if not df_current_total.empty and not df_prev_total.empty:
-#         period_pct_changes = compute_period_pct_changes(
-#             df_current_total,
-#             df_prev_total
-#         )
-
-#     # ---------------- SKU COMPARISON ----------------
-#     sku_prev = compute_sku_precalc(df_prev_detail)
-#     sku_mom = compare_sku_metrics(sku_current, sku_prev)
-
-#     if single_sku_mode:
-#         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
-
-#     # ---------------- AI ----------------
-#     ai_payload = {
-#         "period": f"{period} {timeline} {year}",
-#         "period_label": period_label(period, timeline, year),
-#         "country": str(country).lower(),
-#         "period_absolute_changes": period_absolute_changes,
-#         "period_pct_changes": period_pct_changes,
-#         "sku_rolling_trends": sku_rolling_trends,
-#         "yearly_temporal_signals": yearly_temporal_signals,  # ✅ NEW
-#         "inventory_lost": inventory_lost,
-#         "inventory_alerts": inventory_alerts,
-#         "sku_mom": sku_mom,
-#         "sku_yoy": None,
-#         "focus_skus": top_5_skus,
-#         "movement_context": movement_context,
-#         "rolling_extremes": rolling_extremes,
-#         "scope": scope,
-#         "objective_v2": objective_v2
-
-#     }
-
-#     analysis_insights = None
-#     if not single_sku_mode:
-#         analysis_raw = run_prompt_1_analysis(ai_payload)
-
-#         try:
-#             analysis_insights = json.loads(analysis_raw)
-#         except Exception:
-#             print("\n❌ Prompt-1 JSON PARSE FAILED")
-#             print("RAW OUTPUT:\n", analysis_raw)
-#             analysis_insights = {}   # ← prevents summary disappearance
-
-#         # preserve deterministic SKU rolling narratives
-#         if isinstance(analysis_insights, dict):
-#             analysis_insights["sku_rolling_trends"] = sku_rolling_trends
-
-# #------------------ STRATEGY ----------------
-
-#     sku_actions = {}
-#     if allow_actions and not single_sku_mode and analysis_insights:
-#         strategy_raw = run_prompt_2_strategy(
-#             analysis_insights, ai_payload["objective"], top_5_skus
-#         )
-#         sku_actions = json.loads(strategy_raw).get("sku_actions") or {}
-
-#     # ---------------- RENDER ----------------
-#     final_text = render_month_end_summary(
-#         period=period,
-#         timeline=timeline,
-#         year=year,
-#         analysis_insights={} if single_sku_mode else (analysis_insights or {}),
-#         mom=None,
-#         sku_mom=sku_mom,
-#         focus_skus=top_5_skus,
-#         inventory_alerts=inventory_alerts,
-#         inventory_lost=inventory_lost,
-#         currency_symbol="£" if country == "uk" else "$",
-#         strategy_actions=sku_actions if not single_sku_mode else None
-#     )
-
-#     # ---------------- SAVE ----------------
-#     save_summary_to_db({
-#         "user_id": user_id,
-#         "country": country,
-#         "marketplace_id": marketplace_id,
-#         "period": period,
-#         "timeline": timeline,
-#         "year": year,
-#         "primary_goal": primary_goal,
-#         "risk_level": risk_level,
-#         "max_tacos": max_tacos,
-#         "max_price_increase_pct": max_price_increase_pct,
-#         "ad_budget_cap": ad_budget_cap,
-#         "dont_change_price": dont_change_price,
-#         "notes": notes,
-#         "summary": final_text,
-#         "recommendations": json.dumps(sku_actions or {}),
-#         "upsert": True
-#     })
-
-#     return {
-#         "summary": final_text,
-#         "recommendations": sku_actions,
-#         "inventory_lost": inventory_lost,
-#         "inventory_alerts": inventory_alerts,
-#         "sku_current": sku_current,
-#         "sku_mom": sku_mom,
-#         "sku_yoy": None,
-#         "objective": ai_payload["objective"],
-#         "sku_actions": sku_actions,
-#         "scope": scope,
-#         "source": "ai",
-#     }
 
+
+
+
+def render_month_end_summary(
+    *,
+    period: str,
+    timeline: str,
+    year: int,
+    analysis_insights: dict | None,
+    mom: dict,
+    sku_mom: dict,
+    focus_skus: list,
+    inventory_alerts: dict,
+    inventory_lost: float,
+    currency_symbol: str,
+    strategy_actions: dict | None = None,
+) -> str:
+    """
+    Deterministic executive month-end / year-end summary renderer.
+    Presentation-only. Fully None-safe.
+    """
+
+    def fmt_pct(x):
+        return f"{x:+.2f}%" if isinstance(x, (int, float)) else "N/A"
+
+    is_yearly = period == "yearly"
+    comparison = build_comparison_label(period, timeline, year)
+
+    lines: list[str] = []
+
+    # =========================================================
+    # REPORT TITLE
+    # =========================================================
+    if period == "yearly":
+        lines.append("Yearly Business Summary")
+    elif period == "quarterly":
+        lines.append("Quarterly Business Summary")
+    else:
+        lines.append("Month-end Business Summary")
+
+    # =========================================================
+    # SUMMARY — PORTFOLIO LEVEL (PERCENTAGE ONLY)
+    # =========================================================
+    if analysis_insights:
+
+        lines.append("## SUMMARY")
+
+        es = analysis_insights.get("executive_summary_signals", {})
+
+        if is_yearly:
+            lines.append(f"Year-over-Year Performance Summary ({comparison})")
+        else:
+            lines.append(f"Performance Summary ({comparison})")
+
+        takeaway = analysis_insights.get("executive_takeaway")
+        if isinstance(takeaway, str) and takeaway.strip():
+            lines.append(takeaway)
+
+        # Units
+        u = es.get("units", {})
+        units_label = "Units sold (YoY)" if is_yearly else "Units sold"
+        lines.append(
+            f"• {units_label}: {fmt_pct(u.get('pct_change'))}"
+            f"{severity_suffix(u.get('severity'), period=period)}"
+        )
+
+        # Net Sales
+        ns = es.get("net_sales", {})
+        ns_label = "Net sales (YoY)" if is_yearly else "Net sales"
+        lines.append(
+            f"• {ns_label}: {fmt_pct(ns.get('pct_change'))}"
+            f"{severity_suffix(ns.get('severity'), period=period)}"
+        )
+
+        # ASP
+        asp = es.get("asp", {})
+        asp_label = "ASP (YoY)" if is_yearly else "ASP"
+        lines.append(
+            f"• {asp_label}: {fmt_pct(asp.get('pct_change'))}"
+            f"{severity_suffix(asp.get('severity'), period=period)}"
+        )
+
+        # CM1 Profit
+        cm1 = es.get("cm1_profit", {})
+        cm1_label = "CM1 profit (YoY)" if is_yearly else "CM1 profit"
+        lines.append(
+            f"• {cm1_label}: {fmt_pct(cm1.get('pct_change'))}"
+            f"{severity_suffix(cm1.get('severity'), period=period)}"
+        )
+
+        # CM1 Profit per Unit
+        ppu = es.get("cm1_profit_per_unit", {})
+        ppu_label = "CM1 profit per unit (YoY)" if is_yearly else "CM1 profit per unit"
+        lines.append(
+            f"• {ppu_label}: {fmt_pct(ppu.get('pct_change'))}"
+            f"{severity_suffix(ppu.get('severity'), period=period)}"
+        )
+
+        # Advertising
+        cp = es.get("cost_pressure", {})
+        ad = cp.get("advertising", {})
+        lines.append(
+            f"• Advertising spends: {fmt_pct(ad.get('pct_change'))}"
+            f"{severity_suffix(ad.get('severity'), period=period)}, "
+            f"ACOS change: {fmt_pct(ad.get('acos_delta'))}"
+        )
+
+        # Storage
+        st = cp.get("storage_fees", {})
+        lines.append(
+            f"• Platform inventory storage fees: {fmt_pct(st.get('pct_change'))}"
+            f"{severity_suffix(st.get('severity'), period=period)}"
+        )
+
+        # CM2 Profit
+        cm2 = es.get("cm2_profit", {})
+        cm2_label = "CM2 profit (YoY)" if is_yearly else "CM2 profit"
+        lines.append(
+            f"• {cm2_label}: {fmt_pct(cm2.get('pct_change'))}"
+            f"{severity_suffix(cm2.get('severity'), period=period)}"
+        )
+
+        # Reimbursements
+        reimb = es.get("reimbursements", {})
+        if reimb.get("present") and isinstance(reimb.get("amount"), (int, float)):
+            lines.append(
+                f"• Amazon reimbursements for lost inventory: "
+                f"{currency_symbol}{abs(reimb['amount']):.2f} (non-recurring recovery)"
+            )
+
+    # =========================================================
+    # PRODUCT INSIGHTS (PERCENTAGE ONLY)
+    # =========================================================
+    lines.append("\n## PRODUCT INSIGHTS")
+
+    sku_actions = strategy_actions or {}
+
+    for sku in focus_skus:
+        s = sku_mom.get(sku)
+        if not isinstance(s, dict):
+            continue
+
+        name = s.get("product_name", sku)
+        lines.append(f"\n{name}")
+
+        def sku_pct(metric):
+            m = s.get(metric, {})
+            if not isinstance(m, dict):
+                return "N/A"
+            return fmt_pct(m.get("delta_pct"))
+
+        lines.append(f"• ASP: {sku_pct('asp')}")
+        lines.append(f"• Units: {sku_pct('total_quantity')}")
+        lines.append(f"• Net sales: {sku_pct('net_sales')}")
+        lines.append(f"• CM1 profit: {sku_pct('profit')}")
+        lines.append(f"• CM1 profit per unit: {sku_pct('unit_wise_profitability')}")
+
+        # Product Journey
+        sku_data = sku_actions.get(sku, {})
+        journey = sku_data.get("journey_summary")
+
+        if isinstance(journey, list) and journey:
+            lines.append("• Product journey:")
+            for point in journey:
+                lines.append(f"   - {point}")
+
+        # Recommendation
+        recommendation = sku_data.get("recommendation")
+        if isinstance(recommendation, str) and recommendation.strip():
+            lines.append(f"• Recommendation: {recommendation}")
+
+    # =========================================================
+    # INVENTORY
+    # =========================================================
+    if inventory_alerts:
+        lines.append("\n## INVENTORY")
+
+        if "aged_inventory_181_plus" in inventory_alerts:
+            lines.append(
+                f"• Aged inventory (181+ days): "
+                f"{inventory_alerts['aged_inventory_181_plus']['total_units']} units"
+            )
+
+        if "unfulfillable_inventory" in inventory_alerts:
+            lines.append(
+                f"• Unfulfillable inventory: "
+                f"{inventory_alerts['unfulfillable_inventory']['total_units']} units"
+            )
+
+        if "storage_cost_risk" in inventory_alerts:
+            lines.append(
+                f"• Storage cost risk: Estimated "
+                f"{currency_symbol}{inventory_alerts['storage_cost_risk']['estimated_next_month_cost']:.2f} "
+                f"next month"
+            )
+
+        lines.append(
+            "• For detailed inventory insights, please refer to the Inventory Reconciliation tab."
+        )
+
+    return "\n".join(lines)
 
 
 
@@ -1754,15 +1385,15 @@ def get_or_create_summary(
     period,
     timeline,
     year,
-    objective=None,   # ignored now (kept for backward compatibility)
+    objective=None,
     target_sku: str | list | None = None,
     force_regenerate=False
 ):
-    
-    print("\n=== get_or_create_summary START ===")
-    print("period:", period, type(period))
-    print("timeline:", timeline, type(timeline))
-    print("year:", year, type(year))
+
+    # print("\n=== get_or_create_summary START ===")
+    # print("period:", period, type(period))
+    # print("timeline:", timeline, type(timeline))
+    # print("year:", year, type(year))
 
     # ============================================================
     # LOAD OBJECTIVE FROM DB
@@ -1813,10 +1444,11 @@ def get_or_create_summary(
 
     if period in ("monthly", "quarterly"):
         allow_inventory = is_latest
-        allow_actions = is_latest
+        allow_recommendations = is_latest
+
     elif period == "yearly":
         allow_inventory = is_latest
-        allow_actions = False
+        allow_recommendations = False
 
     # ============================================================
     # CACHE CHECK
@@ -1902,10 +1534,6 @@ def get_or_create_summary(
                 QUARTER_TO_MONTH = {"Q1": 3, "Q2": 6, "Q3": 9, "Q4": 12}
                 analysis_anchor_month = QUARTER_TO_MONTH.get(timeline)
 
-        print("\n=== ROLLING GUARD CHECK ===")
-        print("analysis_anchor_year:", analysis_anchor_year, type(analysis_anchor_year))
-        print("analysis_anchor_month:", analysis_anchor_month, type(analysis_anchor_month))
-
         if analysis_anchor_year and analysis_anchor_month:
             rolling_series = build_rolling_monthly_series(
                 user_id=user_id,
@@ -1965,8 +1593,8 @@ def get_or_create_summary(
     # ============================================================
     # PROMPT 1 (ANALYSIS)
     # ============================================================
-    analysis_insights = None
-    analysis_raw = None
+    analysis_insights = {}
+    analysis_raw = ""
 
     if not single_sku_mode:
         ai_payload = {
@@ -1982,8 +1610,7 @@ def get_or_create_summary(
             "movement_context": movement_context,
             "rolling_extremes": rolling_extremes,
             "yearly_temporal_signals": yearly_temporal_signals,
-            "scope": scope,
-            "objective_v2": objective_v2
+            "scope": scope
         }
 
         analysis_raw = run_prompt_1_analysis(ai_payload)
@@ -1992,16 +1619,18 @@ def get_or_create_summary(
             analysis_insights = json.loads(analysis_raw)
         except Exception:
             print("\n❌ Prompt-1 JSON PARSE FAILED")
-            print("RAW OUTPUT:\n", analysis_raw)
             analysis_insights = {}
 
     # ============================================================
-    # PROMPT 2 (STRATEGY) — CALLED ONLY ONCE
+    portfolio_level_narrative = analysis_insights.get("executive_summary_signals", {})
+
+    # ============================================================
+    # PROMPT 2 (ALWAYS CALLED)
     # ============================================================
     sku_actions = {}
-    strategy_raw = None
+    strategy_raw = ""
 
-    if allow_actions and not single_sku_mode and analysis_insights:
+    if not single_sku_mode and analysis_insights:
 
         sku_time_series = {}
 
@@ -2025,23 +1654,35 @@ def get_or_create_summary(
         )
 
         try:
-            sku_actions = json.loads(strategy_raw).get("sku_actions") or {}
+            parsed = json.loads(strategy_raw)
+            sku_actions = parsed.get("sku_actions") or {}
         except Exception:
             print("\n❌ Prompt-2 JSON PARSE FAILED")
-            print("RAW OUTPUT:\n", strategy_raw)
             sku_actions = {}
 
-    # ============================================================
-    # RAW OUTPUT (NO RENDER LAYER)
-    # ============================================================
-    if strategy_raw:
-        final_text = strategy_raw
-    else:
-        final_text = analysis_raw if analysis_raw else ""
+    # 🔥 SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
+    if not allow_recommendations:
+        for sku in sku_actions:
+            if "recommendation" in sku_actions[sku]:
+                sku_actions[sku]["recommendation"] = ""
 
-    # ============================================================
-    # SAVE
-    # ============================================================
+    # final_text = strategy_raw if strategy_raw else analysis_raw
+
+    final_text = render_month_end_summary(
+    period=period,
+    timeline=timeline,
+    year=year,
+    analysis_insights=analysis_insights,
+    mom=None,
+    sku_mom=sku_mom,
+    focus_skus=top_5_skus,
+    inventory_alerts=inventory_alerts if allow_inventory else {},
+    inventory_lost=inventory_lost,
+    currency_symbol="£" if country == "uk" else "$",
+    strategy_actions=sku_actions
+    )
+
+
     save_summary_to_db({
         "user_id": user_id,
         "country": country,
@@ -2069,5 +1710,3 @@ def get_or_create_summary(
         "scope": scope,
         "source": "ai",
     }
-
-

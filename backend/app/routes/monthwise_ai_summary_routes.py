@@ -111,163 +111,6 @@ def _objective_from_row(row):
 
 
 
-# @summary_bp.route("/summary", methods=["GET"])
-# def summary():
-#     auth_header = request.headers.get("Authorization")
-#     if not auth_header or not auth_header.startswith("Bearer "):
-#         return jsonify({"error": "Authorization token is missing or invalid"}), 401
-
-#     token = auth_header.split(" ")[1]
-
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-#         user_id = payload.get("user_id")
-#         if not user_id:
-#             return jsonify({"error": "Invalid token payload: user_id missing"}), 401
-
-#         # ---------------- Query params ----------------
-#         country = (request.args.get("country", "uk") or "uk").strip().lower()
-#         marketplace_id = request.args.get("marketplace_id", type=int)
-
-#         period = (request.args.get("period") or "").strip().lower()
-#         timeline = (request.args.get("timeline") or "").strip().upper()
-#         year = request.args.get("year", type=int)
-
-#         if not period or not timeline or not year:
-#             return jsonify({"error": "Missing required query params: period, timeline, year"}), 400
-#         if period not in ("monthly", "quarterly", "yearly"):
-#             return jsonify({"error": "Invalid period. Allowed: monthly, quarterly, yearly"}), 400
-
-#         if period == "monthly":
-#             if not timeline.isdigit() or not (1 <= int(timeline) <= 12):
-#                 return jsonify({"error": "Invalid timeline for monthly. Use '1'..'12'"}), 400
-#         elif period == "quarterly":
-#             if timeline not in ("Q1", "Q2", "Q3", "Q4"):
-#                 return jsonify({"error": "Invalid timeline for quarterly. Use 'Q1'..'Q4'"}), 400
-
-#         elif period == "yearly":
-#             # 🔒 Production safety: enforce deterministic yearly key
-#             if timeline not in ("ALL", ""):
-#                 return jsonify({"error": "Invalid timeline for yearly. Use 'ALL'"}), 400    
-
-
-#         # ---------------- Body JSON (objective from user – OPTIONAL) ----------------
-#         body = request.get_json(silent=True) or {}
-#         request_objective = _norm_objective(body) if body else None
-
-#         # ---------------- Fetch existing summary row ----------------
-#         row = HistoricAISummary.query.filter_by(
-#             user_id=user_id,
-#             country=country,
-#             marketplace_id=marketplace_id,
-#             period=period,
-#             timeline=timeline,
-#             year=year,
-#         ).first()
-
-#         # =====================================================================
-#         # NEW: Load LATEST objective from UserObjective table (source of truth)
-#         # =====================================================================
-#         latest_objective_row = (
-#             UserObjective.query
-#             .filter_by(user_id=user_id, country=country)
-#             .order_by(UserObjective.created_at.desc())
-#             .first()
-#         )
-
-#         db_objective = None
-#         if latest_objective_row:
-#             db_objective = {
-#                 "primary_goal": latest_objective_row.primary_goal,
-#                 "risk_level": latest_objective_row.risk_level,
-#                 "constraints": DEFAULT_USER_OBJECTIVE["constraints"],
-#                 "notes": latest_objective_row.notes,
-#             }
-
-#         # ---------------- FINAL objective resolution ----------------
-#         final_objective = (
-#             request_objective
-#             or db_objective
-#             or DEFAULT_USER_OBJECTIVE
-#         )
-
-#         # =====================================================================
-#         # Decide whether to regenerate summary
-#         # Regenerate ONLY if objective snapshot changed
-#         # =====================================================================
-#         # =====================================================================
-#         stored_objective = _objective_from_row(row) if row else None
-#         objective_changed = stored_objective != final_objective
-
-       
-
-#         # ---------------- Generate / fetch summary ----------------
-#         result = get_or_create_summary(
-#             user_id=user_id,
-#             country=country,
-#             marketplace_id=marketplace_id,
-#             period=period,
-#             timeline=timeline,
-#             year=year,
-#             objective=final_objective,
-#             force_regenerate=objective_changed,
-#         )
-
-#         # ---------------- Save summary + objective snapshot ----------------
-#         if not row:
-#             row = HistoricAISummary(
-#                 user_id=user_id,
-#                 country=country,
-#                 marketplace_id=marketplace_id,
-#                 period=period,
-#                 timeline=timeline,
-#                 year=year,
-#             )
-#             db.session.add(row)
-
-#         # Objective SNAPSHOT (frozen for determinism)
-#         row.primary_goal = final_objective["primary_goal"]
-#         row.risk_level = final_objective["risk_level"]
-#         row.max_tacos = final_objective["constraints"]["max_tacos"]
-#         row.max_price_increase_pct = final_objective["constraints"]["max_price_increase_pct"]
-#         row.ad_budget_cap = final_objective["constraints"]["ad_budget_cap"]
-#         row.dont_change_price = final_objective["constraints"]["dont_change_price"]
-#         row.notes = final_objective.get("notes")
-
-#         # Summary output
-#         row.summary = result.get("summary", "") or row.summary
-#         reco = result.get("recommendations")
-#         if isinstance(reco, dict):
-#             row.recommendations = json.dumps(reco)
-#         elif isinstance(reco, str):
-#             row.recommendations = reco
-
-#         db.session.commit()
-
-#         # ---------------- Response ----------------
-#         result["objective"] = {
-#             "primary_goal": final_objective["primary_goal"],
-#             "risk_level": final_objective["risk_level"],
-#         }
-
-#         result["objective_changed"] = objective_changed
-
-#         return jsonify(result), 200
-
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({"error": "Token has expired"}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({"error": "Invalid token"}), 401
-#     except Exception as e:
-      
-#         traceback.print_exc()
-       
-#         db.session.rollback()
-#         return jsonify({
-#             "error": "Server error",
-#             "details": str(e)
-#         }), 500
-
 @summary_bp.route("/summary", methods=["GET"])
 def summary():
     auth_header = request.headers.get("Authorization")
@@ -310,33 +153,6 @@ def summary():
                 return jsonify({"error": "Invalid timeline for yearly. Use 'ALL'"}), 400
 
         # ==========================================================
-        # Load Objective from DB (source of truth)
-        # ==========================================================
-        user_objective_row = UserObjective.query.filter_by(
-            user_id=user_id,
-            country=country
-        ).first()
-
-        if user_objective_row:
-            objective_snapshot = {
-                "growth_intent": user_objective_row.growth_intent,
-                "profit_priority": user_objective_row.profit_priority,
-                "inventory_clearance_priority": user_objective_row.inventory_clearance_priority,
-                "business_context": user_objective_row.business_context,
-                "country": country,
-                "time_horizon": "1_month"
-            }
-        else:
-            objective_snapshot = {
-                "growth_intent": "balanced",
-                "profit_priority": "protect_growth",
-                "inventory_clearance_priority": False,
-                "business_context": None,
-                "country": country,
-                "time_horizon": "1_month"
-            }
-
-        # ==========================================================
         # Generate or fetch summary
         # ==========================================================
         result = get_or_create_summary(
@@ -350,8 +166,8 @@ def summary():
         )
 
         # Attach objective snapshot to response
-        result["objective"] = objective_snapshot
-        result["objective_changed"] = False  # no override logic anymore
+    
+    
 
         return jsonify(result), 200
 
@@ -368,6 +184,7 @@ def summary():
             "error": "Server error",
             "details": str(e)
         }), 500
+
 
 
 
