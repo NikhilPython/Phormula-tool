@@ -1971,10 +1971,10 @@ def get_or_create_summary(
     force_regenerate=False
 ):
 
-    print("\n=== get_or_create_summary START ===")
-    print("period:", period, type(period))
-    print("timeline:", timeline, type(timeline))
-    print("year:", year, type(year))
+    # print("\n=== get_or_create_summary START ===")
+    # print("period:", period, type(period))
+    # print("timeline:", timeline, type(timeline))
+    # print("year:", year, type(year))
 
     # ============================================================
     # LOAD OBJECTIVE FROM DB
