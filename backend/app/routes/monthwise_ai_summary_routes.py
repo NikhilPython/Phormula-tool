@@ -328,7 +328,7 @@ def summary():
             }
         else:
             objective_snapshot = {
-                "growth_intent": "aggressive",
+                "growth_intent": "balanced",
                 "profit_priority": "protect_growth",
                 "inventory_clearance_priority": False,
                 "business_context": None,
@@ -369,60 +369,6 @@ def summary():
             "details": str(e)
         }), 500
 
-
-
-# @summary_bp.route("/objective", methods=["POST"])
-# def save_user_objective():
-#     auth_header = request.headers.get("Authorization")
-#     if not auth_header or not auth_header.startswith("Bearer "):
-#         return jsonify({"error": "Authorization token is missing or invalid"}), 401
-
-#     token = auth_header.split(" ")[1]
-
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-#         user_id = payload.get("user_id")
-#         if not user_id:
-#             return jsonify({"error": "Invalid token payload"}), 401
-
-#         body = request.get_json() or {}
-
-#         country = (body.get("country")).strip().lower()
-#         primary_goal = body.get("primary_goal")
-#         risk_level = body.get("risk_level")
-#         notes = body.get("notes")
-
-#         if not primary_goal:
-#             return jsonify({"error": "primary_goal is required"}), 400
-
-#         objective = UserObjective(
-#             user_id=user_id,
-#             country=country,
-#             primary_goal=primary_goal,
-#             risk_level=risk_level,
-#             notes=notes,
-#         )
-
-#         db.session.add(objective)
-#         db.session.commit()
-
-#         return jsonify({
-#             "message": "Objective saved successfully",
-#             "objective": {
-#                 "user_id": user_id,
-#                 "country": country,
-#                 "primary_goal": primary_goal,
-#                 "risk_level": risk_level,
-#                 "notes": notes,
-#             }
-#         }), 200
-
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({
-#             "error": "Server error",
-#             "details": str(e)
-#         }), 500
 
 
 @summary_bp.route("/objective", methods=["POST"])

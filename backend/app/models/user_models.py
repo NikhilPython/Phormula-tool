@@ -240,6 +240,32 @@ class HistoricAISummary(db.Model):
             f"period={self.period}, timeline={self.timeline}, year={self.year}>"
         )
  
+# class UserObjective(db.Model):
+#     __tablename__ = 'user_objectives'
+#     __bind_key__ = 'chatbot'   # keep same bind unless you want a separate DB
+
+#     id = Column(Integer, primary_key=True)
+
+#     user_id = Column(Integer, nullable=False)
+#     country = Column(String(255), nullable=False)
+
+#     primary_goal = Column(String(50), nullable=False)    # profit | growth | etc
+#     risk_level = Column(String(50), nullable=True)       # conservative | balanced | aggressive
+
+#     notes = Column(Text, nullable=True)                  # 👈 NEW
+
+#     created_at = Column(
+#         DateTime,
+#         nullable=False,
+#         default=datetime.utcnow
+#     )
+
+#     def __repr__(self):
+#         return (
+#             f"<UserObjective user_id={self.user_id}, "
+#             f"country={self.country}, primary_goal={self.primary_goal}>"
+#         )    
+
 class UserObjective(db.Model):
     __tablename__ = "user_objectives"
     __bind_key__ = "chatbot"
@@ -284,7 +310,6 @@ class UserObjective(db.Model):
             f"growth_intent={self.growth_intent}, "
             f"profit_priority={self.profit_priority}>"
         )
-    
 # ------------------------------------------------- Shopify Models -------------------------------------------------
 
 class ShopifyStore(db.Model):

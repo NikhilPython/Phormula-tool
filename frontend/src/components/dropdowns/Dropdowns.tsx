@@ -528,7 +528,8 @@ const ProductInsightsSection = ({
         textSize="2xl"
       />
 
-      {objective && (
+      {/* ✅ OBJECTIVE META */}
+      {objective?.primary_goal && (
         <div className="p-3 rounded-lg bg-white border border-[#E5E7EB] mt-3">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs text-gray-500 font-semibold">Objective</div>
@@ -567,7 +568,6 @@ const ProductInsightsSection = ({
           </div>
         </div>
       )}
-
 
 
       {/* EXISTING PRODUCT BLOCKS */}
@@ -1080,6 +1080,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       const recommendationBullets = extractRecoBulletsV2(data.recommendations);
 
+      const summaryLines = sections["SUMMARY"] ?? [];
+      const inventoryLines = sections["INVENTORY"] ?? [];
+      const productLines = sections["PRODUCT INSIGHTS"] ?? [];
+      const { recommendationBullets, inventoryBullets } =
+        extractRecoAndInventoryBullets(data.recommendations);
 
       setAiPanel({
         summaryBullets: summaryLines,
@@ -1091,7 +1096,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         rawSummary: data.summary ?? null,
         rawRecommendations: data.recommendations ?? null,
       });
-
 
     } catch (e: any) {
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard

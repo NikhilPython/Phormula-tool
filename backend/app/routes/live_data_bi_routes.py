@@ -573,6 +573,8 @@ def live_mtd_vs_previous():
             sku_to_product=sku_to_product, 
         )
 
+        print("FINAL inventory_signals:", payload_ai.get("inventory_signals"))
+
         # ---------------------------
         # INVENTORY AI SUMMARY (PORTFOLIO LEVEL)
         # ---------------------------
