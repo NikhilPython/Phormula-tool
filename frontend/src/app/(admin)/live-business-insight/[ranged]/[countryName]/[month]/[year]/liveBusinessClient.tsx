@@ -128,9 +128,11 @@ interface ApiResponse {
     metric_bullets: string[];
   };
   objective_context?: {
-    primary_goal?: string;
-    primary_risk?: string;
-  };
+  growth_intent?: string;
+  inventory_clearance_priority?: boolean;
+  profit_priority?: string;
+};
+
 
   overall_actions?: string[];
   recommended_actions_mtd?: Record<string, string>;
@@ -261,10 +263,11 @@ export default function LiveBusinessClient({
   const [fbText, setFbText] = useState<string>('');
   const [fbSubmitting, setFbSubmitting] = useState<boolean>(false);
   const [fbSuccess, setFbSuccess] = useState<boolean>(false);
-  const [objectiveContext, setObjectiveContext] = useState<{
-    primary_goal?: string;
-    primary_risk?: string;
-  } | null>(null);
+ const [objectiveContext, setObjectiveContext] = useState<{
+  growth_intent?: string;
+  inventory_clearance_priority?: boolean;
+  profit_priority?: string;
+} | null>(null);
 
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const isGlobalData = () => normalizedCountry === 'global';
@@ -282,56 +285,56 @@ export default function LiveBusinessClient({
   const currPeriod = getMonthYearFromLabel(periods?.current_mtd?.label);
 
   const renderJourneyAndRecommendation = (text: string) => {
-    if (!text) return null;
+  if (!text) return null;
 
-    const journeyMatch = text.match(
-      /Product\s*Journey\s*:\s*([\s\S]*?)(?=Recommendation\s*:|$)/i
-    );
+  const journeyMatch = text.match(
+  /Product\s*Journey\s*:\s*([\s\S]*?)(?=Recommendation\s*:|$)/i
+);
 
-    const recommendationMatch = text.match(
-      /Recommendation\s*:\s*([\s\S]*)/i
-    );
+const recommendationMatch = text.match(
+  /Recommendation\s*:\s*([\s\S]*)/i
+);
 
-    const journeyText = journeyMatch?.[1]?.trim() || "";
-    const recommendationText = recommendationMatch?.[1]?.trim() || "";
+  const journeyText = journeyMatch?.[1]?.trim() || "";
+  const recommendationText = recommendationMatch?.[1]?.trim() || "";
 
-    const splitIntoPoints = (para: string) =>
-      para
-        .split(/(?<=\.)\s+/) // sentence split
-        .map((s) => s.trim())
-        .filter(Boolean);
+  const splitIntoPoints = (para: string) =>
+    para
+      .split(/(?<=\.)\s+/) // sentence split
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-    const journeyPoints = splitIntoPoints(journeyText);
-    const recommendationPoints = splitIntoPoints(recommendationText);
+  const journeyPoints = splitIntoPoints(journeyText);
+  const recommendationPoints = splitIntoPoints(recommendationText);
 
-    return (
-      <div className="space-y-4 text-sm text-charcoal-600">
+  return (
+    <div className="space-y-4 text-sm text-charcoal-600">
 
-        {journeyPoints.length > 0 && (
-          <div>
-            <div className="font-bold mb-2">Product Journey</div>
-            <ol className="list-decimal pl-5 space-y-1">
-              {journeyPoints.map((point, idx) => (
-                <li key={idx}>{point}</li>
-              ))}
-            </ol>
-          </div>
-        )}
+      {journeyPoints.length > 0 && (
+        <div>
+          <div className="font-bold mb-2">Product Journey</div>
+          <ol className="list-decimal pl-5 space-y-1">
+            {journeyPoints.map((point, idx) => (
+              <li key={idx}>{point}</li>
+            ))}
+          </ol>
+        </div>
+      )}
 
-        {recommendationPoints.length > 0 && (
-          <div>
-            <div className="font-bold mt-3 mb-2">Recommendation</div>
-            <ol className="list-decimal pl-5 space-y-1">
-              {recommendationPoints.map((point, idx) => (
-                <li key={idx}>{point}</li>
-              ))}
-            </ol>
-          </div>
-        )}
+      {recommendationPoints.length > 0 && (
+        <div>
+          <div className="font-bold mt-3 mb-2">Recommendation</div>
+          <ol className="list-decimal pl-5 space-y-1">
+            {recommendationPoints.map((point, idx) => (
+              <li key={idx}>{point}</li>
+            ))}
+          </ol>
+        </div>
+      )}
 
-      </div>
-    );
-  };
+    </div>
+  );
+};
 
 
 
@@ -513,10 +516,6 @@ export default function LiveBusinessClient({
         if (saved.overallActions) setOverallActions(saved.overallActions);
         if (saved.summaryText) setSummaryText(saved.summaryText);
         if (saved.overallSummary) setOverallSummary(saved.overallSummary);
-        if (saved.inventorySummary) {
-          setInventorySummary(saved.inventorySummary);
-        }
-
         if (saved.objectiveContext) {
           setObjectiveContext(saved.objectiveContext); // ✅ HERE
         }
@@ -581,9 +580,6 @@ export default function LiveBusinessClient({
       setMonth2Label(currentLabel);
 
       const summaryObj = res.data.overall_summary;
-      const inventorySummaryFromApi = (res.data as any).inventory_summary || null;
-
-
 
       const summaryTextFromApi = summaryObj?.summary_text || "";
       const summaryBulletsFromApi = summaryObj?.metric_bullets || [];
@@ -595,7 +591,6 @@ export default function LiveBusinessClient({
 
       setSummaryText(summaryTextFromApi);
       setOverallSummary(summaryBulletsFromApi);
-      setInventorySummary(inventorySummaryFromApi);
       setOverallActions(actionsFromApi);              // ✅ ADD THIS
       setRecommendedActions(recommendedActionsFromApi);
 
@@ -638,7 +633,6 @@ export default function LiveBusinessClient({
         recommendedActions: recommendedActionsFromApi, // ✅ ADD
         overallSummary: summaryBulletsFromApi,
         summaryText: summaryTextFromApi,
-        inventorySummary: inventorySummaryFromApi,   // ✅ ADD THIS LINE
         insightDate: todayKey,
         objectiveContext: objectiveFromApi,
       });
@@ -2729,10 +2723,6 @@ export default function LiveBusinessClient({
         /^Action\s*:|^(Increase|Maintain|Decrease|Check|Review)/i.test(l)
       );
   };
-  const [inventorySummary, setInventorySummary] = useState<{
-    alert_bullets?: string[];
-    summary_text?: string;
-  } | null>(null);
 
 
   const summaryMetricPoints = overallSummary.filter(
@@ -2782,26 +2772,13 @@ export default function LiveBusinessClient({
                   <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
                     <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
 
-                    {(summaryMetricPoints.length > 0 || inventorySummary?.alert_bullets?.length) && (
+                    {summaryMetricPoints.length > 0 && (
                       <ul className="list-disc pl-5 space-y-1 pt-2">
-
-                        {/* Existing metric bullets */}
                         {summaryMetricPoints.map((line, idx) => (
-                          <li key={`metric-${idx}`}>
-                            {formatBulletLine(line)}
-                          </li>
+                          <li key={idx}>{formatBulletLine(line)}</li>
                         ))}
-
-                        {/* 🔥 Inventory Alert Bullets */}
-                        {inventorySummary?.alert_bullets?.map((line, idx) => (
-                          <li key={`inv-${idx}`}>
-                            {line}
-                          </li>
-                        ))}
-
                       </ul>
                     )}
-
 
                     {/* ✅ Executive summary LAST */}
                     {summaryText && (
@@ -2823,33 +2800,43 @@ export default function LiveBusinessClient({
                         align="left"
                       />
 
-                      {objectiveContext && (
-                        <div className=" p-3 rounded-lg bg-white border border-[#E5E7EB] mt-3">
-                          <div className="text-xs text-gray-500 font-semibold mb-1">
-                            Objective
-                          </div>
+{objectiveContext && (
+  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 border-l-4 border-l-blue-500">
 
-                          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs 2xl:text-sm text-charcoal-600">
-                            {objectiveContext.primary_goal && (
-                              <div>
-                                <span className="font-semibold">Primary Goal:</span>{" "}
-                                <span className="capitalize">
-                                  {objectiveContext.primary_goal.replace("_", " ")}
-                                </span>
-                              </div>
-                            )}
+    <div className="text-sm font-semibold text-charcoal-700 mb-3">
+      Objective
+    </div>
 
-                            {objectiveContext.primary_risk && (
-                              <div>
-                                <span className="font-semibold">Risk:</span>{" "}
-                                <span className="capitalize">
-                                  {objectiveContext.primary_risk}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-charcoal-600">
+
+      {/* Growth Intent */}
+      <div className="space-y-1">
+        <div className="text-charcoal-400">Growth Intent</div>
+        <div className="font-semibold capitalize">
+          {objectiveContext.growth_intent?.replaceAll("_", " ") || "Not Defined"}
+        </div>
+      </div>
+
+      {/* Inventory Clearance */}
+      <div className="space-y-1">
+        <div className="text-charcoal-400">Inventory Clearance</div>
+        <div className="font-semibold">
+          {objectiveContext.inventory_clearance_priority ? "Yes" : "No"}
+        </div>
+      </div>
+
+      {/* Profit Priority */}
+      <div className="space-y-1">
+        <div className="text-charcoal-400">Profit Priority</div>
+        <div className="font-semibold capitalize">
+          {objectiveContext.profit_priority?.replaceAll("_", " ") || "Not Defined"}
+        </div>
+      </div>
+
+    </div>
+  </div>
+)}
+
 
                       <div className="space-y-3 ">
 

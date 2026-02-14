@@ -1757,7 +1757,7 @@ def finances_mtd_transactions():
             df_sku[col] = pd.to_numeric(df_sku[col], errors="coerce").fillna(0.0)
 
         # ✅ ads_spend = product_spend + display_spend + brand_spend
-        df_sku["ads_spend"] = (df_sku["product_spend"] + df_sku["display_spend"] + df_sku["brand_spend"]).fillna(0.0)
+        df_sku["ads_spend"] = (df_sku["product_spend"] + df_sku["display_spend"]).fillna(0.0)
 
         for col in ["ads_impressions","ads_clicks","ads_sale_units","ads_sale_amount","ads_conversion_rate","ads_roas","ads_acos"]:
             if col not in df_sku.columns:
@@ -1844,7 +1844,7 @@ def finances_mtd_transactions():
         total_row["product_spend"] = round(float(ads_total_product_spend or 0.0), 2)
         total_row["display_spend"] = round(float(ads_total_display_spend or 0.0), 2)
         total_row["brand_spend"] = round(float(ads_total_brand_spend or 0.0), 2)
-        total_row["ads_spend"] = round(total_row["product_spend"] + total_row["display_spend"] + total_row["brand_spend"], 2)
+        total_row["ads_spend"] = round(total_row["product_spend"] + total_row["display_spend"], 2)
 
         # existing platform_fee total
         total_row["platform_fee"] = round(float(platform_fee_total or 0.0), 2)

@@ -560,7 +560,7 @@ def live_mtd_vs_previous():
             prev_totals,
             curr_totals,
             top_80_skus,
-            new_reviving,
+            # new_reviving,
             prev_label,
             curr_label,
             sku_context=sku_context,
