@@ -2832,12 +2832,6 @@ Data:
 
         ai_text = ai_response.choices[0].message.content.strip()
 
-        # DEBUG
-        print("\n================ LIVE AI INSIGHT DEBUG ================")
-        print("KEY:", key, "| SKU:", sku, "| Product:", product_name, "| New/Reviving:", is_new_or_reviving)
-        print("HISTORY POINTS:", len(monthly_history))
-        print("INSIGHT:\n", ai_text)
-        print("=======================================================\n")
 
         return key, {
             "sku": sku,
