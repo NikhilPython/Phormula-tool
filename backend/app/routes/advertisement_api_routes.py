@@ -23,6 +23,8 @@ from app.utils.amazon_ads_utils_reporting import (
     AmazonAdsAuthContext,
     AmazonAdsReportingClient,
 )
+from app.models.user_models import amazon_sponsored_brands_keywords
+from openpyxl.utils import get_column_letter
 
 SECRET_KEY = Config.SECRET_KEY
 advertisement_api_routes_bp = Blueprint("advertisement_api_routes", __name__)
@@ -2157,25 +2159,6 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
 #     except Exception as e:
 #         db.session.rollback()
 #         return jsonify({"error": str(e)}), 500
-
-# ============================================================
-# Sponsored Brands (SB) "Keyword" report route (actually sbTargeting)
-# - Uses Ads Reporting v3 reportTypeId = sbTargeting
-# - Requests ONLY allowed columns (per your 400 error list)
-# - Computes CTR + CPC
-# - Fills Currency from campaignBudgetCurrencyCode
-# - Fills Portfolio name by joining:
-#     /sb/campaigns (campaignId -> portfolioId)
-#     /v2/portfolios (portfolioId -> name)
-# - UPSERT into amazon_sponsored_brands_keywords
-# - Optional Excel download with £ formatting for Spend
-# ============================================================
-
-
-from app.models.user_models import amazon_sponsored_brands_keywords
-
-from openpyxl.utils import get_column_letter
-
 
 
 @advertisement_api_routes_bp.route("/api/ads/manager/sb_keyword_report", methods=["POST"])

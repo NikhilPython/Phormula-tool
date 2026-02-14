@@ -1501,18 +1501,81 @@ def finances_mtd_transactions():
 
     platform_fee_total = 0.0
     advertising_fee_total = 0.0
+
+    # ✅ NEW totals you want to store in SKU-wise table
+    platformfeenew_total = 0.0
+    platform_fee_inventory_storage_total = 0.0
+    lost_total_df = pd.DataFrame(columns=["sku", "lost_total"])
+
     if not df_all.empty:
         for col, default in [
             ("description", ""),
             ("total", 0.0),
             ("platform_fees", 0.0),
             ("advertising_cost", 0.0),
+            ("sku", ""),
+            ("type", ""),
         ]:
             if col not in df_all.columns:
                 df_all[col] = default
 
+        # existing dashboard fees
         platform_fee_total, _, _ = uk_platform_fee(df_all, country=ui_country, want_breakdown=False)
         advertising_fee_total, _, _ = uk_advertising(df_all, country=ui_country, want_breakdown=False)
+
+        # ---------- NEW: helpers over df_all ----------
+        desc_all = df_all["description"].fillna("").astype(str).str.strip()
+
+        def sum_total_where_desc_contains(keywords):
+            """
+            keywords: list[str]
+            Returns sum of df_all['total'] where description contains any keyword (case-insensitive)
+            """
+            if "total" not in df_all.columns:
+                return 0.0
+            pattern = "|".join([re.escape(k) for k in keywords])
+            mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
+            return float(pd.to_numeric(df_all.loc[mask, "total"], errors="coerce").fillna(0.0).sum())
+
+        # platformfeenew = sum(total) where description contains "Subscription"
+        platformfeenew_total = sum_total_where_desc_contains(["Subscription"])
+
+        # platform_fee_inventory_storage = sum(total) for these descriptions/keywords
+        platform_fee_inventory_storage_total = sum_total_where_desc_contains(
+            [
+                "FBA Return Fee",
+                "FBA Long-Term Storage Fee",
+                "FBA storage fee",
+                "FBADisposal",
+                "FBAStorageBilling",
+                "FBALongTermStorageBilling",
+                "INCORRECT_FEES_NON_ITEMIZED",
+                "StorageReservationBilling",
+            ]
+        )
+
+        # lost_total per SKU (sum of total where description matches LOST_DESCRIPTIONS)
+        LOST_DESCRIPTIONS = {
+            "REVERSAL_REIMBURSEMENT",
+            "WAREHOUSE_LOST",
+            "WAREHOUSE_DAMAGE",
+            "MISSING_FROM_INBOUND",
+            "MISSING_FROM_INBOUND_CLAWBACK",
+            "COMPENSATED_CLAWBACK",
+        }
+        lost_mask = desc_all.isin(LOST_DESCRIPTIONS)
+
+        tmp = df_all.loc[lost_mask, ["sku", "total"]].copy()
+        tmp["sku"] = tmp["sku"].fillna("").astype(str).str.strip()
+        tmp["total"] = pd.to_numeric(tmp["total"], errors="coerce").fillna(0.0)
+
+        lost_total_df = (
+            tmp[tmp["sku"] != ""]
+            .groupby("sku", as_index=False)["total"]
+            .sum()
+            .rename(columns={"total": "lost_total"})
+        )
+        lost_total_df["lost_total"] = pd.to_numeric(lost_total_df["lost_total"], errors="coerce").fillna(0.0)
 
     platform_fee_total = float(platform_fee_total or 0.0)
     advertising_fee_total = float(advertising_fee_total or 0.0)
@@ -1562,6 +1625,13 @@ def finances_mtd_transactions():
             df_skus[c] = pd.to_numeric(df_skus[c], errors="coerce").fillna(0.0)
 
         df_sku = df_skus.groupby("sku", as_index=False)[sum_cols].sum()
+
+        # ✅ merge lost_total per sku
+        if lost_total_df is not None and not lost_total_df.empty:
+            df_sku = df_sku.merge(lost_total_df, on="sku", how="left")
+        if "lost_total" not in df_sku.columns:
+            df_sku["lost_total"] = 0.0
+        df_sku["lost_total"] = pd.to_numeric(df_sku["lost_total"], errors="coerce").fillna(0.0)
 
         if "product_sales" in df_sku.columns and "promotional_rebates" in df_sku.columns:
             df_sku["net_sales"] = df_sku["product_sales"] + df_sku["promotional_rebates"]
@@ -1700,8 +1770,14 @@ def finances_mtd_transactions():
                 df_sku[col] = 0.0
             df_sku[col] = pd.to_numeric(df_sku[col], errors="coerce").fillna(0.0)
 
-        # platform_fee column (0 for SKU rows)
-        df_sku["platform_fee"] = 0.0
+        # ✅ NEW: add these 2 columns (0 for SKU rows; totals only on GRAND_TOTAL)
+        df_sku["platform_fee_inventory_storage"] = 0.0
+        df_sku["platformfeenew"] = 0.0
+
+        # (keep existing platform_fee column if you already use it)
+        if "platform_fee" not in df_sku.columns:
+            df_sku["platform_fee"] = 0.0
+        df_sku["platform_fee"] = pd.to_numeric(df_sku["platform_fee"], errors="coerce").fillna(0.0)
 
         df_sku["cm2_profit"] = (df_sku["profit"] - df_sku["ads_spend"]).fillna(0.0)
 
@@ -1755,6 +1831,8 @@ def finances_mtd_transactions():
         for c in sum_cols:
             total_row[c] = float(df_sku[c].sum()) if c in df_sku.columns else 0.0
 
+        total_row["lost_total"] = float(pd.to_numeric(df_sku.get("lost_total", 0.0), errors="coerce").fillna(0.0).sum())
+
         total_row["net_sales"] = float(df_sku["net_sales"].sum())
         total_qty = float(df_sku["quantity"].sum()) or 0.0
         total_row["asp"] = (total_row["net_sales"] / total_qty) if total_qty else 0.0
@@ -1769,7 +1847,13 @@ def finances_mtd_transactions():
         total_row["brand_spend"] = round(float(ads_total_brand_spend or 0.0), 2)
         total_row["ads_spend"] = round(total_row["product_spend"] + total_row["display_spend"] + total_row["brand_spend"], 2)
 
+        # existing platform_fee total
         total_row["platform_fee"] = round(float(platform_fee_total or 0.0), 2)
+
+        # ✅ NEW totals you requested
+        total_row["platform_fee_inventory_storage"] = round(float(platform_fee_inventory_storage_total or 0.0), 2)
+        total_row["platformfeenew"] = round(float(platformfeenew_total or 0.0), 2)
+
         total_row["ad_type"] = "All"
 
         g_clicks = float(total_row["ads_clicks"])
@@ -1802,7 +1886,7 @@ def finances_mtd_transactions():
 
         df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
 
-        # ✅ IMPORTANT: replace NaN/Inf before to_dict (extra safety)
+        # ✅ IMPORTANT: replace NaN/Inf before to_dict
         df_sku = df_sku.replace([np.inf, -np.inf], np.nan).where(pd.notnull(df_sku), None)
 
         skuwise_items = df_sku.to_dict(orient="records")
@@ -1848,7 +1932,7 @@ def finances_mtd_transactions():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    # ---------------- JSON response (✅ sanitized) ----------------
+    # ---------------- JSON response (sanitized) ----------------
     payload_out = {
         "success": True,
         "posted_after": posted_after,
@@ -1876,5 +1960,7 @@ def finances_mtd_transactions():
     }
 
     return jsonify(_json_safe(payload_out)), 200
+
+
 
 
