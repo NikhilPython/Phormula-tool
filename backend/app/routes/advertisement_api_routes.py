@@ -775,13 +775,20 @@ def manager_sp_advertised_product_report():
 @advertisement_api_routes_bp.route("/api/ads/monthly_sp_sd_to_db", methods=["POST"])
 def monthly_sp_sd_to_db():
     """
-    Save monthly aggregated Sponsored Products + Sponsored Display data into a DB table:
+    Save monthly aggregated Sponsored Products + Sponsored Display + Sponsored Brands (keywords) into:
       public.adsmonthly_{user_id}_{country}_{month}_{year}
 
+    ✅ Adds 3 columns:
+      - product_spend (SP spend)
+      - display_spend (SD spend)
+      - brand_spend   (SB spend)
+
     IMPORTANT:
-    - Does NOT delete previous raw report rows in amazon_sponsored_products / amazon_sponsored_display tables.
+    - Does NOT delete previous raw report rows in amazon_sponsored_* tables.
     - To avoid double-counting, it aggregates ONLY the latest run for that month
-      (latest end_date for the month/user/country).
+      (latest end_date for the month/user/country) *when end_date exists*.
+    - SB keywords table often cannot map to SKU/ASIN. In that case, SB spend is still included
+      as a grouped row with empty sku/asin and included in Grand Total.
     """
     try:
         user_id = _require_jwt_user_id()
@@ -792,7 +799,7 @@ def monthly_sp_sd_to_db():
         year = int(payload.get("year") or 0)
         country = str(payload.get("country") or "").upper().strip()
 
-        include = payload.get("include") or ["SP", "SD"]
+        include = payload.get("include") or ["SP", "SD", "SB"]
         include = {str(x).upper().strip() for x in include}
 
         if not (1 <= month <= 12):
@@ -801,94 +808,119 @@ def monthly_sp_sd_to_db():
             return jsonify({"error": "year looks invalid"}), 400
         if not country:
             return jsonify({"error": "country is required (e.g. UK/US/CA)"}), 400
-        if not include.intersection({"SP", "SD"}):
-            return jsonify({"error": "include must contain SP and/or SD"}), 400
+        if not include.intersection({"SP", "SD", "SB"}):
+            return jsonify({"error": "include must contain SP and/or SD and/or SB"}), 400
 
         first_day = date(year, month, 1)
         last_day = date(year, month, calendar.monthrange(year, month)[1])
 
         frames = []
 
+        # ---------------- helpers ----------------
+        def _safe_div(a, b):
+            try:
+                a = float(a or 0.0)
+                b = float(b or 0.0)
+                return (a / b) if b else 0.0
+            except Exception:
+                return 0.0
+
+        def _pick_attr(obj, names):
+            """Return first non-empty attribute value among candidates."""
+            for n in names:
+                if hasattr(obj, n):
+                    v = getattr(obj, n)
+                    if v is not None and str(v).strip() != "":
+                        return str(v).strip()
+            return ""
+
+        def _apply_filters_if_exist(q, model):
+            """Apply user/country/date filters only if those columns exist on the model."""
+            if hasattr(model, "user_id"):
+                q = q.filter(model.user_id == user_id)
+            if hasattr(model, "country"):
+                q = q.filter(model.country == country)
+            if hasattr(model, "start_date"):
+                q = q.filter(model.start_date >= first_day, model.start_date <= last_day)
+            return q
+
         # =========================
         # 1) Sponsored Products (SP)
         # =========================
         if "SP" in include:
-            sp_latest_end = _latest_end_date_for_month(
-                amazon_sponsored_products, user_id, country, first_day, last_day
-            )
-
-            sp_rows = []
-            if sp_latest_end:
-                sp_rows = (
-                    amazon_sponsored_products.query
-                    .filter(
-                        amazon_sponsored_products.user_id == user_id,
-                        amazon_sponsored_products.country == country,
-                        amazon_sponsored_products.start_date >= first_day,
-                        amazon_sponsored_products.start_date <= last_day,
-                        amazon_sponsored_products.end_date == sp_latest_end,  # ✅ ONLY latest run
-                    )
-                    .all()
+            sp_latest_end = None
+            try:
+                sp_latest_end = _latest_end_date_for_month(
+                    amazon_sponsored_products, user_id, country, first_day, last_day
                 )
+            except Exception:
+                sp_latest_end = None
+
+            q = amazon_sponsored_products.query
+            q = _apply_filters_if_exist(q, amazon_sponsored_products)
+            if sp_latest_end and hasattr(amazon_sponsored_products, "end_date"):
+                q = q.filter(amazon_sponsored_products.end_date == sp_latest_end)
+
+            sp_rows = q.all()
 
             if sp_rows:
                 sp_df = pd.DataFrame([{
                     "source": "SP",
-                    "advertised_sku": r.advertised_sku or "",
-                    "advertised_asin": r.advertised_asin or "",
+                    "advertised_sku": (getattr(r, "advertised_sku", None) or ""),
+                    "advertised_asin": (getattr(r, "advertised_asin", None) or ""),
                     "currency": getattr(r, "currency", None),
 
-                    "impressions": int(r.impressions or 0),
-                    "clicks": int(r.clicks or 0),
-                    "spend": float(r.spend or 0.0),
+                    "impressions": int(getattr(r, "impressions", 0) or 0),
+                    "clicks": int(getattr(r, "clicks", 0) or 0),
+                    "spend": float(getattr(r, "spend", 0.0) or 0.0),
 
-                    # SP uses 7d attribution in your schema
+                    # SP uses 7d attribution in your schema (keep safe)
                     "sales": float(getattr(r, "sales_7d", 0.0) or 0.0),
                     "orders": float(getattr(r, "orders_7d", 0.0) or 0.0),
                     "units": float(getattr(r, "units_7d", 0.0) or 0.0),
 
                     "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
-
                     "advertised_unit_sale": float(getattr(r, "adv_sku_units_7d", 0.0) or 0.0),
                     "other_unit_sale": float(getattr(r, "other_sku_units_7d", 0.0) or 0.0),
-                } for r in sp_rows])
 
+                    # ✅ new spend columns
+                    "product_spend": float(getattr(r, "spend", 0.0) or 0.0),
+                    "display_spend": 0.0,
+                    "brand_spend": 0.0,
+                } for r in sp_rows])
                 frames.append(sp_df)
 
         # =========================
         # 2) Sponsored Display (SD)
         # =========================
         if "SD" in include:
-            sd_latest_end = _latest_end_date_for_month(
-                amazon_sponsored_display_advertised_products, user_id, country, first_day, last_day
-            )
-
-            sd_rows = []
-            if sd_latest_end:
-                sd_rows = (
-                    amazon_sponsored_display_advertised_products.query
-                    .filter(
-                        amazon_sponsored_display_advertised_products.user_id == user_id,
-                        amazon_sponsored_display_advertised_products.country == country,
-                        amazon_sponsored_display_advertised_products.start_date >= first_day,
-                        amazon_sponsored_display_advertised_products.start_date <= last_day,
-                        amazon_sponsored_display_advertised_products.end_date == sd_latest_end,  # ✅ ONLY latest run
-                    )
-                    .all()
+            sd_latest_end = None
+            try:
+                sd_latest_end = _latest_end_date_for_month(
+                    amazon_sponsored_display_advertised_products, user_id, country, first_day, last_day
                 )
+            except Exception:
+                sd_latest_end = None
+
+            q = amazon_sponsored_display_advertised_products.query
+            q = _apply_filters_if_exist(q, amazon_sponsored_display_advertised_products)
+            if sd_latest_end and hasattr(amazon_sponsored_display_advertised_products, "end_date"):
+                q = q.filter(amazon_sponsored_display_advertised_products.end_date == sd_latest_end)
+
+            sd_rows = q.all()
 
             if sd_rows:
                 sd_df = pd.DataFrame([{
                     "source": "SD",
-                    "advertised_sku": r.advertised_sku or "",
-                    "advertised_asin": r.advertised_asin or "",
+                    "advertised_sku": (getattr(r, "advertised_sku", None) or ""),
+                    "advertised_asin": (getattr(r, "advertised_asin", None) or ""),
                     "currency": getattr(r, "currency", None),
 
-                    "impressions": int(r.impressions or 0),
-                    "clicks": int(r.clicks or 0),
+                    "impressions": int(getattr(r, "impressions", 0) or 0),
+                    "clicks": int(getattr(r, "clicks", 0) or 0),
                     "spend": float(getattr(r, "spend", 0.0) or 0.0),
 
-                    # SD uses 14d attribution in your schema
+                    # SD uses 14d attribution in your schema (keep safe)
                     "sales": float(getattr(r, "sales_14d", 0.0) or 0.0),
                     "orders": float(getattr(r, "orders_14d", 0.0) or 0.0),
                     "units": float(getattr(r, "units_14d", 0.0) or 0.0),
@@ -897,9 +929,62 @@ def monthly_sp_sd_to_db():
 
                     "advertised_unit_sale": 0.0,
                     "other_unit_sale": 0.0,
-                } for r in sd_rows])
 
+                    # ✅ new spend columns
+                    "product_spend": 0.0,
+                    "display_spend": float(getattr(r, "spend", 0.0) or 0.0),
+                    "brand_spend": 0.0,
+                } for r in sd_rows])
                 frames.append(sd_df)
+
+        # =========================
+        # 3) Sponsored Brands (SB) - keywords
+        # =========================
+        if "SB" in include:
+            sb_latest_end = None
+            try:
+                sb_latest_end = _latest_end_date_for_month(
+                    amazon_sponsored_brands_keywords, user_id, country, first_day, last_day
+                )
+            except Exception:
+                sb_latest_end = None
+
+            q = amazon_sponsored_brands_keywords.query
+            q = _apply_filters_if_exist(q, amazon_sponsored_brands_keywords)
+            if sb_latest_end and hasattr(amazon_sponsored_brands_keywords, "end_date"):
+                q = q.filter(amazon_sponsored_brands_keywords.end_date == sb_latest_end)
+
+            sb_rows = q.all()
+
+            if sb_rows:
+                sb_df = pd.DataFrame([{
+                    "source": "SB",
+
+                    # SB keywords often cannot map to SKU/ASIN; try common field names if present
+                    "advertised_sku": _pick_attr(r, ["advertised_sku", "sku", "product_sku"]) or "",
+                    "advertised_asin": _pick_attr(r, ["advertised_asin", "asin", "product_asin"]) or "",
+
+                    "currency": getattr(r, "currency", None),
+
+                    "impressions": int(getattr(r, "impressions", 0) or 0),
+                    "clicks": int(getattr(r, "clicks", 0) or 0),
+                    "spend": float(getattr(r, "spend", 0.0) or 0.0),
+
+                    # keyword report may not have these -> keep 0
+                    "sales": float(getattr(r, "sales", 0.0) or 0.0),
+                    "orders": float(getattr(r, "orders", 0.0) or 0.0),
+                    "units": float(getattr(r, "units", 0.0) or 0.0),
+
+                    "new_to_brand_sales": float(getattr(r, "new_to_brand_sales", 0.0) or 0.0),
+                    "advertised_unit_sale": 0.0,
+                    "other_unit_sale": 0.0,
+
+                    # ✅ new spend columns
+                    "product_spend": 0.0,
+                    "display_spend": 0.0,
+                    "brand_spend": float(getattr(r, "spend", 0.0) or 0.0),
+                } for r in sb_rows])
+                frames.append(sb_df)
 
         if not frames:
             return jsonify({
@@ -907,6 +992,18 @@ def monthly_sp_sd_to_db():
             }), 404
 
         df = pd.concat(frames, ignore_index=True)
+
+        # Ensure missing columns exist
+        for col in [
+            "impressions", "clicks", "spend", "sales", "orders", "units",
+            "advertised_unit_sale", "other_unit_sale", "new_to_brand_sales",
+            "product_spend", "display_spend", "brand_spend",
+        ]:
+            if col not in df.columns:
+                df[col] = 0.0
+
+        df["advertised_sku"] = df.get("advertised_sku", "").fillna("").astype(str).str.strip()
+        df["advertised_asin"] = df.get("advertised_asin", "").fillna("").astype(str).str.strip()
 
         # ---- group by SKU + ASIN ----
         g = df.groupby(["advertised_sku", "advertised_asin"], as_index=False).agg({
@@ -920,7 +1017,12 @@ def monthly_sp_sd_to_db():
             "other_unit_sale": "sum",
             "new_to_brand_sales": "sum",
 
-            # ✅ keep which sources contributed (SP / SD)
+            # ✅ new spend columns
+            "product_spend": "sum",
+            "display_spend": "sum",
+            "brand_spend": "sum",
+
+            # ✅ keep which sources contributed
             "source": lambda s: ",".join(sorted(set([str(x).upper() for x in s if x])))
         })
 
@@ -932,15 +1034,14 @@ def monthly_sp_sd_to_db():
 
         def _ad_type_from_source(src: str) -> str:
             parts = set((src or "").split(","))
-            has_sp = "SP" in parts
-            has_sd = "SD" in parts
-            if has_sp and has_sd:
-                return "sponsored_display, sponsored_product"
-            if has_sd:
-                return "sponsored_display"
-            if has_sp:
-                return "sponsored_product"
-            return None
+            labels = []
+            if "SD" in parts:
+                labels.append("sponsored_display")
+            if "SP" in parts:
+                labels.append("sponsored_product")
+            if "SB" in parts:
+                labels.append("sponsored_brands")
+            return ", ".join(labels) if labels else None
 
         out["ad_type"] = g["source"].apply(_ad_type_from_source)
         out["match_type"] = None
@@ -966,11 +1067,15 @@ def monthly_sp_sd_to_db():
         out["other_unit_sale"] = g["other_unit_sale"].astype(float)
         out["new_to_brand_sales"] = g["new_to_brand_sales"].astype(float)
 
+        # ✅ NEW columns
+        out["product_spend"] = g["product_spend"].astype(float)
+        out["display_spend"] = g["display_spend"].astype(float)
+        out["brand_spend"] = g["brand_spend"].astype(float)
+
         out["conversion_rate"] = [
             _safe_div(o, c) * 100.0
             for o, c in zip(g["orders"].tolist(), g["clicks"].tolist())
         ]
-
         out["roas"] = [
             _safe_div(sa, sp)
             for sa, sp in zip(g["sales"].tolist(), g["spend"].tolist())
@@ -999,6 +1104,12 @@ def monthly_sp_sd_to_db():
             "ctr": _safe_div(total_clicks, total_impr) * 100.0,
             "cpc": _safe_div(total_spend, total_clicks),
             "spend": total_spend,
+
+            # ✅ totals for new columns
+            "product_spend": float(out["product_spend"].sum()),
+            "display_spend": float(out["display_spend"].sum()),
+            "brand_spend": float(out["brand_spend"].sum()),
+
             "sale_units": total_units,
             "sale_amount": total_sales_amt,
             "advertised_unit_sale": float(out["advertised_unit_sale"].sum()),
@@ -1036,6 +1147,11 @@ def monthly_sp_sd_to_db():
             cpc DOUBLE PRECISION,
             spend DOUBLE PRECISION,
 
+            -- ✅ NEW
+            product_spend DOUBLE PRECISION,
+            display_spend DOUBLE PRECISION,
+            brand_spend DOUBLE PRECISION,
+
             sale_units DOUBLE PRECISION,
             sale_amount DOUBLE PRECISION,
 
@@ -1056,6 +1172,9 @@ def monthly_sp_sd_to_db():
             user_id, country, month, year,
             sno, products, asin, ad_type, match_type,
             impressions, clicks, ctr, cpc, spend,
+
+            product_spend, display_spend, brand_spend,
+
             sale_units, sale_amount,
             advertised_unit_sale, other_unit_sale, new_to_brand_sales,
             conversion_rate, roas, acos
@@ -1063,6 +1182,9 @@ def monthly_sp_sd_to_db():
             :user_id, :country, :month, :year,
             :sno, :products, :asin, :ad_type, :match_type,
             :impressions, :clicks, :ctr, :cpc, :spend,
+
+            :product_spend, :display_spend, :brand_spend,
+
             :sale_units, :sale_amount,
             :advertised_unit_sale, :other_unit_sale, :new_to_brand_sales,
             :conversion_rate, :roas, :acos
@@ -1072,7 +1194,12 @@ def monthly_sp_sd_to_db():
         try:
             db.session.execute(text(create_sql))
 
-            # ✅ IMPORTANT: wipe monthly output table before inserting (prevents double in monthly table)
+            # ✅ if table existed previously, add missing columns safely
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS product_spend DOUBLE PRECISION;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS display_spend DOUBLE PRECISION;'))
+            db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS brand_spend DOUBLE PRECISION;'))
+
+            # ✅ wipe monthly output table before inserting
             db.session.execute(text(f"TRUNCATE TABLE public.{table_name};"))
 
             params = []
@@ -1094,6 +1221,11 @@ def monthly_sp_sd_to_db():
                     "ctr": float(r.get("ctr") or 0.0),
                     "cpc": float(r.get("cpc") or 0.0),
                     "spend": float(r.get("spend") or 0.0),
+
+                    # ✅ NEW
+                    "product_spend": float(r.get("product_spend") or 0.0),
+                    "display_spend": float(r.get("display_spend") or 0.0),
+                    "brand_spend": float(r.get("brand_spend") or 0.0),
 
                     "sale_units": float(r.get("sale_units") or 0.0),
                     "sale_amount": float(r.get("sale_amount") or 0.0),
@@ -1117,7 +1249,7 @@ def monthly_sp_sd_to_db():
             raise
 
         return jsonify({
-            "message": "Monthly ads table saved to DB successfully (SP + SD) using ONLY latest end_date run",
+            "message": "Monthly ads table saved to DB successfully (SP + SD + SB) using ONLY latest end_date run (when available)",
             "table_name": f"public.{table_name}",
             "country": country,
             "month": month,
@@ -1134,6 +1266,9 @@ def monthly_sp_sd_to_db():
     except PermissionError as e:
         return jsonify({"error": str(e)}), 401
     except Exception as e:
+        # ✅ show real error in terminal + return message
+        import traceback
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
