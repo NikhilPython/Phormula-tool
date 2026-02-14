@@ -310,33 +310,6 @@ def summary():
                 return jsonify({"error": "Invalid timeline for yearly. Use 'ALL'"}), 400
 
         # ==========================================================
-        # Load Objective from DB (source of truth)
-        # ==========================================================
-        user_objective_row = UserObjective.query.filter_by(
-            user_id=user_id,
-            country=country
-        ).first()
-
-        if user_objective_row:
-            objective_snapshot = {
-                "growth_intent": user_objective_row.growth_intent,
-                "profit_priority": user_objective_row.profit_priority,
-                "inventory_clearance_priority": user_objective_row.inventory_clearance_priority,
-                "business_context": user_objective_row.business_context,
-                "country": country,
-                "time_horizon": "1_month"
-            }
-        else:
-            objective_snapshot = {
-                "growth_intent": "aggressive",
-                "profit_priority": "protect_growth",
-                "inventory_clearance_priority": False,
-                "business_context": None,
-                "country": country,
-                "time_horizon": "1_month"
-            }
-
-        # ==========================================================
         # Generate or fetch summary
         # ==========================================================
         result = get_or_create_summary(
@@ -350,8 +323,8 @@ def summary():
         )
 
         # Attach objective snapshot to response
-        result["objective"] = objective_snapshot
-        result["objective_changed"] = False  # no override logic anymore
+    
+    
 
         return jsonify(result), 200
 

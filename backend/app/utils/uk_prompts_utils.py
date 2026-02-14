@@ -51,21 +51,37 @@ In addition to structured signals, you MUST produce
 an executive_takeaway summarizing the overall
 business outcome.
 
-This takeaway MUST:
-- Be derived ONLY from the primary_causal_chain
-- Reflect business quality impact (not metric narration)
-- Be written in decisive executive finance language
-- Be maximum 2 sentences
-- Follow a strict two-sentence structure:
-  • Sentence 1 → Scale outcome (units, net sales, CM1 profit, timing such as H1 peak month)
-  • Sentence 2 → Profitability quality outcome (ACOS, CM2 trajectory, efficiency deterioration or improvement)
-- State the final business condition explicitly using
-  clear financial language such as:
-  “profitability strengthened”, “efficiency deteriorated”,
-  “CM2 expansion accelerated”, or “margin pressure emerged”.
-- Avoid vague phrases like:
-  “stronger position”, “improved condition”, or “better performance”.
-- Contain NO recommendations or actions
+EXECUTIVE TAKEAWAY REQUIREMENTS (UPDATED)
+
+The executive_takeaway MUST:
+
+- Be derived ONLY from the primary_causal_chain.
+- Be written in decisive executive finance language.
+- Be minimum 2 sentences and maximum 5 sentences.
+- Include percentage change
+  for all material metrics (units, net sales, CM1 profit,
+  CM2 profit, advertising, ASP when relevant).
+
+  When referencing rolling extremity, you MUST
+  mention the specific month and year.
+- Explicitly cover:
+  1) Scale outcome (units + net sales + CM1 movement)
+  2) Margin quality outcome (ASP + CM1 profit per unit)
+  3) Cost efficiency impact (ACOS + advertising + storage if material)
+  4) CM2 outcome and what structurally drove it
+  5) Final business condition using explicit financial language such as:
+     “profitability strengthened”,
+     “efficiency deteriorated”,
+     “margin pressure intensified”,
+     “CM2 expansion was cost-driven”,
+     “commercial momentum weakened”.
+
+The executive_takeaway MUST NOT:
+- Include recommendations
+- Include actions
+- Narrate every metric mechanically
+- Exceed 5 sentences
+
 
 
 
@@ -98,8 +114,7 @@ EXECUTIVE ANALYSIS PRINCIPLES (CRITICAL)
 
 - You are FORBIDDEN from narrating static MoM deltas
   like a pivot table when movement_context is present.
-- You must translate movement_context into categorical severity labels
-(e.g. highest_24m, steepest_24m), not descriptive language.
+
 
 YEARLY REPORTING OVERRIDE (CRITICAL)
 
@@ -344,7 +359,7 @@ ADVERTISING
   Overall value with no product-wise breakdown.
 - acos:
   Advertising cost of sales.
-  Treated strictly as a percentage-point efficiency metric.
+  Treated strictly as a percentage value efficiency metric.
 
 REIMBURSEMENTS
 - lost_total:
@@ -371,7 +386,7 @@ PRICING & PER-UNIT ECONOMICS
   CM1 profit per unit.
 
 IMPORTANT:
-- Percentage metrics represent percentage-point values.
+- Percentage metrics represent percentage values.
 - Metrics without product-wise breakdown must never be
   attributed to individual SKUs.
 
@@ -429,47 +444,46 @@ Return a single JSON object with the following structure (STRICT JSON):
   "executive_summary_signals": {
     "units": {
       "direction": "increase | decrease | flat",
-      "severity": "highest_24m | lowest_24m | normal",
       "pct_change": "number",
       "absolute_change": "number"
     },
     "net_sales": {
       "pct_change": "number",
       "absolute_change": "number",
-      "severity": "highest_24m | lowest_24m | normal"
+      
     },
     "asp": {
       "pct_change": "number",
       "absolute_change": "number",
-      "severity": "largest_24m | normal"
+      
     },
     "cm1_profit": {
       "pct_change": "number",
       "absolute_change": "number",
-      "severity": "highest_24m | lowest_24m | normal"
+      
     },
     "cm1_profit_per_unit": {
       "pct_change": "number",
       "absolute_change": "number",
-      "severity": "largest_24m | normal"
+      
     },
     "cost_pressure": {
       "advertising": {
         "pct_change": "number",
         "absolute_change": "number",
         "acos_delta": "number | null",
-        "severity": "largest_24m | normal"
+        
       },
       "storage_fees": {
         "pct_change": "number",
         "absolute_change": "number",
-        "severity": "largest_24m | normal"
+        
       }
     },
     "cm2_profit": {
       "pct_change": "number",
       "absolute_change": "number",
-      "severity": "largest_24m | normal"
+      
     },
     "reimbursements": {
       "present": true | false,
@@ -484,7 +498,7 @@ Return a single JSON object with the following structure (STRICT JSON):
     "cost_pressure",
     "cm2_profit_decline"
   ],
-  "executive_takeaway": "string (max 2 sentences, derived ONLY from primary_causal_chain, no actions)",
+  "executive_takeaway": "string (2-5 sentences, derived ONLY from primary_causal_chain, must include percentage for material metrics, integrate rolling context, no actions)",
   "product_insights": {
     "<sku>": {
       "diagnosis_codes": [

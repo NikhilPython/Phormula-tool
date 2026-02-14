@@ -11,9 +11,10 @@ import json
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.utils.live_bi_utils import (build_inventory_signals, build_movement_context, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, run_live_prompt_2_decisions,totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
+from app.utils.live_bi_utils import (build_inventory_signals, build_movement_context, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
                                      compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
+from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 
 
 # -----------------------------------------------------------------------------
@@ -573,6 +574,8 @@ def live_mtd_vs_previous():
             sku_to_product=sku_to_product, 
         )
 
+        print("FINAL inventory_signals:", payload_ai.get("inventory_signals"))
+
         # ---------------------------
         # INVENTORY AI SUMMARY (PORTFOLIO LEVEL)
         # ---------------------------
@@ -634,26 +637,37 @@ def live_mtd_vs_previous():
         # ---------------------------
         # PROMPT-2 (DECISIONS)
         # ---------------------------
-        actions = run_live_prompt_2_decisions(
-            analysis_output=analysis,
-            user_objective=user_objective,
+        # ---------------------------
+        # STRATEGY ENGINE (MONTH-END PROMPT 2)
+        # ---------------------------
+
+        strategy_raw = run_prompt_2_strategy(
+            analysis_insights=analysis,
+            objective_v2=user_objective,
+            focus_skus=[r.get("sku") for r in top_80_skus + new_reviving],
+            sku_time_series={},   # optional
+            inventory_alerts=payload_ai.get("inventory_signals", {}),
+            country=country,
         )
 
+        try:
+            strategy_parsed = json.loads(strategy_raw)
+            sku_strategy_actions = strategy_parsed.get("sku_actions", {})
+        except Exception:
+            print("❌ Strategy JSON parse failed")
+            sku_strategy_actions = {}
 
         # ===========================
-        # BUILD RECOMMENDED ACTIONS (HISTORIC LOGIC CLONE)
+        # BUILD RECOMMENDED ACTIONS
         # ===========================
 
         recommended_actions_mtd = {}
-
-        sku_actions = actions.get("sku_actions", {})
 
         for row in top_80_skus + new_reviving:
             sku = row.get("sku")
             if not sku:
                 continue
 
-            # 1️⃣ Growth row (Live BI equivalent of sku_mom)
             growth_row = next(
                 (g for g in growth_data if g.get("sku") == sku),
                 None
@@ -661,35 +675,26 @@ def live_mtd_vs_previous():
             if not growth_row:
                 continue
 
-            # 2️⃣ Diagnosis codes from Prompt-1
-            diagnosis_codes = (
-                analysis
-                .get("product_insights", {})
-                .get(sku, {})
-                .get("diagnosis_codes", ["mixed_signal"])
-            )
+            sku_strategy = sku_strategy_actions.get(sku, {})
 
-            # 3️⃣ Final action from Prompt-2
-            action = sku_actions.get(sku, "Please Monitor this SKU")
-
-            # 4️⃣ Deterministic Historic-style renderer
             recommended_actions_mtd[sku] = render_live_recommended_action(
                 growth_row=growth_row,
-                diagnosis_codes=diagnosis_codes,
-                action=action,
+                recommendation=sku_strategy.get("recommendation", "Monitor performance"),
+                journey_summary=sku_strategy.get("journey_summary"),
                 currency_symbol=currency["symbol"],
             )
-           
-
 
         # ===========================
         # FINAL FIELDS USED BY RESPONSE / EMAIL
         # ===========================
+
         overall_summary = {
             "summary_text": overall_summary_text,
             "metric_bullets": overall_summary_bullets,
         }
-        overall_actions = actions.get("sku_actions", {})
+
+        overall_actions = sku_strategy_actions
+
 
       
         # ---------------------------
@@ -742,9 +747,11 @@ def live_mtd_vs_previous():
         # ---------------------------
         response_payload = {
             "message": "Live MTD vs previous-month-same-period comparison",
-            "objective_context": {   # 👈 NEW
-                "primary_goal": primary_goal,
-                "primary_risk": primary_risk,
+            "objective_context": {
+                "growth_intent": user_objective.get("growth_intent"),
+                "profit_priority": user_objective.get("profit_priority"),
+                "inventory_clearance_priority": user_objective.get("inventory_clearance_priority"),
+                "time_horizon": user_objective.get("time_horizon"),
             },
 
             "periods": {
@@ -825,3 +832,7 @@ def live_mtd_vs_previous():
     except Exception as e:
         print("Unexpected error in /live_mtd_bi:", e)
         return jsonify({"error": "Server error", "details": str(e)}), 500
+
+
+
+

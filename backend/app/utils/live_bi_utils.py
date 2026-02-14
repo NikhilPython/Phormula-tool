@@ -9,6 +9,7 @@ import numpy as np
 from openai import OpenAI
 import json
 from openai import OpenAIError
+from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 
 
 from app.utils.formulas_utils import (
@@ -434,14 +435,18 @@ def normalize_sales_mix(df: pd.DataFrame, mix_col="sales_mix", digits=2):
 
 def fetch_user_objective(user_id: int, country: str = None) -> dict:
     """
-    Fetch latest user objective from new table: user_objectives.
+    Fetch latest objective_v2 from user_objectives table.
+    Returns strategy-ready objective schema.
     """
 
     query = text("""
         SELECT
-            primary_goal,
-            risk_level,
-            notes
+            growth_intent,
+            profit_priority,
+            inventory_clearance_priority,
+            business_context,
+            country,
+            
         FROM user_objectives
         WHERE user_id = :user_id
           AND (:country IS NULL OR country = :country)
@@ -459,34 +464,27 @@ def fetch_user_objective(user_id: int, country: str = None) -> dict:
         print("[WARN] Failed to fetch user objective:", e)
         row = None
 
-    # -----------------------------
-    # Fallback
-    # -----------------------------
+    # ------------------------------------------------
+    # FALLBACK (Safe Default Strategy Objective)
+    # ------------------------------------------------
     if not row:
         return {
-            "primary_goal": "profit",
-            "risk_level": "balanced",
-            "constraints": {
-                "max_tacos": 0,
-                "max_price_increase_pct": 0,
-                "ad_budget_cap": 0,
-                "dont_change_price": False,
-            },
-            "notes": None,
+            "growth_intent": "balanced",
+            "profit_priority": "protect_growth",
+            "inventory_clearance_priority": False,
+            "business_context": "live_mtd",
+            "country": country or "uk",
+            "time_horizon": "1_month",
         }
 
     return {
-        "primary_goal": row.primary_goal or "balanced",
-        "risk_level": row.risk_level or "balanced",
-        "constraints": {
-            "max_tacos": 0,
-            "max_price_increase_pct": 0,
-            "ad_budget_cap": 0,
-            "dont_change_price": False,
-        },
-        "notes": row.notes,
+        "growth_intent": row.growth_intent or "balanced",
+        "profit_priority": row.profit_priority or "protect_growth",
+        "inventory_clearance_priority": row.inventory_clearance_priority or False,
+        "business_context": row.business_context or "live_mtd",
+        "country": row.country or (country or "uk"),
+        "time_horizon": row.time_horizon or "1_month",
     }
-
 
 
 
@@ -1874,107 +1872,6 @@ Mandatory format:
 """
 
 
-LIVE_BI_PROMPT_2_DECISION = """You are a strategic Amazon decision engine.
-
-You receive:
-1) analysis_insights
-   - Final diagnostic output from an analyst system
-   - These insights are FACTUAL and must not be reinterpreted
-
-2) user_objective
-   - primary_goal: profit | growth | rank | balanced
-   - risk_level: conservative | balanced | aggressive
-   - constraints (hard limits)
-
-────────────────────────────────────────
-YOUR ROLE
-────────────────────────────────────────
-
-Convert analysis_insights into SKU-level decisions.
-
-You are NOT allowed to:
-- Re-explain performance
-- Re-analyse data
-- Invent new causes
-
-You MUST:
-- Follow user_objective.primary_goal
-- Respect ALL constraints
-- Adjust aggressiveness based on risk_level
-
-────────────────────────────────────────
-DECISION RULES (CRITICAL)
-────────────────────────────────────────
-
-VISIBILITY OVERRIDE (ABSOLUTE):
-- If diagnosis = visibility_constraint
-  → Do NOT suggest pricing changes.
-  → Return ONLY: "Check product visibility"
-
-PRICING RULES:
-1) If pricing_supports_volume
-   → "Increase ASP"
-
-2) If pricing_effective
-   → "Maintain current pricing"
-
-3) If demand_weakness AND ASP stable or rising
-   → "Decrease ASP"
-
-4) If mixed_signal
-   → "Monitor performance of this product."
-
-RISK ADJUSTMENT:
-- If confidence is LOW or risk_level = conservative
-  → downgrade to "Maintain current pricing"
-
-CONSTRAINT ENFORCEMENT:
-- If dont_change_price = true
-  → pricing actions are FORBIDDEN
-
-────────────────────────────────────────
-OUTPUT RULES (STRICT)
-────────────────────────────────────────
-
-- Return STRICT JSON ONLY.
-- Each SKU must have exactly ONE action.
-- Do NOT include explanations.
-- Do NOT include portfolio-level actions.
-
-────────────────────────────────────────
-MANDATORY OUTPUT FORMAT
-────────────────────────────────────────
-
-{
-  "sku_actions": {
-    "<sku>": "Increase ASP | Decrease ASP | Maintain current pricing and monitor performance | Check product visibility"
-  }
-}
-"""
-
-LIVE_DIAGNOSIS_TEXT = {
-    "pricing_supports_volume": [
-        "CM1 profit per unit is declining while unit growth remains positive.",
-        "Current pricing is supporting volume but eroding profitability."
-    ],
-    "pricing_effective": [
-        "Both unit growth and CM1 profit are increasing.",
-        "Pricing is effectively driving profitable volume."
-    ],
-    "demand_weakness": [
-        "Units and net sales are declining.",
-        "This signals demand weakness requiring pricing support."
-    ],
-    "visibility_constraint": [
-        "Unit demand is declining despite lower pricing.",
-        "This indicates a visibility or demand-side constraint."
-    ],
-    "mixed_signal": [
-        "Performance trends are mixed with no dominant pricing signal.",
-        "Current pricing does not indicate immediate action."
-    ],
-}
-
 
 def fmt_metric(delta, pct, symbol="£"):
     if delta is None:
@@ -1984,11 +1881,13 @@ def fmt_metric(delta, pct, symbol="£"):
     sign = "+" if delta >= 0 else "-"
     return f"{symbol}{sign}{abs(delta):,.2f} ({pct:+.2f}%)"
 
+
+
 def render_live_recommended_action(
     *,
     growth_row: dict,
-    diagnosis_codes: list[str],
-    action: str,
+    recommendation: str,
+    journey_summary: list[str] | None = None,
     currency_symbol="£"
 ) -> str:
     lines = []
@@ -2014,18 +1913,18 @@ def render_live_recommended_action(
         f"CM1 profit per unit: {fmt_metric(growth_row['unit_wise_profitability_curr'] - growth_row['unit_wise_profitability_prev'], growth_row['Profit Per Unit (%)']['value'], currency_symbol)}"
     )
 
-    lines.append("")
+    # ---------- Product Journey ----------
+    if journey_summary:
+        lines.append("")
+        lines.append("Product Journey:")
+        for bullet in journey_summary:
+            lines.append(f"- {bullet}")
 
-    # ---------- Diagnosis text ----------
-    for code in diagnosis_codes:
-        for sentence in LIVE_DIAGNOSIS_TEXT.get(code, []):
-            lines.append(sentence)
-
+    # ---------- Recommendation ----------
     lines.append("")
-    lines.append(f"Action: {action}")
+    lines.append(f"Recommendation: {recommendation}")
 
     return "\n".join(lines)
-
 
 
 
@@ -2115,42 +2014,6 @@ def describe_movement(pct, ndigits=2):
     direction = "up" if pct > 0 else "down"
     return f"{direction} {abs_v:.{ndigits}f}%"
 
-
-
-def _build_rule_based_summary(prev_totals, curr_totals, top_80_skus, new_reviving,
-                              prev_label, curr_label):
-    """
-    Old numeric summary logic (fallback when AI fails).
-    """
-    qty_change = pct_change(prev_totals.get("quantity"),   curr_totals.get("quantity"))
-    sales_change = pct_change(prev_totals.get("net_sales"), curr_totals.get("net_sales"))
-    profit_change = pct_change(prev_totals.get("profit"),   curr_totals.get("profit"))
-
-    bullets = []
-
-    # 1) Overall movement
-    bullets.append(
-        f"{curr_label} vs {prev_label}: units are {describe_movement(qty_change)}, "
-        f"sales are {describe_movement(sales_change)}, and CM1 profit is {describe_movement(profit_change)}."
-    )
-
-    # 2) Concentration in top SKUs
-    bullets.append(
-        f"{len(top_80_skus)} SKUs account for roughly 80% of current sales."
-    )
-
-    # 3) New / reviving SKUs
-    if new_reviving:
-        bullets.append(
-            f"{len(new_reviving)} new or reviving SKUs are contributing incremental volume."
-        )
-    else:
-        bullets.append(
-            "No material contribution from new or reviving SKUs this period."
-        )
-
-    # keep between 2 and 4 bullet points
-    return bullets[:4]
 
 def safe_strip(x, default=""):
     # handles None, NaN, numbers, etc.
@@ -2444,18 +2307,6 @@ def _dir_word_simple(p):
         return "moved"
     return "increased" if p > 0 else "decreased"
 
-# def _overall_3_bullets(qty_prev, qty_curr, sales_prev, sales_curr, prof_prev, prof_curr, qty_pct, sales_pct, prof_pct, symbol):
-#     uq = _dir_word_simple(qty_pct)
-#     us = _dir_word_simple(sales_pct)
-#     up = _dir_word_simple(prof_pct)
-#     qp = f"{abs(qty_pct):.2f}%" if qty_pct is not None else "0.00%"
-#     sp = f"{abs(sales_pct):.2f}%" if sales_pct is not None else "0.00%"
-#     pp = f"{abs(prof_pct):.2f}%" if prof_pct is not None else "0.00%"
-#     return [
-#         f"Overall units {uq} from {_fmt_int(qty_prev)} to {_fmt_int(qty_curr)} by {qp}.",
-#         f"Net sales {us} from {_fmt_money(sales_prev, symbol)} to {_fmt_money(sales_curr, symbol)} by {sp}.",
-#         f"CM1 profit {up} from {_fmt_money(prof_prev, symbol)} to {_fmt_money(prof_curr, symbol)} by {pp}.",
-#     ]
 
 
 def run_live_prompt_1_analysis(payload: dict) -> dict:
@@ -2502,24 +2353,7 @@ def run_live_prompt_1_5_summary(
         return {"summary_bullets": []}
 
 
-def run_live_prompt_2_decisions(analysis_output: dict, user_objective: dict) -> dict:
-    payload = {
-        "analysis_insights": analysis_output,
-        "user_objective": user_objective,
-    }
 
-    resp = oa_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": LIVE_BI_PROMPT_2_DECISION},
-            {"role": "user", "content": json.dumps(payload)},
-        ],
-        temperature=0,
-        response_format={"type": "json_object"},
-        max_tokens=500,
-    )
-
-    return json.loads(resp.choices[0].message.content)
 
 def run_inventory_ai_summary(inventory_summary: dict) -> dict:
     resp = oa_client.chat.completions.create(
@@ -2536,11 +2370,12 @@ def run_inventory_ai_summary(inventory_summary: dict) -> dict:
 
 
 
+
+
 def build_ai_summary(
     prev_totals,
     curr_totals,
     top_80_skus,
-    new_reviving,
     prev_label,
     curr_label,
     sku_context=None,
@@ -2551,17 +2386,14 @@ def build_ai_summary(
     currency=None,
     user_objective=None,
     movement_context=None,
-    sku_to_product=None,          # ✅ ADD
+    sku_to_product=None,
     group_inventory_alerts=True,
+
+    # ✅ NEW (required for strategy engine)
+    analysis_output=None,
+    focus_skus=None,
 ):
-    # =========================================================
-    # Objective defaults (UNCHANGED)
-    # =========================================================
-    user_objective = user_objective or {
-        "primary_goal": "balanced",
-        "risk_level": "balanced",
-        "constraints": {},
-    }
+  
 
     # =========================================================
     # Numeric calculations (UNCHANGED)
@@ -2617,13 +2449,11 @@ def build_ai_summary(
         }
 
     # =========================================================
-    # ✅ NORMALIZE INVENTORY SIGNALS (AUTO-CLUBBING)
+    # Inventory normalization (UNCHANGED)
     # =========================================================
     inv_payload = inventory_signals or {}
 
     if group_inventory_alerts:
-        # Detect raw per-SKU alerts:
-        # { sku: { alert, alert_type } }
         looks_like_raw = (
             isinstance(inv_payload, dict)
             and inv_payload
@@ -2639,7 +2469,6 @@ def build_ai_summary(
                 sku_to_product=sku_to_product or {},
                 max_skus_per_bucket=5,
             )
-    
 
     # =========================================================
     # PAYLOAD (UNCHANGED STRUCTURE)
@@ -2672,11 +2501,10 @@ def build_ai_summary(
         },
         "sku_tables": {
             "top_80_skus": top_80_skus,
-            "new_reviving_skus": new_reviving,
+            
         },
         "sku_context": sku_context,
         "inventory_signals": inv_payload,
-
         "selling_costs": {
             "platform_fees": {
                 "pct_change": pf_pct,
@@ -2703,10 +2531,31 @@ def build_ai_summary(
     }
 
     # =========================================================
-    # ✅ RETURN DATA ONLY (NO AI CALL HERE)
+    # 🔥 Month-End Strategy Engine (Single Source of Truth)
     # =========================================================
-    return payload
+    strategy_actions = {}
 
+    if analysis_output and focus_skus:
+        try:
+            strategy_raw = run_prompt_2_strategy(
+                analysis_insights=analysis_output,
+                objective_v2=user_objective,
+                focus_skus=focus_skus,
+                sku_time_series=None,
+                inventory_alerts=inventory_signals,
+                country=(currency or {}).get("country", "uk"),
+            )
+
+            parsed = json.loads(strategy_raw)
+            strategy_actions = parsed.get("sku_actions") or {}
+
+        except Exception as e:
+            print("[STRATEGY ERROR]", e)
+            strategy_actions = {}
+
+    payload["strategy_actions"] = strategy_actions
+
+    return payload
 
 
 

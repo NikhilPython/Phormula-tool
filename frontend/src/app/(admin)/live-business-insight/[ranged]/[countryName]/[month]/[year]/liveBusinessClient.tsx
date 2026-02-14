@@ -281,6 +281,59 @@ export default function LiveBusinessClient({
   const prevPeriod = getMonthYearFromLabel(periods?.previous?.label);
   const currPeriod = getMonthYearFromLabel(periods?.current_mtd?.label);
 
+  const renderJourneyAndRecommendation = (text: string) => {
+    if (!text) return null;
+
+    const journeyMatch = text.match(
+      /Product\s*Journey\s*:\s*([\s\S]*?)(?=Recommendation\s*:|$)/i
+    );
+
+    const recommendationMatch = text.match(
+      /Recommendation\s*:\s*([\s\S]*)/i
+    );
+
+    const journeyText = journeyMatch?.[1]?.trim() || "";
+    const recommendationText = recommendationMatch?.[1]?.trim() || "";
+
+    const splitIntoPoints = (para: string) =>
+      para
+        .split(/(?<=\.)\s+/) // sentence split
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const journeyPoints = splitIntoPoints(journeyText);
+    const recommendationPoints = splitIntoPoints(recommendationText);
+
+    return (
+      <div className="space-y-4 text-sm text-charcoal-600">
+
+        {journeyPoints.length > 0 && (
+          <div>
+            <div className="font-bold mb-2">Product Journey</div>
+            <ol className="list-decimal pl-5 space-y-1">
+              {journeyPoints.map((point, idx) => (
+                <li key={idx}>{point}</li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        {recommendationPoints.length > 0 && (
+          <div>
+            <div className="font-bold mt-3 mb-2">Recommendation</div>
+            <ol className="list-decimal pl-5 space-y-1">
+              {recommendationPoints.map((point, idx) => (
+                <li key={idx}>{point}</li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+      </div>
+    );
+  };
+
+
 
 
   type TabKey =
@@ -460,6 +513,10 @@ export default function LiveBusinessClient({
         if (saved.overallActions) setOverallActions(saved.overallActions);
         if (saved.summaryText) setSummaryText(saved.summaryText);
         if (saved.overallSummary) setOverallSummary(saved.overallSummary);
+        if (saved.inventorySummary) {
+          setInventorySummary(saved.inventorySummary);
+        }
+
         if (saved.objectiveContext) {
           setObjectiveContext(saved.objectiveContext); // ✅ HERE
         }
@@ -524,6 +581,9 @@ export default function LiveBusinessClient({
       setMonth2Label(currentLabel);
 
       const summaryObj = res.data.overall_summary;
+      const inventorySummaryFromApi = (res.data as any).inventory_summary || null;
+
+
 
       const summaryTextFromApi = summaryObj?.summary_text || "";
       const summaryBulletsFromApi = summaryObj?.metric_bullets || [];
@@ -535,6 +595,7 @@ export default function LiveBusinessClient({
 
       setSummaryText(summaryTextFromApi);
       setOverallSummary(summaryBulletsFromApi);
+      setInventorySummary(inventorySummaryFromApi);
       setOverallActions(actionsFromApi);              // ✅ ADD THIS
       setRecommendedActions(recommendedActionsFromApi);
 
@@ -577,6 +638,7 @@ export default function LiveBusinessClient({
         recommendedActions: recommendedActionsFromApi, // ✅ ADD
         overallSummary: summaryBulletsFromApi,
         summaryText: summaryTextFromApi,
+        inventorySummary: inventorySummaryFromApi,   // ✅ ADD THIS LINE
         insightDate: todayKey,
         objectiveContext: objectiveFromApi,
       });
@@ -2667,6 +2729,10 @@ export default function LiveBusinessClient({
         /^Action\s*:|^(Increase|Maintain|Decrease|Check|Review)/i.test(l)
       );
   };
+  const [inventorySummary, setInventorySummary] = useState<{
+    alert_bullets?: string[];
+    summary_text?: string;
+  } | null>(null);
 
 
   const summaryMetricPoints = overallSummary.filter(
@@ -2716,13 +2782,26 @@ export default function LiveBusinessClient({
                   <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
                     <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
 
-                    {summaryMetricPoints.length > 0 && (
+                    {(summaryMetricPoints.length > 0 || inventorySummary?.alert_bullets?.length) && (
                       <ul className="list-disc pl-5 space-y-1 pt-2">
+
+                        {/* Existing metric bullets */}
                         {summaryMetricPoints.map((line, idx) => (
-                          <li key={idx}>{formatBulletLine(line)}</li>
+                          <li key={`metric-${idx}`}>
+                            {formatBulletLine(line)}
+                          </li>
                         ))}
+
+                        {/* 🔥 Inventory Alert Bullets */}
+                        {inventorySummary?.alert_bullets?.map((line, idx) => (
+                          <li key={`inv-${idx}`}>
+                            {line}
+                          </li>
+                        ))}
+
                       </ul>
                     )}
+
 
                     {/* ✅ Executive summary LAST */}
                     {summaryText && (
@@ -2805,7 +2884,7 @@ export default function LiveBusinessClient({
 
                                 {/* Insight */}
                                 <p className="text-xs 2xl:text-sm text-charcoal-600">
-                                  {parsed.insight}
+                                  {renderJourneyAndRecommendation(parsed.insight)}
                                 </p>
 
                                 {/* Action */}
