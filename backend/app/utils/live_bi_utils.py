@@ -440,18 +440,17 @@ def fetch_user_objective(user_id: int, country: str = None) -> dict:
     """
 
     query = text("""
-        SELECT
-            growth_intent,
-            profit_priority,
-            inventory_clearance_priority,
-            business_context,
-            country,
-            
-        FROM user_objectives
-        WHERE user_id = :user_id
-          AND (:country IS NULL OR country = :country)
-        ORDER BY created_at DESC
-        LIMIT 1
+    SELECT
+        growth_intent,
+        profit_priority,
+        inventory_clearance_priority,
+        business_context,
+        country
+    FROM user_objectives
+    WHERE user_id = :user_id
+      AND (:country IS NULL OR country = :country)
+    ORDER BY created_at DESC
+    LIMIT 1
     """)
 
     try:
@@ -483,7 +482,8 @@ def fetch_user_objective(user_id: int, country: str = None) -> dict:
         "inventory_clearance_priority": row.inventory_clearance_priority or False,
         "business_context": row.business_context or "live_mtd",
         "country": row.country or (country or "uk"),
-        "time_horizon": row.time_horizon or "1_month",
+        "time_horizon": "1_month",
+
     }
 
 
@@ -2286,26 +2286,13 @@ def safe_json_load(s: str) -> dict:
 def safe0(x):
     v = safe_float_local(x)
     return v if v is not None else 0.0
+
 def pct_change_2(prev, curr):
     prev = safe_float_local(prev)
     curr = safe_float_local(curr)
     if prev is None or prev == 0:
         return None
     return round(((curr - prev) / prev) * 100.0, 2)
-def _fmt_int(x):
-    x = safe_float_local(x)
-    if x is None:
-        x = 0
-    return f"{int(round(x))}"
-def _fmt_money(x, symbol, decimals=2):
-    x = safe_float_local(x)
-    if x is None:
-        x = 0.0
-    return f"{symbol}{x:,.{decimals}f}"
-def _dir_word_simple(p):
-    if p is None:
-        return "moved"
-    return "increased" if p > 0 else "decreased"
 
 
 
@@ -2387,6 +2374,7 @@ def build_ai_summary(
     user_objective=None,
     movement_context=None,
     sku_to_product=None,
+    
     group_inventory_alerts=True,
 
     # ✅ NEW (required for strategy engine)
@@ -2469,6 +2457,29 @@ def build_ai_summary(
                 sku_to_product=sku_to_product or {},
                 max_skus_per_bucket=5,
             )
+        # =========================================================
+    # 🚫 SKUs to Skip
+    # =========================================================
+    SKUS_TO_SKIP = {
+        "B075HB7GSJ",
+        "B0CRYQ6HBH",
+        "B0F9FS43K3",
+        "X001VGZOM9",
+    }
+
+    # Remove them from top_80_skus
+    top_80_skus = [
+        row for row in (top_80_skus or [])
+        if row.get("sku") not in SKUS_TO_SKIP
+    ]
+
+    # Remove them from focus_skus (THIS IS THE MISSING PART)
+    if focus_skus:
+        focus_skus = [
+            sku for sku in focus_skus
+            if sku not in SKUS_TO_SKIP
+        ]
+
 
     # =========================================================
     # PAYLOAD (UNCHANGED STRUCTURE)
@@ -2552,6 +2563,23 @@ def build_ai_summary(
         except Exception as e:
             print("[STRATEGY ERROR]", e)
             strategy_actions = {}
+
+    # =========================================================
+    # 🚫 FINAL HARD FILTER (Strategy Output Level)
+    # =========================================================
+    SKUS_TO_SKIP = {
+        "B075HB7GSJ",
+        "B0CRYQ6HBH",
+        "B0F9FS43K3",
+        "X001VGZOM9",
+    }
+
+    if isinstance(strategy_actions, dict):
+        strategy_actions = {
+            k: v
+            for k, v in strategy_actions.items()
+            if k not in SKUS_TO_SKIP
+        }
 
     payload["strategy_actions"] = strategy_actions
 
@@ -2832,7 +2860,7 @@ Data:
 
         ai_text = ai_response.choices[0].message.content.strip()
 
-
+       
         return key, {
             "sku": sku,
             "product_name": product_name,

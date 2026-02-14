@@ -644,7 +644,7 @@ def live_mtd_vs_previous():
         strategy_raw = run_prompt_2_strategy(
             analysis_insights=analysis,
             objective_v2=user_objective,
-            focus_skus=[r.get("sku") for r in top_80_skus + new_reviving],
+            focus_skus=[r.get("sku") for r in top_80_skus],
             sku_time_series={},   # optional
             inventory_alerts=payload_ai.get("inventory_signals", {}),
             country=country,
@@ -663,7 +663,7 @@ def live_mtd_vs_previous():
 
         recommended_actions_mtd = {}
 
-        for row in top_80_skus + new_reviving:
+        for row in top_80_skus:
             sku = row.get("sku")
             if not sku:
                 continue

@@ -3400,7 +3400,29 @@ other: Number(r.other ?? 0),
     const stats_lastMonthTotalHome = identityConvert(targetData.lastMonthTotalUSD ?? 0);
     const stats_targetHome = identityConvert(targetData.targetUSD ?? 0);
 
-    // ✅ Derived Summary Metrics (for P&L Productwise Breakdown MTD summary)
+     const grandTotalRow = data?.skuwise_items?.find(
+  (item: any) =>
+    item.product_name === "Grand Total" ||
+    item.sku === "GRAND_TOTAL"
+);
+
+
+    const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
+const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
+
+
+
+const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
+const lost_inventory_total = grandTotalRow?.lost_total ?? 0;
+const otherPlatformFee = grandTotalRow?.platformfeenew ?? 0;
+
+const adsSpendTotal = Math.abs(
+    toNumber(sponsoredProductsSpend + sponsoredBrandSpend)
+);
+const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (grandTotalRow?.platform_fee) )
+console.log("cm2Profit",cm2Profit)
+
+
 
     // Reimbursement value should match what is sent to SalesTargetCard (home-currency reimbursement)
     const reimbursementForSummary = useMemo(() => {
@@ -3409,7 +3431,7 @@ other: Number(r.other ?? 0),
 
     // CM2 Margin (%) = (CM2 Profit / Net Sales) * 100
     const cm2MarginPctForSummary = useMemo(() => {
-        const cm2 = toNumber(plSummaryTotals.cm2_profit);
+        const cm2 = cm2Profit;
         const netSales = toNumber(plSummaryTotals.net_sales);
         return netSales ? (cm2 / netSales) * 100 : 0;
     }, [plSummaryTotals.cm2_profit, plSummaryTotals.net_sales]);
@@ -3422,7 +3444,7 @@ other: Number(r.other ?? 0),
 
     // Reimbursement vs CM2 Margin (%) = (Reimbursement / CM2 Profit/Loss) * 100
     const reimbursementVsCm2PctForSummary = useMemo(() => {
-        const cm2 = toNumber(plSummaryTotals.cm2_profit);
+        const cm2 = cm2Profit;
         return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
     }, [reimbursementForSummary, plSummaryTotals.cm2_profit]);
 
@@ -3594,29 +3616,7 @@ other: Number(r.other ?? 0),
     ]);
 
 
-  const grandTotalRow = data?.skuwise_items?.find(
-  (item: any) =>
-    item.product_name === "Grand Total" ||
-    item.sku === "GRAND_TOTAL"
-);
-
-
-    const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
-const sponsoredDisplaySpend = grandTotalRow?.display_spend ?? 0;
-const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
-
-const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
-const lost_inventory_total = grandTotalRow?.lost_total ?? 0;
-const otherPlatformFee = grandTotalRow?.platformfeenew ?? 0;
-
-    // Total ads spend (fallback to sum of breakdown if ads_spend isn't present)
-    const adsSpendTotal = Math.abs(
-        toNumber(grandTotalRow?.ads_spend) ||
-        toNumber((data as any)?.ads_spend) ||
-        (sponsoredProductsSpend + sponsoredDisplaySpend + sponsoredBrandSpend)
-    );
-
-
+ 
 
 
 const skuwiseItems = useMemo(() => {
@@ -3643,20 +3643,6 @@ const mtdExtraTotals = useMemo(() => {
 }, [grandTotalSkuRow]);
 
 
-const lostTotalDisp = useMemo(
-  () => convertToDisplayCurrency(mtdExtraTotals.lost_total, amazonDataCurrency),
-  [mtdExtraTotals.lost_total, convertToDisplayCurrency, amazonDataCurrency]
-);
-
-const platformFeeDisp = useMemo(
-  () => convertToDisplayCurrency(mtdExtraTotals.platform_fee, amazonDataCurrency),
-  [mtdExtraTotals.platform_fee, convertToDisplayCurrency, amazonDataCurrency]
-);
-
-const storageFeeDisp = useMemo(
-  () => convertToDisplayCurrency(mtdExtraTotals.platform_fee_inventory_storage, amazonDataCurrency),
-  [mtdExtraTotals.platform_fee_inventory_storage, convertToDisplayCurrency, amazonDataCurrency]
-);
 
 
     return (
@@ -4171,14 +4157,7 @@ const storageFeeDisp = useMemo(
 
                                     <AmazonStatCard
                                         label="CM2 Profit"
-                                        current={
-                                            useBiCm2
-                                                ? (cm2Ready
-                                                    ? convertToDisplayCurrency(biAlignedTotals?.current_cm2_profit ?? 0, biSourceCurrency)
-
-                                                    : 0)
-                                                : convertToDisplayCurrency(uk.cm2ProfitGBP ?? 0, amazonDataCurrency) // ✅ MTD Transactions
-                                        }
+                                        current={cm2Profit}
                                         previous={
                                             useBiCm2
                                                 ? (cm2Ready
@@ -4206,9 +4185,7 @@ const storageFeeDisp = useMemo(
                                     <AmazonStatCard
                                         label="CM2 Profit %"
                                         current={
-                                            useBiCm2
-                                                ? (cm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
-                                                : (curr.profitPct ?? 0) // ✅ MTD Transactions
+                                            cm2MarginPctForSummary
                                         }
                                         previous={
                                             useBiCm2
@@ -4774,17 +4751,17 @@ const storageFeeDisp = useMemo(
                                             children: [
                                                 {
                                                     id: "ads_1",
-                                                    label: <>Sponsored Products <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                    label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
                                                     midValue: formatSummaryValue(sponsoredProductsSpend, "advertising_total"),
                                                 },
-                                                {
-                                                    id: "ads_2",
-                                                    label: <>Sponsored Display <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                    midValue: formatSummaryValue(sponsoredDisplaySpend, "advertising_total"),
-                                                },
+                                                // {
+                                                //     id: "ads_2",
+                                                //     label: <>Sponsored Display <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                //     midValue: formatSummaryValue(sponsoredDisplaySpend, "advertising_total"),
+                                                // },
                                                 {
                                                     id: "ads_3",
-                                                    label: <>Sponsored Brand <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                    label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
                                                     midValue: formatSummaryValue(sponsoredBrandSpend, "advertising_total"),
                                                 },
                                             ],
@@ -4846,7 +4823,7 @@ const storageFeeDisp = useMemo(
                                         {
                                             id: "cm2_profit",
                                             label: "CM2 Profit/Loss",
-                                            endValue: formatSummaryValue(plSummaryTotals.cm2_profit, "cm2_profit"),
+                                             endValue: Number(cm2Profit.toFixed(2)),
                                         },
                                         {
                                             id: "cm2_margins",
