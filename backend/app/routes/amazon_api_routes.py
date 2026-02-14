@@ -1375,8 +1375,7 @@ def finances_mtd_transactions():
     amazon_client.refresh_token = au.refresh_token
 
     now_utc = datetime.now(timezone.utc)
-    posted_after, posted_before = _month_to_date_range_utc_safe(now_utc, safety_minutes=3)
-
+    posted_after, posted_before = _month_to_date_range_utc_safe(now_utc, safety_minutes=10)
     # ---------------- Month meta ----------------
     month_name = _month_name_lower(now_utc.month)  # e.g. "february"
 
