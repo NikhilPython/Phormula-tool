@@ -506,45 +506,45 @@ const ProductInsightsSection = ({
       <PageBreadcrumb pageTitle="Product Insights" variant="page" align="left" textSize="2xl" />
 
       {/* Objective Box – shown just below heading */}
-{objective && (
-  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-    <div className="text-sm font-semibold text-charcoal-700 mb-3">
-      Objective
-    </div>
+      {objective && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm font-semibold text-charcoal-700 mb-3">
+            Objective
+          </div>
 
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-charcoal-600">
-      
-      {/* Growth Intent */}
-      <div className="space-y-1">
-        <div className="text-charcoal-400">Growth Intent</div>
-        <div className="font-semibold capitalize">
-          {objective.growth_intent}
-        </div>
-      </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-charcoal-600">
 
-      {/* Inventory Clearance */}
-      <div className="space-y-1">
-        <div className="text-charcoal-400">
-          Inventory Clearance
-        </div>
-        <div className="font-semibold">
-          {objective.inventory_clearance_priority ? "Yes" : "No"}
-        </div>
-      </div>
+            {/* Growth Intent */}
+            <div className="space-y-1">
+              <div className="text-charcoal-400">Growth Intent</div>
+              <div className="font-semibold capitalize">
+                {objective.growth_intent}
+              </div>
+            </div>
 
-      {/* Profit Priority */}
-      <div className="space-y-1">
-        <div className="text-charcoal-400">
-          Profit Priority
-        </div>
-        <div className="font-semibold capitalize">
-          {objective.profit_priority?.replaceAll("_", " ")}
-        </div>
-      </div>
+            {/* Inventory Clearance */}
+            <div className="space-y-1">
+              <div className="text-charcoal-400">
+                Inventory Clearance
+              </div>
+              <div className="font-semibold">
+                {objective.inventory_clearance_priority ? "Yes" : "No"}
+              </div>
+            </div>
 
-    </div>
-  </div>
-)}
+            {/* Profit Priority */}
+            <div className="space-y-1">
+              <div className="text-charcoal-400">
+                Profit Priority
+              </div>
+              <div className="font-semibold capitalize">
+                {objective.profit_priority?.replaceAll("_", " ")}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
 
 
       {/* SKU Sections */}
@@ -634,7 +634,7 @@ const ProductInsightsSection = ({
       </div>
 
       {/* ✅ Objective Section (Below Product Insights) */}
-     
+
     </div>
   );
 };
@@ -789,11 +789,11 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
         )}
       </div>
       <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 ">
- <ProductInsightsSection
-  blocks={parseProductInsightsBlocks(skuInsightsBullets)}
-  recommendationsMap={recommendationsMap}
-  objective={objective}
-/>
+        <ProductInsightsSection
+          blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+          recommendationsMap={recommendationsMap}
+          objective={objective}
+        />
 
 
       </div>
@@ -1088,20 +1088,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       const summaryLines = sections["SUMMARY"] ?? [];
       const inventoryLines = sections["INVENTORY"] ?? [];
       const productLines = sections["PRODUCT INSIGHTS"] ?? [];
-const { recommendationBullets, inventoryBullets, recommendationsMap } =
-  extractRecoAndInventoryBullets(data.recommendations as any);
+      const { recommendationBullets, inventoryBullets, recommendationsMap } =
+        extractRecoAndInventoryBullets(data.recommendations as any);
 
-setAiPanel({
-  summaryBullets: summaryLines,
-  skuInsightsBullets: productLines,
-  recommendationBullets,
-  inventoryBullets: inventoryLines,
-  recommendationsMap,            // ✅ store map
-  objective: data.objective,     // ✅ objective store
-  rawSummary: data.summary ?? null,
-  rawRecommendations:
-    typeof data.recommendations === "string" ? data.recommendations : null,
-});
+      setAiPanel({
+        summaryBullets: summaryLines,
+        skuInsightsBullets: productLines,
+        recommendationBullets,
+        inventoryBullets: inventoryLines,
+        recommendationsMap,            // ✅ store map
+        objective: data.objective,     // ✅ objective store
+        rawSummary: data.summary ?? null,
+        rawRecommendations:
+          typeof data.recommendations === "string" ? data.recommendations : null,
+      });
 
 
     } catch (e: any) {
@@ -2079,7 +2079,9 @@ setAiPanel({
     relative
   "
     >
-      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 ">
+      <div className="sticky top-0 z-40 bg-white w-full 
+  flex flex-col md:flex-row md:items-center md:justify-between 
+  gap-4 border-b border-gray-200 pb-3">
 
         {/* LEFT: Title + Subtitle */}
         <div className="flex flex-col leading-tight w-full md:w-auto md:mb-5">

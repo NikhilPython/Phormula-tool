@@ -92,30 +92,30 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
   };
 
   const handleMonthChange = (m: string) => {
-  const mIdx = months.indexOf(m.toLowerCase());
+    const mIdx = months.indexOf(m.toLowerCase());
 
-  if (selectedYearNum === currentYear && mIdx >= currentMonthIndex) {
-    // Invalid for current year → switch to previous year
-    onYearChange(String(currentYear - 1));
-  }
+    if (selectedYearNum === currentYear && mIdx >= currentMonthIndex) {
+      // Invalid for current year → switch to previous year
+      onYearChange(String(currentYear - 1));
+    }
 
-  onMonthChange(m);
-};
+    onMonthChange(m);
+  };
 
-const handleQuarterChange = (q: string) => {
-  const qNum = Number(q.replace("Q", ""));
-  const quarterStartMonth = (qNum - 1) * 3;
+  const handleQuarterChange = (q: string) => {
+    const qNum = Number(q.replace("Q", ""));
+    const quarterStartMonth = (qNum - 1) * 3;
 
-  if (
-    selectedYearNum === currentYear &&
-    quarterStartMonth >= currentMonthIndex
-  ) {
-    // Invalid quarter for current year → switch to previous year
-    onYearChange(String(currentYear - 1));
-  }
+    if (
+      selectedYearNum === currentYear &&
+      quarterStartMonth >= currentMonthIndex
+    ) {
+      // Invalid quarter for current year → switch to previous year
+      onYearChange(String(currentYear - 1));
+    }
 
-  onQuarterChange(q);
-};
+    onQuarterChange(q);
+  };
 
 
 
@@ -277,43 +277,20 @@ const handleQuarterChange = (q: string) => {
     return false;
   };
 
-  /* =========================
-     Guard: if URL/parent passes an invalid month/year, snap to allowed historic
-     ========================= */
-
-  // React.useEffect(() => {
-  //   if (safeRange !== "monthly") return;
-  //   if (!selectedYearNum || Number.isNaN(selectedYearNum)) return;
-  //   if (!selectedMonth) return;
-
-  //   const allowed = getAllowedMonthsForYear(selectedYearNum);
-  //   const mLower = selectedMonth.toLowerCase();
-
-  //   if (!allowed.includes(mLower)) {
-  //     // Snap to last allowed month in that year (or to Dec of previous year if none)
-  //     if (selectedYearNum === currentYear) {
-  //       if (currentMonthIndex === 0) {
-  //         // Jan: no historic months in current year
-  //         onYearChange(String(currentYear - 1));
-  //         onMonthChange("december");
-  //       } else {
-  //         onMonthChange(months[currentMonthIndex - 1]);
-  //       }
-  //     } else if (allowed.length > 0) {
-  //       onMonthChange(allowed[allowed.length - 1]);
-  //     }
-  //   }
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [safeRange, selectedMonth, selectedYearNum, currentYear, currentMonthIndex]);
-
   /* -------- UI classes -------- */
   const wrapCls =
-    "relative inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs 2xl:text-sm shadow-sm";
+    "relative inline-flex items-center rounded-md sm:rounded-lg border border-gray-300 bg-white " +
+    "px-2 py-1 sm:px-3 sm:py-1.5 " +
+    "text-[10px] sm:text-xs lg:text-sm 2xl:text-sm shadow-sm";
+
   const selectCls =
-    "appearance-none bg-transparent px-2 py-1 pr-6 text-center text-xs 2xl:text-sm text-[#414042] focus:outline-none cursor-pointer";
+    "appearance-none bg-transparent text-center text-[#414042] focus:outline-none cursor-pointer " +
+    "px-1 py-0.5 pr-5 sm:px-2 sm:py-1 sm:pr-6 " +
+    "text-[10px] sm:text-xs lg:text-sm 2xl:text-sm";
+
 
   return (
-    <div className="flex items-center gap-2 sm:gap-3">
+    <div className="flex items-center gap-1.5 sm:gap-3">
       {/* Period */}
       <div className={wrapCls}>
         <select
@@ -334,7 +311,7 @@ const handleQuarterChange = (q: string) => {
             <option value="yearly">Yearly</option>
           )}
         </select>
-        <span className="pointer-events-none absolute inset-y-0 right-5 flex items-center text-[10px]">
+        <span className="pointer-events-none absolute inset-y-0 right-3 sm:right-5 flex items-center text-[9px] sm:text-[10px]">
           <FaAngleDown />
         </span>
       </div>
@@ -344,34 +321,31 @@ const handleQuarterChange = (q: string) => {
         <div className={wrapCls}>
           <select
             value={safeRange === "monthly" ? selectedMonth : selectedQuarter}
-           onChange={(e) =>
-  safeRange === "monthly"
-    ? handleMonthChange(e.target.value)
-    : handleQuarterChange(e.target.value)
-}
+            onChange={(e) =>
+              safeRange === "monthly"
+                ? handleMonthChange(e.target.value)
+                : handleQuarterChange(e.target.value)
+            }
             className={selectCls}
           >
             <option value="">Range</option>
 
-            {/* ✅ Monthly: ONLY show allowed (historic) months */}
             {safeRange === "monthly" &&
-  months.map((m) => (
-    <option key={m} value={m}>
-      {cap(m)}
-    </option>
-  ))}
+              months.map((m) => (
+                <option key={m} value={m}>
+                  {cap(m)}
+                </option>
+              ))}
 
-            {/* Quarterly: still show all, but disable as needed */}
             {safeRange === "quarterly" &&
               ["Q1", "Q2", "Q3", "Q4"].map((q) => (
-  <option key={q} value={q}>
-    {q}
-  </option>
-))
-}
+                <option key={q} value={q}>
+                  {q}
+                </option>
+              ))}
           </select>
 
-          <span className="pointer-events-none absolute inset-y-0 right-5 flex items-center text-[10px]">
+          <span className="pointer-events-none absolute inset-y-0 right-3 sm:right-5 flex items-center text-[9px] sm:text-[10px]">
             <FaAngleDown />
           </span>
         </div>
@@ -385,7 +359,6 @@ const handleQuarterChange = (q: string) => {
           className={selectCls}
         >
           <option value="">Year</option>
-
           {yearList.map((y) => (
             <option key={y} value={y} disabled={isYearDisabled(y)}>
               {y}
@@ -393,7 +366,7 @@ const handleQuarterChange = (q: string) => {
           ))}
         </select>
 
-        <span className="pointer-events-none absolute inset-y-0 right-5 flex items-center text-[10px]">
+        <span className="pointer-events-none absolute inset-y-0 right-3 sm:right-5 flex items-center text-[9px] sm:text-[10px]">
           <FaAngleDown />
         </span>
       </div>

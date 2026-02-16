@@ -1531,9 +1531,9 @@ const handleDownloadExcel = useCallback(async () => {
     <>
       <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
         <div className="mb-4 flex  gap-3 flex-row items-center justify-between">
-          <div className="flex flex-wrap items-baseline gap-2 justify-center sm:justify-start">
-            <PageBreadcrumb pageTitle={getTitle()} variant="page" align="left" textSize="2xl" />
-            <span className="text-[#5EA68E] text-lg sm:text-2xl md:text-2xl font-bold">({currencySymbol})</span>
+          <div className="flex flex-wrap items-baseline gap-0 sm:gap-2 justify-left sm:justify-start">
+            <PageBreadcrumb pageTitle={getTitle()} variant="page" textSize="2xl" />
+            <span className="text-[#5EA68E] text-base sm:text-lg lg:text-lg 2xl:text-xl font-bold">({currencySymbol})</span>
           </div>
 
           <div className="flex justify-center sm:justify-end">

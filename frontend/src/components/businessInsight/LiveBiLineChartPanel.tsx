@@ -258,7 +258,7 @@ export default function LiveBiLineChartPanel({
     <div className="w-full">
       <div className="flex flex-row md:items-start justify-between gap-3">
         {/* Title */}
-        <div className="w-full md:w-auto flex justify-center md:justify-start">
+        <div className="w-full md:w-auto flex justify-start">
           <PageBreadcrumb
             pageTitle="Performance Trend"
             variant="page"
@@ -267,7 +267,7 @@ export default function LiveBiLineChartPanel({
         </div>
 
         {/* Toggle */}
-        <div className="w-full md:w-auto flex justify-center md:justify-end">
+        <div className="w-full md:w-auto flex justify-end">
           <div className="w-fit">
             <SegmentedToggle<ChartMetric>
               value={chartMetric}

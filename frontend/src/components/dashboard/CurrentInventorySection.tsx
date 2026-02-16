@@ -994,25 +994,30 @@ export default function CurrentInventorySection({
           {invError}
         </div>
       ) : (
-        <div className="mt-2 rounded-xl flex-1 w-full max-w-full overflow-x-auto lg:overflow-x-hidden">
-          <div className="w-full min-w-0 [&_table]:w-full">
-            <DataTable
-              columns={columns}
-              data={tableRows}
-              loading={false}
-              paginate={true}
-              pageSize={15}
-              scrollY={false}
-              maxHeight="none"
-              emptyMessage="No inventory data."
-              rowClassName={(row) => {
-                if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
-                if (row.rowType === "others") return "!bg-[#FFFFFF]";
-                return "bg-white";
-              }}
-            />
+        <div className="mt-2 flex-1 w-full">
+          {/* Single scroll container */}
+          <div className="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
+            {/* Ensure the table can actually be wider than the screen */}
+            <div className="min-w-max [&_table]:min-w-[980px] [&_table]:w-full">
+              <DataTable
+                columns={columns}
+                data={tableRows}
+                loading={false}
+                paginate={true}
+                pageSize={15}
+                scrollY={false}
+                maxHeight="none"
+                emptyMessage="No inventory data."
+                rowClassName={(row) => {
+                  if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
+                  if (row.rowType === "others") return "!bg-[#FFFFFF]";
+                  return "bg-white";
+                }}
+              />
+            </div>
           </div>
         </div>
+
       )}
     </div>
   );
