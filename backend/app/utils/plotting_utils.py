@@ -1,7 +1,6 @@
 from flask import  jsonify, request
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from config import basedir
 from sqlalchemy import create_engine, MetaData, Table, select , text
 from sqlalchemy.orm import sessionmaker

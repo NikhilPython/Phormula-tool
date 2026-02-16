@@ -11,7 +11,6 @@ import base64
 from io import BytesIO
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from app import db
 from app.models.user_models import UploadHistory , CountryProfile , User
 from app.utils.data_utils import generate_pnl_report 

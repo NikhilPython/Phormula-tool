@@ -2,7 +2,6 @@ from sqlalchemy import create_engine,  text
 from sqlalchemy.orm import sessionmaker
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 import os
 import pandas as pd
 import numpy as np 

@@ -11,7 +11,6 @@ import json
 from openai import OpenAI
 from sqlalchemy import text
 SECRET_KEY = Config.SECRET_KEY
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from dotenv import load_dotenv
 
 load_dotenv()

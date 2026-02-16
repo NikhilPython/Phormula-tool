@@ -7,7 +7,6 @@ from sqlalchemy import MetaData, Table, select
 from datetime import datetime 
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from app.models.user_models import User, Category
 from app import db, mail  
 from dotenv import load_dotenv
