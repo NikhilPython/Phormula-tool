@@ -27,7 +27,7 @@ from multiprocessing import cpu_count
 
 warnings.filterwarnings("ignore")
 
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+
 
 # ============================== ENV / CONFIG ==============================
 load_dotenv()

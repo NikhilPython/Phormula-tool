@@ -9,7 +9,7 @@ from datetime import datetime
 import pandas as pd
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+
 from app.models.user_models import User , CountryProfile
 from app import db
 from dotenv import load_dotenv

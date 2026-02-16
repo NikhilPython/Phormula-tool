@@ -10,7 +10,6 @@ import pandas as pd
 from config import basedir
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from app.models.user_models import User
 from app.models.user_models import CountryProfile
 from app import db, mail  

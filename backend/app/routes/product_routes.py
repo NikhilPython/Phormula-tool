@@ -7,7 +7,6 @@ from sqlalchemy import create_engine, text
 from config import Config
 from config import basedir
 SECRET_KEY = Config.SECRET_KEY
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
 from dotenv import load_dotenv
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError

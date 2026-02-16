@@ -9,7 +9,7 @@ from sqlalchemy import inspect
 from app import db
 from app.models.user_models import CurrencyConversion, Category, UserAdmin , User, UploadHistory, CountryProfile
 from sqlalchemy.exc import IntegrityError
-#UPLOAD_FOLDER = Config.UPLOAD_FOLDER
+
 from flask import current_app
 import os , jwt
 from datetime import datetime
