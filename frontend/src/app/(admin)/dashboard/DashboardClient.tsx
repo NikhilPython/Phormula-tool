@@ -3415,11 +3415,13 @@ const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
 const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
 const lost_inventory_total = grandTotalRow?.lost_total ?? 0;
 const otherPlatformFee = grandTotalRow?.platformfeenew ?? 0;
+const platformFee = grandTotalRow?.platform_fee ?? 0;
+
 
 const adsSpendTotal = Math.abs(
     toNumber(sponsoredProductsSpend + sponsoredBrandSpend)
 );
-const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (grandTotalRow?.platform_fee) )
+const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)) )
 console.log("cm2Profit",cm2Profit)
 
 
@@ -3659,46 +3661,55 @@ const mtdExtraTotals = useMemo(() => {
 
 
 
-            <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-                <div className="mb-2 2xl:mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+           <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+  <div className="mb-2 2xl:mb-4 flex items-center justify-between gap-2">
 
-                    <div className="flex flex-col leading-tight">
-                        <p className="text-sm 2xl:text-lg text-charcoal-500 mb-1">
-                            Let&apos;s get started,{" "}
-                            <span className="text-green-500">{brandName}!</span>
-                        </p>
+    {/* LEFT SIDE */}
+    <div className="flex flex-col leading-tight min-w-0">
+      <p className="text-xs sm:text-sm 2xl:text-lg text-charcoal-500 mb-1 truncate">
+        Let&apos;s get started,{" "}
+        <span className="text-green-500">{brandName}!</span>
+      </p>
 
-                        <div className="flex items-center gap-2">
-                            <PageBreadcrumb
-                                pageTitle="Sales Dashboard - Amazon"
-                                variant="page"
-                                textSize="2xl"
-                            // className="text-2xl font-semibold"
-                            />
-                            {countryName !== "global" && (
-                                <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
-                                    {countryName.toUpperCase()}
-                                </span>
-                            )}
-                            <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-semibold text-green-500">
-                                - {formattedMonthYear}
-                            </span>
-                        </div>
-                    </div>
+      <div className="flex items-center gap-1 flex-wrap">
+        <PageBreadcrumb
+          pageTitle="Sales Dashboard - Amazon"
+          variant="page"
+          textSize="2xl"
+        />
 
-                    <button
-                        onClick={refreshAll}
-                        disabled={loading || shopifyLoading || biLoading}
-                        className={`w-full rounded-md border px-3 py-1.5 text-xs 2xl:text-sm shadow-sm sm:w-auto ${loading || shopifyLoading || biLoading
-                            ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                            : "border-gray-300 bg-white hover:bg-gray-50"
-                            }`}
-                    >
-                        {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
-                    </button>
+        {countryName !== "global" && (
+          <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+            {countryName.toUpperCase()}
+          </span>
+        )}
 
-                </div>
-            </div>
+        <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+         - {formattedMonthYear}
+        </span>
+      </div>
+    </div>
+
+    {/* RIGHT SIDE BUTTON */}
+    <button
+      onClick={refreshAll}
+      disabled={loading || shopifyLoading || biLoading}
+      className={`shrink-0 rounded-md border shadow-sm
+        px-2 py-1 text-[10px]
+        sm:px-3 sm:py-1.5 sm:text-xs
+        2xl:text-sm
+        ${
+          loading || shopifyLoading || biLoading
+            ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+            : "border-gray-300 bg-white hover:bg-gray-50"
+        }`}
+    >
+      {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
+    </button>
+
+  </div>
+</div>
+
 
 
 
@@ -4070,8 +4081,7 @@ const mtdExtraTotals = useMemo(() => {
 
                                     <AmazonStatCard
                                         label="Cost of Ads"
-                                        current={formatSummaryValue(adsSpendTotal, "advertising_total")
-                                        }
+                                        current={adsSpendTotal}
                                         previous={
                                             useBiForAmazonCards
                                                 ? (cm2Ready
@@ -4427,6 +4437,7 @@ const mtdExtraTotals = useMemo(() => {
                     </div>
                 )
             }
+            
             {/* ✅ Global-only Performance Trend BELOW top section */}
             {
                 platform === "global" && showLiveBI && (
@@ -4770,7 +4781,7 @@ const mtdExtraTotals = useMemo(() => {
                                         {
                                             id: "other",
                                             label: "Other Transactions",
-                                            endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
+                                            endValue: formatSummaryValue(platformFee, "platform_fee"),
                                             defaultCollapsed: true,
                                             children: [
                                                 {
