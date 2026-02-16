@@ -28,7 +28,7 @@ load_dotenv()
 
 db_url = os.getenv("DATABASE_URL")
 db_url2 = os.getenv("DATABASE_AMAZON_URL")
-db_url3 = os.getenv("DATABASE_Chatbot_URL")
+db_url3 = os.getenv("DATABASE_CHATBOT_URL")
 
 engine_hist = create_engine(db_url)
 engine_live = create_engine(db_url2)

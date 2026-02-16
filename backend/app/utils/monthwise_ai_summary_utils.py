@@ -22,7 +22,7 @@ load_dotenv()
 SECRET_KEY = Config.SECRET_KEY
 
 db_url = os.getenv("DATABASE_URL")
-db_url2 = os.getenv("DATABASE_Chatbot_URL")
+db_url2 = os.getenv("DATABASE_CHATBOT_URL")
 db_url3 = os.getenv("DATABASE_AMAZON_URL")
 phormula_engine = create_engine(db_url)
 chatbot_engine = create_engine(db_url2)
