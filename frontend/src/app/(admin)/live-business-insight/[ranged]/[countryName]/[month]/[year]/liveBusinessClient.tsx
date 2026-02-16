@@ -2975,14 +2975,16 @@ const recommendationMatch = text.match(
 
               )}
               <div className="flex justify-center mt-2">
-                <div
-                  className="
-      grid grid-cols-2 gap-3
-      sm:grid-cols-4 
+  <div
+    className="
+      grid grid-cols-2 gap-x-6 gap-y-2
+      sm:grid-cols-4
       lg:flex lg:items-center lg:gap-10 lg:flex-wrap
       text-xs 2xl:text-sm text-[#414042] mt-1
+      justify-items-start
     "
-                >
+  >
+
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-flex items-center gap-2 text-[#5EA68E] font-bold">
                       <FaArrowUp className="text-[10px] 2xl:text-xs" /> High growth

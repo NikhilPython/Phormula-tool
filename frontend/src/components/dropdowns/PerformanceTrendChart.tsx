@@ -639,11 +639,8 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
 
   return (
     <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
-
       <div className="shrink-0 flex items-center justify-between gap-3 w-full">
-
         <PageBreadcrumb pageTitle="Performance Trend" variant="page" textSize="2xl" />
-
         <div className="flex items-center shrink-0"
           data-no-expand
           onPointerDown={(e) => e.stopPropagation()}

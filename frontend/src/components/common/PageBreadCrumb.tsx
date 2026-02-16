@@ -156,7 +156,7 @@ const PageBreadcrumb: React.FC<BreadcrumbProps> = ({
     };
 
   const alignClassMap: Record<NonNullable<BreadcrumbProps["align"]>, string> = {
-    center: "text-center",
+    center: "text-left sm:text-center",
     left: "text-left",
     right: "text-right",
   };
