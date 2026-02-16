@@ -456,72 +456,12 @@ class AmazonAdsReportingClient:
         data = json.loads(raw)
         return _normalize(data)
 
-    # def create_sb_keyword_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
-    #     """
-    #     Sponsored Brands - Keyword report (v3)
-    #     NOTE: reportTypeId differs by account; most commonly sbKeywords.
-    #     """
-    #     payload = {
-    #         "name": f"SB Keyword {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
-    #         "startDate": start_date,
-    #         "endDate": end_date,
-    #         "configuration": {
-    #             "adProduct": "SPONSORED_BRANDS",
-    #             "reportTypeId": "sbTargeting",   # <- if your account uses different id, change here
-    #             "timeUnit": time_unit,
-    #             "format": "GZIP_JSON",
-    #             "groupBy": ["targeting"],
-    #             "columns": [
-    #                 "startDate", "endDate",
-    #                 "portfolioName",
-    #                 "currency",
-    #                 "campaignName",
-    #                 "adGroupName",
-    #                 "targeting",
-    #                 "matchType",
-    #                 "costType",
-    #                 "impressions",
-    #                 "topOfSearchImpressionShare",
-    #                 "viewableImpressions",
-    #                 "clicks",
-    #                 "clickThroughRate",
-    #                 "cost",
-    #                 "costPerClick",
-    #                 "vCPM",
-    #                 "acos",
-    #                 "roas",
-    #                 "sales14d",
-    #                 "purchases14d",
-    #                 "unitsSold14d",
-    #                 "conversionRate14d",
-    #                 "viewThroughRate",
-    #                 "vctr",
-    #                 "videoFirstQuartileViews",
-    #                 "videoMidpointViews",
-    #                 "videoThirdQuartileViews",
-    #                 "videoCompleteViews",
-    #                 "videoUnmutes",
-    #                 "views5s",
-    #                 "viewRate5s",
-    #                 "brandedSearches14d",
-    #                 "detailPageViews14d",
-    #                 "newToBrandPurchases14d",
-    #                 "newToBrandPurchasesPercentage14d",
-    #                 "newToBrandSales14d",
-    #                 "newToBrandSalesPercentage14d",
-    #                 "newToBrandUnitsSold14d",
-    #                 "newToBrandUnitsSoldPercentage14d",
-    #                 "newToBrandOrderRate14d",
-    #                 "acosClicks14d",
-    #                 "roasClicks14d",
-    #                 "salesClicks14d",
-    #                 "purchasesClicks14d",
-    #                 "unitsSoldClicks14d",
-    #                 "brandTotalDetailPageViewsClicks14d",
-    #             ],
-    #         },
-    #     }
-    #     return self._create_report(payload)
+
+    def list_sb_campaigns(self) -> list[dict]:
+        # adjust if your SB campaigns endpoint differs
+        resp = self._request("GET", "/sb/campaigns", params={"count": 1000, "startIndex": 0})
+        data = resp.json()
+        return data if isinstance(data, list) else []
 
     def create_sb_keyword_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
         payload = {
@@ -533,18 +473,22 @@ class AmazonAdsReportingClient:
                 "reportTypeId": "sbTargeting",
                 "timeUnit": time_unit,
                 "format": "GZIP_JSON",
-                "groupBy": ["targeting"],     # keep
+                "groupBy": ["targeting"],
                 "columns": [
                     "startDate", "endDate",
                     "campaignId", "campaignName",
                     "adGroupId", "adGroupName",
 
-                    # targeting/keyword fields (pick what Amazon actually fills)
+                    # targeting/keyword fields
                     "keywordText",
                     "targetingText",
                     "targetingExpression",
                     "matchType",
                     "costType",
+
+                    # try to fetch IDs if available for your account
+                    "keywordId",
+                    "targetingId",
 
                     # currency
                     "campaignBudgetCurrencyCode",
@@ -559,41 +503,6 @@ class AmazonAdsReportingClient:
             },
         }
         return self._create_report(payload)
-
-
-    # def create_sd_campaign_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
-    #     payload = {
-    #         "name": f"SD Campaign {start_date} to {end_date} {uuid.uuid4().hex[:8]}",
-    #         "startDate": start_date,
-    #         "endDate": end_date,
-    #         "configuration": {
-    #             "adProduct": "SPONSORED_DISPLAY",
-    #             "reportTypeId": "sdCampaigns",  # might still be wrong for your account, see step 2
-    #             "timeUnit": time_unit,
-    #             "format": "GZIP_JSON",
-    #             # ✅ FIXED
-    #             "groupBy": ["campaign"],
-    #             # ✅ ONLY allowed columns
-    #             "columns": [
-    #                 "startDate", "endDate",
-    #                 "campaignId", "campaignName",
-    #                 "campaignBudgetCurrencyCode",
-    #                 "impressions", "clicks", "cost",
-    #                 "detailPageViews", "detailPageViewsClicks",
-    #                 "purchases", "purchasesClicks",
-    #                 "unitsSold", "unitsSoldClicks",
-    #                 "sales", "salesClicks",
-    #                 "newToBrandPurchases", "newToBrandPurchasesClicks",
-    #                 "newToBrandUnitsSold", "newToBrandUnitsSoldClicks",
-    #                 "newToBrandSalesClicks",
-    #                 "addToCart", "addToCartClicks", "addToCartViews", "addToCartRate", "eCPAddToCart",
-    #                 "brandedSearches", "brandedSearchesClicks", "brandedSearchesViews",
-    #                 "brandedSearchRate", "eCPBrandSearch",
-    #                 "longTermSales", "longTermROAS",
-    #             ],
-    #         },
-    #     }
-    #     return self._create_report(payload)
  
     def create_sd_campaign_report(self, start_date: str, end_date: str, time_unit: str = "SUMMARY") -> str:
         payload = {

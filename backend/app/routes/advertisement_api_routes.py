@@ -1,6 +1,6 @@
 import io
 from datetime import datetime , date
-import calendar, json
+import calendar, json, hashlib
 import re
 from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
@@ -1871,296 +1871,6 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
         return jsonify({"error": str(e)}), 500
 
 
-# from app.models.user_models import amazon_sponsored_brands_keywords  # <-- add this import
-
-
-# @advertisement_api_routes_bp.route("/api/ads/manager/sb_keyword_report", methods=["POST"])
-# def manager_sb_keyword_report():
-#     """
-#     Creates Sponsored Brands Keyword report across all accessible advertiser profiles,
-#     merges into one Excel AND saves rows to DB (idempotent UPSERT).
-
-#     Body:
-#       {
-#         "start_date": "YYYY-MM-DD",
-#         "end_date": "YYYY-MM-DD",
-#         "time_unit": "SUMMARY" | "DAILY",
-#         "countries": ["UK","US"],      # optional
-#         "return_excel": true           # optional (default true)
-#       }
-#     """
-#     try:
-#         user_id = _require_jwt_user_id()
-#         u = _get_user_row(user_id)
-
-#         data = request.get_json(force=True) or {}
-#         start_date = data.get("start_date")
-#         end_date = data.get("end_date")
-#         time_unit = (data.get("time_unit") or "SUMMARY").upper()
-#         return_excel = bool(data.get("return_excel", True))
-
-#         wanted_countries = data.get("countries")
-#         if wanted_countries:
-#             wanted_countries = {str(x).upper().strip() for x in wanted_countries if str(x).strip()}
-#         else:
-#             wanted_countries = None
-
-#         if time_unit not in {"DAILY", "SUMMARY"}:
-#             return jsonify({"error": "time_unit must be DAILY or SUMMARY"}), 400
-#         if not start_date or not end_date:
-#             return jsonify({"error": "start_date and end_date required (YYYY-MM-DD)"}), 400
-
-#         # hard validate request dates once
-#         try:
-#             sd = _to_date(start_date, strict=True, field_name="start_date")
-#             ed = _to_date(end_date, strict=True, field_name="end_date")
-#         except ValueError as ve:
-#             return jsonify({"error": str(ve)}), 400
-
-#         if not u.amazon_ads_refresh_token:
-#             return jsonify({"error": "Amazon Ads not connected for this user."}), 400
-
-#         access_token = get_ads_access_token_from_refresh(u.amazon_ads_refresh_token)
-
-#         # manager -> child advertiser profiles
-#         top_profiles = list_top_level_profiles_all_regions(access_token)
-#         manager_profile_id = find_manager_profile_id(top_profiles)
-#         if manager_profile_id:
-#             child_by_region = list_child_profiles_all_regions(access_token, manager_profile_id)
-#         else:
-#             child_by_region = top_profiles
-
-#         # flatten profiles with region + normalized country label
-#         all_profiles = []
-#         for region, profs in (child_by_region or {}).items():
-#             for p in profs or []:
-#                 cc = (p.get("countryCode") or "").upper()
-#                 label = "UK" if cc == "GB" else cc
-#                 p["_region"] = region
-#                 p["_country_label"] = label
-#                 all_profiles.append(p)
-
-#         if wanted_countries:
-#             # normalize GB -> UK if user passes GB
-#             if "GB" in wanted_countries:
-#                 wanted_countries.discard("GB")
-#                 wanted_countries.add("UK")
-#             all_profiles = [p for p in all_profiles if p.get("_country_label") in wanted_countries]
-
-#         if not all_profiles:
-#             return jsonify({
-#                 "error": "No advertiser profiles found (or your country filter removed all)."
-#             }), 400
-
-#         merged_rows = []
-
-#         for p in all_profiles:
-#             profile_id = p.get("profileId")
-#             if not profile_id:
-#                 continue
-
-#             region = p["_region"]
-#             base_url = ADS_ENDPOINTS[region]
-
-#             auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
-#             ads = AmazonAdsReportingClient(base_url=base_url, auth=auth, timeout=60)
-
-#             # IMPORTANT: your client already has create_sb_keyword_report()
-#             report_id = ads.create_sb_keyword_report(start_date, end_date, time_unit=time_unit)
-#             location = ads.wait_until_ready(report_id, max_wait_seconds=1800, poll_every_seconds=10)
-#             rows = ads.download_gzip_json(location)
-
-#             if not isinstance(rows, list):
-#                 raise RuntimeError(f"Report returned unexpected type: {type(rows)}")
-
-#             for r in rows:
-#                 if not isinstance(r, dict):
-#                     continue
-#                 r["_profileId"] = str(profile_id)
-#                 r["_country"] = p["_country_label"]
-#                 merged_rows.append(r)
-
-#         if not merged_rows:
-#             return jsonify({"error": "Reports returned no rows"}), 400
-
-#         df = pd.DataFrame(merged_rows)
-
-#         # numeric safety (SB keyword v3 columns)
-#         numeric_cols = [
-#             "impressions", "clicks",
-#             "topOfSearchImpressionShare",
-#             "viewableImpressions",
-#             "clickThroughRate",
-#             "cost", "costPerClick",
-#         ]
-#         for col in numeric_cols:
-#             if col in df.columns:
-#                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
-
-#         def sdiv(a, b):
-#             a = float(a or 0.0)
-#             b = float(b or 0.0)
-#             return 0.0 if b == 0.0 else (a / b)
-
-#         # =========================
-#         # BUILD OUTPUT (your exact columns)
-#         # =========================
-#         out = pd.DataFrame()
-#         out["Start Date"] = start_date
-#         out["End Date"] = end_date
-
-#         out["Country"] = df.get("_country", "")
-#         out["Profile ID"] = df.get("_profileId", "")
-
-#         out["Portfolio name"] = df.get("portfolioName", "")
-
-#         out["Campaign Name"] = df.get("campaignName", "")
-#         out["Ad Group Name"] = df.get("adGroupName", "")
-#         out["Targeting"] = df["__targeting_value"]
-#         out["Currency"] = df["__currency_value"]
-#         out["Match Type"] = df.get("matchType", "")
-#         out["Cost Type"] = df.get("costType", "")
-
-#         out["Impressions"] = df.get("impressions", 0)
-#         out["Top-of-search impression share"] = df.get("topOfSearchImpressionShare", 0.0)
-#         out["Viewable impressions"] = df.get("viewableImpressions", 0)
-
-#         out["Clicks"] = df.get("clicks", 0)
-
-#         if "clickThroughRate" in df.columns:
-#             out["Click-Thru Rate (CTR)"] = df.get("clickThroughRate", 0.0)
-#         else:
-#             out["Click-Thru Rate (CTR)"] = [
-#                 _safe_div(c, i) * 100.0 for c, i in zip(out["Clicks"], out["Impressions"])
-#             ]
-
-#         out["Spend"] = df.get("cost", 0.0)
-
-#         if "costPerClick" in df.columns:
-#             out["Cost Per Click (CPC)"] = df.get("costPerClick", 0.0)
-#         else:
-#             out["Cost Per Click (CPC)"] = [
-#                 _safe_div(sp, c) for sp, c in zip(out["Spend"], out["Clicks"])
-#             ]
-
-#         # =========================
-#         # DEDUPE IN-BATCH
-#         # =========================
-#         key_cols = [
-#             "Start Date", "End Date", "Country", "Profile ID",
-#             "Campaign Name", "Ad Group Name", "Targeting", "Match Type", "Cost Type", "Portfolio name"
-#         ]
-#         for c in ["Country", "Profile ID", "Campaign Name", "Ad Group Name", "Targeting", "Match Type", "Cost Type", "Portfolio name"]:
-#             out[c] = out[c].fillna("").astype(str)
-
-#         out = out.drop_duplicates(subset=key_cols, keep="last").reset_index(drop=True)
-
-#         # =========================
-#         # UPSERT INTO DB
-#         # =========================
-#         now = datetime.utcnow()
-
-#         rows_to_insert = []
-#         for rec in out.to_dict(orient="records"):
-#             rows_to_insert.append({
-#                 "user_id": user_id,
-#                 "created_at": now,
-#                 "updated_at": now,
-
-#                 "start_date": sd,
-#                 "end_date": ed,
-
-#                 "country": (rec.get("Country") or None),
-#                 "profile_id": str(rec.get("Profile ID") or "") or None,
-
-#                 "portfolio_name": rec.get("Portfolio name") or None,
-#                 "currency": rec.get("Currency") or None,
-
-#                 "campaign_name": rec.get("Campaign Name") or None,
-#                 "ad_group_name": rec.get("Ad Group Name") or None,
-
-#                 "targeting": rec.get("Targeting") or None,
-#                 "match_type": rec.get("Match Type") or None,
-#                 "cost_type": rec.get("Cost Type") or None,
-
-#                 "impressions": _to_int(rec.get("Impressions")),
-#                 "top_of_search_impression_share": _to_float(rec.get("Top-of-search impression share")),
-#                 "viewable_impressions": _to_int(rec.get("Viewable impressions")),
-
-#                 "clicks": _to_int(rec.get("Clicks")),
-#                 "ctr": _to_float(rec.get("Click-Thru Rate (CTR)")),
-#                 "spend": _to_float(rec.get("Spend")),
-#                 "cpc": _to_float(rec.get("Cost Per Click (CPC)")),
-#             })
-
-#         if any(r["start_date"] is None or r["end_date"] is None for r in rows_to_insert):
-#             return jsonify({"error": "Sanity check failed: start_date/end_date became null before insert"}), 500
-
-#         if rows_to_insert:
-#             table = amazon_sponsored_brands_keywords.__table__
-#             stmt = insert(table).values(rows_to_insert)
-
-#             conflict_cols = [
-#                 "user_id", "start_date", "end_date", "country", "profile_id",
-#                 "campaign_name", "ad_group_name", "targeting", "match_type", "cost_type", "portfolio_name",
-#             ]
-
-#             update_cols = {
-#                 "updated_at": stmt.excluded.updated_at,
-#                 "currency": stmt.excluded.currency,
-
-#                 "impressions": stmt.excluded.impressions,
-#                 "top_of_search_impression_share": stmt.excluded.top_of_search_impression_share,
-#                 "viewable_impressions": stmt.excluded.viewable_impressions,
-
-#                 "clicks": stmt.excluded.clicks,
-#                 "ctr": stmt.excluded.ctr,
-#                 "spend": stmt.excluded.spend,
-#                 "cpc": stmt.excluded.cpc,
-#             }
-
-#             stmt = stmt.on_conflict_do_update(
-#                 index_elements=conflict_cols,
-#                 set_=update_cols
-#             )
-
-#             db.session.execute(stmt)
-#             db.session.commit()
-
-#         # =========================
-#         # JSON ONLY
-#         # =========================
-#         if not return_excel:
-#             return jsonify({
-#                 "message": "Saved Sponsored Brands keyword report rows (UPSERT)",
-#                 "rows_saved": len(rows_to_insert),
-#                 "start_date": start_date,
-#                 "end_date": end_date,
-#                 "time_unit": time_unit,
-#                 "countries": list(wanted_countries) if wanted_countries else None,
-#             }), 200
-
-#         # =========================
-#         # RETURN EXCEL
-#         # =========================
-#         output = io.BytesIO()
-#         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-#             out.to_excel(writer, index=False, sheet_name="SB_Keywords")
-#         output.seek(0)
-
-#         filename = f"SB_Keyword_{start_date}_to_{end_date}.xlsx"
-#         return send_file(
-#             output,
-#             as_attachment=True,
-#             download_name=filename,
-#             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-#         )
-
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({"error": str(e)}), 500
-
-
 @advertisement_api_routes_bp.route("/api/ads/manager/sb_keyword_report", methods=["POST"])
 def manager_sb_keyword_report():
     """
@@ -2311,7 +2021,7 @@ def manager_sb_keyword_report():
         if not merged_rows:
             return jsonify({
                 "error": "Reports returned no rows",
-                "download_errors": download_errors[:50],  # cap
+                "download_errors": download_errors[:50],
             }), 400
 
         df = pd.DataFrame(merged_rows)
@@ -2361,6 +2071,11 @@ def manager_sb_keyword_report():
             portfolio_name_series = portfolio_id_series.astype(str).map(portfolioid_to_name).fillna("")
             df.loc[sub_idx, "__portfolio_name"] = portfolio_name_series
 
+        # ensure ID columns exist (Amazon often omits keywordId/targetingId for sbTargeting)
+        for id_col in ["campaignId", "adGroupId", "keywordId", "targetingId"]:
+            if id_col not in df.columns:
+                df[id_col] = ""
+
         # ---------------------------
         # 3) Build output (your exact columns)
         # ---------------------------
@@ -2372,7 +2087,6 @@ def manager_sb_keyword_report():
         out["Profile ID"] = df.get("_profileId", "")
 
         out["Portfolio name"] = df.get("__portfolio_name", "")
-
         out["Currency"] = df.get("__currency_value", "")
 
         out["Campaign Name"] = df.get("campaignName", "")
@@ -2384,7 +2098,6 @@ def manager_sb_keyword_report():
         out["Impressions"] = df.get("impressions", 0).astype(float)
         out["Top-of-search impression share"] = df.get("topOfSearchImpressionShare", 0.0).astype(float)
         out["Viewable impressions"] = df.get("viewableImpressions", 0).astype(float)
-
         out["Clicks"] = df.get("clicks", 0).astype(float)
 
         # CTR (as % like console)
@@ -2405,18 +2118,38 @@ def manager_sb_keyword_report():
         out["Viewable impressions"] = out["Viewable impressions"].astype(int)
 
         # ---------------------------
-        # 4) Dedupe (safer if IDs exist)
+        # 4) Dedupe + stable synthetic IDs (CRITICAL FIX)
         # ---------------------------
-        # IDs are in report request; if for some reason missing, fallback to text key.
-        for id_col in ["campaignId", "adGroupId", "keywordId", "targetingId"]:
-            if id_col not in df.columns:
-                df[id_col] = ""
-
-        # add hidden dedupe ids to out (not necessary to export; only for dedupe + upsert)
         out["_campaignId"] = df["campaignId"].fillna("").astype(str)
         out["_adGroupId"] = df["adGroupId"].fillna("").astype(str)
         out["_keywordId"] = df["keywordId"].fillna("").astype(str)
         out["_targetingId"] = df["targetingId"].fillna("").astype(str)
+
+        def _stable_targeting_hash(row: pd.Series) -> str:
+            parts = [
+                row.get("Start Date", ""),
+                row.get("End Date", ""),
+                row.get("Country", ""),
+                row.get("Profile ID", ""),
+                row.get("_campaignId", ""),
+                row.get("_adGroupId", ""),
+                row.get("Campaign Name", ""),
+                row.get("Ad Group Name", ""),
+                row.get("Targeting", ""),
+                row.get("Match Type", ""),
+                row.get("Cost Type", ""),
+                row.get("Portfolio name", ""),
+            ]
+            s = "|".join(str(p or "").strip() for p in parts)
+            return hashlib.sha1(s.encode("utf-8")).hexdigest()[:24]
+
+        # If Amazon didn’t return keywordId/targetingId, synthesize targetingId
+        missing_ids = (
+            (out["_keywordId"].str.strip() == "") &
+            (out["_targetingId"].str.strip() == "")
+        )
+        if missing_ids.any():
+            out.loc[missing_ids, "_targetingId"] = out.loc[missing_ids].apply(_stable_targeting_hash, axis=1)
 
         key_cols = [
             "Start Date", "End Date", "Country", "Profile ID",
@@ -2424,31 +2157,16 @@ def manager_sb_keyword_report():
             "Match Type", "Cost Type"
         ]
 
-        # if IDs are all blank, fallback to text key (prevents collapsing everything)
-        ids_blank = (
-            (out["_campaignId"] == "") &
-            (out["_adGroupId"] == "") &
-            (out["_keywordId"] == "") &
-            (out["_targetingId"] == "")
-        ).all()
-
-        if ids_blank:
-            key_cols = [
-                "Start Date", "End Date", "Country", "Profile ID",
-                "Campaign Name", "Ad Group Name", "Targeting", "Match Type", "Cost Type", "Portfolio name"
-            ]
-
         for c in key_cols:
             out[c] = out[c].fillna("").astype(str)
 
         out = out.drop_duplicates(subset=key_cols, keep="last").reset_index(drop=True)
 
         # remove hidden id cols from final export (keep internal if you want)
-        # If you want them in Excel for debugging, comment these 4 lines.
         out_export = out.drop(columns=["_campaignId", "_adGroupId", "_keywordId", "_targetingId"], errors="ignore")
 
         # ---------------------------
-        # 5) UPSERT into DB
+        # 5) UPSERT into DB (now safe)
         # ---------------------------
         now = datetime.utcnow()
 
@@ -2465,7 +2183,7 @@ def manager_sb_keyword_report():
                 "country": (rec.get("Country") or None),
                 "profile_id": str(rec.get("Profile ID") or "") or None,
 
-                # ✅ NEW: IDs (this stops overwriting)
+                # IDs (synthetic targeting_id included if Amazon omitted)
                 "campaign_id": str(rec.get("_campaignId") or "") or None,
                 "ad_group_id": str(rec.get("_adGroupId") or "") or None,
                 "keyword_id": str(rec.get("_keywordId") or "") or None,
@@ -2491,7 +2209,6 @@ def manager_sb_keyword_report():
                 "cpc": _to_float(rec.get("Cost Per Click (CPC)")),
             })
 
-
         if any(r["start_date"] is None or r["end_date"] is None for r in rows_to_insert):
             return jsonify({"error": "Sanity check failed: start_date/end_date became null before insert"}), 500
 
@@ -2499,16 +2216,22 @@ def manager_sb_keyword_report():
             table = amazon_sponsored_brands_keywords.__table__
             stmt = insert(table).values(rows_to_insert)
 
-            # conflict key must match your UNIQUE constraint in amazon_sponsored_brands_keywords model
+            # conflict key must match your UNIQUE constraint in amazon_sponsored_brands_keywords
             conflict_cols = [
                 "user_id", "start_date", "end_date", "country", "profile_id",
                 "campaign_id", "ad_group_id", "keyword_id", "targeting_id",
             ]
 
-
             update_cols = {
                 "updated_at": stmt.excluded.updated_at,
                 "currency": stmt.excluded.currency,
+
+                "portfolio_name": stmt.excluded.portfolio_name,
+                "campaign_name": stmt.excluded.campaign_name,
+                "ad_group_name": stmt.excluded.ad_group_name,
+                "targeting": stmt.excluded.targeting,
+                "match_type": stmt.excluded.match_type,
+                "cost_type": stmt.excluded.cost_type,
 
                 "impressions": stmt.excluded.impressions,
                 "top_of_search_impression_share": stmt.excluded.top_of_search_impression_share,
@@ -2535,7 +2258,7 @@ def manager_sb_keyword_report():
                 "end_date": end_date,
                 "time_unit": time_unit,
                 "countries": sorted(list(wanted_countries)) if wanted_countries else None,
-                "download_errors": download_errors[:50],  # cap
+                "download_errors": download_errors[:50],
             }), 200
 
         # ---------------------------
@@ -2547,7 +2270,6 @@ def manager_sb_keyword_report():
             ws = writer.book["SB_Keywords"]
 
             # Format Spend as GBP if currency is GBP/GBP-like; otherwise generic currency format.
-            # (You can make this per-row if you want; this is simple.)
             if "Spend" in out_export.columns:
                 spend_col_idx = list(out_export.columns).index("Spend") + 1
                 spend_letter = get_column_letter(spend_col_idx)
@@ -2558,7 +2280,7 @@ def manager_sb_keyword_report():
                     non_empty = [c for c in out_export["Currency"].tolist() if str(c).strip()]
                     cur = (non_empty[0] if non_empty else "")
 
-                money_fmt = u'£#,##0.00' if str(cur).upper() in {"GBP", "UK", "GB"} else u'#,##0.00'
+                money_fmt = u"£#,##0.00" if str(cur).upper() in {"GBP", "UK", "GB"} else u"#,##0.00"
                 for r in range(2, ws.max_row + 1):
                     ws[f"{spend_letter}{r}"].number_format = money_fmt
 
@@ -2574,5 +2296,4 @@ def manager_sb_keyword_report():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
-
+    
