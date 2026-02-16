@@ -113,9 +113,9 @@ type MonthlySkuwiseRow = {
     profit: number;
     isTotal?: boolean;
     platform_fee?: number;
-  platform_fee_inventory_storage?: number;
-  lost_total?: number;
-  other?: number;
+    platform_fee_inventory_storage?: number;
+    lost_total?: number;
+    other?: number;
 };
 
 type MonthlySkuwiseTableRow = MonthlySkuwiseRow & {
@@ -298,7 +298,7 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
     // This follows the same keys you used in SKUtable.tsx, but is defensive about naming.
     const platformFees = toNumber(source?.platformfeenew ?? source?.platform_fee_new ?? source?.platform_fee);
     const inventoryStorageFees = toNumber(
-        source?.platform_fee_inventory_storage 
+        source?.platform_fee_inventory_storage
     );
 
     const netReimbursement = toNumber(source?.rembursement_fee ?? source?.reimbursement_fee ?? source?.net_reimbursement);
@@ -630,64 +630,64 @@ const ensureSdReportSeedOncePerDay = async (
 };
 
 const ensureSbKeywordReportSeedOncePerDay = async (
-  baseUrl: string,
-  jwtToken: string,
-  country: string // "UK" | "US" | "CA"
+    baseUrl: string,
+    jwtToken: string,
+    country: string // "UK" | "US" | "CA"
 ) => {
-  const userId = decodeJwtUserId(jwtToken) || "unknown";
-  const { start_date, end_date } = getIstMonthToTodayRangeISO();
+    const userId = decodeJwtUserId(jwtToken) || "unknown";
+    const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
-  // once per user + country + day
-  const storageKey = `sb_keyword_report_seed_daily_${userId}_${country}_${end_date}`;
-  if (localStorage.getItem(storageKey) === "1") return;
-
-  const lockKey = `${storageKey}_lock`;
-
-  const didRun = await withLocalStorageLock(lockKey, async () => {
-    // re-check after lock to avoid race
+    // once per user + country + day
+    const storageKey = `sb_keyword_report_seed_daily_${userId}_${country}_${end_date}`;
     if (localStorage.getItem(storageKey) === "1") return;
 
-    // ✅ BODY EXACTLY AS REQUESTED
-    const body = {
-      start_date,
-      end_date,
-      time_unit: "SUMMARY",
-      countries: [country],
-      return_excel: false,
-    };
+    const lockKey = `${storageKey}_lock`;
 
-    const res = await fetch(`${baseUrl}/api/ads/manager/sb_keyword_report`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${jwtToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
+    const didRun = await withLocalStorageLock(lockKey, async () => {
+        // re-check after lock to avoid race
+        if (localStorage.getItem(storageKey) === "1") return;
+
+        // ✅ BODY EXACTLY AS REQUESTED
+        const body = {
+            start_date,
+            end_date,
+            time_unit: "SUMMARY",
+            countries: [country],
+            return_excel: false,
+        };
+
+        const res = await fetch(`${baseUrl}/api/ads/manager/sb_keyword_report`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${jwtToken}`,
+                Accept: "application/json",
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+            const errJson = await res.json().catch(() => ({}));
+            const msg = String(errJson?.error || errJson?.message || "");
+
+            const isDuplicate =
+                msg.toLowerCase().includes("uniqueviolation") ||
+                msg.toLowerCase().includes("duplicate key value") ||
+                msg.toLowerCase().includes("already exists");
+
+            if (isDuplicate) {
+                localStorage.setItem(storageKey, "1");
+                return;
+            }
+
+            throw new Error(msg || `Failed to seed SB Keyword report (${res.status})`);
+        }
+
+        localStorage.setItem(storageKey, "1");
     });
 
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
-      const msg = String(errJson?.error || errJson?.message || "");
-
-      const isDuplicate =
-        msg.toLowerCase().includes("uniqueviolation") ||
-        msg.toLowerCase().includes("duplicate key value") ||
-        msg.toLowerCase().includes("already exists");
-
-      if (isDuplicate) {
-        localStorage.setItem(storageKey, "1");
-        return;
-      }
-
-      throw new Error(msg || `Failed to seed SB Keyword report (${res.status})`);
-    }
-
-    localStorage.setItem(storageKey, "1");
-  });
-
-  // ✅ if another tab/render is running it, don't error, just exit
-  if (didRun === null) return;
+    // ✅ if another tab/render is running it, don't error, just exit
+    if (didRun === null) return;
 };
 
 
@@ -1369,62 +1369,62 @@ export default function DashboardPage() {
 
 
     useEffect(() => {
-  let cancelled = false;
+        let cancelled = false;
 
-  const run = async () => {
-    try {
-      setAdsLoading(true);
+        const run = async () => {
+            try {
+                setAdsLoading(true);
 
-      if (platform === "shopify") {
-        if (!cancelled) setAdsSeeded(true);
-        return;
-      }
+                if (platform === "shopify") {
+                    if (!cancelled) setAdsSeeded(true);
+                    return;
+                }
 
-      const jwtToken =
-        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+                const jwtToken =
+                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-      if (!jwtToken) {
-        if (!cancelled) {
-          setAdsSeeded(false);
-          setAdsSeedError("No token found. Please sign in.");
-        }
-        return;
-      }
+                if (!jwtToken) {
+                    if (!cancelled) {
+                        setAdsSeeded(false);
+                        setAdsSeedError("No token found. Please sign in.");
+                    }
+                    return;
+                }
 
-      const country =
-        platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+                const country =
+                    platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-      await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+                await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-      // ✅ SD supports UK/US only
-      if (country === "UK" || country === "US") {
-        await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
-      }
+                // ✅ SD supports UK/US only
+                if (country === "UK" || country === "US") {
+                    await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+                }
 
-      // ✅ ADD THIS: SB Keyword seed (your new API)
-      await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+                // ✅ ADD THIS: SB Keyword seed (your new API)
+                await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
-      if (!cancelled) {
-        setAdsSeedError(null);
-        setAdsSeeded(true);
-      }
-    } catch (e: any) {
-      if (!cancelled) {
-        setAdsSeedError(e?.message || "Ads seed failed");
+                if (!cancelled) {
+                    setAdsSeedError(null);
+                    setAdsSeeded(true);
+                }
+            } catch (e: any) {
+                if (!cancelled) {
+                    setAdsSeedError(e?.message || "Ads seed failed");
+                    setAdsSeeded(false);
+                }
+            } finally {
+                if (!cancelled) setAdsLoading(false);
+            }
+        };
+
         setAdsSeeded(false);
-      }
-    } finally {
-      if (!cancelled) setAdsLoading(false);
-    }
-  };
+        run();
 
-  setAdsSeeded(false);
-  run();
-
-  return () => {
-    cancelled = true;
-  };
-}, [platform, baseURL]);
+        return () => {
+            cancelled = true;
+        };
+    }, [platform, baseURL]);
 
 
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
@@ -2625,9 +2625,9 @@ export default function DashboardPage() {
             profit: Number(r.profit ?? 0),
             isTotal,
             platform_fee: Number(r.platform_fee ?? 0),
-platform_fee_inventory_storage: Number(r.platform_fee_inventory_storage ?? 0),
-lost_total: Number(r.lost_total ?? 0),
-other: Number(r.other ?? 0),
+            platform_fee_inventory_storage: Number(r.platform_fee_inventory_storage ?? 0),
+            lost_total: Number(r.lost_total ?? 0),
+            other: Number(r.other ?? 0),
 
         });
 
@@ -3400,31 +3400,35 @@ other: Number(r.other ?? 0),
     const stats_lastMonthTotalHome = identityConvert(targetData.lastMonthTotalUSD ?? 0);
     const stats_targetHome = identityConvert(targetData.targetUSD ?? 0);
 
-     const grandTotalRow = data?.skuwise_items?.find(
-  (item: any) =>
-    item.product_name === "Grand Total" ||
-    item.sku === "GRAND_TOTAL"
-);
+    const grandTotalRow = data?.skuwise_items?.find(
+        (item: any) =>
+            item.product_name === "Grand Total" ||
+            item.sku === "GRAND_TOTAL"
+    );
 
 
     const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
-const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
+    const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
 
 
 
-const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
-const lost_inventory_total = grandTotalRow?.lost_total ?? 0;
-const otherPlatformFee = grandTotalRow?.platformfeenew ?? 0;
-const platformFee = grandTotalRow?.platform_fee ?? 0;
+    const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
+    const lost_inventory_total = grandTotalRow?.lost_total ?? 0;
+    const otherPlatformFee = grandTotalRow?.platformfeenew ?? 0;
+    const platformFee = grandTotalRow?.platform_fee ?? 0;
+    const dealVouchers = grandTotalRow?.dealsvouchar_ads ?? 0;
 
 
-const adsSpendTotal = Math.abs(
-    toNumber(sponsoredProductsSpend + sponsoredBrandSpend)
-);
-const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)) )
-console.log("cm2Profit",cm2Profit)
+    const adsSpendTotal = Math.abs(
+        toNumber(sponsoredProductsSpend + sponsoredBrandSpend)
+    );
+    const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
+    console.log("cm2Profit", cm2Profit)
 
 
+    const costOfAds = Math.abs(
+        toNumber(sponsoredBrandSpend + dealVouchers)
+    );
 
     // Reimbursement value should match what is sent to SalesTargetCard (home-currency reimbursement)
     const reimbursementForSummary = useMemo(() => {
@@ -3572,7 +3576,7 @@ console.log("cm2Profit",cm2Profit)
                 // ---- Other Transactions (parent + children)
                 { label: "Other Transactions", value: "", bold: true },
                 { label: "Other Platform Fees (-)", value: "", indent: 1 },
-                { label: "Inventory Storage Fees (-)",value: Number((plSummaryTotals as any)?.platform_fee_inventory_storage ?? 0), indent: 1 },
+                { label: "Inventory Storage Fees (-)", value: Number((plSummaryTotals as any)?.platform_fee_inventory_storage ?? 0), indent: 1 },
                 { label: "Misc. Transactions (+)", value: "", indent: 1 },
                 { label: "Reimbursement for lost Inventory (+)", value: "", indent: 1 },
 
@@ -3618,31 +3622,31 @@ console.log("cm2Profit",cm2Profit)
     ]);
 
 
- 
 
 
-const skuwiseItems = useMemo(() => {
-  const items = (data as any)?.skuwise_items;
-  return Array.isArray(items) ? items : [];
-}, [data]);
 
-const grandTotalSkuRow = useMemo(() => {
-  return (
-    skuwiseItems.find((r: any) => String(r?.sku || "").toUpperCase() === "GRAND_TOTAL") ||
-    skuwiseItems.find((r: any) => String(r?.product_name || "").toLowerCase() === "grand total") ||
-    null
-  );
-}, [skuwiseItems]);
+    const skuwiseItems = useMemo(() => {
+        const items = (data as any)?.skuwise_items;
+        return Array.isArray(items) ? items : [];
+    }, [data]);
+
+    const grandTotalSkuRow = useMemo(() => {
+        return (
+            skuwiseItems.find((r: any) => String(r?.sku || "").toUpperCase() === "GRAND_TOTAL") ||
+            skuwiseItems.find((r: any) => String(r?.product_name || "").toLowerCase() === "grand total") ||
+            null
+        );
+    }, [skuwiseItems]);
 
 
-const mtdExtraTotals = useMemo(() => {
-  const g = grandTotalSkuRow || {};
-  return {
-    lost_total: toNumber(g.lost_total),
-    platform_fee: toNumber(g.platform_fee),
-    platform_fee_inventory_storage: toNumber(g.platform_fee_inventory_storage),
-  };
-}, [grandTotalSkuRow]);
+    const mtdExtraTotals = useMemo(() => {
+        const g = grandTotalSkuRow || {};
+        return {
+            lost_total: toNumber(g.lost_total),
+            platform_fee: toNumber(g.platform_fee),
+            platform_fee_inventory_storage: toNumber(g.platform_fee_inventory_storage),
+        };
+    }, [grandTotalSkuRow]);
 
 
 
@@ -3661,54 +3665,53 @@ const mtdExtraTotals = useMemo(() => {
 
 
 
-           <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-  <div className="mb-2 2xl:mb-4 flex items-center justify-between gap-2">
+            <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+                <div className="mb-2 2xl:mb-4 flex items-center justify-between gap-2">
 
-    {/* LEFT SIDE */}
-    <div className="flex flex-col leading-tight min-w-0">
-      <p className="text-xs sm:text-sm 2xl:text-lg text-charcoal-500 mb-1 truncate">
-        Let&apos;s get started,{" "}
-        <span className="text-green-500">{brandName}!</span>
-      </p>
+                    {/* LEFT SIDE */}
+                    <div className="flex flex-col leading-tight min-w-0">
+                        <p className="text-xs sm:text-sm 2xl:text-lg text-charcoal-500 mb-1 truncate">
+                            Let&apos;s get started,{" "}
+                            <span className="text-green-500">{brandName}!</span>
+                        </p>
 
-      <div className="flex items-center gap-1 flex-wrap">
-        <PageBreadcrumb
-          pageTitle="Sales Dashboard - Amazon"
-          variant="page"
-          textSize="2xl"
-        />
+                        <div className="flex items-center gap-1 flex-wrap">
+                            <PageBreadcrumb
+                                pageTitle="Sales Dashboard - Amazon"
+                                variant="page"
+                                textSize="2xl"
+                            />
 
-        {countryName !== "global" && (
-          <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
-            {countryName.toUpperCase()}
-          </span>
-        )}
+                            {countryName !== "global" && (
+                                <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                                    {countryName.toUpperCase()}
+                                </span>
+                            )}
 
-        <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
-         - {formattedMonthYear}
-        </span>
-      </div>
-    </div>
+                            <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                                - {formattedMonthYear}
+                            </span>
+                        </div>
+                    </div>
 
-    {/* RIGHT SIDE BUTTON */}
-    <button
-      onClick={refreshAll}
-      disabled={loading || shopifyLoading || biLoading}
-      className={`shrink-0 rounded-md border shadow-sm
+                    {/* RIGHT SIDE BUTTON */}
+                    <button
+                        onClick={refreshAll}
+                        disabled={loading || shopifyLoading || biLoading}
+                        className={`shrink-0 rounded-md border shadow-sm
         px-2 py-1 text-[10px]
         sm:px-3 sm:py-1.5 sm:text-xs
         2xl:text-sm
-        ${
-          loading || shopifyLoading || biLoading
-            ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-            : "border-gray-300 bg-white hover:bg-gray-50"
-        }`}
-    >
-      {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
-    </button>
+        ${loading || shopifyLoading || biLoading
+                                ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                : "border-gray-300 bg-white hover:bg-gray-50"
+                            }`}
+                    >
+                        {loading || shopifyLoading || biLoading ? "Refreshing…" : "Refresh"}
+                    </button>
 
-  </div>
-</div>
+                </div>
+            </div>
 
 
 
@@ -4437,7 +4440,7 @@ const mtdExtraTotals = useMemo(() => {
                     </div>
                 )
             }
-            
+
             {/* ✅ Global-only Performance Trend BELOW top section */}
             {
                 platform === "global" && showLiveBI && (
@@ -4757,13 +4760,14 @@ const mtdExtraTotals = useMemo(() => {
                                         {
                                             id: "ads",
                                             label: "Cost of Advertisement",
-                                            endValue: formatSummaryValue(adsSpendTotal, "advertising_total"),
+                                            endValue: formatSummaryValue(costOfAds, "advertising_total"),
                                             defaultCollapsed: true,
                                             children: [
                                                 {
                                                     id: "ads_1",
                                                     label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                    midValue: formatSummaryValue(sponsoredProductsSpend, "advertising_total"),
+                                                    midValue: formatSummaryValue(sponsoredBrandSpend, "advertising_total"),
+                                                    // midValue: formatSummaryValue(sponsoredProductsSpend, "advertising_total"),
                                                 },
                                                 // {
                                                 //     id: "ads_2",
@@ -4773,7 +4777,7 @@ const mtdExtraTotals = useMemo(() => {
                                                 {
                                                     id: "ads_3",
                                                     label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                    midValue: formatSummaryValue(sponsoredBrandSpend, "advertising_total"),
+                                                    midValue: "-",
                                                 },
                                             ],
                                         },
@@ -4810,7 +4814,7 @@ const mtdExtraTotals = useMemo(() => {
                                                             <strong className="text-green-500">(+)</strong>
                                                         </>
                                                     ),
-                                                    midValue: formatSummaryValue(lost_inventory_total , "lost_total"),
+                                                    midValue: formatSummaryValue(lost_inventory_total, "lost_total"),
                                                 },
                                             ],
                                         },
@@ -4834,7 +4838,7 @@ const mtdExtraTotals = useMemo(() => {
                                         {
                                             id: "cm2_profit",
                                             label: "CM2 Profit/Loss",
-                                             endValue: Number(cm2Profit.toFixed(2)),
+                                            endValue: Number(cm2Profit.toFixed(2)),
                                         },
                                         {
                                             id: "cm2_margins",
