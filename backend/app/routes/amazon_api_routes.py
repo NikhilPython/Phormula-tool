@@ -870,15 +870,20 @@ def finances_mtd_transactions():
     asp = (net_sales / qty_total) if qty_total else 0.0
     profit_total = float(totals.get("profit", 0.0))
 
+    # ✅ ADD this NEW block in your "platform + advertising fees (dashboard)" section
+    # right where you are already calculating:
+    # platformfeenew_total, platform_fee_inventory_storage_total, lost_total_df
+
     # ---------------- platform + advertising fees (dashboard) ----------------
     df_all = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
 
     platform_fee_total = 0.0
     advertising_fee_total = 0.0
 
-    # ✅ NEW totals you want to store in SKU-wise table
+    # ✅ NEW totals you store in SKU-wise table
     platformfeenew_total = 0.0
     platform_fee_inventory_storage_total = 0.0
+    dealsvouchar_ads_total = 0.0  # ✅ NEW
     lost_total_df = pd.DataFrame(columns=["sku", "lost_total"])
 
     if not df_all.empty:
@@ -897,9 +902,13 @@ def finances_mtd_transactions():
         platform_fee_total, _, _ = uk_platform_fee(df_all, country=ui_country, want_breakdown=False)
         advertising_fee_total, _, _ = uk_advertising(df_all, country=ui_country, want_breakdown=False)
 
-        desc_all = df_all["description"].fillna("").astype(str).str.strip()
+        desc_all = df_all["description"].fillna("").astype(str)
 
         def sum_total_where_desc_contains(keywords):
+            """
+            keywords: list[str]
+            Returns sum of df_all['total'] where description contains any keyword (case-insensitive)
+            """
             if "total" not in df_all.columns:
                 return 0.0
             pattern = "|".join([re.escape(k) for k in keywords])
@@ -923,7 +932,24 @@ def finances_mtd_transactions():
             ]
         )
 
-        # lost_total per SKU (sum total where description matches LOST_DESCRIPTIONS)
+        # ✅ NEW: dealsvouchar_ads = sum(total) for these keywords
+        dealsvouchar_ads_total = sum_total_where_desc_contains(
+            [
+                "Cost of Advertising",
+                "Coupon Redemption Fee",
+                "Deals",
+                "Lightning Deal",
+                "CouponPerformanceEvent",
+                "CouponParticipationEvent",
+                "SellerDealComplete",
+                "VineCharge",
+                "SellerPoweredCoupon",
+                "DealParticipationEvent",
+                "DealPerformanceEvent",
+            ]
+        )
+
+        # lost_total per SKU
         LOST_DESCRIPTIONS = {
             "REVERSAL_REIMBURSEMENT",
             "WAREHOUSE_LOST",
@@ -932,7 +958,7 @@ def finances_mtd_transactions():
             "MISSING_FROM_INBOUND_CLAWBACK",
             "COMPENSATED_CLAWBACK",
         }
-        lost_mask = desc_all.isin(LOST_DESCRIPTIONS)
+        lost_mask = df_all["description"].fillna("").astype(str).str.strip().isin(LOST_DESCRIPTIONS)
 
         tmp = df_all.loc[lost_mask, ["sku", "total"]].copy()
         tmp["sku"] = tmp["sku"].fillna("").astype(str).str.strip()
@@ -945,6 +971,7 @@ def finances_mtd_transactions():
             .rename(columns={"total": "lost_total"})
         )
         lost_total_df["lost_total"] = pd.to_numeric(lost_total_df["lost_total"], errors="coerce").fillna(0.0)
+
 
     platform_fee_total = float(platform_fee_total or 0.0)
     advertising_fee_total = float(advertising_fee_total or 0.0)
@@ -1114,6 +1141,7 @@ def finances_mtd_transactions():
         # ✅ NEW: total-only breakup columns (0 for SKU rows)
         df_sku["platform_fee_inventory_storage"] = 0.0
         df_sku["platformfeenew"] = 0.0
+        df_sku["dealsvouchar_ads"] = 0.0  # ✅ NEW
 
         # ✅ platform_fee per row using your formula
         # SKU rows: platform_fee = 0 + 0 - lost_total  => negative lost_total
@@ -1205,6 +1233,7 @@ def finances_mtd_transactions():
         # ✅ store totals
         total_row["platform_fee_inventory_storage"] = round(float(platform_fee_inventory_storage_total or 0.0), 2)
         total_row["platformfeenew"] = round(float(platformfeenew_total or 0.0), 2)
+        total_row["dealsvouchar_ads"] = round(float(dealsvouchar_ads_total or 0.0), 2)  # ✅ NEW
 
         # ✅ platform_fee = platform_fee_inventory_storage + platformfeenew - lost_total
         total_row["platform_fee"] = round(
