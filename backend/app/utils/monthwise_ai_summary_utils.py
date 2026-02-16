@@ -311,16 +311,12 @@ def build_rolling_monthly_series(
     anchor_month: int
 ):
     
-    # print("\n=== build_rolling_monthly_series CALLED ===")
-    # print("anchor_year:", anchor_year, type(anchor_year))
-    # print("anchor_month:", anchor_month, type(anchor_month))
     series = []
 
     # ❌ REMOVED auto-latest override
     # anchor_year, anchor_month = resolve_latest_available_month(...)
 
     for y, m in rolling_months(anchor_year, anchor_month, 24):
-        print(f"\n--- Rolling month {y}-{m} ---")
         df = fetch_precalc_table(
             user_id=user_id,
             country=country,
@@ -333,15 +329,10 @@ def build_rolling_monthly_series(
             continue
 
         _, df_total = _split_total_row(df)
-        # print("df_total type:", type(df_total))
-        # print("df_total empty:", df_total.empty)
         if df_total.empty:
             continue
 
         snapshot = extract_total_snapshot(df_total)
-
-        # print("snapshot type:", type(snapshot))
-        # print("snapshot value:", snapshot)
 
         # TEMPORARY SAFE CHECK (prevents crash so we can see prints)
         if not isinstance(snapshot, dict) or not snapshot:

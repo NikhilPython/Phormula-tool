@@ -112,6 +112,10 @@ type MonthlySkuwiseRow = {
     cm2_profit: number;
     profit: number;
     isTotal?: boolean;
+    platform_fee?: number;
+  platform_fee_inventory_storage?: number;
+  lost_total?: number;
+  other?: number;
 };
 
 type MonthlySkuwiseTableRow = MonthlySkuwiseRow & {
@@ -136,6 +140,7 @@ const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_sd_to_db`;
 const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
 const INR_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_INR_TO_USD || "0.01128");
 const CAD_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_CAD_TO_USD || "0.74");
+const SB_KEYWORD_ENDPOINT = `${baseURL}/api/ads/manager/sb_keyword_report`;
 
 const USE_MANUAL_LAST_MONTH =
     (process.env.NEXT_PUBLIC_USE_MANUAL_LAST_MONTH || "false").toLowerCase() ===
@@ -251,6 +256,7 @@ type PlSummaryTotals = {
     other_transactions: number;
     platform_fee: number;
     inventory_storage_fees: number;
+    platform_fee_inventory_storage: number;
     misc_transaction: number;
 
     reimbursement_lost_inventory_amount: number;
@@ -292,7 +298,7 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
     // This follows the same keys you used in SKUtable.tsx, but is defensive about naming.
     const platformFees = toNumber(source?.platformfeenew ?? source?.platform_fee_new ?? source?.platform_fee);
     const inventoryStorageFees = toNumber(
-        source?.platform_fee_inventory_storage ?? source?.inventory_storage_fees ?? source?.inventory_storage_fee
+        source?.platform_fee_inventory_storage 
     );
 
     const netReimbursement = toNumber(source?.rembursement_fee ?? source?.reimbursement_fee ?? source?.net_reimbursement);
@@ -317,13 +323,14 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
         other_transactions: toNumber(source?.other_transactions ?? source?.platform_fee ?? source?.other_fees_total),
         platform_fee: platformFees,
         inventory_storage_fees: inventoryStorageFees,
+        platform_fee_inventory_storage: toNumber(source?.platform_fee_inventory_storage),
         misc_transaction: toNumber(source?.misc_transaction ?? source?.misc_transactions),
 
         reimbursement_lost_inventory_amount: toNumber(
             source?.reimbursement_lost_inventory_amount ?? source?.lost_inventory_amount
         ),
         reimbursement_lost_inventory_units: reimbursementUnits,
-        lost_total: toNumber(source?.lost_total ?? source?.reimbursement_total ?? source?.lost_inventory_total),
+        lost_total: toNumber(source?.lost_total),
 
         shipment_charges: toNumber(source?.shipment_charges ?? source?.shipping_charges),
         reimbursement_vs_sales: toNumber(source?.reimbursement_vs_sales ?? source?.reimbursement_vs_net_sales),
@@ -358,8 +365,8 @@ function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
         other_transactions: 0,
         platform_fee: 0,
         inventory_storage_fees: 0,
+        platform_fee_inventory_storage: 0,
         misc_transaction: 0,
-
         reimbursement_lost_inventory_amount: 0,
         reimbursement_lost_inventory_units: 0,
         lost_total: 0,
@@ -526,7 +533,7 @@ const ensureSpReportSeedOncePerDay = async (
             start_date,
             end_date,
             time_unit: "SUMMARY",
-            countries: [country],
+            countries: ["UK"],
             return_excel: false,
         };
 
@@ -622,6 +629,66 @@ const ensureSdReportSeedOncePerDay = async (
     if (didRun === null) return;
 };
 
+const ensureSbKeywordReportSeedOncePerDay = async (
+  baseUrl: string,
+  jwtToken: string,
+  country: string // "UK" | "US" | "CA"
+) => {
+  const userId = decodeJwtUserId(jwtToken) || "unknown";
+  const { start_date, end_date } = getIstMonthToTodayRangeISO();
+
+  // once per user + country + day
+  const storageKey = `sb_keyword_report_seed_daily_${userId}_${country}_${end_date}`;
+  if (localStorage.getItem(storageKey) === "1") return;
+
+  const lockKey = `${storageKey}_lock`;
+
+  const didRun = await withLocalStorageLock(lockKey, async () => {
+    // re-check after lock to avoid race
+    if (localStorage.getItem(storageKey) === "1") return;
+
+    // ✅ BODY EXACTLY AS REQUESTED
+    const body = {
+      start_date,
+      end_date,
+      time_unit: "SUMMARY",
+      countries: [country],
+      return_excel: false,
+    };
+
+    const res = await fetch(`${baseUrl}/api/ads/manager/sb_keyword_report`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${jwtToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      const msg = String(errJson?.error || errJson?.message || "");
+
+      const isDuplicate =
+        msg.toLowerCase().includes("uniqueviolation") ||
+        msg.toLowerCase().includes("duplicate key value") ||
+        msg.toLowerCase().includes("already exists");
+
+      if (isDuplicate) {
+        localStorage.setItem(storageKey, "1");
+        return;
+      }
+
+      throw new Error(msg || `Failed to seed SB Keyword report (${res.status})`);
+    }
+
+    localStorage.setItem(storageKey, "1");
+  });
+
+  // ✅ if another tab/render is running it, don't error, just exit
+  if (didRun === null) return;
+};
 
 
 const currencyForCountry = (countryName: string): CurrencyCode => {
@@ -1299,6 +1366,66 @@ export default function DashboardPage() {
             cancelled = true;
         };
     }, [adsSeeded, platform, baseURL, fetchMonthlySp]);
+
+
+    useEffect(() => {
+  let cancelled = false;
+
+  const run = async () => {
+    try {
+      setAdsLoading(true);
+
+      if (platform === "shopify") {
+        if (!cancelled) setAdsSeeded(true);
+        return;
+      }
+
+      const jwtToken =
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+      if (!jwtToken) {
+        if (!cancelled) {
+          setAdsSeeded(false);
+          setAdsSeedError("No token found. Please sign in.");
+        }
+        return;
+      }
+
+      const country =
+        platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
+
+      await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+
+      // ✅ SD supports UK/US only
+      if (country === "UK" || country === "US") {
+        await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+      }
+
+      // ✅ ADD THIS: SB Keyword seed (your new API)
+      await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+
+      if (!cancelled) {
+        setAdsSeedError(null);
+        setAdsSeeded(true);
+      }
+    } catch (e: any) {
+      if (!cancelled) {
+        setAdsSeedError(e?.message || "Ads seed failed");
+        setAdsSeeded(false);
+      }
+    } finally {
+      if (!cancelled) setAdsLoading(false);
+    }
+  };
+
+  setAdsSeeded(false);
+  run();
+
+  return () => {
+    cancelled = true;
+  };
+}, [platform, baseURL]);
+
 
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
     const convertToDisplayCurrency = useCallback(
@@ -2497,6 +2624,11 @@ export default function DashboardPage() {
             cm2_profit_per_unit: Number(r.cm2_profit_per_unit ?? 0),
             profit: Number(r.profit ?? 0),
             isTotal,
+            platform_fee: Number(r.platform_fee ?? 0),
+platform_fee_inventory_storage: Number(r.platform_fee_inventory_storage ?? 0),
+lost_total: Number(r.lost_total ?? 0),
+other: Number(r.other ?? 0),
+
         });
 
         const mapped = body.map((r: any, idx: number) => mapRow(r, idx, false));
@@ -3268,7 +3400,29 @@ export default function DashboardPage() {
     const stats_lastMonthTotalHome = identityConvert(targetData.lastMonthTotalUSD ?? 0);
     const stats_targetHome = identityConvert(targetData.targetUSD ?? 0);
 
-    // ✅ Derived Summary Metrics (for P&L Productwise Breakdown MTD summary)
+     const grandTotalRow = data?.skuwise_items?.find(
+  (item: any) =>
+    item.product_name === "Grand Total" ||
+    item.sku === "GRAND_TOTAL"
+);
+
+
+    const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
+const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
+
+
+
+const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
+const lost_inventory_total = grandTotalRow?.lost_total ?? 0;
+const otherPlatformFee = grandTotalRow?.platformfeenew ?? 0;
+
+const adsSpendTotal = Math.abs(
+    toNumber(sponsoredProductsSpend + sponsoredBrandSpend)
+);
+const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (grandTotalRow?.platform_fee) )
+console.log("cm2Profit",cm2Profit)
+
+
 
     // Reimbursement value should match what is sent to SalesTargetCard (home-currency reimbursement)
     const reimbursementForSummary = useMemo(() => {
@@ -3277,7 +3431,7 @@ export default function DashboardPage() {
 
     // CM2 Margin (%) = (CM2 Profit / Net Sales) * 100
     const cm2MarginPctForSummary = useMemo(() => {
-        const cm2 = toNumber(plSummaryTotals.cm2_profit);
+        const cm2 = cm2Profit;
         const netSales = toNumber(plSummaryTotals.net_sales);
         return netSales ? (cm2 / netSales) * 100 : 0;
     }, [plSummaryTotals.cm2_profit, plSummaryTotals.net_sales]);
@@ -3290,7 +3444,7 @@ export default function DashboardPage() {
 
     // Reimbursement vs CM2 Margin (%) = (Reimbursement / CM2 Profit/Loss) * 100
     const reimbursementVsCm2PctForSummary = useMemo(() => {
-        const cm2 = toNumber(plSummaryTotals.cm2_profit);
+        const cm2 = cm2Profit;
         return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
     }, [reimbursementForSummary, plSummaryTotals.cm2_profit]);
 
@@ -3416,7 +3570,7 @@ export default function DashboardPage() {
                 // ---- Other Transactions (parent + children)
                 { label: "Other Transactions", value: "", bold: true },
                 { label: "Other Platform Fees (-)", value: "", indent: 1 },
-                { label: "Inventory Storage Fees (-)", value: "", indent: 1 },
+                { label: "Inventory Storage Fees (-)",value: Number((plSummaryTotals as any)?.platform_fee_inventory_storage ?? 0), indent: 1 },
                 { label: "Misc. Transactions (+)", value: "", indent: 1 },
                 { label: "Reimbursement for lost Inventory (+)", value: "", indent: 1 },
 
@@ -3462,8 +3616,33 @@ export default function DashboardPage() {
     ]);
 
 
-    const grandTotalRow = monthlySkuwiseRowsForTable.find((r) => r.isTotal);
-    const adsSpendTotal = Math.abs(Number(grandTotalRow?.ads_spend ?? 0)); // 521.31
+ 
+
+
+const skuwiseItems = useMemo(() => {
+  const items = (data as any)?.skuwise_items;
+  return Array.isArray(items) ? items : [];
+}, [data]);
+
+const grandTotalSkuRow = useMemo(() => {
+  return (
+    skuwiseItems.find((r: any) => String(r?.sku || "").toUpperCase() === "GRAND_TOTAL") ||
+    skuwiseItems.find((r: any) => String(r?.product_name || "").toLowerCase() === "grand total") ||
+    null
+  );
+}, [skuwiseItems]);
+
+
+const mtdExtraTotals = useMemo(() => {
+  const g = grandTotalSkuRow || {};
+  return {
+    lost_total: toNumber(g.lost_total),
+    platform_fee: toNumber(g.platform_fee),
+    platform_fee_inventory_storage: toNumber(g.platform_fee_inventory_storage),
+  };
+}, [grandTotalSkuRow]);
+
+
 
 
     return (
@@ -3891,15 +4070,7 @@ export default function DashboardPage() {
 
                                     <AmazonStatCard
                                         label="Cost of Ads"
-                                        current={
-                                            useBiForAmazonCards
-                                                ? (cm2Ready
-                                                    ? convertToDisplayCurrency(
-                                                        biAlignedTotals?.total_current_advertising ?? 0,
-                                                        biSourceCurrency
-                                                    )
-                                                    : 0)
-                                                : amazonCurrAdsDisp
+                                        current={formatSummaryValue(adsSpendTotal, "advertising_total")
                                         }
                                         previous={
                                             useBiForAmazonCards
@@ -3986,14 +4157,7 @@ export default function DashboardPage() {
 
                                     <AmazonStatCard
                                         label="CM2 Profit"
-                                        current={
-                                            useBiCm2
-                                                ? (cm2Ready
-                                                    ? convertToDisplayCurrency(biAlignedTotals?.current_cm2_profit ?? 0, biSourceCurrency)
-
-                                                    : 0)
-                                                : convertToDisplayCurrency(uk.cm2ProfitGBP ?? 0, amazonDataCurrency) // ✅ MTD Transactions
-                                        }
+                                        current={cm2Profit}
                                         previous={
                                             useBiCm2
                                                 ? (cm2Ready
@@ -4021,9 +4185,7 @@ export default function DashboardPage() {
                                     <AmazonStatCard
                                         label="CM2 Profit %"
                                         current={
-                                            useBiCm2
-                                                ? (cm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
-                                                : (curr.profitPct ?? 0) // ✅ MTD Transactions
+                                            cm2MarginPctForSummary
                                         }
                                         previous={
                                             useBiCm2
@@ -4590,12 +4752,17 @@ export default function DashboardPage() {
                                                 {
                                                     id: "ads_1",
                                                     label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                    midValue: "-",
+                                                    midValue: formatSummaryValue(sponsoredProductsSpend, "advertising_total"),
                                                 },
+                                                // {
+                                                //     id: "ads_2",
+                                                //     label: <>Sponsored Display <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                                //     midValue: formatSummaryValue(sponsoredDisplaySpend, "advertising_total"),
+                                                // },
                                                 {
-                                                    id: "ads_2",
+                                                    id: "ads_3",
                                                     label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                    midValue: "-",
+                                                    midValue: formatSummaryValue(sponsoredBrandSpend, "advertising_total"),
                                                 },
                                             ],
                                         },
@@ -4609,12 +4776,12 @@ export default function DashboardPage() {
                                                 {
                                                     id: "other_1",
                                                     label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                    midValue: "-",
+                                                    midValue: formatSummaryValue(otherPlatformFee, "platformfeenew"),
                                                 },
                                                 {
                                                     id: "other_2",
                                                     label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                    midValue: "-",
+                                                    midValue: formatSummaryValue(inventoryStorageFees, "inventory_storage_fees"),
                                                 },
                                                 {
                                                     id: "other_misc",
@@ -4632,7 +4799,7 @@ export default function DashboardPage() {
                                                             <strong className="text-green-500">(+)</strong>
                                                         </>
                                                     ),
-                                                    midValue: "-",
+                                                    midValue: formatSummaryValue(lost_inventory_total , "lost_total"),
                                                 },
                                             ],
                                         },
@@ -4653,20 +4820,10 @@ export default function DashboardPage() {
                                             ]
                                             : []),
 
-                                        // {
-                                        //     id: "ads",
-                                        //     label: "Cost of Advertisement",
-                                        //     endValue: formatSummaryValue(costOfAdsForSummary, "advertising_total"),
-                                        // },
-                                        // {
-                                        //     id: "other",
-                                        //     label: "Other Transactions",
-                                        //     endValue: formatSummaryValue(plSummaryTotals.other_transactions, "other_transactions"),
-                                        // },
                                         {
                                             id: "cm2_profit",
                                             label: "CM2 Profit/Loss",
-                                            endValue: formatSummaryValue(plSummaryTotals.cm2_profit, "cm2_profit"),
+                                             endValue: Number(cm2Profit.toFixed(2)),
                                         },
                                         {
                                             id: "cm2_margins",
@@ -4717,6 +4874,4 @@ export default function DashboardPage() {
         </div >
 
     );
-
-
 }
