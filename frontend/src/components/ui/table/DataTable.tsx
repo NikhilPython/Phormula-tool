@@ -61,7 +61,7 @@ export default function DataTable<T extends Row>({
   onPageChange,
   loading = false,
   loaderHeight = 260,
-  headerMaxWidth = 110,
+  headerMaxWidth = 130,
 }: DataTableProps<T>) {
   const containerStyle: React.CSSProperties = {
     maxHeight: scrollY
@@ -153,131 +153,321 @@ export default function DataTable<T extends Row>({
       .join(" ");
   };
 
-  const thStyle = (col: ColumnDef<T>): React.CSSProperties | undefined => {
-    if (!col.width) return undefined;
-    return { width: col.width, maxWidth: col.width };
+  const thStyle = (col: ColumnDef<T>): React.CSSProperties => {
+    if (col.width) {
+      return {
+        width: col.width,
+        minWidth: col.width,
+        maxWidth: col.width,
+      };
+    }
+
+    return {
+      minWidth: `${headerMaxWidth}px`, // 👈 default min width for headers
+    };
   };
+
+  // return (
+  //   <div
+  //     className={clsx(
+  //       "relative w-full max-w-full border border-slate-200 bg-white shadow-sm",
+
+  //       // ✅ Mobile/Tablet: scroll horizontally
+  //       // ✅ Desktop+: no horizontal scroll (keeps current look)
+  //       "overflow-x-auto lg:overflow-x-hidden",
+
+  //       scrollY && "overflow-y-auto",
+  //       className
+  //     )}
+  //     style={containerStyle}
+  //   >
+  //     <table
+  //       className={clsx(
+  //         "border-collapse text-xs 2xl:text-sm text-slate-700",
+
+  //         // ✅ On small screens: keep natural width so it can scroll
+  //         // ✅ On desktop: allow it to fit container normally
+  //         "min-w-max lg:min-w-0 w-full",
+
+  //         "table-fixed lg:table-auto",
+  //         tableClassName
+  //       )}
+  //     >
+  //       <thead
+  //         className={clsx(
+  //           "bg-[#5EA68E] text-yellow-200 font-bold",
+  //           stickyHeader && "sticky top-0 z-10"
+  //         )}
+  //       >
+  //         <tr>
+  //           {columns.map((col, i) => (
+  //             <th
+  //               key={String(col.key) + i}
+  //               onClick={col.onHeaderClick}
+  //               className={clsx(
+  //                 "border border-gray-300 px-2 py-2 text-center align-middle",
+  //                 "whitespace-normal break-words leading-snug",
+  //                 "2xl:whitespace-nowrap",
+  //                 col.headerClassName,
+  //                 col.onHeaderClick && "cursor-pointer select-none"
+  //               )}
+  //               style={thStyle(col)}
+  //             >
+  //               <div
+  //                 className={clsx(
+  //                   "mx-auto max-w-full overflow-hidden text-ellipsis",
+  //                   "[display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]",
+  //                   "lg:[display:block] lg:[-webkit-line-clamp:unset] lg:overflow-visible"
+  //                 )}
+  //               >
+  //                 {formatHeader(col.header)}
+  //               </div>
+  //             </th>
+  //           ))}
+  //         </tr>
+  //       </thead>
+
+  //       <tbody>
+  //         {!hasData && (
+  //           <tr>
+  //             <td className="px-3 py-8 text-center text-slate-400" colSpan={columns.length}>
+  //               {emptyMessage}
+  //             </td>
+  //           </tr>
+  //         )}
+
+  //         {hasData &&
+  //           pageRows.map((row, ri) => (
+  //             <tr
+  //               key={ri}
+  //               className={clsx(
+  //                 rowClassName?.(row, (page - 1) * pageSize + ri),
+  //                 "transition-colors",
+  //                 (row as any).__isTotal
+  //                   ? "bg-[#EFEFEF] font-semibold"
+  //                   : zebra && ri % 2 === 1
+  //                     ? ""
+  //                     : ""
+  //               )}
+  //             >
+  //               {columns.map((col, ci) => {
+  //                 const value = (row as Record<string, React.ReactNode>)[String(col.key)];
+
+  //                 const keyStr = String(col.key);
+  //                 const isTextCol = keyStr === "productName" || keyStr === "alert";
+
+  //                 return (
+  //                   <td
+  //                     key={String(col.key) + ci}
+  //                     className={clsx(
+  //                       "border border-[#e1e5ea] px-2 py-2 align-middle text-center",
+  //                       "min-w-0", // ✅ important so wrapping can actually work
+  //                       isTextCol ? "whitespace-normal break-words" : "whitespace-nowrap",
+  //                       col.cellClassName
+  //                     )}
+  //                     title={showCellTitle ? String(value ?? "\u00A0") : undefined}
+  //                   >
+  //                     {isTextCol ? (
+  //                       <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
+  //                         {col.render
+  //                           ? col.render(row as any, value, (page - 1) * pageSize + ri)
+  //                           : value ?? "\u00A0"}
+  //                       </div>
+  //                     ) : (
+  //                       col.render
+  //                         ? col.render(row as any, value, (page - 1) * pageSize + ri)
+  //                         : value ?? "\u00A0"
+  //                     )}
+  //                   </td>
+  //                 );
+  //               })}
+
+  //             </tr>
+  //           ))}
+  //       </tbody>
+  //     </table>
+
+  //     {paginate && totalPages > 1 && (
+  //       <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
+  //         <div className="flex items-center justify-between gap-4 text-[10px] 2xl:text-xs">
+  //           <button
+  //             onClick={onPrev}
+  //             disabled={page <= 1}
+  //             className={clsx(
+  //               "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-slate-700 shadow-sm hover:bg-slate-100",
+  //               "disabled:cursor-not-allowed disabled:opacity-50"
+  //             )}
+  //           >
+  //             <FaChevronLeft />
+  //           </button>
+
+  //           <div className="flex items-center justify-center gap-1 sm:gap-1.5">
+  //             {pageItems.map((item, idx) =>
+  //               item === "dots" ? (
+  //                 <span key={`dots-${idx}`} className="px-1 text-slate-400 select-none">
+  //                   …
+  //                 </span>
+  //               ) : (
+  //                 <button
+  //                   key={item}
+  //                   onClick={() => goToPage(item)}
+  //                   className={clsx(
+  //                     "h-7 w-7 sm:h-8 sm:w-8 rounded-full",
+  //                     "flex items-center justify-center",
+  //                     "transition-colors",
+  //                     item === page
+  //                       ? "bg-slate-200 text-slate-900 font-semibold"
+  //                       : "text-slate-700 hover:bg-slate-100"
+  //                   )}
+  //                 >
+  //                   {item}
+  //                 </button>
+  //               )
+  //             )}
+  //           </div>
+
+  //           <button
+  //             onClick={onNext}
+  //             disabled={page >= totalPages}
+  //             className={clsx(
+  //               "inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1.5 text-slate-700 shadow-sm hover:bg-slate-100",
+  //               "disabled:cursor-not-allowed disabled:opacity-50"
+  //             )}
+  //           >
+  //             <FaChevronRight />
+  //           </button>
+  //         </div>
+  //       </div>
+  //     )}
+  //   </div>
+  // );
 
   return (
     <div
       className={clsx(
         "relative w-full max-w-full border border-slate-200 bg-white shadow-sm",
-
-        // ✅ Mobile/Tablet: scroll horizontally
-        // ✅ Desktop+: no horizontal scroll (keeps current look)
-        "overflow-x-auto lg:overflow-x-hidden",
-
+        // ✅ keep Y scroll on the OUTER container (so sticky header keeps working)
         scrollY && "overflow-y-auto",
         className
       )}
       style={containerStyle}
     >
-      <table
-        className={clsx(
-          "border-collapse text-xs 2xl:text-sm text-slate-700",
-
-          // ✅ On small screens: keep natural width so it can scroll
-          // ✅ On desktop: allow it to fit container normally
-          "min-w-max lg:min-w-0 w-full",
-
-          "table-fixed lg:table-auto",
-          tableClassName
-        )}
-      >
-        <thead
+      {/* ✅ X scroll ONLY for the table (pagination will not scroll) */}
+      <div className="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
+        <table
           className={clsx(
-            "bg-[#5EA68E] text-yellow-200 font-bold",
-            stickyHeader && "sticky top-0 z-10"
+            "border-collapse text-xs 2xl:text-sm text-slate-700",
+
+            // ✅ On small screens: keep natural width so it can scroll
+            // ✅ On desktop: allow it to fit container normally
+            "min-w-max lg:min-w-0 w-full",
+
+            "table-fixed lg:table-auto",
+            tableClassName
           )}
         >
-          <tr>
-            {columns.map((col, i) => (
-              <th
-                key={String(col.key) + i}
-                onClick={col.onHeaderClick}
-                className={clsx(
-                  "border border-gray-300 px-2 py-2 text-center align-middle",
-                  "whitespace-normal break-words leading-snug",
-                  "2xl:whitespace-nowrap",
-                  col.headerClassName,
-                  col.onHeaderClick && "cursor-pointer select-none"
-                )}
-                style={thStyle(col)}
-              >
-                <div
+          <thead
+            className={clsx(
+              "bg-[#5EA68E] text-yellow-200 font-bold",
+              stickyHeader && "sticky top-0 z-10"
+            )}
+          >
+            <tr>
+              {columns.map((col, i) => (
+                <th
+                  key={String(col.key) + i}
+                  onClick={col.onHeaderClick}
                   className={clsx(
-                    "mx-auto max-w-full overflow-hidden text-ellipsis",
-                    "[display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]",
-                    "lg:[display:block] lg:[-webkit-line-clamp:unset] lg:overflow-visible"
+                    "border border-gray-300 px-2 py-2 text-center align-middle",
+                    "whitespace-normal break-words leading-snug",
+                    "2xl:whitespace-nowrap",
+                    col.headerClassName,
+                    col.onHeaderClick && "cursor-pointer select-none"
+                  )}
+                  style={thStyle(col)}
+                >
+                  <div
+                    className={clsx(
+                      "mx-auto max-w-full overflow-hidden text-ellipsis",
+                      "[display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]",
+                      "lg:[display:block] lg:[-webkit-line-clamp:unset] lg:overflow-visible"
+                    )}
+                  >
+                    {formatHeader(col.header)}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {!hasData && (
+              <tr>
+                <td
+                  className="px-3 py-8 text-center text-slate-400"
+                  colSpan={columns.length}
+                >
+                  {emptyMessage}
+                </td>
+              </tr>
+            )}
+
+            {hasData &&
+              pageRows.map((row, ri) => (
+                <tr
+                  key={ri}
+                  className={clsx(
+                    rowClassName?.(row, (page - 1) * pageSize + ri),
+                    "transition-colors",
+                    (row as any).__isTotal
+                      ? "bg-[#EFEFEF] font-semibold"
+                      : zebra && ri % 2 === 1
+                        ? ""
+                        : ""
                   )}
                 >
-                  {formatHeader(col.header)}
-                </div>
-              </th>
-            ))}
-          </tr>
-        </thead>
+                  {columns.map((col, ci) => {
+                    const value = (row as Record<string, React.ReactNode>)[
+                      String(col.key)
+                    ];
 
-        <tbody>
-          {!hasData && (
-            <tr>
-              <td className="px-3 py-8 text-center text-slate-400" colSpan={columns.length}>
-                {emptyMessage}
-              </td>
-            </tr>
-          )}
+                    const keyStr = String(col.key);
+                    const isTextCol = keyStr === "productName" || keyStr === "alert";
 
-          {hasData &&
-            pageRows.map((row, ri) => (
-              <tr
-                key={ri}
-                className={clsx(
-                  rowClassName?.(row, (page - 1) * pageSize + ri),
-                  "transition-colors",
-                  (row as any).__isTotal
-                    ? "bg-[#EFEFEF] font-semibold"
-                    : zebra && ri % 2 === 1
-                      ? ""
-                      : ""
-                )}
-              >
-                {columns.map((col, ci) => {
-                  const value = (row as Record<string, React.ReactNode>)[String(col.key)];
+                    return (
+                      <td
+                        key={String(col.key) + ci}
+                        className={clsx(
+                          "border border-[#e1e5ea] px-2 py-2 align-middle text-center",
+                          "min-w-0",
+                          isTextCol ? "whitespace-normal break-words" : "whitespace-nowrap",
+                          col.cellClassName
+                        )}
+                        style={thStyle(col)}  // 👈 ADD THIS
+                        title={showCellTitle ? String(value ?? "\u00A0") : undefined}
+                      >
 
-                  const keyStr = String(col.key);
-                  const isTextCol = keyStr === "productName" || keyStr === "alert";
+                        {isTextCol ? (
+                          <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
+                            {col.render
+                              ? col.render(row as any, value, (page - 1) * pageSize + ri)
+                              : value ?? "\u00A0"}
+                          </div>
+                        ) : col.render ? (
+                          col.render(row as any, value, (page - 1) * pageSize + ri)
+                        ) : (
+                          value ?? "\u00A0"
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
 
-                  return (
-                    <td
-                      key={String(col.key) + ci}
-                      className={clsx(
-                        "border border-[#e1e5ea] px-2 py-2 align-middle text-center",
-                        "min-w-0", // ✅ important so wrapping can actually work
-                        isTextCol ? "whitespace-normal break-words" : "whitespace-nowrap",
-                        col.cellClassName
-                      )}
-                      title={showCellTitle ? String(value ?? "\u00A0") : undefined}
-                    >
-                      {isTextCol ? (
-                        <div className="leading-snug max-w-[220px] sm:max-w-[280px] lg:max-w-none">
-                          {col.render
-                            ? col.render(row as any, value, (page - 1) * pageSize + ri)
-                            : value ?? "\u00A0"}
-                        </div>
-                      ) : (
-                        col.render
-                          ? col.render(row as any, value, (page - 1) * pageSize + ri)
-                          : value ?? "\u00A0"
-                      )}
-                    </td>
-                  );
-                })}
-
-              </tr>
-            ))}
-        </tbody>
-      </table>
-
+      {/* ✅ Pagination OUTSIDE X-scroll wrapper so it never scrolls horizontally */}
       {paginate && totalPages > 1 && (
         <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
           <div className="flex items-center justify-between gap-4 text-[10px] 2xl:text-xs">
@@ -332,4 +522,6 @@ export default function DataTable<T extends Row>({
       )}
     </div>
   );
+
+
 }

@@ -4777,7 +4777,7 @@ export default function DashboardPage() {
                                                 {
                                                     id: "ads_3",
                                                     label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                    midValue: "-",
+                                                    midValue: formatSummaryValue(dealVouchers, "advertising_total"),
                                                 },
                                             ],
                                         },

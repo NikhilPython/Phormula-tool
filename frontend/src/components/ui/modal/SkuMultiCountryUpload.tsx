@@ -207,38 +207,38 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
     a.remove();
   };
 
-// FRONTEND: only required change (prevents false "Upload failed" + better error visibility)
-// Replace ONLY your onConfirmUpload with this:
+  // FRONTEND: only required change (prevents false "Upload failed" + better error visibility)
+  // Replace ONLY your onConfirmUpload with this:
 
-const onConfirmUpload = async () => {
-  if (!file) return setError("Please select a file first.");
+  const onConfirmUpload = async () => {
+    if (!file) return setError("Please select a file first.");
 
-  setError(""); // ✅ clear any old error before uploading
+    setError(""); // ✅ clear any old error before uploading
 
-  try {
-    const res = await uploadSku({ file }).unwrap();
-    console.log("Upload success:", res);
+    try {
+      const res = await uploadSku({ file }).unwrap();
+      console.log("Upload success:", res);
 
-    setError(""); // ✅ clear on success
+      setError(""); // ✅ clear on success
 
-    // reset internal UI state
-    setShowConfirm(false);
-    setRows([]);
-    setColumns([]);
-    setFile(null);
-    setFileName("No File Chosen");
+      // reset internal UI state
+      setShowConfirm(false);
+      setRows([]);
+      setColumns([]);
+      setFile(null);
+      setFileName("No File Chosen");
 
-    onComplete();
-  } catch (e: any) {
-    console.log("Upload failed (RTK error):", e);
-    const msg =
-      e?.data?.error ||
-      e?.data?.message ||
-      e?.error ||        // RTK Query parse/cors errors often appear here
-      "Upload failed.";
-    setError(msg);
-  }
-};
+      onComplete();
+    } catch (e: any) {
+      console.log("Upload failed (RTK error):", e);
+      const msg =
+        e?.data?.error ||
+        e?.data?.message ||
+        e?.error ||        // RTK Query parse/cors errors often appear here
+        "Upload failed.";
+      setError(msg);
+    }
+  };
 
 
   // ---------- UI ----------
@@ -247,7 +247,7 @@ const onConfirmUpload = async () => {
       {/* Step 1: uploader */}
       {!showConfirm && (
         <div className="w-full max-w-[520px] mx-auto flex flex-col gap-3">
-          <PageBreadcrumb pageTitle="Upload SKU Data" variant="table" />
+          <PageBreadcrumb pageTitle="Upload SKU Data" variant="table" align="center2" />
 
           <div className="rounded-2xl p-3 ">
             <div className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-2 py-1.5">
@@ -283,13 +283,14 @@ const onConfirmUpload = async () => {
       )}
 
       {/* Step 2: confirmation modal with reusable DataTable */}
-      {showConfirm && (
+      {/* {showConfirm && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
           <div
             className="w- max-w-4xl rounded-xl bg-white p-5 shadow-[6px_6px_7px_0px_#00000026]  border border-[#D9D9D9]"
             onClick={(e) => e.stopPropagation()}
           >
             <PageBreadcrumb pageTitle="Confirm SKU Data" variant="table" />
+            
             <DataTable
               columns={columns}
               data={rows}
@@ -314,7 +315,73 @@ const onConfirmUpload = async () => {
             </div>
           </div>
         </div>
+      )} */}
+
+      {showConfirm && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4">
+          <div
+            className="
+        w-full max-w-4xl
+        rounded-xl bg-white p-3 sm:p-5
+        shadow-[6px_6px_7px_0px_#00000026]
+        border border-[#D9D9D9]
+        flex flex-col
+        min-w-0
+      "
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 sm:mb-4 shrink-0">
+              <PageBreadcrumb pageTitle="Confirm SKU Data" variant="table" />
+            </div>
+
+            {/* ✅ IMPORTANT: min-w-0 allows DataTable to shrink (prevents 768px blank/clipping) */}
+            <div className="flex-1 min-w-0 w-full">
+              <DataTable
+                columns={columns}
+                data={rows}
+                pageSize={10}
+                maxHeight="60vh"
+                stickyHeader
+                zebra
+                emptyMessage="No parsed rows."
+                className="my-4 w-full max-w-full min-w-0"
+                tableClassName="
+    [&_th]:whitespace-nowrap
+    [&_td]:whitespace-nowrap
+    [&_th]:overflow-hidden
+    [&_th]:text-ellipsis
+    [&_td]:overflow-hidden
+    [&_td]:text-ellipsis
+  "
+              />
+
+            </div>
+
+            {error && <p className="mt-2 text-sm text-red-600 text-center">{error}</p>}
+
+            <div className="mt-4 flex justify-center gap-3 shrink-0">
+              <Button
+                onClick={onConfirmUpload}
+                disabled={isUploading || !file}
+                size="sm"
+                variant="primary"
+              >
+                {isUploading ? "Uploading…" : "Confirm & Upload"}
+              </Button>
+
+              <Button
+                onClick={() => setShowConfirm(false)}
+                disabled={isUploading}
+                size="sm"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
+
     </div>
   );
 }

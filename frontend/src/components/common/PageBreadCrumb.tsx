@@ -137,7 +137,7 @@ import React from "react";
 interface BreadcrumbProps {
   pageTitle: React.ReactNode; // ✅ changed from string
   variant?: "page" | "table";
-  align?: "center" | "left" | "right";
+  align?: "center" | "left" | "right" | "center2"; 
   className?: string;
   textSize?: "sm" | "base" | "lg" | "xl" | "2xl" | "3xl";
 }
@@ -157,6 +157,7 @@ const PageBreadcrumb: React.FC<BreadcrumbProps> = ({
 
   const alignClassMap: Record<NonNullable<BreadcrumbProps["align"]>, string> = {
     center: "text-left sm:text-center",
+    center2: "text-center",
     left: "text-left",
     right: "text-right",
   };

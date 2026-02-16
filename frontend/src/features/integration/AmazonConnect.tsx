@@ -205,7 +205,7 @@ export default function AmazonConnect({
           Connect Amazon Account
         </h2> */}
 
-        <PageBreadcrumb pageTitle="Connect Amazon Account" align="center" variant="table" textSize="2xl" />
+        <PageBreadcrumb pageTitle="Connect Amazon Account" align="center2" variant="table" textSize="2xl" />
 
         <p
           className="

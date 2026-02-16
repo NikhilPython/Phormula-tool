@@ -965,13 +965,77 @@ export default function CurrentInventorySection({
   }, []);
 
 
+  // return (
+  //   <div
+  //     className="
+  //       mt-4 rounded-2xl border bg-[#D9D9D933] p-4 shadow-sm
+  //       w-full max-w-full overflow-hidden
+  //       flex flex-col
+  //     "
+  //   >
+  //     <div className="mb-3 flex items-center justify-between">
+  //       <div className="flex items-baseline gap-2">
+  //         <PageBreadcrumb pageTitle="Current Inventory" variant="page" align="left" />
+  //       </div>
+
+  //       <DownloadIconButton
+  //         onClick={downloadInventoryExcel}
+  //         disabled={invLoading || !invRows?.length}
+  //         className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+  //       />
+  //     </div>
+
+  //     {invLoading ? (
+  //       <div className="py-10 flex justify-center">
+  //         <Loader fullscreen transparent />
+  //       </div>
+  //     ) : invError ? (
+  //       <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+  //         {invError}
+  //       </div>
+  //     ) : (
+  //       <div className="w-full rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
+  //         <DataTable
+  //           columns={columns}
+  //           data={tableRows}
+  //           loading={false}
+  //           paginate={true}
+  //           pageSize={15}
+  //           scrollY={false}
+  //           maxHeight="none"
+  //           emptyMessage="No inventory data."
+  //           rowClassName={(row) => {
+  //             if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
+  //             if (row.rowType === "others") return "!bg-[#FFFFFF]";
+  //             return "bg-white";
+  //           }}
+  //           tableClassName="
+  //   table-fixed
+  //   [&_th]:whitespace-normal
+  //   [&_th]:break-words
+  //   [&_th]:leading-snug
+  //   [&_th>div]:[display:-webkit-box]
+  //   [&_th>div]:[-webkit-box-orient:vertical]
+  //   [&_th>div]:[-webkit-line-clamp:3]
+  //   [&_th>div]:overflow-hidden
+  //   [&_th>div]:text-ellipsis
+  // "
+  //         />
+
+  //       </div>
+
+
+  //     )}
+  //   </div>
+  // );
+
   return (
     <div
       className="
-        mt-4 rounded-2xl border bg-[#D9D9D933] p-4 shadow-sm
-        w-full max-w-full overflow-hidden
-        flex flex-col
-      "
+      mt-4 rounded-2xl border bg-[#D9D9D933] p-4 shadow-sm
+      w-full max-w-full overflow-hidden
+      flex flex-col
+    "
     >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-baseline gap-2">
@@ -994,31 +1058,43 @@ export default function CurrentInventorySection({
           {invError}
         </div>
       ) : (
-        <div className="mt-2 flex-1 w-full">
-          {/* Single scroll container */}
-          <div className="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
-            {/* Ensure the table can actually be wider than the screen */}
-            <div className="min-w-max [&_table]:min-w-[980px] [&_table]:w-full">
-              <DataTable
-                columns={columns}
-                data={tableRows}
-                loading={false}
-                paginate={true}
-                pageSize={15}
-                scrollY={false}
-                maxHeight="none"
-                emptyMessage="No inventory data."
-                rowClassName={(row) => {
-                  if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
-                  if (row.rowType === "others") return "!bg-[#FFFFFF]";
-                  return "bg-white";
-                }}
-              />
-            </div>
+        // ✅ single horizontal scroll container
+        <div className="w-full min-w-0 rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
+          {/* ✅ prevents table from forcing container wider */}
+          <div className="min-w-0">
+            <DataTable
+              columns={columns}
+              data={tableRows}
+              loading={false}
+              paginate={true}
+              pageSize={15}
+              scrollY={false}
+              maxHeight="none"
+              emptyMessage="No inventory data."
+              rowClassName={(row) => {
+                if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
+                if (row.rowType === "others") return "!bg-[#FFFFFF]";
+                return "bg-white";
+              }}
+              // ✅ wrap headers (2–3 lines) + clamp
+              // ✅ keep table fixed so columns distribute nicely on laptop
+              tableClassName="
+              table-fixed w-full
+              [&_th]:whitespace-normal
+              [&_th]:break-words
+              [&_th]:leading-snug
+              [&_th>div]:[display:-webkit-box]
+              [&_th>div]:[-webkit-box-orient:vertical]
+              [&_th>div]:[-webkit-line-clamp:3]
+              [&_th>div]:overflow-hidden
+              [&_th>div]:text-ellipsis
+            "
+            />
           </div>
         </div>
-
       )}
     </div>
   );
+
+
 }
