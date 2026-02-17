@@ -192,7 +192,7 @@ def _load_inventory_and_sales_artifacts(
 
     # ===== Inventory (xlsx) — lowercased filename =====
     inv_file = f"user_{user_id}_{country_n}_{_month_token_lower(year_i, mv_n)}_inventory_file.xlsx"
-    inv_path = os.path.join(UPLOAD_FOLDER, inv_file)
+    inv_path = os.path.join( inv_file)
     print(f"[manual]_load_artifacts: looking for inventory: {inv_path}")
 
     if not os.path.exists(inv_path):
@@ -725,11 +725,11 @@ def generate_manual_forecast(
             })
 
     _af = pd.DataFrame(artifact_rows, columns=["sku", "month", "forecast", "price_in_gbp"])
-    forecast_path = os.path.join(UPLOAD_FOLDER, f"forecasts_for_{user_id}_{country}.xlsx")
+    forecast_path = os.path.join(f"forecasts_for_{user_id}_{country}.xlsx")
     _af.to_excel(forecast_path, index=False)
 
     requested_token = datetime(req_year, req_month_num, 1).strftime("%b").lower()
-    out_path = os.path.join(UPLOAD_FOLDER, f"inventory_forecast_{user_id}_{country}_{requested_token}+2.xlsx")
+    out_path = os.path.join( f"inventory_forecast_{user_id}_{country}_{requested_token}+2.xlsx")
     inventory_forecast.to_excel(out_path, index=False)
     _ = _encode_file_to_base64(out_path)
 

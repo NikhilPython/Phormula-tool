@@ -463,7 +463,7 @@ def skup():
         return jsonify({'error': 'No selected file'}), 400
 
     # Save the uploaded file
-    file_path = os.path.join(UPLOAD_FOLDER, secure_filename(file.filename))
+    file_path = os.path.join(secure_filename(file.filename))
     file.save(file_path)
 
     return jsonify({'success': True, 'message': 'File uploaded successfully'}), 200
@@ -614,7 +614,7 @@ def get_error_file(country, month, year):
 
     # Construct the filename for the error file (which is actually inventory_forecast)
     error_filename = f"error_file_{user_id}{country}{month}_{year}.xlsx"
-    error_file_path = os.path.join(UPLOAD_FOLDER, error_filename)
+    error_file_path = os.path.join( error_filename)
 
     # Check if the file exists
     if not os.path.exists(error_file_path):

@@ -1255,28 +1255,6 @@ def fetch_skuwise_monthly_sales(engine, meta, user_id, country, dt):
         return pd.DataFrame(columns=['sku', 'total_quantity', 'Label'])
 
 def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool = True):
-    """
-    NOTE:
-    - This is your full generate_forecast with ONLY the inventory part fixed to use:
-        public.monthwise_inventory (msku) + disposition='SELLABLE'
-      and merged via fetch_and_merge_inventory_monthwise_sellable().
-
-    - All your other logic is kept the same.
-    - Assumes these are already imported/defined elsewhere in your codebase:
-        create_engine, MetaData, inspect, Table
-        np, pd, os, re
-        datetime, relativedelta
-        MONTHS_MAP, ROLLING_HISTORY_MONTHS
-        add_months, month_label, _mk_monthly
-        forecast_next_two_months_with_append, _hybrid_forecast_for_sku
-        call_chatgpt_adjudicator, _adjudicate_by_history_trend
-        CountryProfile (SQLAlchemy model)
-        classify_skus_from_inventory, calculate_remaining_months_v2
-        encode_file_to_base64, jsonify
-        UPLOAD_FOLDER, db_url, db_url2
-    """
-
-    
     engine = create_engine(db_url)
     engine1 = create_engine(db_url2)  # Amazon DB (has monthwise_inventory)
     meta = MetaData()

@@ -272,7 +272,7 @@ def list_uploaded_files():
         return False
 
     # Check if upload directory exists
-    upload_dir = current_app.config.get('UPLOAD_FOLDER')
+    upload_dir = current_app.config.get()
     if not os.path.isdir(upload_dir):
         return jsonify({'error': 'Uploads directory not found'}), 404
 

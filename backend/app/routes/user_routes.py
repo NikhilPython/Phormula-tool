@@ -676,7 +676,7 @@ def feepreviewupload():
 
     if file:
         filename = secure_filename(file.filename)
-        file_path = os.path.join(upload_folder, filename)
+        file_path = os.path.join( filename)
         file.save(file_path)
 
 

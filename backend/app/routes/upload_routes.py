@@ -285,18 +285,18 @@ def upload():
         return jsonify({'error': 'Both files must be uploaded'}), 400
     
     # Save file1
-    file1_path = os.path.join(UPLOAD_FOLDER, f'user_{user_id}_{country}_{month}_{year}_mtd_file.xlsx')
+    file1_path = os.path.join( f'user_{user_id}_{country}_{month}_{year}_mtd_file.xlsx')
     file1.save(file1_path)
     
     # Save file2 (inventory file)
     if file2.filename.endswith('.csv'):
         # Read CSV file and save as Excel
         df_file2 = pd.read_csv(file2)
-        file2_path = os.path.join(UPLOAD_FOLDER, f'user_{user_id}_{country}_{month}{year}_inventory_file.xlsx')
+        file2_path = os.path.join( f'user_{user_id}_{country}_{month}{year}_inventory_file.xlsx')
         df_file2.to_excel(file2_path, index=False, engine='openpyxl')  # Save as Excel file
     else:
         # Save the file directly if it's already an Excel file
-        file2_path = os.path.join(UPLOAD_FOLDER, secure_filename(inventory_file_name))
+        file2_path = os.path.join( secure_filename(inventory_file_name))
         file2.save(file2_path)
 
 
@@ -952,7 +952,7 @@ def upload():
                 error_file_base64 = None
                 if not error_df.empty:
                     error_filename = f"error_file_{user_id}{country}{month}_{year}.xlsx"
-                    error_file_path = os.path.join(UPLOAD_FOLDER, error_filename)                    
+                    error_file_path = os.path.join( error_filename)                    
                     error_df.to_excel(error_file_path, index=False)
                     
                     # Encode error file to base64
