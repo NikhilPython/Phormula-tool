@@ -18,7 +18,6 @@ type DashboardBargraphCardProps = {
 };
 
 
-
 const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
   countryName,
   formattedMonthYear,

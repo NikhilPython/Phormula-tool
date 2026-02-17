@@ -3621,10 +3621,6 @@ export default function DashboardPage() {
         profileHomeCurrency,
     ]);
 
-
-
-
-
     const skuwiseItems = useMemo(() => {
         const items = (data as any)?.skuwise_items;
         return Array.isArray(items) ? items : [];
@@ -3649,6 +3645,52 @@ export default function DashboardPage() {
     }, [grandTotalSkuRow]);
 
 
+    const adsIdx = useMemo(
+        () => labels.findIndex((l) => l === "Advertisements"),
+        [labels]
+    );
+
+    const valuesWithAds = useMemo(() => {
+        if (adsIdx === -1) return values;
+        const copy = [...values];
+        copy[adsIdx] = Number(adsSpendTotal ?? 0);
+        return copy;
+    }, [adsIdx, values, adsSpendTotal]);
+
+    // ✅ SAFE: only apply prev replacement if you actually have a number
+    const prevValuesWithAds = useMemo(() => {
+        if (adsIdx === -1) return prevValues;
+
+        // Put your prev ads var here ONLY if it exists, else keep prevValues unchanged
+        const prevAds = undefined as unknown as number; // <-- replace if you have one (or leave as undefined)
+
+        if (!Number.isFinite(Number(prevAds))) return prevValues;
+
+        const copy = [...prevValues];
+        copy[adsIdx] = Number(prevAds);
+        return copy;
+    }, [adsIdx, prevValues]);
+
+
+    // indexes for the 3 bars we want to override
+    const idxAds = useMemo(() => labels.findIndex((l) => l === "Advertisements"), [labels]);
+    const idxOthers = useMemo(() => labels.findIndex((l) => l === "Others"), [labels]);
+    const idxCm2 = useMemo(() => labels.findIndex((l) => l === "CM2 Profit"), [labels]);
+
+    const valuesPatched = useMemo(() => {
+        const copy = [...values];
+
+        // Ads
+        if (idxAds !== -1) copy[idxAds] = Number(adsSpendTotal ?? 0);
+
+        // Others (platform fee) — choose ABS so it renders as a positive bar like your UI
+        if (idxOthers !== -1) copy[idxOthers] = Math.abs(Number(platformFee ?? 0));
+
+        // CM2
+        if (idxCm2 !== -1) copy[idxCm2] = Number(cm2Profit ?? 0);
+
+        return copy;
+    }, [values, idxAds, idxOthers, idxCm2, adsSpendTotal, platformFee, cm2Profit]);
 
 
     return (
@@ -4596,7 +4638,7 @@ export default function DashboardPage() {
                                                 formattedMonthYear={formattedMonthYear}
                                                 currencySymbol={currencySymbol}
                                                 labels={labels}
-                                                values={values}
+                                                values={valuesPatched}
                                                 prevValues={prevValues}
                                                 expanded={isMtdPlExpanded}
                                                 colors={colors}
