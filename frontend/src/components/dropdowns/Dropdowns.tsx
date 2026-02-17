@@ -37,6 +37,8 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import { FiMaximize2, FiMinimize2 } from "react-icons/fi";
 import { CgPushLeft, CgPushRight } from "react-icons/cg";
+import { motion, AnimatePresence } from "framer-motion";
+
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -489,155 +491,175 @@ const extractRecoAndInventoryBullets = (
 
 const ProductInsightsSection = ({
   blocks,
-  recommendationsMap,
   objective,
+  overallRecommendations,
 }: {
   blocks: ProductInsightBlock[];
-  recommendationsMap?: RecommendationsMap;
   objective?: ObjectivePayload;
+  overallRecommendations?: string;
 }) => {
-  if (!blocks.length && !recommendationsMap) return null;
-
-  // If new API map exists and blocks empty OR you want to prefer map:
-  const mapEntries = recommendationsMap ? Object.entries(recommendationsMap) : [];
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  if (!blocks.length) return null;
 
   return (
-    <div className="space-y-6">
-      <PageBreadcrumb pageTitle="Product Insights" variant="page" align="left" textSize="2xl" />
+    <div className="space-y-5">
+      <div className="border-b-2 border-blue-500 pb-3">
+        <PageBreadcrumb
+          pageTitle="Action Items"
+          variant="page"
+          align="left"
+          textSize="2xl"
+        />
+      </div>
 
-      {/* Objective Box – shown just below heading */}
-      {objective && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div className="text-sm font-semibold text-charcoal-700 mb-3">
-            Objective
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-charcoal-600">
-
-            {/* Growth Intent */}
-            <div className="space-y-1">
-              <div className="text-charcoal-400">Growth Intent</div>
-              <div className="font-semibold capitalize">
-                {objective.growth_intent}
-              </div>
-            </div>
-
-            {/* Inventory Clearance */}
-            <div className="space-y-1">
-              <div className="text-charcoal-400">
-                Inventory Clearance
-              </div>
-              <div className="font-semibold">
-                {objective.inventory_clearance_priority ? "Yes" : "No"}
-              </div>
-            </div>
-
-            {/* Profit Priority */}
-            <div className="space-y-1">
-              <div className="text-charcoal-400">
-                Profit Priority
-              </div>
-              <div className="font-semibold capitalize">
-                {objective.profit_priority?.replaceAll("_", " ")}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
+      <div className="space-y-2">
 
 
-      {/* SKU Sections */}
-      <div className="space-y-8">
-        {/* 1) old markdown blocks */}
         {blocks.map((b, idx) => (
-          <div key={idx} className="space-y-3">
-            <div className="text-base 2xl:text-lg font-semibold text-charcoal-700">
+          <motion.div
+            key={idx}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: idx * 0.1 }}
+            className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
+          >
+            {/* Product Name with Index */}
+
+            <div className="text-sm font-semibold text-charcoal-700">
               {idx + 1}. {b.name}
             </div>
 
+            {/* Metrics */}
             {b.metrics.length > 0 && (
-              <div className="flex flex-wrap gap-x-8 gap-y-1 text-xs 2xl:text-sm">
-                {b.metrics.map((m, i) => (
-                  <div key={i}>
-                    <span>{m.label}: </span>
-                    <span className="font-medium" style={{ color: m.color || "#414042" }}>
-                      {m.value}
-                    </span>
-                  </div>
-                ))}
+              <div className="bg-slate-50 rounded-lg px-2 py-2">
+                <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
+
+                  {b.metrics.map((m, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
+                    >
+                      <span className="text-slate-600 mr-1">
+                        {m.label}:
+                      </span>
+
+                      <span
+                        className="font-semibold"
+                        style={{ color: m.color || "#414042" }}
+                      >
+                        {m.value}
+                      </span>
+                    </div>
+                  ))}
+
+                </div>
               </div>
             )}
 
+
+            {/* Recommendation */}
+            {b.recommendationBullets.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2"
+              >
+                <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+                  💡 Action Item - {b.recommendationBullets.join(" ")}
+                </p>
+              </motion.div>
+            )}
+
+            {/* Product Journey – Collapsible */}
             {b.journeyBullets.length > 0 && (
               <div className="space-y-2">
-                <div className="font-semibold text-sm 2xl:text-base">Product Journey</div>
-                <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-                  {b.journeyBullets.map((ins, i) => (
-                    <li key={i}>{ins}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+                <button
+                  onClick={() =>
+                    setOpenIndex(openIndex === idx ? null : idx)
+                  }
+                  className="
+    w-full
+    flex
+    items-center
+    justify-between
+    gap-2
+    px-4
+    py-2.5
+    rounded-lg
+    2xl:text-sm text-xs
+    font-semibold
+    bg-gradient-to-r from-slate-700 to-slate-800
+    text-slate-50
+    transition-all
+    duration-200
+    hover:shadow-md
+    hover:from-slate-600 hover:to-slate-700
+    active:scale-98
+  "
+                >
+                  <span className="flex items-center gap-2">
+                    📈
+                    {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
+                  </span>
 
-            {b.recommendationBullets.length > 0 && (
-              <div className="space-y-2">
-                <div className="font-semibold text-sm 2xl:text-base">Recommendation</div>
-                <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-                  {b.recommendationBullets.map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        ))}
+                  <span
+                    className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
+                  >
+                    ▼
+                  </span>
+                </button>
 
-        {/* 2) new API map render (SKU IDs) */}
-        {mapEntries.length > 0 && (
-          <div className="pt-6 border-t border-slate-200">
-            <div className="text-sm font-semibold text-charcoal-700 mb-3">
-              SKU-wise Recommendations
-            </div>
-
-            <div className="space-y-6">
-              {mapEntries.map(([sku, payload], idx) => (
-                <div key={sku} className="space-y-2">
-                  <div className="font-semibold text-charcoal-700">
-                    {idx + 1}. {sku}
-                  </div>
-
-                  {payload.journey_summary?.length ? (
-                    <div className="space-y-1">
-                      <div className="font-semibold text-xs 2xl:text-sm">Product Journey</div>
-                      <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-                        {payload.journey_summary.map((j, i) => (
-                          <li key={i}>{j}</li>
+                <AnimatePresence>
+                  {openIndex === idx && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="bg-slate-50 rounded-lg p-4 overflow-hidden"
+                    >
+                      <ul className="list-none space-y-2">
+                        {b.journeyBullets.map((j, i) => (
+                          <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
+                            <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
+                            <span>{j}</span>
+                          </li>
                         ))}
                       </ul>
-                    </div>
-                  ) : null}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
-                  {payload.recommendation ? (
-                    <div className="space-y-1">
-                      <div className="font-semibold text-xs 2xl:text-sm">Recommendation</div>
-                      <ul className="list-disc pl-5 text-xs 2xl:text-sm text-charcoal-600">
-                        <li>{payload.recommendation}</li>
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+          </motion.div>
+        ))}
+
+        {overallRecommendations && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="border border-slate-200 rounded-xl p-3 bg-white border-l-4 border-l-blue-500 mt-3"
+          >
+            <div className="text-sm font-semibold text-charcoal-700">
+              Overall Recommendation
             </div>
-          </div>
+
+            <div className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 mt-2">
+              <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+                💡 {overallRecommendations}
+              </p>
+            </div>
+          </motion.div>
         )}
+
       </div>
-
-      {/* ✅ Objective Section (Below Product Insights) */}
-
     </div>
   );
 };
+
 
 
 
@@ -705,16 +727,23 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 }) => {
   if (loading) {
     return (
-      <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
-        <p className="text-sm text-charcoal-400">Generating insights…</p>
+      <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-8 flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 rounded-full border-2 border-slate-300 border-t-blue-500 animate-spin mx-auto"></div>
+          <p className="text-sm font-medium text-slate-600">Generating AI insights…</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="w-full rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-600">
-        {error}
+      <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">⚠️</span>
+          <p className="font-semibold text-red-700">Unable to Generate Insights</p>
+        </div>
+        <p className="text-sm text-red-600">{error}</p>
       </div>
     );
   }
@@ -744,58 +773,246 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   );
 
 
-
+  const leftMetrics = summaryMetrics.slice(0, 5);
+  const rightMetrics = summaryMetrics.slice(5, 10);
 
   return (
-    <div className="flex flex-col md:flex-row gap-4">
-      <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 space-y-6">
-        <div className="space-y-3">
+    <div className="flex flex-col lg:flex-row gap-5">
+      <div className="flex-1 rounded-2xl border border-slate-200 bg-white shadow-sm p-7 space-y-6">
+        <div className="border-b-2 border-blue-500 pb-3">
           <PageBreadcrumb
-            pageTitle="Business Summary"
+            pageTitle="Monthly Objectives"
             variant="page"
             align="left"
             textSize="2xl"
           />
+        </div>
 
-          {/* Numeric points */}
-          <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-            {summaryMetrics.map((p, i) => (
-              <li key={i}>
-                <span className="font-medium">{p.label}:</span>{" "}
-                <span>{p.value}</span>
-              </li>
-            ))}
-          </ul>
+        {/* ================= OBJECTIVE SECTION ================= */}
+        {objective && (
+          <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-5 border-l-4 border-l-blue-500 space-y-4">
+            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Business Strategy</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-slate-700">
 
-          {/* Narrative insight LAST */}
-          {narrativeInsights.length > 0 && (
-            <div className="mt-3 space-y-2 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
-              {narrativeInsights.map((line, i) => (
-                <p key={i}>{line}</p>
-              ))}
+              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+                <div className="text-slate-500 text-xs font-medium">Growth Intent</div>
+                <div className="font-bold text-slate-800 capitalize text-sm">
+                  {objective.growth_intent}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+                <div className="text-slate-500 text-xs font-medium">
+                  Inventory Clearance
+                </div>
+                <div className="font-bold text-slate-800 text-sm">
+                  <span className={objective.inventory_clearance_priority ? "text-emerald-600" : "text-slate-600"}>
+                    {objective.inventory_clearance_priority ? "✓ Yes" : "✗ No"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+                <div className="text-slate-500 text-xs font-medium">
+                  Profit Priority
+                </div>
+                <div className="font-bold text-slate-800 capitalize text-sm">
+                  {objective.profit_priority?.replaceAll("_", " ")}
+                </div>
+              </div>
+
             </div>
+          </div>
+        )}
+
+
+        {/* ================= PERFORMANCE SUMMARY ================= */}
+        <div className="space-y-5">
+          {/* Narrative Summary */}
+          {narrativeInsights.length > 0 && (
+            <>
+              <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4 space-y-3">
+                <h2 className="text-base 2xl:text-lg text-slate-800">
+                  <span className="font-bold text-slate-900">
+                    {narrativeInsights[0]?.split("(")[0]?.trim()}
+                  </span>
+                  {narrativeInsights[0]?.includes("(") && (
+                    <span className="font-normal text-slate-600 text-sm ml-2">
+                      {`(${narrativeInsights[0].split("(")[1]}`}
+                    </span>
+                  )}
+                </h2>
+
+                <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+                  {narrativeInsights.slice(1).map((line, i) => (
+                    <p key={i}>{line}</p>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
+
+          {/* Metrics Heading */}
+          <div className="flex items-center gap-2 pt-2">
+            <span className="text-sm font-bold text-slate-800">📊 Key Metrics</span>
+            <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-300 to-transparent"></div>
+          </div>
+
+          {/* Metrics Grid */}
+
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+
+            {/* LEFT COLUMN */}
+            <div className="space-y-3">
+              {leftMetrics.map((p, i) => {
+                let mainValue = p.value.split(",")[0]?.replace(/\(.*?\)/g, "").trim();
+
+                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+                const n = num ? Number(num) : NaN;
+
+                const colorClass =
+                  !isNaN(n)
+                    ? n < 0
+                      ? "text-red-600 bg-red-50"
+                      : n > 0
+                        ? "text-emerald-600 bg-emerald-50"
+                        : "text-slate-700"
+                    : "text-slate-700";
+
+                return (
+                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-slate-100 hover:border-slate-200 transition-all">
+                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{p.label}</span>
+                    <span className={`font-bold text-sm px-2 py-1 rounded ${colorClass}`}>
+                      {mainValue}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* RIGHT COLUMN */}
+            <div className="space-y-3">
+              {rightMetrics.map((p, i) => {
+                const valueParts = p.value.split(",");
+
+                let mainValue = valueParts[0]?.replace(/\(.*?\)/g, "").trim();
+                const extraPart = valueParts[1]?.trim();
+
+                let acosLabel = "";
+                let acosValue = "";
+
+                if (extraPart && extraPart.toLowerCase().includes("acos")) {
+                  const parts = extraPart.split(":");
+                  acosLabel = parts[0] + ":";
+                  acosValue = parts[1]?.trim();
+                }
+
+                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+                const n = num ? Number(num) : NaN;
+
+                const colorClass =
+                  !isNaN(n)
+                    ? n < 0
+                      ? "text-red-600"
+                      : n > 0
+                        ? "text-emerald-600"
+                        : "text-slate-700"
+                    : "text-slate-700";
+
+                const acosNum = acosValue?.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+                const acosN = acosNum ? Number(acosNum) : NaN;
+
+                const acosColor =
+                  !isNaN(acosN)
+                    ? acosN < 0
+                      ? "text-red-600"
+                      : "text-emerald-600"
+                    : "text-slate-700";
+
+                return (
+                  <div key={i} className="space-y-1 text-xs 2xl:text-sm">
+
+                    {/* Main Row */}
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">{p.label}</span>
+                      <span className={`font-semibold ${colorClass}`}>
+                        {mainValue}
+                      </span>
+                    </div>
+
+                    {/* ACOS Row */}
+                    {acosLabel && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">{acosLabel}</span>
+                        <span className={`font-semibold ${acosColor}`}>
+                          {acosValue}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+
 
         </div>
 
 
-
-        {/* Inventory shown only if still exists separately */}
+        {/* ================= INVENTORY SECTION ================= */}
         {inventoryBullets.length > 0 && (
-          <Section
-            title="Inventory"
-            bullets={inventoryBullets}
-          />
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-base 2xl:text-lg font-bold text-slate-800">📦 Inventory Insights</span>
+              <div className="flex-1 h-0.5 bg-gradient-to-r from-amber-300 to-transparent"></div>
+            </div>
+
+            <div className="border border-amber-200 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5 space-y-3">
+              <div className="grid grid-cols-1 gap-3">
+                {inventoryBullets.map((b, i) => (
+                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100 hover:shadow-sm transition-shadow">
+                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{b.split(":")[0]}</span>
+                    <span className="font-bold text-amber-700 text-sm">
+                      {b.includes(":") ? b.split(":")[1] : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
         )}
+
       </div>
-      <div className="w-full rounded-2xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-5 ">
+
+
+      <div className="flex-1 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 shadow-sm p-7">
         <ProductInsightsSection
-          blocks={parseProductInsightsBlocks(skuInsightsBullets)}
-          recommendationsMap={recommendationsMap}
+          blocks={
+            recommendationsMap
+              ? Object.entries(recommendationsMap)
+                .filter(([key]) => key !== "remaining_skus_recommendation")
+                .map(([sku, value]: any) => ({
+                  name: sku,
+                  metrics: [],
+                  journeyBullets: value?.journey_summary ?? [],
+                  recommendationBullets: value?.recommendation
+                    ? [value.recommendation]
+                    : [],
+                }))
+              : []
+          }
+
           objective={objective}
+          overallRecommendations={
+            typeof recommendationsMap?.remaining_skus_recommendation === "string"
+              ? recommendationsMap.remaining_skus_recommendation
+              : recommendationsMap?.remaining_skus_recommendation?.recommendation
+          }
+
         />
-
-
       </div>
     </div>
 
@@ -852,6 +1069,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [performanceTrendBase64, setPerformanceTrendBase64] = useState<string | null>(null);
   const [trendExportApi, setTrendExportApi] = useState<TrendChartExportApi | null>(null);
   const [focusedChart, setFocusedChart] = useState<FocusedChart>(null);
+
 
   const toggleFocus = (which: Exclude<FocusedChart, null>) => {
     setFocusedChart((prev) => (prev === which ? null : which));
@@ -1077,6 +1295,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       }
 
       const data: AiSummaryResponse = await res.json();
+
+      const overAllRecommendations = typeof data?.recommendations === "object" && data?.recommendations !== null
+        ? (data.recommendations as RecommendationsMap)?.remaining_skus_recommendation
+        : undefined
+
+      console.log(overAllRecommendations)
 
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
 
@@ -2079,9 +2303,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     relative
   "
     >
-      <div className="sticky top-0 z-40 bg-white w-full 
-  flex flex-col md:flex-row md:items-center md:justify-between 
-  gap-4 border-b border-gray-200 pb-3">
+      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 ">
 
         {/* LEFT: Title + Subtitle */}
         <div className="flex flex-col leading-tight w-full md:w-auto md:mb-5">

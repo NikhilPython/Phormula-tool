@@ -15,6 +15,7 @@ from app.utils.formulas_utils import safe_num
 from app.utils.uk_prompts_utils import AI_SYSTEM_PROMPT_1, AI_SYSTEM_PROMPT_2, AI_SYSTEM_PROMPT_3_POLISHER
 from app import db
 from openai import OpenAIError
+from app.utils.uk_coverage_ratio_utils import compute_inventory_coverage_ratio
 
 
 
@@ -834,7 +835,80 @@ def fetch_inventory_aged_by_user(user_id: int) -> pd.DataFrame:
 
     return df
 
-def build_inventory_alerts(df: pd.DataFrame) -> dict:
+# def build_inventory_alerts(df: pd.DataFrame) -> dict:
+#     if df.empty:
+#         return {}
+
+#     df = df.copy()
+
+#     # Safe numeric coercion
+#     for col in [
+#         "age_0_90", "age_91_180", "age_181_270",
+#         "age_271_365", "age_365_plus",
+#         "storage_cost_next_month", "unfulfillable_qty"
+#     ]:
+#         if col in df.columns:
+#             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+#     alerts = {}
+
+#     # ---------------- LONG-TERM AGED INVENTORY (365+ DAYS) ----------------
+#     long_term_aged_df = df[df["age_365_plus"] > 0]
+#     if not long_term_aged_df.empty:
+#         alerts["long_term_aged_inventory"] = {
+#             "total_units": int(long_term_aged_df["age_365_plus"].sum()),
+#             "top_skus": (
+#                 long_term_aged_df
+#                 .groupby("sku")["age_365_plus"]
+#                 .sum()
+#                 .sort_values(ascending=False)
+#                 .head(5)
+#                 .to_dict()
+#             )
+#         }
+
+#     # ---------------- CRITICALLY AGED INVENTORY (181–365 DAYS) ----------------
+#     df["aged_181_plus"] = df["age_181_270"] + df["age_271_365"]
+#     aged_critical = df[df["aged_181_plus"] > 0]
+
+#     if not aged_critical.empty:
+#         alerts["aged_inventory_181_plus"] = {
+#             "total_units": int(aged_critical["aged_181_plus"].sum()),
+#             "top_skus": (
+#                 aged_critical
+#                 .groupby("sku")["aged_181_plus"]
+#                 .sum()
+#                 .sort_values(ascending=False)
+#                 .head(5)
+#                 .to_dict()
+#             )
+#         }
+
+#     # ---------------- UNFULFILLABLE INVENTORY ----------------
+#     unfulfillable = df[df["unfulfillable_qty"] > 0]
+#     if not unfulfillable.empty:
+#         alerts["unfulfillable_inventory"] = {
+#             "total_units": int(unfulfillable["unfulfillable_qty"].sum()),
+#             "top_skus": (
+#                 unfulfillable
+#                 .groupby("sku")["unfulfillable_qty"]
+#                 .sum()
+#                 .sort_values(ascending=False)
+#                 .head(5)
+#                 .to_dict()
+#             )
+#         }
+
+#     # ---------------- STORAGE COST RISK ----------------
+#     total_storage_cost = float(df["storage_cost_next_month"].sum())
+#     if total_storage_cost > 0:
+#         alerts["storage_cost_risk"] = {
+#             "estimated_next_month_cost": round(total_storage_cost, 2)
+#         }
+
+#     return alerts
+def build_inventory_alerts(df: pd.DataFrame, user_id: int, country: str) -> dict:
+
     if df.empty:
         return {}
 
@@ -851,63 +925,75 @@ def build_inventory_alerts(df: pd.DataFrame) -> dict:
 
     alerts = {}
 
-    # ---------------- LONG-TERM AGED INVENTORY (365+ DAYS) ----------------
-    long_term_aged_df = df[df["age_365_plus"] > 0]
-    if not long_term_aged_df.empty:
-        alerts["long_term_aged_inventory"] = {
-            "total_units": int(long_term_aged_df["age_365_plus"].sum()),
-            "top_skus": (
-                long_term_aged_df
-                .groupby("sku")["age_365_plus"]
-                .sum()
-                .sort_values(ascending=False)
-                .head(5)
-                .to_dict()
-            )
-        }
-
-    # ---------------- CRITICALLY AGED INVENTORY (181–365 DAYS) ----------------
+    # ==========================================================
+    # 1️⃣ AGEING INVENTORY (181+ DAYS)
+    # ==========================================================
     df["aged_181_plus"] = df["age_181_270"] + df["age_271_365"]
-    aged_critical = df[df["aged_181_plus"] > 0]
 
-    if not aged_critical.empty:
-        alerts["aged_inventory_181_plus"] = {
-            "total_units": int(aged_critical["aged_181_plus"].sum()),
-            "top_skus": (
-                aged_critical
-                .groupby("sku")["aged_181_plus"]
-                .sum()
-                .sort_values(ascending=False)
-                .head(5)
-                .to_dict()
-            )
+    ageing_units = int(df["aged_181_plus"].sum())
+    ageing_skus = int((df["aged_181_plus"] > 0).sum())
+
+    alerts["ageing_inventory"] = {
+        "total_units": ageing_units,
+        "total_skus": ageing_skus
+    }
+
+    # ==========================================================
+    # 2️⃣ HIGH COVERAGE RATIO SKUS (>4)
+    # ==========================================================
+    coverage_df = compute_inventory_coverage_ratio(user_id, country)
+
+    if not coverage_df.empty:
+        high_coverage = coverage_df[
+            coverage_df["inventory_coverage_ratio"] > 4
+        ][["sku", "inventory_coverage_ratio"]]
+
+        alerts["high_coverage"] = {
+            "count": int(len(high_coverage)),
+            "skus": high_coverage.to_dict(orient="records")
+        }
+    else:
+        alerts["high_coverage"] = {
+            "count": 0,
+            "skus": []
         }
 
-    # ---------------- UNFULFILLABLE INVENTORY ----------------
-    unfulfillable = df[df["unfulfillable_qty"] > 0]
-    if not unfulfillable.empty:
-        alerts["unfulfillable_inventory"] = {
-            "total_units": int(unfulfillable["unfulfillable_qty"].sum()),
-            "top_skus": (
-                unfulfillable
-                .groupby("sku")["unfulfillable_qty"]
-                .sum()
-                .sort_values(ascending=False)
-                .head(5)
-                .to_dict()
-            )
-        }
+    # ==========================================================
+    # 3️⃣ UNFULFILLABLE % CHECK
+    # ==========================================================
+    total_inventory_units = int(
+        df[
+            [
+                "age_0_90", "age_91_180",
+                "age_181_270", "age_271_365",
+                "age_365_plus"
+            ]
+        ].sum().sum()
+    )
 
-    # ---------------- STORAGE COST RISK ----------------
+    unfulfillable_units = int(df["unfulfillable_qty"].sum())
+
+    unfulfillable_pct = (
+        (unfulfillable_units / total_inventory_units) * 100
+        if total_inventory_units > 0 else 0
+    )
+
+    alerts["unfulfillable"] = {
+        "units": unfulfillable_units,
+        "percentage": round(unfulfillable_pct, 2),
+        "status": "above_1_percent" if unfulfillable_pct > 1 else "below_1_percent"
+    }
+
+    # ==========================================================
+    # 4️⃣ ESTIMATED STORAGE COST
+    # ==========================================================
     total_storage_cost = float(df["storage_cost_next_month"].sum())
-    if total_storage_cost > 0:
-        alerts["storage_cost_risk"] = {
-            "estimated_next_month_cost": round(total_storage_cost, 2)
-        }
+
+    alerts["estimated_storage_cost"] = {
+        "value": round(total_storage_cost, 2)
+    }
 
     return alerts
-
-
 
 def compare_sku_metrics(current: dict, previous: dict) -> dict:
     output = {}
@@ -1337,33 +1423,58 @@ def render_month_end_summary(
             lines.append(f"• Recommendation: {recommendation}")
 
     # =========================================================
-    # INVENTORY
+    # REMAINING SKUS — CONSOLIDATED RECOMMENDATION
+    # =========================================================
+    remaining_rec = sku_actions.get("remaining_skus_recommendation")
+
+    if isinstance(remaining_rec, str) and remaining_rec.strip():
+        lines.append("\nOther SKUs")
+        lines.append(f"• Recommendation: {remaining_rec}")
+
+
+
+    # =========================================================
+    # INVENTORY (5 EXECUTIVE POINTS ONLY)
     # =========================================================
     if inventory_alerts:
         lines.append("\n## INVENTORY")
 
-        if "aged_inventory_181_plus" in inventory_alerts:
+        ageing = inventory_alerts.get("ageing_inventory", {})
+        lines.append(
+            f"• Ageing inventory (181+ days): "
+            f"{ageing.get('total_units',0)} units across "
+            f"{ageing.get('total_skus',0)} SKUs"
+        )
+
+        high_cov = inventory_alerts.get("high_coverage", {})
+        lines.append(
+            f"• High coverage SKUs: "
+            f"{high_cov.get('count',0)} SKUs"
+        )
+
+        unful = inventory_alerts.get("unfulfillable", {})
+        if unful.get("status") == "above_1_percent":
             lines.append(
-                f"• Aged inventory (181+ days): "
-                f"{inventory_alerts['aged_inventory_181_plus']['total_units']} units"
+                f"• Unfulfillable inventory is above 1% of total inventory "
+                f"({unful.get('percentage')}%)"
+            )
+        else:
+            lines.append(
+                f"• Unfulfillable inventory remains below 1% "
+                f"({unful.get('percentage')}%)"
             )
 
-        if "unfulfillable_inventory" in inventory_alerts:
-            lines.append(
-                f"• Unfulfillable inventory: "
-                f"{inventory_alerts['unfulfillable_inventory']['total_units']} units"
-            )
-
-        if "storage_cost_risk" in inventory_alerts:
-            lines.append(
-                f"• Storage cost risk: Estimated "
-                f"{currency_symbol}{inventory_alerts['storage_cost_risk']['estimated_next_month_cost']:.2f} "
-                f"next month"
-            )
+        storage = inventory_alerts.get("estimated_storage_cost", {})
+        lines.append(
+            f"• Est. storage cost next month: "
+            f"{currency_symbol}{storage.get('value',0):,.2f}"
+        )
 
         lines.append(
             "• For detailed inventory insights, please refer to the Inventory Reconciliation tab."
         )
+
+
 
     return "\n".join(lines)
 
@@ -1552,7 +1663,7 @@ def get_or_create_summary(
     if allow_inventory and not single_sku_mode:
         inventory_aged_df = fetch_inventory_aged_by_user(user_id)
         if not inventory_aged_df.empty:
-            inventory_alerts = build_inventory_alerts(inventory_aged_df)
+            inventory_alerts = build_inventory_alerts(inventory_aged_df, user_id=user_id, country=country)
 
     # ============================================================
     # PREVIOUS PERIOD
@@ -1646,10 +1757,19 @@ def get_or_create_summary(
 
         try:
             parsed = json.loads(strategy_raw)
+
+            # Core SKU actions
             sku_actions = parsed.get("sku_actions") or {}
+
+            # ✅ Capture consolidated recommendation for remaining SKUs
+            remaining_skus_rec = parsed.get("remaining_skus_recommendation")
+            if isinstance(remaining_skus_rec, str) and remaining_skus_rec.strip():
+                sku_actions["remaining_skus_recommendation"] = remaining_skus_rec
+
         except Exception:
             print("\n❌ Prompt-2 JSON PARSE FAILED")
             sku_actions = {}
+
 
     # 🔥 SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
     if not allow_recommendations:

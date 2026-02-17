@@ -648,6 +648,16 @@ time_horizon:
 5) focus_skus
 Top 5 SKUs ranked by current CM1 profit.
 
+6) remaining_skus
+All SKUs NOT included in focus_skus.
+
+You must generate ONE consolidated commercial recommendation
+covering the collective behavior of these remaining SKUs.
+
+This is a portfolio-level micro-action,
+NOT individual SKU analysis.
+
+
 ────────────────────────────────────────
 STRUCTURAL CONSISTENCY RULE (CRITICAL)
 ────────────────────────────────────────
@@ -795,18 +805,122 @@ Each SKU MUST contain EXACTLY TWO fields:
    - No recommendations inside journey_summary.
 
 2) recommendation
-   - Maximum 2 sentences.
+   - Maximum 2 SHORT sentences.
+   - Each sentence must contain ONE clear business idea.
    - MUST explicitly align with objective_v2:
        • growth_intent
        • profit_priority
        • inventory_clearance_priority
        • time_horizon = 1_month
-   - Must be decisive and forward-looking.
-   - No numeric targets.
-   - No pricing command language.
-   - Must reflect commercial intent, not analysis recap.
+
+LANGUAGE RULE (CRITICAL):
+
+Write like a practical business operator, NOT a consultant.
+
+You MUST:
+- Use very simple, direct business English.
+- Keep sentences short and clear.
+- State the action intent immediately.
+- Make the meaning understandable in one quick read.
+
+You MUST NOT:
+- Use abstract strategy language.
+- Use phrases like:
+  "balanced approach"
+  "margin discipline"
+  "sustainable trajectory"
+  "optimize momentum"
+  "ensure stability"
+- Write long or complex sentences.
+
+GOOD STYLE EXAMPLES:
+- "Keep supporting volume this month."
+- "Protect per-unit profit and avoid further margin drop."
+- "Focus on stabilizing demand before pushing growth."
+- "Reduce aged stock even if margins fall."
+
+The recommendation must feel like a
+clear dashboard instruction,
+not a strategy presentation.
+
+
+────────────────────────────────────────
+RECOMMENDATION LANGUAGE SIMPLICITY RULE (CRITICAL)
+────────────────────────────────────────
+
+The recommendation must be easy to read and immediately clear
+to a non-analyst business operator.
+
+You MUST:
+
+- Use plain, simple business language.
+- Prefer short, direct sentences.
+- Avoid abstract consultant phrases.
+- State the commercial intent clearly.
+- Keep wording practical and actionable in tone.
+- Ensure the meaning is understandable in one quick read.
+
+You MUST NOT:
+
+- Use complex or academic wording.
+- Stack multiple strategic phrases in one sentence.
+- Use vague language like:
+  "prioritize momentum",
+  "optimize trajectory",
+  "drive structural efficiency",
+  "enable sustainable acceleration".
+- Sound like a strategy presentation or consulting report.
+
+STYLE REQUIREMENTS:
+
+- Maximum 2 short sentences.
+- Each sentence should express ONE clear idea.
+- Prefer concrete wording such as:
+  "continue supporting volume growth"
+  "protect per-unit profit"
+  "avoid further price pressure"
+  "focus on stabilizing demand"
+  "monitor margin risk closely"
+
+TONE BY OBJECTIVE (LANGUAGE ONLY — NOT LOGIC):
+
+- Growth-oriented → confident and forward-moving.
+- Profit-protection → cautious and controlled.
+- Inventory clearance → urgent and decisive.
+- Balanced → calm and practical.
+
+The recommendation must feel like a
+clear business instruction,
+not a strategic essay.
+
 
 No SKU may omit any field.
+
+────────────────────────────────────────
+CONSOLIDATED ACTION FOR REMAINING SKUS (CRITICAL)
+────────────────────────────────────────
+
+In addition to sku_actions for focus_skus,
+you MUST generate ONE extra field:
+
+"remaining_skus_recommendation"
+
+Definition:
+- A single consolidated commercial action
+  covering all SKUs not present in focus_skus.
+- No journey summary.
+- No SKU-level breakdown.
+- Maximum 2 SHORT sentences.
+- Must strictly follow:
+    • objective_v2 alignment
+    • inventory clearance override logic
+    • business_context influence
+    • recommendation language simplicity rules
+    • 1_month time horizon
+
+Purpose:
+Provide clear tactical direction for the
+long-tail SKU portfolio that is not individually analyzed.
 
 
 ────────────────────────────────────────
@@ -908,7 +1022,8 @@ Return EXACTLY:
       ],
       "recommendation": "string"
     }
-  }
+  },
+  "remaining_skus_recommendation": "string"
 }
 
 Rules:
