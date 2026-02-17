@@ -2152,8 +2152,6 @@ def save_pnl_forecast():
 
     # Keep your naming
     new_filename = f"PNLforecast_{user_id}_{month}_{year}.xlsx"
-
-    # ✅ Save to DB instead of UPLOAD_FOLDER
     try:
         save_file_to_db(
             user_id=user_id,

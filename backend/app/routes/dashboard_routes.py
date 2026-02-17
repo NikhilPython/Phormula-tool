@@ -134,7 +134,7 @@ def getDispatchfile():
 
         short_month = effective_month[:3].lower()
 
-        uploads_folder = os.path.abspath(UPLOAD_FOLDER)
+        uploads_folder = os.path.abspath()
 
         def find_latest_file(user_id, ctry):
             pattern = re.compile(
@@ -307,8 +307,7 @@ def getDispatchfile2():
             return jsonify({'error': 'Missing country, month, or year parameters'}), 400
 
 
-        # Ensure UPLOAD_FOLDER is absolute
-        uploads_folder = os.path.abspath(UPLOAD_FOLDER)
+        uploads_folder = os.path.abspath()
 
         filename = f"purchase_order_{user_id}_{country}_{month}_{year}.xlsx"
         file_path = os.path.join(uploads_folder, filename)
@@ -446,7 +445,7 @@ def PO_generated():
     sku_df['sku'] = sku_df['sku'].astype(str).str.strip()
 
     current_month = datetime.now().strftime("%b").lower()
-    inventory_file_path = os.path.join(UPLOAD_FOLDER, f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx')
+    inventory_file_path = os.path.join( f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx')
     if 'inventory_file' in request.files:
         request.files['inventory_file'].save(inventory_file_path)
     if not os.path.exists(inventory_file_path):
@@ -607,7 +606,7 @@ def PO_generated():
 
     # ---------- Save to Excel ----------
     output_path = os.path.join(
-        UPLOAD_FOLDER, f'purchase_order_{user_id}_{country}_{month_name}_{year}.xlsx'
+        f'purchase_order_{user_id}_{country}_{month_name}_{year}.xlsx'
     )
     final_df.to_excel(output_path, index=False)
 
@@ -678,7 +677,7 @@ def global_PO_generated():
     # Check which country files exist
     for country in countries:
         individual_po_path = os.path.join(
-            UPLOAD_FOLDER, f'purchase_order_{user_id}_{country}_{month_name.lower()}_{year}.xlsx'
+         f'purchase_order_{user_id}_{country}_{month_name.lower()}_{year}.xlsx'
         )
         if os.path.exists(individual_po_path):
             existing_files[country] = individual_po_path
@@ -868,7 +867,7 @@ def global_PO_generated():
         file_type = "Global Purchase Order"
 
     # Save to Excel
-    output_path = os.path.join(UPLOAD_FOLDER, f'purchase_order_{user_id}_{file_suffix}_{month_name.lower()}_{year}.xlsx')
+    output_path = os.path.join( f'purchase_order_{user_id}_{file_suffix}_{month_name.lower()}_{year}.xlsx')
     
     try:
         final_df.to_excel(output_path, index=False)
@@ -913,7 +912,7 @@ def get_global_dispatch_file():
     existing_files = {}
     
     for country in countries:
-        country_file_path = os.path.join(UPLOAD_FOLDER, f'purchase_order_{user_id}_{country}_{month.lower()}_{year}.xlsx')
+        country_file_path = os.path.join( f'purchase_order_{user_id}_{country}_{month.lower()}_{year}.xlsx')
         if os.path.exists(country_file_path):
             existing_files[country] = country_file_path
     
@@ -923,12 +922,12 @@ def get_global_dispatch_file():
     
     if len(existing_files) > 1:
         # Multiple countries exist - look for global file
-        file_path = os.path.join(UPLOAD_FOLDER, f'purchase_order_{user_id}_global_{month.lower()}_{year}.xlsx')
+        file_path = os.path.join( f'purchase_order_{user_id}_global_{month.lower()}_{year}.xlsx')
         download_name = f'global_purchase_order_{month}_{year}.xlsx'
     elif len(existing_files) == 1:
         # Single country exists - use that country file or its corresponding generated file
         country = list(existing_files.keys())[0]
-        file_path = os.path.join(UPLOAD_FOLDER, f'purchase_order_{user_id}_{country}_{month.lower()}_{year}.xlsx')
+        file_path = os.path.join( f'purchase_order_{user_id}_{country}_{month.lower()}_{year}.xlsx')
         download_name = f'{country}_purchase_order_{month}_{year}.xlsx'
     else:
         return jsonify({'error': 'No purchase order files found. Please generate country-specific files first.'}), 404
@@ -974,8 +973,7 @@ def getForecastFile():
 
         pattern = re.compile(rf"inventory_forecast_{user_id}_{re.escape(country)}_{short_month}.*\.xlsx$")
 
-        # Search files in UPLOAD_FOLDER
-        matched_files = [f for f in os.listdir(UPLOAD_FOLDER) if pattern.match(f)]
+        matched_files = [f for f in os.listdir() if pattern.match(f)]
 
         if not matched_files:
             return jsonify({'error': 'Forecast file not found. Please generate inventory forecast first!'}), 404
@@ -983,7 +981,7 @@ def getForecastFile():
         # You can pick the latest file if multiple found
         matched_files.sort(reverse=True)  # Sort newest first
         selected_file = matched_files[0]
-        file_path = os.path.join(UPLOAD_FOLDER, selected_file)
+        file_path = os.path.join( selected_file)
 
         return send_file(file_path, as_attachment=False)
 
