@@ -13,6 +13,7 @@ import ExcelJS from "exceljs";
 import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
 import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
 import InfoTip from "@/components/ui/InfoTip";
+import type { TopBottomData } from "@/lib/pnl/topBottom";
 
 const TERM_DEFINITIONS: Record<string, string> = {
   asp: "ASP (Average Selling Price) = Net Sales ÷ Net Units Sold.",
@@ -47,10 +48,18 @@ type SKUtableProps = {
   onExportPayloadChange?: (payload: SkuExportPayload) => void;
   hideDownloadButton?: boolean;
   onDownload?: () => void;
-
+  onRowsChange?: (rows: TableRow[]) => void;
 };
 
-type TableRow = {
+type TopBottomRow = {
+  product_name: string;
+  profit: string;
+  profitMix: string;
+  salesMix: string;
+  cm1_per_unit: string;
+};
+
+export type TableRow = {
   product_name?: string;
   sku?: string;
 
@@ -346,6 +355,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   onExportPayloadChange,
   hideDownloadButton = false,
   onDownload,
+  onRowsChange,
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -545,7 +555,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "amazon_breakdown",
       // label: "Marketplace Fees",
-       label: (
+      label: (
         <>
           Marketplace Fees <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />
         </>
@@ -744,7 +754,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     },
     [SIGN_PLUS, SIGN_MINUS]
   );
-  
+
   const buildSkuSheetModel = useCallback(
     (opts?: { allRows?: boolean }) => {
       const excelCols = buildExcelColumnsFromUI();
@@ -1091,6 +1101,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
         setTableData(normalized);
         setTotals(computeTotalsFromLastRow(normalized));
         setNoDataFound(false);
+
+        // ✅ NEW: expose rows to parent
+        onRowsChange?.(normalized);
+
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         setNoDataFound(true);
@@ -1102,33 +1116,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     return () => ac.abort();
   }, [countryName, buildSkuUrl, token, dummyTableData]);
-
-  /* --------- Export payload --------- */
-  // useEffect(() => {
-  //   if (!tableData || tableData.length === 0) return;
-
-  //   onExportPayloadChange?.({
-  //     tableData,
-  //     totals,
-  //     currencySymbol,
-  //     brandName: userData?.brand_name,
-  //     companyName: userData?.company_name,
-  //     title: "Profit Breakup (SKU Level)",
-  //     periodLabel,
-  //     range,
-  //     countryName,
-  //   });
-  // }, [
-  //   tableData,
-  //   totals,
-  //   currencySymbol,
-  //   userData?.brand_name,
-  //   userData?.company_name,
-  //   periodLabel,
-  //   range,
-  //   countryName,
-  //   onExportPayloadChange,
-  // ]);
 
   useEffect(() => {
     if (!tableData || tableData.length === 0) return;
@@ -1150,24 +1137,96 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [tableData, totals, currencySymbol, userData, periodLabel, range, countryName, onExportPayloadChange, buildSkuSheetModel]);
 
 
-  /* --------- Top/Bottom helpers --------- */
+  const rowsExcludingSpecial = (rows: TableRow[]) =>
+    rows.filter((r) => {
+      const name = String(r.product_name ?? "").trim().toLowerCase();
+      const display = String(getDisplayProductNameFromRow(r)).trim().toLowerCase();
+      return name !== "total" && name !== "others" && display !== "total" && display !== "others";
+    });
+
+  const buildTopBottom = useCallback(
+    (data: TableRow[], mode: "top" | "bottom"): TopBottomData => {
+      const rows = rowsExcludingSpecial(data);
+
+      const sorted = [...rows].sort((a, b) => {
+        const ap = toNumber(a.profit);
+        const bp = toNumber(b.profit);
+        return mode === "top" ? bp - ap : ap - bp;
+      });
+
+      const pick = sorted.slice(0, 5);
+
+      const totalProfit = pick.reduce((s, r) => s + toNumber(r.profit), 0);
+      const totalProfitMix = pick.reduce((s, r) => s + toNumber(r.profit_mix), 0);
+      const totalSalesMix = pick.reduce((s, r) => s + toNumber(r.sales_mix), 0);
+
+      const totalNetUnits = pick.reduce((s, r) => s + toNumber(r.net_units_sold), 0);
+      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+
+      const formatted = pick.map((item) => {
+        const netUnits = toNumber(item.net_units_sold);
+        const cm1PerUnit = netUnits > 0 ? toNumber(item.profit) / netUnits : 0;
+
+        return {
+          product_name: getDisplayProductNameFromRow(item),
+          profit: toNumber(item.profit).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          profitMix: toNumber(item.profit_mix).toFixed(2),
+          salesMix: toNumber(item.sales_mix).toFixed(2),
+          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        };
+      });
+
+      return {
+        rows: formatted,
+        totals: {
+          profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          profitMix: totalProfitMix.toFixed(2),
+          salesMix: totalSalesMix.toFixed(2),
+          avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        },
+      };
+    },
+    [getDisplayProductNameFromRow]
+  );
+
+  const topData = useMemo(() => buildTopBottom(tableData, "top"), [tableData, buildTopBottom]);
+  const bottomData = useMemo(() => buildTopBottom(tableData, "bottom"), [tableData, buildTopBottom]);
+
   // const getTop5Profitable = useCallback(
   //   (data: TableRow[]) => {
-  //     const rows = data.slice(0, -1);
+  //     const rows = data.slice(0, -1); // exclude Total row
   //     const top5 = [...rows].sort((a, b) => (b.profit || 0) - (a.profit || 0)).slice(0, 5);
 
   //     const totalProfit = top5.reduce((s, r) => s + (r.profit || 0), 0);
   //     const totalProfitMix = top5.reduce((s, r) => s + (r.profit_mix || 0), 0);
   //     const totalSalesMix = top5.reduce((s, r) => s + (r.sales_mix || 0), 0);
-  //     const totalUnitWise = top5.reduce((s, r) => s + (r.unit_wise_profitability || 0), 0);
 
-  //     const formatted = top5.map((item) => ({
-  //       product_name: getDisplayProductNameFromRow(item),
-  //       profit: (item.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-  //       profitMix: (item.profit_mix || 0).toFixed(2),
-  //       salesMix: (item.sales_mix || 0).toFixed(2),
-  //       unit_wise_profitability: (item.unit_wise_profitability || 0).toFixed(2),
-  //     }));
+  //     // ✅ avg CM1 across top5 = total CM1 profit / total net units sold
+  //     const totalNetUnits = top5.reduce((s, r) => s + (r.net_units_sold || 0), 0);
+  //     const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+
+  //     const formatted = top5.map((item) => {
+  //       const netUnits = item.net_units_sold || 0;
+
+  //       // ✅ per-row CM1 per unit
+  //       const cm1PerUnit = netUnits > 0 ? (item.profit || 0) / netUnits : 0;
+
+  //       return {
+  //         product_name: getDisplayProductNameFromRow(item),
+  //         profit: (item.profit || 0).toLocaleString(undefined, {
+  //           minimumFractionDigits: 2,
+  //           maximumFractionDigits: 2,
+  //         }),
+  //         profitMix: (item.profit_mix || 0).toFixed(2),
+  //         salesMix: (item.sales_mix || 0).toFixed(2),
+
+  //         // ✅ SHOW THIS IN TABLE ROWS
+  //         cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
+  //           minimumFractionDigits: 2,
+  //           maximumFractionDigits: 2,
+  //         }),
+  //       };
+  //     });
 
   //     return {
   //       rows: formatted,
@@ -1175,7 +1234,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
   //         profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
   //         profitMix: totalProfitMix.toFixed(2),
   //         salesMix: totalSalesMix.toFixed(2),
-  //         unit_wise_profitability: totalUnitWise.toFixed(2),
+
+  //         // ✅ SHOW THIS IN TOTAL ROW (average of the 5)
+  //         avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
   //       },
   //     };
   //   },
@@ -1184,21 +1245,39 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   // const getBottom5Profitable = useCallback(
   //   (data: TableRow[]) => {
-  //     const rows = data.slice(0, -1);
+  //     const rows = data.slice(0, -1); // exclude Total row
   //     const bottom5 = [...rows].sort((a, b) => (a.profit || 0) - (b.profit || 0)).slice(0, 5);
 
   //     const totalProfit = bottom5.reduce((s, r) => s + (r.profit || 0), 0);
   //     const totalProfitMix = bottom5.reduce((s, r) => s + (r.profit_mix || 0), 0);
   //     const totalSalesMix = bottom5.reduce((s, r) => s + (r.sales_mix || 0), 0);
-  //     const totalUnitWise = bottom5.reduce((s, r) => s + (r.unit_wise_profitability || 0), 0);
 
-  //     const formatted = bottom5.map((item) => ({
-  //       product_name: getDisplayProductNameFromRow(item),
-  //       profit: (item.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-  //       profitMix: (item.profit_mix || 0).toFixed(2),
-  //       salesMix: (item.sales_mix || 0).toFixed(2),
-  //       unit_wise_profitability: (item.unit_wise_profitability || 0).toFixed(2),
-  //     }));
+  //     // ✅ avg CM1 across bottom5 = total CM1 profit / total net units sold
+  //     const totalNetUnits = bottom5.reduce((s, r) => s + (r.net_units_sold || 0), 0);
+  //     const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+
+  //     const formatted = bottom5.map((item) => {
+  //       const netUnits = item.net_units_sold || 0;
+
+  //       // ✅ per-row CM1 per unit
+  //       const cm1PerUnit = netUnits > 0 ? (item.profit || 0) / netUnits : 0;
+
+  //       return {
+  //         product_name: getDisplayProductNameFromRow(item),
+  //         profit: (item.profit || 0).toLocaleString(undefined, {
+  //           minimumFractionDigits: 2,
+  //           maximumFractionDigits: 2,
+  //         }),
+  //         profitMix: (item.profit_mix || 0).toFixed(2),
+  //         salesMix: (item.sales_mix || 0).toFixed(2),
+
+  //         // ✅ SHOW THIS IN TABLE ROWS
+  //         cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
+  //           minimumFractionDigits: 2,
+  //           maximumFractionDigits: 2,
+  //         }),
+  //       };
+  //     });
 
   //     return {
   //       rows: formatted,
@@ -1206,7 +1285,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
   //         profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
   //         profitMix: totalProfitMix.toFixed(2),
   //         salesMix: totalSalesMix.toFixed(2),
-  //         unit_wise_profitability: totalUnitWise.toFixed(2),
+
+  //         // ✅ SHOW THIS IN TOTAL ROW (average of the 5)
+  //         avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
   //       },
   //     };
   //   },
@@ -1214,111 +1295,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
   // );
 
 
-  const getTop5Profitable = useCallback(
-    (data: TableRow[]) => {
-      const rows = data.slice(0, -1); // exclude Total row
-      const top5 = [...rows].sort((a, b) => (b.profit || 0) - (a.profit || 0)).slice(0, 5);
-
-      const totalProfit = top5.reduce((s, r) => s + (r.profit || 0), 0);
-      const totalProfitMix = top5.reduce((s, r) => s + (r.profit_mix || 0), 0);
-      const totalSalesMix = top5.reduce((s, r) => s + (r.sales_mix || 0), 0);
-
-      // ✅ avg CM1 across top5 = total CM1 profit / total net units sold
-      const totalNetUnits = top5.reduce((s, r) => s + (r.net_units_sold || 0), 0);
-      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
-
-      const formatted = top5.map((item) => {
-        const netUnits = item.net_units_sold || 0;
-
-        // ✅ per-row CM1 per unit
-        const cm1PerUnit = netUnits > 0 ? (item.profit || 0) / netUnits : 0;
-
-        return {
-          product_name: getDisplayProductNameFromRow(item),
-          profit: (item.profit || 0).toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }),
-          profitMix: (item.profit_mix || 0).toFixed(2),
-          salesMix: (item.sales_mix || 0).toFixed(2),
-
-          // ✅ SHOW THIS IN TABLE ROWS
-          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }),
-        };
-      });
-
-      return {
-        rows: formatted,
-        totals: {
-          profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          profitMix: totalProfitMix.toFixed(2),
-          salesMix: totalSalesMix.toFixed(2),
-
-          // ✅ SHOW THIS IN TOTAL ROW (average of the 5)
-          avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        },
-      };
-    },
-    [getDisplayProductNameFromRow]
-  );
-
-  const getBottom5Profitable = useCallback(
-    (data: TableRow[]) => {
-      const rows = data.slice(0, -1); // exclude Total row
-      const bottom5 = [...rows].sort((a, b) => (a.profit || 0) - (b.profit || 0)).slice(0, 5);
-
-      const totalProfit = bottom5.reduce((s, r) => s + (r.profit || 0), 0);
-      const totalProfitMix = bottom5.reduce((s, r) => s + (r.profit_mix || 0), 0);
-      const totalSalesMix = bottom5.reduce((s, r) => s + (r.sales_mix || 0), 0);
-
-      // ✅ avg CM1 across bottom5 = total CM1 profit / total net units sold
-      const totalNetUnits = bottom5.reduce((s, r) => s + (r.net_units_sold || 0), 0);
-      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
-
-      const formatted = bottom5.map((item) => {
-        const netUnits = item.net_units_sold || 0;
-
-        // ✅ per-row CM1 per unit
-        const cm1PerUnit = netUnits > 0 ? (item.profit || 0) / netUnits : 0;
-
-        return {
-          product_name: getDisplayProductNameFromRow(item),
-          profit: (item.profit || 0).toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }),
-          profitMix: (item.profit_mix || 0).toFixed(2),
-          salesMix: (item.sales_mix || 0).toFixed(2),
-
-          // ✅ SHOW THIS IN TABLE ROWS
-          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }),
-        };
-      });
-
-      return {
-        rows: formatted,
-        totals: {
-          profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          profitMix: totalProfitMix.toFixed(2),
-          salesMix: totalSalesMix.toFixed(2),
-
-          // ✅ SHOW THIS IN TOTAL ROW (average of the 5)
-          avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        },
-      };
-    },
-    [getDisplayProductNameFromRow]
-  );
-
-
-  const topData = useMemo(() => getTop5Profitable(tableData), [tableData, getTop5Profitable]);
-  const bottomData = useMemo(() => getBottom5Profitable(tableData), [tableData, getBottom5Profitable]);
+  // const topData = useMemo(() => getTop5Profitable(tableData), [tableData, getTop5Profitable]);
+  // const bottomData = useMemo(() => getBottom5Profitable(tableData), [tableData, getBottom5Profitable]);
 
   /* --------- UI handlers --------- */
   const handleProductClick = useCallback((product: string) => {
@@ -1326,201 +1304,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
     setShowModal(true);
   }, []);
 
+  const handleDownloadExcel = useCallback(async () => {
+    const model = buildSkuSheetModel({ allRows: true });
 
-  /* --------- Excel Download --------- */
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("SKU Profitability");
 
-  // const handleDownloadExcel = useCallback(() => {
-  //   const wb = XLSX.utils.book_new();
+    buildSkuWorksheetFromModel(ws, model);
 
-  //   const excelCols = buildExcelColumnsFromUI();
-  //   const colKeys = excelCols.map((c) => c.key);
+    const formattedMonthYear =
+      range === "monthly"
+        ? `${convertToAbbreviatedMonth(month)}'${yearShort}`
+        : range === "quarterly"
+          ? `${quarter}'${yearShort}`
+          : `${year}`;
 
-  //   // Header row from UI labels
-  //   const headerRow: Record<string, string> = {};
-  //   excelCols.forEach((c) => {
-  //     headerRow[c.key] = c.label;
-  //   });
+    const filename = `Amazon-PnL-${formattedMonthYear}.xlsx`;
 
-  //   // Build data rows
-  //   const tableDataForExcel = tableData.map((row, rowIndex) => {
-  //     const rowData: Record<string, string | number> = {};
-
-  //     colKeys.forEach((key) => {
-  //       let value: any = (row as any)[key];
-
-  //       // ✅ SNO: integer, blank for Total row
-  //       if (key === "sno") {
-  //         const name = getDisplayProductNameFromRow(row);
-  //         const isTotal = String(name).trim().toLowerCase() === "total";
-  //         value = isTotal ? "" : rowIndex + 1; // integer
-  //       }
-
-  //       // Product name matches UI fallback
-  //       if (key === "product_name") value = getDisplayProductNameFromRow(row);
-
-  //       // gross_sales -> product_sales mapping
-  //       if (key === "product_sales") value = row.product_sales ?? (row as any).gross_sales ?? 0;
-
-  //       // other_transactions mapping
-  //       if (key === "other_transactions") value = row.other_transactions ?? row.other_transaction_fees ?? 0;
-
-  //       // quantity meaning units_sold (if present in col list)
-  //       if (key === "quantity") value = row.quantity ?? row.units_sold ?? 0;
-
-  //       // Pre-rounding
-  //       if (typeof value === "number") {
-  //         if (Math.abs(value) < 1e-10) value = 0;
-
-  //         // integer-only fields
-  //         if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
-  //           value = Math.trunc(value);
-  //         } else {
-  //           value = Number(value.toFixed(2));
-  //         }
-  //       }
-
-  //       // profit_percentage stored as fraction for excel %
-  //       if (key === "profit_percentage" && typeof value === "number") value = Number(value) / 100;
-
-  //       rowData[key] = typeof value === "number" && isNaN(value) ? "-" : value;
-  //     });
-
-  //     return rowData;
-  //   });
-
-  //   const extraRows = getExtraRows();
-
-  //   const fullData = [
-  //     ...extraRows.map((row) => ({ product_name: row[0] })),
-  //     {}, // blank line
-  //     headerRow,
-  //     ...tableDataForExcel,
-  //   ];
-
-  //   const ws = XLSX.utils.json_to_sheet(fullData, { skipHeader: true });
-
-  //   // ---------------------------
-  //   // ✅ FORCE EXCEL FORMATTING
-  //   // ---------------------------
-
-  //   const EXTRA_ROWS_COUNT = extraRows.length;
-  //   const BLANK_ROW_INDEX = EXTRA_ROWS_COUNT;            // the {} blank row
-  //   const HEADER_ROW_INDEX = EXTRA_ROWS_COUNT + 1;       // headerRow position
-  //   const FIRST_DATA_ROW_INDEX = HEADER_ROW_INDEX + 1;   // data starts after header
-
-  //   // Find the sno column index in the worksheet (based on colKeys)
-  //   const SNO_COL_INDEX = colKeys.indexOf("sno");
-
-  //   if (ws["!ref"]) {
-  //     const rng = XLSX.utils.decode_range(ws["!ref"]);
-
-  //     // ✅ 1) Force sno column (data rows only) to integer format "0"
-  //     if (SNO_COL_INDEX >= 0) {
-  //       for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
-  //         const addr = XLSX.utils.encode_cell({ r, c: SNO_COL_INDEX });
-  //         const cell = ws[addr];
-  //         if (!cell) continue;
-
-  //         // keep blanks (like Total row sno "")
-  //         if (cell.v === "" || cell.v === null || cell.v === undefined) continue;
-
-  //         const n = Number(cell.v);
-  //         if (!Number.isFinite(n)) continue;
-
-  //         cell.t = "n";
-  //         cell.v = Math.trunc(n);
-  //         cell.z = "0"; // ✅ no decimals
-  //       }
-  //     }
-
-  //     // ✅ 2) Apply formats to other numeric columns (data rows only)
-  //     for (let r = FIRST_DATA_ROW_INDEX; r <= rng.e.r; r++) {
-  //       for (let c = 0; c <= rng.e.c; c++) {
-  //         const addr = XLSX.utils.encode_cell({ r, c });
-  //         const cell = ws[addr];
-  //         if (!cell) continue;
-
-  //         const key = colKeys[c];
-  //         if (!key) continue;
-
-  //         // sno already handled
-  //         if (key === "sno") continue;
-
-  //         if (typeof cell.v !== "number") continue;
-
-  //         cell.t = "n";
-  //         if (key === "profit_percentage") cell.z = "0.00%";
-  //         else if (["units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) cell.z = "0";
-  //         else cell.z = "0.00";
-  //       }
-  //     }
-  //   }
-
-  //   XLSX.utils.book_append_sheet(wb, ws, "SKU Profitability");
-
-  //   const filename =
-  //     range === "monthly"
-  //       ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
-  //       : range === "quarterly"
-  //         ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
-  //         : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
-
-  //   XLSX.writeFile(wb, filename);
-  // }, [
-  //   tableData,
-  //   getExtraRows,
-  //   range,
-  //   month,
-  //   yearShort,
-  //   quarter,
-  //   getDisplayProductNameFromRow,
-  //   buildExcelColumnsFromUI,
-  // ]);
-
-  // ✅ FULL UPDATED FUNCTION (drop-in replace your current handleDownloadExcel)
-
-  // const handleDownloadExcel = useCallback(async () => {
-  //   // ✅ export ALL rows (all SKUs)
-  //   const model = buildSkuSheetModel({ allRows: true });
-
-  //   const wb = new ExcelJS.Workbook();
-  //   const ws = wb.addWorksheet("SKU Profitability");
-
-  //   buildSkuWorksheetFromModel(ws, model);
-
-  //   const filename =
-  //     range === "monthly"
-  //       ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}.xlsx`
-  //       : range === "quarterly"
-  //         ? `SKU-wise Profitability-${quarter}'${yearShort}.xlsx`
-  //         : `SKU-wise Profitability-Year'${yearShort}.xlsx`;
-
-  //   await downloadWorkbookAsXlsx(wb, filename);
-  //   onDownload?.();
-  // }, [buildSkuSheetModel, range, month, quarter, yearShort, onDownload]);
-
-const handleDownloadExcel = useCallback(async () => {
-  // ✅ export ALL rows (all SKUs)
-  const model = buildSkuSheetModel({ allRows: true });
-
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("SKU Profitability");
-
-  buildSkuWorksheetFromModel(ws, model);
-
-  // ✅ Filename must match Dropdowns.tsx pattern:
-  // Amazon-PnL-${formattedMonthYear}.xlsx
-  const formattedMonthYear =
-    range === "monthly"
-      ? `${convertToAbbreviatedMonth(month)}'${yearShort}` // Dec'25
-      : range === "quarterly"
-        ? `${quarter}'${yearShort}` // Q4'25
-        : `${year}`; // 2025
-
-  const filename = `Amazon-PnL-${formattedMonthYear}.xlsx`;
-
-  await downloadWorkbookAsXlsx(wb, filename);
-}, [buildSkuSheetModel, range, month, quarter, year, yearShort, onDownload]);
+    await downloadWorkbookAsXlsx(wb, filename);
+  }, [buildSkuSheetModel, range, month, quarter, year, yearShort, onDownload]);
 
 
   /* --------- Render guards --------- */
@@ -1779,9 +1581,9 @@ const handleDownloadExcel = useCallback(async () => {
       </div>
 
       {/* Top & Bottom tables */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+      {/* <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <div className="flex flex-col justify-between gap-7 md:gap-3 text-[#414042] md:flex-row min-w-0">
-          {/* Top 5 */}
+      
           <div className="flex-1 min-w-0">
             <div className="flex gap-2 text-lg sm:text-2xl md:text-2xl mb-2 md:mb-4 font-bold">
               <PageBreadcrumb pageTitle="Most 5 Profitable Products" variant="page" align="left" textSize="2xl" />
@@ -1854,7 +1656,6 @@ const handleDownloadExcel = useCallback(async () => {
             </div>
           </div>
 
-          {/* Bottom 5 */}
           <div className="flex-1 min-w-0">
             <div className="flex gap-2 text-lg sm:text-2xl md:text-2xl mb-2 md:mb-4 font-bold">
               <PageBreadcrumb pageTitle="Least 5 Profitable Products" variant="page" align="left" textSize="2xl" />
@@ -1928,7 +1729,7 @@ const handleDownloadExcel = useCallback(async () => {
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {showModal && selectedProduct && (
         <Productinfoinpopup
