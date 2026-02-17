@@ -1,4 +1,3 @@
-#############################################################################################################################3333
 
 from flask import jsonify
 from sqlalchemy import create_engine, MetaData, Table, text, inspect
@@ -9,6 +8,7 @@ from app.models.user_models import CountryProfile
 from dotenv import load_dotenv
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -37,7 +37,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # ChatGPT adjudicator key
 ROLLING_HISTORY_MONTHS = 4  # 👈 compare last 4 months of actuals in ChatGPT/local adjudicator
 
 # ============================== SESSIONS & MAPS ==============================
-def create_user_session(db_url):
+def create_user_session_phormula(db_url):
     user_engine = create_engine(db_url)
     UserSession = sessionmaker(bind=user_engine)
     return UserSession()
@@ -1255,6 +1255,10 @@ def fetch_skuwise_monthly_sales(engine, meta, user_id, country, dt):
         return pd.DataFrame(columns=['sku', 'total_quantity', 'Label'])
 
 def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool = True):
+    import time
+    start_time = time.time()
+    print("\n========== FORECAST START ==========")
+
     engine = create_engine(db_url)
     engine1 = create_engine(db_url2)  # Amazon DB (has monthwise_inventory)
     meta = MetaData()
@@ -1322,10 +1326,12 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     # 🚀 Use MAX CPU POWER (cpu_count() - 1)
     # ---------------------------------------------------------
     max_workers = max(1, cpu_count() - 1)
+    print("Using workers:", max_workers)
 
     # ---------------------------------------------------------
     # 🔵 ARIMA PARALLEL EXECUTION
     # ---------------------------------------------------------
+    print("\n--- ARIMA START ---")
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(
@@ -1343,6 +1349,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
                     arima_results[sku] = result
             except Exception as e:
                 print(f"[ARIMA][ERROR] SKU={sku}: {e}")
+    print("--- ARIMA COMPLETE ---")            
 
     # ---------------------------------------------------------
     # HYBRID ENABLE CHECK
@@ -1356,6 +1363,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     # 🔴 HYBRID PARALLEL EXECUTION
     # ---------------------------------------------------------
     if hybrid_globally_enabled:
+        print("\n--- HYBRID START ---")
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futs = {
                 sku: executor.submit(
@@ -1374,9 +1382,12 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
                         print(f"[HYBRID] SKU={sku}: returned None (fallback to ARIMA)")
                 except Exception as e:
                     print(f"[HYBRID][ERROR] SKU={sku}: {e} (fallback to ARIMA)")
+        print("--- HYBRID COMPLETE ---")            
 
     else:
         print("[HYBRID] Disabled — ARIMA-only path based on streak gate.")
+
+    print("\n=== MODELING COMPLETE ===")    
 
     # ----------------- Adjudicate & assemble -----------------
     for sku in unique_skus:
@@ -1798,6 +1809,8 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     inv_buf = BytesIO()
     inventory_forecast.to_excel(inv_buf, index=False, engine='openpyxl')
     inv_buf.seek(0)
+    print("\n========== FORECAST FINISHED ==========")
+    print("Total time:", round(time.time() - start_time, 2), "seconds\n")
     inventory_bytes = inv_buf.getvalue()
 
     # IMPORTANT: utils should not jsonify; return raw objects to the route
@@ -1809,6 +1822,558 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
         "model_winner": model_winner,  # optional (useful for debugging)
     }
 
+# def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool = True):
+#     import time
+#     start_time = time.time()
+
+    
+#     print("\n========== FORECAST START ==========")
+
+#     engine = create_engine(db_url)
+#     engine1 = create_engine(db_url2)
+#     meta = MetaData()
+#     meta.reflect(bind=engine)
+#     meta.reflect(bind=engine1)
+
+#     # ----------------- helpers -----------------
+#     def _norm_sku(x: str) -> str:
+#         if x is None:
+#             return ""
+#         return re.sub(r"\s+", "", str(x)).upper()
+
+#     def _unique_cols(cols):
+#         return list(dict.fromkeys(cols))
+
+#     def _to_monthly_series(df_m: pd.DataFrame) -> pd.Series:
+#         if df_m is None or df_m.empty:
+#             return pd.Series(dtype=float)
+#         df_m = df_m.copy()
+#         month_idx = (
+#             pd.to_datetime(df_m['Month'], errors='coerce')
+#             .dt.to_period('M')
+#             .dt.to_timestamp('M')
+#         )
+#         good = ~month_idx.isna()
+#         if not good.any():
+#             return pd.Series(dtype=float)
+#         s = pd.Series(
+#             pd.to_numeric(df_m.loc[good, 'Forecast'], errors='coerce'),
+#             index=month_idx[good]
+#         )
+#         s = s.dropna()
+#         s = s[~s.index.duplicated(keep='first')].sort_index()
+#         return s
+
+#     # ----------------- inputs & profile -----------------
+#     req_year = int(year)
+#     req_month_num = MONTHS_MAP[mv.lower()]
+
+#     last_training_ts = new_df.index.max()
+#     global_last_training_month = last_training_ts.to_period('M')
+
+#     unique_skus = new_df['sku'].unique()
+#     print("Total SKUs:", len(unique_skus))
+
+#     all_forecasts = pd.DataFrame()
+
+#     profile = CountryProfile.query.filter_by(user_id=user_id, country=country).first()
+#     if not profile:
+#         raise ValueError(f"Country profile not found for user {user_id} and country {country}")
+
+#     transit_time = int(profile.transit_time)
+#     stock_unit = int(profile.stock_unit)
+
+#     # ----------------- ARIMA / HYBRID -----------------
+#     tasks = [(sku, new_df.copy()) for sku in unique_skus]
+#     model_winner = {}
+
+#     max_workers = max(1, cpu_count() - 1)
+#     print("Using workers:", max_workers)
+
+#     # ================= ARIMA =================
+#     print("\n--- ARIMA START ---")
+
+#     with ProcessPoolExecutor(max_workers=max_workers) as executor:
+#         futures = {
+#             executor.submit(
+#                 forecast_next_two_months_with_append, sku, df, global_last_training_month
+#             ): (sku, df)
+#             for sku, df in tasks
+#         }
+
+#         arima_results = {}
+
+#         for i, future in enumerate(as_completed(futures), 1):
+#             sku, df = futures[future]
+#             print(f"[ARIMA] Waiting {i}/{len(futures)} → SKU={sku}")
+
+#             try:
+#                 result = future.result()
+#                 print(f"[ARIMA] Finished SKU={sku}")
+
+#                 if result is not None:
+#                     arima_results[sku] = result
+#             except Exception as e:
+#                 print(f"[ARIMA][ERROR] SKU={sku}: {e}")
+
+#     print("--- ARIMA COMPLETE ---")
+
+#     # ================= HYBRID =================
+#     hybrid_results = {}
+
+#     if hybrid_allowed:
+#         print("\n--- HYBRID START ---")
+
+#         with ProcessPoolExecutor(max_workers=max_workers) as executor:
+#             futs = {
+#                 sku: executor.submit(
+#                     _hybrid_forecast_for_sku,
+#                     sku, new_df.copy(), transit_time, stock_unit
+#                 )
+#                 for sku in unique_skus
+#             }
+
+#             for i, (sku, fut) in enumerate(futs.items(), 1):
+#                 print(f"[HYBRID] Waiting {i}/{len(futs)} → SKU={sku}")
+
+#                 try:
+#                     res = fut.result()
+#                     print(f"[HYBRID] Finished SKU={sku}")
+
+#                     if res is not None:
+#                         hybrid_results[sku] = res
+#                     else:
+#                         print(f"[HYBRID] SKU={sku}: returned None (fallback to ARIMA)")
+#                 except Exception as e:
+#                     print(f"[HYBRID][ERROR] SKU={sku}: {e} (fallback to ARIMA)")
+
+#         print("--- HYBRID COMPLETE ---")
+#     else:
+#         print("[HYBRID] Disabled")
+
+#     print("\n=== MODELING COMPLETE ===")
+
+#     # ----------------- Adjudicate & assemble -----------------
+#     for sku in unique_skus:
+#         arima_res = arima_results.get(sku)
+#         hybrid_res = hybrid_results.get(sku)
+
+#         if (arima_res is None) and (hybrid_res is None):
+#             continue
+
+#         s_daily = new_df[new_df['sku'] == sku][['quantity']]
+#         s_daily = s_daily.resample('D').sum().astype(float).fillna(0.0)['quantity']
+#         h_start = s_daily.index.max() - pd.DateOffset(months=ROLLING_HISTORY_MONTHS)
+#         lastN_daily = s_daily[s_daily.index > h_start]
+
+#         if (arima_res is not None) and (hybrid_res is not None):
+#             _, a_monthly_df, _ = arima_res
+#             _, h_monthly_df, _ = hybrid_res
+
+#             lastN_m = _mk_monthly(lastN_daily).tail(ROLLING_HISTORY_MONTHS).astype(float).tolist()
+#             a_list = a_monthly_df.sort_values('Month')['Forecast'].astype(float).tolist()[:3]
+#             h_list = h_monthly_df.sort_values('Month')['Forecast'].astype(float).tolist()[:4]
+
+#             gpt_choice = call_chatgpt_adjudicator(
+#                 lastN_months=lastN_m,
+#                 arima_months=a_list,
+#                 hybrid_months=h_list,
+#                 transit_time=transit_time,
+#                 stock_unit=stock_unit,
+#                 sku=sku,
+#                 country=country
+#             )
+
+#             winner = gpt_choice if gpt_choice in ("ARIMA", "HYBRID") \
+#                 else _adjudicate_by_history_trend(lastN_daily, _to_monthly_series(a_monthly_df), _to_monthly_series(h_monthly_df))
+
+#             model_winner[sku] = winner
+#             chosen_df = h_monthly_df if winner == 'HYBRID' else a_monthly_df
+
+#         elif arima_res is not None:
+#             model_winner[sku] = 'ARIMA'
+#             _, chosen_df, _ = arima_res
+#         else:
+#             model_winner[sku] = 'HYBRID'
+#             _, chosen_df, _ = hybrid_res
+
+#         chosen_df_sorted = chosen_df.sort_values('Month').copy()
+#         if model_winner.get(sku) == 'ARIMA':
+#             chosen_df_sorted = chosen_df_sorted.iloc[:3]
+
+#         price_gbp_value = new_df[new_df['sku'] == sku]['price_in_gbp'].iloc[0] if not new_df[new_df['sku'] == sku].empty else None
+
+#         chosen_df_sorted['price_in_gbp'] = price_gbp_value
+#         chosen_df_sorted['sku'] = sku
+#         chosen_df_sorted['Forecast'] = (
+#             pd.to_numeric(chosen_df_sorted['Forecast'], errors='coerce')
+#             .fillna(0).pipe(np.rint).astype(int)
+#         )
+
+#         all_forecasts = pd.concat(
+#             [all_forecasts, chosen_df_sorted[['Month', 'Forecast', 'sku', 'price_in_gbp']]],
+#             ignore_index=True
+#         )
+
+#     print("\n--- Excel generation ---")
+
+#     forecast_filename = f'forecasts_for_{user_id}_{country}.xlsx'
+#     _af = all_forecasts.rename(columns={'Month': 'month', 'Forecast': 'forecast'})
+
+#     forecast_buf = BytesIO()
+#     _af[['sku', 'month', 'forecast', 'price_in_gbp']].to_excel(forecast_buf, index=False, engine='openpyxl')
+#     forecast_buf.seek(0)
+#     forecast_bytes = forecast_buf.getvalue()
+
+#     print("Excel built successfully")
+
+#     print("\n========== FORECAST FINISHED ==========")
+#     print("Total time:", round(time.time() - start_time, 2), "seconds\n")
+
+#     return {
+#         "forecast_filename": forecast_filename,
+#         "forecast_bytes": forecast_bytes,
+#         "inventory_filename": f"inventory_forecast_{user_id}_{country}_{datetime.now().strftime('%b').lower()}+2.xlsx",
+#         "inventory_bytes": forecast_bytes,
+#         "model_winner": model_winner,
+#     }
+    
+# def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool = True):
+#     import time
+#     start_time = time.time()
+
+#     print("\n========== FORECAST START ==========")
+
+#     engine = create_engine(db_url)
+#     engine1 = create_engine(db_url2)
+#     meta = MetaData()
+#     meta.reflect(bind=engine)
+#     meta.reflect(bind=engine1)
+
+#     # ----------------- helpers -----------------
+#     def _unique_cols(cols):
+#         return list(dict.fromkeys(cols))
+
+#     def _to_monthly_series(df_m: pd.DataFrame) -> pd.Series:
+#         if df_m is None or df_m.empty:
+#             return pd.Series(dtype=float)
+
+#         month_idx = (
+#             pd.to_datetime(df_m["Month"], errors="coerce")
+#             .dt.to_period("M")
+#             .dt.to_timestamp("M")
+#         )
+
+#         good = ~month_idx.isna()
+#         if not good.any():
+#             return pd.Series(dtype=float)
+
+#         s = pd.Series(
+#             pd.to_numeric(df_m.loc[good, "Forecast"], errors="coerce"),
+#             index=month_idx[good],
+#         ).dropna()
+
+#         return s[~s.index.duplicated(keep="first")].sort_index()
+
+#     # ----------------- inputs -----------------
+#     req_year = int(year)
+#     req_month_num = MONTHS_MAP[mv.lower()]
+
+#     last_training_ts = new_df.index.max()
+#     global_last_training_month = last_training_ts.to_period("M")
+
+#     unique_skus = new_df["sku"].unique()
+#     print("Total SKUs:", len(unique_skus))
+
+#     profile = CountryProfile.query.filter_by(user_id=user_id, country=country).first()
+#     if not profile:
+#         raise ValueError("Country profile not found")
+
+#     transit_time = int(profile.transit_time)
+#     stock_unit = int(profile.stock_unit)
+
+#     # ==========================================================
+#     # 🚀 PARALLEL MODELING (CPU-BOUND → ProcessPoolExecutor)
+#     # ==========================================================
+#     tasks = [(sku, new_df.copy()) for sku in unique_skus]
+#     max_workers = max(1, cpu_count() - 1)
+#     print("Using workers:", max_workers)
+
+#     # ----------------- ARIMA -----------------
+#     print("\n--- ARIMA START ---")
+
+#     with ProcessPoolExecutor(max_workers=max_workers) as executor:
+#         futures = {
+#             executor.submit(
+#                 forecast_next_two_months_with_append, sku, df, global_last_training_month
+#             ): sku
+#             for sku, df in tasks
+#         }
+
+#         arima_results = {}
+#         for i, future in enumerate(as_completed(futures), 1):
+#             sku = futures[future]
+#             print(f"[ARIMA] {i}/{len(futures)} → {sku}")
+
+#             try:
+#                 res = future.result()
+#                 if res is not None:
+#                     arima_results[sku] = res
+#             except Exception as e:
+#                 print(f"[ARIMA][ERROR] {sku}: {e}")
+
+#     print("--- ARIMA COMPLETE ---")
+
+#     # ----------------- HYBRID -----------------
+#     hybrid_results = {}
+
+#     if hybrid_allowed:
+#         print("\n--- HYBRID START ---")
+
+#         with ProcessPoolExecutor(max_workers=max_workers) as executor:
+#             futures = {
+#                 executor.submit(
+#                     _hybrid_forecast_for_sku,
+#                     sku,
+#                     new_df.copy(),
+#                     transit_time,
+#                     stock_unit,
+#                 ): sku
+#                 for sku in unique_skus
+#             }
+
+#             for i, future in enumerate(as_completed(futures), 1):
+#                 sku = futures[future]
+#                 print(f"[HYBRID] {i}/{len(futures)} → {sku}")
+
+#                 try:
+#                     res = future.result()
+#                     if res is not None:
+#                         hybrid_results[sku] = res
+#                 except Exception as e:
+#                     print(f"[HYBRID][ERROR] {sku}: {e}")
+
+#         print("--- HYBRID COMPLETE ---")
+
+#     print("\n=== MODELING COMPLETE ===")
+
+#     # ==========================================================
+#     # 🤖 GPT PER-SKU ADJUDICATION (KEPT AS REQUESTED)
+#     # ==========================================================
+#     all_forecasts = pd.DataFrame()
+#     model_winner = {}
+
+#     for sku in unique_skus:
+#         arima_res = arima_results.get(sku)
+#         hybrid_res = hybrid_results.get(sku)
+
+#         if not arima_res and not hybrid_res:
+#             continue
+
+#         if arima_res and hybrid_res:
+#             _, a_df, _ = arima_res
+#             _, h_df, _ = hybrid_res
+
+#             gpt_choice = call_chatgpt_adjudicator(
+#                 lastN_months=[],
+#                 arima_months=a_df["Forecast"].tolist()[:3],
+#                 hybrid_months=h_df["Forecast"].tolist()[:4],
+#                 transit_time=transit_time,
+#                 stock_unit=stock_unit,
+#                 sku=sku,
+#                 country=country,
+#             )
+
+#             winner = (
+#                 gpt_choice
+#                 if gpt_choice in ("ARIMA", "HYBRID")
+#                 else "ARIMA"
+#             )
+
+#             model_winner[sku] = winner
+#             chosen_df = h_df if winner == "HYBRID" else a_df
+
+#         elif arima_res:
+#             model_winner[sku] = "ARIMA"
+#             _, chosen_df, _ = arima_res
+#         else:
+#             model_winner[sku] = "HYBRID"
+#             _, chosen_df, _ = hybrid_res
+
+#         chosen_df = chosen_df.sort_values("Month").copy()
+#         chosen_df["sku"] = sku
+#         chosen_df["Forecast"] = (
+#             pd.to_numeric(chosen_df["Forecast"], errors="coerce")
+#             .fillna(0)
+#             .round()
+#             .astype(int)
+#         )
+
+#         all_forecasts = pd.concat([all_forecasts, chosen_df], ignore_index=True)
+
+#     # ==========================================================
+#     # 📦 FULL INVENTORY PIPELINE RESTORED
+#     # ==========================================================
+#     all_forecasts["Month"] = pd.to_datetime(all_forecasts["Month"])
+#     all_forecasts["Month"] = all_forecasts["Month"].dt.strftime("%b'%y")
+
+#     forecast_pivot = (
+#         all_forecasts.pivot_table(index="sku", columns="Month", values="Forecast")
+#         .reset_index()
+#         .fillna(0)
+#     )
+
+#     forecast_totals = forecast_pivot.copy()
+
+#     # ---- inventory merge ----
+#     month_start = datetime(req_year, req_month_num, 1)
+#     month_end = (month_start + relativedelta(months=1)).replace(day=1)
+#     snapshot_date = (month_end - relativedelta(days=1)).strftime("%Y-%m-%d")
+
+#     inventory_forecast = fetch_and_merge_inventory_monthwise_sellable(
+#         forecast_totals,
+#         engine1,
+#         inventory_date=snapshot_date,
+#     )
+#     # ==========================================================
+#     # 📊 LAST 3 MONTHS SOLD (RESTORE FOR GRAPH + HISTORY)
+#     # ==========================================================
+    
+
+#     # Anchor sold months to last training month
+#     first_forecast_dt = global_last_training_month.to_timestamp() + relativedelta(months=1)
+#     sold_anchor_dt = first_forecast_dt - relativedelta(months=1)
+
+#     sold_m1 = sold_anchor_dt
+#     sold_m2 = sold_anchor_dt - relativedelta(months=1)
+#     sold_m3 = sold_anchor_dt - relativedelta(months=2)
+
+#     sold_labels = [
+#         month_label(sold_m3),
+#         month_label(sold_m2),
+#         month_label(sold_m1),
+#     ]
+
+#     sold_frames = []
+
+#     for dt in [sold_m3, sold_m2, sold_m1]:
+#         df_m = fetch_skuwise_monthly_sales(
+#             engine=engine,
+#             meta=meta,
+#             user_id=user_id,
+#             country=country,
+#             dt=dt,
+#         )
+#         if not df_m.empty:
+#             sold_frames.append(df_m)
+
+#     if sold_frames:
+#         sold_df = pd.concat(sold_frames, ignore_index=True)
+#     else:
+#         sold_df = pd.DataFrame(columns=["sku", "total_quantity", "Label"])
+
+#     last3_sold_pivot = (
+#         sold_df.pivot_table(
+#             index="sku",
+#             columns="Label",
+#             values="total_quantity",
+#             aggfunc="sum",
+#         )
+#         .reset_index()
+#         .fillna(0)
+#     )
+
+#     # Ensure all labels exist
+#     for lbl in sold_labels:
+#         if lbl not in last3_sold_pivot.columns:
+#             last3_sold_pivot[lbl] = 0
+
+#     # Rename → "Sep'25 Sold" format
+#     last3_sold_pivot = last3_sold_pivot.rename(
+#         columns={lbl: f"{lbl} Sold" for lbl in sold_labels}
+#     )
+
+#     inventory_forecast = inventory_forecast.merge(
+#         last3_sold_pivot,
+#         on="sku",
+#         how="left",
+#     ).fillna(0)
+
+#     last_month_col = f"{sold_labels[-1]} Sold"
+
+
+#     # ---- totals ----
+#     month_cols = [c for c in inventory_forecast.columns if c not in ("sku", "Product Name")]
+
+#     inventory_forecast["Projected Sales Total"] = (
+#         inventory_forecast[month_cols]
+#         .apply(pd.to_numeric, errors="coerce")
+#         .fillna(0)
+#         .sum(axis=1)
+#         .round()
+#         .astype(int)
+#     )
+
+#     inventory_forecast["Dispatch"] = (
+#         (inventory_forecast["Projected Sales Total"] - inventory_forecast["Inventory at Month End"])
+#         .clip(lower=0)
+#         .astype(int)
+#     )
+
+#     inventory_forecast["Current Inventory + Dispatch"] = (
+#         inventory_forecast["Dispatch"] + inventory_forecast["Inventory at Month End"]
+#     ).astype(int)
+
+#     # ==========================================================
+#     # 💾 SAVE EXCELS
+#     # ==========================================================
+#     forecast_filename = f"forecasts_for_{user_id}_{country}.xlsx"
+
+#     forecast_buf = BytesIO()
+#     all_forecasts.to_excel(forecast_buf, index=False, engine="openpyxl")
+#     forecast_buf.seek(0)
+
+#     current_month = datetime.now().strftime("%b").lower()
+#     inventory_filename = f"inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx"
+
+#     inv_buf = BytesIO()
+#     inventory_forecast.to_excel(inv_buf, index=False, engine="openpyxl")
+#     inv_buf.seek(0)
+
+#     print("\n========== FORECAST FINISHED ==========")
+#     print("Total time:", round(time.time() - start_time, 2), "seconds\n")
+
+#     # ==========================================================
+#     # 💾 SAVE FILES TO DB (RESTORE stored_files)
+#     # ==========================================================
+#     save_file_to_db(
+#         user_id=user_id,
+#         country=country,
+#         filename=forecast_filename,
+#         file_bytes=forecast_buf.getvalue(),
+#         kind="forecast",
+#         month=mv,
+#         year=year,
+#     )
+
+#     save_file_to_db(
+#         user_id=user_id,
+#         country=country,
+#         filename=inventory_filename,
+#         file_bytes=inv_buf.getvalue(),
+#         kind="inventory",
+#         month=mv,
+#         year=year,
+#     )
+
+    
+#     return {
+#         "forecast_filename": forecast_filename,
+#         "forecast_bytes": forecast_buf.getvalue(),
+#         "inventory_filename": inventory_filename,
+#         "inventory_bytes": inv_buf.getvalue(),
+#         "model_winner": model_winner,
+#     }
 
 
 # ============================== FILE ENCODER ==============================
