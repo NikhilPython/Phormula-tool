@@ -897,137 +897,167 @@ export default function CurrentInventorySection({
 
   /* -------- Build DataTable columns -------- */
 
+  // const columns: ColumnDef<InventoryUiRow>[] = useMemo(() => {
+  //   const cols: ColumnDef<InventoryUiRow>[] = [];
+
+  //   cols.push(
+  //     {
+  //       key: "sno",
+  //       header: "Sno.",
+  //       width: "60px",
+  //       cellClassName: "text-center",
+  //     },
+  //     {
+  //       key: "productName",
+  //       header: "Product Name",
+  //        width: "60px",
+  //       cellClassName: "text-left",
+  //       headerClassName: "text-left",
+  //     },
+  //     {
+  //       key: "skuAsin",
+  //       header: "SKU",
+  //        width: "60px",
+  //       cellClassName: "text-center",
+  //     },
+  //     {
+  //       key: "mtdSales",
+  //       header: "MTD Sales",
+  //        width: "60px",
+  //       cellClassName: "text-center",
+  //     },
+  //     {
+  //       key: "sales30",
+  //       header: "Sales last 30 days",
+  //        width: "60px",
+  //       cellClassName: "text-center",
+  //     },
+  //     {
+  //       key: "salesRank",
+  //       header: "Sales Rank",
+  //        width: "60px",
+  //       cellClassName: "text-center",
+  //     },
+  //     {
+  //       key: "currentInventory",
+  //       header: "Current Inventory",
+  //       width: "60px",
+  //       cellClassName: "text-center",
+  //     },
+  //     {
+  //       key: "inventory180Plus",
+  //       header: "Inventory 180+ days",
+  //       width: "60px",
+  //       cellClassName: "text-center",
+  //     },
+  //     {
+  //       key: "estStorage",
+  //       header: "Estimated storage cost",
+  //       width: "60px",
+  //       cellClassName: "text-center",
+  //     },
+  //     {
+  //       key: "coverageMonths",
+  //       header: "Inventory Coverage ratio",
+  //       width: "60px",
+  //       cellClassName: "text-center",
+  //     },
+  //     {
+  //       key: "alert",
+  //       header: "Inventory Alerts",
+  //       width: "60px",
+  //       cellClassName: "text-center font-medium", // ✅ NEW
+  //     }
+  //   );
+
+
+  //   return cols;
+  // }, []);
+
   const columns: ColumnDef<InventoryUiRow>[] = useMemo(() => {
+    const responsiveWidth = "w-24 lg:min-w-fit";
+
     const cols: ColumnDef<InventoryUiRow>[] = [];
 
     cols.push(
       {
         key: "sno",
         header: "Sno.",
-        width: "60px",
+        width: responsiveWidth,
         cellClassName: "text-center",
       },
       {
         key: "productName",
         header: "Product Name",
+        width: "w-40 lg:min-w-fit", 
         cellClassName: "text-left",
-        headerClassName: "text-left",
+        headerClassName: "text-left break-words",
       },
       {
         key: "skuAsin",
         header: "SKU",
+        width: responsiveWidth,
         cellClassName: "text-center",
       },
       {
         key: "mtdSales",
         header: "MTD Sales",
+        width: responsiveWidth,
         cellClassName: "text-center",
       },
       {
         key: "sales30",
         header: "Sales last 30 days",
+        width: responsiveWidth,
         cellClassName: "text-center",
+        headerClassName: "break-words",
       },
       {
         key: "salesRank",
         header: "Sales Rank",
+        width: responsiveWidth,
         cellClassName: "text-center",
       },
       {
         key: "currentInventory",
         header: "Current Inventory",
+        width: responsiveWidth,
         cellClassName: "text-center",
+        headerClassName: "break-words",
       },
       {
         key: "inventory180Plus",
         header: "Inventory 180+ days",
+        width: responsiveWidth,
         cellClassName: "text-center",
+        headerClassName: "break-words",
       },
       {
         key: "estStorage",
         header: "Estimated storage cost",
+        width: responsiveWidth,
         cellClassName: "text-center",
+        headerClassName: "break-words",
       },
       {
         key: "coverageMonths",
         header: "Inventory Coverage ratio",
+        width: responsiveWidth,
         cellClassName: "text-center",
+        headerClassName: "break-words",
       },
       {
         key: "alert",
         header: "Inventory Alerts",
-        cellClassName: "text-center font-medium", // ✅ NEW
+        width: responsiveWidth,
+        cellClassName: "text-center font-medium",
+        headerClassName: "break-words",
       }
     );
-
 
     return cols;
   }, []);
 
-
-  // return (
-  //   <div
-  //     className="
-  //       mt-4 rounded-2xl border bg-[#D9D9D933] p-4 shadow-sm
-  //       w-full max-w-full overflow-hidden
-  //       flex flex-col
-  //     "
-  //   >
-  //     <div className="mb-3 flex items-center justify-between">
-  //       <div className="flex items-baseline gap-2">
-  //         <PageBreadcrumb pageTitle="Current Inventory" variant="page" align="left" />
-  //       </div>
-
-  //       <DownloadIconButton
-  //         onClick={downloadInventoryExcel}
-  //         disabled={invLoading || !invRows?.length}
-  //         className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-  //       />
-  //     </div>
-
-  //     {invLoading ? (
-  //       <div className="py-10 flex justify-center">
-  //         <Loader fullscreen transparent />
-  //       </div>
-  //     ) : invError ? (
-  //       <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-  //         {invError}
-  //       </div>
-  //     ) : (
-  //       <div className="w-full rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
-  //         <DataTable
-  //           columns={columns}
-  //           data={tableRows}
-  //           loading={false}
-  //           paginate={true}
-  //           pageSize={15}
-  //           scrollY={false}
-  //           maxHeight="none"
-  //           emptyMessage="No inventory data."
-  //           rowClassName={(row) => {
-  //             if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
-  //             if (row.rowType === "others") return "!bg-[#FFFFFF]";
-  //             return "bg-white";
-  //           }}
-  //           tableClassName="
-  //   table-fixed
-  //   [&_th]:whitespace-normal
-  //   [&_th]:break-words
-  //   [&_th]:leading-snug
-  //   [&_th>div]:[display:-webkit-box]
-  //   [&_th>div]:[-webkit-box-orient:vertical]
-  //   [&_th>div]:[-webkit-line-clamp:3]
-  //   [&_th>div]:overflow-hidden
-  //   [&_th>div]:text-ellipsis
-  // "
-  //         />
-
-  //       </div>
-
-
-  //     )}
-  //   </div>
-  // );
 
   return (
     <div

@@ -1128,54 +1128,72 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     width: 0,
   });
 
-  const computeTopBottom5 = (rows: TableRow[]): { topData: TopBottomData; bottomData: TopBottomData } => {
-    const clean = (rows || []).filter(Boolean);
+const computeTopBottom5 = (
+  rows: TableRow[]
+): { topData: TopBottomData; bottomData: TopBottomData } => {
+  const clean = (rows || []).filter(Boolean);
 
-    // remove Total if present
-    const withoutTotal = clean.filter((r) => String(r.product_name || "").trim().toLowerCase() !== "total");
+  // ✅ robust number parser (handles "1,234.56", null, undefined, "")
+  const num = (v: any) => {
+    if (v === null || v === undefined) return 0;
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    const s = String(v).replace(/,/g, "").trim();
+    const n = Number(s);
+    return isFinite(n) ? n : 0;
+  };
 
-    const sortByProfitDesc = [...withoutTotal].sort((a, b) => (b.profit || 0) - (a.profit || 0));
-    const sortByProfitAsc = [...withoutTotal].sort((a, b) => (a.profit || 0) - (b.profit || 0));
+  const lower = (v: any) => String(v || "").trim().toLowerCase();
 
-    const top5 = sortByProfitDesc.slice(0, 5);
-    const bottom5 = sortByProfitAsc.slice(0, 5);
+  // remove Total if present (supports product_name or sku)
+  const withoutTotal = clean.filter((r) => {
+    const name = lower((r as any).product_name ?? (r as any).sku);
+    return name !== "total";
+  });
 
-    const mapRows = (arr: TableRow[]) =>
-      arr.map((item) => {
-        const netUnits = item.net_units_sold || 0;
-        const cm1PerUnit = netUnits > 0 ? (item.profit || 0) / netUnits : 0;
+  // ✅ sort using parsed numbers (prevents string-sorting bugs)
+  const sortByProfitDesc = [...withoutTotal].sort((a, b) => num(b.profit) - num(a.profit));
+  const sortByProfitAsc = [...withoutTotal].sort((a, b) => num(a.profit) - num(b.profit));
 
-        return {
-          product_name: String(item.product_name || item.sku || "-"),
-          profit: (item.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          profitMix: (item.profit_mix || 0).toFixed(2),
-          salesMix: (item.sales_mix || 0).toFixed(2),
-          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        };
-      });
+  const top5 = sortByProfitDesc.slice(0, 5);
+  const bottom5 = sortByProfitAsc.slice(0, 5);
 
-    const totalsFor = (arr: TableRow[]) => {
-      const totalProfit = arr.reduce((s, r) => s + (r.profit || 0), 0);
-      const totalProfitMix = arr.reduce((s, r) => s + (r.profit_mix || 0), 0);
-      const totalSalesMix = arr.reduce((s, r) => s + (r.sales_mix || 0), 0);
-      const totalNetUnits = arr.reduce((s, r) => s + (r.net_units_sold || 0), 0);
-      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+  const mapRows = (arr: TableRow[]) =>
+    arr.map((item) => {
+      const netUnits = num(item.net_units_sold);
+      const profit = num(item.profit);
+      const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
 
       return {
-        profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        profitMix: totalProfitMix.toFixed(2),
-        salesMix: totalSalesMix.toFixed(2),
-        avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        product_name: String((item as any).product_name || (item as any).sku || "-"),
+        profit: profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        profitMix: num(item.profit_mix).toFixed(2),
+        salesMix: num(item.sales_mix).toFixed(2),
+        cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       };
-    };
+    });
+
+  const totalsFor = (arr: TableRow[]) => {
+    const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
+    const totalProfitMix = arr.reduce((s, r) => s + num(r.profit_mix), 0);
+    const totalSalesMix = arr.reduce((s, r) => s + num(r.sales_mix), 0);
+    const totalNetUnits = arr.reduce((s, r) => s + num(r.net_units_sold), 0);
+    const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
 
     return {
-      topData: { rows: mapRows(top5), totals: totalsFor(top5) },
-      bottomData: { rows: mapRows(bottom5), totals: totalsFor(bottom5) },
+      profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      profitMix: totalProfitMix.toFixed(2),
+      salesMix: totalSalesMix.toFixed(2),
+      avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     };
   };
 
-  const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
+  return {
+    topData: { rows: mapRows(top5), totals: totalsFor(top5) },
+    bottomData: { rows: mapRows(bottom5), totals: totalsFor(bottom5) },
+  };
+};
+
+const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
 
 
   useEffect(() => {
@@ -1188,6 +1206,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setPerformanceTrend(null);
     setPerformanceTrendBase64(null);
     setTrendExportApi(null);
+    setSkuRows([]);
   }, [range, selectedMonth, selectedQuarter, selectedYear]);
 
   useEffect(() => {
@@ -3092,6 +3111,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
             onDownload={handleDownloadSkuSheet1}
+            onRowsChange={setSkuRows}
           />
           {skuRows.length > 0 && (
             <SkuTopBottomTables
@@ -3298,6 +3318,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
             onDownload={handleDownloadSkuSheet1}
+            onRowsChange={setSkuRows}
           />
           {skuRows.length > 0 && (
             <SkuTopBottomTables
