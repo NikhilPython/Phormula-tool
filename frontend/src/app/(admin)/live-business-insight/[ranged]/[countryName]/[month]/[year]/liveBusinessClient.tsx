@@ -2889,47 +2889,44 @@ if (adsRecommendation) {
 
                         <div className="bg-[#]  rounded-xl p-2 space-y-4">
                           {Object.entries(recommendedActions).map(([_, text], idx) => {
-                            const parsed = parseRecommendedAction(text);
+  const parsed = parseRecommendedAction(text);
 
-                            return (
-                              <div key={idx} className="space-y-2">
-                                {/* Product title */}
-                                <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
-                                  {idx + 1}. Product Name – {parsed.productName}
-                                </div>
+  return (
+    <div key={idx} className="space-y-2">
+      {/* Product title */}
+      <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
+        {idx + 1}. Product Name – {parsed.productName}
+      </div>
 
-                                {/* Metrics */}
-                                <div className="flex flex-wrap  gap-x-2 gap-y-1 text-xs 2xl:text-sm ">
-                                  {parsed.metrics.map((m, i) => (
-                                    <div key={i} className="flex items-center gap-1">
-                                      <span className="text-charcoal-600 text-xs">
-                                        {m.label}:
-                                      </span>
-                                      <span
-                                        className="font-semibold"
-                                        style={{ color: m.color || "#414042" }}
-                                      >
-                                        {m.value}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
+      {/* Metrics */}
+      <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs 2xl:text-sm">
+        {parsed.metrics.map((m, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <span className="text-charcoal-600 text-xs">{m.label}:</span>
+            <span className="font-semibold" style={{ color: m.color || "#414042" }}>
+              {m.value}
+            </span>
+          </div>
+        ))}
+      </div>
 
+      {/* Insight */}
+      <p className="text-xs 2xl:text-sm text-charcoal-600">
+        {renderJourneyAndRecommendation(parsed.insight)}
+      </p>
 
-                                {/* Insight */}
-                                <p className="text-xs 2xl:text-sm text-charcoal-600">
-                                  {renderJourneyAndRecommendation(parsed.insight)}
-                                </p>
+      {/* Action */}
+      {parsed.actions.length > 0 && (
+        <div className="text-xs 2xl:text-sm text-charcoal-600">
+          <span className="font-bold">Action – </span>
+          <span>{parsed.actions.join(" ")}</span>
+        </div>
+      )}
+    </div>
+  );
+})}
 
-                                {/* Action */}
-                                {parsed.actions.length > 0 && (
-                                  <div className="text-xs 2xl:text-sm text-charcoal-600">
-                                    <span className="font-bold">Action – </span>
-                                    <span>{parsed.actions.join(" ")}</span>
-                                  </div>
-                                )}
-
-                                {remainingSkusRecommendation && (
+{remainingSkusRecommendation && (
   <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
     <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
       Overall – Remaining SKUs
@@ -2940,9 +2937,7 @@ if (adsRecommendation) {
     </p>
   </div>
 )}
-                              </div>
-                            );
-                          })}
+
                         </div>
 
 
