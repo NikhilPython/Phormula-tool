@@ -38,11 +38,6 @@ import DialogActions from "@mui/material/DialogActions";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { jwtDecode } from "jwt-decode";
-import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
-import SkuTopBottomTables from "./SkuTopBottomTables";
-import type { TopBottomData } from "@/lib/pnl/topBottom";
-import type { TableRow } from "./SKUtable";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -56,20 +51,6 @@ type Summary = {
   otherwplatform?: number;
   advertising_total?: number;
   total_amazon_fee?: number;
-};
-
-type UploadRow = {
-  country: string;
-  month: string;
-  year: string | number;
-  total_sales: number;
-  total_amazon_fee: number;
-  total_cous: number;
-  advertising_total: number;
-  otherwplatform: number;
-  taxncredit?: number;
-  cm2_profit: number;
-  total_profit: number;
 };
 
 
@@ -86,6 +67,8 @@ type UploadHistoryResponse = {
   summaryComparisons?: SummaryComparisons;
   [key: string]: unknown;
 };
+
+
 
 
 /* ---------------------- AI Summary Types ---------------------- */
@@ -120,6 +103,7 @@ type RecommendationsMap = Record<
   remaining_skus_recommendation?: string;
 };
 
+
 type AiSummaryResponse = {
   summary?: string | null;
 
@@ -148,6 +132,7 @@ type AiPanelData = {
   // ✅ ADD THIS
   remainingSkusRecommendation?: string;
 };
+
 
 
 
@@ -1061,19 +1046,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [performanceTrendBase64, setPerformanceTrendBase64] = useState<string | null>(null);
   const [trendExportApi, setTrendExportApi] = useState<TrendChartExportApi | null>(null);
   const [focusedChart, setFocusedChart] = useState<FocusedChart>(null);
-  const [bargraphUploads, setBargraphUploads] = useState<UploadRow[]>([]);
-  const [bargraphLoading, setBargraphLoading] = useState(false);
-  const [bargraphUserMeta, setBargraphUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
-
-  // ✅ GraphPage (Line chart) data from parent
-  const [graphPageUploads, setGraphPageUploads] = useState<UploadRow[]>([]);
-  const [graphPageLoading, setGraphPageLoading] = useState(false);
-  const [graphPageUserMeta, setGraphPageUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
-  const [graphPageError, setGraphPageError] = useState<string | null>(null);
-
-
-  const [skuRows, setSkuRows] = useState<TableRow[]>([]);
-
+  
 
   const toggleFocus = (which: Exclude<FocusedChart, null>) => {
     setFocusedChart((prev) => (prev === which ? null : which));
@@ -1738,6 +1711,471 @@ setAiPanel({
     };
   };
 
+  // const buildSkuWorksheetFromModel = (
+  //   ws: ExcelJS.Worksheet,
+  //   model: NonNullable<SkuExportPayload["sheetModel"]>
+  // ) => {
+  //   // const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
+
+  //   const {
+  //     columns: originalColumns,
+  //     extraRows,
+  //     headerRow,
+  //     signRow,
+  //     rows,
+  //     summaryRows,
+  //     formats,
+  //   } = model;
+
+  //   // ❌ columns to REMOVE from Excel
+  //   const EXCEL_EXCLUDED_COLUMNS = new Set([
+  //     "amazon_fee",
+  //     "other_transactions",
+  //   ]);
+
+  //   // ✅ final columns used ONLY for excel
+  //   const columns = originalColumns.filter(
+  //     (col) => !EXCEL_EXCLUDED_COLUMNS.has(col)
+  //   );
+
+
+  //   const colIndex: Record<string, number> = {};
+  //   columns.forEach((k, i) => (colIndex[k] = i + 1)); // 1-based for ExcelJS
+
+  //   const fmtFor = (key: string) => {
+  //     const t = formats?.[key];
+  //     if (t === "int") return "#,##0";
+  //     if (t === "money") return "#,##0.00";
+  //     if (t === "percent") return "0.00%";
+  //     return undefined;
+  //   };
+
+  //   // ---- meta rows (in column A)
+  //   // for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
+  //   // ws.addRow([""]); 
+
+  //   // ---- CUSTOM META / TOP SECTION ----
+
+  //   // column index where CM1 Profit Margin exists
+  //   const PROFIT_COL_INDEX = colIndex["profit"] || columns.length;
+
+  //   // 1️⃣ Title on top
+  //   ws.addRow(["Profit Breakup (SKU Level)"]);
+  //   // ws.addRow([""]); 
+
+  //   const capitalizeWords = (value: string) =>
+  //     value
+  //       .toLowerCase()
+  //       .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  //   const brandName = capitalizeWords(
+  //     (extraRows?.[0]?.[0] || "").toString()
+  //   );
+
+  //   const companyName = capitalizeWords(
+  //     (extraRows?.[1]?.[0] || "").toString()
+  //   );
+
+
+  //   const companyBrandRow = new Array(columns.length).fill("");
+
+  //   // LEFT → COMPANY NAME
+  //   companyBrandRow[0] = `Company Name : ${companyName}`;
+
+  //   // RIGHT → BRAND NAME (above CM1 Profit Margin)
+  //   companyBrandRow[PROFIT_COL_INDEX - 1] = `${brandName}`;
+
+  //   const cbRow = ws.addRow(companyBrandRow);
+  //   cbRow.font = { bold: false };
+
+  //   // ws.addRow([""]);
+
+  //   // 3️⃣ Currency / Country / Platform
+  //   for (let i = 3; i < (extraRows?.length || 0); i++) {
+  //     ws.addRow([extraRows?.[i]?.[0] ?? ""]);
+  //   }
+
+  //   ws.addRow([""]);
+
+
+  //   // ---- header row
+  //   ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
+
+  //   // ---- sign row (align to columns)
+  //   ws.addRow(columns.map((k) => signRow?.[k] ?? ""));
+
+  //   // ---- table rows
+  //   for (const r of rows || []) {
+  //     ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
+  //   }
+
+  //   ws.addRow([""]);
+
+  //   const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
+  //   const valueKey =
+  //     columns.includes("profit") ? "profit"
+  //       : columns.includes("net_taxes") ? "net_taxes"
+  //         : columns[columns.length - 1];
+
+  //   // ✅ percent-only summary labels
+  //   const PERCENT_SUMMARY_LABELS = new Set([
+  //     "CM2 Margins",
+  //     "TACoS (Total Advertising Cost of Sale)",
+  //     "Reimbursement vs CM2 Margins",
+  //     "Reimbursement vs Sales",
+  //   ]);
+
+  //   // ✅ rows that should keep title but BLANK value (because breakdown rows exist below)
+  //   const SUMMARY_NO_VALUE_LABELS = new Set([
+  //     "Cost of Advertisement",
+  //     "Other Transactions (-)",
+  //     "Other Transactions",
+  //   ]);
+
+  //   // ✅ store row numbers to re-apply % after column formatting
+  //   const percentSummaryRowNumbers: number[] = [];
+
+  //   // ---- summary rows (ONLY ONCE)
+  //   for (const sr of summaryRows || []) {
+  //     let label = String((sr as any)?.[labelKey] ?? "").trim();
+  //     let value: any = (sr as any)?.[valueKey] ?? "";
+
+  //     // ✅ add "(+)" prefix for reimbursement row label
+  //     if (label === "Reimbursement for lost Inventory") {
+  //       label = "Reimbursement for lost Inventory (+)";
+  //     }
+
+  //     // ✅ clean label for matching rules (so "(+)" doesn't break your sets)
+  //     const cleanLabel = label.replace(/^\(\+\)\s*/i, "").trim();
+
+  //     const isPercentRow = PERCENT_SUMMARY_LABELS.has(cleanLabel);
+
+  //     // ✅ UI gives percent-number like 27.37 -> Excel needs 0.2737
+  //     if (isPercentRow && typeof value === "number") {
+  //       value = value / 100;
+  //     }
+
+  //     // ✅ remove value ONLY for these parent rows (title stays)
+  //     if (SUMMARY_NO_VALUE_LABELS.has(cleanLabel)) {
+  //       value = "";
+  //     }
+
+  //     const line = new Array(columns.length).fill("");
+  //     line[colIndex[labelKey] - 1] = label;
+  //     line[colIndex[valueKey] - 1] = value;
+
+  //     const excelRow = ws.addRow(line);
+
+  //     if ((sr as any).__bold) {
+  //       excelRow.font = { bold: true };
+  //     }
+
+  //     if (isPercentRow) {
+  //       percentSummaryRowNumbers.push(excelRow.number);
+  //     }
+  //   }
+
+  //   // ---- formatting by column key (may overwrite numFmt)
+  //   for (const k of columns) {
+  //     const idx = colIndex[k];
+  //     const nf = fmtFor(k);
+  //     if (nf) ws.getColumn(idx).numFmt = nf;
+  //   }
+
+  //   // ✅ re-apply percent formatting AFTER column formats
+  //   for (const r of percentSummaryRowNumbers) {
+  //     ws.getRow(r).getCell(colIndex[valueKey]).numFmt = "0.00%";
+  //     // or "#,##0.00%" if you want comma-grouping for huge % like 1835.09%
+  //   }
+
+  //   // ---- make header bold
+  //   const headerRowNumber = (extraRows?.length ?? 0) + 2;
+  //   ws.getRow(headerRowNumber).font = { bold: true };
+
+  //   // ---- sign row italic
+  //   ws.getRow(headerRowNumber + 1).font = { italic: true };
+  // };
+
+  const handleDownloadProfitabilityBundle = async () => {
+    try {
+      const wb = new ExcelJS.Workbook();
+
+      const addChartBlock = async (
+        ws: ExcelJS.Worksheet,
+        wb: ExcelJS.Workbook,
+        title: string,
+        base64: string | null | undefined,
+        startRow: number,
+        options?: {
+          width?: number;          // only WIDTH is respected; height auto
+          pad?: number;            // crop pad
+          bgCols?: number;         // how many columns to paint white
+          gapRowsAfter?: number;   // spacing after chart block
+          minBase64Len?: number;   // guard against empty export
+          scale?: number;          // jpeg upscale factor (default 2)
+          skipCrop?: boolean;
+        }
+      ): Promise<number> => {
+        const targetW = options?.width ?? 520;
+        const pad = options?.pad ?? 2;
+        const bgCols = options?.bgCols ?? 25;
+        const gapRowsAfter = options?.gapRowsAfter ?? 2;
+        const minBase64Len = options?.minBase64Len ?? 5000;
+        const scale = options?.scale ?? 2; // ✅ important for wedge seam reduction
+        const skipCrop = options?.skipCrop ?? false;
+
+        // ----- Title -----
+        ws.getRow(startRow).getCell(1).value = title;
+        ws.getRow(startRow).getCell(1).font = { bold: true, size: 14 };
+
+        // spacer row
+        ws.getRow(startRow + 1).getCell(1).value = "";
+
+        if (!base64) {
+          ws.getRow(startRow + 2).getCell(1).value = "Chart not available";
+          return startRow + 6;
+        }
+
+        const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
+
+        // ✅ guard: export happened too early -> blank image
+        if (!raw || raw.length < minBase64Len) {
+          ws.getRow(startRow + 2).getCell(1).value = "Chart not available (empty export)";
+          return startRow + 6;
+        }
+
+
+
+        let imgForJpeg = base64;
+
+        // ✅ only crop when allowed
+        if (!skipCrop) {
+          const cropped = await cropPngBase64WithSize(base64, pad, {
+            whiteThreshold: 254,
+            minContentRatio: 0.0015,
+          });
+
+          imgForJpeg = `data:image/png;base64,${cropped.base64}`;
+        }
+
+        // ✅ always convert to JPEG for Excel (no alpha seams)
+        const jpeg = await toJpegBase64(imgForJpeg, 0.98, {
+          scale,
+          bg: "#FFFFFF",
+        });
+
+
+
+        const finalW = targetW;
+        const finalH = Math.round((finalW * jpeg.h) / jpeg.w);
+
+        // Convert pixel height to approximate row count (18px-ish per row)
+        const chartRows = Math.ceil(finalH / 18) + 2;
+
+        // ----- White background block (hide gridlines) -----
+        const bgStart = startRow + 1;
+        const bgEnd = bgStart + chartRows;
+
+        for (let r = bgStart; r <= bgEnd; r++) {
+          for (let c = 1; c <= bgCols; c++) {
+            ws.getRow(r).getCell(c).fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFFFFFFF" },
+            };
+          }
+        }
+
+        // ✅ Add as JPEG (no alpha = no wedge gaps)
+        const imageId = wb.addImage({
+          base64: jpeg.base64,
+          extension: "jpeg",
+        });
+
+        // ✅ Insert
+        ws.addImage(imageId, {
+          tl: { col: 0, row: startRow + 1 },
+          ext: { width: finalW, height: finalH },
+          editAs: "oneCell",
+        });
+
+        return bgEnd + gapRowsAfter;
+
+      };
+
+      // =========================================================
+      // ✅ TAB 1: SKU Profitability  (now uses sheetModel)
+      // =========================================================
+      const wsSku = wb.addWorksheet("SKU Profitability");
+
+      if (skuExportPayload?.sheetModel) {
+        buildSkuWorksheetFromModel(wsSku, skuExportPayload.sheetModel);
+      } else if (skuExportPayload) {
+        // fallback: keep old behavior OR show message
+        wsSku.addRow(["SKU sheet model not available"]);
+      } else {
+        wsSku.addRow(["SKU data not available"]);
+      }
+
+      // =========================================================
+      // ✅ TAB 2: All Graphs (SWAPPED → now second sheet)
+      // =========================================================
+      const wsGraphs = wb.addWorksheet("All Graphs");
+      wsGraphs.views = [{ showGridLines: false }];
+
+      let rowCursor = 1;
+
+      const addTwoChartRow = async (
+        ws: ExcelJS.Worksheet,
+        wb: ExcelJS.Workbook,
+        left: { title: string; base64: string | null | undefined; width?: number },
+        right: { title: string; base64: string | null | undefined; width?: number },
+        startRow: number,
+        options?: {
+          leftCol?: number;      // 1-based
+          rightCol?: number;     // 1-based
+          pad?: number;
+          bgCols?: number;
+          gapRowsAfter?: number;
+          scale?: number;
+          skipCrop?: boolean;
+        }
+      ): Promise<number> => {
+        const leftCol = options?.leftCol ?? 1;
+        const rightCol = options?.rightCol ?? 16; // around mid-sheet
+        const pad = options?.pad ?? 2;
+        const bgCols = options?.bgCols ?? 30;
+        const gapRowsAfter = options?.gapRowsAfter ?? 2;
+        const scale = options?.scale ?? 2;
+        const skipCrop = options?.skipCrop ?? false;
+
+        // ---- Titles (same row)
+        ws.getRow(startRow).getCell(leftCol).value = left.title;
+        ws.getRow(startRow).getCell(leftCol).font = { bold: true, size: 14 };
+
+        ws.getRow(startRow).getCell(rightCol).value = right.title;
+        ws.getRow(startRow).getCell(rightCol).font = { bold: true, size: 14 };
+
+        // spacer row
+        ws.getRow(startRow + 1).getCell(1).value = "";
+
+        // helper: insert single chart at a column
+        const insertAt = async (base64: string | null | undefined, col: number, targetW: number) => {
+          if (!base64) return { finalH: 0, chartRows: 0 };
+
+          const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
+          if (!raw || raw.length < 5000) return { finalH: 0, chartRows: 0 };
+
+          let imgForJpeg = base64;
+
+          if (!skipCrop) {
+            const cropped = await cropPngBase64WithSize(base64, pad, {
+              whiteThreshold: 254,
+              minContentRatio: 0.0015,
+            });
+            imgForJpeg = `data:image/png;base64,${cropped.base64}`;
+          }
+
+          const jpeg = await toJpegBase64(imgForJpeg, 0.98, { scale, bg: "#FFFFFF" });
+
+          const finalW = targetW;
+          const finalH = Math.round((finalW * jpeg.h) / jpeg.w);
+          const chartRows = Math.ceil(finalH / 18) + 2;
+
+          const imageId = wb.addImage({ base64: jpeg.base64, extension: "jpeg" });
+
+          ws.addImage(imageId, {
+            tl: { col: col - 1, row: startRow + 1 }, // ExcelJS uses 0-based col/row in tl
+            ext: { width: finalW, height: finalH },
+            editAs: "oneCell",
+          });
+
+          return { finalH, chartRows };
+        };
+
+        // widths for each chart in a 2-col layout
+        const leftW = left.width ?? 520;
+        const rightW = right.width ?? 520;
+
+        const leftPlaced = await insertAt(left.base64, leftCol, leftW);
+        const rightPlaced = await insertAt(right.base64, rightCol, rightW);
+
+        const maxRows = Math.max(leftPlaced.chartRows, rightPlaced.chartRows, 10);
+
+        // ---- White background block for the whole row area
+        const bgStart = startRow + 1;
+        const bgEnd = bgStart + maxRows;
+
+        for (let r = bgStart; r <= bgEnd; r++) {
+          for (let c = 1; c <= bgCols; c++) {
+            ws.getRow(r).getCell(c).fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFFFFFFF" },
+            };
+          }
+        }
+
+        return bgEnd + gapRowsAfter;
+      };
+
+
+      // Row 1: Trend + PnL
+      rowCursor = await addTwoChartRow(
+        wsGraphs,
+        wb,
+        {
+          title: trendExportApi?.title || "Performance Trend",
+          base64: trendExportApi?.getChartBase64?.(),
+          width: 520,
+        },
+        {
+          title: chartExportApi?.title || "Profitability Chart",
+          base64: chartExportApi?.getChartBase64?.(),
+          width: 520,
+        },
+        rowCursor,
+        { leftCol: 1, rightCol: 16, bgCols: 30, pad: 2, scale: 2 }
+      );
+
+      // Row 2: Pie1 + Pie2
+      rowCursor = await addTwoChartRow(
+        wsGraphs,
+        wb,
+        {
+          title: "Expense Breakdown (Pie Chart)",
+          base64: expenseBreakdownPieBase64,
+          width: 520,
+        },
+        {
+          title: "Product Wise CM1 Breakdown (Pie Chart)",
+          base64: productWiseCm1PieBase64,
+          width: 520,
+        },
+        rowCursor,
+        { leftCol: 1, rightCol: 16, bgCols: 30, pad: 2, scale: 2, skipCrop: true }
+      );
+
+
+
+
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const periodLabel = getPeriodLabelShort(); // Jan'25 / Q4'25 / 2025
+      const fileName = `P&L - Product Breakdown - ${periodLabel || String(selectedYear)}.xlsx`;
+
+      saveAs(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        fileName
+      );
+
+    } catch (e) {
+      console.error("Combined export failed:", e);
+    }
+  };
+
   const handleDownloadSkuSheet1 = async () => {
     try {
       const wb = new ExcelJS.Workbook();
@@ -1806,157 +2244,6 @@ setAiPanel({
       body.style.overflow = ""; // cleanup on unmount
     };
   }, [showNoDataOverlay]);
-
-
-  useEffect(() => {
-    if (!range || !selectedYear) return;
-
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
-
-    if (!ready) {
-      setBargraphUploads([]);
-      return;
-    }
-
-    const fetchBargraphData = async () => {
-      setBargraphLoading(true);
-
-      try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("jwtToken")
-            : null;
-
-        const timeline =
-          range === "monthly"
-            ? monthNameToNumber(selectedMonth)
-            : range === "quarterly"
-              ? selectedQuarter
-              : "ALL";
-
-        const url = new URL(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history` // 🔁 replace with your actual endpoint
-        );
-
-        url.searchParams.set("country", countryName);
-        url.searchParams.set("period", range);
-        url.searchParams.set("timeline", String(timeline));
-        url.searchParams.set("year", String(selectedYear));
-
-        if (countryName.toLowerCase() === "global" && homeCurrency) {
-          url.searchParams.set("homeCurrency", homeCurrency);
-        }
-
-        const res = await fetch(url.toString(), {
-          method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          setBargraphUploads([]);
-          return;
-        }
-
-        const data = await res.json();
-
-        setBargraphUploads(data.uploads ?? []);
-        setBargraphUserMeta(data.userMeta ?? null);
-      } catch (err) {
-        setBargraphUploads([]);
-      } finally {
-        setBargraphLoading(false);
-      }
-    };
-
-    fetchBargraphData();
-  }, [
-    range,
-    selectedMonth,
-    selectedQuarter,
-    selectedYear,
-    countryName,
-    homeCurrency,
-  ]);
-
-  useEffect(() => {
-    if (!range || !selectedYear) return;
-
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
-
-    if (!ready) {
-      setGraphPageUploads([]);
-      return;
-    }
-
-    const fetchGraphPageUploads = async () => {
-      setGraphPageLoading(true);
-      setGraphPageError(null);
-
-      try {
-        const token =
-          typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-
-        const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`);
-
-        // ✅ Only send homeCurrency for GLOBAL
-        if (countryName.toLowerCase() === "global" && homeCurrency) {
-          url.searchParams.set("homeCurrency", homeCurrency);
-        }
-
-        const res = await fetch(url.toString(), {
-          method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(j?.error || "Failed to fetch upload history");
-        }
-
-        const json = await res.json();
-        const rows: UploadRow[] = json?.uploads ?? [];
-
-        const isGlobal = countryName.toLowerCase() === "global";
-        const normalizedHomeCurrency = (homeCurrency || "").trim().toLowerCase();
-        const isUsd = normalizedHomeCurrency === "usd";
-
-        const filtered = rows.filter((r) => {
-          const c = (r.country || "").toLowerCase();
-
-          if (isGlobal) {
-            if (isUsd) return c === "global" || c === "global_usd";
-            return c === `global_${normalizedHomeCurrency}`;
-          }
-
-          return c === countryName.toLowerCase();
-        });
-
-        setGraphPageUploads(filtered);
-
-        // ✅ If you already have userData in parent, prefer that:
-        // setGraphPageUserMeta({ company_name: userData?.company_name, brand_name: userData?.brand_name });
-
-        // Otherwise if API returns it:
-        setGraphPageUserMeta(json?.userMeta ?? null);
-      } catch (e: any) {
-        setGraphPageUploads([]);
-        setGraphPageError(e?.message || "Failed to fetch upload history");
-      } finally {
-        setGraphPageLoading(false);
-      }
-    };
-
-    fetchGraphPageUploads();
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency]);
-
 
   const goBack = () => router.push("/pnl-dashboard/QTD/global/NA/NA");
 
@@ -2834,13 +3121,7 @@ setAiPanel({
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
                       isCollapsed={pnlCollapsed}
-
-                      // ✅ NEW
-                      uploads={bargraphUploads}
-                      loading={bargraphLoading}
-                      userMeta={bargraphUserMeta}
                     />
-
                   </div>
                 </div>
               )}
@@ -2898,16 +3179,7 @@ setAiPanel({
             hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
             onDownload={handleDownloadSkuSheet1}
-            onRowsChange={setSkuRows}
           />
-          {skuRows.length > 0 && (
-            <SkuTopBottomTables
-              topData={topData}
-              bottomData={bottomData}
-              currencySymbol={currencySymbol}
-            />
-          )}
-
 
         </>
       )}
@@ -3048,10 +3320,6 @@ setAiPanel({
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
                       isCollapsed={pnlCollapsed}
-                      uploads={graphPageUploads}
-                      loading={graphPageLoading}
-                      userMeta={graphPageUserMeta}
-                      error={graphPageError}
                     />
                   </div>
                 </div>
@@ -3255,12 +3523,7 @@ setAiPanel({
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
                       isCollapsed={pnlCollapsed}
-                      uploads={graphPageUploads}
-                      loading={graphPageLoading}
-                      userMeta={graphPageUserMeta}
-                      error={graphPageError}
                     />
-
                   </div>
                 </div>
               )}
@@ -3279,7 +3542,7 @@ setAiPanel({
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
-                remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
               />
             </div>
           )}
