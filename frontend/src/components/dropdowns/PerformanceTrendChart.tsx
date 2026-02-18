@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import SegmentedToggle from "../ui/SegmentedToggle";
 import type { TrendChartExportApi } from "@/lib/utils/exportTypes";
-import { CgPushLeft, CgPushRight } from "react-icons/cg";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
@@ -667,9 +667,9 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
                 className=" hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
               >
                 {props.isExpanded ? (
-                  <CgPushLeft size={18} className="font-extrabold" />
+                  <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                 ) : (
-                  <CgPushRight size={18} className="font-extrabold" />
+                  <RiExpandDiagonalFill size={18} className="font-extrabold" />
                 )}
               </button>
             )}

@@ -35,8 +35,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
-import { FiMaximize2, FiMinimize2 } from "react-icons/fi";
-import { CgPushLeft, CgPushRight } from "react-icons/cg";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { jwtDecode } from "jwt-decode";
@@ -2822,9 +2821,9 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
       active:shadow-md"
                     >
                       {focusedChart === "pnl" ? (
-                        <CgPushLeft size={18} className="font-extrabold" />
+                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                       ) : (
-                        <CgPushRight size={18} className="font-extrabold" />
+                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
                       )}
                     </button>
                   </div>
@@ -2948,9 +2947,9 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                     className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
                   >
                     {focusedChart === "trend" ? (
-                      <CgPushLeft size={18} className="font-extrabold" />
+                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                     ) : (
-                      <CgPushRight size={18} className="font-extrabold" />
+                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
                     )}
 
                   </button>
@@ -3018,9 +3017,9 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
       active:shadow-md"
                     >
                       {focusedChart === "pnl" ? (
-                        <CgPushLeft size={18} className="font-extrabold" />
+                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                       ) : (
-                        <CgPushRight size={18} className="font-extrabold" />
+                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
                       )}
 
                     </button>
@@ -3154,9 +3153,9 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                     className=" absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
                   >
                     {focusedChart === "trend" ? (
-                      <CgPushLeft size={18} className="font-extrabold" />
+                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                     ) : (
-                      <CgPushRight size={18} className="font-extrabold" />
+                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
                     )}
 
                   </button>
@@ -3225,9 +3224,9 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
       active:shadow-md"
                     >
                       {focusedChart === "pnl" ? (
-                        <CgPushLeft size={18} className="font-extrabold" />
+                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                       ) : (
-                        <CgPushRight size={18} className="font-extrabold" />
+                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
                       )}
 
                     </button>

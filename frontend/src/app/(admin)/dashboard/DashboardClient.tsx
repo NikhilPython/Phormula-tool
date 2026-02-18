@@ -42,7 +42,7 @@ import { FaCalendarAlt } from "react-icons/fa";
 import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/liveBusinessClient";
 import { useRouter } from "next/navigation";
 import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
-import { CgPushRight, CgPushLeft } from "react-icons/cg";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/GroupedCollapsibleTable";
 import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import InfoTip from "@/components/ui/InfoTip";
@@ -4574,9 +4574,9 @@ export default function DashboardPage() {
                                                     aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
                                                 >
                                                     {isMtdPlExpanded ? (
-                                                        <CgPushLeft size={18} className="font-extrabold" />
+                                                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                                                     ) : (
-                                                        <CgPushRight size={18} className="font-extrabold" />
+                                                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
                                                     )}
                                                 </button>
 
