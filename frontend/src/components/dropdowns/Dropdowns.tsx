@@ -3267,13 +3267,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           )}
 
-          {skuRows.length > 0 && (
-            <SkuTopBottomTables
-              topData={topData}
-              bottomData={bottomData}
-              currencySymbol={currencySymbol}
-            />
-          )}
 
           <div className="flex flex-wrap justify-between gap-6 items-stretch md:gap-4">
             <div className="flex-1 min-w-[300px]">
@@ -3306,13 +3299,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             onExportPayloadChange={setSkuExportPayload}
             onDownload={handleDownloadSkuSheet1}
           />
-          {/* {skuRows.length > 0 && (
+          {skuRows.length > 0 && (
             <SkuTopBottomTables
               topData={topData}
               bottomData={bottomData}
               currencySymbol={currencySymbol}
             />
-          )} */}
+          )}
         </>
       )}
 
