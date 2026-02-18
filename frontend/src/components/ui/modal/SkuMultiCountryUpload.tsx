@@ -331,7 +331,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 sm:mb-4 shrink-0">
-              <PageBreadcrumb pageTitle="Confirm SKU Data" variant="table" />
+              <PageBreadcrumb pageTitle="Confirm SKU Data" variant="table" align="center2"/>
             </div>
 
             {/* ✅ IMPORTANT: min-w-0 allows DataTable to shrink (prevents 768px blank/clipping) */}
