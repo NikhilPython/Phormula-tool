@@ -38,11 +38,6 @@ import DialogActions from "@mui/material/DialogActions";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { jwtDecode } from "jwt-decode";
-import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
-import SkuTopBottomTables from "./SkuTopBottomTables";
-import type { TopBottomData } from "@/lib/pnl/topBottom";
-import type { TableRow } from "./SKUtable";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -56,20 +51,6 @@ type Summary = {
   otherwplatform?: number;
   advertising_total?: number;
   total_amazon_fee?: number;
-};
-
-type UploadRow = {
-  country: string;
-  month: string;
-  year: string | number;
-  total_sales: number;
-  total_amazon_fee: number;
-  total_cous: number;
-  advertising_total: number;
-  otherwplatform: number;
-  taxncredit?: number;
-  cm2_profit: number;
-  total_profit: number;
 };
 
 
@@ -86,6 +67,8 @@ type UploadHistoryResponse = {
   summaryComparisons?: SummaryComparisons;
   [key: string]: unknown;
 };
+
+
 
 
 /* ---------------------- AI Summary Types ---------------------- */
@@ -116,13 +99,20 @@ type RecommendationsMap = Record<
     journey_summary?: string[];
     recommendation?: string;
   }
->;
+> & {
+  remaining_skus_recommendation?: string;
+};
+
 
 type AiSummaryResponse = {
   summary?: string | null;
+
+  // ✅ now recommendations can be OBJECT (new API) OR markdown string (old)
   recommendations?: string | RecommendationsMap | null;
+
   objective?: ObjectivePayload;
   objective_changed?: boolean;
+
   performance_trend?: PerformanceTrendPayload;
   performance_trend_metric?: "net_sales" | "units";
 };
@@ -132,11 +122,17 @@ type AiPanelData = {
   skuInsightsBullets: string[];
   recommendationBullets: string[];
   inventoryBullets: string[];
+
   recommendationsMap?: RecommendationsMap;
   objective?: ObjectivePayload;
+
   rawSummary?: string | null;
   rawRecommendations?: string | null;
+
+  // ✅ ADD THIS
+  remainingSkusRecommendation?: string;
 };
+
 
 
 
@@ -499,13 +495,11 @@ const extractRecoAndInventoryBullets = (
 const ProductInsightsSection = ({
   blocks,
   objective,
-  overallRecommendations,
 }: {
   blocks: ProductInsightBlock[];
   objective?: ObjectivePayload;
-  overallRecommendations?: string;
 }) => {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+   const [openIndex, setOpenIndex] = useState<number | null>(null);
   if (!blocks.length) return null;
 
   return (
@@ -520,72 +514,72 @@ const ProductInsightsSection = ({
       </div>
 
       <div className="space-y-2">
+       
 
-
-        {blocks.map((b, idx) => (
-          <motion.div
-            key={idx}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: idx * 0.1 }}
-            className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
-          >
+       {blocks.map((b, idx) => (
+  <motion.div
+    key={idx}
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.4, delay: idx * 0.1 }}
+    className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
+  >
             {/* Product Name with Index */}
-
-            <div className="text-sm font-semibold text-charcoal-700">
-              {idx + 1}. {b.name}
-            </div>
-
+           
+              <div className="text-sm font-semibold text-charcoal-700">
+               {idx + 1}. {b.name}
+              </div>
+            
             {/* Metrics */}
             {b.metrics.length > 0 && (
-              <div className="bg-slate-50 rounded-lg px-2 py-2">
-                <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
+  <div className="bg-slate-50 rounded-lg px-2 py-2">
+    <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
 
-                  {b.metrics.map((m, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
-                    >
-                      <span className="text-slate-600 mr-1">
-                        {m.label}:
-                      </span>
+      {b.metrics.map((m, i) => (
+        <div
+          key={i}
+          className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
+        >
+          <span className="text-slate-600 mr-1">
+            {m.label}:
+          </span>
 
-                      <span
-                        className="font-semibold"
-                        style={{ color: m.color || "#414042" }}
-                      >
-                        {m.value}
-                      </span>
-                    </div>
-                  ))}
+          <span
+            className="font-semibold"
+            style={{ color: m.color || "#414042" }}
+          >
+            {m.value}
+          </span>
+        </div>
+      ))}
 
-                </div>
-              </div>
-            )}
+    </div>
+  </div>
+)}
 
 
             {/* Recommendation */}
-            {b.recommendationBullets.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2"
-              >
-                <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-                  💡 Action Item - {b.recommendationBullets.join(" ")}
-                </p>
-              </motion.div>
-            )}
+{b.recommendationBullets.length > 0 && (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ duration: 0.5, delay: 0.2 }}
+    className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2"
+  >
+    <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+    💡 {b.recommendationBullets.join(" ")}
+    </p>
+  </motion.div>
+)}
 
             {/* Product Journey – Collapsible */}
             {b.journeyBullets.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() =>
-                    setOpenIndex(openIndex === idx ? null : idx)
-                  }
-                  className="
+  <div className="space-y-2">
+   <button
+  onClick={() =>
+    setOpenIndex(openIndex === idx ? null : idx)
+  }
+  className="
     w-full
     flex
     items-center
@@ -604,64 +598,44 @@ const ProductInsightsSection = ({
     hover:from-slate-600 hover:to-slate-700
     active:scale-98
   "
-                >
-                  <span className="flex items-center gap-2">
-                    📈
-                    {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
-                  </span>
+>
+  <span className="flex items-center gap-2">
+    📈
+    {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
+  </span>
 
-                  <span
-                    className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
-                  >
-                    ▼
-                  </span>
-                </button>
+  <span
+    className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
+  >
+    ▼
+  </span>
+</button>
 
-                <AnimatePresence>
-                  {openIndex === idx && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="bg-slate-50 rounded-lg p-4 overflow-hidden"
-                    >
-                      <ul className="list-none space-y-2">
-                        {b.journeyBullets.map((j, i) => (
-                          <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
-                            <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
-                            <span>{j}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
+    <AnimatePresence>
+      {openIndex === idx && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.3 }}
+          className="bg-slate-50 rounded-lg p-4 overflow-hidden"
+        >
+          <ul className="list-none space-y-2">
+            {b.journeyBullets.map((j, i) => (
+              <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
+                <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
+                <span>{j}</span>
+              </li>
+            ))}
+          </ul>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </div>
+)}
 
           </motion.div>
         ))}
-
-        {overallRecommendations && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            className="border border-slate-200 rounded-xl p-3 bg-white border-l-4 border-l-blue-500 mt-3"
-          >
-            <div className="text-sm font-semibold text-charcoal-700">
-              Overall Recommendation
-            </div>
-
-            <div className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 mt-2">
-              <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-                💡 {overallRecommendations}
-              </p>
-            </div>
-          </motion.div>
-        )}
-
       </div>
     </div>
   );
@@ -685,6 +659,7 @@ type AiSingleInsightCardProps = {
 
   // ✅ ADD THIS
   recommendationsMap?: RecommendationsMap;
+  remainingSkusRecommendation?: string;
 
   objective?: ObjectivePayload;
 };
@@ -729,7 +704,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   recommendationBullets,
   skuInsightsBullets,
   inventoryBullets,
-  recommendationsMap,   // ✅ ADD
+  remainingSkusRecommendation,   // ✅ ADD
   objective,
 }) => {
   if (loading) {
@@ -780,8 +755,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   );
 
 
-  const leftMetrics = summaryMetrics.slice(0, 5);
-  const rightMetrics = summaryMetrics.slice(5, 10);
+ const leftMetrics = summaryMetrics.slice(0, 5);
+const rightMetrics = summaryMetrics.slice(5, 10);
 
   return (
     <div className="flex flex-col lg:flex-row gap-5">
@@ -796,230 +771,225 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
         </div>
 
         {/* ================= OBJECTIVE SECTION ================= */}
-        {objective && (
-          <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-5 border-l-4 border-l-blue-500 space-y-4">
-            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Business Strategy</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-slate-700">
-
-              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-                <div className="text-slate-500 text-xs font-medium">Growth Intent</div>
-                <div className="font-bold text-slate-800 capitalize text-sm">
-                  {objective.growth_intent}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-                <div className="text-slate-500 text-xs font-medium">
-                  Inventory Clearance
-                </div>
-                <div className="font-bold text-slate-800 text-sm">
-                  <span className={objective.inventory_clearance_priority ? "text-emerald-600" : "text-slate-600"}>
-                    {objective.inventory_clearance_priority ? "✓ Yes" : "✗ No"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-                <div className="text-slate-500 text-xs font-medium">
-                  Profit Priority
-                </div>
-                <div className="font-bold text-slate-800 capitalize text-sm">
-                  {objective.profit_priority?.replaceAll("_", " ")}
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
-
-
-        {/* ================= PERFORMANCE SUMMARY ================= */}
-        <div className="space-y-5">
-          {/* Narrative Summary */}
-          {narrativeInsights.length > 0 && (
-            <>
-              <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4 space-y-3">
-                <h2 className="text-base 2xl:text-lg text-slate-800">
-                  <span className="font-bold text-slate-900">
-                    {narrativeInsights[0]?.split("(")[0]?.trim()}
-                  </span>
-                  {narrativeInsights[0]?.includes("(") && (
-                    <span className="font-normal text-slate-600 text-sm ml-2">
-                      {`(${narrativeInsights[0].split("(")[1]}`}
-                    </span>
-                  )}
-                </h2>
-
-                <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
-                  {narrativeInsights.slice(1).map((line, i) => (
-                    <p key={i}>{line}</p>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Metrics Heading */}
-          <div className="flex items-center gap-2 pt-2">
-            <span className="text-sm font-bold text-slate-800">📊 Key Metrics</span>
-            <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-300 to-transparent"></div>
-          </div>
-
-          {/* Metrics Grid */}
-
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-
-            {/* LEFT COLUMN */}
-            <div className="space-y-3">
-              {leftMetrics.map((p, i) => {
-                let mainValue = p.value.split(",")[0]?.replace(/\(.*?\)/g, "").trim();
-
-                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-                const n = num ? Number(num) : NaN;
-
-                const colorClass =
-                  !isNaN(n)
-                    ? n < 0
-                      ? "text-red-600 bg-red-50"
-                      : n > 0
-                        ? "text-emerald-600 bg-emerald-50"
-                        : "text-slate-700"
-                    : "text-slate-700";
-
-                return (
-                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-slate-100 hover:border-slate-200 transition-all">
-                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{p.label}</span>
-                    <span className={`font-bold text-sm px-2 py-1 rounded ${colorClass}`}>
-                      {mainValue}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* RIGHT COLUMN */}
-            <div className="space-y-3">
-              {rightMetrics.map((p, i) => {
-                const valueParts = p.value.split(",");
-
-                let mainValue = valueParts[0]?.replace(/\(.*?\)/g, "").trim();
-                const extraPart = valueParts[1]?.trim();
-
-                let acosLabel = "";
-                let acosValue = "";
-
-                if (extraPart && extraPart.toLowerCase().includes("acos")) {
-                  const parts = extraPart.split(":");
-                  acosLabel = parts[0] + ":";
-                  acosValue = parts[1]?.trim();
-                }
-
-                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-                const n = num ? Number(num) : NaN;
-
-                const colorClass =
-                  !isNaN(n)
-                    ? n < 0
-                      ? "text-red-600"
-                      : n > 0
-                        ? "text-emerald-600"
-                        : "text-slate-700"
-                    : "text-slate-700";
-
-                const acosNum = acosValue?.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-                const acosN = acosNum ? Number(acosNum) : NaN;
-
-                const acosColor =
-                  !isNaN(acosN)
-                    ? acosN < 0
-                      ? "text-red-600"
-                      : "text-emerald-600"
-                    : "text-slate-700";
-
-                return (
-                  <div key={i} className="space-y-1 text-xs 2xl:text-sm">
-
-                    {/* Main Row */}
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">{p.label}</span>
-                      <span className={`font-semibold ${colorClass}`}>
-                        {mainValue}
-                      </span>
-                    </div>
-
-                    {/* ACOS Row */}
-                    {acosLabel && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">{acosLabel}</span>
-                        <span className={`font-semibold ${acosColor}`}>
-                          {acosValue}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-          </div>
-
-
+{objective && (
+  <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-5 border-l-4 border-l-blue-500 space-y-4">
+    <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Business Strategy</div>
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-slate-700">
+      
+      <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+        <div className="text-slate-500 text-xs font-medium">Growth Intent</div>
+        <div className="font-bold text-slate-800 capitalize text-sm">
+          {objective.growth_intent}
         </div>
-
-
-        {/* ================= INVENTORY SECTION ================= */}
-        {inventoryBullets.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="text-base 2xl:text-lg font-bold text-slate-800">📦 Inventory Insights</span>
-              <div className="flex-1 h-0.5 bg-gradient-to-r from-amber-300 to-transparent"></div>
-            </div>
-
-            <div className="border border-amber-200 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5 space-y-3">
-              <div className="grid grid-cols-1 gap-3">
-                {inventoryBullets.map((b, i) => (
-                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100 hover:shadow-sm transition-shadow">
-                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{b.split(":")[0]}</span>
-                    <span className="font-bold text-amber-700 text-sm">
-                      {b.includes(":") ? b.split(":")[1] : ""}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </div>
-        )}
-
       </div>
+
+      <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+        <div className="text-slate-500 text-xs font-medium">
+          Inventory Clearance
+        </div>
+        <div className="font-bold text-slate-800 text-sm">
+          <span className={objective.inventory_clearance_priority ? "text-emerald-600" : "text-slate-600"}>
+            {objective.inventory_clearance_priority ? "✓ Yes" : "✗ No"}
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+        <div className="text-slate-500 text-xs font-medium">
+          Profit Priority
+        </div>
+        <div className="font-bold text-slate-800 capitalize text-sm">
+          {objective.profit_priority?.replaceAll("_", " ")}
+        </div>
+      </div>
+
+    </div>
+  </div>
+)}
+
+
+  {/* ================= PERFORMANCE SUMMARY ================= */}
+  <div className="space-y-5">
+    {/* Narrative Summary */}
+   {narrativeInsights.length > 0 && (
+    <>
+      <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4 space-y-3">
+        <h2 className="text-base 2xl:text-lg text-slate-800">
+          <span className="font-bold text-slate-900">
+            {narrativeInsights[0]?.split("(")[0]?.trim()}
+          </span>
+          {narrativeInsights[0]?.includes("(") && (
+            <span className="font-normal text-slate-600 text-sm ml-2">
+              {`(${narrativeInsights[0].split("(")[1]}`}
+            </span>
+          )}
+        </h2>
+
+        <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+          {narrativeInsights.slice(1).map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </div>
+      </div>
+    </>
+  )}
+
+    {/* Metrics Heading */}
+    <div className="flex items-center gap-2 pt-2">
+      <span className="text-sm font-bold text-slate-800">📊 Key Metrics</span>
+      <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-300 to-transparent"></div>
+    </div>
+
+    {/* Metrics Grid */}
+   
+
+<div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+
+  {/* LEFT COLUMN */}
+  <div className="space-y-3">
+    {leftMetrics.map((p, i) => {
+      let mainValue = p.value.split(",")[0]?.replace(/\(.*?\)/g, "").trim();
+
+      const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+      const n = num ? Number(num) : NaN;
+
+      const colorClass =
+        !isNaN(n)
+          ? n < 0
+            ? "text-red-600 bg-red-50"
+            : n > 0
+            ? "text-emerald-600 bg-emerald-50"
+            : "text-slate-700"
+          : "text-slate-700";
+
+      return (
+        <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-slate-100 hover:border-slate-200 transition-all">
+          <span className="text-xs 2xl:text-sm font-medium text-slate-700">{p.label}</span>
+          <span className={`font-bold text-sm px-2 py-1 rounded ${colorClass}`}>
+            {mainValue}
+          </span>
+        </div>
+      );
+    })}
+  </div>
+
+  {/* RIGHT COLUMN */}
+  <div className="space-y-3">
+    {rightMetrics.map((p, i) => {
+      const valueParts = p.value.split(",");
+
+      let mainValue = valueParts[0]?.replace(/\(.*?\)/g, "").trim();
+      const extraPart = valueParts[1]?.trim();
+
+      let acosLabel = "";
+      let acosValue = "";
+
+      if (extraPart && extraPart.toLowerCase().includes("acos")) {
+        const parts = extraPart.split(":");
+        acosLabel = parts[0] + ":";
+        acosValue = parts[1]?.trim();
+      }
+
+      const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+      const n = num ? Number(num) : NaN;
+
+      const colorClass =
+        !isNaN(n)
+          ? n < 0
+            ? "text-red-600"
+            : n > 0
+            ? "text-emerald-600"
+            : "text-slate-700"
+          : "text-slate-700";
+
+      const acosNum = acosValue?.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+      const acosN = acosNum ? Number(acosNum) : NaN;
+
+      const acosColor =
+        !isNaN(acosN)
+          ? acosN < 0
+            ? "text-red-600"
+            : "text-emerald-600"
+          : "text-slate-700";
+
+      return (
+        <div key={i} className="space-y-1 text-xs 2xl:text-sm">
+
+          {/* Main Row */}
+          <div className="flex justify-between">
+            <span className="text-slate-600">{p.label}</span>
+            <span className={`font-semibold ${colorClass}`}>
+              {mainValue}
+            </span>
+          </div>
+
+          {/* ACOS Row */}
+          {acosLabel && (
+            <div className="flex justify-between">
+              <span className="text-slate-600">{acosLabel}</span>
+              <span className={`font-semibold ${acosColor}`}>
+                {acosValue}
+              </span>
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+
+</div>
+
+
+  </div>
+
+
+  {/* ================= INVENTORY SECTION ================= */}
+  {inventoryBullets.length > 0 && (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="text-base 2xl:text-lg font-bold text-slate-800">📦 Inventory Insights</span>
+        <div className="flex-1 h-0.5 bg-gradient-to-r from-amber-300 to-transparent"></div>
+      </div>
+
+      <div className="border border-amber-200 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5 space-y-3">
+        <div className="grid grid-cols-1 gap-3">
+          {inventoryBullets.map((b, i) => (
+            <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100 hover:shadow-sm transition-shadow">
+              <span className="text-xs 2xl:text-sm font-medium text-slate-700">{b.split(":")[0]}</span>
+              <span className="font-bold text-amber-700 text-sm">
+                {b.includes(":") ? b.split(":")[1] : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  )}
+
+</div>
 
 
       <div className="flex-1 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 shadow-sm p-7">
-        <ProductInsightsSection
-          blocks={
-            recommendationsMap
-              ? Object.entries(recommendationsMap)
-                .filter(([key]) => key !== "remaining_skus_recommendation")
-                .map(([sku, value]: any) => ({
-                  name: sku,
-                  metrics: [],
-                  journeyBullets: value?.journey_summary ?? [],
-                  recommendationBullets: value?.recommendation
-                    ? [value.recommendation]
-                    : [],
-                }))
-              : []
-          }
+<div className="space-y-5">
+  <ProductInsightsSection
+    blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+    objective={objective}
+  />
 
-          objective={objective}
-          overallRecommendations={
-            typeof recommendationsMap?.remaining_skus_recommendation === "string"
-              ? recommendationsMap.remaining_skus_recommendation
-              : recommendationsMap?.remaining_skus_recommendation?.recommendation
-          }
+  {/* ✅ Remaining SKUs Recommendation */}
+  {remainingSkusRecommendation && (
+    <div className="border border-slate-200 rounded-xl p-4 bg-blue-50 border-l-4 border-l-blue-500">
+      <div className="text-sm font-semibold text-slate-800 mb-2">
+        OverAll SKUs – Action Plan
+      </div>
 
-        />
+      <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+        💡 {remainingSkusRecommendation}
+      </p>
+    </div>
+  )}
+</div>
       </div>
     </div>
 
@@ -1076,19 +1046,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [performanceTrendBase64, setPerformanceTrendBase64] = useState<string | null>(null);
   const [trendExportApi, setTrendExportApi] = useState<TrendChartExportApi | null>(null);
   const [focusedChart, setFocusedChart] = useState<FocusedChart>(null);
-  const [bargraphUploads, setBargraphUploads] = useState<UploadRow[]>([]);
-  const [bargraphLoading, setBargraphLoading] = useState(false);
-  const [bargraphUserMeta, setBargraphUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
-
-  // ✅ GraphPage (Line chart) data from parent
-  const [graphPageUploads, setGraphPageUploads] = useState<UploadRow[]>([]);
-  const [graphPageLoading, setGraphPageLoading] = useState(false);
-  const [graphPageUserMeta, setGraphPageUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
-  const [graphPageError, setGraphPageError] = useState<string | null>(null);
-
-
-  const [skuRows, setSkuRows] = useState<TableRow[]>([]);
-
+  
 
   const toggleFocus = (which: Exclude<FocusedChart, null>) => {
     setFocusedChart((prev) => (prev === which ? null : which));
@@ -1384,12 +1342,6 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
 
       const data: AiSummaryResponse = await res.json();
 
-      const overAllRecommendations = typeof data?.recommendations === "object" && data?.recommendations !== null
-        ? (data.recommendations as RecommendationsMap)?.remaining_skus_recommendation
-        : undefined
-
-      console.log(overAllRecommendations)
-
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
 
       // setPerformanceTrend(data.performance_trend ?? null);
@@ -1400,20 +1352,36 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
       const summaryLines = sections["SUMMARY"] ?? [];
       const inventoryLines = sections["INVENTORY"] ?? [];
       const productLines = sections["PRODUCT INSIGHTS"] ?? [];
-      const { recommendationBullets, inventoryBullets, recommendationsMap } =
-        extractRecoAndInventoryBullets(data.recommendations as any);
+const { recommendationBullets, inventoryBullets, recommendationsMap } =
+  extractRecoAndInventoryBullets(data.recommendations as any);
 
-      setAiPanel({
-        summaryBullets: summaryLines,
-        skuInsightsBullets: productLines,
-        recommendationBullets,
-        inventoryBullets: inventoryLines,
-        recommendationsMap,            // ✅ store map
-        objective: data.objective,     // ✅ objective store
-        rawSummary: data.summary ?? null,
-        rawRecommendations:
-          typeof data.recommendations === "string" ? data.recommendations : null,
-      });
+// ✅ extract remaining_skus_recommendation safely
+let remainingSkusRecommendation: string | undefined;
+
+if (
+  data.recommendations &&
+  typeof data.recommendations === "object" &&
+  "remaining_skus_recommendation" in data.recommendations
+) {
+  remainingSkusRecommendation =
+    (data.recommendations as any).remaining_skus_recommendation;
+}
+
+setAiPanel({
+  summaryBullets: summaryLines,
+  skuInsightsBullets: productLines,
+  recommendationBullets,
+  inventoryBullets: inventoryLines,
+  recommendationsMap,
+  objective: data.objective,
+  rawSummary: data.summary ?? null,
+  rawRecommendations:
+    typeof data.recommendations === "string" ? data.recommendations : null,
+
+  // ✅ NEW
+  remainingSkusRecommendation,
+});
+
 
 
     } catch (e: any) {
@@ -1743,6 +1711,471 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
     };
   };
 
+  // const buildSkuWorksheetFromModel = (
+  //   ws: ExcelJS.Worksheet,
+  //   model: NonNullable<SkuExportPayload["sheetModel"]>
+  // ) => {
+  //   // const { columns, extraRows, headerRow, signRow, rows, summaryRows, formats } = model;
+
+  //   const {
+  //     columns: originalColumns,
+  //     extraRows,
+  //     headerRow,
+  //     signRow,
+  //     rows,
+  //     summaryRows,
+  //     formats,
+  //   } = model;
+
+  //   // ❌ columns to REMOVE from Excel
+  //   const EXCEL_EXCLUDED_COLUMNS = new Set([
+  //     "amazon_fee",
+  //     "other_transactions",
+  //   ]);
+
+  //   // ✅ final columns used ONLY for excel
+  //   const columns = originalColumns.filter(
+  //     (col) => !EXCEL_EXCLUDED_COLUMNS.has(col)
+  //   );
+
+
+  //   const colIndex: Record<string, number> = {};
+  //   columns.forEach((k, i) => (colIndex[k] = i + 1)); // 1-based for ExcelJS
+
+  //   const fmtFor = (key: string) => {
+  //     const t = formats?.[key];
+  //     if (t === "int") return "#,##0";
+  //     if (t === "money") return "#,##0.00";
+  //     if (t === "percent") return "0.00%";
+  //     return undefined;
+  //   };
+
+  //   // ---- meta rows (in column A)
+  //   // for (const r of extraRows || []) ws.addRow([r?.[0] ?? ""]);
+  //   // ws.addRow([""]); 
+
+  //   // ---- CUSTOM META / TOP SECTION ----
+
+  //   // column index where CM1 Profit Margin exists
+  //   const PROFIT_COL_INDEX = colIndex["profit"] || columns.length;
+
+  //   // 1️⃣ Title on top
+  //   ws.addRow(["Profit Breakup (SKU Level)"]);
+  //   // ws.addRow([""]); 
+
+  //   const capitalizeWords = (value: string) =>
+  //     value
+  //       .toLowerCase()
+  //       .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  //   const brandName = capitalizeWords(
+  //     (extraRows?.[0]?.[0] || "").toString()
+  //   );
+
+  //   const companyName = capitalizeWords(
+  //     (extraRows?.[1]?.[0] || "").toString()
+  //   );
+
+
+  //   const companyBrandRow = new Array(columns.length).fill("");
+
+  //   // LEFT → COMPANY NAME
+  //   companyBrandRow[0] = `Company Name : ${companyName}`;
+
+  //   // RIGHT → BRAND NAME (above CM1 Profit Margin)
+  //   companyBrandRow[PROFIT_COL_INDEX - 1] = `${brandName}`;
+
+  //   const cbRow = ws.addRow(companyBrandRow);
+  //   cbRow.font = { bold: false };
+
+  //   // ws.addRow([""]);
+
+  //   // 3️⃣ Currency / Country / Platform
+  //   for (let i = 3; i < (extraRows?.length || 0); i++) {
+  //     ws.addRow([extraRows?.[i]?.[0] ?? ""]);
+  //   }
+
+  //   ws.addRow([""]);
+
+
+  //   // ---- header row
+  //   ws.addRow(columns.map((k) => headerRow?.[k] ?? k));
+
+  //   // ---- sign row (align to columns)
+  //   ws.addRow(columns.map((k) => signRow?.[k] ?? ""));
+
+  //   // ---- table rows
+  //   for (const r of rows || []) {
+  //     ws.addRow(columns.map((k) => (r as any)?.[k] ?? ""));
+  //   }
+
+  //   ws.addRow([""]);
+
+  //   const labelKey = columns.includes("product_name") ? "product_name" : columns[0];
+  //   const valueKey =
+  //     columns.includes("profit") ? "profit"
+  //       : columns.includes("net_taxes") ? "net_taxes"
+  //         : columns[columns.length - 1];
+
+  //   // ✅ percent-only summary labels
+  //   const PERCENT_SUMMARY_LABELS = new Set([
+  //     "CM2 Margins",
+  //     "TACoS (Total Advertising Cost of Sale)",
+  //     "Reimbursement vs CM2 Margins",
+  //     "Reimbursement vs Sales",
+  //   ]);
+
+  //   // ✅ rows that should keep title but BLANK value (because breakdown rows exist below)
+  //   const SUMMARY_NO_VALUE_LABELS = new Set([
+  //     "Cost of Advertisement",
+  //     "Other Transactions (-)",
+  //     "Other Transactions",
+  //   ]);
+
+  //   // ✅ store row numbers to re-apply % after column formatting
+  //   const percentSummaryRowNumbers: number[] = [];
+
+  //   // ---- summary rows (ONLY ONCE)
+  //   for (const sr of summaryRows || []) {
+  //     let label = String((sr as any)?.[labelKey] ?? "").trim();
+  //     let value: any = (sr as any)?.[valueKey] ?? "";
+
+  //     // ✅ add "(+)" prefix for reimbursement row label
+  //     if (label === "Reimbursement for lost Inventory") {
+  //       label = "Reimbursement for lost Inventory (+)";
+  //     }
+
+  //     // ✅ clean label for matching rules (so "(+)" doesn't break your sets)
+  //     const cleanLabel = label.replace(/^\(\+\)\s*/i, "").trim();
+
+  //     const isPercentRow = PERCENT_SUMMARY_LABELS.has(cleanLabel);
+
+  //     // ✅ UI gives percent-number like 27.37 -> Excel needs 0.2737
+  //     if (isPercentRow && typeof value === "number") {
+  //       value = value / 100;
+  //     }
+
+  //     // ✅ remove value ONLY for these parent rows (title stays)
+  //     if (SUMMARY_NO_VALUE_LABELS.has(cleanLabel)) {
+  //       value = "";
+  //     }
+
+  //     const line = new Array(columns.length).fill("");
+  //     line[colIndex[labelKey] - 1] = label;
+  //     line[colIndex[valueKey] - 1] = value;
+
+  //     const excelRow = ws.addRow(line);
+
+  //     if ((sr as any).__bold) {
+  //       excelRow.font = { bold: true };
+  //     }
+
+  //     if (isPercentRow) {
+  //       percentSummaryRowNumbers.push(excelRow.number);
+  //     }
+  //   }
+
+  //   // ---- formatting by column key (may overwrite numFmt)
+  //   for (const k of columns) {
+  //     const idx = colIndex[k];
+  //     const nf = fmtFor(k);
+  //     if (nf) ws.getColumn(idx).numFmt = nf;
+  //   }
+
+  //   // ✅ re-apply percent formatting AFTER column formats
+  //   for (const r of percentSummaryRowNumbers) {
+  //     ws.getRow(r).getCell(colIndex[valueKey]).numFmt = "0.00%";
+  //     // or "#,##0.00%" if you want comma-grouping for huge % like 1835.09%
+  //   }
+
+  //   // ---- make header bold
+  //   const headerRowNumber = (extraRows?.length ?? 0) + 2;
+  //   ws.getRow(headerRowNumber).font = { bold: true };
+
+  //   // ---- sign row italic
+  //   ws.getRow(headerRowNumber + 1).font = { italic: true };
+  // };
+
+  const handleDownloadProfitabilityBundle = async () => {
+    try {
+      const wb = new ExcelJS.Workbook();
+
+      const addChartBlock = async (
+        ws: ExcelJS.Worksheet,
+        wb: ExcelJS.Workbook,
+        title: string,
+        base64: string | null | undefined,
+        startRow: number,
+        options?: {
+          width?: number;          // only WIDTH is respected; height auto
+          pad?: number;            // crop pad
+          bgCols?: number;         // how many columns to paint white
+          gapRowsAfter?: number;   // spacing after chart block
+          minBase64Len?: number;   // guard against empty export
+          scale?: number;          // jpeg upscale factor (default 2)
+          skipCrop?: boolean;
+        }
+      ): Promise<number> => {
+        const targetW = options?.width ?? 520;
+        const pad = options?.pad ?? 2;
+        const bgCols = options?.bgCols ?? 25;
+        const gapRowsAfter = options?.gapRowsAfter ?? 2;
+        const minBase64Len = options?.minBase64Len ?? 5000;
+        const scale = options?.scale ?? 2; // ✅ important for wedge seam reduction
+        const skipCrop = options?.skipCrop ?? false;
+
+        // ----- Title -----
+        ws.getRow(startRow).getCell(1).value = title;
+        ws.getRow(startRow).getCell(1).font = { bold: true, size: 14 };
+
+        // spacer row
+        ws.getRow(startRow + 1).getCell(1).value = "";
+
+        if (!base64) {
+          ws.getRow(startRow + 2).getCell(1).value = "Chart not available";
+          return startRow + 6;
+        }
+
+        const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
+
+        // ✅ guard: export happened too early -> blank image
+        if (!raw || raw.length < minBase64Len) {
+          ws.getRow(startRow + 2).getCell(1).value = "Chart not available (empty export)";
+          return startRow + 6;
+        }
+
+
+
+        let imgForJpeg = base64;
+
+        // ✅ only crop when allowed
+        if (!skipCrop) {
+          const cropped = await cropPngBase64WithSize(base64, pad, {
+            whiteThreshold: 254,
+            minContentRatio: 0.0015,
+          });
+
+          imgForJpeg = `data:image/png;base64,${cropped.base64}`;
+        }
+
+        // ✅ always convert to JPEG for Excel (no alpha seams)
+        const jpeg = await toJpegBase64(imgForJpeg, 0.98, {
+          scale,
+          bg: "#FFFFFF",
+        });
+
+
+
+        const finalW = targetW;
+        const finalH = Math.round((finalW * jpeg.h) / jpeg.w);
+
+        // Convert pixel height to approximate row count (18px-ish per row)
+        const chartRows = Math.ceil(finalH / 18) + 2;
+
+        // ----- White background block (hide gridlines) -----
+        const bgStart = startRow + 1;
+        const bgEnd = bgStart + chartRows;
+
+        for (let r = bgStart; r <= bgEnd; r++) {
+          for (let c = 1; c <= bgCols; c++) {
+            ws.getRow(r).getCell(c).fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFFFFFFF" },
+            };
+          }
+        }
+
+        // ✅ Add as JPEG (no alpha = no wedge gaps)
+        const imageId = wb.addImage({
+          base64: jpeg.base64,
+          extension: "jpeg",
+        });
+
+        // ✅ Insert
+        ws.addImage(imageId, {
+          tl: { col: 0, row: startRow + 1 },
+          ext: { width: finalW, height: finalH },
+          editAs: "oneCell",
+        });
+
+        return bgEnd + gapRowsAfter;
+
+      };
+
+      // =========================================================
+      // ✅ TAB 1: SKU Profitability  (now uses sheetModel)
+      // =========================================================
+      const wsSku = wb.addWorksheet("SKU Profitability");
+
+      if (skuExportPayload?.sheetModel) {
+        buildSkuWorksheetFromModel(wsSku, skuExportPayload.sheetModel);
+      } else if (skuExportPayload) {
+        // fallback: keep old behavior OR show message
+        wsSku.addRow(["SKU sheet model not available"]);
+      } else {
+        wsSku.addRow(["SKU data not available"]);
+      }
+
+      // =========================================================
+      // ✅ TAB 2: All Graphs (SWAPPED → now second sheet)
+      // =========================================================
+      const wsGraphs = wb.addWorksheet("All Graphs");
+      wsGraphs.views = [{ showGridLines: false }];
+
+      let rowCursor = 1;
+
+      const addTwoChartRow = async (
+        ws: ExcelJS.Worksheet,
+        wb: ExcelJS.Workbook,
+        left: { title: string; base64: string | null | undefined; width?: number },
+        right: { title: string; base64: string | null | undefined; width?: number },
+        startRow: number,
+        options?: {
+          leftCol?: number;      // 1-based
+          rightCol?: number;     // 1-based
+          pad?: number;
+          bgCols?: number;
+          gapRowsAfter?: number;
+          scale?: number;
+          skipCrop?: boolean;
+        }
+      ): Promise<number> => {
+        const leftCol = options?.leftCol ?? 1;
+        const rightCol = options?.rightCol ?? 16; // around mid-sheet
+        const pad = options?.pad ?? 2;
+        const bgCols = options?.bgCols ?? 30;
+        const gapRowsAfter = options?.gapRowsAfter ?? 2;
+        const scale = options?.scale ?? 2;
+        const skipCrop = options?.skipCrop ?? false;
+
+        // ---- Titles (same row)
+        ws.getRow(startRow).getCell(leftCol).value = left.title;
+        ws.getRow(startRow).getCell(leftCol).font = { bold: true, size: 14 };
+
+        ws.getRow(startRow).getCell(rightCol).value = right.title;
+        ws.getRow(startRow).getCell(rightCol).font = { bold: true, size: 14 };
+
+        // spacer row
+        ws.getRow(startRow + 1).getCell(1).value = "";
+
+        // helper: insert single chart at a column
+        const insertAt = async (base64: string | null | undefined, col: number, targetW: number) => {
+          if (!base64) return { finalH: 0, chartRows: 0 };
+
+          const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
+          if (!raw || raw.length < 5000) return { finalH: 0, chartRows: 0 };
+
+          let imgForJpeg = base64;
+
+          if (!skipCrop) {
+            const cropped = await cropPngBase64WithSize(base64, pad, {
+              whiteThreshold: 254,
+              minContentRatio: 0.0015,
+            });
+            imgForJpeg = `data:image/png;base64,${cropped.base64}`;
+          }
+
+          const jpeg = await toJpegBase64(imgForJpeg, 0.98, { scale, bg: "#FFFFFF" });
+
+          const finalW = targetW;
+          const finalH = Math.round((finalW * jpeg.h) / jpeg.w);
+          const chartRows = Math.ceil(finalH / 18) + 2;
+
+          const imageId = wb.addImage({ base64: jpeg.base64, extension: "jpeg" });
+
+          ws.addImage(imageId, {
+            tl: { col: col - 1, row: startRow + 1 }, // ExcelJS uses 0-based col/row in tl
+            ext: { width: finalW, height: finalH },
+            editAs: "oneCell",
+          });
+
+          return { finalH, chartRows };
+        };
+
+        // widths for each chart in a 2-col layout
+        const leftW = left.width ?? 520;
+        const rightW = right.width ?? 520;
+
+        const leftPlaced = await insertAt(left.base64, leftCol, leftW);
+        const rightPlaced = await insertAt(right.base64, rightCol, rightW);
+
+        const maxRows = Math.max(leftPlaced.chartRows, rightPlaced.chartRows, 10);
+
+        // ---- White background block for the whole row area
+        const bgStart = startRow + 1;
+        const bgEnd = bgStart + maxRows;
+
+        for (let r = bgStart; r <= bgEnd; r++) {
+          for (let c = 1; c <= bgCols; c++) {
+            ws.getRow(r).getCell(c).fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFFFFFFF" },
+            };
+          }
+        }
+
+        return bgEnd + gapRowsAfter;
+      };
+
+
+      // Row 1: Trend + PnL
+      rowCursor = await addTwoChartRow(
+        wsGraphs,
+        wb,
+        {
+          title: trendExportApi?.title || "Performance Trend",
+          base64: trendExportApi?.getChartBase64?.(),
+          width: 520,
+        },
+        {
+          title: chartExportApi?.title || "Profitability Chart",
+          base64: chartExportApi?.getChartBase64?.(),
+          width: 520,
+        },
+        rowCursor,
+        { leftCol: 1, rightCol: 16, bgCols: 30, pad: 2, scale: 2 }
+      );
+
+      // Row 2: Pie1 + Pie2
+      rowCursor = await addTwoChartRow(
+        wsGraphs,
+        wb,
+        {
+          title: "Expense Breakdown (Pie Chart)",
+          base64: expenseBreakdownPieBase64,
+          width: 520,
+        },
+        {
+          title: "Product Wise CM1 Breakdown (Pie Chart)",
+          base64: productWiseCm1PieBase64,
+          width: 520,
+        },
+        rowCursor,
+        { leftCol: 1, rightCol: 16, bgCols: 30, pad: 2, scale: 2, skipCrop: true }
+      );
+
+
+
+
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const periodLabel = getPeriodLabelShort(); // Jan'25 / Q4'25 / 2025
+      const fileName = `P&L - Product Breakdown - ${periodLabel || String(selectedYear)}.xlsx`;
+
+      saveAs(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        fileName
+      );
+
+    } catch (e) {
+      console.error("Combined export failed:", e);
+    }
+  };
+
   const handleDownloadSkuSheet1 = async () => {
     try {
       const wb = new ExcelJS.Workbook();
@@ -1811,157 +2244,6 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
       body.style.overflow = ""; // cleanup on unmount
     };
   }, [showNoDataOverlay]);
-
-
-  useEffect(() => {
-    if (!range || !selectedYear) return;
-
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
-
-    if (!ready) {
-      setBargraphUploads([]);
-      return;
-    }
-
-    const fetchBargraphData = async () => {
-      setBargraphLoading(true);
-
-      try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("jwtToken")
-            : null;
-
-        const timeline =
-          range === "monthly"
-            ? monthNameToNumber(selectedMonth)
-            : range === "quarterly"
-              ? selectedQuarter
-              : "ALL";
-
-        const url = new URL(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history` // 🔁 replace with your actual endpoint
-        );
-
-        url.searchParams.set("country", countryName);
-        url.searchParams.set("period", range);
-        url.searchParams.set("timeline", String(timeline));
-        url.searchParams.set("year", String(selectedYear));
-
-        if (countryName.toLowerCase() === "global" && homeCurrency) {
-          url.searchParams.set("homeCurrency", homeCurrency);
-        }
-
-        const res = await fetch(url.toString(), {
-          method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          setBargraphUploads([]);
-          return;
-        }
-
-        const data = await res.json();
-
-        setBargraphUploads(data.uploads ?? []);
-        setBargraphUserMeta(data.userMeta ?? null);
-      } catch (err) {
-        setBargraphUploads([]);
-      } finally {
-        setBargraphLoading(false);
-      }
-    };
-
-    fetchBargraphData();
-  }, [
-    range,
-    selectedMonth,
-    selectedQuarter,
-    selectedYear,
-    countryName,
-    homeCurrency,
-  ]);
-
-  useEffect(() => {
-    if (!range || !selectedYear) return;
-
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
-
-    if (!ready) {
-      setGraphPageUploads([]);
-      return;
-    }
-
-    const fetchGraphPageUploads = async () => {
-      setGraphPageLoading(true);
-      setGraphPageError(null);
-
-      try {
-        const token =
-          typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-
-        const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`);
-
-        // ✅ Only send homeCurrency for GLOBAL
-        if (countryName.toLowerCase() === "global" && homeCurrency) {
-          url.searchParams.set("homeCurrency", homeCurrency);
-        }
-
-        const res = await fetch(url.toString(), {
-          method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(j?.error || "Failed to fetch upload history");
-        }
-
-        const json = await res.json();
-        const rows: UploadRow[] = json?.uploads ?? [];
-
-        const isGlobal = countryName.toLowerCase() === "global";
-        const normalizedHomeCurrency = (homeCurrency || "").trim().toLowerCase();
-        const isUsd = normalizedHomeCurrency === "usd";
-
-        const filtered = rows.filter((r) => {
-          const c = (r.country || "").toLowerCase();
-
-          if (isGlobal) {
-            if (isUsd) return c === "global" || c === "global_usd";
-            return c === `global_${normalizedHomeCurrency}`;
-          }
-
-          return c === countryName.toLowerCase();
-        });
-
-        setGraphPageUploads(filtered);
-
-        // ✅ If you already have userData in parent, prefer that:
-        // setGraphPageUserMeta({ company_name: userData?.company_name, brand_name: userData?.brand_name });
-
-        // Otherwise if API returns it:
-        setGraphPageUserMeta(json?.userMeta ?? null);
-      } catch (e: any) {
-        setGraphPageUploads([]);
-        setGraphPageError(e?.message || "Failed to fetch upload history");
-      } finally {
-        setGraphPageLoading(false);
-      }
-    };
-
-    fetchGraphPageUploads();
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency]);
-
 
   const goBack = () => router.push("/pnl-dashboard/QTD/global/NA/NA");
 
@@ -2839,13 +3121,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
                       isCollapsed={pnlCollapsed}
-
-                      // ✅ NEW
-                      uploads={bargraphUploads}
-                      loading={bargraphLoading}
-                      userMeta={bargraphUserMeta}
                     />
-
                   </div>
                 </div>
               )}
@@ -2867,6 +3143,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
+                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
               />
             </div>
           )}
@@ -2902,16 +3179,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
             hideDownloadButton={false}
             onExportPayloadChange={setSkuExportPayload}
             onDownload={handleDownloadSkuSheet1}
-            onRowsChange={setSkuRows}
           />
-          {skuRows.length > 0 && (
-            <SkuTopBottomTables
-              topData={topData}
-              bottomData={bottomData}
-              currencySymbol={currencySymbol}
-            />
-          )}
-
 
         </>
       )}
@@ -3052,10 +3320,6 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
                       isCollapsed={pnlCollapsed}
-                      uploads={graphPageUploads}
-                      loading={graphPageLoading}
-                      userMeta={graphPageUserMeta}
-                      error={graphPageError}
                     />
                   </div>
                 </div>
@@ -3074,6 +3338,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
+                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
               />
             </div>
           )}
@@ -3258,12 +3523,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                       onExportApiReady={setChartExportApi}
                       onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
                       isCollapsed={pnlCollapsed}
-                      uploads={graphPageUploads}
-                      loading={graphPageLoading}
-                      userMeta={graphPageUserMeta}
-                      error={graphPageError}
                     />
-
                   </div>
                 </div>
               )}
@@ -3282,6 +3542,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
+                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
               />
             </div>
           )}

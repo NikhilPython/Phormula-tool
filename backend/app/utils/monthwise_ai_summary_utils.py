@@ -1132,13 +1132,78 @@ def run_prompt_1_analysis(ai_payload):
     )
     return resp.choices[0].message.content.strip()
 
+# def run_prompt_2_strategy(
+#     analysis_insights: dict,
+#     objective_v2: dict,
+#     focus_skus: list,
+#     sku_time_series: dict,
+#     inventory_alerts: dict,
+#     country: str
+# ):
+
+#     # -------------------------------------------------
+#     # Universal JSON sanitizer (handles pandas/numpy)
+#     # -------------------------------------------------
+#     def _make_json_safe(obj):
+#         if isinstance(obj, pd.Series):
+#             return _make_json_safe(obj.iloc[0] if not obj.empty else None)
+
+#         if isinstance(obj, (np.integer,)):
+#             return int(obj)
+
+#         if isinstance(obj, (np.floating,)):
+#             return float(obj)
+
+#         if isinstance(obj, float) and np.isnan(obj):
+#             return None
+
+#         if isinstance(obj, dict):
+#             return {k: _make_json_safe(v) for k, v in obj.items()}
+
+#         if isinstance(obj, (list, tuple)):
+#             return [_make_json_safe(v) for v in obj]
+
+#         return obj
+
+#     # -------------------------------------------------
+#     # Build payload
+#     # -------------------------------------------------
+#     payload = {
+#         "analysis_insights": analysis_insights,
+#         "objective_v2": objective_v2,
+#         "focus_skus": focus_skus,
+#         "sku_time_series": sku_time_series,
+#         "inventory_alerts": inventory_alerts,
+#         "country": country,
+#     }
+
+#     # -------------------------------------------------
+#     # 🔐 SANITIZE before json.dumps  ← CRITICAL FIX
+#     # -------------------------------------------------
+#     safe_payload = _make_json_safe(payload)
+
+#     resp = openai_client.chat.completions.create(
+#         model="gpt-4.1",
+#         messages=[
+#             {"role": "system", "content": AI_SYSTEM_PROMPT_2},
+#             {"role": "user", "content": json.dumps(safe_payload, separators=(",", ":"))},
+#         ],
+#         temperature=0.2,
+#     )
+
+#     return resp.choices[0].message.content.strip()
+
 def run_prompt_2_strategy(
     analysis_insights: dict,
     objective_v2: dict,
     focus_skus: list,
     sku_time_series: dict,
     inventory_alerts: dict,
-    country: str
+    country: str,
+
+    # ✅ NEW (ads context)
+    sku_ads_context: list | None = None,
+    ads_monthly: dict | None = None,
 ):
 
     # -------------------------------------------------
@@ -1166,7 +1231,7 @@ def run_prompt_2_strategy(
         return obj
 
     # -------------------------------------------------
-    # Build payload
+    # Build payload (ADS INCLUDED)
     # -------------------------------------------------
     payload = {
         "analysis_insights": analysis_insights,
@@ -1175,10 +1240,14 @@ def run_prompt_2_strategy(
         "sku_time_series": sku_time_series,
         "inventory_alerts": inventory_alerts,
         "country": country,
+
+        # ✅ NEW — Ads Intelligence
+        "sku_ads_context": sku_ads_context or [],
+        "ads_monthly": ads_monthly or {},
     }
 
     # -------------------------------------------------
-    # 🔐 SANITIZE before json.dumps  ← CRITICAL FIX
+    # 🔐 SANITIZE before json.dumps
     # -------------------------------------------------
     safe_payload = _make_json_safe(payload)
 
@@ -1192,7 +1261,6 @@ def run_prompt_2_strategy(
     )
 
     return resp.choices[0].message.content.strip()
-
 
 
 def run_prompt_3_polish(bullets: dict) -> dict:

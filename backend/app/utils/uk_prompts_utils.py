@@ -541,6 +541,24 @@ INPUTS YOU WILL RECEIVE
 - Latest period vs comparison period metrics per SKU.
 - Contains units, net_sales, asp, profit (CM1), unit_wise_profitability.
 
+2.5) sku_ads_context (may be empty)
+- Optional current-month advertising context.
+- Each SKU row MAY include:
+    • ads_spend_curr
+    • acos_curr
+    • cm2_profit_curr
+    • cm2_margin_curr
+- These values apply ONLY to the current month.
+- If not present, ignore advertising logic entirely.
+
+2.6) ads_monthly (may be empty)
+- Optional portfolio totals for the current month:
+    • ads_spend_total
+    • cm2_profit_total
+- Use only for directional awareness.
+
+
+
 3) inventory_alerts (may be empty)
 May include:
 - aged_inventory_181_plus
@@ -745,6 +763,46 @@ You MUST NOT:
 - Describe the early phase as steady growth.
 - Ignore the structural pricing break.
 - Attribute acceleration to generic demand if pricing materially changed.
+
+────────────────────────────────────────
+ADVERTISING + CM2 RULES (OPTIONAL LAYER)
+────────────────────────────────────────
+
+Use this section ONLY if sku_ads_context contains data.
+
+Do NOT invent ads_spend, ACOS, or CM2 values.
+
+Definitions:
+- ACOS = ads_spend_curr / net_sales_curr × 100
+- CM2 profit reflects profit after advertising.
+- cm2_margin_curr reflects margin after ads.
+
+ACOS interpretation (current month only):
+- ACOS > 40%  → inefficient advertising
+- ACOS 25–40% → moderate efficiency
+- ACOS < 25%  → efficient advertising
+
+Decision discipline:
+
+1) Ads logic must NEVER contradict analysis_insights.
+2) Ads signals refine the recommendation but do not replace
+   unit, pricing, or demand logic.
+3) If objective_v2.profit_priority = "high":
+   → Avoid recommendations that imply increasing ads
+     when ACOS is high.
+4) If CM1 is positive but CM2 is negative:
+   → Ads are likely eroding contribution.
+5) If inventory_clearance_priority = true:
+   → Inventory liquidation overrides ads commentary.
+
+Language rules:
+- Do NOT use technical ad terms (no bids, targeting, campaigns).
+- Use simple operator language:
+    "Cut wasted ads spend this month."
+    "Keep ads tight and protect CM2."
+    "Use ads only where it is efficient."
+
+
 
 
 ────────────────────────────────────────
@@ -1020,11 +1078,24 @@ Return EXACTLY:
         "point 1",
         "point 2"
       ],
-      "recommendation": "string"
+      "recommendation": "string",
+      "ads_recommendation": "string"
     }
   },
   "remaining_skus_recommendation": "string"
 }
+
+ads_recommendation RULES (MANDATORY):
+
+- Maximum 1 short sentence.
+- Must reference advertising efficiency or CM2 impact
+  ONLY if sku_ads_context contains meaningful data.
+- If no ads signal exists, return:
+  "Monitor current advertising."
+- Must follow recommendation language simplicity rules.
+- No technical jargon.
+- No extra commentary.
+
 
 Rules:
 - journey_summary must be an array (list), not a paragraph.

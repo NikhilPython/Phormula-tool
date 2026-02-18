@@ -11,7 +11,7 @@ import json
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.utils.live_bi_utils import (build_inventory_signals, build_movement_context, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
+from app.utils.live_bi_utils import (build_inventory_signals, build_movement_context, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
                                      compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
@@ -253,16 +253,6 @@ def live_mtd_vs_previous():
         user_objective = fetch_user_objective(user_id, country)
     
         # ---------------------------
-        # PRIMARY GOAL & RISK (FOR UI)
-        # ---------------------------
-        primary_goal = None
-        primary_risk = None
-
-        if isinstance(user_objective, dict):
-            primary_goal = user_objective.get("primary_goal")
-            primary_risk = user_objective.get("risk_level")
-
-        # ---------------------------
         # DATE RANGE
         # ---------------------------
         start_day_str = request.args.get("start_day")
@@ -332,6 +322,40 @@ def live_mtd_vs_previous():
         curr_data, curr_daily = fetch_current_mtd_data(
             user_id, country, curr_start, curr_end
         )
+
+        # -------------------------------------------------
+        # 🔥 Attach SKU-level Ads + CM2 (CURRENT MONTH ONLY)
+        # -------------------------------------------------
+        ads_sku_map, ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_current_month(
+            user_id=user_id,
+            country=country,
+            year=curr_start.year,
+            month=curr_start.month,
+        )
+
+        ads_sku_map = {str(k).strip(): v for k, v in (ads_sku_map or {}).items()}
+
+        for row in (curr_data or []):
+            sku = str(row.get("sku") or "").strip()
+            if not sku:
+                continue
+
+            ads_info = ads_sku_map.get(sku, {})
+            ads_spend = float(ads_info.get("ads_spend", 0.0) or 0.0)
+            cm2_profit = float(ads_info.get("cm2_profit", 0.0) or 0.0)
+
+            net_sales = float(row.get("net_sales", 0.0) or 0.0)
+
+            row["ads_spend_curr"] = ads_spend
+            row["cm2_profit_curr"] = cm2_profit
+
+            if net_sales > 0:
+                row["acos_curr"] = round((ads_spend / net_sales) * 100.0, 2)
+                row["cm2_margin_curr"] = round((cm2_profit / net_sales) * 100.0, 2)
+            else:
+                row["acos_curr"] = 0.0
+                row["cm2_margin_curr"] = 0.0
+
 
         # ---------------------------
         # ALIGN SKUs (PREVIOUS + CURRENT)
@@ -572,6 +596,11 @@ def live_mtd_vs_previous():
             user_objective=user_objective,
             movement_context=movement_context,
             sku_to_product=sku_to_product, 
+            # ✅ NEW
+            user_id=user_id,
+            country=country,
+            current_year=ranges["meta"]["current_year"],
+            current_month=ranges["meta"]["current_month"],
         )
 
         print("FINAL inventory_signals:", payload_ai.get("inventory_signals"))
@@ -640,6 +669,30 @@ def live_mtd_vs_previous():
         # ---------------------------
         # STRATEGY ENGINE (MONTH-END PROMPT 2)
         # ---------------------------
+        # ==========================================
+        # 🔥 ADD THIS BLOCK RIGHT HERE
+        # ==========================================
+
+        sku_ads_context = []
+
+        for r in top_80_skus:
+            sku = r.get("sku")
+            if not sku:
+                continue
+
+            sku_ads_context.append({
+                "sku": sku,
+                "ads_spend_curr": r.get("ads_spend_curr", 0),
+                "acos_curr": r.get("acos_curr", 0),
+                "cm2_profit_curr": r.get("cm2_profit_curr", 0),
+                "cm2_margin_curr": r.get("cm2_margin_curr", 0),
+                "net_sales_curr": r.get("net_sales_curr", 0),
+            })
+
+        ads_monthly = {
+            "total_ads_spend": ads_monthly_totals.get("ads_spend", 0),
+            "total_cm2_profit": ads_monthly_totals.get("cm2_profit", 0),
+        }
 
         strategy_raw = run_prompt_2_strategy(
             analysis_insights=analysis,
@@ -648,14 +701,19 @@ def live_mtd_vs_previous():
             sku_time_series={},   # optional
             inventory_alerts=payload_ai.get("inventory_signals", {}),
             country=country,
+            sku_ads_context=sku_ads_context,
+            ads_monthly=ads_monthly,
         )
 
         try:
             strategy_parsed = json.loads(strategy_raw)
-            sku_strategy_actions = strategy_parsed.get("sku_actions", {})
         except Exception:
             print("❌ Strategy JSON parse failed")
-            sku_strategy_actions = {}
+            strategy_parsed = {}
+
+        sku_strategy_actions = strategy_parsed.get("sku_actions", {})
+        remaining_skus_reco = strategy_parsed.get("remaining_skus_recommendation")
+
 
         # ===========================
         # BUILD RECOMMENDED ACTIONS
@@ -678,11 +736,13 @@ def live_mtd_vs_previous():
             sku_strategy = sku_strategy_actions.get(sku, {})
 
             recommended_actions_mtd[sku] = render_live_recommended_action(
-                growth_row=growth_row,
-                recommendation=sku_strategy.get("recommendation", "Monitor performance"),
-                journey_summary=sku_strategy.get("journey_summary"),
-                currency_symbol=currency["symbol"],
-            )
+            growth_row=growth_row,
+            recommendation=sku_strategy.get("recommendation", "Monitor performance"),
+            ads_recommendation=sku_strategy.get("ads_recommendation"),
+            journey_summary=sku_strategy.get("journey_summary"),
+            currency_symbol=currency["symbol"],
+        )
+
 
         # ===========================
         # FINAL FIELDS USED BY RESPONSE / EMAIL
@@ -781,7 +841,9 @@ def live_mtd_vs_previous():
             "ai_insights": insights,
             "overall_summary": overall_summary,
             "overall_actions": overall_actions,
-            "recommended_actions_mtd": recommended_actions_mtd,  # 👈 ADD THIS
+            "recommended_actions_mtd": recommended_actions_mtd,
+            "remaining_skus_recommendation": remaining_skus_reco,
+
         }
 
         # ---------------------------
@@ -812,7 +874,8 @@ def live_mtd_vs_previous():
                             to_email=user_email,
                             overall_summary=response_payload["overall_summary"],
                             overall_actions=response_payload["overall_actions"],
-                            sku_actions=recommended_actions_mtd,   # ✅ dict {sku -> rendered_text}
+                            sku_actions=recommended_actions_mtd,
+                            
                             country=country,
                             prev_label=prev_label,
                             curr_label=curr_label,
