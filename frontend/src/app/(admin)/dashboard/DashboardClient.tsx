@@ -46,6 +46,8 @@ import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/GroupedCollapsibleTable";
 import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import InfoTip from "@/components/ui/InfoTip";
+import * as XLSX from "xlsx-js-style";
+import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData"; // wherever you put it
 
 const TERM_DEFINITIONS: Record<string, string> = {
     asp: "Average Selling Price",
@@ -246,6 +248,13 @@ const formatPositive2Decimal = (value: any) => {
     if (!Number.isFinite(n)) return "0.00";
     return Math.abs(n).toFixed(2);
 };
+
+// function getISTYearMonth() {
+//     const now = new Date();
+//     const monthName = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata", month: "long" });
+//     const yearStr = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata", year: "numeric" });
+//     return { monthName, year: Number(yearStr) };
+// }
 
 /* ===================== P&L PRODUCTWISE SUMMARY (MTD) HELPERS ===================== */
 type PlSummaryTotals = {
@@ -738,9 +747,6 @@ function RangePicker({
     const [showCalendar, setShowCalendar] = useState(false);
     const [isMtdPlExpanded, setIsMtdPlExpanded] = useState(false);
 
-    // NOTE: Monthly SP dashboard state lives in the parent DashboardPage.
-    // Keep this component focused on date picking only.
-
     const [calendarRange, setCalendarRange] = useState<any>([
         { startDate: null, endDate: null, key: "selection" },
     ]);
@@ -961,7 +967,7 @@ export default function DashboardPage() {
 
 
     const brandName = useSelector(
-        (state) => (state as RootState).auth.user?.brand_name
+        (state: RootState) => state.auth.user?.brand_name
     );
 
     const biCountryName = useMemo(() => {
@@ -1012,6 +1018,12 @@ export default function DashboardPage() {
     const [adsSeeded, setAdsSeeded] = useState(false);
     const [adsSeedError, setAdsSeedError] = useState<string | null>(null);
     const [adsLoading, setAdsLoading] = useState(false);
+    const [invLoading, setInvLoading] = useState(false);
+    const [invError, setInvError] = useState("");
+    const [invRows, setInvRows] = useState<InventoryRow[]>([]);
+    const [inventoryAlerts, setInventoryAlerts] = useState<Record<string, { alert?: string; alert_type?: string }>>({});
+
+
 
 
     const fetchMonthlySp = useCallback(async () => {
@@ -1425,6 +1437,55 @@ export default function DashboardPage() {
             cancelled = true;
         };
     }, [platform, baseURL]);
+
+
+
+    // region -> backend country
+    const inventoryCountry = useMemo(() => {
+        const v = (graphRegionToUse || "").toString().trim().toLowerCase(); // or your region prop
+        return v.length ? v : "global";
+    }, [graphRegionToUse]);
+
+    const invMonthYear = useMemo(() => {
+        const { monthName, year } = getISTYearMonth();
+        return { month: monthName.toLowerCase(), year: String(year) };
+    }, []);
+
+    const fetchInventory = useCallback(async () => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+        if (!token) {
+            setInvError("Authorization token is missing");
+            setInvRows([]);
+            return;
+        }
+
+        setInvLoading(true);
+        setInvError("");
+
+        try {
+            const { rows, alerts } = await fetchCurrentInventoryData({
+                baseURL,
+                token,
+                country: inventoryCountry,
+                month: invMonthYear.month,
+                year: invMonthYear.year,
+                XLSX,
+            });
+
+            setInvRows(rows);
+            setInventoryAlerts(alerts);
+        } catch (e: any) {
+            setInvError(e?.message || "Unknown error");
+            setInvRows([]);
+            setInventoryAlerts({});
+        } finally {
+            setInvLoading(false);
+        }
+    }, [inventoryCountry, invMonthYear.month, invMonthYear.year]);
+
+    useEffect(() => {
+        fetchInventory();
+    }, [fetchInventory]);
 
 
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
@@ -3803,7 +3864,8 @@ export default function DashboardPage() {
                                         loading={loading || shopifyLoading || biLoading}
                                         formatter={fmtInt}
                                         bottomLabel={prevLabel}
-                                        className="border-[#FDD36F] bg-[#FDD36F4D]"
+                                        // className="border-[#FDD36F] bg-[#FDD36F4D]"
+                                        className="border-[#FDD36F] border-t-4 border-t-[#75BBDA]"
                                     />
 
                                     <AmazonStatCard
@@ -3817,7 +3879,8 @@ export default function DashboardPage() {
                                         previousFormatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
 
-                                        className="border-[#ED9F50] bg-[#ED9F504D]"
+                                        // className="border-[#ED9F50] bg-[#ED9F504D]"
+                                        className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                                     />
 
 
@@ -3831,7 +3894,8 @@ export default function DashboardPage() {
                                         formatter={moneyPerUnitFormatter}
                                         previousFormatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
-                                        className="border-[#75BBDA] bg-[#75BBDA4D]"
+                                        // className="border-[#75BBDA] bg-[#75BBDA4D]"
+                                        className="border-[#75BBDA] border-t-4 border-t-[#75BBDA4D]"
                                     />
 
                                     <AmazonStatCard
@@ -3846,7 +3910,8 @@ export default function DashboardPage() {
                                         loading={loading || shopifyLoading || biLoading}
                                         formatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
-                                        className="border-[#B75A5A] bg-[#B75A5A4D]"
+                                        // className="border-[#B75A5A] bg-[#B75A5A4D]"
+                                        className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
                                     />
 
                                     <AmazonStatCard
@@ -3892,7 +3957,8 @@ export default function DashboardPage() {
                                         formatter={formatDisplayAmount}
                                         previousFormatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
-                                        className="border-[#C49466] bg-[#C494664D]"
+                                        // className="border-[#C49466] bg-[#C494664D]"
+                                        className="border-[#C49466] border-t-4 border-t-[#C49466]"
                                     />
 
                                     <AmazonStatCard
@@ -3941,7 +4007,8 @@ export default function DashboardPage() {
                                         loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
                                         formatter={fmtPct2}
                                         bottomLabel={prevLabel}
-                                        className="border-[#3A8EA4] bg-[#3A8EA44D]"
+                                        // className="border-[#3A8EA4] bg-[#3A8EA44D]"
+                                        className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
                                     />
 
 
@@ -3975,7 +4042,8 @@ export default function DashboardPage() {
                                         loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
                                         formatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
-                                        className="border-[#B8C78C] bg-[#B8C78C4D]"
+                                        // className="border-[#B8C78C] bg-[#B8C78C4D]"
+                                        className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
                                     />
 
 
@@ -4006,7 +4074,8 @@ export default function DashboardPage() {
                                         loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
                                         formatter={fmtPct}
                                         bottomLabel={prevLabel}
-                                        className="border-[#7B9A6D] bg-[#7B9A6D4D]"
+                                        // className="border-[#7B9A6D] bg-[#7B9A6D4D]"
+                                        className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                                     />
 
 
@@ -4056,7 +4125,8 @@ export default function DashboardPage() {
                                         loading={loading || biLoading}
                                         formatter={fmtInt}
                                         bottomLabel={prevLabel}
-                                        className="border-[#FDD36F] bg-[#FDD36F4D]"
+                                        // className="border-[#FDD36F] bg-[#FDD36F4D]"
+                                        className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
 
                                     />
 
@@ -4077,7 +4147,8 @@ export default function DashboardPage() {
                                         formatter={moneyPerUnitFormatter}
                                         previousFormatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
-                                        className="border-[#ED9F50] bg-[#ED9F504D]"
+                                        // className="border-[#ED9F50] bg-[#ED9F504D]"
+                                        className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                                     />
 
                                     <AmazonStatCard
@@ -4097,7 +4168,8 @@ export default function DashboardPage() {
                                         formatter={moneyPerUnitFormatter}
                                         previousFormatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
-                                        className="border-[#75BBDA] bg-[#75BBDA4D]"
+                                        // className="border-[#75BBDA] bg-[#75BBDA4D]"
+                                        className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                     />
 
 
@@ -4121,7 +4193,8 @@ export default function DashboardPage() {
                                         loading={loading || biLoading}
                                         formatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
-                                        className="border-[#B75A5A] bg-[#B75A5A4D]"
+                                        // className="border-[#B75A5A] bg-[#B75A5A4D]"
+                                        className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
                                     />
 
                                     <AmazonStatCard
@@ -4157,7 +4230,8 @@ export default function DashboardPage() {
                                         formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
                                         previousFormatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
-                                        className="border-[#C49466] bg-[#C494664D]"
+                                        // className="border-[#C49466] bg-[#C494664D]"
+                                        className="border-[#C49466] border-t-4 border-t-[#C49466]"
                                     />
 
                                     <AmazonStatCard
@@ -4206,7 +4280,8 @@ export default function DashboardPage() {
                                         loading={loading || (useBiForAmazonCards ? biLoading : false)}
                                         formatter={fmtPct2}
                                         bottomLabel={prevLabel}
-                                        className="border-[#3A8EA4] bg-[#3A8EA44D]"
+                                        // className="border-[#3A8EA4] bg-[#3A8EA44D]"
+                                        className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
                                     />
 
 
@@ -4234,7 +4309,8 @@ export default function DashboardPage() {
                                         formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
                                         previousFormatter={formatDisplayAmount}
                                         bottomLabel={prevLabel}
-                                        className="border-[#B8C78C] bg-[#B8C78C4D]"
+                                        // className="border-[#B8C78C] bg-[#B8C78C4D]"
+                                        className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
                                     />
 
                                     <AmazonStatCard
@@ -4261,7 +4337,8 @@ export default function DashboardPage() {
                                         loading={loading || (useBiCm2 ? biLoading : false)}
                                         formatter={fmtPct}
                                         bottomLabel={prevLabel}
-                                        className="border-[#7B9A6D] bg-[#7B9A6D4D]"
+                                        // className="border-[#7B9A6D] bg-[#7B9A6D4D]"
+                                        className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                                     />
                                 </div>
                             </div>
@@ -4359,7 +4436,8 @@ export default function DashboardPage() {
                                                         loading={shopifyLoading}
                                                         formatter={fmtInt}
                                                         bottomLabel={prevLabel}
-                                                        className="border-[#FDD36F] bg-[#FDD36F4D]"
+                                                        // className="border-[#FDD36F] bg-[#FDD36F4D]"
+                                                        className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
                                                     />
                                                     <AmazonStatCard
                                                         label="Sales"
@@ -4368,7 +4446,8 @@ export default function DashboardPage() {
                                                         loading={shopifyLoading}
                                                         formatter={formatDisplayAmount}
                                                         bottomLabel={prevLabel}
-                                                        className="border-[#75BBDA] bg-[#75BBDA4D]"
+                                                        // className="border-[#75BBDA] bg-[#75BBDA4D]"
+                                                        className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
 
                                                     />
                                                     <AmazonStatCard
@@ -4383,7 +4462,8 @@ export default function DashboardPage() {
                                                         loading={shopifyLoading}
                                                         formatter={formatDisplayAmount}
                                                         bottomLabel={prevLabel}
-                                                        className="border-[#B75A5A] bg-[#B75A5A4D]"
+                                                        // className="border-[#B75A5A] bg-[#B75A5A4D]"
+                                                        className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
                                                     />
                                                 </div>
                                             ) : (
@@ -4408,6 +4488,7 @@ export default function DashboardPage() {
                                 loading={shopifyLoading}
                                 formatter={formatDisplayAmount}
                                 bottomLabel={prevLabel}
+                                // className="border-[#B75A5A] bg-[#B75A5A4D] "
                                 className="border-[#B75A5A] bg-[#B75A5A4D] "
 
                             />
@@ -4924,7 +5005,16 @@ export default function DashboardPage() {
 
             {amazonIntegrated && graphRegionToUse !== "Global" && (
                 <div id="current-inventory" className="scroll-mt-[80px] ">
-                    <CurrentInventorySection region={graphRegionToUse} />
+                    {/* <CurrentInventorySection region={graphRegionToUse} /> */}
+                    <CurrentInventorySection
+                        region={graphRegionToUse}
+                        invLoading={invLoading}
+                        invError={invError}
+                        invRows={invRows}
+                        inventoryAlerts={inventoryAlerts}
+                        userData={userData}
+                    />
+
                 </div>
             )}
 

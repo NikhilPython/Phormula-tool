@@ -27,7 +27,7 @@ const Button: React.FC<ButtonProps> = ({
 }) => {
   // Size Classes
   const sizeClasses = {
-    sm: "px-2.5 py-1 text-sm sm:px-3 sm:py-1 sm:text-sm",
+    sm: "px-2.5 py-1 text-xs sm:px-3 sm:py-1 sm:text-sm",
     md: "px-3 py-2 text-sm sm:px-4 sm:py-2.5 sm:text-md",
   };
 

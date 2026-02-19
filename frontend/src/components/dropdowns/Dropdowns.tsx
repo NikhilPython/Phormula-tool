@@ -38,8 +38,6 @@ import DialogActions from "@mui/material/DialogActions";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { jwtDecode } from "jwt-decode";
-import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
 import SkuTopBottomTables from "./SkuTopBottomTables";
 import type { TopBottomData } from "@/lib/pnl/topBottom";
 import type { TableRow } from "./SKUtable";
@@ -2077,7 +2075,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
     relative
   "
     >
-      <div className="sticky top-0 z-40 bg-white w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200 ">
+      <div className="sticky top-0 z-40 w-full flex flex-col bg-white  md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200">
 
         {/* LEFT: Title + Subtitle */}
         <div className="flex flex-col leading-tight w-full md:w-auto md:mb-5">
@@ -2635,14 +2633,16 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 key: "units",
                 title: "Units",
                 value: formatUnits(summary.unit_sold),
-                className: "border border-[#FDD36F] bg-[#FDD36F4D]",
+                // className: "border border-[#FDD36F] bg-[#FDD36F4D]",
+                 className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
                 comparisons: buildComparisonsRows("unit_sold", formatUnits),
               },
               {
                 key: "grossSales",
                 title: "Gross Sales",
                 value: renderMoneyWithPerUnit(getGrossSales(summary), summary.unit_sold),
-                className: "border border-[#ED9F50] bg-[#ED9F504D]",
+                // className: "border border-[#ED9F50] bg-[#ED9F504D]",
+                 className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
                 comparisons: (() => {
                   const items = getGrossSalesComparisons();
                   return items.map((item) => {
@@ -2672,7 +2672,8 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 key: "netSales",
                 title: "Net Sales",
                 value: renderMoneyWithPerUnit(netSales, summary.unit_sold),
-                className: "border border-[#75BBDA] bg-[#75BBDA4D]",
+                // className: "border border-[#75BBDA] bg-[#75BBDA4D]",
+                 className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
                 comparisons: buildComparisonsRows("total_sales", formatMoney),
               },
 
@@ -2680,14 +2681,16 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 key: "expenses",
                 title: "Marketplace Fees",
                 value: renderMoneyWithPerUnit(summary.total_expense, summary.unit_sold),
-                className: "border border-[#B75A5A] bg-[#B75A5A4D]",
+                // className: "border border-[#B75A5A] bg-[#B75A5A4D]",
+                 className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
                 comparisons: buildComparisonsRows("total_expense", formatMoney),
               },
               {
                 key: "ads",
                 title: "Cost of Advertisement",
                 value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
-                className: "border border-[#C49466] bg-[#C494664D]",
+                // className: "border border-[#C49466] bg-[#C494664D]",
+                 className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
                 comparisons: buildComparisonsRows("advertising_total", formatMoney),
               },
 
@@ -2695,21 +2698,24 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 key: "tacos",
                 title: "TACoS",
                 value: formatRoas(roas),
-                className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
+                // className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
+                 className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
                 comparisons: buildTacosComparisonRows(),
               },
               {
                 key: "cm2",
                 title: "CM2 Profit",
                 value: renderMoneyWithPerUnit(summary.cm2_profit, summary.unit_sold),
-                className: "border border-[#B8C78C] bg-[#B8C78C4D]",
+                // className: "border border-[#B8C78C] bg-[#B8C78C4D]",
+                 className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
                 comparisons: buildComparisonsRows("cm2_profit", formatMoney),
               },
               {
                 key: "cm2Pct",
                 title: "CM2 Profit %",
                 value: formatPercent(cm2Percent),
-                className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
+                // className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
+                 className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
                 comparisons: buildCm2PercentComparisonRows(),
               },
             ];
@@ -2935,7 +2941,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
-                  <button
+                  {/* <button
                     type="button"
                     data-no-expand
                     onClick={(e) => {
@@ -2952,7 +2958,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                       <RiExpandDiagonalFill size={18} className="font-extrabold" />
                     )}
 
-                  </button>
+                  </button> */}
 
                   <div className={getTrendWrapperHeight()}>
                     <PerformanceTrendChart
@@ -3141,7 +3147,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                   ].join(" ")}
                   title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                 >
-                  <button
+                  {/* <button
                     type="button"
                     data-no-expand
                     onClick={(e) => {
@@ -3158,7 +3164,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                       <RiExpandDiagonalFill size={18} className="font-extrabold" />
                     )}
 
-                  </button>
+                  </button> */}
                   <div className={getTrendWrapperHeight()}>
                     <PerformanceTrendChart
                       range={range}

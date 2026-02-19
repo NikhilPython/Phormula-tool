@@ -123,7 +123,7 @@ export default function AdminLayout({
 
   return (
     <AuthGuard>
-      <div className="h-screen xl:flex overflow-hidden">
+      <div className="h-screen xl:flex bg-[#D9D9D933] overflow-hidden">
         <AppSidebar />
         <Backdrop />
 

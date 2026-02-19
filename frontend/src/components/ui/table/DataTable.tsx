@@ -346,12 +346,13 @@ export default function DataTable<T extends Row>({
     <div
       className={clsx(
         "relative w-full max-w-full border border-slate-200 bg-white shadow-sm",
-        // ✅ keep Y scroll on the OUTER container (so sticky header keeps working)
+        "rounded-xl overflow-hidden",   // ✅ ADD THIS
         scrollY && "overflow-y-auto",
         className
       )}
       style={containerStyle}
     >
+
       {/* ✅ X scroll ONLY for the table (pagination will not scroll) */}
       <div className="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
         <table
