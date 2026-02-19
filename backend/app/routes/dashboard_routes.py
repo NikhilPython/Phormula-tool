@@ -96,6 +96,194 @@ def passcountryfromprofiles():
     return jsonify({'countries': global_countries}), 200
 
 
+# @dashboard_bp.route('/getDispatchfile', methods=['GET'])
+# def getDispatchfile():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         if 'user_id' not in payload:
+#             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
+
+#         user_id = payload['user_id']
+#         country = request.args.get('country')
+#         month = request.args.get('month')
+#         year = request.args.get('year')
+
+#         if not country or not month or not year:
+#             return jsonify({'error': 'Missing country, month, or year parameters'}), 400
+
+
+#         # ---------------- MONTH RESOLUTION (FIX) ----------------
+      
+
+#         requested_month = month.lower()
+#         requested_year = int(year)
+
+#         current_month = datetime.now().strftime("%B").lower()
+#         current_year = datetime.now().year
+
+#         # Dispatch files are always saved using CURRENT ongoing month
+#         if requested_year == current_year:
+#             effective_month = current_month
+#         else:
+#             effective_month = requested_month
+
+#         short_month = effective_month[:3].lower()
+
+#         uploads_folder = os.path.abspath()
+
+#         def find_latest_file(user_id, ctry):
+#             pattern = re.compile(
+#                 rf"inventory_forecast_{user_id}_{re.escape(ctry)}_{short_month}.*\.xlsx$"
+#             )
+#             matched_files = [
+#                 f for f in os.listdir(uploads_folder)
+#                 if pattern.match(f)
+#             ]
+#             matched_files.sort(reverse=True)
+#             return os.path.join(uploads_folder, matched_files[0]) if matched_files else None
+
+#         # ---------- GLOBAL: merge UK + US ----------
+#         if country.lower() == 'global':
+#             file_uk = find_latest_file(user_id, 'uk')
+#             file_us = find_latest_file(user_id, 'us')
+
+#             if not file_uk and not file_us:
+#                 return jsonify({'error': 'No UK or US dispatch files found'}), 404
+
+#             frames = []
+#             for f in [file_uk, file_us]:
+#                 if f and os.path.exists(f):
+#                     frames.append(pd.read_excel(f))
+
+#             if not frames:
+#                 return jsonify({'error': 'No readable UK/US dispatch files found'}), 404
+
+#             combined_df = pd.concat(frames, ignore_index=True)
+
+#             expected_columns = [
+#                 'Product Name',
+#                 'Inventory at Month End',
+#                 'Projected Sales Total',
+#                 'Dispatch',
+#                 'Current Inventory + Dispatch',
+#                 'Inventory Coverage Ratio Before Dispatch'
+#             ]
+
+#             have = [c for c in expected_columns if c in combined_df.columns]
+#             if 'Product Name' not in have:
+#                 return jsonify({'error': "'Product Name' column missing in dispatch files"}), 400
+
+#             combined_df = combined_df[have].copy()
+
+#             combined_df['Product Name'] = combined_df['Product Name'].astype(str)
+#             combined_df = combined_df[combined_df['Product Name'].str.lower() != 'total']
+
+#             for col in [
+#                 'Inventory at Month End',
+#                 'Projected Sales Total',
+#                 'Dispatch',
+#                 'Current Inventory + Dispatch'
+#             ]:
+#                 if col in combined_df.columns:
+#                     combined_df[col] = pd.to_numeric(
+#                         combined_df[col], errors='coerce'
+#                     ).fillna(0)
+
+#             agg_spec = {
+#                 col: 'sum'
+#                 for col in [
+#                     'Inventory at Month End',
+#                     'Projected Sales Total',
+#                     'Dispatch',
+#                     'Current Inventory + Dispatch'
+#                 ]
+#                 if col in combined_df.columns
+#             }
+
+#             grouped = (
+#                 combined_df.groupby('Product Name', as_index=False).agg(agg_spec)
+#                 if agg_spec else
+#                 combined_df[['Product Name']].drop_duplicates()
+#             )
+
+#             if (
+#                 'Inventory Coverage Ratio Before Dispatch' in combined_df.columns and
+#                 'Inventory at Month End' in combined_df.columns
+#             ):
+#                 def weighted_avg(df):
+#                     denom = df['Inventory at Month End'].sum()
+#                     if denom <= 0:
+#                         return 0
+#                     ratio_num = pd.to_numeric(
+#                         df['Inventory Coverage Ratio Before Dispatch'],
+#                         errors='coerce'
+#                     ).fillna(0)
+#                     return (ratio_num * df['Inventory at Month End']).sum() / denom
+
+#                 ratio_df = (
+#                     combined_df
+#                     .groupby('Product Name', as_index=False)
+#                     .apply(weighted_avg)
+#                     .rename(columns={None: 'Inventory Coverage Ratio Before Dispatch'})
+#                 )
+
+#                 final_df = pd.merge(grouped, ratio_df, on='Product Name', how='left')
+#                 final_df['Inventory Coverage Ratio Before Dispatch'] = final_df[
+#                     'Inventory Coverage Ratio Before Dispatch'
+#                 ].apply(lambda x: "-" if pd.isna(x) or x == 0 else round(float(x), 2))
+#             else:
+#                 final_df = grouped.copy()
+
+#             total_row = {'Product Name': 'Total'}
+#             for col in [
+#                 'Inventory at Month End',
+#                 'Projected Sales Total',
+#                 'Dispatch',
+#                 'Current Inventory + Dispatch'
+#             ]:
+#                 if col in final_df.columns:
+#                     total_row[col] = final_df[col].sum()
+
+#             if 'Inventory Coverage Ratio Before Dispatch' in final_df.columns:
+#                 total_row['Inventory Coverage Ratio Before Dispatch'] = ''
+
+#             final_df = pd.concat(
+#                 [final_df, pd.DataFrame([total_row])],
+#                 ignore_index=True
+#             )
+
+#             output = BytesIO()
+#             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+#                 final_df.to_excel(writer, index=False, sheet_name='Dispatch')
+#             output.seek(0)
+
+#             return send_file(
+#                 output,
+#                 download_name='global_dispatch.xlsx',
+#                 as_attachment=False
+#             )
+
+#         # ---------- NON-GLOBAL ----------
+#         file_path = find_latest_file(user_id, country.lower())
+#         if not file_path:
+#             return jsonify({
+#                 'error': 'Forecast file not found. Please generate inventory forecast first!'
+#             }), 404
+
+#         return send_file(file_path, as_attachment=False)
+
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
+
 @dashboard_bp.route('/getDispatchfile', methods=['GET'])
 def getDispatchfile():
     auth_header = request.headers.get('Authorization')
@@ -103,12 +291,13 @@ def getDispatchfile():
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     token = auth_header.split(' ')[1]
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        if 'user_id' not in payload:
+        user_id = payload.get('user_id')
+        if not user_id:
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
-        user_id = payload['user_id']
         country = request.args.get('country')
         month = request.args.get('month')
         year = request.args.get('year')
@@ -116,52 +305,74 @@ def getDispatchfile():
         if not country or not month or not year:
             return jsonify({'error': 'Missing country, month, or year parameters'}), 400
 
-
-        # ---------------- MONTH RESOLUTION (FIX) ----------------
-      
-
+        # ----- month resolution (your existing logic) -----
         requested_month = month.lower()
         requested_year = int(year)
 
         current_month = datetime.now().strftime("%B").lower()
         current_year = datetime.now().year
 
-        # Dispatch files are always saved using CURRENT ongoing month
-        if requested_year == current_year:
-            effective_month = current_month
-        else:
-            effective_month = requested_month
-
+        # Dispatch/forecast file naming uses ongoing month if current year
+        effective_month = current_month if requested_year == current_year else requested_month
         short_month = effective_month[:3].lower()
 
-        uploads_folder = os.path.abspath()
+        engine = create_engine(db_url)
 
-        def find_latest_file(user_id, ctry):
-            pattern = re.compile(
-                rf"inventory_forecast_{user_id}_{re.escape(ctry)}_{short_month}.*\.xlsx$"
-            )
-            matched_files = [
-                f for f in os.listdir(uploads_folder)
-                if pattern.match(f)
-            ]
-            matched_files.sort(reverse=True)
-            return os.path.join(uploads_folder, matched_files[0]) if matched_files else None
+        def fetch_latest_stored_file(user_id: int, ctry: str, short_month: str):
+            """
+            Fetch latest matching stored file from public.stored_files.
+            Returns (filename, content_type, data_bytes) or None
+            """
+            like_pattern = f"inventory_forecast_{user_id}_{ctry.lower()}_{short_month}%"
+
+            q = text("""
+                SELECT filename, content_type, data
+                FROM public.stored_files
+                WHERE user_id = :user_id
+                  AND LOWER(country) = LOWER(:country)
+                  AND kind = 'inventory_forecast'
+                  AND LOWER(filename) LIKE LOWER(:like_pattern)
+                ORDER BY id DESC
+                LIMIT 1
+            """)
+
+            with engine.connect() as conn:
+                row = conn.execute(q, {
+                    "user_id": user_id,
+                    "country": ctry.lower(),
+                    "like_pattern": like_pattern
+                }).fetchone()
+
+            if not row:
+                return None
+
+            filename, content_type, data_bytes = row[0], row[1], row[2]
+
+            # bytea often comes back as memoryview in psycopg
+            if isinstance(data_bytes, memoryview):
+                data_bytes = data_bytes.tobytes()
+
+            return filename, content_type, data_bytes
 
         # ---------- GLOBAL: merge UK + US ----------
         if country.lower() == 'global':
-            file_uk = find_latest_file(user_id, 'uk')
-            file_us = find_latest_file(user_id, 'us')
+            uk_row = fetch_latest_stored_file(user_id, "uk", short_month)
+            us_row = fetch_latest_stored_file(user_id, "us", short_month)
 
-            if not file_uk and not file_us:
-                return jsonify({'error': 'No UK or US dispatch files found'}), 404
+            if not uk_row and not us_row:
+                return jsonify({'error': 'No UK or US dispatch files found in DB'}), 404
 
             frames = []
-            for f in [file_uk, file_us]:
-                if f and os.path.exists(f):
-                    frames.append(pd.read_excel(f))
+            for r in (uk_row, us_row):
+                if not r:
+                    continue
+                _, _, data_bytes = r
+                if not data_bytes:
+                    continue
+                frames.append(pd.read_excel(BytesIO(data_bytes)))
 
             if not frames:
-                return jsonify({'error': 'No readable UK/US dispatch files found'}), 404
+                return jsonify({'error': 'No readable UK/US dispatch files found in DB'}), 404
 
             combined_df = pd.concat(frames, ignore_index=True)
 
@@ -179,10 +390,10 @@ def getDispatchfile():
                 return jsonify({'error': "'Product Name' column missing in dispatch files"}), 400
 
             combined_df = combined_df[have].copy()
-
             combined_df['Product Name'] = combined_df['Product Name'].astype(str)
             combined_df = combined_df[combined_df['Product Name'].str.lower() != 'total']
 
+            # numeric coercion
             for col in [
                 'Inventory at Month End',
                 'Projected Sales Total',
@@ -190,27 +401,23 @@ def getDispatchfile():
                 'Current Inventory + Dispatch'
             ]:
                 if col in combined_df.columns:
-                    combined_df[col] = pd.to_numeric(
-                        combined_df[col], errors='coerce'
-                    ).fillna(0)
+                    combined_df[col] = pd.to_numeric(combined_df[col], errors='coerce').fillna(0)
 
-            agg_spec = {
-                col: 'sum'
-                for col in [
-                    'Inventory at Month End',
-                    'Projected Sales Total',
-                    'Dispatch',
-                    'Current Inventory + Dispatch'
-                ]
-                if col in combined_df.columns
-            }
+            # sum metrics by product
+            sum_cols = [
+                'Inventory at Month End',
+                'Projected Sales Total',
+                'Dispatch',
+                'Current Inventory + Dispatch'
+            ]
+            agg_spec = {c: 'sum' for c in sum_cols if c in combined_df.columns}
 
             grouped = (
                 combined_df.groupby('Product Name', as_index=False).agg(agg_spec)
-                if agg_spec else
-                combined_df[['Product Name']].drop_duplicates()
+                if agg_spec else combined_df[['Product Name']].drop_duplicates()
             )
 
+            # weighted avg coverage ratio (weighted by Inventory at Month End)
             if (
                 'Inventory Coverage Ratio Before Dispatch' in combined_df.columns and
                 'Inventory at Month End' in combined_df.columns
@@ -226,8 +433,7 @@ def getDispatchfile():
                     return (ratio_num * df['Inventory at Month End']).sum() / denom
 
                 ratio_df = (
-                    combined_df
-                    .groupby('Product Name', as_index=False)
+                    combined_df.groupby('Product Name', as_index=False)
                     .apply(weighted_avg)
                     .rename(columns={None: 'Inventory Coverage Ratio Before Dispatch'})
                 )
@@ -239,24 +445,17 @@ def getDispatchfile():
             else:
                 final_df = grouped.copy()
 
+            # total row
             total_row = {'Product Name': 'Total'}
-            for col in [
-                'Inventory at Month End',
-                'Projected Sales Total',
-                'Dispatch',
-                'Current Inventory + Dispatch'
-            ]:
-                if col in final_df.columns:
-                    total_row[col] = final_df[col].sum()
-
+            for c in sum_cols:
+                if c in final_df.columns:
+                    total_row[c] = float(final_df[c].sum())
             if 'Inventory Coverage Ratio Before Dispatch' in final_df.columns:
                 total_row['Inventory Coverage Ratio Before Dispatch'] = ''
 
-            final_df = pd.concat(
-                [final_df, pd.DataFrame([total_row])],
-                ignore_index=True
-            )
+            final_df = pd.concat([final_df, pd.DataFrame([total_row])], ignore_index=True)
 
+            # write excel to memory
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 final_df.to_excel(writer, index=False, sheet_name='Dispatch')
@@ -265,17 +464,27 @@ def getDispatchfile():
             return send_file(
                 output,
                 download_name='global_dispatch.xlsx',
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 as_attachment=False
             )
 
         # ---------- NON-GLOBAL ----------
-        file_path = find_latest_file(user_id, country.lower())
-        if not file_path:
+        row = fetch_latest_stored_file(user_id, country.lower(), short_month)
+        if not row:
             return jsonify({
-                'error': 'Forecast file not found. Please generate inventory forecast first!'
+                'error': 'Forecast file not found in DB. Please generate inventory forecast first!'
             }), 404
 
-        return send_file(file_path, as_attachment=False)
+        filename, content_type, data_bytes = row
+        if not data_bytes:
+            return jsonify({'error': 'Stored file is empty/corrupt'}), 500
+
+        return send_file(
+            BytesIO(data_bytes),
+            download_name=filename or f"{country.lower()}_dispatch.xlsx",
+            mimetype=content_type or 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=False
+        )
 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
@@ -283,6 +492,7 @@ def getDispatchfile():
         return jsonify({'error': 'Invalid token'}), 401
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 
 

@@ -71,10 +71,42 @@ const renderFormattedInsight = (
 ) => {
   if (!raw) return null;
 
-  const lines = raw
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
+const lines = raw
+  .split(/\r?\n/)
+  .map((l) => l.trim())
+  .filter(Boolean)
+  .map((l) => l.replace(/^[-•–]\s*/, '')); // remove leading dash
+
+// 🔥 If content is simple dash-style bullet list, render clean bullets
+const isSimpleBulletList = raw.trim().startsWith('-');
+
+if (isSimpleBulletList) {
+  return (
+    <ul
+      style={{
+        paddingLeft: 18,
+        listStyle: 'disc',
+        display: 'grid',
+        gap: 12,
+      }}
+    >
+      {lines.map((line, i) => (
+        <li
+          key={i}
+          style={{
+            fontSize: 14,
+            lineHeight: 1.7,
+            color: '#374151',
+          }}
+        >
+          {highlightInsightText(line)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+
 
   const SECTION_ORDER = [
     'Details',
@@ -151,7 +183,17 @@ const renderFormattedInsight = (
         )}
 
         {isList ? (
-          <ul style={{ margin: '6px 0 10px 20px', padding: 0, listStyle: 'disc' }}>
+         <ul
+  className="text-xs 2xl:text-sm text-charcoal-500"
+  style={{
+    margin: "10px 0 14px 0",
+    paddingLeft: 18,     // controls left indent (reduce if too much)
+    listStyle: "disc",
+    display: "grid",
+    gap: 10,             // space between bullet points
+  }}
+>
+
             {content.map((line, i) => {
               const trimmed = clean(line);
 
@@ -180,7 +222,15 @@ const renderFormattedInsight = (
               }
 
               return (
-                <li key={i} className="text-xs 2xl:text-sm text-charcoal-500" style={{ marginBottom: 4, lineHeight: 1.6 }}>
+               <li
+  key={i}
+  className="text-xs 2xl:text-sm text-charcoal-500"
+  style={{
+    lineHeight: 1.7,
+    paddingLeft: 2,      // makes text align nicer after bulletconst lines = raw
+  }}
+>
+
                   {highlightInsightText(trimmed)}
                 </li>
               );
@@ -341,17 +391,27 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
 
         {/* Insight */}
         <div style={{ flex: 1, overflowY: 'auto', marginTop: 8, paddingRight: 4 }}>
-          {renderFormattedInsight(insightData.insight, {
-            enable: enableFeedback,
-            fbType,
-            setFbType,
-            fbText,
-            setFbText,
-            fbSubmitting,
-            fbSuccess,
-            onSubmit: onSubmitFeedback,
-          })}
-        </div>
+  <div
+    style={{
+      background: "#F9FAFB",
+      border: "1px solid #E5E7EB",
+      borderRadius: 16,
+      padding: 16,
+    }}
+  >
+    {renderFormattedInsight(insightData.insight, {
+      enable: enableFeedback,
+      fbType,
+      setFbType,
+      fbText,
+      setFbText,
+      fbSubmitting,
+      fbSuccess,
+      onSubmit: onSubmitFeedback,
+    })}
+  </div>
+</div>
+
       </div>
     </Drawer>
   );

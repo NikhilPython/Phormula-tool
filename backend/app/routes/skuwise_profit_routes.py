@@ -12,6 +12,7 @@ from openai import OpenAI
 from sqlalchemy import text
 SECRET_KEY = Config.SECRET_KEY
 from dotenv import load_dotenv
+from app.routes.business_intelligence import get_sku_monthly_history
 
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
@@ -481,13 +482,13 @@ def fetch_metrics(conn, table_name, product_name=None, sku=None):
 def generate_ai_insights(prompt):
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a senior business analyst."},
+                {"role": "system", "content": "You are a senior ecommerce analyst. Use plain text and bullet points only. Do not use Markdown formatting."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
-            max_tokens=700
+            max_tokens=900
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
@@ -495,6 +496,143 @@ def generate_ai_insights(prompt):
         return None
 
 
+# @skuwise_bp.route('/ProductwiseGrowthAI', methods=['POST'])
+# def productwise_growth_ai():
+#     try:
+#         auth_header = request.headers.get('Authorization')
+#         if not auth_header or not auth_header.startswith('Bearer '):
+#             return jsonify({'error': 'Unauthorized'}), 401
+
+#         token = auth_header.split(' ')[1]
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+#         user_id = str(payload['user_id'])
+
+#         data = request.get_json()
+#         product_name = data.get('product_name')
+#         sku = data.get('sku')
+#         country = data.get('country', 'us').lower()
+
+#         if not product_name and not sku:
+#             return jsonify({'error': 'product_name or sku required'}), 400
+
+#         engine = create_engine(db_url)
+#         conn = engine.connect()
+#         inspector = inspect(engine)
+
+#         all_tables = inspector.get_table_names()
+#         latest_tables = get_latest_two_tables(all_tables, user_id, country)
+
+#         if len(latest_tables) < 2:
+#             return jsonify({'error': 'Not enough historical data'}), 404
+
+#         old_tbl, new_tbl = latest_tables[1], latest_tables[0]
+
+#         old_data = fetch_metrics(conn, old_tbl["table"], product_name, sku)
+#         new_data = fetch_metrics(conn, new_tbl["table"], product_name, sku)
+
+#         metrics_payload = {}
+
+#         for metric in old_data.keys():
+#             metrics_payload[metric] = {
+#                 f"{metric}_prev": round(old_data[metric], 2),
+#                 f"{metric}_curr": round(new_data[metric], 2),
+#                 f"{metric}_growth_pct": calculate_growth(
+#                     new_data[metric], old_data[metric]
+#                 )
+#             }
+
+#         item = {
+#             "product_name": product_name,
+#             "months": {
+#                 "previous": f"{old_tbl['month'].capitalize()} {old_tbl['year']}",
+#                 "current": f"{new_tbl['month'].capitalize()} {new_tbl['year']}"
+#             },
+#             **metrics_payload
+#         }
+
+#         prompt = f"""
+# You are a senior business analyst. Based on the following 2-month comparison data of the product, generate insights in this format:
+
+
+
+# Observations:
+# - List the 2–3 most important changes using ONLY the given metrics:
+#   • quantity_prev vs quantity_curr
+#   • net_sales_prev vs net_sales_curr
+#   • profit_prev vs profit_curr
+#   • asp_prev vs asp_curr
+#   • unit_wise_profitability_prev vs unit_wise_profitability_curr
+#   • and % fields like "Unit Growth (%)", "Net Sales Growth (%)", etc.
+# - Use the exact causal tone wherever % values exist:
+#   "The increase/decrease in ASP by X% resulted in a dip/growth in units by Y%, which also resulted in sales falling/increasing by Z%."
+# - In at least one observation, mention Sales Mix Change (%) direction if present (up/down).
+# - Do NOT add assumptions like stock issues, supply constraints, replenishment, OOS, or fulfillment problems.
+
+# Improvements:
+# - Provide exactly 3–5 action bullets.
+# - Each action bullet MUST be exactly ONE sentence and MUST be chosen ONLY from the list below, verbatim (no edits):
+#   • "Check ads and visibility campaigns for this product."
+#   • "Review the visibility setup for this product."
+#   • "Reduce ASP slightly to improve traction."
+#   • "Increase ASP slightly to strengthen margins."
+#   • "Monitor performance closely and reassess next steps."
+#   • "Monitor performance closely for now."
+# - Do NOT add any other recommendations, explanations, or extra words.
+# - Do NOT mention stock, inventory, supply, operations, OOS, logistics, replenishment, or warehousing.
+# - Decision guidance:
+#   • If ASP is strongly up and units are down: prefer "Reduce ASP slightly to improve traction."
+#   • If units and sales are down and ASP is flat or slightly up: prefer visibility lines.
+#   • If profit/unit profit is very strong and units are stable/slightly down: prefer maintain/increase ASP.
+
+# Then, for each metric, add:
+
+# Unit Growth:
+# • [Explain reasons for the growth/decline using ONLY available signals like unit trend vs ASP trend and what that implies about demand/visibility/conversion.]
+# • [Choose ONE action bullet from the Improvements list that best fits the unit pattern and paste it verbatim.]
+
+# ASP:
+# • [Explain why ASP changed using ONLY available signals like pricing changes, discounting intensity, or product/pack/channel mix shifts (premium vs value) without referencing costs.]
+# • [Choose ONE action bullet from the Improvements list that best fits the ASP direction and paste it verbatim.]
+
+# Sales:
+# • [Describe sales trend by explicitly tying it to Units × ASP.]
+# • [Choose ONE action bullet from the Improvements list that best fits the sales pattern and paste it verbatim.]
+
+# Profit:
+# • [Explain profit change using ONLY available signals like sales movement plus realized pricing/discounting/mix impact.]
+# • [Choose ONE action bullet from the Improvements list that best aligns with protecting/improving profitability and paste it verbatim.]
+
+# Unit Profitability:
+# • [Explain per-unit profit change using ONLY available signals like realized price/discounting and mix impact.]
+# • [Choose ONE action bullet from the Improvements list that best fits per-unit profit trend and paste it verbatim.]
+
+# Instructions:
+# - Use plain text with bullets only.
+# - DO NOT use Markdown.
+# - Use % values and trends from the data.
+# - Make insights easy for business teams to act on.
+
+# Data:
+# {json.dumps(item, indent=2)}
+# """
+
+#         ai_insights = generate_ai_insights(prompt)
+#         conn.close()
+
+#         return jsonify({
+#             "success": True,
+#             "product_name": product_name,
+#             "months_compared": [
+#                 item["months"]["previous"],
+#                 item["months"]["current"]
+#             ],
+#             "metrics": metrics_payload,
+#             "ai_insights": ai_insights
+#         })
+
+#     except Exception as e:
+#         return jsonify({'error': 'Internal server error'}), 500
+    
 @skuwise_bp.route('/ProductwiseGrowthAI', methods=['POST'])
 def productwise_growth_ai():
     try:
@@ -509,128 +647,262 @@ def productwise_growth_ai():
         data = request.get_json()
         product_name = data.get('product_name')
         sku = data.get('sku')
-        country = data.get('country', 'us').lower()
+        country = data.get('country', 'us')
+
+        if not country:
+            country = "us"
+
+        country = country.strip().lower()
+
+        # Force exact base market names to match table naming
+        if country.startswith("uk"):
+            country = "uk"
+        elif country.startswith("us"):
+            country = "us"
+        elif country.startswith("global"):
+            country = "global"
+
 
         if not product_name and not sku:
             return jsonify({'error': 'product_name or sku required'}), 400
 
         engine = create_engine(db_url)
-        conn = engine.connect()
         inspector = inspect(engine)
-
         all_tables = inspector.get_table_names()
+
         latest_tables = get_latest_two_tables(all_tables, user_id, country)
+        if not latest_tables:
+            return jsonify({'error': 'No historical data available'}), 404
 
-        if len(latest_tables) < 2:
-            return jsonify({'error': 'Not enough historical data'}), 404
+        latest_tbl = latest_tables[0]
+        end_year = latest_tbl["year"]
+        end_month_num = latest_tbl["month_num"]
 
-        old_tbl, new_tbl = latest_tables[1], latest_tables[0]
+        # --- Resolve correct key based on country ---
+        if country == "global":
+            if not product_name:
+                return jsonify({'error': 'product_name required for global'}), 400
+            key = product_name
+        else:
+            # For US/UK etc we MUST use SKU
+            if not sku:
+                # Auto-resolve SKU from product_name
+                table_name = f"sku_{user_id}_data_table"
 
-        old_data = fetch_metrics(conn, old_tbl["table"], product_name, sku)
-        new_data = fetch_metrics(conn, new_tbl["table"], product_name, sku)
+                # Decide correct SKU column based on country
+                if country == "uk":
+                    sku_column = "sku_uk"
+                elif country == "us":
+                    sku_column = "sku_us"
+                else:
+                    return jsonify({'error': 'Unsupported country for SKU resolution'}), 400
 
-        metrics_payload = {}
+                resolve_query = text(f"""
+                    SELECT {sku_column}
+                    FROM {table_name}
+                    WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                    LIMIT 1
+                """)
 
-        for metric in old_data.keys():
-            metrics_payload[metric] = {
-                f"{metric}_prev": round(old_data[metric], 2),
-                f"{metric}_curr": round(new_data[metric], 2),
-                f"{metric}_growth_pct": calculate_growth(
-                    new_data[metric], old_data[metric]
-                )
-            }
 
+                with engine.connect() as conn_resolve:
+                    result = conn_resolve.execute(
+                        resolve_query, {"product_name": product_name}
+                    ).fetchone()
+
+                if not result:
+                    return jsonify({'error': 'SKU not found for this product'}), 404
+
+                key = result[0]
+            else:
+                key = sku
+
+
+        # ---- Pull full 24-month history ----
+        history_24m = get_sku_monthly_history(
+            user_id,
+            country,
+            key,
+            end_year,
+            end_month_num,
+            24
+        )
+
+        if len(history_24m) < 2:
+            return jsonify({'error': 'Not enough data for analysis'}), 404
+
+        # ---- Last 2 months from history ----
+        prev_month = history_24m[-2]
+        curr_month = history_24m[-1]
+
+        def pct_change(new, old):
+            if old == 0:
+                return 0.0
+            return round(((new - old) / old) * 100, 2)
+
+        # ---- Compute unit-wise profitability ----
+        prev_unit_profit = prev_month["profit"] / prev_month["units"] if prev_month["units"] else 0
+        curr_unit_profit = curr_month["profit"] / curr_month["units"] if curr_month["units"] else 0
+
+        # ---- Build metrics structure EXACTLY like before ----
         item = {
             "product_name": product_name,
             "months": {
-                "previous": f"{old_tbl['month'].capitalize()} {old_tbl['year']}",
-                "current": f"{new_tbl['month'].capitalize()} {new_tbl['year']}"
+                "previous": prev_month["period"],
+                "current": curr_month["period"]
             },
-            **metrics_payload
+
+            "quantity": {
+                "quantity_prev": prev_month["units"],
+                "quantity_curr": curr_month["units"],
+                "quantity_growth_pct": pct_change(curr_month["units"], prev_month["units"])
+            },
+
+            "net_sales": {
+                "net_sales_prev": prev_month["sales"],
+                "net_sales_curr": curr_month["sales"],
+                "net_sales_growth_pct": pct_change(curr_month["sales"], prev_month["sales"])
+            },
+
+            "profit": {
+                "profit_prev": prev_month["profit"],
+                "profit_curr": curr_month["profit"],
+                "profit_growth_pct": pct_change(curr_month["profit"], prev_month["profit"])
+            },
+
+            "asp": {
+                "asp_prev": prev_month["asp"],
+                "asp_curr": curr_month["asp"],
+                "asp_growth_pct": pct_change(curr_month["asp"], prev_month["asp"])
+            },
+
+            "unit_wise_profitability": {
+                "unit_wise_profitability_prev": round(prev_unit_profit, 2),
+                "unit_wise_profitability_curr": round(curr_unit_profit, 2),
+                "unit_wise_profitability_growth_pct": pct_change(curr_unit_profit, prev_unit_profit)
+            },
+
+            "historical_trend": history_24m
         }
 
+        # ---- USE YOUR SAME ORIGINAL PROMPT UNCHANGED ----
         prompt = f"""
-You are a senior business analyst. Based on the following 2-month comparison data of the product, generate insights in this format:
+You are a Senior Amazon Business Analyst performing a
+CAUSAL PERFORMANCE DIAGNOSIS for a single product.
+
+Product under analysis: "{product_name}"
+Marketplace: "{country}"
+
+You are given:
+- Final, pre-calculated monthly performance data
+- A rolling historical trend of up to 24 months
+- Month-over-month movement already computed
+
+Your responsibility is to identify:
+
+WHAT materially changed,
+WHY it changed,
+and WHAT business impact it created
+for "{product_name}".
+
+STRICT ANALYTICAL RULES:
+
+1) MATERIALITY FIRST  
+- Ignore minor or normal fluctuations.  
+- Focus only on movements that are:
+  • extreme  
+  • trend-defining  
+  • profitability-impacting  
+  • abnormal versus history  
+
+2) CAUSE → EFFECT DISCIPLINE  
+Every insight must clearly follow:
+
+Movement → Primary Driver → Business Impact
+
+Examples of valid causal logic:
+- ASP decline → unit growth → CM1 profit pressure  
+- Stable pricing → unit decline → demand weakness  
+- Unit growth with stable CM1/unit → healthy expansion  
+
+3) LONG-TERM TREND INTERPRETATION  
+Using the historical_trend:
+
+- Classify the trajectory of "{product_name}" as:
+  • sustained growth  
+  • structural decline  
+  • volatility  
+  • flat/stagnant  
+
+- Identify **clear turning points** in the trend.
+
+4) RECENT MOVEMENT DIAGNOSIS  
+For the latest month vs previous month:
+
+- State the **dominant commercial change**.
+- Explain the **single strongest driver**:
+  • pricing movement  
+  • unit movement  
+  • sales mix shift  
+  • per-unit profitability change  
+
+- Conclude with the **business quality impact**:
+  • profitability strengthened  
+  • margin pressure emerged  
+  • efficiency deteriorated  
+  • stable but weak growth  
+
+METRIC INTERPRETATION RULES (SKU LEVEL)
+
+- total_quantity represents net units sold after returns.
+- net_sales represents realised topline revenue.
+- asp represents realised selling price per unit.
+- profit represents CM1 profit.
+- unit_wise_profitability represents CM1 profit per unit.
+
+CM2 ATTRIBUTION CONSTRAINT:
+
+- CM2 profit movement can ONLY be driven by:
+  • advertising_total
+  • platform fees
+  • storage fees
+  • reimbursements
+
+- Do NOT attribute CM2 change to any other cost component.
+- If CM2 movement is unexplained by the allowed drivers,
+  do NOT infer additional causes.
 
 
+FORBIDDEN CONTENT (ABSOLUTE):
 
-Observations:
-- List the 2–3 most important changes using ONLY the given metrics:
-  • quantity_prev vs quantity_curr
-  • net_sales_prev vs net_sales_curr
-  • profit_prev vs profit_curr
-  • asp_prev vs asp_curr
-  • unit_wise_profitability_prev vs unit_wise_profitability_curr
-  • and % fields like "Unit Growth (%)", "Net Sales Growth (%)", etc.
-- Use the exact causal tone wherever % values exist:
-  "The increase/decrease in ASP by X% resulted in a dip/growth in units by Y%, which also resulted in sales falling/increasing by Z%."
-- In at least one observation, mention Sales Mix Change (%) direction if present (up/down).
-- Do NOT add assumptions like stock issues, supply constraints, replenishment, OOS, or fulfillment problems.
+- No recommendations  
+- No actions  
+- No strategy  
+- No future suggestions  
+- No operational or inventory commentary  
 
-Improvements:
-- Provide exactly 3–5 action bullets.
-- Each action bullet MUST be exactly ONE sentence and MUST be chosen ONLY from the list below, verbatim (no edits):
-  • "Check ads and visibility campaigns for this product."
-  • "Review the visibility setup for this product."
-  • "Reduce ASP slightly to improve traction."
-  • "Increase ASP slightly to strengthen margins."
-  • "Monitor performance closely and reassess next steps."
-  • "Monitor performance closely for now."
-- Do NOT add any other recommendations, explanations, or extra words.
-- Do NOT mention stock, inventory, supply, operations, OOS, logistics, replenishment, or warehousing.
-- Decision guidance:
-  • If ASP is strongly up and units are down: prefer "Reduce ASP slightly to improve traction."
-  • If units and sales are down and ASP is flat or slightly up: prefer visibility lines.
-  • If profit/unit profit is very strong and units are stable/slightly down: prefer maintain/increase ASP.
+OUTPUT FORMAT:
 
-Then, for each metric, add:
-
-Unit Growth:
-• [Explain reasons for the growth/decline using ONLY available signals like unit trend vs ASP trend and what that implies about demand/visibility/conversion.]
-• [Choose ONE action bullet from the Improvements list that best fits the unit pattern and paste it verbatim.]
-
-ASP:
-• [Explain why ASP changed using ONLY available signals like pricing changes, discounting intensity, or product/pack/channel mix shifts (premium vs value) without referencing costs.]
-• [Choose ONE action bullet from the Improvements list that best fits the ASP direction and paste it verbatim.]
-
-Sales:
-• [Describe sales trend by explicitly tying it to Units × ASP.]
-• [Choose ONE action bullet from the Improvements list that best fits the sales pattern and paste it verbatim.]
-
-Profit:
-• [Explain profit change using ONLY available signals like sales movement plus realized pricing/discounting/mix impact.]
-• [Choose ONE action bullet from the Improvements list that best aligns with protecting/improving profitability and paste it verbatim.]
-
-Unit Profitability:
-• [Explain per-unit profit change using ONLY available signals like realized price/discounting and mix impact.]
-• [Choose ONE action bullet from the Improvements list that best fits per-unit profit trend and paste it verbatim.]
-
-Instructions:
-- Use plain text with bullets only.
-- DO NOT use Markdown.
-- Use % values and trends from the data.
-- Make insights easy for business teams to act on.
+- Plain text bullet points only  
+- Maximum 5 bullets  
+- Each bullet must reference "{product_name}" naturally  
+- Each bullet must follow **Movement → Driver → Impact** reasoning  
+- No headings, no markdown, no narrative paragraphs  
 
 Data:
 {json.dumps(item, indent=2)}
 """
 
         ai_insights = generate_ai_insights(prompt)
-        conn.close()
 
         return jsonify({
             "success": True,
             "product_name": product_name,
-            "months_compared": [
-                item["months"]["previous"],
-                item["months"]["current"]
-            ],
-            "metrics": metrics_payload,
+            "historical_trend": history_24m,
             "ai_insights": ai_insights
         })
 
     except Exception as e:
-        return jsonify({'error': 'Internal server error'}), 500
-    
+        print("ProductwiseGrowthAI ERROR:", str(e))
+        return jsonify({'error': str(e)}), 500
 
-    

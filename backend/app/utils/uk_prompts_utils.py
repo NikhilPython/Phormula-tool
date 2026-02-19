@@ -30,6 +30,20 @@ You will also receive:
 - A curated list of focus_skus representing the
   Top 5 products ranked by current month CM1 profit.
 
+- portfolio_time_series:
+  A chronological monthly time series of TOTAL portfolio metrics
+  (oldest → newest).
+
+If portfolio_time_series is provided:
+
+- You MAY reference 2–4 major directional phases
+  leading into the current period.
+
+- Focus only on meaningful directional shifts.
+- Do NOT narrate every month.
+- Integrate this context into executive_takeaway naturally.
+
+
 Your audience is senior leadership (Founder, CFO, Accountant, Account Managers).
 
 They do NOT want:

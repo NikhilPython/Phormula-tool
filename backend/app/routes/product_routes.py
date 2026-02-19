@@ -437,11 +437,42 @@ def get_asp_data():
         return jsonify({'error': 'Unexpected error', 'message': str(e)}), 500
 
     
+# @product_bp.route('/skup', methods=['POST'])
+# def skup():
+#     auth_header = request.headers.get('Authorization')
+    
+#     # Validate authorization token
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         user_id = payload['user_id']
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     # Check if a file is included in the request
+#     if 'file' not in request.files:
+#         return jsonify({'error': 'No file part'}), 400
+
+#     file = request.files['file']
+#     if file.filename == '':
+#         return jsonify({'error': 'No selected file'}), 400
+
+#     # Save the uploaded file
+#     file_path = os.path.join(secure_filename(file.filename))
+#     file.save(file_path)
+
+#     return jsonify({'success': True, 'message': 'File uploaded successfully'}), 200
+
+
 @product_bp.route('/skup', methods=['POST'])
 def skup():
     auth_header = request.headers.get('Authorization')
-    
-    # Validate authorization token
+
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
@@ -454,7 +485,6 @@ def skup():
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
 
-    # Check if a file is included in the request
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
 
@@ -462,11 +492,148 @@ def skup():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
 
-    # Save the uploaded file
-    file_path = os.path.join(secure_filename(file.filename))
+    filename = secure_filename(file.filename)
+    file_path = os.path.join(filename)
     file.save(file_path)
 
-    return jsonify({'success': True, 'message': 'File uploaded successfully'}), 200
+    # =========================
+    # 1️⃣ UPDATE EXCEL FILE
+    # =========================
+    try:
+        sheet_name = "SKU Information Tab"
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+        if "Local Stock" not in df.columns:
+            df["Local Stock"] = 0
+
+        if "In Transit Units" not in df.columns:
+            df["In Transit Units"] = 0
+
+        with pd.ExcelWriter(file_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    except Exception as e:
+        return jsonify({'error': f'Excel update failed: {str(e)}'}), 500
+
+    # =========================
+    # 2️⃣ UPDATE DATABASE TABLE
+    # =========================
+    try:
+        user_engine = create_engine(db_url)
+        table_name = f"sku_{user_id}_data_table"
+
+        inspector = inspect(user_engine)
+
+        if table_name not in inspector.get_table_names():
+            return jsonify({'error': f'Table {table_name} not found'}), 404
+
+        with user_engine.begin() as conn:
+            existing_columns = {col["name"] for col in inspect(conn).get_columns(table_name)}
+
+            if "local_stock" not in existing_columns:
+                conn.execute(text(f'''
+                    ALTER TABLE "{table_name}"
+                    ADD COLUMN local_stock INTEGER DEFAULT 0;
+                '''))
+
+            if "in_transit_units" not in existing_columns:
+                conn.execute(text(f'''
+                    ALTER TABLE "{table_name}"
+                    ADD COLUMN in_transit_units INTEGER DEFAULT 0;
+                '''))
+
+    except SQLAlchemyError as e:
+        return jsonify({'error': 'Database error', 'message': str(e)}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    return jsonify({
+        "success": True,
+        "message": "File uploaded and stock columns ensured"
+    }), 200
+
+
+
+# @product_bp.route('/updatePrices', methods=['POST'])
+# def update_prices():
+#     # Authorization
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         user_id = payload['user_id']
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     # Parse price update payload
+#     data = request.get_json()
+#     edited_prices = data.get('prices', {})  
+
+#     if not edited_prices:
+#         return jsonify({'error': 'No prices provided to update'}), 400
+
+#     # DB setup
+#     user_engine = create_engine(db_url)
+#     Session = sessionmaker(bind=user_engine)
+#     user_session = Session()
+#     sku_table_name = f"sku_{user_id}_data_table"
+#     sku_data_table = Table(sku_table_name, MetaData(), autoload_with=user_engine)
+
+#     failed_products = []
+#     updated_products = []
+
+#     try:
+#         # Fetch all existing product_names for validation
+#         existing_products_result = user_session.execute(
+#             select(sku_data_table.c.product_name)
+#         ).fetchall()
+#         existing_products = set(row[0] for row in existing_products_result)
+
+#         for product_name, new_price in edited_prices.items():
+#             if product_name not in existing_products:
+#                 failed_products.append(product_name)
+#                 continue
+
+#             try:
+#                 update_stmt = sku_data_table.update().where(
+#                     sku_data_table.c.product_name == product_name
+#                 ).values(price=new_price)
+
+#                 result = user_session.execute(update_stmt)
+
+#                 if result.rowcount == 0:
+#                     failed_products.append(product_name)
+#                 else:
+#                     updated_products.append(product_name)
+
+#             except Exception as e:
+#                 failed_products.append(product_name)
+
+#         user_session.commit()
+
+#         # Return updated table
+#         select_stmt = select(sku_data_table).order_by(sku_data_table.c.id.asc())
+#         result = user_session.execute(select_stmt)
+#         updated_data = [dict(row._mapping) for row in result]
+
+#         return jsonify({
+#             'message': 'Prices update completed',
+#             'updated_products': updated_products,
+#             'not_updated_products': failed_products,
+#             'data': updated_data
+#         }), 200
+
+#     except Exception as e:
+#         user_session.rollback()
+#         return jsonify({'error': f'Error updating prices: {str(e)}'}), 500
+#     finally:
+#         user_session.close()
+
 
 @product_bp.route('/updatePrices', methods=['POST'])
 def update_prices():
@@ -484,17 +651,18 @@ def update_prices():
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
 
-    # Parse price update payload
-    data = request.get_json()
-    edited_prices = data.get('prices', {})  
+    # Parse update payload
+    data = request.get_json() or {}
+    rows = data.get('rows', {})
 
-    if not edited_prices:
-        return jsonify({'error': 'No prices provided to update'}), 400
+    if not rows:
+        return jsonify({'error': 'No rows provided to update'}), 400
 
     # DB setup
     user_engine = create_engine(db_url)
     Session = sessionmaker(bind=user_engine)
     user_session = Session()
+
     sku_table_name = f"sku_{user_id}_data_table"
     sku_data_table = Table(sku_table_name, MetaData(), autoload_with=user_engine)
 
@@ -508,25 +676,56 @@ def update_prices():
         ).fetchall()
         existing_products = set(row[0] for row in existing_products_result)
 
-        for product_name, new_price in edited_prices.items():
+        for product_name, updates in rows.items():
             if product_name not in existing_products:
                 failed_products.append(product_name)
                 continue
 
-            try:
-                update_stmt = sku_data_table.update().where(
-                    sku_data_table.c.product_name == product_name
-                ).values(price=new_price)
-
-                result = user_session.execute(update_stmt)
-
-                if result.rowcount == 0:
-                    failed_products.append(product_name)
-                else:
-                    updated_products.append(product_name)
-
-            except Exception as e:
+            if not isinstance(updates, dict):
                 failed_products.append(product_name)
+                continue
+
+            update_data = {}
+
+            # price (optional)
+            if "price" in updates and updates["price"] is not None:
+                try:
+                    update_data["price"] = float(updates["price"])
+                except Exception:
+                    failed_products.append(product_name)
+                    continue
+
+            # local_stock (optional)
+            if "local_stock" in updates and updates["local_stock"] is not None:
+                try:
+                    update_data["local_stock"] = int(updates["local_stock"])
+                except Exception:
+                    failed_products.append(product_name)
+                    continue
+
+            # in_transit_units (optional)
+            if "in_transit_units" in updates and updates["in_transit_units"] is not None:
+                try:
+                    update_data["in_transit_units"] = int(updates["in_transit_units"])
+                except Exception:
+                    failed_products.append(product_name)
+                    continue
+
+            # If nothing valid to update
+            if not update_data:
+                failed_products.append(product_name)
+                continue
+
+            result = user_session.execute(
+                sku_data_table.update()
+                .where(sku_data_table.c.product_name == product_name)
+                .values(**update_data)
+            )
+
+            if result.rowcount == 0:
+                failed_products.append(product_name)
+            else:
+                updated_products.append(product_name)
 
         user_session.commit()
 
@@ -536,7 +735,7 @@ def update_prices():
         updated_data = [dict(row._mapping) for row in result]
 
         return jsonify({
-            'message': 'Prices update completed',
+            'message': 'Update completed (price + stock)',
             'updated_products': updated_products,
             'not_updated_products': failed_products,
             'data': updated_data
@@ -544,9 +743,10 @@ def update_prices():
 
     except Exception as e:
         user_session.rollback()
-        return jsonify({'error': f'Error updating prices: {str(e)}'}), 500
+        return jsonify({'error': f'Error updating rows: {str(e)}'}), 500
     finally:
         user_session.close()
+
 
 
 @product_bp.route('/skuprice', methods=['GET'])

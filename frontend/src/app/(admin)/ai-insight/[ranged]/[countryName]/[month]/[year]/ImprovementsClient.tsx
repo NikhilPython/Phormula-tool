@@ -595,7 +595,7 @@ useEffect(() => {
           data: x,
           axisLabel: {
             interval: 0,
-            fontSize: isMobile ? 10 : 16,
+            fontSize: isMobile ? 10 : 14,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -627,7 +627,7 @@ useEffect(() => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
-            fontSize: isMobile ? 10 : 16,
+            fontSize: isMobile ? 10 : 14,
             formatter: (v: number) => `${Math.round(v).toLocaleString()}`
           }
         },
@@ -783,7 +783,7 @@ useEffect(() => {
           data: x,
           axisLabel: {
             interval: 0,
-            fontSize: isMobile ? 10 : 16,
+            fontSize: isMobile ? 10 : 14,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -815,7 +815,7 @@ useEffect(() => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
-            fontSize: isMobile ? 10 : 16,
+            fontSize: isMobile ? 10 : 14,
             formatter: (v: number) => `${Math.round(v).toLocaleString()}`
           }
         },
@@ -965,7 +965,7 @@ useEffect(() => {
           data: x,
           axisLabel: {
             interval: 0,
-            fontSize: isMobile ? 10 : 16,
+            fontSize: isMobile ? 10 : 14,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -987,7 +987,7 @@ useEffect(() => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
-            fontSize: isMobile ? 10 : 16,
+            fontSize: isMobile ? 10 : 14,
             formatter: (v: number) => `${Math.round(v).toLocaleString()}`
           }
         }
@@ -1139,7 +1139,7 @@ useEffect(() => {
           data: x,
           axisLabel: {
             interval: 0,
-            fontSize: isMobile ? 10 : 16,
+            fontSize: isMobile ? 10 : 14,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -1161,7 +1161,7 @@ useEffect(() => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
-            fontSize: isMobile ? 10 : 16,
+            fontSize: isMobile ? 10 : 14,
             formatter: (value: number) => {
               if (!value) return '0';
               return Number.isInteger(value)
@@ -2340,316 +2340,64 @@ useEffect(() => {
 
 
 
-  const highlightInsightText = (text: string) => {
-    const greenWords = [
-      'profit',
-      'profits',
-      'increase',
-      'growth',
-      'improvement',
-      'gain',
-      'gains',
-      'up',
-      'higher',
-    ];
+const renderFormattedInsight = (raw: string) => {
+  if (!raw) return null;
 
-    const redWords = [
-      'loss',
-      'losses',
-      'decrease',
-      'decline',
-      'drop',
-      'down',
-      'lower',
-    ];
+  const sentences = raw
+    .split(/(?<=\.)\s+/)
+    .map(s => s.replace(/^-+\s*/, "").trim()) // remove leading "-"
+    .filter(Boolean);
 
-    const regex = new RegExp(
-      `\\b(${[...greenWords, ...redWords].join('|')})\\b`,
-      'gi'
-    );
+  return (
+    <div style={{ marginTop: 8 }}>
+      
+      {/* Heading */}
+      <div
+        style={{
+          fontSize: 16,
+          fontWeight: 600,
+          color: "#111827",
+          marginBottom: 12,
+        }}
+      >
+        AI Insight
+      </div>
 
-    const parts = text.split(regex);
-
-    return parts.map((part, idx) => {
-      const lower = part.toLowerCase();
-
-      if (greenWords.includes(lower)) {
-        return (
-          <span key={idx} style={{ color: '#5EA68E', fontWeight: 600 }}>
-            {part}
-          </span>
-        );
-      }
-
-      if (redWords.includes(lower)) {
-        return (
-          <span key={idx} style={{ color: '#FF5C5C', fontWeight: 600 }}>
-            {part}
-          </span>
-        );
-      }
-
-      return <span key={idx}>{part}</span>;
-    });
-  };
-
-
-
-  const renderFormattedInsight = (raw: string) => {
-    if (!raw) return null;
-
-    const lines = raw
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-
-    const SECTION_ORDER = [
-      'Details',
-      'Observations',
-      'Improvements',
-      'Unit Growth',
-      'ASP',
-      'Sales',
-      'Profit',
-      'Unit Profitability',
-      'Summary',
-    ];
-
-    const LIST_SECTIONS = new Set([
-      'Observations',
-      'Improvements',
-      'Unit Growth',
-      'ASP',
-      'Sales',
-      'Profit',
-      'Unit Profitability',
-    ]);
-
-    const headingOf = (line: string): string | null => {
-      const m =
-        line.match(/^details\s+for/i) ? ['Details'] :
-          line.match(/^(observations)\s*:?\s*$/i) ? ['Observations'] :
-            line.match(/^(improvements)\s*:?\s*$/i) ? ['Improvements'] :
-              line.match(/^(unit\s+growth)\s*:?\s*$/i) ? ['Unit Growth'] :
-                line.match(/^(asp)\s*:?\s*$/i) ? ['ASP'] :
-                  line.match(/^(sales)\s*:?\s*$/i) ? ['Sales'] :
-                    line.match(/^(profit)\s*:?\s*$/i) ? ['Profit'] :
-                      line.match(/^(unit\s+profitability)\s*:?\s*$/i) ? ['Unit Profitability'] :
-                        line.match(/^(summary)\s*:?\s*$/i) ? ['Summary'] :
-                          null;
-      return m ? m[0] : null;
-    };
-
-    const sections: Record<string, string[]> = {};
-    let current: string | null = null;
-
-    for (const line of lines) {
-      const hd = headingOf(line);
-      if (hd) {
-        current = hd;
-        if (!sections[current]) sections[current] = [];
-        if (current === 'Details') sections[current].push(line);
-        continue;
-      }
-      if (!current) current = 'Details';
-      if (!sections[current]) sections[current] = [];
-      const isLabel = !!line.match(
-        /^(observations|improvements|unit\s+growth|asp|sales|profit|unit\s+profitability|summary)\s*:?\s*$/i
-      );
-      if (isLabel) continue;
-      sections[current].push(line);
-    }
-
-    const clean = (s: string) =>
-      s.replace(/^[•\-\u2013\u2014]\s+/, '').replace(/^\d+\.\s+/, '');
-
-    return SECTION_ORDER.filter((sec) => sections[sec]?.length).map(
-      (sec, idx) => {
-        const content = sections[sec];
-        const isList = LIST_SECTIONS.has(sec);
-
-        return (
+      {/* Bullet Points */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {sentences.map((sentence, idx) => (
           <div
             key={idx}
-            className="insight-section"
-            style={{ marginBottom: 12 }}
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              fontSize: 14,
+              lineHeight: 1.6,
+              color: "#374151",
+            }}
           >
-            {(isList || sec === 'Summary') && (
-              <strong
-                className="insight-section-title ext-xs 2xl:text-sm"
-                style={{ display: 'block', marginBottom: 6 }}
-              >
-                {sec}
-              </strong>
-            )}
-
-            {isList ? (
-              <ul className="insight-list list-disc">
-                {content.map((line, i) => {
-                  const trimmed = clean(line);
-
-                  // 🔹 Detect ANY subheading
-                  const isSubHeading =
-                    /^[A-Za-z][A-Za-z\s\/]+:?$/i.test(trimmed) &&  // text only
-                    !trimmed.match(/\d|%|,/) &&                    // no numbers/percent
-                    trimmed.split(/\s+/).length <= 5;              // short phrase
-
-                  if (isSubHeading) {
-                    const label = trimmed.replace(/:$/, '').trim();
-                    return (
-                      <li
-                        key={i}
-                        style={{
-                          listStyle: 'none',
-                          marginTop: 10,
-                          marginBottom: 4,
-                        }}
-                        className='text-xs 2xl:text-sm'
-                      >
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            // fontSize: 14,
-                            color: '#374151',
-                            borderLeft: '3px solid #60a68e',
-                            paddingLeft: 8,
-                          }}
-                        >
-                          {label}
-                        </span>
-                      </li>
-                    );
-                  }
-
-                  // 🔹 Normal bullet points
-                  return (
-                    <li
-                      key={i}
-                      style={{
-                        marginBottom: 4,
-                        lineHeight: 1.6,
-                        // fontSize: 13,
-                      }}
-                      className='insight-list-item text-xs 2xl:text-sm'
-                    >
-                      {highlightInsightText(trimmed)}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="insight-paragraphs list-disc">
-                {content.map((line, i) => (
-                  <p
-                    key={i}
-                    className="insight-paragraph"
-                    style={{
-                      margin: '4px 0',
-                      lineHeight: 1.6,
-                      fontSize: 13,
-                    }}
-                  >
-                    {highlightInsightText(line)}
-                  </p>
-                ))}
-              </div>
-            )}
-
-
-            {sec === 'Summary' && (
-              <div className="feedback-container" style={{ marginTop: 10 }}>
-                <div
-                  className="feedback-buttons"
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    gap: 12,
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="feedback-button"
-                    onClick={() => setFbType('like')}
-                    title="Like"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      opacity: fbType === 'like' ? 1 : 0.6,
-                    }}
-                  >
-                    <FaThumbsUp size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    className="feedback-button"
-                    onClick={() => setFbType('dislike')}
-                    title="Dislike"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      opacity: fbType === 'dislike' ? 1 : 0.6,
-                    }}
-                  >
-                    <FaThumbsDown size={18} />
-                  </button>
-                </div>
-
-                <div
-                  className="comment-box"
-                  style={{
-                    marginTop: 10,
-                    backgroundColor: '#f1f1f1',
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    display: 'flex',
-                    gap: 10,
-                    alignItems: 'center',
-                  }}
-                >
-                  <input
-                    type="text"
-                    placeholder="Add a Comment......"
-                    className="comment-input"
-                    value={fbText}
-                    onChange={(e) => setFbText(e.target.value)}
-                    style={{
-                      flex: 1,
-                      border: 'none',
-                      outline: 'none',
-                      background: 'transparent',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={submitSummaryFeedback}
-                    disabled={fbSubmitting}
-                    className="styled-button"
-                    style={{ whiteSpace: 'nowrap' }}
-                  >
-                    {fbSubmitting ? 'Submitting...' : 'Submit'}
-                  </button>
-                </div>
-
-                {fbSuccess && (
-                  <div
-                    style={{
-                      color: '#2e7d32',
-                      fontWeight: 600,
-                      marginTop: 6,
-                    }}
-                  >
-                    Feedback submitted!
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Clean subtle bullet */}
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                marginTop: 7,
+                borderRadius: "50%",
+                backgroundColor: "#9CA3AF",
+                flexShrink: 0,
+              }}
+            />
+            <span>{sentence}</span>
           </div>
-        );
-      }
-    );
-  };
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
+
 
   const getAllSkusForExport = (): SkuItem[] => {
     return [

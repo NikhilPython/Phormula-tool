@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
 import jwt
+from io import BytesIO
+import calendar
 from werkzeug.utils import secure_filename
 import pandas as pd
 from sqlalchemy import create_engine, Table, MetaData, Column, Integer, String, Float, text
@@ -1139,9 +1141,6 @@ def ConfirmationFeepreview():
     return jsonify({'message': 'ConfirmationFeepreview successful!'}), 200
 
 
-from io import BytesIO
-import os
-import calendar
 
 @upload_bp.route('/multiCountry', methods=['POST'])
 def multiCountry():
@@ -1173,7 +1172,7 @@ def multiCountry():
     metadata = MetaData()
     table_name = f"sku_{user_id}_data_table"
 
-    # Relaxed schema (only user_id is NOT NULL)
+    # ✅ Updated schema includes local_stock + in_transit_units
     user_specific_table = Table(
         table_name, metadata,
         Column('id', Integer, primary_key=True),
@@ -1187,7 +1186,10 @@ def multiCountry():
         Column('price', Float, nullable=True),
         Column('currency', String(255), nullable=True),
 
-        # ✅ keep month/year columns, but store month as name (January) not "01"
+        # ✅ NEW
+        Column('local_stock', Integer, nullable=True, server_default=text("0")),
+        Column('in_transit_units', Integer, nullable=True, server_default=text("0")),
+
         Column('month', String(20), nullable=True),
         Column('year', String(20), nullable=True),
     )
@@ -1210,10 +1212,9 @@ def multiCountry():
         if not s:
             return None, None
 
-        # normalize separators
         s = s.replace('.', '/').replace('-', '/')
-
         parts = s.split('/')
+
         if len(parts) == 2 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
             a, b = parts[0].strip(), parts[1].strip()
 
@@ -1237,17 +1238,16 @@ def multiCountry():
     def _extract_month_year(row_dict):
         """
         Priority:
-          1) date column from your template (normalized key: 'date') -> pandas Timestamp/datetime
-          2) date column as string MM/YYYY (csv)
-          3) fallback separate month/year columns if someone uploads old template
+          1) date column (normalized key: 'date') -> pandas Timestamp/datetime
+          2) date string MM/YYYY (csv)
+          3) fallback separate month/year columns
         """
-        # Your template column is "Date" -> after _normalize_columns it should become "date"
         date_val = _pick(row_dict, ['date', 'Date'])
 
         month = None
         year = None
 
-        # 1) datetime-like from pandas
+        # 1) datetime-like
         if date_val not in (None, '') and hasattr(date_val, 'month') and hasattr(date_val, 'year'):
             try:
                 mi = int(date_val.month)
@@ -1259,15 +1259,14 @@ def multiCountry():
             except Exception:
                 pass
 
-        # 2) string like "01/2024"
-        if month is None or year is None:
-            m2, y2 = _parse_mm_yyyy(date_val)
-            if m2 and y2:
-                return m2, y2
+        # 2) string MM/YYYY
+        m2, y2 = _parse_mm_yyyy(date_val)
+        if m2 and y2:
+            return m2, y2
 
-        # 3) fallback separate month/year columns
+        # 3) fallback month/year columns
         month_raw = _pick(row_dict, ['month', 'Month', 'mon', 'mm'])
-        year_raw  = _pick(row_dict, ['year', 'Year', 'yyyy', 'yy'])
+        year_raw = _pick(row_dict, ['year', 'Year', 'yyyy', 'yy'])
 
         # normalize month
         if month_raw not in (None, ''):
@@ -1275,7 +1274,6 @@ def multiCountry():
             if s.isdigit():
                 month = _month_name_from_num(int(s))
             else:
-                # accept "jan", "january"
                 s_lower = s.lower()
                 for i in range(1, 13):
                     if s_lower in (calendar.month_name[i].lower(), calendar.month_abbr[i].lower()):
@@ -1290,6 +1288,20 @@ def multiCountry():
             year = y
 
         return month, year
+
+    def _safe_int(val, default=0):
+        try:
+            if val in (None, ''):
+                return default
+            return int(float(str(val).strip()))
+        except Exception:
+            return default
+
+    def _s(x):
+        if x is None:
+            return None
+        x = str(x).strip()
+        return x if x else None
 
     session = None
     try:
@@ -1350,18 +1362,19 @@ def multiCountry():
 
             currency = _pick(row, ['currency'])
 
-            # ✅ month/year from your template "Date" column
+            # ✅ month/year from template "Date"
             month, year = _extract_month_year(row)
 
-            # Skip fully empty lines
-            if not any([s_no, product_name, product_barcode, asin, sku_uk, sku_us, price_value, currency, month, year]):
-                continue
+            # ✅ NEW: read stock columns (support different headers)
+            local_stock = _safe_int(_pick(row, ['local_stock', 'local stock', 'Local Stock']), default=0)
+            in_transit_units = _safe_int(_pick(row, ['in_transit_units', 'in transit units', 'In Transit Units']), default=0)
 
-            def _s(x):
-                if x is None:
-                    return None
-                x = str(x).strip()
-                return x if x else None
+            # Skip fully empty lines (include stock too)
+            if not any([
+                s_no, product_name, product_barcode, asin, sku_uk, sku_us,
+                price_value, currency, month, year, local_stock, in_transit_units
+            ]):
+                continue
 
             inserts.append({
                 'user_id': user_id,
@@ -1373,8 +1386,13 @@ def multiCountry():
                 'asin': _s(asin),
                 'price': price_value,
                 'currency': _s(currency),
-                'month': _s(month),   # "January"
-                'year': _s(year),     # "2024"
+
+                # ✅ NEW
+                'local_stock': local_stock,
+                'in_transit_units': in_transit_units,
+
+                'month': _s(month),
+                'year': _s(year),
             })
 
         if inserts:
@@ -1403,6 +1421,7 @@ def multiCountry():
         return jsonify({'error': f'Error processing file: {str(e)}'}), 500
 
 
+
 @upload_bp.route('/file-upload-status', methods=['GET'])
 def check_file_upload_status():
     # ---------- Auth ----------
@@ -1420,7 +1439,7 @@ def check_file_upload_status():
         return jsonify({'error': 'Invalid token'}), 401
 
     # ---------- DB ----------
-    db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
+    db_url = os.getenv('DATABASE_URL')
     engine = create_engine(db_url)
     inspector = inspect(engine)
     table_name = f"sku_{user_id}_data_table"
@@ -1452,107 +1471,6 @@ def check_file_upload_status():
         return jsonify({'error': 'Server error'}), 500
 
 
-
-
-from flask import request, jsonify
-import jwt
-
-# @upload_bp.route('/upload_history', methods=['GET'])
-# def upload_history():
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-#         user_id = payload['user_id']
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-
-#     # ✅ read optional params
-#     # If you also pass country from FE, support it too (safe default = "")
-#     country_param = (request.args.get('country') or "").strip().lower()
-#     home_currency = (request.args.get('homeCurrency') or "").strip().lower()
-
-#     uploads = UploadHistory.query.filter_by(user_id=user_id).all()
-
-#     # Month number to name mapping
-#     month_names = {
-#         1: 'january', 2: 'february', 3: 'march', 4: 'april',
-#         5: 'may', 6: 'june', 7: 'july', 8: 'august',
-#         9: 'september', 10: 'october', 11: 'november', 12: 'december'
-#     }
-
-#     response = []
-
-#     for upload in uploads:
-#         upload_country = (upload.country or "").strip().lower()
-
-#         # ✅ IMPORTANT FIX:
-#         # When requesting GLOBAL history:
-#         # - if homeCurrency is provided => only return global_<currency>
-#         # - else => only return base global
-#         if country_param == "global":
-#             if home_currency:
-#                 if upload_country != f"global_{home_currency}":
-#                     continue
-#             else:
-#                 if upload_country != "global":
-#                     continue
-
-#         # ✅ Optional: if FE passes specific country, filter by it
-#         # (This avoids sending huge payloads)
-#         elif country_param:
-#             if upload_country != country_param:
-#                 continue
-
-#         # Convert numeric month to month name for display
-#         month_name = month_names.get(upload.month, str(upload.month))
-
-#         table_name = f"user_{upload_country}_{month_name}{upload.year}_data"
-
-#         response.append({
-#             'month': month_name,
-#             'month_num': upload.month,          # ✅ keep numeric month here
-#             'year': upload.year,
-#             'country': upload_country,
-#             'file_name': table_name,
-
-#             'total_sales': upload.total_sales,
-#             'total_product_sales': upload.total_product_sales,
-#             'total_profit': upload.total_profit,
-#             'total_expense': upload.total_expense,
-#             'total_fba_fees': upload.total_fba_fees,
-
-#             'platform_fee': upload.platform_fee,
-#             'rembursement_fee': upload.rembursement_fee,
-
-#             'expense_chart_img': upload.expense_chart_img,
-#             'sales_chart_img': upload.sales_chart_img,
-#             'qtd_pie_chart': upload.qtd_pie_chart,
-#             'ytd_pie_chart': upload.ytd_pie_chart,
-
-#             'total_cous': upload.total_cous,
-#             'total_amazon_fee': upload.total_amazon_fee,
-#             'profit_chart_img': upload.profit_chart_img,
-
-#             'cm2_profit': upload.cm2_profit,
-#             'cm2_margins': upload.cm2_margins,
-#             'acos': upload.acos,
-
-#             'rembursment_vs_cm2_margins': upload.rembursment_vs_cm2_margins,
-#             'advertising_total': upload.advertising_total,
-#             'reimbursement_vs_sales': upload.reimbursement_vs_sales,
-#             'taxncredit': upload.taxncredit,
-#             'unit_sold': upload.unit_sold,
-
-#             'otherwplatform': upload.platform_fee,
-#         })
-
-#     return jsonify({'uploads': response}), 200
 
 ################################################################################################################
 # Revised upload_history with performance trend logic integrated donot delete this comment
@@ -1703,7 +1621,9 @@ def upload_history():
         'trend_timeline': timeline,
         'trend_year': year,
     }), 200
-# ###################################################################################################################
+
+
+####################################################################################################################
 
 
 def resolve_country(country, currency):

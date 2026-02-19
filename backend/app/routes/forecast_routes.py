@@ -363,6 +363,94 @@ def forecast_monthrange():
 
 
 
+# @forecast_bp.route('/api/forecast', methods=['GET'])
+# def get_forecast():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         user_id = payload.get('user_id')
+#         if not user_id:
+#             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
+
+#         country = request.args.get('country')
+#         mv = request.args.get('month')
+#         year = request.args.get('year')
+#         if not all([country, mv, year]):
+#             return jsonify({'error': 'Missing required parameters: country, month, or year'}), 400
+
+#         current_month = datetime.now().strftime("%b").lower()
+#         inventory_filename = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
+
+#         # ✅ DB-first cache (inventory file)
+#         stored = load_file_from_db(user_id=user_id, country=country, filename=inventory_filename)
+#         if stored:
+#             return send_db_file(stored, download_name=inventory_filename)
+
+        
+#         engine = create_engine(db_url)
+#         result = process_forecasting(user_id, country, mv, year, engine)
+
+#         if not result or "inventory_bytes" not in result or not result["inventory_bytes"]:
+#             return jsonify({'error': 'Forecast generation failed (no output bytes).'}), 500
+
+#         # ✅ Save BOTH artifacts to DB (inventory + forecasts_for used by PnL)
+#         # 1) forecasts_for (PnL depends on this later)
+#         if result.get("forecast_bytes") and result.get("forecast_filename"):
+#             save_file_to_db(
+#                 user_id=user_id,
+#                 country=country,
+#                 filename=result["forecast_filename"],
+#                 file_bytes=result["forecast_bytes"],
+#                 kind="forecasts_for",
+#                 month=mv.lower(),
+#                 year=str(year),
+#                 content_type=XLSX_MIME
+#             )
+
+#         # 2) inventory forecast (this route returns this)
+#         save_file_to_db(
+#             user_id=user_id,
+#             country=country,
+#             filename=result.get("inventory_filename", inventory_filename),
+#             file_bytes=result["inventory_bytes"],
+#             kind="inventory_forecast",
+#             month=mv.lower(),
+#             year=str(year),
+#             content_type=XLSX_MIME
+#         )
+
+#         # Reload and return
+#         stored = load_file_from_db(
+#             user_id=user_id,
+#             country=country,
+#             filename=result.get("inventory_filename", inventory_filename)
+#         )
+#         if not stored:
+#             return jsonify({'error': 'Saved forecast not found in DB after generation.'}), 500
+
+#         try:
+#             # NOTE: if your email function expects to read from disk,
+#             # update it to read from DB using load_file_from_db.
+#             send_forecast_email(user_id, stored.filename, mv, year)
+#         except Exception as e:
+#             print(f"Email sending failed: {str(e)}")
+
+#         return send_db_file(stored, download_name=stored.filename)
+
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+#     except Exception as e:
+#         import traceback
+#         print(traceback.format_exc())
+#         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
+
 @forecast_bp.route('/api/forecast', methods=['GET'])
 def get_forecast():
     auth_header = request.headers.get('Authorization')
@@ -385,26 +473,27 @@ def get_forecast():
 
         current_month = datetime.now().strftime("%b").lower()
         inventory_filename = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
+        forecast_filename = f'forecasts_for_{user_id}_{country}.xlsx'
 
         # ✅ DB-first cache (inventory file)
-        stored = load_file_from_db(user_id=user_id, country=country, filename=inventory_filename)
-        if stored:
-            return send_db_file(stored, download_name=inventory_filename)
+        stored_inv = load_file_from_db(user_id=user_id, country=country, filename=inventory_filename)
+        if stored_inv:
+            return send_db_file(stored_inv, download_name=inventory_filename)
 
-        
         engine = create_engine(db_url)
+
+        # Run pipeline
         result = process_forecasting(user_id, country, mv, year, engine)
 
-        if not result or "inventory_bytes" not in result or not result["inventory_bytes"]:
+        if not result or not result.get("inventory_bytes"):
             return jsonify({'error': 'Forecast generation failed (no output bytes).'}), 500
 
-        # ✅ Save BOTH artifacts to DB (inventory + forecasts_for used by PnL)
-        # 1) forecasts_for (PnL depends on this later)
-        if result.get("forecast_bytes") and result.get("forecast_filename"):
+        # Save forecasts_for (PnL dependency)
+        if result.get("forecast_bytes"):
             save_file_to_db(
                 user_id=user_id,
                 country=country,
-                filename=result["forecast_filename"],
+                filename=result.get("forecast_filename", forecast_filename),
                 file_bytes=result["forecast_bytes"],
                 kind="forecasts_for",
                 month=mv.lower(),
@@ -412,7 +501,7 @@ def get_forecast():
                 content_type=XLSX_MIME
             )
 
-        # 2) inventory forecast (this route returns this)
+        # Save inventory forecast
         save_file_to_db(
             user_id=user_id,
             country=country,
@@ -424,23 +513,21 @@ def get_forecast():
             content_type=XLSX_MIME
         )
 
-        # Reload and return
-        stored = load_file_from_db(
+        stored_inv = load_file_from_db(
             user_id=user_id,
             country=country,
             filename=result.get("inventory_filename", inventory_filename)
         )
-        if not stored:
+        if not stored_inv:
             return jsonify({'error': 'Saved forecast not found in DB after generation.'}), 500
 
+        # email (optional)
         try:
-            # NOTE: if your email function expects to read from disk,
-            # update it to read from DB using load_file_from_db.
-            send_forecast_email(user_id, stored.filename, mv, year)
+            send_forecast_email(user_id, stored_inv.filename, mv, year)
         except Exception as e:
-            print(f"Email sending failed: {str(e)}")
+            print(f"[EMAIL][WARN] send_forecast_email failed: {e}")
 
-        return send_db_file(stored, download_name=stored.filename)
+        return send_db_file(stored_inv, download_name=stored_inv.filename)
 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401

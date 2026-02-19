@@ -669,6 +669,57 @@ def live_mtd_vs_previous():
         # ---------------------------
         # STRATEGY ENGINE (MONTH-END PROMPT 2)
         # ---------------------------
+        sku_live_context = []
+
+        for r in top_80_skus:
+            sku = r.get("sku")
+            if not sku:
+                continue
+
+            growth_row = next(
+                (g for g in growth_data if g.get("sku") == sku),
+                None
+            )
+            if not growth_row:
+                continue
+
+            sku_live_context.append({
+            "sku": sku,
+
+            # ---- Raw previous vs current ----
+            "quantity": {
+                "previous": growth_row.get("quantity_prev"),
+                "current": growth_row.get("quantity_curr"),
+            },
+            "asp": {
+                "previous": growth_row.get("asp_prev"),
+                "current": growth_row.get("asp_curr"),
+            },
+            "net_sales": {
+                "previous": growth_row.get("net_sales_prev"),
+                "current": growth_row.get("net_sales_curr"),
+            },
+            "cm1_profit": {
+                "previous": growth_row.get("profit_prev"),
+                "current": growth_row.get("profit_curr"),
+            },
+            "profit_per_unit": {
+                "previous": growth_row.get("unit_wise_profitability_prev"),
+                "current": growth_row.get("unit_wise_profitability_curr"),
+            },
+
+            # 🔥 NEW — percentage movement (very important)
+            "movement_intensity": {
+                "units": (growth_row.get("Unit Growth (%)") or {}).get("value"),
+                "asp": (growth_row.get("ASP Growth (%)") or {}).get("value"),
+                "net_sales": (growth_row.get("Net Sales Growth (%)") or {}).get("value"),
+                "cm1_profit": (growth_row.get("CM1 Profit Impact (%)") or {}).get("value"),
+                "profit_per_unit": (growth_row.get("Profit Per Unit (%)") or {}).get("value"),
+            }
+        })
+
+
+
         # ==========================================
         # 🔥 ADD THIS BLOCK RIGHT HERE
         # ==========================================
@@ -702,6 +753,7 @@ def live_mtd_vs_previous():
             inventory_alerts=payload_ai.get("inventory_signals", {}),
             country=country,
             sku_ads_context=sku_ads_context,
+            sku_live_context=sku_live_context,
             ads_monthly=ads_monthly,
         )
 

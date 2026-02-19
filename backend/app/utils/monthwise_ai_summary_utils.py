@@ -1204,6 +1204,7 @@ def run_prompt_2_strategy(
     # ✅ NEW (ads context)
     sku_ads_context: list | None = None,
     ads_monthly: dict | None = None,
+    sku_live_context: list | None = None,
 ):
 
     # -------------------------------------------------
@@ -1244,6 +1245,7 @@ def run_prompt_2_strategy(
         # ✅ NEW — Ads Intelligence
         "sku_ads_context": sku_ads_context or [],
         "ads_monthly": ads_monthly or {},
+        "sku_live_context": sku_live_context or [],
     }
 
     # -------------------------------------------------
@@ -1560,10 +1562,7 @@ def get_or_create_summary(
     force_regenerate=False
 ):
 
-    # print("\n=== get_or_create_summary START ===")
-    # print("period:", period, type(period))
-    # print("timeline:", timeline, type(timeline))
-    # print("year:", year, type(year))
+    
 
     # ============================================================
     # LOAD OBJECTIVE FROM DB
@@ -1689,6 +1688,7 @@ def get_or_create_summary(
     yearly_temporal_signals = None
     analysis_anchor_year = None
     analysis_anchor_month = None
+    rolling_series = []
 
     if not single_sku_mode:
 
@@ -1780,7 +1780,9 @@ def get_or_create_summary(
             "movement_context": movement_context,
             "rolling_extremes": rolling_extremes,
             "yearly_temporal_signals": yearly_temporal_signals,
-            "scope": scope
+            "scope": scope,
+             # ✅ ADD THIS LINE
+            "portfolio_time_series": rolling_series,
         }
 
         analysis_raw = run_prompt_1_analysis(ai_payload)
