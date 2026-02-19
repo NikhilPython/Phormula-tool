@@ -114,13 +114,19 @@ type RecommendationsMap = Record<
     journey_summary?: string[];
     recommendation?: string;
   }
->;
+> & {
+  remaining_skus_recommendation?: string;
+};
 
 type AiSummaryResponse = {
   summary?: string | null;
+
+  // ✅ now recommendations can be OBJECT (new API) OR markdown string (old)
   recommendations?: string | RecommendationsMap | null;
+
   objective?: ObjectivePayload;
   objective_changed?: boolean;
+
   performance_trend?: PerformanceTrendPayload;
   performance_trend_metric?: "net_sales" | "units";
 };
@@ -130,10 +136,15 @@ type AiPanelData = {
   skuInsightsBullets: string[];
   recommendationBullets: string[];
   inventoryBullets: string[];
+
   recommendationsMap?: RecommendationsMap;
   objective?: ObjectivePayload;
+
   rawSummary?: string | null;
   rawRecommendations?: string | null;
+
+  // ✅ ADD THIS
+  remainingSkusRecommendation?: string;
 };
 
 
@@ -497,13 +508,11 @@ const extractRecoAndInventoryBullets = (
 const ProductInsightsSection = ({
   blocks,
   objective,
-  overallRecommendations,
 }: {
   blocks: ProductInsightBlock[];
   objective?: ObjectivePayload;
-  overallRecommendations?: string;
 }) => {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+   const [openIndex, setOpenIndex] = useState<number | null>(null);
   if (!blocks.length) return null;
 
   return (
@@ -518,72 +527,72 @@ const ProductInsightsSection = ({
       </div>
 
       <div className="space-y-2">
+       
 
-
-        {blocks.map((b, idx) => (
-          <motion.div
-            key={idx}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: idx * 0.1 }}
-            className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
-          >
+       {blocks.map((b, idx) => (
+  <motion.div
+    key={idx}
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.4, delay: idx * 0.1 }}
+    className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
+  >
             {/* Product Name with Index */}
-
-            <div className="text-sm font-semibold text-charcoal-700">
-              {idx + 1}. {b.name}
-            </div>
-
+           
+              <div className="text-sm font-semibold text-charcoal-700">
+               {idx + 1}. {b.name}
+              </div>
+            
             {/* Metrics */}
             {b.metrics.length > 0 && (
-              <div className="bg-slate-50 rounded-lg px-2 py-2">
-                <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
+  <div className="bg-slate-50 rounded-lg px-2 py-2">
+    <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
 
-                  {b.metrics.map((m, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
-                    >
-                      <span className="text-slate-600 mr-1">
-                        {m.label}:
-                      </span>
+      {b.metrics.map((m, i) => (
+        <div
+          key={i}
+          className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
+        >
+          <span className="text-slate-600 mr-1">
+            {m.label}:
+          </span>
 
-                      <span
-                        className="font-semibold"
-                        style={{ color: m.color || "#414042" }}
-                      >
-                        {m.value}
-                      </span>
-                    </div>
-                  ))}
+          <span
+            className="font-semibold"
+            style={{ color: m.color || "#414042" }}
+          >
+            {m.value}
+          </span>
+        </div>
+      ))}
 
-                </div>
-              </div>
-            )}
+    </div>
+  </div>
+)}
 
 
             {/* Recommendation */}
-            {b.recommendationBullets.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2"
-              >
-                <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-                  💡 Action Item - {b.recommendationBullets.join(" ")}
-                </p>
-              </motion.div>
-            )}
+{b.recommendationBullets.length > 0 && (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ duration: 0.5, delay: 0.2 }}
+    className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2"
+  >
+    <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+    💡 {b.recommendationBullets.join(" ")}
+    </p>
+  </motion.div>
+)}
 
             {/* Product Journey – Collapsible */}
             {b.journeyBullets.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() =>
-                    setOpenIndex(openIndex === idx ? null : idx)
-                  }
-                  className="
+  <div className="space-y-2">
+   <button
+  onClick={() =>
+    setOpenIndex(openIndex === idx ? null : idx)
+  }
+  className="
     w-full
     flex
     items-center
@@ -602,64 +611,44 @@ const ProductInsightsSection = ({
     hover:from-slate-600 hover:to-slate-700
     active:scale-98
   "
-                >
-                  <span className="flex items-center gap-2">
-                    📈
-                    {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
-                  </span>
+>
+  <span className="flex items-center gap-2">
+    📈
+    {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
+  </span>
 
-                  <span
-                    className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
-                  >
-                    ▼
-                  </span>
-                </button>
+  <span
+    className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
+  >
+    ▼
+  </span>
+</button>
 
-                <AnimatePresence>
-                  {openIndex === idx && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="bg-slate-50 rounded-lg p-4 overflow-hidden"
-                    >
-                      <ul className="list-none space-y-2">
-                        {b.journeyBullets.map((j, i) => (
-                          <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
-                            <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
-                            <span>{j}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
+    <AnimatePresence>
+      {openIndex === idx && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.3 }}
+          className="bg-slate-50 rounded-lg p-4 overflow-hidden"
+        >
+          <ul className="list-none space-y-2">
+            {b.journeyBullets.map((j, i) => (
+              <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
+                <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
+                <span>{j}</span>
+              </li>
+            ))}
+          </ul>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </div>
+)}
 
           </motion.div>
         ))}
-
-        {overallRecommendations && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            className="border border-slate-200 rounded-xl p-3 bg-white border-l-4 border-l-blue-500 mt-3"
-          >
-            <div className="text-sm font-semibold text-charcoal-700">
-              Overall Recommendation
-            </div>
-
-            <div className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 mt-2">
-              <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-                💡 {overallRecommendations}
-              </p>
-            </div>
-          </motion.div>
-        )}
-
       </div>
     </div>
   );
@@ -683,6 +672,7 @@ type AiSingleInsightCardProps = {
 
   // ✅ ADD THIS
   recommendationsMap?: RecommendationsMap;
+  remainingSkusRecommendation?: string;
 
   objective?: ObjectivePayload;
 };
@@ -727,7 +717,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   recommendationBullets,
   skuInsightsBullets,
   inventoryBullets,
-  recommendationsMap,   // ✅ ADD
+  remainingSkusRecommendation,   // ✅ ADD
   objective,
 }) => {
   if (loading) {
@@ -778,8 +768,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   );
 
 
-  const leftMetrics = summaryMetrics.slice(0, 5);
-  const rightMetrics = summaryMetrics.slice(5, 10);
+ const leftMetrics = summaryMetrics.slice(0, 5);
+const rightMetrics = summaryMetrics.slice(5, 10);
 
   return (
     <div className="flex flex-col lg:flex-row gap-5">
@@ -794,230 +784,225 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
         </div>
 
         {/* ================= OBJECTIVE SECTION ================= */}
-        {objective && (
-          <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-5 border-l-4 border-l-blue-500 space-y-4">
-            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Business Strategy</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-slate-700">
-
-              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-                <div className="text-slate-500 text-xs font-medium">Growth Intent</div>
-                <div className="font-bold text-slate-800 capitalize text-sm">
-                  {objective.growth_intent}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-                <div className="text-slate-500 text-xs font-medium">
-                  Inventory Clearance
-                </div>
-                <div className="font-bold text-slate-800 text-sm">
-                  <span className={objective.inventory_clearance_priority ? "text-emerald-600" : "text-slate-600"}>
-                    {objective.inventory_clearance_priority ? "✓ Yes" : "✗ No"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-                <div className="text-slate-500 text-xs font-medium">
-                  Profit Priority
-                </div>
-                <div className="font-bold text-slate-800 capitalize text-sm">
-                  {objective.profit_priority?.replaceAll("_", " ")}
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
-
-
-        {/* ================= PERFORMANCE SUMMARY ================= */}
-        <div className="space-y-5">
-          {/* Narrative Summary */}
-          {narrativeInsights.length > 0 && (
-            <>
-              <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4 space-y-3">
-                <h2 className="text-base 2xl:text-lg text-slate-800">
-                  <span className="font-bold text-slate-900">
-                    {narrativeInsights[0]?.split("(")[0]?.trim()}
-                  </span>
-                  {narrativeInsights[0]?.includes("(") && (
-                    <span className="font-normal text-slate-600 text-sm ml-2">
-                      {`(${narrativeInsights[0].split("(")[1]}`}
-                    </span>
-                  )}
-                </h2>
-
-                <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
-                  {narrativeInsights.slice(1).map((line, i) => (
-                    <p key={i}>{line}</p>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Metrics Heading */}
-          <div className="flex items-center gap-2 pt-2">
-            <span className="text-sm font-bold text-slate-800">📊 Key Metrics</span>
-            <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-300 to-transparent"></div>
-          </div>
-
-          {/* Metrics Grid */}
-
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-
-            {/* LEFT COLUMN */}
-            <div className="space-y-3">
-              {leftMetrics.map((p, i) => {
-                let mainValue = p.value.split(",")[0]?.replace(/\(.*?\)/g, "").trim();
-
-                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-                const n = num ? Number(num) : NaN;
-
-                const colorClass =
-                  !isNaN(n)
-                    ? n < 0
-                      ? "text-red-600 bg-red-50"
-                      : n > 0
-                        ? "text-emerald-600 bg-emerald-50"
-                        : "text-slate-700"
-                    : "text-slate-700";
-
-                return (
-                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-slate-100 hover:border-slate-200 transition-all">
-                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{p.label}</span>
-                    <span className={`font-bold text-sm px-2 py-1 rounded ${colorClass}`}>
-                      {mainValue}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* RIGHT COLUMN */}
-            <div className="space-y-3">
-              {rightMetrics.map((p, i) => {
-                const valueParts = p.value.split(",");
-
-                let mainValue = valueParts[0]?.replace(/\(.*?\)/g, "").trim();
-                const extraPart = valueParts[1]?.trim();
-
-                let acosLabel = "";
-                let acosValue = "";
-
-                if (extraPart && extraPart.toLowerCase().includes("acos")) {
-                  const parts = extraPart.split(":");
-                  acosLabel = parts[0] + ":";
-                  acosValue = parts[1]?.trim();
-                }
-
-                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-                const n = num ? Number(num) : NaN;
-
-                const colorClass =
-                  !isNaN(n)
-                    ? n < 0
-                      ? "text-red-600"
-                      : n > 0
-                        ? "text-emerald-600"
-                        : "text-slate-700"
-                    : "text-slate-700";
-
-                const acosNum = acosValue?.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-                const acosN = acosNum ? Number(acosNum) : NaN;
-
-                const acosColor =
-                  !isNaN(acosN)
-                    ? acosN < 0
-                      ? "text-red-600"
-                      : "text-emerald-600"
-                    : "text-slate-700";
-
-                return (
-                  <div key={i} className="space-y-1 text-xs 2xl:text-sm">
-
-                    {/* Main Row */}
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">{p.label}</span>
-                      <span className={`font-semibold ${colorClass}`}>
-                        {mainValue}
-                      </span>
-                    </div>
-
-                    {/* ACOS Row */}
-                    {acosLabel && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">{acosLabel}</span>
-                        <span className={`font-semibold ${acosColor}`}>
-                          {acosValue}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-          </div>
-
-
+{objective && (
+  <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-5 border-l-4 border-l-blue-500 space-y-4">
+    <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Business Strategy</div>
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-slate-700">
+      
+      <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+        <div className="text-slate-500 text-xs font-medium">Growth Intent</div>
+        <div className="font-bold text-slate-800 capitalize text-sm">
+          {objective.growth_intent}
         </div>
-
-
-        {/* ================= INVENTORY SECTION ================= */}
-        {inventoryBullets.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="text-base 2xl:text-lg font-bold text-slate-800">📦 Inventory Insights</span>
-              <div className="flex-1 h-0.5 bg-gradient-to-r from-amber-300 to-transparent"></div>
-            </div>
-
-            <div className="border border-amber-200 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5 space-y-3">
-              <div className="grid grid-cols-1 gap-3">
-                {inventoryBullets.map((b, i) => (
-                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100 hover:shadow-sm transition-shadow">
-                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{b.split(":")[0]}</span>
-                    <span className="font-bold text-amber-700 text-sm">
-                      {b.includes(":") ? b.split(":")[1] : ""}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </div>
-        )}
-
       </div>
+
+      <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+        <div className="text-slate-500 text-xs font-medium">
+          Inventory Clearance
+        </div>
+        <div className="font-bold text-slate-800 text-sm">
+          <span className={objective.inventory_clearance_priority ? "text-emerald-600" : "text-slate-600"}>
+            {objective.inventory_clearance_priority ? "✓ Yes" : "✗ No"}
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+        <div className="text-slate-500 text-xs font-medium">
+          Profit Priority
+        </div>
+        <div className="font-bold text-slate-800 capitalize text-sm">
+          {objective.profit_priority?.replaceAll("_", " ")}
+        </div>
+      </div>
+
+    </div>
+  </div>
+)}
+
+
+  {/* ================= PERFORMANCE SUMMARY ================= */}
+  <div className="space-y-5">
+    {/* Narrative Summary */}
+   {narrativeInsights.length > 0 && (
+    <>
+      <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4 space-y-3">
+        <h2 className="text-base 2xl:text-lg text-slate-800">
+          <span className="font-bold text-slate-900">
+            {narrativeInsights[0]?.split("(")[0]?.trim()}
+          </span>
+          {narrativeInsights[0]?.includes("(") && (
+            <span className="font-normal text-slate-600 text-sm ml-2">
+              {`(${narrativeInsights[0].split("(")[1]}`}
+            </span>
+          )}
+        </h2>
+
+        <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+          {narrativeInsights.slice(1).map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </div>
+      </div>
+    </>
+  )}
+
+    {/* Metrics Heading */}
+    <div className="flex items-center gap-2 pt-2">
+      <span className="text-sm font-bold text-slate-800">📊 Key Metrics</span>
+      <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-300 to-transparent"></div>
+    </div>
+
+    {/* Metrics Grid */}
+   
+
+<div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+
+  {/* LEFT COLUMN */}
+  <div className="space-y-3">
+    {leftMetrics.map((p, i) => {
+      let mainValue = p.value.split(",")[0]?.replace(/\(.*?\)/g, "").trim();
+
+      const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+      const n = num ? Number(num) : NaN;
+
+      const colorClass =
+        !isNaN(n)
+          ? n < 0
+            ? "text-red-600 bg-red-50"
+            : n > 0
+            ? "text-emerald-600 bg-emerald-50"
+            : "text-slate-700"
+          : "text-slate-700";
+
+      return (
+        <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-slate-100 hover:border-slate-200 transition-all">
+          <span className="text-xs 2xl:text-sm font-medium text-slate-700">{p.label}</span>
+          <span className={`font-bold text-sm px-2 py-1 rounded ${colorClass}`}>
+            {mainValue}
+          </span>
+        </div>
+      );
+    })}
+  </div>
+
+  {/* RIGHT COLUMN */}
+  <div className="space-y-3">
+    {rightMetrics.map((p, i) => {
+      const valueParts = p.value.split(",");
+
+      let mainValue = valueParts[0]?.replace(/\(.*?\)/g, "").trim();
+      const extraPart = valueParts[1]?.trim();
+
+      let acosLabel = "";
+      let acosValue = "";
+
+      if (extraPart && extraPart.toLowerCase().includes("acos")) {
+        const parts = extraPart.split(":");
+        acosLabel = parts[0] + ":";
+        acosValue = parts[1]?.trim();
+      }
+
+      const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+      const n = num ? Number(num) : NaN;
+
+      const colorClass =
+        !isNaN(n)
+          ? n < 0
+            ? "text-red-600"
+            : n > 0
+            ? "text-emerald-600"
+            : "text-slate-700"
+          : "text-slate-700";
+
+      const acosNum = acosValue?.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+      const acosN = acosNum ? Number(acosNum) : NaN;
+
+      const acosColor =
+        !isNaN(acosN)
+          ? acosN < 0
+            ? "text-red-600"
+            : "text-emerald-600"
+          : "text-slate-700";
+
+      return (
+        <div key={i} className="space-y-1 text-xs 2xl:text-sm">
+
+          {/* Main Row */}
+          <div className="flex justify-between">
+            <span className="text-slate-600">{p.label}</span>
+            <span className={`font-semibold ${colorClass}`}>
+              {mainValue}
+            </span>
+          </div>
+
+          {/* ACOS Row */}
+          {acosLabel && (
+            <div className="flex justify-between">
+              <span className="text-slate-600">{acosLabel}</span>
+              <span className={`font-semibold ${acosColor}`}>
+                {acosValue}
+              </span>
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+
+</div>
+
+
+  </div>
+
+
+  {/* ================= INVENTORY SECTION ================= */}
+  {inventoryBullets.length > 0 && (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="text-base 2xl:text-lg font-bold text-slate-800">📦 Inventory Insights</span>
+        <div className="flex-1 h-0.5 bg-gradient-to-r from-amber-300 to-transparent"></div>
+      </div>
+
+      <div className="border border-amber-200 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5 space-y-3">
+        <div className="grid grid-cols-1 gap-3">
+          {inventoryBullets.map((b, i) => (
+            <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100 hover:shadow-sm transition-shadow">
+              <span className="text-xs 2xl:text-sm font-medium text-slate-700">{b.split(":")[0]}</span>
+              <span className="font-bold text-amber-700 text-sm">
+                {b.includes(":") ? b.split(":")[1] : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  )}
+
+</div>
 
 
       <div className="flex-1 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 shadow-sm p-7">
-        <ProductInsightsSection
-          blocks={
-            recommendationsMap
-              ? Object.entries(recommendationsMap)
-                .filter(([key]) => key !== "remaining_skus_recommendation")
-                .map(([sku, value]: any) => ({
-                  name: sku,
-                  metrics: [],
-                  journeyBullets: value?.journey_summary ?? [],
-                  recommendationBullets: value?.recommendation
-                    ? [value.recommendation]
-                    : [],
-                }))
-              : []
-          }
+<div className="space-y-5">
+  <ProductInsightsSection
+    blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+    objective={objective}
+  />
 
-          objective={objective}
-          overallRecommendations={
-            typeof recommendationsMap?.remaining_skus_recommendation === "string"
-              ? recommendationsMap.remaining_skus_recommendation
-              : recommendationsMap?.remaining_skus_recommendation?.recommendation
-          }
+  {/* ✅ Remaining SKUs Recommendation */}
+  {remainingSkusRecommendation && (
+    <div className="border border-slate-200 rounded-xl p-4 bg-blue-50 border-l-4 border-l-blue-500">
+      <div className="text-sm font-semibold text-slate-800 mb-2">
+        OverAll SKUs – Action Plan
+      </div>
 
-        />
+      <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+        💡 {remainingSkusRecommendation}
+      </p>
+    </div>
+  )}
+</div>
       </div>
     </div>
 
@@ -1336,7 +1321,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
   };
 
 
-  const fetchAiSummary = async (rangeType: RangeType) => {
+const fetchAiSummary = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
 
     const requestId = ++aiRequestIdRef.current; // ✅ 1️⃣ request version
@@ -1382,12 +1367,6 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
 
       const data: AiSummaryResponse = await res.json();
 
-      const overAllRecommendations = typeof data?.recommendations === "object" && data?.recommendations !== null
-        ? (data.recommendations as RecommendationsMap)?.remaining_skus_recommendation
-        : undefined
-
-      console.log(overAllRecommendations)
-
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
 
       // setPerformanceTrend(data.performance_trend ?? null);
@@ -1398,20 +1377,36 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
       const summaryLines = sections["SUMMARY"] ?? [];
       const inventoryLines = sections["INVENTORY"] ?? [];
       const productLines = sections["PRODUCT INSIGHTS"] ?? [];
-      const { recommendationBullets, inventoryBullets, recommendationsMap } =
-        extractRecoAndInventoryBullets(data.recommendations as any);
+const { recommendationBullets, inventoryBullets, recommendationsMap } =
+  extractRecoAndInventoryBullets(data.recommendations as any);
 
-      setAiPanel({
-        summaryBullets: summaryLines,
-        skuInsightsBullets: productLines,
-        recommendationBullets,
-        inventoryBullets: inventoryLines,
-        recommendationsMap,            // ✅ store map
-        objective: data.objective,     // ✅ objective store
-        rawSummary: data.summary ?? null,
-        rawRecommendations:
-          typeof data.recommendations === "string" ? data.recommendations : null,
-      });
+// ✅ extract remaining_skus_recommendation safely
+let remainingSkusRecommendation: string | undefined;
+
+if (
+  data.recommendations &&
+  typeof data.recommendations === "object" &&
+  "remaining_skus_recommendation" in data.recommendations
+) {
+  remainingSkusRecommendation =
+    (data.recommendations as any).remaining_skus_recommendation;
+}
+
+setAiPanel({
+  summaryBullets: summaryLines,
+  skuInsightsBullets: productLines,
+  recommendationBullets,
+  inventoryBullets: inventoryLines,
+  recommendationsMap,
+  objective: data.objective,
+  rawSummary: data.summary ?? null,
+  rawRecommendations:
+    typeof data.recommendations === "string" ? data.recommendations : null,
+
+  // ✅ NEW
+  remainingSkusRecommendation,
+});
+
 
 
     } catch (e: any) {
@@ -2873,6 +2868,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
+                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
               />
             </div>
           )}
@@ -3080,6 +3076,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
+                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
               />
             </div>
           )}
@@ -3288,6 +3285,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
+                remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
               />
             </div>
           )}

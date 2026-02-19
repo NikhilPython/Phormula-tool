@@ -1675,10 +1675,56 @@ def fmt_metric(delta, pct, symbol="£"):
 
 
 
+# def render_live_recommended_action(
+#     *,
+#     growth_row: dict,
+#     recommendation: str,
+#     journey_summary: list[str] | None = None,
+#     currency_symbol="£"
+# ) -> str:
+#     lines = []
+
+#     name = growth_row.get("product_name") or growth_row.get("sku")
+#     lines.append(name)
+#     lines.append("")
+
+#     # ---------- Metrics ----------
+#     lines.append(
+#         f"ASP: {fmt_metric(growth_row['asp_curr'] - growth_row['asp_prev'], growth_row['ASP Growth (%)']['value'], currency_symbol)}"
+#     )
+#     lines.append(
+#         f"Units: {fmt_metric(growth_row['quantity_curr'] - growth_row['quantity_prev'], growth_row['Unit Growth (%)']['value'], '')}"
+#     )
+#     lines.append(
+#         f"Net sales: {fmt_metric(growth_row['net_sales_curr'] - growth_row['net_sales_prev'], growth_row['Net Sales Growth (%)']['value'], currency_symbol)}"
+#     )
+#     lines.append(
+#         f"CM1 profit: {fmt_metric(growth_row['profit_curr'] - growth_row['profit_prev'], growth_row['CM1 Profit Impact (%)']['value'], currency_symbol)}"
+#     )
+#     lines.append(
+#         f"CM1 profit per unit: {fmt_metric(growth_row['unit_wise_profitability_curr'] - growth_row['unit_wise_profitability_prev'], growth_row['Profit Per Unit (%)']['value'], currency_symbol)}"
+#     )
+
+#     # ---------- Product Journey ----------
+#     if journey_summary:
+#         lines.append("")
+#         lines.append("Product Journey:")
+#         for bullet in journey_summary:
+#             lines.append(f"- {bullet}")
+
+#     # ---------- Recommendation ----------
+#     lines.append("")
+#     lines.append(f"Recommendation: {recommendation}")
+
+#     return "\n".join(lines)
+
+
 def render_live_recommended_action(
     *,
     growth_row: dict,
     recommendation: str,
+    ads_recommendation: str | None = None,
+    
     journey_summary: list[str] | None = None,
     currency_symbol="£"
 ) -> str:
@@ -1716,9 +1762,13 @@ def render_live_recommended_action(
     lines.append("")
     lines.append(f"Recommendation: {recommendation}")
 
+    # ---------- Ads Recommendation ----------
+    if ads_recommendation:
+        lines.append("")
+        lines.append(f"Advertising: {ads_recommendation}")
+
+  
     return "\n".join(lines)
-
-
 
 #-----------------------------------------------------------------------------
 # AI SUMMARY (overall header) – now via ChatGPT with numeric fallback
@@ -2148,6 +2198,82 @@ def run_inventory_ai_summary(inventory_summary: dict) -> dict:
     return json.loads(resp.choices[0].message.content)
 
 
+def fetch_skuwisemonthly_ads_cm2_current_month(
+    user_id: int,
+    country: str,
+    year: int,
+    month: int,
+) -> tuple[dict, dict]:
+    """
+    Reads current month's skuwisemonthly table for:
+      sku, ads_spend, cm2_profit
+    Returns:
+      sku_map: {sku: {"ads_spend": float, "cm2_profit": float}}
+      totals:  {"ads_spend": float, "cm2_profit": float}  (prefers TOTAL row if present)
+    Safe behavior:
+      - if table/cols missing -> empty map + 0 totals
+      - removes TOTAL from sku_map
+    """
+    country = (country or "uk").strip().lower()
+    month = int(month)
+    year = int(year)
+
+    mn = month_name[month].lower()
+    table = f"skuwisemonthly_{user_id}_{country}_{mn}_{year}"
+
+    try:
+        with engine_hist.connect() as conn:
+            df = pd.read_sql(
+                text(f"SELECT sku, ads_spend, cm2_profit FROM {table}"),
+                conn,
+            )
+    except Exception as e:
+        print(f"[WARN] Could not read ads/cm2 from {table}: {e}")
+        return {}, {"ads_spend": 0.0, "cm2_profit": 0.0}
+
+    if df is None or df.empty or "sku" not in df.columns:
+        return {}, {"ads_spend": 0.0, "cm2_profit": 0.0}
+
+    df = df.copy()
+    df["sku"] = df["sku"].astype(str).str.strip()
+    df.loc[df["sku"].str.lower().isin(["none", "nan", "null", ""]), "sku"] = None
+
+    # if cols missing (shouldn't for current month, but safe)
+    if "ads_spend" not in df.columns:
+        df["ads_spend"] = 0.0
+    if "cm2_profit" not in df.columns:
+        df["cm2_profit"] = 0.0
+
+    df["ads_spend"] = safe_num(df["ads_spend"])
+    df["cm2_profit"] = safe_num(df["cm2_profit"])
+
+    # Totals: prefer TOTAL row if present
+    total_row = df[df["sku"].fillna("").str.lower() == "total"]
+    if not total_row.empty:
+        totals = {
+            "ads_spend": float(safe_num(total_row["ads_spend"]).sum()),
+            "cm2_profit": float(safe_num(total_row["cm2_profit"]).sum()),
+        }
+    else:
+        totals = {
+            "ads_spend": float(safe_num(df["ads_spend"]).sum()),
+            "cm2_profit": float(safe_num(df["cm2_profit"]).sum()),
+        }
+
+    # SKU map excluding TOTAL + nulls
+    sku_df = df[df["sku"].notna() & (df["sku"].str.lower() != "total")]
+
+    sku_map: dict[str, dict] = {}
+    for _, r in sku_df.iterrows():
+        sku = str(r["sku"]).strip()
+        if not sku:
+            continue
+        sku_map[sku] = {
+            "ads_spend": float(r.get("ads_spend") or 0.0),
+            "cm2_profit": float(r.get("cm2_profit") or 0.0),
+        }
+
+    return sku_map, totals
 
 
 
@@ -2166,8 +2292,12 @@ def build_ai_summary(
     user_objective=None,
     movement_context=None,
     sku_to_product=None,
-    
     group_inventory_alerts=True,
+    # ✅ NEW
+    user_id=None,
+    country=None,
+    current_year=None,
+    current_month=None,
 
     # ✅ NEW (required for strategy engine)
     analysis_output=None,
@@ -2272,6 +2402,62 @@ def build_ai_summary(
             if sku not in SKUS_TO_SKIP
         ]
 
+    # =========================================================
+    # ✅ SKU-Level Ads + CM2 Enrichment (Current Month Only)
+    # =========================================================
+    ads_sku_map = {}
+    ads_monthly_totals = {"ads_spend": 0.0, "cm2_profit": 0.0}
+
+    resolved_country = (country or (currency or {}).get("country") or "uk").strip().lower()
+
+    # Resolve year/month safely
+    if current_year is None or current_month is None:
+        today_local = date.today()
+        current_year = current_year or today_local.year
+        current_month = current_month or today_local.month
+
+    if user_id:
+        try:
+            ads_sku_map, ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_current_month(
+                user_id=int(user_id),
+                country=resolved_country,
+                year=int(current_year),
+                month=int(current_month),
+            )
+        except Exception as e:
+            print("[WARN] Ads enrichment failed:", e)
+            ads_sku_map = {}
+            ads_monthly_totals = {"ads_spend": 0.0, "cm2_profit": 0.0}
+
+    # Attach ads data to each SKU row
+    for row in (top_80_skus or []):
+        sku = safe_strip(row.get("sku"), default="")
+        if not sku:
+            continue
+
+        ads_data = ads_sku_map.get(sku, {})
+        ads_spend = float(ads_data.get("ads_spend", 0.0))
+        cm2_profit = float(ads_data.get("cm2_profit", 0.0))
+
+        net_sales_curr = safe_float_local(row.get("net_sales_curr"))
+        if net_sales_curr is None:
+            net_sales_curr = safe_float_local(row.get("net_sales"))
+        net_sales_curr = float(net_sales_curr or 0.0)
+
+        acos = 0.0
+        if net_sales_curr != 0.0:
+            acos = round((ads_spend / net_sales_curr) * 100.0, 2)
+
+        cm2_margin = 0.0
+        if net_sales_curr != 0.0:
+            cm2_margin = round((cm2_profit / net_sales_curr) * 100.0, 2)
+
+        row["ads_spend_curr"] = round(ads_spend, 2)
+        row["acos_curr"] = acos
+        row["cm2_profit_curr"] = round(cm2_profit, 2)
+        row["cm2_margin_curr"] = cm2_margin
+
+
 
     # =========================================================
     # PAYLOAD (UNCHANGED STRUCTURE)
@@ -2327,6 +2513,13 @@ def build_ai_summary(
             "current": roas_curr,
             "change": roas_change,
         },
+        "ads_monthly": {
+            "year": int(current_year),
+            "month": int(current_month),
+            "ads_spend_total": round(ads_monthly_totals.get("ads_spend", 0.0), 2),
+            "cm2_profit_total": round(ads_monthly_totals.get("cm2_profit", 0.0), 2),
+        },
+
         "estimated_platform_fees_next_month": estimated_storage_cost_next_month,
         "currency": currency or {},
         "user_objective": user_objective,
@@ -2341,13 +2534,18 @@ def build_ai_summary(
     if analysis_output and focus_skus:
         try:
             strategy_raw = run_prompt_2_strategy(
-                analysis_insights=analysis_output,
-                objective_v2=user_objective,
-                focus_skus=focus_skus,
-                sku_time_series=None,
-                inventory_alerts=inventory_signals,
-                country=(currency or {}).get("country", "uk"),
+            analysis_insights=analysis_output,
+            objective_v2=user_objective,
+            focus_skus=focus_skus,
+            sku_time_series=None,
+            inventory_alerts=inventory_signals,
+            country=(currency or {}).get("country", "uk"),
+
+            # ✅ NEW
+            sku_ads_context=top_80_skus,
+            ads_monthly=ads_monthly_totals,
             )
+
 
             parsed = json.loads(strategy_raw)
             strategy_actions = parsed.get("sku_actions") or {}
@@ -2418,6 +2616,149 @@ def get_sku_monthly_history(user_id, country_lower, sku_key, end_year, end_month
             continue
 
     return sorted(history, key=lambda x: x["period"])
+
+
+
+def club_inventory_alerts_by_type(
+    alerts: dict,
+    sku_to_product: dict | None = None,
+    max_skus_per_bucket: int = 5,
+) -> dict:
+    """
+    Group ALL inventory alerts into buckets (except 'No alert').
+    Returns:
+      { "summary": [ {type,label,skus,count}, ... ] }
+    """
+
+    buckets = {
+        "supply": {"label": "Supply risk", "skus": []},
+        "cost": {"label": "High storage cost", "skus": []},
+        "ageing": {"label": "Ageing inventory", "skus": []},
+        "excess": {"label": "High inventory coverage", "skus": []},
+    }
+
+    for sku, a in (alerts or {}).items():
+        alert_type = a.get("alert_type")
+
+        # ✅ exclude only "none" (No alert)
+        if not alert_type or alert_type == "none":
+            continue
+
+        if alert_type not in buckets:
+            continue
+
+        label = sku_to_product.get(sku, sku) if sku_to_product else sku
+        if label:
+            buckets[alert_type]["skus"].append(label)
+
+    # keep a consistent order (optional but nice)
+    order = ["supply", "cost", "ageing", "excess"]
+
+    summary = []
+    for t in order:
+        skus = buckets[t]["skus"]
+        if not skus:
+            continue
+        summary.append({
+            "type": t,
+            "label": buckets[t]["label"],
+            "skus": skus[:max_skus_per_bucket],
+            "count": len(skus),
+        })
+
+    return {"summary": summary}
+
+
+
+def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
+    alerts = {}
+
+    # -----------------------------------
+    # Coverage ratio
+    # -----------------------------------
+    coverage_df = compute_inventory_coverage_ratio(user_id, country)
+    coverage_map = {
+        str(r["sku"]).strip(): r["inventory_coverage_ratio"]
+        for _, r in coverage_df.iterrows()
+        if r.get("sku") is not None
+    }
+
+    # -----------------------------------
+    # Inventory aged data (DB-backed)
+    # -----------------------------------
+    inv_df = fetch_inventory_aged_by_user(user_id)
+
+    for _, r in inv_df.iterrows():
+        sku = r.get("sku")
+        if not sku:
+            continue
+        sku = str(sku).strip()
+
+        def _num(col):
+            v = r.get(col)
+            return float(v) if v is not None else 0.0
+
+        # -----------------------------------
+        # ✅ AGEING (MATCHES DB COLUMNS)
+        # -----------------------------------
+        aged_qty = (
+            _num("inv-age-181-to-330-days")
+            + _num("inv-age-331-to-365-days")
+        )
+        overaged = aged_qty > 0
+
+        # -----------------------------------
+        # ✅ STORAGE COST (MATCHES DB COLUMN)
+        # -----------------------------------
+        estimated_storage_cost = _num("estimated-storage-cost-next-month")
+
+        # -----------------------------------
+        # Coverage
+        # -----------------------------------
+        coverage_ratio = coverage_map.get(sku)
+
+        alert = "No alert"
+        alert_type = "none"
+
+        # 1️⃣ SUPPLY (highest priority)
+        if coverage_ratio is not None and coverage_ratio <= 2:
+            alert = "High alert"
+            alert_type = "supply"
+
+        elif coverage_ratio is not None and coverage_ratio <= 5:
+            alert = "Please send shipment"
+            alert_type = "supply"
+
+         # 2️⃣ EXCESS INVENTORY (monitoring)
+        elif coverage_ratio is not None and coverage_ratio >= 6 and not overaged:
+            alert = "High inventory coverage ratio."
+            alert_type = "excess"    
+
+        # 2️⃣ HIGH STORAGE COST
+        elif estimated_storage_cost > 100:
+            alert = "High storage cost"
+            alert_type = "cost"
+
+        # 3️⃣ AGEING INVENTORY
+        elif overaged:
+            alert = "Ageing Inventory. Ref. AI Insights"
+            alert_type = "ageing"
+
+        # 4️⃣ High storage cost (independent alert)
+        if estimated_storage_cost > 100:
+            if alert_type == "none":
+                alert = "High storage cost"
+                alert_type = "cost"
+            else:
+                alert += " | High storage cost"
+
+        alerts[sku] = {
+            "alert": alert,
+            "alert_type": alert_type,
+        }
+
+    return alerts
+
 
 
 def generate_live_insight(item, country, prev_label, curr_label, user_id, month2):
@@ -2683,142 +3024,3 @@ Data:
             "is_new_or_reviving": is_new_or_reviving,
         }
 
-def club_inventory_alerts_by_type(
-    alerts: dict,
-    sku_to_product: dict | None = None,
-    max_skus_per_bucket: int = 5,
-) -> dict:
-    """
-    Group ALL inventory alerts into buckets (except 'No alert').
-    Returns:
-      { "summary": [ {type,label,skus,count}, ... ] }
-    """
-
-    buckets = {
-        "supply": {"label": "Supply risk", "skus": []},
-        "cost": {"label": "High storage cost", "skus": []},
-        "ageing": {"label": "Ageing inventory", "skus": []},
-        "excess": {"label": "High inventory coverage", "skus": []},
-    }
-
-    for sku, a in (alerts or {}).items():
-        alert_type = a.get("alert_type")
-
-        # ✅ exclude only "none" (No alert)
-        if not alert_type or alert_type == "none":
-            continue
-
-        if alert_type not in buckets:
-            continue
-
-        label = sku_to_product.get(sku, sku) if sku_to_product else sku
-        if label:
-            buckets[alert_type]["skus"].append(label)
-
-    # keep a consistent order (optional but nice)
-    order = ["supply", "cost", "ageing", "excess"]
-
-    summary = []
-    for t in order:
-        skus = buckets[t]["skus"]
-        if not skus:
-            continue
-        summary.append({
-            "type": t,
-            "label": buckets[t]["label"],
-            "skus": skus[:max_skus_per_bucket],
-            "count": len(skus),
-        })
-
-    return {"summary": summary}
-
-
-
-def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
-    alerts = {}
-
-    # -----------------------------------
-    # Coverage ratio
-    # -----------------------------------
-    coverage_df = compute_inventory_coverage_ratio(user_id, country)
-    coverage_map = {
-        str(r["sku"]).strip(): r["inventory_coverage_ratio"]
-        for _, r in coverage_df.iterrows()
-        if r.get("sku") is not None
-    }
-
-    # -----------------------------------
-    # Inventory aged data (DB-backed)
-    # -----------------------------------
-    inv_df = fetch_inventory_aged_by_user(user_id)
-
-    for _, r in inv_df.iterrows():
-        sku = r.get("sku")
-        if not sku:
-            continue
-        sku = str(sku).strip()
-
-        def _num(col):
-            v = r.get(col)
-            return float(v) if v is not None else 0.0
-
-        # -----------------------------------
-        # ✅ AGEING (MATCHES DB COLUMNS)
-        # -----------------------------------
-        aged_qty = (
-            _num("inv-age-181-to-330-days")
-            + _num("inv-age-331-to-365-days")
-        )
-        overaged = aged_qty > 0
-
-        # -----------------------------------
-        # ✅ STORAGE COST (MATCHES DB COLUMN)
-        # -----------------------------------
-        estimated_storage_cost = _num("estimated-storage-cost-next-month")
-
-        # -----------------------------------
-        # Coverage
-        # -----------------------------------
-        coverage_ratio = coverage_map.get(sku)
-
-        alert = "No alert"
-        alert_type = "none"
-
-        # 1️⃣ SUPPLY (highest priority)
-        if coverage_ratio is not None and coverage_ratio <= 2:
-            alert = "High alert"
-            alert_type = "supply"
-
-        elif coverage_ratio is not None and coverage_ratio <= 5:
-            alert = "Please send shipment"
-            alert_type = "supply"
-
-         # 2️⃣ EXCESS INVENTORY (monitoring)
-        elif coverage_ratio is not None and coverage_ratio >= 6 and not overaged:
-            alert = "High inventory coverage ratio."
-            alert_type = "excess"    
-
-        # 2️⃣ HIGH STORAGE COST
-        elif estimated_storage_cost > 100:
-            alert = "High storage cost"
-            alert_type = "cost"
-
-        # 3️⃣ AGEING INVENTORY
-        elif overaged:
-            alert = "Ageing Inventory. Ref. AI Insights"
-            alert_type = "ageing"
-
-        # 4️⃣ High storage cost (independent alert)
-        if estimated_storage_cost > 100:
-            if alert_type == "none":
-                alert = "High storage cost"
-                alert_type = "cost"
-            else:
-                alert += " | High storage cost"
-
-        alerts[sku] = {
-            "alert": alert,
-            "alert_type": alert_type,
-        }
-
-    return alerts

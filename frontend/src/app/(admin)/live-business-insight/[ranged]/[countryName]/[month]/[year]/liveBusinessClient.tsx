@@ -131,11 +131,21 @@ interface ApiResponse {
   growth_intent?: string;
   inventory_clearance_priority?: boolean;
   profit_priority?: string;
+  inventory_summary?: {
+  alert_bullets?: string[];
+  summary_text?: string;
+};
+
+ads_recommendation?: string;
+journey_summary?: string[];
+recommendation?: string;
 };
 
 
   overall_actions?: string[];
   recommended_actions_mtd?: Record<string, string>;
+  remaining_skus_recommendation?: string;
+
 }
 
 // =========================
@@ -247,6 +257,7 @@ export default function LiveBusinessClient({
 
   const [overallActions, setOverallActions] = useState<any[]>([]);
   const [recommendedActions, setRecommendedActions] = useState<Record<string, string>>({});
+  const [remainingSkusRecommendation, setRemainingSkusRecommendation] = useState<string>("");
 
   const [insightDate, setInsightDate] = useState<string | null>(null);
 
@@ -257,6 +268,8 @@ export default function LiveBusinessClient({
   );
   const [selectedSku, setSelectedSku] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [adsRecommendation, setAdsRecommendation] = useState<string>("");
+  const [inventorySummary, setInventorySummary] = useState<any>(null);
 
   // Feedback
   const [fbType, setFbType] = useState<'like' | 'dislike' | null>(null);
@@ -296,7 +309,11 @@ const recommendationMatch = text.match(
 );
 
   const journeyText = journeyMatch?.[1]?.trim() || "";
-  const recommendationText = recommendationMatch?.[1]?.trim() || "";
+let recommendationText = recommendationMatch?.[1]?.trim() || "";
+
+if (adsRecommendation) {
+  recommendationText += ` ${adsRecommendation}`;
+}
 
   const splitIntoPoints = (para: string) =>
     para
@@ -583,6 +600,9 @@ const recommendationMatch = text.match(
 
       const summaryTextFromApi = summaryObj?.summary_text || "";
       const summaryBulletsFromApi = summaryObj?.metric_bullets || [];
+      const adsRecommendation = res.data.ads_recommendation || "";
+      const inventoryFromApi = res.data.inventory_summary || null;
+      const remainingRec = res.data.remaining_skus_recommendation || "";
 
       const actionsFromApi = res.data.overall_actions || [];
       const recommendedActionsFromApi = res.data.recommended_actions_mtd || {};
@@ -593,6 +613,9 @@ const recommendationMatch = text.match(
       setOverallSummary(summaryBulletsFromApi);
       setOverallActions(actionsFromApi);              // ✅ ADD THIS
       setRecommendedActions(recommendedActionsFromApi);
+      setAdsRecommendation(adsRecommendation);
+      setInventorySummary(inventoryFromApi);
+      setRemainingSkusRecommendation(remainingRec);
 
       let finalSummary = overallSummary;
       let finalActions = overallActions;
@@ -2780,12 +2803,36 @@ const recommendationMatch = text.match(
                       </ul>
                     )}
 
-                    {/* ✅ Executive summary LAST */}
-                    {summaryText && (
+                     {summaryText && (
                       <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
                         {summaryText}
                       </div>
                     )}
+
+                    {/* Inventory Alerts */}
+{inventorySummary?.alert_bullets?.length > 0 && (
+  <div className="mt-3">
+    <div className="font-semibold text-charcoal-600 mb-1">
+      Inventory Alerts
+    </div>
+
+    <ul className="list-disc pl-5 space-y-1">
+      {inventorySummary.alert_bullets.map((bullet: string, idx: number) => (
+        <li key={idx}>{bullet}</li>
+      ))}
+    </ul>
+  </div>
+)}
+
+{inventorySummary?.summary_text && (
+  <div className="mt-3 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-orange-400 pl-3">
+    {inventorySummary.summary_text}
+  </div>
+)}
+
+
+                    {/* ✅ Executive summary LAST */}
+                   
                   </div>
                 )}
 
@@ -2842,48 +2889,55 @@ const recommendationMatch = text.match(
 
                         <div className="bg-[#]  rounded-xl p-2 space-y-4">
                           {Object.entries(recommendedActions).map(([_, text], idx) => {
-                            const parsed = parseRecommendedAction(text);
+  const parsed = parseRecommendedAction(text);
 
-                            return (
-                              <div key={idx} className="space-y-2">
-                                {/* Product title */}
-                                <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
-                                  {idx + 1}. Product Name – {parsed.productName}
-                                </div>
+  return (
+    <div key={idx} className="space-y-2">
+      {/* Product title */}
+      <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
+        {idx + 1}. Product Name – {parsed.productName}
+      </div>
 
-                                {/* Metrics */}
-                                <div className="flex flex-wrap  gap-x-2 gap-y-1 text-xs 2xl:text-sm ">
-                                  {parsed.metrics.map((m, i) => (
-                                    <div key={i} className="flex items-center gap-1">
-                                      <span className="text-charcoal-600 text-xs">
-                                        {m.label}:
-                                      </span>
-                                      <span
-                                        className="font-semibold"
-                                        style={{ color: m.color || "#414042" }}
-                                      >
-                                        {m.value}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
+      {/* Metrics */}
+      <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs 2xl:text-sm">
+        {parsed.metrics.map((m, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <span className="text-charcoal-600 text-xs">{m.label}:</span>
+            <span className="font-semibold" style={{ color: m.color || "#414042" }}>
+              {m.value}
+            </span>
+          </div>
+        ))}
+      </div>
 
+      {/* Insight */}
+      <p className="text-xs 2xl:text-sm text-charcoal-600">
+        {renderJourneyAndRecommendation(parsed.insight)}
+      </p>
 
-                                {/* Insight */}
-                                <p className="text-xs 2xl:text-sm text-charcoal-600">
-                                  {renderJourneyAndRecommendation(parsed.insight)}
-                                </p>
+      {/* Action */}
+      {parsed.actions.length > 0 && (
+        <div className="text-xs 2xl:text-sm text-charcoal-600">
+          <span className="font-bold">Action – </span>
+          <span>{parsed.actions.join(" ")}</span>
+        </div>
+      )}
+    </div>
+  );
+})}
 
-                                {/* Action */}
-                                {parsed.actions.length > 0 && (
-                                  <div className="text-xs 2xl:text-sm text-charcoal-600">
-                                    <span className="font-bold">Action – </span>
-                                    <span>{parsed.actions.join(" ")}</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+{remainingSkusRecommendation && (
+  <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
+    <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
+      Overall – Remaining SKUs
+    </div>
+
+    <p className="text-xs 2xl:text-sm text-charcoal-600">
+      {remainingSkusRecommendation}
+    </p>
+  </div>
+)}
+
                         </div>
 
 
