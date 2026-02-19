@@ -8,6 +8,8 @@ interface AlertProps {
   showLink?: boolean; // Whether to show the "Learn More" link
   linkHref?: string; // Link URL
   linkText?: string; // Link text
+  closable?: boolean;
+  onClose?: () => void;
 }
 
 const Alert: React.FC<AlertProps> = ({
@@ -17,6 +19,8 @@ const Alert: React.FC<AlertProps> = ({
   showLink = false,
   linkHref = "#",
   linkText = "Learn more",
+  closable = false,   // ✅ ADD THIS
+  onClose,            // ✅ ADD THIS
 }) => {
   // Tailwind classes for each variant
   const variantClasses = {
@@ -114,7 +118,7 @@ const Alert: React.FC<AlertProps> = ({
 
   return (
     <div
-      className={`rounded-xl border p-4 ${variantClasses[variant].container}`}
+      className={`relative rounded-xl border p-4 ${variantClasses[variant].container}`}
     >
       <div className="flex items-start gap-3">
         <div className={`-mt-0.5 ${variantClasses[variant].icon}`}>
@@ -138,6 +142,15 @@ const Alert: React.FC<AlertProps> = ({
           )}
         </div>
       </div>
+      {closable && (
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
+        >
+          ✕
+        </button>
+      )}
+
     </div>
   );
 };

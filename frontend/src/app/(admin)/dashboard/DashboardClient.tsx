@@ -48,6 +48,7 @@ import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrent
 import InfoTip from "@/components/ui/InfoTip";
 import * as XLSX from "xlsx-js-style";
 import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData"; // wherever you put it
+import Alert from "@/components/ui/alert/Alert";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     asp: "Average Selling Price",
@@ -239,6 +240,14 @@ type BiAlignedTotals = {
     total_previous_profit?: number;
 };
 
+type InventoryAlertRecord = Record<string, { alert?: string; alert_type?: string }>;
+
+type UiAlert = {
+    id: string;
+    title: string;
+    message: string;
+    variant: "success" | "error" | "warning" | "info";
+};
 
 /* ===================== SMALL HELPERS ===================== */
 const getShort = (label?: string) => (label ? label.split(" ")[0] || label : "");
@@ -249,12 +258,16 @@ const formatPositive2Decimal = (value: any) => {
     return Math.abs(n).toFixed(2);
 };
 
-// function getISTYearMonth() {
-//     const now = new Date();
-//     const monthName = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata", month: "long" });
-//     const yearStr = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata", year: "numeric" });
-//     return { monthName, year: Number(yearStr) };
-// }
+const toVariant = (t?: string): UiAlert["variant"] => {
+    const x = (t || "").toLowerCase();
+
+    if (x.includes("error") || x.includes("danger") || x.includes("critical")) return "error";
+    if (x.includes("warn")) return "warning";
+    if (x.includes("success") || x.includes("ok")) return "success";
+    return "info";
+};
+
+const normalizeSku = (v: any) => String(v || "").trim().toUpperCase();
 
 /* ===================== P&L PRODUCTWISE SUMMARY (MTD) HELPERS ===================== */
 type PlSummaryTotals = {
@@ -1021,10 +1034,104 @@ export default function DashboardPage() {
     const [invLoading, setInvLoading] = useState(false);
     const [invError, setInvError] = useState("");
     const [invRows, setInvRows] = useState<InventoryRow[]>([]);
-    const [inventoryAlerts, setInventoryAlerts] = useState<Record<string, { alert?: string; alert_type?: string }>>({});
+    const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlertRecord>({});
+
+    const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
+        () => new Set()
+    );
+    const [dismissedAlerts, setDismissedAlerts] = React.useState<string[]>([]);
+
+    const dismissAlert = useCallback((id?: string) => {
+        if (!id) return;
+        setDismissedAlertIds((prev) => {
+            const next = new Set(prev);
+            next.add(id);
+            return next;
+        });
+    }, []);
 
 
+    const inventoryAlertList = useMemo<UiAlert[]>(() => {
+        return Object.entries(inventoryAlerts || {})
+            .map(([id, v]) => ({
+                id,
+                title: id, // if id is SKU, this is perfect; otherwise change to product name
+                message: v.alert ?? "",
+                variant: toVariant(v.alert_type),
+            }))
+            .filter((a) => a.message.trim().length > 0)
+            .filter((a) => !dismissedAlertIds.has(a.id));
+    }, [inventoryAlerts, dismissedAlertIds]);
 
+    const isInventoryTotalRow = (r: InventoryRow) => {
+        const name = String(r["Product Name"] ?? "").trim().toLowerCase();
+        const sku = String(r["SKU"] ?? "").trim().toLowerCase();
+        if (!name && !sku) return false;
+        return (
+            name === "total" ||
+            name === "grand total" ||
+            name.includes("total") ||
+            sku === "total" ||
+            sku === "grand total" ||
+            sku.includes("total")
+        );
+    };
+
+    // 1) Build a SKU -> Product Name map from the raw inventory rows
+    const skuToProductName = useMemo(() => {
+        const map: Record<string, string> = {};
+        for (const r of invRows || []) {
+            const sku = normalizeSku((r as any)["SKU"]);
+            const name = String((r as any)["Product Name"] || "").trim();
+            if (sku && name) map[sku] = name;
+        }
+        return map;
+    }, [invRows]);
+
+    // 2) Get only the Top 5 SKUs (same logic as your table)
+    const top5Skus = useMemo(() => {
+        if (!invRows?.length) return [];
+
+        const usable = invRows.filter((r) => {
+            const name = String((r as any)["Product Name"] ?? "").trim();
+            const sku = String((r as any)["SKU"] ?? "").trim();
+            if (!name && !sku) return false;
+            if (isInventoryTotalRow(r)) return false;
+            return true;
+        });
+
+        const calc = usable.map((r, idx) => {
+            const mtdKey = Object.keys(r).find((k) =>
+                k.toLowerCase().startsWith("current month units sold")
+            );
+            const mtdSales = toNumberSafe(mtdKey ? (r as any)[mtdKey] : 0);
+
+            return { idx, sku: normalizeSku((r as any)["SKU"]), mtdSales };
+        });
+
+        return calc
+            .sort((a, b) => b.mtdSales - a.mtdSales)
+            .slice(0, 5)
+            .map((x) => x.sku)
+            .filter(Boolean);
+    }, [invRows]);
+
+
+    const top5InventoryAlerts = useMemo(() => {
+        return Object.entries(inventoryAlerts || {})
+            .filter(([sku, v]) => {
+                return (
+                    top5Skus.includes(sku.toUpperCase()) &&
+                    v.alert === "High alert" // only this specific alert
+                );
+            })
+            .map(([sku, v]) => ({
+                id: sku,
+                title: sku,
+                message: v.alert || "",
+                variant: "error" as const, // High alert = red
+            }));
+    }, [inventoryAlerts, top5Skus]);
 
     const fetchMonthlySp = useCallback(async () => {
         try {
@@ -1100,6 +1207,25 @@ export default function DashboardPage() {
         fetchMonthlySp();
     }, [fetchMonthlySp]);
 
+    useEffect(() => {
+        const stored = localStorage.getItem("dismissedInventoryAlerts");
+        if (stored) {
+            setDismissedAlerts(JSON.parse(stored));
+        }
+    }, []);
+
+    const handleDismiss = (sku: string) => {
+        setDismissedAlerts((prev) => {
+            const updated = [...prev, sku];
+            localStorage.setItem(
+                "dismissedInventoryAlerts",
+                JSON.stringify(updated)
+            );
+            return updated;
+        });
+    };
+
+
     /* ===================== AMAZON / SHOPIFY STATE ===================== */
     const [loading, setLoading] = useState(false);
     const [unauthorized, setUnauthorized] = useState(false);
@@ -1122,6 +1248,7 @@ export default function DashboardPage() {
     >("idle");
 
     const biUiLoading = biStatus === "loading" || biStatus === "processing";
+    const [closedAlerts, setClosedAlerts] = useState<string[]>([]);
 
 
     const chartRef = React.useRef<HTMLDivElement | null>(null);
@@ -3768,7 +3895,12 @@ export default function DashboardPage() {
 
 
 
+
+
+
             <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+                {/* TOP ALERTS (using Alert component) */}
+
                 <div className="mb-2 2xl:mb-4 flex items-center justify-between gap-2">
 
                     {/* LEFT SIDE */}
@@ -3816,8 +3948,31 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-
-
+            {/* Top 5 alerts */}
+            <div className="mb-4 space-y-3">
+                {top5Skus
+                    .map((sku) => ({
+                        sku,
+                        productName: skuToProductName[sku] || sku,
+                        alert: inventoryAlerts?.[sku]?.alert || "",
+                    }))
+                    .filter(
+                        (x) =>
+                            x.alert.trim().toLowerCase() === "high alert" &&
+                            !dismissedAlerts.includes(x.sku) // ✅ don't show dismissed
+                    )
+                    .map(({ sku, productName }) => (
+                        <Alert
+                            key={sku}
+                            variant="error"
+                            title={`Inventory Alert - ${productName}`}
+                            message="This product is in your Top 5 and requires attention."
+                            showLink={false}
+                            closable
+                            onClose={() => handleDismiss(sku)} // ✅ persist dismissal
+                        />
+                    ))}
+            </div>
 
             {/* <div className={`grid grid-cols-12 gap-6 items-stretch`}> */}
             <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-4 items-stretch scroll-mt-[80px] mt-4">
