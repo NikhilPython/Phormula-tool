@@ -92,17 +92,17 @@ const CountryCard: React.FC<CountryCardProps> = ({
   const getTileStyle = (k: TileKey) => {
     switch (k) {
       case "netSales":
-        return "bg-[#75BBDA4D] border-[#75BBDA]";
+        return "border-[#75BBDA] border-t-4 border-t-[#75BBDA]";
       case "units":
-        return "bg-[#FDD36F4D] border-[#FDD36F]";
+        return "border-[#FDD36F] border-t-4 border-t-[#FDD36F] ";
       case "cm1Profit":
-        return "bg-[#7B9A6D4D] border-[#7B9A6D]";
+        return "border-[#7B9A6D] border-t-4 border-t-[#7B9A6D] ";
       case "avgMonthlySales":
-        return "bg-[#ED9F504D] border-[#ED9F50]";
+        return "border-[#ED9F50] border-t-4 border-t-[#ED9F50] ";
       case "avgMonthlyUnits":
-        return "bg-[#C494664D] border-[#C49466]";
+        return "border-[#C49466] border-t-4 border-t-[#C49466] ";
       case "cm1ProfitPct":
-        return "bg-[#B8C78C4D] border-[#B8C78C]"; // light peach
+        return "border-[#B8C78C] border-t-4 border-t-[#B8C78C] "; 
       default:
         return "bg-gray-200/40 border-gray-300";
     }
@@ -132,7 +132,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
     value: React.ReactNode;
     tileKey: TileKey;
   }) => (
-    <div className={`rounded-md border p-2 sm:p-3 ${getTileStyle(tileKey)}`}>
+    <div className={`rounded-2xl border p-2 sm:p-3 ${getTileStyle(tileKey)}`}>
       <p className="mb-1 text-[clamp(11px,0.85vw,13px)] font-medium text-charcoal-500">
         {label}
       </p>
@@ -188,7 +188,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
         {/* Best Performance stays white with country-colored top border */}
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-3">
           <div
-            className="rounded-lg p-2 sm:p-3"
+            className="rounded-2xl p-2 sm:p-3"
             style={{
               backgroundColor: "#F5F4F4",
               border: "1px solid #41404233",
@@ -209,7 +209,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
           </div>
 
           <div
-            className={`rounded-lg border border-gray-300 p-2 sm:p-3 ${getBestPerfBg()}`}
+            className={`rounded-2xl border border-gray-300 p-2 sm:p-3 ${getBestPerfBg()}`}
             style={{
               borderTopWidth: 4,
               borderTopColor: getCountryColor(colorKey),
@@ -228,7 +228,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
           </div>
 
           <div
-            className={`rounded-lg border border-gray-300 p-2 sm:p-3 ${getBestPerfBg()}`}
+            className={`rounded-2xl border border-gray-300 p-2 sm:p-3 ${getBestPerfBg()}`}
             style={{
               borderTopWidth: 4,
               borderTopColor: getCountryColor(colorKey),

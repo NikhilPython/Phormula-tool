@@ -161,14 +161,14 @@ const CashFlowPage: React.FC = () => {
   const paramYear = params?.year || "";
 
   const isPreviewMode =
-  !paramMonth ||
-  !paramYear ||
-  paramMonth.toLowerCase() === "na" ||
-  paramYear.toLowerCase() === "na";
+    !paramMonth ||
+    !paramYear ||
+    paramMonth.toLowerCase() === "na" ||
+    paramYear.toLowerCase() === "na";
 
   const effectiveCountryForCurrency = isPreviewMode
-  ? "global"
-  : countryName;
+    ? "global"
+    : countryName;
 
 
   const currencySymbol = getCurrencySymbol(effectiveCountryForCurrency);
@@ -179,10 +179,10 @@ const CashFlowPage: React.FC = () => {
     [currentYear]
   );
 
-  
 
 
- // 🔹 NEW: compute whether the route params equal the *current* month & year
+
+  // 🔹 NEW: compute whether the route params equal the *current* month & year
   const today = new Date();
   const currentMonthName = monthsList[today.getMonth()]; // e.g. "December"
   const currentYearStr = String(today.getFullYear());
@@ -243,22 +243,22 @@ const CashFlowPage: React.FC = () => {
   };
 
 
-const DUMMY_CASHFLOW_SUMMARY: SummaryShape = {
-  quantity_total: 1050,
-  gross_sales: 160000,
-  net_sales: 140000,
-  amazon_fee: 32000,
-  advertising_total: 18500,
-  taxncredit: 4500,
-  otherwplatform: 2800,
-  rembursement_fee: 3200,
-  cashflow: 82500,
-};
+  const DUMMY_CASHFLOW_SUMMARY: SummaryShape = {
+    quantity_total: 1050,
+    gross_sales: 160000,
+    net_sales: 140000,
+    amazon_fee: 32000,
+    advertising_total: 18500,
+    taxncredit: 4500,
+    otherwplatform: 2800,
+    rembursement_fee: 3200,
+    cashflow: 82500,
+  };
 
 
-const effectiveData = isPreviewMode
-  ? { summary: DUMMY_CASHFLOW_SUMMARY }
-  : data;
+  const effectiveData = isPreviewMode
+    ? { summary: DUMMY_CASHFLOW_SUMMARY }
+    : data;
 
 
 
@@ -273,9 +273,9 @@ const effectiveData = isPreviewMode
     return (effectiveData?.summary?.[key] ?? 0) as number;
   };
 
-const allValuesZero =
-  !effectiveData?.summary ||
-  Object.values(effectiveData.summary).every((v) => !v);
+  const allValuesZero =
+    !effectiveData?.summary ||
+    Object.values(effectiveData.summary).every((v) => !v);
   // API helpers (using fetch)
   const fetchSpecificPeriodData = async (
     requestMonth: string | null,
@@ -366,7 +366,7 @@ const allValuesZero =
     return { monthlyData, quarterSummary };
   };
 
-  
+
 
   const fetchAllYearlyData = async () => {
     const yearlyData: Record<string, Partial<SummaryShape>> = {};
@@ -453,23 +453,23 @@ const allValuesZero =
   };
 
   // 🔄 Auto-fetch when filters become valid
- useEffect(() => {
-  if (isPreviewMode) return; // 🔥 STOP ALL API CALLS
+  useEffect(() => {
+    if (isPreviewMode) return; // 🔥 STOP ALL API CALLS
 
-  if (periodType === "monthly") {
-    if (month && year) {
-      void fetchCashFlowData();
+    if (periodType === "monthly") {
+      if (month && year) {
+        void fetchCashFlowData();
+      }
+    } else if (periodType === "quarterly") {
+      if (selectedQuarter && year) {
+        void fetchCashFlowData();
+      }
+    } else if (periodType === "yearly") {
+      if (year) {
+        void fetchCashFlowData();
+      }
     }
-  } else if (periodType === "quarterly") {
-    if (selectedQuarter && year) {
-      void fetchCashFlowData();
-    }
-  } else if (periodType === "yearly") {
-    if (year) {
-      void fetchCashFlowData();
-    }
-  }
-}, [periodType, month, year, selectedQuarter, isPreviewMode]);
+  }, [periodType, month, year, selectedQuarter, isPreviewMode]);
 
   // user data (company/brand) for export headers
   const [userData, setUserData] = useState<{
@@ -503,7 +503,7 @@ const allValuesZero =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  
+
 
 
   // chart helpers
@@ -513,8 +513,8 @@ const allValuesZero =
 
   const isMobile = viewportWidth < 640;
 
-const axisFontSize = isMobile ? 10 : 14;
-const axisTitleFontSize = isMobile ? 11 : 16;
+  const axisFontSize = isMobile ? 10 : 14;
+  const axisTitleFontSize = isMobile ? 11 : 16;
 
 
   const getLineChartData = () => {
@@ -629,8 +629,8 @@ const axisTitleFontSize = isMobile ? 11 : 16;
       x: {
         title: { display: true, text: xAxisTitle, font: { size: axisTitleFontSize }, },
         ticks: {
-      font: { size: axisFontSize },        // 👈 ADD
-    },
+          font: { size: axisFontSize },        // 👈 ADD
+        },
         offset: true,
       },
       y: {
@@ -694,7 +694,7 @@ const axisTitleFontSize = isMobile ? 11 : 16;
   } as const;
 
   // exports
-  
+
 
 
 
@@ -756,7 +756,7 @@ const axisTitleFontSize = isMobile ? 11 : 16;
     setError("");
   };
 
-  
+
   const toggleMetric = (name: string) => {
     if (allValuesZero) return;
     setSelectedGraphs((prev) => ({
@@ -788,10 +788,10 @@ const axisTitleFontSize = isMobile ? 11 : 16;
                   className=""
                 />
                 <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              Amazon {countryName?.toLowerCase() === "global"
-                ? "Global"
-                : countryName?.toUpperCase()}
-            </span>
+                  Amazon {countryName?.toLowerCase() === "global"
+                    ? "Global"
+                    : countryName?.toUpperCase()}
+                </span>
               </div>
 
               <p className="2xl:text-sm text-xs">
@@ -822,8 +822,8 @@ const axisTitleFontSize = isMobile ? 11 : 16;
 
 
 
-            {/* Show alert until a valid period selection is made */}
-     {!isPreviewMode && !canShowResults && (
+      {/* Show alert until a valid period selection is made */}
+      {!isPreviewMode && !canShowResults && (
         <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
           <div className="flex items-center">
             <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
@@ -843,7 +843,7 @@ const axisTitleFontSize = isMobile ? 11 : 16;
       )}
 
       {/* Error */}
-     {!isPreviewMode && !!error && (
+      {!isPreviewMode && !!error && (
         <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
           <div className="flex items-center">
             <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
@@ -853,7 +853,7 @@ const axisTitleFontSize = isMobile ? 11 : 16;
       )}
 
       {/* Results */}
-{(effectiveData) && (
+      {(effectiveData) && (
         <div className="flex flex-col">
           {/* Header + Download in one responsive row */}
           <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -867,16 +867,16 @@ const axisTitleFontSize = isMobile ? 11 : 16;
 
           {/* Summary Table using DataTable */}
           {effectiveData?.summary && (
-  <CashFlowSankey
-    data={effectiveData.summary}
-    previous_summary={
-      isPreviewMode ? undefined : data?.previous_summary
-    }
-    previousLabel={isPreviewMode ? undefined : previousLabel}
-    periodType={periodType}
-    currency={currencySymbol}
-  />
-)}
+            <CashFlowSankey
+              data={effectiveData.summary}
+              previous_summary={
+                isPreviewMode ? undefined : data?.previous_summary
+              }
+              previousLabel={isPreviewMode ? undefined : previousLabel}
+              periodType={periodType}
+              currency={currencySymbol}
+            />
+          )}
 
 
 

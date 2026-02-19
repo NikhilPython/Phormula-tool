@@ -980,7 +980,7 @@ export default function DashboardPage() {
 
 
     const brandName = useSelector(
-        (state: RootState) => state.auth.user?.brand_name
+        (state: RootState) => (state as RootState).auth.user?.brand_name
     );
 
     const biCountryName = useMemo(() => {

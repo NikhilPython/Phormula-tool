@@ -247,7 +247,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
   };
 
   return (
-    <div className="w-full rounded-xl border border-slate-200 bg-[#D9D9D933] p-4 sm:p-5 shadow-sm">
+    <div className="w-full rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
       {/* TOP SECTION */}
       <div className="flex flex-col gap-3">
         {/* ✅ MOBILE/TABLET (below md) */}

@@ -512,7 +512,7 @@ const ProductInsightsSection = ({
   blocks: ProductInsightBlock[];
   objective?: ObjectivePayload;
 }) => {
-   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
   if (!blocks.length) return null;
 
   return (
@@ -527,72 +527,72 @@ const ProductInsightsSection = ({
       </div>
 
       <div className="space-y-2">
-       
 
-       {blocks.map((b, idx) => (
-  <motion.div
-    key={idx}
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.4, delay: idx * 0.1 }}
-    className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
-  >
+
+        {blocks.map((b, idx) => (
+          <motion.div
+            key={idx}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: idx * 0.1 }}
+            className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
+          >
             {/* Product Name with Index */}
-           
-              <div className="text-sm font-semibold text-charcoal-700">
-               {idx + 1}. {b.name}
-              </div>
-            
+
+            <div className="text-sm font-semibold text-charcoal-700">
+              {idx + 1}. {b.name}
+            </div>
+
             {/* Metrics */}
             {b.metrics.length > 0 && (
-  <div className="bg-slate-50 rounded-lg px-2 py-2">
-    <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
+              <div className="bg-slate-50 rounded-lg px-2 py-2">
+                <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
 
-      {b.metrics.map((m, i) => (
-        <div
-          key={i}
-          className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
-        >
-          <span className="text-slate-600 mr-1">
-            {m.label}:
-          </span>
+                  {b.metrics.map((m, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
+                    >
+                      <span className="text-slate-600 mr-1">
+                        {m.label}:
+                      </span>
 
-          <span
-            className="font-semibold"
-            style={{ color: m.color || "#414042" }}
-          >
-            {m.value}
-          </span>
-        </div>
-      ))}
+                      <span
+                        className="font-semibold"
+                        style={{ color: m.color || "#414042" }}
+                      >
+                        {m.value}
+                      </span>
+                    </div>
+                  ))}
 
-    </div>
-  </div>
-)}
+                </div>
+              </div>
+            )}
 
 
             {/* Recommendation */}
-{b.recommendationBullets.length > 0 && (
-  <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    transition={{ duration: 0.5, delay: 0.2 }}
-    className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2"
-  >
-    <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-    💡 {b.recommendationBullets.join(" ")}
-    </p>
-  </motion.div>
-)}
+            {b.recommendationBullets.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2"
+              >
+                <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+                  💡 {b.recommendationBullets.join(" ")}
+                </p>
+              </motion.div>
+            )}
 
             {/* Product Journey – Collapsible */}
             {b.journeyBullets.length > 0 && (
-  <div className="space-y-2">
-   <button
-  onClick={() =>
-    setOpenIndex(openIndex === idx ? null : idx)
-  }
-  className="
+              <div className="space-y-2">
+                <button
+                  onClick={() =>
+                    setOpenIndex(openIndex === idx ? null : idx)
+                  }
+                  className="
     w-full
     flex
     items-center
@@ -611,41 +611,41 @@ const ProductInsightsSection = ({
     hover:from-slate-600 hover:to-slate-700
     active:scale-98
   "
->
-  <span className="flex items-center gap-2">
-    📈
-    {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
-  </span>
+                >
+                  <span className="flex items-center gap-2">
+                    📈
+                    {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
+                  </span>
 
-  <span
-    className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
-  >
-    ▼
-  </span>
-</button>
+                  <span
+                    className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
+                  >
+                    ▼
+                  </span>
+                </button>
 
-    <AnimatePresence>
-      {openIndex === idx && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          exit={{ opacity: 0, height: 0 }}
-          transition={{ duration: 0.3 }}
-          className="bg-slate-50 rounded-lg p-4 overflow-hidden"
-        >
-          <ul className="list-none space-y-2">
-            {b.journeyBullets.map((j, i) => (
-              <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
-                <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
-                <span>{j}</span>
-              </li>
-            ))}
-          </ul>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  </div>
-)}
+                <AnimatePresence>
+                  {openIndex === idx && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="bg-slate-50 rounded-lg p-4 overflow-hidden"
+                    >
+                      <ul className="list-none space-y-2">
+                        {b.journeyBullets.map((j, i) => (
+                          <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
+                            <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
+                            <span>{j}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
           </motion.div>
         ))}
@@ -768,8 +768,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   );
 
 
- const leftMetrics = summaryMetrics.slice(0, 5);
-const rightMetrics = summaryMetrics.slice(5, 10);
+  const leftMetrics = summaryMetrics.slice(0, 5);
+  const rightMetrics = summaryMetrics.slice(5, 10);
 
   return (
     <div className="flex flex-col lg:flex-row gap-5">
@@ -784,225 +784,225 @@ const rightMetrics = summaryMetrics.slice(5, 10);
         </div>
 
         {/* ================= OBJECTIVE SECTION ================= */}
-{objective && (
-  <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-5 border-l-4 border-l-blue-500 space-y-4">
-    <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Business Strategy</div>
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-slate-700">
-      
-      <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-        <div className="text-slate-500 text-xs font-medium">Growth Intent</div>
-        <div className="font-bold text-slate-800 capitalize text-sm">
-          {objective.growth_intent}
-        </div>
-      </div>
+        {objective && (
+          <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-5 border-l-4 border-l-blue-500 space-y-4">
+            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Business Strategy</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-slate-700">
 
-      <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-        <div className="text-slate-500 text-xs font-medium">
-          Inventory Clearance
-        </div>
-        <div className="font-bold text-slate-800 text-sm">
-          <span className={objective.inventory_clearance_priority ? "text-emerald-600" : "text-slate-600"}>
-            {objective.inventory_clearance_priority ? "✓ Yes" : "✗ No"}
-          </span>
-        </div>
-      </div>
+              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+                <div className="text-slate-500 text-xs font-medium">Growth Intent</div>
+                <div className="font-bold text-slate-800 capitalize text-sm">
+                  {objective.growth_intent}
+                </div>
+              </div>
 
-      <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-        <div className="text-slate-500 text-xs font-medium">
-          Profit Priority
-        </div>
-        <div className="font-bold text-slate-800 capitalize text-sm">
-          {objective.profit_priority?.replaceAll("_", " ")}
-        </div>
-      </div>
+              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+                <div className="text-slate-500 text-xs font-medium">
+                  Inventory Clearance
+                </div>
+                <div className="font-bold text-slate-800 text-sm">
+                  <span className={objective.inventory_clearance_priority ? "text-emerald-600" : "text-slate-600"}>
+                    {objective.inventory_clearance_priority ? "✓ Yes" : "✗ No"}
+                  </span>
+                </div>
+              </div>
 
-    </div>
-  </div>
-)}
+              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
+                <div className="text-slate-500 text-xs font-medium">
+                  Profit Priority
+                </div>
+                <div className="font-bold text-slate-800 capitalize text-sm">
+                  {objective.profit_priority?.replaceAll("_", " ")}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
 
 
-  {/* ================= PERFORMANCE SUMMARY ================= */}
-  <div className="space-y-5">
-    {/* Narrative Summary */}
-   {narrativeInsights.length > 0 && (
-    <>
-      <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4 space-y-3">
-        <h2 className="text-base 2xl:text-lg text-slate-800">
-          <span className="font-bold text-slate-900">
-            {narrativeInsights[0]?.split("(")[0]?.trim()}
-          </span>
-          {narrativeInsights[0]?.includes("(") && (
-            <span className="font-normal text-slate-600 text-sm ml-2">
-              {`(${narrativeInsights[0].split("(")[1]}`}
-            </span>
+        {/* ================= PERFORMANCE SUMMARY ================= */}
+        <div className="space-y-5">
+          {/* Narrative Summary */}
+          {narrativeInsights.length > 0 && (
+            <>
+              <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4 space-y-3">
+                <h2 className="text-base 2xl:text-lg text-slate-800">
+                  <span className="font-bold text-slate-900">
+                    {narrativeInsights[0]?.split("(")[0]?.trim()}
+                  </span>
+                  {narrativeInsights[0]?.includes("(") && (
+                    <span className="font-normal text-slate-600 text-sm ml-2">
+                      {`(${narrativeInsights[0].split("(")[1]}`}
+                    </span>
+                  )}
+                </h2>
+
+                <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+                  {narrativeInsights.slice(1).map((line, i) => (
+                    <p key={i}>{line}</p>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
-        </h2>
 
-        <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
-          {narrativeInsights.slice(1).map((line, i) => (
-            <p key={i}>{line}</p>
-          ))}
-        </div>
-      </div>
-    </>
-  )}
-
-    {/* Metrics Heading */}
-    <div className="flex items-center gap-2 pt-2">
-      <span className="text-sm font-bold text-slate-800">📊 Key Metrics</span>
-      <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-300 to-transparent"></div>
-    </div>
-
-    {/* Metrics Grid */}
-   
-
-<div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-
-  {/* LEFT COLUMN */}
-  <div className="space-y-3">
-    {leftMetrics.map((p, i) => {
-      let mainValue = p.value.split(",")[0]?.replace(/\(.*?\)/g, "").trim();
-
-      const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-      const n = num ? Number(num) : NaN;
-
-      const colorClass =
-        !isNaN(n)
-          ? n < 0
-            ? "text-red-600 bg-red-50"
-            : n > 0
-            ? "text-emerald-600 bg-emerald-50"
-            : "text-slate-700"
-          : "text-slate-700";
-
-      return (
-        <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-slate-100 hover:border-slate-200 transition-all">
-          <span className="text-xs 2xl:text-sm font-medium text-slate-700">{p.label}</span>
-          <span className={`font-bold text-sm px-2 py-1 rounded ${colorClass}`}>
-            {mainValue}
-          </span>
-        </div>
-      );
-    })}
-  </div>
-
-  {/* RIGHT COLUMN */}
-  <div className="space-y-3">
-    {rightMetrics.map((p, i) => {
-      const valueParts = p.value.split(",");
-
-      let mainValue = valueParts[0]?.replace(/\(.*?\)/g, "").trim();
-      const extraPart = valueParts[1]?.trim();
-
-      let acosLabel = "";
-      let acosValue = "";
-
-      if (extraPart && extraPart.toLowerCase().includes("acos")) {
-        const parts = extraPart.split(":");
-        acosLabel = parts[0] + ":";
-        acosValue = parts[1]?.trim();
-      }
-
-      const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-      const n = num ? Number(num) : NaN;
-
-      const colorClass =
-        !isNaN(n)
-          ? n < 0
-            ? "text-red-600"
-            : n > 0
-            ? "text-emerald-600"
-            : "text-slate-700"
-          : "text-slate-700";
-
-      const acosNum = acosValue?.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-      const acosN = acosNum ? Number(acosNum) : NaN;
-
-      const acosColor =
-        !isNaN(acosN)
-          ? acosN < 0
-            ? "text-red-600"
-            : "text-emerald-600"
-          : "text-slate-700";
-
-      return (
-        <div key={i} className="space-y-1 text-xs 2xl:text-sm">
-
-          {/* Main Row */}
-          <div className="flex justify-between">
-            <span className="text-slate-600">{p.label}</span>
-            <span className={`font-semibold ${colorClass}`}>
-              {mainValue}
-            </span>
+          {/* Metrics Heading */}
+          <div className="flex items-center gap-2 pt-2">
+            <span className="text-sm font-bold text-slate-800">📊 Key Metrics</span>
+            <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-300 to-transparent"></div>
           </div>
 
-          {/* ACOS Row */}
-          {acosLabel && (
-            <div className="flex justify-between">
-              <span className="text-slate-600">{acosLabel}</span>
-              <span className={`font-semibold ${acosColor}`}>
-                {acosValue}
-              </span>
+          {/* Metrics Grid */}
+
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+
+            {/* LEFT COLUMN */}
+            <div className="space-y-3">
+              {leftMetrics.map((p, i) => {
+                let mainValue = p.value.split(",")[0]?.replace(/\(.*?\)/g, "").trim();
+
+                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+                const n = num ? Number(num) : NaN;
+
+                const colorClass =
+                  !isNaN(n)
+                    ? n < 0
+                      ? "text-red-600 bg-red-50"
+                      : n > 0
+                        ? "text-emerald-600 bg-emerald-50"
+                        : "text-slate-700"
+                    : "text-slate-700";
+
+                return (
+                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-slate-100 hover:border-slate-200 transition-all">
+                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{p.label}</span>
+                    <span className={`font-bold text-sm px-2 py-1 rounded ${colorClass}`}>
+                      {mainValue}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          )}
-        </div>
-      );
-    })}
-  </div>
 
-</div>
+            {/* RIGHT COLUMN */}
+            <div className="space-y-3">
+              {rightMetrics.map((p, i) => {
+                const valueParts = p.value.split(",");
 
+                let mainValue = valueParts[0]?.replace(/\(.*?\)/g, "").trim();
+                const extraPart = valueParts[1]?.trim();
 
-  </div>
+                let acosLabel = "";
+                let acosValue = "";
 
+                if (extraPart && extraPart.toLowerCase().includes("acos")) {
+                  const parts = extraPart.split(":");
+                  acosLabel = parts[0] + ":";
+                  acosValue = parts[1]?.trim();
+                }
 
-  {/* ================= INVENTORY SECTION ================= */}
-  {inventoryBullets.length > 0 && (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <span className="text-base 2xl:text-lg font-bold text-slate-800">📦 Inventory Insights</span>
-        <div className="flex-1 h-0.5 bg-gradient-to-r from-amber-300 to-transparent"></div>
-      </div>
+                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+                const n = num ? Number(num) : NaN;
 
-      <div className="border border-amber-200 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5 space-y-3">
-        <div className="grid grid-cols-1 gap-3">
-          {inventoryBullets.map((b, i) => (
-            <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100 hover:shadow-sm transition-shadow">
-              <span className="text-xs 2xl:text-sm font-medium text-slate-700">{b.split(":")[0]}</span>
-              <span className="font-bold text-amber-700 text-sm">
-                {b.includes(":") ? b.split(":")[1] : ""}
-              </span>
+                const colorClass =
+                  !isNaN(n)
+                    ? n < 0
+                      ? "text-red-600"
+                      : n > 0
+                        ? "text-emerald-600"
+                        : "text-slate-700"
+                    : "text-slate-700";
+
+                const acosNum = acosValue?.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
+                const acosN = acosNum ? Number(acosNum) : NaN;
+
+                const acosColor =
+                  !isNaN(acosN)
+                    ? acosN < 0
+                      ? "text-red-600"
+                      : "text-emerald-600"
+                    : "text-slate-700";
+
+                return (
+                  <div key={i} className="space-y-1 text-xs 2xl:text-sm">
+
+                    {/* Main Row */}
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">{p.label}</span>
+                      <span className={`font-semibold ${colorClass}`}>
+                        {mainValue}
+                      </span>
+                    </div>
+
+                    {/* ACOS Row */}
+                    {acosLabel && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">{acosLabel}</span>
+                        <span className={`font-semibold ${acosColor}`}>
+                          {acosValue}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ))}
+
+          </div>
+
+
         </div>
+
+
+        {/* ================= INVENTORY SECTION ================= */}
+        {inventoryBullets.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-base 2xl:text-lg font-bold text-slate-800">📦 Inventory Insights</span>
+              <div className="flex-1 h-0.5 bg-gradient-to-r from-amber-300 to-transparent"></div>
+            </div>
+
+            <div className="border border-amber-200 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5 space-y-3">
+              <div className="grid grid-cols-1 gap-3">
+                {inventoryBullets.map((b, i) => (
+                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100 hover:shadow-sm transition-shadow">
+                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{b.split(":")[0]}</span>
+                    <span className="font-bold text-amber-700 text-sm">
+                      {b.includes(":") ? b.split(":")[1] : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        )}
+
       </div>
-
-    </div>
-  )}
-
-</div>
 
 
       <div className="flex-1 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 shadow-sm p-7">
-<div className="space-y-5">
-  <ProductInsightsSection
-    blocks={parseProductInsightsBlocks(skuInsightsBullets)}
-    objective={objective}
-  />
+        <div className="space-y-5">
+          <ProductInsightsSection
+            blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+            objective={objective}
+          />
 
-  {/* ✅ Remaining SKUs Recommendation */}
-  {remainingSkusRecommendation && (
-    <div className="border border-slate-200 rounded-xl p-4 bg-blue-50 border-l-4 border-l-blue-500">
-      <div className="text-sm font-semibold text-slate-800 mb-2">
-        OverAll SKUs – Action Plan
-      </div>
+          {/* ✅ Remaining SKUs Recommendation */}
+          {remainingSkusRecommendation && (
+            <div className="border border-slate-200 rounded-xl p-4 bg-blue-50 border-l-4 border-l-blue-500">
+              <div className="text-sm font-semibold text-slate-800 mb-2">
+                OverAll SKUs – Action Plan
+              </div>
 
-      <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-        💡 {remainingSkusRecommendation}
-      </p>
-    </div>
-  )}
-</div>
+              <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+                💡 {remainingSkusRecommendation}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
 
@@ -1110,72 +1110,72 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     width: 0,
   });
 
-const computeTopBottom5 = (
-  rows: TableRow[]
-): { topData: TopBottomData; bottomData: TopBottomData } => {
-  const clean = (rows || []).filter(Boolean);
+  const computeTopBottom5 = (
+    rows: TableRow[]
+  ): { topData: TopBottomData; bottomData: TopBottomData } => {
+    const clean = (rows || []).filter(Boolean);
 
-  // ✅ robust number parser (handles "1,234.56", null, undefined, "")
-  const num = (v: any) => {
-    if (v === null || v === undefined) return 0;
-    if (typeof v === "number") return isFinite(v) ? v : 0;
-    const s = String(v).replace(/,/g, "").trim();
-    const n = Number(s);
-    return isFinite(n) ? n : 0;
-  };
+    // ✅ robust number parser (handles "1,234.56", null, undefined, "")
+    const num = (v: any) => {
+      if (v === null || v === undefined) return 0;
+      if (typeof v === "number") return isFinite(v) ? v : 0;
+      const s = String(v).replace(/,/g, "").trim();
+      const n = Number(s);
+      return isFinite(n) ? n : 0;
+    };
 
-  const lower = (v: any) => String(v || "").trim().toLowerCase();
+    const lower = (v: any) => String(v || "").trim().toLowerCase();
 
-  // remove Total if present (supports product_name or sku)
-  const withoutTotal = clean.filter((r) => {
-    const name = lower((r as any).product_name ?? (r as any).sku);
-    return name !== "total";
-  });
-
-  // ✅ sort using parsed numbers (prevents string-sorting bugs)
-  const sortByProfitDesc = [...withoutTotal].sort((a, b) => num(b.profit) - num(a.profit));
-  const sortByProfitAsc = [...withoutTotal].sort((a, b) => num(a.profit) - num(b.profit));
-
-  const top5 = sortByProfitDesc.slice(0, 5);
-  const bottom5 = sortByProfitAsc.slice(0, 5);
-
-  const mapRows = (arr: TableRow[]) =>
-    arr.map((item) => {
-      const netUnits = num(item.net_units_sold);
-      const profit = num(item.profit);
-      const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
-
-      return {
-        product_name: String((item as any).product_name || (item as any).sku || "-"),
-        profit: profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        profitMix: num(item.profit_mix).toFixed(2),
-        salesMix: num(item.sales_mix).toFixed(2),
-        cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      };
+    // remove Total if present (supports product_name or sku)
+    const withoutTotal = clean.filter((r) => {
+      const name = lower((r as any).product_name ?? (r as any).sku);
+      return name !== "total";
     });
 
-  const totalsFor = (arr: TableRow[]) => {
-    const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
-    const totalProfitMix = arr.reduce((s, r) => s + num(r.profit_mix), 0);
-    const totalSalesMix = arr.reduce((s, r) => s + num(r.sales_mix), 0);
-    const totalNetUnits = arr.reduce((s, r) => s + num(r.net_units_sold), 0);
-    const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+    // ✅ sort using parsed numbers (prevents string-sorting bugs)
+    const sortByProfitDesc = [...withoutTotal].sort((a, b) => num(b.profit) - num(a.profit));
+    const sortByProfitAsc = [...withoutTotal].sort((a, b) => num(a.profit) - num(b.profit));
+
+    const top5 = sortByProfitDesc.slice(0, 5);
+    const bottom5 = sortByProfitAsc.slice(0, 5);
+
+    const mapRows = (arr: TableRow[]) =>
+      arr.map((item) => {
+        const netUnits = num(item.net_units_sold);
+        const profit = num(item.profit);
+        const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
+
+        return {
+          product_name: String((item as any).product_name || (item as any).sku || "-"),
+          profit: profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          profitMix: num(item.profit_mix).toFixed(2),
+          salesMix: num(item.sales_mix).toFixed(2),
+          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        };
+      });
+
+    const totalsFor = (arr: TableRow[]) => {
+      const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
+      const totalProfitMix = arr.reduce((s, r) => s + num(r.profit_mix), 0);
+      const totalSalesMix = arr.reduce((s, r) => s + num(r.sales_mix), 0);
+      const totalNetUnits = arr.reduce((s, r) => s + num(r.net_units_sold), 0);
+      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+
+      return {
+        profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        profitMix: totalProfitMix.toFixed(2),
+        salesMix: totalSalesMix.toFixed(2),
+        avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      };
+    };
 
     return {
-      profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      profitMix: totalProfitMix.toFixed(2),
-      salesMix: totalSalesMix.toFixed(2),
-      avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      topData: { rows: mapRows(top5), totals: totalsFor(top5) },
+      bottomData: { rows: mapRows(bottom5), totals: totalsFor(bottom5) },
     };
   };
 
-  return {
-    topData: { rows: mapRows(top5), totals: totalsFor(top5) },
-    bottomData: { rows: mapRows(bottom5), totals: totalsFor(bottom5) },
-  };
-};
-
-const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
+  const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
 
 
   useEffect(() => {
@@ -1321,7 +1321,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
   };
 
 
-const fetchAiSummary = async (rangeType: RangeType) => {
+  const fetchAiSummary = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
 
     const requestId = ++aiRequestIdRef.current; // ✅ 1️⃣ request version
@@ -1377,35 +1377,35 @@ const fetchAiSummary = async (rangeType: RangeType) => {
       const summaryLines = sections["SUMMARY"] ?? [];
       const inventoryLines = sections["INVENTORY"] ?? [];
       const productLines = sections["PRODUCT INSIGHTS"] ?? [];
-const { recommendationBullets, inventoryBullets, recommendationsMap } =
-  extractRecoAndInventoryBullets(data.recommendations as any);
+      const { recommendationBullets, inventoryBullets, recommendationsMap } =
+        extractRecoAndInventoryBullets(data.recommendations as any);
 
-// ✅ extract remaining_skus_recommendation safely
-let remainingSkusRecommendation: string | undefined;
+      // ✅ extract remaining_skus_recommendation safely
+      let remainingSkusRecommendation: string | undefined;
 
-if (
-  data.recommendations &&
-  typeof data.recommendations === "object" &&
-  "remaining_skus_recommendation" in data.recommendations
-) {
-  remainingSkusRecommendation =
-    (data.recommendations as any).remaining_skus_recommendation;
-}
+      if (
+        data.recommendations &&
+        typeof data.recommendations === "object" &&
+        "remaining_skus_recommendation" in data.recommendations
+      ) {
+        remainingSkusRecommendation =
+          (data.recommendations as any).remaining_skus_recommendation;
+      }
 
-setAiPanel({
-  summaryBullets: summaryLines,
-  skuInsightsBullets: productLines,
-  recommendationBullets,
-  inventoryBullets: inventoryLines,
-  recommendationsMap,
-  objective: data.objective,
-  rawSummary: data.summary ?? null,
-  rawRecommendations:
-    typeof data.recommendations === "string" ? data.recommendations : null,
+      setAiPanel({
+        summaryBullets: summaryLines,
+        skuInsightsBullets: productLines,
+        recommendationBullets,
+        inventoryBullets: inventoryLines,
+        recommendationsMap,
+        objective: data.objective,
+        rawSummary: data.summary ?? null,
+        rawRecommendations:
+          typeof data.recommendations === "string" ? data.recommendations : null,
 
-  // ✅ NEW
-  remainingSkusRecommendation,
-});
+        // ✅ NEW
+        remainingSkusRecommendation,
+      });
 
 
 
@@ -2629,7 +2629,7 @@ setAiPanel({
                 title: "Units",
                 value: formatUnits(summary.unit_sold),
                 // className: "border border-[#FDD36F] bg-[#FDD36F4D]",
-                 className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
+                className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
                 comparisons: buildComparisonsRows("unit_sold", formatUnits),
               },
               {
@@ -2637,7 +2637,7 @@ setAiPanel({
                 title: "Gross Sales",
                 value: renderMoneyWithPerUnit(getGrossSales(summary), summary.unit_sold),
                 // className: "border border-[#ED9F50] bg-[#ED9F504D]",
-                 className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
+                className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
                 comparisons: (() => {
                   const items = getGrossSalesComparisons();
                   return items.map((item) => {
@@ -2668,7 +2668,7 @@ setAiPanel({
                 title: "Net Sales",
                 value: renderMoneyWithPerUnit(netSales, summary.unit_sold),
                 // className: "border border-[#75BBDA] bg-[#75BBDA4D]",
-                 className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
+                className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
                 comparisons: buildComparisonsRows("total_sales", formatMoney),
               },
 
@@ -2677,7 +2677,7 @@ setAiPanel({
                 title: "Marketplace Fees",
                 value: renderMoneyWithPerUnit(summary.total_expense, summary.unit_sold),
                 // className: "border border-[#B75A5A] bg-[#B75A5A4D]",
-                 className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
+                className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
                 comparisons: buildComparisonsRows("total_expense", formatMoney),
               },
               {
@@ -2685,7 +2685,7 @@ setAiPanel({
                 title: "Cost of Advertisement",
                 value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
                 // className: "border border-[#C49466] bg-[#C494664D]",
-                 className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
+                className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
                 comparisons: buildComparisonsRows("advertising_total", formatMoney),
               },
 
@@ -2694,7 +2694,7 @@ setAiPanel({
                 title: "TACoS",
                 value: formatRoas(roas),
                 // className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
-                 className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
+                className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
                 comparisons: buildTacosComparisonRows(),
               },
               {
@@ -2702,7 +2702,7 @@ setAiPanel({
                 title: "CM2 Profit",
                 value: renderMoneyWithPerUnit(summary.cm2_profit, summary.unit_sold),
                 // className: "border border-[#B8C78C] bg-[#B8C78C4D]",
-                 className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
+                className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
                 comparisons: buildComparisonsRows("cm2_profit", formatMoney),
               },
               {
@@ -2710,7 +2710,7 @@ setAiPanel({
                 title: "CM2 Profit %",
                 value: formatPercent(cm2Percent),
                 // className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
-                 className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+                className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
                 comparisons: buildCm2PercentComparisonRows(),
               },
             ];
@@ -2719,7 +2719,7 @@ setAiPanel({
               <div
                 className={[
                   "w-full grid gap-2 2xl:gap-3",
-                  "grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8",
+                  "grid-cols-2 sm:grid-cols-4 min-[1700px]:grid-cols-8",
                   isSummaryZero ? "opacity-30" : "opacity-100",
                 ].join(" ")}
               >
@@ -2868,7 +2868,7 @@ setAiPanel({
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
-                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+                remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
               />
             </div>
           )}
@@ -3076,7 +3076,7 @@ setAiPanel({
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
-                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+                remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
               />
             </div>
           )}

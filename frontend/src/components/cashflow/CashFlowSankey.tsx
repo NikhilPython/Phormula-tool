@@ -50,69 +50,69 @@ const CashFlowSankey: React.FC<Props> = ({
 }) => {
   /* ---------- helpers ---------- */
   const [screenWidth, setScreenWidth] = React.useState(
-  typeof window !== "undefined" ? window.innerWidth : 1920
-);
-
-const isPreviewSankey =
-  !data ||
-  Object.values(data).every(
-    (v) => v === 0 || v === undefined
+    typeof window !== "undefined" ? window.innerWidth : 1920
   );
 
-React.useEffect(() => {
-  const onResize = () => setScreenWidth(window.innerWidth);
-  window.addEventListener("resize", onResize);
-  return () => window.removeEventListener("resize", onResize);
-}, []);
+  const isPreviewSankey =
+    !data ||
+    Object.values(data).every(
+      (v) => v === 0 || v === undefined
+    );
 
-const is2XL = screenWidth >= 1536;
-const isXL = screenWidth >= 1280 && screenWidth < 1536;
-const isMobile = screenWidth < 640;
-const sankeyCols = {
-  label: isMobile ? 90 : is2XL ? 150 : isXL ? 100 : 100,
-  sign: isMobile ? 18 : is2XL ? 28 : 24,
-  amount: isMobile ? 60 : is2XL ? 90 : isXL ? 70 : 65,
-  pct: isMobile ? 45 : is2XL ? 60 : 50,
-};
+  React.useEffect(() => {
+    const onResize = () => setScreenWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
-  
+  const is2XL = screenWidth >= 1536;
+  const isXL = screenWidth >= 1280 && screenWidth < 1536;
+  const isMobile = screenWidth < 640;
+  const sankeyCols = {
+    label: isMobile ? 90 : is2XL ? 150 : isXL ? 100 : 100,
+    sign: isMobile ? 18 : is2XL ? 28 : 24,
+    amount: isMobile ? 60 : is2XL ? 90 : isXL ? 70 : 65,
+    pct: isMobile ? 45 : is2XL ? 60 : 50,
+  };
+
+
 
   const formatNumber = (val?: number) =>
     val !== undefined
       ? Number(val).toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
       : "-";
 
-      const formatPrevLabel = (label?: string) => {
-  if (!label) return "";
+  const formatPrevLabel = (label?: string) => {
+    if (!label) return "";
 
-  // Month format: "November 2025" → "Nov'25"
-  const monthMatch = label.match(/^([A-Za-z]+)\s(\d{4})$/);
-  if (monthMatch) {
-    const month = monthMatch[1].slice(0, 3);
-    const year = monthMatch[2].slice(-2);
-    return `${month}'${year}`;
-  }
+    // Month format: "November 2025" → "Nov'25"
+    const monthMatch = label.match(/^([A-Za-z]+)\s(\d{4})$/);
+    if (monthMatch) {
+      const month = monthMatch[1].slice(0, 3);
+      const year = monthMatch[2].slice(-2);
+      return `${month}'${year}`;
+    }
 
-  // Quarter format: "Q3 2025" → "Q3'25"
-  const quarterMatch = label.match(/^(Q\d)\s(\d{4})$/);
-  if (quarterMatch) {
-    return `${quarterMatch[1]}'${quarterMatch[2].slice(-2)}`;
-  }
+    // Quarter format: "Q3 2025" → "Q3'25"
+    const quarterMatch = label.match(/^(Q\d)\s(\d{4})$/);
+    if (quarterMatch) {
+      return `${quarterMatch[1]}'${quarterMatch[2].slice(-2)}`;
+    }
 
-  // Year format: "2024" → "2024"
-  return label;
-};
-const marketplaceFees =
-  (data.amazon_fee || 0) + (data.otherwplatform || 0);
+    // Year format: "2024" → "2024"
+    return label;
+  };
+  const marketplaceFees =
+    (data.amazon_fee || 0) + (data.otherwplatform || 0);
 
-const prevMarketplaceFees =
-  (previous_summary?.amazon_fee || 0) +
-  (previous_summary?.otherwplatform || 0);
+  const prevMarketplaceFees =
+    (previous_summary?.amazon_fee || 0) +
+    (previous_summary?.otherwplatform || 0);
 
-      
+
 
   const getChangePercent = (curr?: number, prev?: number) => {
     if (curr === undefined || prev === undefined || prev === 0) return undefined;
@@ -120,23 +120,23 @@ const prevMarketplaceFees =
   };
 
   const formatInteger = (val?: number) =>
-  val !== undefined ? Math.round(val).toLocaleString() : "-";
+    val !== undefined ? Math.round(val).toLocaleString() : "-";
 
   const getPerUnitValue = (amount?: number, units?: number) => {
-  if (!amount || !units || units === 0) return undefined;
-  return (amount / units).toFixed(2);
-};
+    if (!amount || !units || units === 0) return undefined;
+    return (amount / units).toFixed(2);
+  };
 
   /* ---------- CARDS CONFIG ---------- */
 
-   const perUnitCards = [
-  "Gross Sales",      // ✅ ADD
-  "Net Sales",        // ✅ ADD
-  "Marketplace Fees",
-  "Others",
-  "Cash Generated",
-  "Net Reimbursement",
-];
+  const perUnitCards = [
+    "Gross Sales",      // ✅ ADD
+    "Net Sales",        // ✅ ADD
+    "Marketplace Fees",
+    "Others",
+    "Cash Generated",
+    "Net Reimbursement",
+  ];
 
   const cards = [
     {
@@ -144,8 +144,8 @@ const prevMarketplaceFees =
       value: data.quantity_total,
       prev: previous_summary?.quantity_total,
       icon: <FaBoxArchive size={16} color="#87AD12" />,
-      bg: "bg-[#FDD36F4D]",
-      border: "border-[#FDD36F]",
+      bg: "bg-white",
+      border: " border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
       isCurrency: false,
     },
     {
@@ -153,8 +153,8 @@ const prevMarketplaceFees =
       value: data.gross_sales,
       prev: previous_summary?.gross_sales,
       icon: <FaMoneyBillTrendUp size={16} />,
-      bg: "bg-[#ED9F504D]",
-      border: "border-[#ED9F50]",
+     bg: "bg-white",
+      border: "border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
       isCurrency: true,
     },
     {
@@ -162,38 +162,38 @@ const prevMarketplaceFees =
       value: data.net_sales,
       prev: previous_summary?.net_sales,
       icon: <FaTags size={16} />,
-      bg: "bg-[#75BBDA4D]",
-      border: "border-[#75BBDA]",
+      bg: "bg-white",
+      border: "border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
       isCurrency: true,
     },
     {
-  label: "Promotional Discount",
-  value: data.promotional_rebates,
-  prev: previous_summary?.promotional_rebates,
-  icon: <FaPercent size={16} />,
-  bg: "bg-[#B8C78C4D]",
-  border: "border-[#B8C78C]", // 🔴 red border
-  isCurrency: true,
-  isDiscount: true,
-  isNegative: true, // 👈 ADD THIS
-},
+      label: "Promotional Discount",
+      value: data.promotional_rebates,
+      prev: previous_summary?.promotional_rebates,
+      icon: <FaPercent size={16} />,
+    bg: "bg-white",
+      border: "border-[#B8C78C] border-t-4 border-t-[#B8C78C]", // 🔴 red border
+      isCurrency: true,
+      isDiscount: true,
+      isNegative: true, // 👈 ADD THIS
+    },
 
     {
-  label: "Marketplace Fees",
-  value: marketplaceFees,
-  prev: prevMarketplaceFees,
-  icon: <FaAmazon size={16} />, // ya FaLayerGroup if you prefer
-  bg: "bg-[#B75A5A4D]",
-  border: "border-[#B75A5A]",
-  isCurrency: true,
-},
+      label: "Marketplace Fees",
+      value: marketplaceFees,
+      prev: prevMarketplaceFees,
+      icon: <FaAmazon size={16} />, // ya FaLayerGroup if you prefer
+      bg: "bg-white",
+      border: " border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
+      isCurrency: true,
+    },
     {
       label: "Others",
       value: data.otherwplatform,
       prev: previous_summary?.otherwplatform,
       icon: <FaLayerGroup size={16} />,
-      bg: "bg-[#3A8EA44D]",
-      border: "border-[#3A8EA4]",
+       bg: "bg-white",
+      border: "border-[#3A8EA4]  border-t-4 border-t-[#3A8EA4]",
       isCurrency: true,
     },
     {
@@ -201,8 +201,8 @@ const prevMarketplaceFees =
       value: data.cashflow,
       prev: previous_summary?.cashflow,
       icon: <FaWallet size={16} />,
-      bg: "bg-[#7B9A6D4D]",
-      border: "border-[#7B9A6D]",
+      bg: "bg-white",
+      border: "border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
       isCurrency: true,
     },
     {
@@ -210,49 +210,49 @@ const prevMarketplaceFees =
       value: data.rembursement_fee,
       prev: previous_summary?.rembursement_fee,
       icon: <FaArrowRotateRight size={16} />,
-      bg: "bg-[#C494664D]",
-      border: "border-[#C49466]",
+       bg: "bg-white",
+      border: "border-[#C49466] border-t-4 border-t-[#C49466]",
       isCurrency: true,
     },
   ];
 
   /* ---------- SANKEY ---------- */
 
-const rows = isPreviewSankey
-  ? [
+  const rows = isPreviewSankey
+    ? [
       { name: "Gross Sales", value: 1, barColor: "#75BBDA" },
       { name: "Fees & Costs", value: 1, barColor: "#ED9F50" },
-      
-      { name: "FBA Fees", value: 2, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-  { name: "Selling  Fees", value: 2, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-  { name: "Ads Cost", value: 1, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-  { name: "Cash Generated", value: 1, barColor: "#7B9A6D" },
-    ]
-  : [
-      { name: "Gross Sales", value: data.gross_sales || 0, sign: "+", barColor: "#75BBDA", signColor: "#2E7D32" },
-  { name: "Tax and Credit", value: data.taxncredit || 0, sign: "+", barColor: "#75BBDA", signColor: "#2E7D32" },
-  { name: "Discount", value: data.promotional_rebates || 0, sign: "-", barColor: "#ED9F50", signColor: "#D32F2F" },
-  { name: "FBA Fees", value: data.fba_fees || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-  { name: "Selling  Fees", value: data.selling_fees || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-  { name: "Ads Cost", value: data.advertising_total || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-  { name: "Other", value: data.otherwplatform || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
-  { name: "Cash Generated", value: data.cashflow || 0, sign: "+", barColor: "#7B9A6D", signColor: "#2E7D32" },
-];
 
-const hasPrevious =
-  previous_summary &&
-  Object.values(previous_summary).some(
-    (v) => v !== undefined && v !== 0
-  );
+      { name: "FBA Fees", value: 2, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+      { name: "Selling  Fees", value: 2, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+      { name: "Ads Cost", value: 1, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+      { name: "Cash Generated", value: 1, barColor: "#7B9A6D" },
+    ]
+    : [
+      { name: "Gross Sales", value: data.gross_sales || 0, sign: "+", barColor: "#75BBDA", signColor: "#2E7D32" },
+      { name: "Tax and Credit", value: data.taxncredit || 0, sign: "+", barColor: "#75BBDA", signColor: "#2E7D32" },
+      { name: "Discount", value: data.promotional_rebates || 0, sign: "-", barColor: "#ED9F50", signColor: "#D32F2F" },
+      { name: "FBA Fees", value: data.fba_fees || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+      { name: "Selling  Fees", value: data.selling_fees || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+      { name: "Ads Cost", value: data.advertising_total || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+      { name: "Other", value: data.otherwplatform || 0, sign: "-", barColor: "#B75A5A", signColor: "#D32F2F" },
+      { name: "Cash Generated", value: data.cashflow || 0, sign: "+", barColor: "#7B9A6D", signColor: "#2E7D32" },
+    ];
+
+  const hasPrevious =
+    previous_summary &&
+    Object.values(previous_summary).some(
+      (v) => v !== undefined && v !== 0
+    );
 
 
 
   const option = {
     tooltip: {
       formatter: (p: any) => {
-  if (p.name === "Summary") return "";
-  return `${p.name}<br/>${currency}${Number(p.value || 0).toLocaleString()}`;
-},
+        if (p.name === "Summary") return "";
+        return `${p.name}<br/>${currency}${Number(p.value || 0).toLocaleString()}`;
+      },
     },
     series: [
       {
@@ -261,102 +261,102 @@ const hasPrevious =
         nodeWidth: 22,
         nodeGap: 18,
         layoutIterations: 0,
-label: {
-  show: true,
-  position: "right",
-  overflow: "none",
-  width: isMobile ? 170 : is2XL ? 300 : isXL ? 215 : 210,
-formatter: (n: any) => {
-  if (isPreviewSankey) {
-    return `{label|${n.name}}`;
-  }
+        label: {
+          show: true,
+          position: "right",
+          overflow: "none",
+          width: isMobile ? 170 : is2XL ? 300 : isXL ? 215 : 210,
+          formatter: (n: any) => {
+            if (isPreviewSankey) {
+              return `{label|${n.name}}`;
+            }
 
-  const row = rows.find(r => r.name === n.name);
-  if (!row) return "";
+            const row = rows.find(r => r.name === n.name);
+            if (!row) return "";
 
-  const base = data.net_sales;
-  const pct =
-    base && base !== 0
-      ? (Math.abs(row.value) / Math.abs(base)) * 100
-      : 0;
+            const base = data.net_sales;
+            const pct =
+              base && base !== 0
+                ? (Math.abs(row.value) / Math.abs(base)) * 100
+                : 0;
 
-  const showSign = row.name !== "Cash Generated";
-  const signKey = row.sign === "+" ? "signPlus" : "signMinus";
+            const showSign = row.name !== "Cash Generated";
+            const signKey = row.sign === "+" ? "signPlus" : "signMinus";
 
-  return (
-    `{label|${row.name}}` +
-    (showSign ? `{${signKey}|(${row.sign})}` : `{signEmpty| }`) +
-    `{amount|${currency}${Number(n.value).toFixed(2)}}` +
-    `${!isMobile ? `{pct|(${pct.toFixed(1)}%)}` : ""}`
-  );
-},
-rich: {
-  label: {
-    width: sankeyCols.label,
-    align: "left",
-    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
-    color: "#374151",
-    fontWeight: 500,
-  },
+            return (
+              `{label|${row.name}}` +
+              (showSign ? `{${signKey}|(${row.sign})}` : `{signEmpty| }`) +
+              `{amount|${currency}${Number(n.value).toFixed(2)}}` +
+              `${!isMobile ? `{pct|(${pct.toFixed(1)}%)}` : ""}`
+            );
+          },
+          rich: {
+            label: {
+              width: sankeyCols.label,
+              align: "left",
+              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              color: "#374151",
+              fontWeight: 500,
+            },
 
-  signPlus: {
-    width: sankeyCols.sign,
-    align: "center",
-    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
-    fontWeight: 700,
-    color: "#2E7D32", // 🟢 green
-  },
+            signPlus: {
+              width: sankeyCols.sign,
+              align: "center",
+              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              fontWeight: 700,
+              color: "#2E7D32", // 🟢 green
+            },
 
-  signMinus: {
-    width: sankeyCols.sign,
-    align: "center",
-    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
-    fontWeight: 700,
-    color: "#D32F2F", // 🔴 red
-  },
+            signMinus: {
+              width: sankeyCols.sign,
+              align: "center",
+              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              fontWeight: 700,
+              color: "#D32F2F", // 🔴 red
+            },
 
-  signEmpty: {
-    width: sankeyCols.sign,
-  },
+            signEmpty: {
+              width: sankeyCols.sign,
+            },
 
-  amount: {
-    width: sankeyCols.amount,
-    align: "right",
-    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
-    fontWeight: 700,
-    color: "#111827",
-  },
+            amount: {
+              width: sankeyCols.amount,
+              align: "right",
+              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              fontWeight: 700,
+              color: "#111827",
+            },
 
-  pct: {
-    width: sankeyCols.pct,
-    align: "right",
-    fontSize: isMobile ? 9 : is2XL ? 12 : 11,
-    fontWeight: 600,
-    color: "#6B7280",
-  },
-},
-},
+            pct: {
+              width: sankeyCols.pct,
+              align: "right",
+              fontSize: isMobile ? 9 : is2XL ? 12 : 11,
+              fontWeight: 600,
+              color: "#6B7280",
+            },
+          },
+        },
 
 
 
-  data: [
-  { name: "Summary", itemStyle: { color: "transparent" } },
-  ...rows.map((r) => ({
-    name: r.name,
-    value: Math.abs(r.value),
-    itemStyle: { color: r.barColor },
-  })),
-],
+        data: [
+          { name: "Summary", itemStyle: { color: "transparent" } },
+          ...rows.map((r) => ({
+            name: r.name,
+            value: Math.abs(r.value),
+            itemStyle: { color: r.barColor },
+          })),
+        ],
 
-links: rows.map((r) => ({
-  source: "Summary",
-  target: r.name,
-  value: Math.abs(r.value),
-  lineStyle: {
-    color: r.barColor,
-    opacity: 0.45,
-  },
-})),
+        links: rows.map((r) => ({
+          source: "Summary",
+          target: r.name,
+          value: Math.abs(r.value),
+          lineStyle: {
+            color: r.barColor,
+            opacity: 0.45,
+          },
+        })),
       },
     ],
   };
@@ -364,10 +364,10 @@ links: rows.map((r) => ({
 
   return (
     <div>
-       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
         {cards.map((c) => {
-         const p = getChangePercent(c.value, c.prev);
+          const p = getChangePercent(c.value, c.prev);
           const isNegative = Number(p) < 0;
 
           return (
@@ -377,108 +377,107 @@ links: rows.map((r) => ({
             >
               <div className="2xl:text-xs text-[10px] text-charcoal-500 mb-1">{c.label}</div>
 
-             <div className="2xl:text-lg text-sm font-semibold text-charcoal-700">
- {c.label === "Units" ? (
-  formatInteger(c.value)
-) : c.isDiscount ? (
-  <>
-    {currency}
-    {formatNumber(Math.abs(c.value || 0))}
-    <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-      (
-      {(
-        ((Math.abs(c.value || 0)) / (data.gross_sales || 1)) *
-        100
-      ).toFixed(2)}
-      %)
-    </span>
-  </>
-) : (
-<>
-  {c.isCurrency ? currency : ""}
-  {formatNumber(c.value)}
+              <div className="2xl:text-lg text-sm font-semibold text-charcoal-700">
+                {c.label === "Units" ? (
+                  formatInteger(c.value)
+                ) : c.isDiscount ? (
+                  <>
+                    {currency}
+                    {formatNumber(Math.abs(c.value || 0))}
+                    <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
+                      (
+                      {(
+                        ((Math.abs(c.value || 0)) / (data.gross_sales || 1)) *
+                        100
+                      ).toFixed(2)}
+                      %)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {c.isCurrency ? currency : ""}
+                    {formatNumber(c.value)}
 
-  {perUnitCards.includes(c.label) && (
-    <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-      ({currency}
-      {getPerUnitValue(
-        c.value,
-        data.quantity_total
-      )}{" "}
-      / Unit)
-    </span>
-  )}
-</>
-  )}
-</div>
+                    {perUnitCards.includes(c.label) && (
+                      <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
+                        ({currency}
+                        {getPerUnitValue(
+                          c.value,
+                          data.quantity_total
+                        )}{" "}
+                        / Unit)
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
 
               <div className="flex justify-between items-end 2xl:text-xs text-[10px] mt-2">
-  <div className="flex flex-col">
-    <span className="text-charcoal-400">
-      {formatPrevLabel(previousLabel || "Previous")}:
-    </span>
+                <div className="flex flex-col">
+                  <span className="text-charcoal-400">
+                    {formatPrevLabel(previousLabel || "Previous")}:
+                  </span>
 
-    <span className="font-semibold text-charcoal-700">
-      {!hasPrevious ? (
-        c.label === "Units" ? "-" : `${currency}-`
-      ) : c.label === "Units" ? (
-        formatInteger(c.prev)
-      ) : c.isDiscount ? (
-        <>
-          {currency}
-          {formatNumber(Math.abs(c.prev || 0))}
-        </>
-      ) : (
-        <>
-          {c.isCurrency ? currency : ""}
-          {formatNumber(c.prev)}
-          {perUnitCards.includes(c.label) && (
-            <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-              ({currency}
-              {getPerUnitValue(
-                c.prev,
-                previous_summary?.quantity_total
-              )}{" "}
-              / Unit)
-            </span>
-          )}
-        </>
-      )}
-    </span>
-  </div>
+                  <span className="font-semibold text-charcoal-700">
+                    {!hasPrevious ? (
+                      c.label === "Units" ? "-" : `${currency}-`
+                    ) : c.label === "Units" ? (
+                      formatInteger(c.prev)
+                    ) : c.isDiscount ? (
+                      <>
+                        {currency}
+                        {formatNumber(Math.abs(c.prev || 0))}
+                      </>
+                    ) : (
+                      <>
+                        {c.isCurrency ? currency : ""}
+                        {formatNumber(c.prev)}
+                        {perUnitCards.includes(c.label) && (
+                          <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
+                            ({currency}
+                            {getPerUnitValue(
+                              c.prev,
+                              previous_summary?.quantity_total
+                            )}{" "}
+                            / Unit)
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </span>
+                </div>
 
-  {/* % change sirf tab jab previous data ho */}
-  {hasPrevious && p && (
-    <span
-      className={`text-nowrap font-bold ${
-        Number(p) < 0 ? "text-red-600" : "text-green-600"
-      }`}
-    >
-      {Number(p) < 0 ? "▼" : "▲"} {Math.abs(Number(p))}%
-    </span>
-  )}
-</div>
+                {/* % change sirf tab jab previous data ho */}
+                {hasPrevious && p && (
+                  <span
+                    className={`text-nowrap font-bold ${Number(p) < 0 ? "text-red-600" : "text-green-600"
+                      }`}
+                  >
+                    {Number(p) < 0 ? "▼" : "▲"} {Math.abs(Number(p))}%
+                  </span>
+                )}
+              </div>
 
             </div>
           );
         })}
       </div>
- <div className="rounded-xl border shadow bg-white p-4">
-     
-     
+      <div className="rounded-xl border shadow bg-white p-4">
 
-      {/* SANKEY */}
-      <div className="sm:h-[520px] h-[350px]  overflow-x-auto">
-        <ReactECharts option={option} style={{ height: "100%" }} />
+
+
+        {/* SANKEY */}
+        <div className="sm:h-[520px] h-[350px]  overflow-x-auto">
+          <ReactECharts option={option} style={{ height: "100%" }} />
+        </div>
+        {isPreviewSankey && (
+          <div className="mt-2 text-center text-xs text-gray-400">
+            Preview – connect Amazon and fetch data to see cash flow breakdown
+          </div>
+        )}
       </div>
-      {isPreviewSankey && (
-  <div className="mt-2 text-center text-xs text-gray-400">
-    Preview – connect Amazon and fetch data to see cash flow breakdown
-  </div>
-)}
     </div>
-    </div>
-   
+
   );
 };
 
