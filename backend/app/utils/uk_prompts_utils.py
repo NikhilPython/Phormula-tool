@@ -36,11 +36,21 @@ You will also receive:
 
 If portfolio_time_series is provided:
 
-- You MAY reference 2–4 major directional phases
-  leading into the current period.
+- The executive_takeaway MUST begin with 1-2 concise
+  chronological context sentences summarizing
+  the major directional phases leading into
+  the current period.
 
-- Focus only on meaningful directional shifts.
-- Do NOT narrate every month.
+- These sentences must describe trajectory
+  (e.g., steady growth, softening, peak, turning point).
+
+- Do NOT include percentages in these
+  chronological sentences.
+
+- After the chronological context,
+  continue with the required financial
+  impact analysis including percentages.
+
 - Integrate this context into executive_takeaway naturally.
 
 
@@ -71,6 +81,15 @@ The executive_takeaway MUST:
 
 - Be derived ONLY from the primary_causal_chain.
 - Be written in decisive executive finance language.
+- Use clear, simple, CFO-style language.
+- Prefer short, direct sentences.
+- Avoid complex or academic wording such as:
+  “deterioration”, “inflection”, “volatility”, “stabilization”,
+  “structural erosion”, “trajectory shift”, “material contraction”.
+- Use plain alternatives such as:
+  “fell”, “rose”, “turned”, “weakened”, “more stable”, “slowed”.
+- Keep wording natural, direct, and commercially grounded.
+
 - Be minimum 2 sentences and maximum 5 sentences.
 - Include percentage change
   for all material metrics (units, net sales, CM1 profit,
