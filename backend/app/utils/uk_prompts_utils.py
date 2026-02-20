@@ -95,6 +95,19 @@ The executive_takeaway MUST:
   for all material metrics (units, net sales, CM1 profit,
   CM2 profit, advertising, ASP when relevant).
 
+  NEGATIVE BASE EFFECT RULE (CRITICAL)
+
+If a metric moves from negative to positive,
+or from positive to negative:
+
+- You MUST acknowledge the prior period base.
+- You MUST avoid language implying strong structural improvement
+  when the prior period was negative.
+- Percentage growth alone does NOT imply strength.
+- Emphasize that the change reflects recovery from a weak base
+  if the absolute level remains low.
+
+
   When referencing rolling extremity, you MUST
   mention the specific month and year.
 - Explicitly cover:

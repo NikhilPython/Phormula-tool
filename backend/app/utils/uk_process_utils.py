@@ -1135,7 +1135,7 @@ def process_skuwise_data(user_id, country, month, year):
 
         sum_row["advertising_total"]= abs(advertising_total)
         sum_row["reimbursement_vs_sales"]= abs(reimbursement_vs_sales)
-        sum_row["cm2_profit"]= abs(cm2_profit)
+        sum_row["cm2_profit"]= cm2_profit
         # TOTAL-only safety (after sum_row["cm2_profit"] is set)
         ns_total = float(sum_row.get("Net Sales", 0) or 0)
         sum_row["cm2_profit_percentage"] = (float(sum_row.get("cm2_profit", 0) or 0) / ns_total) * 100 if ns_total != 0 else 0.0
