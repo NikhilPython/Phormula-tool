@@ -603,7 +603,7 @@ def live_mtd_vs_previous():
             current_month=ranges["meta"]["current_month"],
         )
 
-        print("FINAL inventory_signals:", payload_ai.get("inventory_signals"))
+       
 
         # ---------------------------
         # INVENTORY AI SUMMARY (PORTFOLIO LEVEL)
