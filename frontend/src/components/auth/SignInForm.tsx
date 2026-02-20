@@ -173,11 +173,11 @@ export default function SignInForm() {
     <div className="flex flex-col  lg:w-1/2 w-full">
       <div className="flex flex-col justify-center  flex-1 w-full xl:max-w-lg lg:mx-6 max-w-md xl:mx-auto mx-auto ">
         <div>
-          <div className="mb-5 sm:mb-8">
+          <div className="mb-5 2xl:mb-8">
             <h1 className="mb-2  text-green-500 text-title-sm dark:text-white/90 xl:text-title-lg lg:text-4xl sm:text-title-lg">
               Welcome!
             </h1>
-            <p className="text-base text-gray-500 dark:text-gray-400">
+            <p className="2xl:text-base text-sm text-gray-500 dark:text-gray-400">
               Please enter your login details
             </p>
           </div>
@@ -292,7 +292,7 @@ export default function SignInForm() {
           </div>
 
           <div className="mt-5 max-w-fit mx-auto">
-            <p className="text-base font-normal text-center text-gray-700 dark:text-gray-400 sm:text-start">
+            <p className="2xl:text-base text-sm font-normal text-center text-gray-700 dark:text-gray-400 sm:text-start">
               Don&apos;t have an account ?{" "}
               <Link
                 href="/signup"

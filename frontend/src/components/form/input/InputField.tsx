@@ -43,7 +43,7 @@ const Input: FC<InputProps> = ({
   inputMode
 }) => {
   // Determine input styles based on state (disabled, success, error)
-  let inputClasses = `h-11 w-full rounded-lg border appearance-none px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400  ${className}`;
+  let inputClasses = `2xl:h-11 h-10 w-full rounded-lg border appearance-none px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400  ${className}`;
 
   // Add styles for the different states
   if (disabled) {

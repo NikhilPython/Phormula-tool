@@ -522,7 +522,7 @@ const PhoneInput: React.FC<PhoneInputProps> = ({
   };
 
   return (
-    <div className="relative flex items-center w-full h-9">
+    <div className="relative flex items-center w-full 2xl:h-9 h-8">
       {/* Left selector: flag + dial code */}
       <button
         type="button"
