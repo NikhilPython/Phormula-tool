@@ -345,18 +345,50 @@ def _download_report_document(doc: dict) -> bytes:
 def _assert_marketplace_allowed(marketplace_id: str):
     """
     Optional guard: checks seller participations and warns early.
+    Handles payload being dict OR list (some client wrappers return list directly).
     """
     try:
         _apply_region_and_marketplace_from_request(marketplace_id=marketplace_id)
         res = amazon_client.make_api_call("/sellers/v1/marketplaceParticipations", "GET")
-        payload = (res or {}).get("payload") or {}
-        parts = payload.get("participations") or []
-        allowed = {p.get("marketplace", {}).get("id") for p in parts}
-        allowed.discard(None)
+
+        # 1) unwrap various response shapes safely
+        raw_payload = None
+        if isinstance(res, dict):
+            raw_payload = res.get("payload", None)
+            if raw_payload is None:
+                # sometimes wrapper returns the payload at top-level
+                raw_payload = res
+        else:
+            raw_payload = res  # could be list already
+
+        # 2) normalize to a list of participations
+        parts = []
+        if isinstance(raw_payload, list):
+            parts = raw_payload
+        elif isinstance(raw_payload, dict):
+            # common shapes: {"participations":[...]} or {"payload":{"participations":[...]}}
+            parts = (
+                raw_payload.get("participations")
+                or raw_payload.get("Participations")
+                or []
+            )
+
+        # 3) extract marketplace ids robustly
+        allowed = set()
+        for p in parts:
+            if not isinstance(p, dict):
+                continue
+            mp_obj = p.get("marketplace") or p.get("marketplaceDetails") or {}
+            if isinstance(mp_obj, dict):
+                mid = mp_obj.get("id") or mp_obj.get("marketplaceId")
+                if mid:
+                    allowed.add(mid)
+
         if allowed and marketplace_id not in allowed:
             raise ValueError(
                 f"Seller is not registered in marketplace {marketplace_id}. Allowed: {sorted(allowed)}"
             )
+
     except Exception:
         logger.exception("Marketplace participation check failed (continuing).")
 
