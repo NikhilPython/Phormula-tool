@@ -4,6 +4,7 @@ export type UserData = {
   marketplace_id: any;
   country: string;
   id?: string;
+  name?: string; 
   email?: string;
   phone_number?: string;
   company_name?: string;

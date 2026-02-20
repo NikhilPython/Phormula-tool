@@ -180,6 +180,49 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const { isOpen, openModal, closeModal } = useModal();
   const [editingPid, setEditingPid] = useState<PlatformId | null>(null);
   const [draftTarget, setDraftTarget] = useState<string>("");
+  const [isTargetEditMode, setIsTargetEditMode] = useState(false);
+  const [isObjectiveEditMode, setIsObjectiveEditMode] = useState(false);
+  const [isPersonalEditMode, setIsPersonalEditMode] = useState(false);
+  const [isCompanyEditMode, setIsCompanyEditMode] = useState(false);
+
+  const startPersonalEdit = () => setIsPersonalEditMode(true);
+  const cancelPersonalEdit = () => setIsPersonalEditMode(false);
+
+  const startCompanyEdit = () => setIsCompanyEditMode(true);
+  const cancelCompanyEdit = () => setIsCompanyEditMode(false);
+  const [objective, setObjective] = useState<UserObjectiveForm>({
+    growth_intent: "aggressive",
+    profit_priority: "protect_growth",
+    inventory_clearance_priority: false,
+    business_context: "",
+    country: "",
+    time_horizon: "1_month",
+  });
+
+  const [objectiveDraft, setObjectiveDraft] = useState<UserObjectiveForm>(objective);
+
+  const openTargetEditMode = () => {
+    setIsTargetEditMode(true);
+
+    // ✅ Immediately make the first marketplace row editable
+    const firstPid = connectedPlatformsForTargets[0];
+    if (firstPid) startEditTarget(firstPid);
+  };
+
+  const closeTargetEditMode = () => {
+    setIsTargetEditMode(false);
+    cancelEditTarget(); // also clears editingPid + draftTarget
+  };
+
+  const startObjectiveEdit = () => {
+    setObjectiveDraft(objective);
+    setIsObjectiveEditMode(true);
+  };
+
+  const cancelObjectiveEdit = () => {
+    setObjectiveDraft(objective);
+    setIsObjectiveEditMode(false);
+  };
 
   const params = useParams() as { country?: string };
 
@@ -246,16 +289,18 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       // ✅ Persist
       await updateProfile({ target_sales: next } as any).unwrap();
 
-      // ✅ Update redux for immediate UI consistency elsewhere
+      // ✅ Update redux
       dispatch(setUser({ target_sales: next } as any));
 
-      cancelEditTarget();
+      // ✅ Close edit mode completely
+      setIsTargetEditMode(false);   // closes top-right edit mode
+      setEditingPid(null);          // stops inline editing
+      setDraftTarget("");           // reset input
     } catch (err: any) {
       console.error(err);
       alert(err?.data?.message ?? "Failed to update target.");
     }
   };
-
 
   const pageCurrency = useMemo(() => platformToCurrencyCode(pagePlatform), [pagePlatform]);
 
@@ -335,15 +380,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     address_zipcode: "",
   });
 
-  const [objective, setObjective] = useState<UserObjectiveForm>({
-    growth_intent: "aggressive",
-    profit_priority: "protect_growth",
-    inventory_clearance_priority: false,
-    business_context: "",
-    country: "",
-    time_horizon: "1_month",
-  });
-
   const GROWTH_OPTIONS = ["conservative", "balanced", "aggressive"] as const;
 
   const PROFIT_OPTIONS: Array<{ label: string; value: UserObjectiveForm["profit_priority"] }> = [
@@ -368,7 +404,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const baseNativeTarget = Number(
     form.target_sales !== "" ? form.target_sales : (data as any)?.target_sales ?? 0
   );
-
 
   const monthlyTargetData: TargetRow[] = useMemo(() => {
     const rows: TargetRow[] = connectedPlatformsForTargets.map((pid, idx) => {
@@ -436,8 +471,11 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
           const pid = row.__pid as PlatformId;
 
           const isEditing = editingPid === pid;
-
           if (!isEditing) {
+            // view-only when edit mode is off
+            if (!isTargetEditMode) return <span className="block w-full text-center">{row.targetNative}</span>;
+
+            // clickable when edit mode is on
             return (
               <button
                 type="button"
@@ -473,7 +511,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       { key: "conversion", header: `Conversion Rate (${homeCurrencyCode})`, width: "210px" },
       { key: "targetHome", header: `Target (${homeCurrencyCode})`, width: "200px" },
     ],
-    [homeCurrencyCode, editingPid, draftTarget, baseNativeTarget]
+    [homeCurrencyCode, editingPid, draftTarget, baseNativeTarget, isTargetEditMode]
   );
 
   useEffect(() => {
@@ -552,6 +590,70 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       alert(err?.data?.message ?? "Failed to update profile.");
     }
   };
+
+  const handleInlineObjectiveSave = async () => {
+    try {
+      const payload = {
+        ...objectiveDraft,
+        country: objectiveDraft.country.toLowerCase(),
+      };
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) throw new Error("Failed to save objective");
+
+      setObjective(objectiveDraft);
+      setIsObjectiveEditMode(false);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save objective");
+    }
+  };
+
+  const handleSavePersonal = async () => {
+    try {
+      await updateProfile({
+        name: form.name,
+        phone_number: form.phone_number,
+      }).unwrap();
+
+      dispatch(setUser({
+        name: form.name,
+        phone_number: form.phone_number,
+      }));
+
+      setIsPersonalEditMode(false);
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to update personal info");
+    }
+  };
+
+  const handleSaveCompany = async () => {
+  try {
+    const payload = {
+      brand_name: form.brand_name,
+      company_name: form.company_name,
+      annual_sales_range: form.annual_sales_range,
+      homeCurrency: form.homeCurrency,
+    };
+
+    await updateProfile(payload).unwrap();
+    dispatch(setUser(payload));
+
+    setIsCompanyEditMode(false);
+  } catch (err: any) {
+    console.error(err);
+    alert("Failed to update company info");
+  }
+};
 
   const handleSaveObjective = async () => {
     try {
@@ -669,36 +771,59 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                 <InfoCard
                   title={<PageBreadcrumb pageTitle="Personal Info" variant="table" align="left" />}
                   action={
-                    <button
-                      onClick={() => openSection("personal")}
-                      className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
-                      aria-label="Edit"
-                      type="button"
-                    >
-                      <FiEdit className="text-lg" />
-                    </button>
+                    !isPersonalEditMode ? (
+                      <button
+                        onClick={startPersonalEdit}
+                        className="h-9 w-9 text-gray-700"
+                        type="button"
+                      >
+                        <FiEdit className="text-lg" />
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Button size="icon" onClick={handleSavePersonal}>
+                          <FiCheck />
+                        </Button>
+                        <Button size="icon" variant="outline" onClick={cancelPersonalEdit}>
+                          <FiX />
+                        </Button>
+                      </div>
+                    )
                   }
                 >
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <InfoItem label="Name" value={show((data as any)?.name)} />
-                    <InfoItem label="Email" value={show((data as any)?.email)} />
-                    <InfoItem label="Phone" value={show((data as any)?.phone_number)} />
+                    {/* Name */}
                     <InfoItem
-                      label="Reset Password"
+                      label="Name"
                       value={
-                        <span
-                          onClick={handleForgotPassword}
-                          className={`cursor-pointer ${isSuccess
-                            ? "text-green-600 dark:text-green-400"
-                            : "text-blue-600 hover:underline"
-                            }`}
-                        >
-                          {isSending
-                            ? "Sending..."
-                            : isSuccess
-                              ? "Email sent for password reset"
-                              : "Click here to change password"}
-                        </span>
+                        isPersonalEditMode ? (
+                          <Input
+                            type="text"
+                            value={form.name}
+                            onChange={handleInput("name")}
+                          />
+                        ) : (
+                          show(form.name)
+                        )
+                      }
+                    />
+
+                    {/* Email (read only always) */}
+                    <InfoItem label="Email" value={show(form.email)} />
+
+                    {/* Phone */}
+                    <InfoItem
+                      label="Phone"
+                      value={
+                        isPersonalEditMode ? (
+                          <Input
+                            type="text"
+                            value={form.phone_number}
+                            onChange={handleInput("phone_number")}
+                          />
+                        ) : (
+                          show(form.phone_number)
+                        )
                       }
                     />
                   </div>
@@ -708,32 +833,102 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                 <InfoCard
                   title={<PageBreadcrumb pageTitle="Company Info" variant="table" align="left" />}
                   action={
-                    <button
-                      onClick={() => openSection("company")}
-                      className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
-                      aria-label="Edit"
-                      type="button"
-                    >
-                      <FiEdit className="text-lg" />
-                    </button>
+                    !isCompanyEditMode ? (
+                      <button
+                        onClick={startCompanyEdit}
+                        className="h-9 w-9 text-gray-700"
+                        type="button"
+                      >
+                        <FiEdit className="text-lg" />
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Button size="icon" onClick={handleSaveCompany}>
+                          <FiCheck />
+                        </Button>
+                        <Button size="icon" variant="outline" onClick={cancelCompanyEdit}>
+                          <FiX />
+                        </Button>
+                      </div>
+                    )
                   }
                 >
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-                    <InfoItem label="Company Name" value={show((data as any)?.company_name)} />
-                    <InfoItem label="Brand Name" value={show((data as any)?.brand_name)} />
-                    <InfoItem label="Home Currency" value={show((data as any)?.homeCurrency)} />
-                    <InfoItem label="Revenue" value={show((data as any)?.annual_sales_range)} />
-                    <InfoItem label="GST No." value={show((data as any)?.tax_id?.gst_no)} />
-                    <InfoItem label="PAN No." value={show((data as any)?.tax_id?.pan_no)} />
+                    {/* Company Name */}
                     <InfoItem
-                      label="Address"
-                      value={(() => {
-                        const a = (data as any)?.address || {};
-                        const full = [a.building, a.city, a.state, a.country, a.zipcode]
-                          .filter(Boolean)
-                          .join(", ");
-                        return show(full);
-                      })()}
+                      label="Company Name"
+                      value={
+                        isCompanyEditMode ? (
+                          <Input
+                            type="text"
+                            value={form.company_name}
+                            onChange={handleInput("company_name")}
+                          />
+                        ) : (
+                          show(form.company_name)
+                        )
+                      }
+                    />
+
+                    {/* Brand Name */}
+                    <InfoItem
+                      label="Brand Name"
+                      value={
+                        isCompanyEditMode ? (
+                          <Input
+                            type="text"
+                            value={form.brand_name}
+                            onChange={handleInput("brand_name")}
+                          />
+                        ) : (
+                          show(form.brand_name)
+                        )
+                      }
+                    />
+
+                    {/* Revenue */}
+                    <InfoItem
+                      label="Revenue"
+                      value={
+                        isCompanyEditMode ? (
+                          <select
+                            value={form.annual_sales_range}
+                            onChange={handleInput("annual_sales_range")}
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+                          >
+                            <option value="">Select Revenue Range</option>
+                            {REVENUE_OPTIONS.filter(Boolean).map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          show(form.annual_sales_range)
+                        )
+                      }
+                    />
+
+                    {/* Home Currency */}
+                    <InfoItem
+                      label="Home Currency"
+                      value={
+                        isCompanyEditMode ? (
+                          <select
+                            value={form.homeCurrency}
+                            onChange={handleInput("homeCurrency")}
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+                          >
+                            {CURRENCY_OPTIONS.map((cur) => (
+                              <option key={cur} value={cur}>
+                                {cur}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          show(form.homeCurrency)
+                        )
+                      }
                     />
                   </div>
                 </InfoCard>
@@ -806,32 +1001,44 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                   <InfoCard
                     title={<PageBreadcrumb pageTitle="Monthly Targets" variant="table" align="left" />}
                     action={
-                      editingPid ? (
-                        <div className="flex items-center gap-2">
-                          {/* ✅ Confirm */}
-                          <Button
+                      <div className="flex items-center gap-2">
+                        {!isTargetEditMode ? (
+                          <button
                             type="button"
-                            onClick={saveInlineTarget}
-                            size="icon"
-                            disabled={isSaving}
+                            onClick={openTargetEditMode}
+                            className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
+                            aria-label="Enable edit mode"
+                            title="Edit targets"
                           >
-                            <FiCheck className="text-sm text-yellow-200 font-semibold" />
-                          </Button>
+                            <FiEdit className="text-lg" />
+                          </button>
+                        ) : (
+                          <>
+                            {/* ✅ Save current inline edit (only if a row is being edited) */}
+                            <Button
+                              type="button"
+                              onClick={saveInlineTarget}
+                              size="icon"
+                              disabled={isSaving || !editingPid}
+                              title="Save"
+                            >
+                              <FiCheck className="text-sm text-yellow-200 font-semibold" />
+                            </Button>
 
-
-                          {/* ❌ Cancel */}
-                          <Button
-                            type="button"
-                            onClick={cancelEditTarget}
-                            size="icon"
-                            variant="outline"
-                            disabled={isSaving}
-                          >
-                            <FiX className="text-sm text-charcoal-500 font-semibold" />
-                          </Button>
-
-                        </div>
-                      ) : null
+                            {/* ❌ Exit edit mode (and cancel any row edit) */}
+                            <Button
+                              type="button"
+                              onClick={closeTargetEditMode}
+                              size="icon"
+                              variant="outline"
+                              disabled={isSaving}
+                              title="Cancel"
+                            >
+                              <FiX className="text-sm text-charcoal-500 font-semibold" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     }
                   >
                     <DataTable
@@ -853,29 +1060,148 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                   <InfoCard
                     title={<PageBreadcrumb pageTitle="Objective" variant="table" align="left" />}
                     action={
-                      <button
-                        onClick={() => openSection("objective")}
-                        className="h-9 w-9 text-gray-700"
-                        aria-label="Edit"
-                        type="button"
-                      >
-                        <FiEdit className="text-lg" />
-                      </button>
+                      !isObjectiveEditMode ? (
+                        <button
+                          onClick={startObjectiveEdit}
+                          className="h-9 w-9 text-gray-700"
+                          type="button"
+                        >
+                          <FiEdit className="text-lg" />
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Button size="icon" onClick={handleInlineObjectiveSave}>
+                            <FiCheck />
+                          </Button>
+                          <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
+                            <FiX />
+                          </Button>
+                        </div>
+                      )
                     }
                   >
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <InfoItem label="Growth" value={prettifyObjectiveValue(objective.growth_intent)} />
-                      <InfoItem label="Profit" value={prettifyObjectiveValue(objective.profit_priority)} />
+                      {/* Growth */}
+                      <InfoItem
+                        label="Growth"
+                        value={
+                          isObjectiveEditMode ? (
+                            <select
+                              value={objectiveDraft.growth_intent}
+                              onChange={(e) =>
+                                setObjectiveDraft((prev) => ({
+                                  ...prev,
+                                  growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
+                                }))
+                              }
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            >
+                              {GROWTH_OPTIONS.map((v) => (
+                                <option key={v} value={v}>
+                                  {v.charAt(0).toUpperCase() + v.slice(1)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            prettifyObjectiveValue(objective.growth_intent)
+                          )
+                        }
+                      />
 
+                      {/* Profit */}
+                      <InfoItem
+                        label="Profit"
+                        value={
+                          isObjectiveEditMode ? (
+                            <select
+                              value={objectiveDraft.profit_priority}
+                              onChange={(e) =>
+                                setObjectiveDraft((prev) => ({
+                                  ...prev,
+                                  profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
+                                }))
+                              }
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            >
+                              {PROFIT_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            prettifyObjectiveValue(objective.profit_priority)
+                          )
+                        }
+                      />
+
+                      {/* Inventory Dilution */}
                       <InfoItem
                         label="Inventory Dilution"
-                        value={objective.inventory_clearance_priority ? "Yes" : "No"}
+                        value={
+                          isObjectiveEditMode ? (
+                            <select
+                              value={objectiveDraft.inventory_clearance_priority ? "yes" : "no"}
+                              onChange={(e) =>
+                                setObjectiveDraft((prev) => ({
+                                  ...prev,
+                                  inventory_clearance_priority: e.target.value === "yes",
+                                }))
+                              }
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            >
+                              <option value="yes">Yes</option>
+                              <option value="no">No</option>
+                            </select>
+                          ) : (
+                            objective.inventory_clearance_priority ? "Yes" : "No"
+                          )
+                        }
                       />
-                      <InfoItem label="Country" value={objective.country?.toUpperCase() || "-"} />
+
+                      {/* Country */}
+                      <InfoItem
+                        label="Country"
+                        value={
+                          isObjectiveEditMode ? (
+                            <select
+                              value={objectiveDraft.country}
+                              onChange={(e) =>
+                                setObjectiveDraft((prev) => ({ ...prev, country: e.target.value }))
+                              }
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            >
+                              <option value="" disabled>
+                                Select Country
+                              </option>
+                              {integratedCountries.map((c) => (
+                                <option key={c} value={c}>
+                                  {c.toUpperCase()}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            objective.country?.toUpperCase() || "-"
+                          )
+                        }
+                      />
+
+                      {/* Business Context */}
                       <InfoItem
                         label="Business Context"
                         value={
-                          objective.business_context ? (
+                          isObjectiveEditMode ? (
+                            <Input
+                              type="text"
+                              value={objectiveDraft.business_context || ""}
+                              onChange={(e) =>
+                                setObjectiveDraft((prev) => ({
+                                  ...prev,
+                                  business_context: e.target.value,
+                                }))
+                              }
+                            />
+                          ) : objective.business_context ? (
                             <p className="line-clamp-1 text-sm text-gray-800 dark:text-white/90">
                               {objective.business_context}
                             </p>
