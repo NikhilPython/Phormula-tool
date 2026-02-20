@@ -144,7 +144,7 @@ router.replace("/choose-country?onboard=1");
     <div className="flex flex-col flex-1 lg:w-1/2 w-full">
       
 
-      <div className="flex flex-col justify-center flex-1 w-full xl:max-w-lg xl:mx-auto lg:mx-6 max-w-md mx-auto">
+      <div className="flex flex-col justify-center  flex-1 w-full xl:max-w-lg xl:mx-auto lg:mx-6 max-w-md mx-auto">
         <div>
           <div className="mb-5 sm:mb-8">
             <h1 className="mb-2 font-semibold text-[#414042] text-title-sm dark:text-white/90 xl:text-title-md lg:text-4xl sm:text-title-md">
