@@ -3949,7 +3949,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Top 5 alerts */}
-            <div className="mb-4 space-y-3">
+            <div className="my-2 md:my-4 space-y-3">
                 {top5Skus
                     .map((sku) => ({
                         sku,
@@ -3975,7 +3975,7 @@ export default function DashboardPage() {
             </div>
 
             {/* <div className={`grid grid-cols-12 gap-6 items-stretch`}> */}
-            <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-4 items-stretch scroll-mt-[80px] mt-4">
+            <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-4 items-stretch scroll-mt-[80px] mt-2 md:mt-4">
 
                 {/* LEFT COLUMN */}
                 <div className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 lg:gap-4 2xl:gap-4 ${leftColumnHeightClass}`}>
