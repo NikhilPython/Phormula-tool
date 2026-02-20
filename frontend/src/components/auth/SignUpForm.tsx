@@ -245,7 +245,7 @@ export default function SignUpForm() {
     <div className="flex flex-col flex-1 lg:w-1/2 w-full overflow-y-auto no-scrollbar relative">
       <div className="flex flex-col justify-center flex-1 w-full xl:max-w-lg xl:mx-auto lg:mx-6 max-w-md mx-auto ">
         <div>
-          <div className="mb-5 2xl:mb-8">
+          <div className="mb-3 2xl:mb-8">
             <h1 className="mb-2 font-semibold text-green-500 text-title-sm dark:text-white/90 xl:text-title-md lg:text-4xl sm:text-title-md">
               Sign Up!
             </h1>
@@ -256,7 +256,7 @@ export default function SignUpForm() {
 
           <div>
             <form onSubmit={onSubmit} noValidate>
-              <div className="xl:space-y-3 space-y-2">
+              <div className="2xl:space-y-3 space-y-2">
 
                 {/* Name + Email */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -338,7 +338,8 @@ export default function SignUpForm() {
                 </div>
 
                 {/* Password */}
-                <div>
+                <div className="space-y-3 flex 2xl:flex-col flex-row gap-3 ">
+ <div className="2xl:w-full w-1/2 ">
                   <Label>
                     Password<span className="text-error-500">*</span>
                   </Label>
@@ -404,7 +405,7 @@ export default function SignUpForm() {
                 </div>
 
                 {/* Confirm Password */}
-                <div>
+                <div className="2xl:w-full w-1/2 ">
                   <Label>
                     Confirm Password<span className="text-error-500">*</span>
                   </Label>
@@ -441,6 +442,8 @@ export default function SignUpForm() {
                     </p>
                   )}
                 </div>
+                </div>
+               
 
                 {/* Terms */}
                 <div className="flex items-center gap-3">
@@ -470,7 +473,7 @@ export default function SignUpForm() {
                 )}
 
                 {/* Submit */}
-                <div className="pt-2">
+                <div className="">
                   <Button
                     type="submit"
                     disabled={isLoading || !canSubmit}
@@ -495,12 +498,12 @@ export default function SignUpForm() {
             </div>
 
             {/* Google Sign-in */}
-            <div className="mt-2 w-full border border-charcoal-500 rounded-lg xl:h-12 h-11">
+           
               <button
                 type="button"
                 onClick={onGoogleSignUp}
-                className="w-full inline-flex items-center justify-center gap-3 px-4 xl:py-3 py-2
-    text-charcoal-500 rounded-lg transition-colors text-md font-bold
+                className=" inline-flex items-center justify-center gap-3 px-4 xl:py-3 py-2 w-full border border-charcoal-500 rounded-lg h-10 2xl:h-11
+    text-charcoal-500  transition-colors text-md font-bold
     dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10"
               >
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -511,10 +514,10 @@ export default function SignUpForm() {
                 </svg>
                 Continue with Google
               </button>
-            </div>
+           
 
             <div className="2xl:mt-5 mt-3 max-w-fit mx-auto">
-              <p className="text-sm font-normal text-center text-blue-700 sm:text-start">
+              <p className="2xl:text-sm text-xs font-normal text-center text-blue-700 sm:text-start">
                 Already a user ?{" "}
                 <Link href="/signin" className="text-blue-700 ">
                   Login here
