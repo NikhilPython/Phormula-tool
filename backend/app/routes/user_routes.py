@@ -107,7 +107,7 @@ def register():
         # Generate token and verification link
         token = generate_token(new_user.id)
         verification_token = generate_verification_token(email)
-        verification_link = f'http://127.0.0.1:5000/verify-email/{verification_token}'
+        verification_link = f'http://localhost:3000/verify-email/{verification_token}'
 
         # Send welcome and verification emails
         try:
