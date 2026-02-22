@@ -11,7 +11,7 @@ import json
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.utils.live_bi_utils import (build_inventory_signals, build_movement_context, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
+from app.utils.live_bi_utils import (build_inventory_signals, build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
                                      compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
@@ -718,6 +718,20 @@ def live_mtd_vs_previous():
             }
         })
 
+        # -------------------------------------------------
+        # 🔥 SKU-LEVEL INVENTORY FLAGS (FOR PROMPT-2)
+        # -------------------------------------------------
+        try:
+            sku_inventory_flags = generate_sku_inventory_flags(
+                user_id=user_id,
+                country=country,
+                focus_skus=[r.get("sku") for r in top_80_skus],
+            )
+        except Exception as e:
+            print("[WARN] Failed to build SKU inventory flags:", e)
+            sku_inventory_flags = {}
+
+        print("LIVE SKU INVENTORY FLAGS:", sku_inventory_flags)    
 
 
         # ==========================================
@@ -751,6 +765,7 @@ def live_mtd_vs_previous():
             focus_skus=[r.get("sku") for r in top_80_skus],
             sku_time_series={},   # optional
             inventory_alerts=payload_ai.get("inventory_signals", {}),
+            sku_inventory_flags=sku_inventory_flags,
             country=country,
             sku_ads_context=sku_ads_context,
             sku_live_context=sku_live_context,
@@ -791,6 +806,7 @@ def live_mtd_vs_previous():
             growth_row=growth_row,
             recommendation=sku_strategy.get("recommendation", "Monitor performance"),
             ads_recommendation=sku_strategy.get("ads_recommendation"),
+            inventory_recommendation=sku_strategy.get("inventory_recommendation"),
             journey_summary=sku_strategy.get("journey_summary"),
             currency_symbol=currency["symbol"],
         )

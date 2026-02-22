@@ -612,6 +612,26 @@ May include:
 - unfulfillable_inventory
 - storage_cost_risk
 
+3.5) sku_inventory_flags (may be empty)
+
+SKU-level classified inventory alerts for focus_skus only.
+
+Dictionary keyed by SKU.
+
+Each SKU may include:
+- inventory_alert
+- inventory_alert_type (supply | excess | cost | overaged)
+- aged_181_plus_units
+- long_term_aged_units
+- unfulfillable_qty
+- inventory_coverage_ratio
+- estimated_storage_cost
+
+These signals apply ONLY to the specific SKU.
+They must be used for SKU-level recommendation logic,
+not portfolio commentary.
+
+
 4) objective_v2
 
 Defines the commercial mandate for the next 1_month decision cycle.
@@ -1047,6 +1067,78 @@ If inventory_clearance_priority = false:
 - Inventory may be mentioned,
   but it MUST NOT override profitability logic.
 
+
+────────────────────────────────────────
+SKU-LEVEL INVENTORY ALERT LOGIC (CRITICAL)
+────────────────────────────────────────
+
+If sku_inventory_flags contains inventory_alert_type
+for a specific SKU, you MUST generate
+inventory_recommendation separately from the main recommendation.
+
+The inventory_recommendation MUST:
+
+- Explicitly reference numeric values from sku_inventory_flags.
+- Use coverage ratio, aged units, or storage cost in the sentence.
+- Be concrete and operational.
+- Be maximum 1 short sentence.
+- Remain separate from the main recommendation.
+
+Use the following deterministic structure:
+
+If inventory_alert_type = "supply"
+AND inventory_coverage_ratio ≤ 2:
+
+→ inventory_recommendation MUST say:
+
+"Your coverage ratio is {inventory_coverage_ratio}. Please immediately send stock to avoid stock-out."
+
+If inventory_alert_type = "supply"
+AND inventory_coverage_ratio > 2 and ≤ 5:
+
+→ inventory_recommendation MUST say:
+
+"Your coverage ratio is {inventory_coverage_ratio}. Please supply inventory soon to avoid stock-out risk."
+
+If inventory_alert_type = "excess":
+
+→ inventory_recommendation MUST say:
+
+"Your coverage ratio is {inventory_coverage_ratio}, which may increase storage cost. Please improve sell-through to avoid excess storage fees."
+
+If inventory_alert_type = "overaged":
+
+→ inventory_recommendation MUST say:
+
+"{long_term_aged_units} units are ageing long-term. Review and liquidate this stock to avoid additional storage cost."
+
+If inventory_alert_type = "cost":
+
+→ inventory_recommendation MUST say:
+
+"Estimated storage cost is {estimated_storage_cost}. Reduce inventory exposure to control storage expense."
+
+Formatting rules:
+
+- Round coverage ratio to 1 decimal place.
+- Use only values provided in sku_inventory_flags.
+- Do NOT invent numbers.
+- Do NOT mix margin strategy into inventory_recommendation.
+- Do NOT override the main recommendation.
+- Do NOT use technical jargon.
+
+If no inventory_alert_type exists:
+
+inventory_recommendation MUST be:
+"Inventory position is stable."
+
+IMPORTANT:
+
+- inventory_recommendation must remain operational and separate.
+- The main recommendation must still follow objective_v2 logic.
+- Inventory logic must not rewrite business strategy.
+
+
 ────────────────────────────────────────
 BUSINESS CONTEXT INFLUENCE (CRITICAL)
 ────────────────────────────────────────
@@ -1125,7 +1217,8 @@ Return EXACTLY:
         "point 2"
       ],
       "recommendation": "string",
-      "ads_recommendation": "string"
+      "ads_recommendation": "string",
+       "inventory_recommendation": "string"
     }
   },
   "remaining_skus_recommendation": "string"
@@ -1138,6 +1231,18 @@ ads_recommendation RULES (MANDATORY):
   ONLY if sku_ads_context contains meaningful data.
 - If no ads signal exists, return:
   "Monitor current advertising."
+- Must follow recommendation language simplicity rules.
+- No technical jargon.
+- No extra commentary.
+
+inventory_recommendation RULES (MANDATORY):
+
+- Maximum 1 short sentence.
+- Must reflect supply, excess, overaged, or cost risk IF sku_inventory_flags exists.
+- If no SKU-level inventory signal exists, return:
+  "Inventory position is stable."
+- Must NOT include pricing or margin strategy.
+- Must NOT repeat the main recommendation.
 - Must follow recommendation language simplicity rules.
 - No technical jargon.
 - No extra commentary.

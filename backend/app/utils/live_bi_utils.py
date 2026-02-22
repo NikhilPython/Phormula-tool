@@ -1675,10 +1675,14 @@ def fmt_metric(delta, pct, symbol="£"):
 
 
 
+
+
 # def render_live_recommended_action(
 #     *,
 #     growth_row: dict,
 #     recommendation: str,
+#     ads_recommendation: str | None = None,
+    
 #     journey_summary: list[str] | None = None,
 #     currency_symbol="£"
 # ) -> str:
@@ -1716,15 +1720,20 @@ def fmt_metric(delta, pct, symbol="£"):
 #     lines.append("")
 #     lines.append(f"Recommendation: {recommendation}")
 
-#     return "\n".join(lines)
+#     # ---------- Ads Recommendation ----------
+#     if ads_recommendation:
+#         lines.append("")
+#         lines.append(f"Advertising: {ads_recommendation}")
 
+  
+#     return "\n".join(lines)
 
 def render_live_recommended_action(
     *,
     growth_row: dict,
     recommendation: str,
     ads_recommendation: str | None = None,
-    
+    inventory_recommendation: str | None = None,   # ✅ NEW
     journey_summary: list[str] | None = None,
     currency_symbol="£"
 ) -> str:
@@ -1758,17 +1767,22 @@ def render_live_recommended_action(
         for bullet in journey_summary:
             lines.append(f"- {bullet}")
 
-    # ---------- Recommendation ----------
+    # ---------- Commercial Recommendation ----------
     lines.append("")
     lines.append(f"Recommendation: {recommendation}")
 
-    # ---------- Ads Recommendation ----------
+    # ---------- Advertising Recommendation ----------
     if ads_recommendation:
         lines.append("")
         lines.append(f"Advertising: {ads_recommendation}")
 
-  
+    # ---------- Inventory Recommendation (NEW) ----------
+    if inventory_recommendation:
+        lines.append("")
+        lines.append(f"Inventory: {inventory_recommendation}")
+
     return "\n".join(lines)
+
 
 #-----------------------------------------------------------------------------
 # AI SUMMARY (overall header) – now via ChatGPT with numeric fallback
@@ -2525,7 +2539,21 @@ def build_ai_summary(
         "user_objective": user_objective,
         "movement_context": movement_context or {},
     }
+    # =========================================================
+    # ✅ SKU-Level Inventory Flags (Top 5 Only)
+    # =========================================================
+    sku_inventory_flags = {}
 
+    if user_id and country and focus_skus:
+        try:
+            sku_inventory_flags = generate_sku_inventory_flags(
+                user_id=user_id,
+                country=country,
+                focus_skus=focus_skus,
+            )
+        except Exception as e:
+            print("[WARN] sku_inventory_flags build failed:", e)
+            sku_inventory_flags = {}
     # =========================================================
     # 🔥 Month-End Strategy Engine (Single Source of Truth)
     # =========================================================
@@ -2542,6 +2570,7 @@ def build_ai_summary(
             country=(currency or {}).get("country", "uk"),
 
             # ✅ NEW
+            sku_inventory_flags=sku_inventory_flags,
             sku_ads_context=top_80_skus,
             ads_monthly=ads_monthly_totals,
             )
@@ -2759,6 +2788,138 @@ def generate_inventory_alerts_for_all_skus(user_id: int, country: str) -> dict:
 
     return alerts
 
+
+def generate_sku_inventory_flags(
+    user_id: int,
+    country: str,
+    focus_skus: list[str] | None = None,
+) -> dict:
+    """
+    Returns SKU-level inventory flags including:
+    - alert_type
+    - numeric signals
+    - inventory_recommendation (ready sentence)
+    """
+
+    flags: dict[str, dict] = {}
+
+    coverage_df = compute_inventory_coverage_ratio(user_id, country)
+
+    coverage_map = {}
+    if coverage_df is not None and not coverage_df.empty:
+        for _, r in coverage_df.iterrows():
+            sku = str(r.get("sku") or "").strip()
+            if not sku:
+                continue
+            cov = r.get("inventory_coverage_ratio")
+            coverage_map[sku] = float(cov) if cov is not None else None
+
+    inv_df = fetch_inventory_aged_by_user(user_id)
+
+    focus_set = set([str(x).strip() for x in (focus_skus or [])]) if focus_skus else None
+
+    def _num(v):
+        try:
+            if v is None or (isinstance(v, float) and np.isnan(v)):
+                return 0.0
+            return float(v)
+        except:
+            return 0.0
+
+    if inv_df is None or inv_df.empty:
+        return flags
+
+    for _, r in inv_df.iterrows():
+        sku = str(r.get("sku") or "").strip()
+        if not sku:
+            continue
+
+        if focus_set and sku not in focus_set:
+            continue
+
+        coverage_ratio = coverage_map.get(sku)
+
+        # ✅ SUPPORT BOTH SCHEMAS
+        aged_1 = _num(r.get("inv-age-181-to-270-days"))
+        aged_2 = _num(r.get("inv-age-271-to-365-days"))
+        aged_3 = _num(r.get("inv-age-365-plus-days"))
+
+        aged_alt_1 = _num(r.get("inv-age-181-to-330-days"))
+        aged_alt_2 = _num(r.get("inv-age-331-to-365-days"))
+
+        long_term_aged_units = aged_1 + aged_2 + aged_3 + aged_alt_1 + aged_alt_2
+        overaged = long_term_aged_units > 0
+
+        estimated_storage_cost = _num(r.get("estimated-storage-cost-next-month"))
+
+        alert_type = "none"
+        alert = "No alert"
+
+        if coverage_ratio is not None and coverage_ratio <= 2:
+            alert_type = "supply"
+            alert = "High alert"
+
+        elif coverage_ratio is not None and coverage_ratio <= 5:
+            alert_type = "supply"
+            alert = "Please send shipment"
+
+        elif coverage_ratio is not None and coverage_ratio >= 6 and not overaged:
+            alert_type = "excess"
+            alert = "High inventory coverage ratio"
+
+        elif estimated_storage_cost > 100:
+            alert_type = "cost"
+            alert = "High storage cost"
+
+        elif overaged:
+            alert_type = "overaged"
+            alert = "Long-term aged inventory"
+
+        # -------------------------
+        # Deterministic sentence
+        # -------------------------
+        cov_str = round(float(coverage_ratio), 1) if coverage_ratio is not None else None
+
+        inventory_recommendation = "Inventory position is stable."
+
+        if alert == "High alert" and cov_str is not None:
+            inventory_recommendation = (
+                f"Your coverage ratio is {cov_str}. Please immediately send stock to avoid stock-out."
+            )
+
+        elif alert == "Please send shipment" and cov_str is not None:
+            inventory_recommendation = (
+                f"Your coverage ratio is {cov_str}. Please supply inventory soon to avoid stock-out risk."
+            )
+
+        elif alert == "High inventory coverage ratio" and cov_str is not None:
+            inventory_recommendation = (
+                f"Your coverage ratio is {cov_str}, which may increase storage cost. "
+                f"Please improve sell-through to avoid excess storage fees."
+            )
+
+        elif alert == "Long-term aged inventory":
+            inventory_recommendation = (
+                f"{int(long_term_aged_units)} units are ageing long-term. "
+                f"Review and liquidate this stock to avoid additional storage cost."
+            )
+
+        elif alert == "High storage cost":
+            inventory_recommendation = (
+                f"Estimated storage cost is {round(estimated_storage_cost,2)}. "
+                f"Reduce inventory exposure to control storage expense."
+            )
+
+        flags[sku] = {
+            "inventory_alert": alert,
+            "inventory_alert_type": alert_type,
+            "inventory_coverage_ratio": coverage_ratio,
+            "long_term_aged_units": int(long_term_aged_units),
+            "estimated_storage_cost": round(estimated_storage_cost,2),
+            "inventory_recommendation": inventory_recommendation,
+        }
+
+    return flags
 
 
 def generate_live_insight(item, country, prev_label, curr_label, user_id, month2):
