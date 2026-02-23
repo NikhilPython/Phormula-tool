@@ -13,6 +13,8 @@ from sqlalchemy import text
 SECRET_KEY = Config.SECRET_KEY
 from dotenv import load_dotenv
 from app.routes.business_intelligence import get_sku_monthly_history
+from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy, build_sku_inventory_flags, fetch_inventory_aged_by_user, get_or_create_summary
+from app.models.user_models  import UserObjective
 
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
@@ -496,142 +498,7 @@ def generate_ai_insights(prompt):
         return None
 
 
-# @skuwise_bp.route('/ProductwiseGrowthAI', methods=['POST'])
-# def productwise_growth_ai():
-#     try:
-#         auth_header = request.headers.get('Authorization')
-#         if not auth_header or not auth_header.startswith('Bearer '):
-#             return jsonify({'error': 'Unauthorized'}), 401
 
-#         token = auth_header.split(' ')[1]
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-#         user_id = str(payload['user_id'])
-
-#         data = request.get_json()
-#         product_name = data.get('product_name')
-#         sku = data.get('sku')
-#         country = data.get('country', 'us').lower()
-
-#         if not product_name and not sku:
-#             return jsonify({'error': 'product_name or sku required'}), 400
-
-#         engine = create_engine(db_url)
-#         conn = engine.connect()
-#         inspector = inspect(engine)
-
-#         all_tables = inspector.get_table_names()
-#         latest_tables = get_latest_two_tables(all_tables, user_id, country)
-
-#         if len(latest_tables) < 2:
-#             return jsonify({'error': 'Not enough historical data'}), 404
-
-#         old_tbl, new_tbl = latest_tables[1], latest_tables[0]
-
-#         old_data = fetch_metrics(conn, old_tbl["table"], product_name, sku)
-#         new_data = fetch_metrics(conn, new_tbl["table"], product_name, sku)
-
-#         metrics_payload = {}
-
-#         for metric in old_data.keys():
-#             metrics_payload[metric] = {
-#                 f"{metric}_prev": round(old_data[metric], 2),
-#                 f"{metric}_curr": round(new_data[metric], 2),
-#                 f"{metric}_growth_pct": calculate_growth(
-#                     new_data[metric], old_data[metric]
-#                 )
-#             }
-
-#         item = {
-#             "product_name": product_name,
-#             "months": {
-#                 "previous": f"{old_tbl['month'].capitalize()} {old_tbl['year']}",
-#                 "current": f"{new_tbl['month'].capitalize()} {new_tbl['year']}"
-#             },
-#             **metrics_payload
-#         }
-
-#         prompt = f"""
-# You are a senior business analyst. Based on the following 2-month comparison data of the product, generate insights in this format:
-
-
-
-# Observations:
-# - List the 2–3 most important changes using ONLY the given metrics:
-#   • quantity_prev vs quantity_curr
-#   • net_sales_prev vs net_sales_curr
-#   • profit_prev vs profit_curr
-#   • asp_prev vs asp_curr
-#   • unit_wise_profitability_prev vs unit_wise_profitability_curr
-#   • and % fields like "Unit Growth (%)", "Net Sales Growth (%)", etc.
-# - Use the exact causal tone wherever % values exist:
-#   "The increase/decrease in ASP by X% resulted in a dip/growth in units by Y%, which also resulted in sales falling/increasing by Z%."
-# - In at least one observation, mention Sales Mix Change (%) direction if present (up/down).
-# - Do NOT add assumptions like stock issues, supply constraints, replenishment, OOS, or fulfillment problems.
-
-# Improvements:
-# - Provide exactly 3–5 action bullets.
-# - Each action bullet MUST be exactly ONE sentence and MUST be chosen ONLY from the list below, verbatim (no edits):
-#   • "Check ads and visibility campaigns for this product."
-#   • "Review the visibility setup for this product."
-#   • "Reduce ASP slightly to improve traction."
-#   • "Increase ASP slightly to strengthen margins."
-#   • "Monitor performance closely and reassess next steps."
-#   • "Monitor performance closely for now."
-# - Do NOT add any other recommendations, explanations, or extra words.
-# - Do NOT mention stock, inventory, supply, operations, OOS, logistics, replenishment, or warehousing.
-# - Decision guidance:
-#   • If ASP is strongly up and units are down: prefer "Reduce ASP slightly to improve traction."
-#   • If units and sales are down and ASP is flat or slightly up: prefer visibility lines.
-#   • If profit/unit profit is very strong and units are stable/slightly down: prefer maintain/increase ASP.
-
-# Then, for each metric, add:
-
-# Unit Growth:
-# • [Explain reasons for the growth/decline using ONLY available signals like unit trend vs ASP trend and what that implies about demand/visibility/conversion.]
-# • [Choose ONE action bullet from the Improvements list that best fits the unit pattern and paste it verbatim.]
-
-# ASP:
-# • [Explain why ASP changed using ONLY available signals like pricing changes, discounting intensity, or product/pack/channel mix shifts (premium vs value) without referencing costs.]
-# • [Choose ONE action bullet from the Improvements list that best fits the ASP direction and paste it verbatim.]
-
-# Sales:
-# • [Describe sales trend by explicitly tying it to Units × ASP.]
-# • [Choose ONE action bullet from the Improvements list that best fits the sales pattern and paste it verbatim.]
-
-# Profit:
-# • [Explain profit change using ONLY available signals like sales movement plus realized pricing/discounting/mix impact.]
-# • [Choose ONE action bullet from the Improvements list that best aligns with protecting/improving profitability and paste it verbatim.]
-
-# Unit Profitability:
-# • [Explain per-unit profit change using ONLY available signals like realized price/discounting and mix impact.]
-# • [Choose ONE action bullet from the Improvements list that best fits per-unit profit trend and paste it verbatim.]
-
-# Instructions:
-# - Use plain text with bullets only.
-# - DO NOT use Markdown.
-# - Use % values and trends from the data.
-# - Make insights easy for business teams to act on.
-
-# Data:
-# {json.dumps(item, indent=2)}
-# """
-
-#         ai_insights = generate_ai_insights(prompt)
-#         conn.close()
-
-#         return jsonify({
-#             "success": True,
-#             "product_name": product_name,
-#             "months_compared": [
-#                 item["months"]["previous"],
-#                 item["months"]["current"]
-#             ],
-#             "metrics": metrics_payload,
-#             "ai_insights": ai_insights
-#         })
-
-#     except Exception as e:
-#         return jsonify({'error': 'Internal server error'}), 500
     
 @skuwise_bp.route('/ProductwiseGrowthAI', methods=['POST'])
 def productwise_growth_ai():
@@ -665,6 +532,33 @@ def productwise_growth_ai():
 
         if not product_name and not sku:
             return jsonify({'error': 'product_name or sku required'}), 400
+        
+        # ============================================================
+        # LOAD OBJECTIVE FROM DB (SAME AS MAIN SUMMARY CODE)
+        # ============================================================
+        user_objective_row = UserObjective.query.filter_by(
+            user_id=int(user_id),
+            country=country
+        ).first()
+
+        if user_objective_row:
+            objective_v2 = {
+                "growth_intent": user_objective_row.growth_intent,
+                "profit_priority": user_objective_row.profit_priority,
+                "inventory_clearance_priority": user_objective_row.inventory_clearance_priority,
+                "business_context": user_objective_row.business_context,
+                "country": country,
+                "time_horizon": "1_month"
+            }
+        else:
+            objective_v2 = {
+                "growth_intent": "balanced",
+                "profit_priority": "protect_growth",
+                "inventory_clearance_priority": False,
+                "business_context": None,
+                "country": country,
+                "time_horizon": "1_month"
+            }
 
         engine = create_engine(db_url)
         inspector = inspect(engine)
@@ -717,6 +611,24 @@ def productwise_growth_ai():
             else:
                 key = sku
 
+        # ============================================================
+        # SKU-LEVEL INVENTORY FLAGS ONLY (NO PORTFOLIO TOTALS)
+        # ============================================================
+        sku_inventory_flags = {}
+
+        # Inventory flags only make sense when the key is a SKU (US/UK)
+        if country in ("uk", "us") and key:
+            inventory_aged_df = fetch_inventory_aged_by_user(int(user_id))
+
+            if inventory_aged_df is not None and not inventory_aged_df.empty:
+                all_flags = build_sku_inventory_flags(
+                    inventory_aged_df,
+                    user_id=int(user_id),
+                    country=country
+                )
+
+                if key in all_flags:
+                    sku_inventory_flags = {key: all_flags[key]}
 
         # ---- Pull full 24-month history ----
         history_24m = get_sku_monthly_history(
@@ -895,11 +807,51 @@ Data:
 
         ai_insights = generate_ai_insights(prompt)
 
+        # ============================================================
+        # REUSE MAIN SUMMARY ENGINE (NO DRIFT GUARANTEE)
+        # ============================================================
+
+        recommendation = None
+        inventory_recommendation = None
+
+        try:
+            summary_result = get_or_create_summary(
+                user_id=int(user_id),
+                country=country,
+                marketplace_id=None,
+                period=None,        # 🔥 LET ENGINE AUTO-RESOLVE LATEST
+                timeline=None,
+                year=None,
+                objective=None,
+                target_sku=key,
+                force_regenerate=False
+            )
+
+            sku_actions = summary_result.get("sku_actions") or {}
+            sku_block = sku_actions.get(key) or {}
+
+            recommendation = sku_block.get("recommendation")
+            inventory_recommendation = sku_block.get("inventory_recommendation")
+
+        except Exception:
+            recommendation = None
+            inventory_recommendation = None
+
         return jsonify({
             "success": True,
             "product_name": product_name,
             "historical_trend": history_24m,
-            "ai_insights": ai_insights
+            "ai_insights": ai_insights,
+
+            # SKU-only inventory intelligence
+            "sku_inventory_alert": sku_inventory_flags.get(key, {}) if isinstance(sku_inventory_flags, dict) else {},
+
+            # MUST match main summary strategy engine output
+            "recommendation": recommendation,
+            "inventory_recommendation": inventory_recommendation,
+
+            # objective for transparency
+            "objective": objective_v2
         })
 
     except Exception as e:

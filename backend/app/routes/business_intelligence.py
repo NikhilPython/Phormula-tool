@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 import jwt
 import os
 from openai import OpenAI
@@ -13,6 +13,7 @@ from calendar import month_name
 from calendar import month_name, month_abbr
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAIError
+from app.utils.monthwise_ai_summary_utils import get_or_create_summary, resolve_latest_available_month
 
 
 
@@ -709,7 +710,7 @@ def analyze_skus():
 
         
 
-        def generate_insight(item):
+        def generate_insight(item, app):
             sku = item.get('sku')
             product_name = item.get('product_name', 'this product').strip()
             
@@ -919,6 +920,41 @@ Data:
                 )
 
                 ai_text = ai_response.choices[0].message.content.strip()
+                # ============================================================
+                # REUSE MAIN STRATEGY ENGINE (SINGLE SKU MODE)
+                # ============================================================
+
+                recommendation = None
+                inventory_recommendation = None
+
+                # 🔥 ALWAYS FETCH LATEST MONTH FOR STRATEGY ENGINE
+                latest_year, latest_month = resolve_latest_available_month(
+                    int(user_id),
+                    country.lower()
+                )
+
+                try:
+                    with app.app_context():
+                        summary_result = get_or_create_summary(
+                            user_id=int(user_id),
+                            country=country.lower(),
+                            marketplace_id=None,
+                            period="monthly",
+                            timeline=str(latest_month),   # ✅ FORCE LATEST
+                            year=int(latest_year),        # ✅ FORCE LATEST
+                            objective=None,
+                            target_sku=key,
+                            force_regenerate=False
+                        )
+
+                    sku_actions = summary_result.get("sku_actions") or {}
+                    sku_block = sku_actions.get(key) or {}
+
+                    recommendation = sku_block.get("recommendation")
+                    inventory_recommendation = sku_block.get("inventory_recommendation")
+
+                except Exception as e:
+                    print("Strategy engine failed:", e)
 
                 
 
@@ -926,8 +962,10 @@ Data:
                     'sku': sku,
                     'product_name': product_name,
                     'insight': ai_text,
-                    'key_used': key,  # Debug info
-                    'is_global': is_global  # Debug info
+                    'recommendation': recommendation,
+                    'inventory_recommendation': inventory_recommendation,
+                    'key_used': key,
+                    'is_global': is_global
                 }
             except OpenAIError as e:
                 # 🔴 CREDIT / BILLING / QUOTA ERROR
@@ -962,9 +1000,13 @@ Data:
         insights = {}
         processed_count = 0
         error_count = 0
+
+        app = current_app._get_current_object()
         
         with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_sku = {executor.submit(generate_insight, item): item for item in enriched_skus}
+            future_to_sku = {executor.submit(generate_insight, item, app): item
+                for item in enriched_skus
+                    }
             for future in as_completed(future_to_sku):
                 try:
                     key, result = future.result()
