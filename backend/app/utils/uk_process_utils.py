@@ -50,8 +50,6 @@ text_cols = [
 int_cols = ["quantity","previous_quantity","user_id","return_quantity","total_quantity"]
 
 
-from sqlalchemy import text
-import pandas as pd
 
 _TABLE_COL_CACHE = {}
 
@@ -349,6 +347,71 @@ def process_skuwise_data(user_id, country, month, year):
         # ================== END NEW: TOTAL-ONLY BREAKUP COLUMNS ==================
 
 
+        ASIN_RE = re.compile(r"^[A-Z0-9]{10}$")
+
+        def asin_to_country_sku_map(conn, user_id: int, country: str):
+            tbl = f"sku_{user_id}_data_table"
+
+            if country.lower() == "uk":
+                sku_col = "sku_uk"
+            elif country.lower() == "us":
+                sku_col = "sku_us"
+            else:
+                # fallback - you can choose sku_uk or sku_us, or just return empty
+                sku_col = "sku_uk"
+
+            q = text(f"""
+                SELECT asin, {sku_col} AS sku
+                FROM public.{tbl}
+                WHERE asin IS NOT NULL
+                AND {sku_col} IS NOT NULL
+            """)
+            rows = conn.execute(q).fetchall()
+            return {str(a).strip(): str(s).strip() for a, s in rows}
+
+        # ---- build map and normalize df['sku'] (ASIN -> country SKU) ----
+        df["sku"] = df["sku"].astype(str).str.strip()
+
+        asin_map = asin_to_country_sku_map(conn, user_id, country)
+
+        # only replace when sku looks like ASIN and mapping exists
+        mask_asin = df["sku"].str.match(ASIN_RE, na=False)
+        df.loc[mask_asin, "sku"] = df.loc[mask_asin, "sku"].map(asin_map).fillna(df.loc[mask_asin, "sku"])
+
+        ASIN_RE = re.compile(r"^[A-Z0-9]{10}$")
+        EAN_RE  = re.compile(r"^\d{12,14}$")  # UPC/EAN
+
+        def id_to_country_sku_maps(conn, user_id: int, country: str):
+            tbl = f"sku_{user_id}_data_table"
+            sku_col = "sku_uk" if country.lower() == "uk" else "sku_us"
+
+            q = text(f"""
+                SELECT asin, {sku_col} AS sku, product_barcode
+                FROM public.{tbl}
+                WHERE {sku_col} IS NOT NULL
+            """)
+            rows = conn.execute(q).fetchall()
+
+            asin_map = {}
+            barcode_map = {}
+            for asin, sku, barcode in rows:
+                if asin:
+                    asin_map[str(asin).strip()] = str(sku).strip()
+                if barcode:
+                    barcode_map[str(barcode).strip()] = str(sku).strip()
+
+            return asin_map, barcode_map
+
+        df["sku"] = df["sku"].astype(str).str.strip()
+
+        asin_map, barcode_map = id_to_country_sku_maps(conn, user_id, country)
+
+        mask_asin = df["sku"].str.match(ASIN_RE, na=False)
+        df.loc[mask_asin, "sku"] = df.loc[mask_asin, "sku"].map(asin_map).fillna(df.loc[mask_asin, "sku"])
+
+        mask_barcode = df["sku"].str.match(EAN_RE, na=False)
+        df.loc[mask_barcode, "sku"] = df.loc[mask_barcode, "sku"].map(barcode_map).fillna(df.loc[mask_barcode, "sku"])
+
         LOST_DESCRIPTIONS = {
             "REVERSAL_REIMBURSEMENT",
             "WAREHOUSE_LOST",
@@ -383,12 +446,6 @@ def process_skuwise_data(user_id, country, month, year):
         type_str_main = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip()
         desc_str_main = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
 
-        LOST_DESCRIPTIONS = {
-            "REVERSAL_REIMBURSEMENT",
-            "WAREHOUSE_LOST",
-            "WAREHOUSE_DAMAGE",
-            "MISSING_FROM_INBOUND",
-        }
 
         is_refund = type_str_main.str.contains("refund", case=False, na=False)  # type me refund likha ho
         is_lost   = desc_str_main.isin(LOST_DESCRIPTIONS)
@@ -615,12 +672,6 @@ def process_skuwise_data(user_id, country, month, year):
         type_str_main = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip()
         desc_str_main = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
 
-        LOST_DESCRIPTIONS = {
-            "REVERSAL_REIMBURSEMENT",
-            "WAREHOUSE_LOST",
-            "WAREHOUSE_DAMAGE",
-            "MISSING_FROM_INBOUND",
-        }
 
         is_refund = type_str_main.str.contains("refund", case=False, na=False)  # type me refund likha ho
         is_lost   = desc_str_main.isin(LOST_DESCRIPTIONS)
@@ -653,6 +704,58 @@ def process_skuwise_data(user_id, country, month, year):
             **({"shipping_credits": "sum"} if "shipping_credits" in df_base.columns else {}),
             **({"shipment_charges": "sum"} if "shipment_charges" in df_base.columns else {}),
         }).reset_index()
+
+        # --- ensure LOST-only SKUs also appear in sku_grouped (so merges can attach lost_total) ---
+        all_skus = pd.Index(
+            pd.concat([
+                df_base["sku"].astype(str).str.strip(),
+                lost_total_df["sku"].astype(str).str.strip()
+            ], ignore_index=True).dropna().unique()
+        )
+
+        sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
+
+        missing_skus = [s for s in all_skus if s not in set(sku_grouped["sku"])]
+
+        if missing_skus:
+            # Create rows with zero metrics for SKUs that exist only in LOST rows
+            filler = pd.DataFrame({"sku": missing_skus})
+
+            # optional: bring product_name/errorstatus from df if available
+            if "product_name" in df.columns:
+                name_map = (
+                    df.loc[df["sku"].astype(str).str.strip().isin(missing_skus), ["sku", "product_name"]]
+                    .drop_duplicates(subset=["sku"])
+                )
+                name_map["sku"] = name_map["sku"].astype(str).str.strip()
+                filler = filler.merge(name_map, on="sku", how="left")
+            else:
+                filler["product_name"] = ""
+
+            if "errorstatus" in df.columns:
+                err_map = (
+                    df.loc[df["sku"].astype(str).str.strip().isin(missing_skus), ["sku", "errorstatus"]]
+                    .drop_duplicates(subset=["sku"])
+                )
+                err_map["sku"] = err_map["sku"].astype(str).str.strip()
+                filler = filler.merge(err_map, on="sku", how="left")
+            else:
+                filler["errorstatus"] = ""
+
+            # add the numeric columns that later code expects (set to 0)
+            for col in [
+                "price_in_gbp","product_sales","promotional_rebates","promotional_rebates_tax",
+                "product_sales_tax","selling_fees","fba_fees","other","answer","difference",
+                "marketplace_facilitator_tax","shipping_credits_tax","giftwrap_credits_tax",
+                "postage_credits","gift_wrap_credits","cost_of_unit_sold","total",
+                "other_transaction_fees"
+            ]:
+                if col not in filler.columns:
+                    filler[col] = 0.0
+
+            sku_grouped = pd.concat([sku_grouped, filler], ignore_index=True, sort=False)
+
+        # now merge lost_total_df as you already do
 
 
         # make sure sku/type are strings

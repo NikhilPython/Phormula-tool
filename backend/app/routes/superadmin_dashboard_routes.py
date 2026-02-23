@@ -18,58 +18,102 @@ from datetime import datetime
 superadmin_dashboard_bp = Blueprint('superadmin_dashboard', __name__)
 
 
-@superadmin_dashboard_bp.route('/superadmin/dashboard', methods=['GET'])
-def get_superadmin_dashboard():
-    # Authentication check - prioritize token over query parameter
-    authenticated = False
-    
-    # Method 1: Check Authorization header (recommended)
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
+# --------------------------- helpers ---------------------------
+
+def _is_superadmin_authenticated():
+    """
+    Returns: (True, None) if authenticated as superadmin else (False, (response_json, status_code))
+    """
+    # Method 1: Authorization header
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
         try:
-            # Verify the token
-            decoded_token = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-            if decoded_token.get('is_superadmin'):
-                authenticated = True
+            decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            if decoded.get("is_superadmin"):
+                return True, None
+            return False, ({"message": "Not a superadmin"}, 403)
         except jwt.ExpiredSignatureError:
-            return jsonify({'message': 'Token has expired'}), 401
+            return False, ({"message": "Token has expired"}, 401)
         except jwt.InvalidTokenError:
-            return jsonify({'message': 'Invalid token'}), 401
-    
-    # Method 2: Fallback to query parameter (for backward compatibility)
-    if not authenticated:
-        authenticated_user = request.args.get('authenticated_user')
-        if authenticated_user:
-            authenticated = True
-    
-    # If neither method worked, return unauthorized
-    if not authenticated:
-        return jsonify({'message': 'User not authenticated'}), 401
+            return False, ({"message": "Invalid token"}, 401)
 
-    # Continue with the rest of your existing code...
-    email_to_search = request.args.get('email')
+    # Method 2: query param fallback
+    authenticated_user = request.args.get("authenticated_user")
+    if authenticated_user:
+        return True, None
 
+    return False, ({"message": "User not authenticated"}, 401)
+
+
+def _round_row(columns, raw_row):
+    row_dict = {}
+    for col, val in zip(columns, raw_row):
+        if isinstance(val, (int, float)):
+            row_dict[col] = round(val, 2)
+        else:
+            row_dict[col] = val
+    return row_dict
+
+
+def _safe_user_dict(u: User):
+    return {
+        "id": u.id,
+        "name": getattr(u, "name", None),
+        "email": u.email,
+        "company_name": getattr(u, "company_name", None),
+        "brand_name": getattr(u, "brand_name", None),
+        "country": getattr(u, "country", None),
+        "marketplace_id": getattr(u, "marketplace_id", None),
+        "annual_sales_range": getattr(u, "annual_sales_range", None),
+    }
+
+
+def _safe_admin_dict(ua: UserAdmin):
+    return {
+        "id": ua.id,
+        "name": getattr(ua, "name", None),
+        "email": ua.email,
+        "company_name": getattr(ua, "company_name", None),
+        "brand_name": getattr(ua, "brand_name", None),
+        "country": getattr(ua, "country", None),
+        "marketplace_id": getattr(ua, "marketplace_id", None),
+        "annual_sales_range": getattr(ua, "annual_sales_range", None),
+    }
+
+
+# --------------------------- routes ---------------------------
+
+@superadmin_dashboard_bp.route("/superadmin/dashboard", methods=["GET"])
+def get_superadmin_dashboard():
+    # ✅ Auth
+    ok, err = _is_superadmin_authenticated()
+    if not ok:
+        payload, code = err
+        return jsonify(payload), code
+
+    email_to_search = request.args.get("email")
+
+    # ✅ CASE 1: Email provided -> return detailed dashboard for that user
     if email_to_search:
         user = User.query.filter_by(email=email_to_search).first()
         user_admin = UserAdmin.query.filter_by(email=email_to_search).first()
 
         if not user and not user_admin:
-            return jsonify({'message': 'No user found with that email'}), 404
+            return jsonify({"message": "No user found with that email"}), 404
 
-        user_id = user.id if user else user_admin.user_id
+        user_id = user.id if user else getattr(user_admin, "user_id", None)
         if not user_id:
-            return jsonify({'message': 'User ID not found for this email'}), 404
+            return jsonify({"message": "User ID not found for this email"}), 404
 
         related_upload_history = UploadHistory.query.filter_by(user_id=user_id).all()
         related_profiles = CountryProfile.query.filter_by(user_id=user_id).all()
 
-        # Define quarters
         quarter_months = {
             "quarter1": ["january", "february", "march"],
             "quarter2": ["april", "may", "june"],
             "quarter3": ["july", "august", "september"],
-            "quarter4": ["october", "november", "december"]
+            "quarter4": ["october", "november", "december"],
         }
 
         skuwise_data = []
@@ -78,260 +122,188 @@ def get_superadmin_dashboard():
 
         with engine.connect() as conn:
             for c in related_upload_history:
-                if c.country.lower() == "global":
+                if c.country and c.country.lower() == "global":
                     base_table = f"skuwisemonthly_{user_id}_{c.country.lower()}_{c.month.lower()}{c.year}_table"
                 else:
                     base_table = f"skuwisemonthly_{user_id}_{c.country.lower()}_{c.month.lower()}{c.year}"
+
                 yearly_base_table = f"skuwiseyearly_{user_id}_{c.country.lower()}_{c.year}_table"
-                
+
                 for table_name in [base_table, yearly_base_table]:
                     if inspector.has_table(table_name):
                         try:
                             result = conn.execute(text(f'SELECT * FROM "{table_name}" LIMIT 15'))
-                            columns = result.keys()                                                        
-                            fetched_rows = result.fetchall()
-                            rows = []
-                            for raw_row in fetched_rows:
-                                row_dict = {}
-                                for col, val in zip(columns, raw_row):
-                                    if isinstance(val, (int, float)):
-                                        row_dict[col] = round(val, 2)
-                                    else:
-                                        row_dict[col] = val
-                                rows.append(row_dict)
-                            skuwise_data.append({
-                                'table': table_name,
-                                'rows': rows
-                            })
+                            columns = result.keys()
+                            rows = [_round_row(columns, r) for r in result.fetchall()]
+                            skuwise_data.append({"table": table_name, "rows": rows})
                         except Exception as e:
-                            skuwise_data.append({
-                                'table': table_name,
-                                'error': str(e)
-                            })
+                            skuwise_data.append({"table": table_name, "error": str(e)})
                     else:
-                        skuwise_data.append({
-                            'table': table_name,
-                            'error': f"Table '{table_name}' does not exist"
-                        })
+                        skuwise_data.append({"table": table_name, "error": f"Table '{table_name}' does not exist"})
 
-                # Quarterly tables logic
-                month_lower = c.month.lower()
+                # quarterly
+                month_lower = (c.month or "").lower()
                 for quarter, months in quarter_months.items():
                     if month_lower in months:
                         quarter_table = f"{quarter}_{user_id}_{c.country.lower()}_{c.year}_table"
-
-                        for qt in [quarter_table]:
-                            if inspector.has_table(qt):
-                                try:
-                                    result = conn.execute(text(f'SELECT * FROM "{qt}" LIMIT 15'))
-                                    columns = result.keys()
-                                    fetched_rows = result.fetchall()
-                                    rows = []
-
-                                    for raw_row in fetched_rows:
-                                        row_dict = {}
-                                        for col, val in zip(columns, raw_row):
-                                            if isinstance(val, (int, float)):
-                                                row_dict[col] = round(val, 2)
-                                            else:
-                                                row_dict[col] = val
-                                        rows.append(row_dict)
-                                    skuwise_data.append({
-                                        'table': qt,
-                                        'rows': rows
-                                    })
-                                except Exception as e:
-                                    skuwise_data.append({
-                                        'table': qt,
-                                        'error': str(e)
-                                    })
-                            else:
-                                skuwise_data.append({
-                                    'table': qt,
-                                    'error': f"Table '{qt}' does not exist"
-                                })
+                        if inspector.has_table(quarter_table):
+                            try:
+                                result = conn.execute(text(f'SELECT * FROM "{quarter_table}" LIMIT 15'))
+                                columns = result.keys()
+                                rows = [_round_row(columns, r) for r in result.fetchall()]
+                                skuwise_data.append({"table": quarter_table, "rows": rows})
+                            except Exception as e:
+                                skuwise_data.append({"table": quarter_table, "error": str(e)})
+                        else:
+                            skuwise_data.append({"table": quarter_table, "error": f"Table '{quarter_table}' does not exist"})
                         break
 
         return jsonify({
-            'email': email_to_search,
-            'user_id': user_id,
-            'brand_name': user.brand_name if user else user_admin.brand_name,
-            'annual_sales_range': user.annual_sales_range if user else user_admin.annual_sales_range,
-            'related_upload_history': [{'id': c.id, 'user_id': c.user_id, 'country': c.country, 'month': c.month, 'year': c.year, 'total_sales': c.total_sales, 'total_profit': c.total_profit, 'total_expense': c.total_expense,} for c in related_upload_history],
-            'related_country_profiles': [{'user_id': cp.user_id, 'country': cp.country, 'stock_unit': cp.stock_unit, 'transit_time': cp.transit_time} for cp in related_profiles],
-            'skuwise_tables': skuwise_data
+            "email": email_to_search,
+            "user_id": user_id,
+            "brand_name": (user.brand_name if user else getattr(user_admin, "brand_name", None)),
+            "annual_sales_range": (user.annual_sales_range if user else getattr(user_admin, "annual_sales_range", None)),
+            "related_upload_history": [
+                {
+                    "id": c.id,
+                    "user_id": c.user_id,
+                    "country": c.country,
+                    "month": c.month,
+                    "year": c.year,
+                    "total_sales": c.total_sales,
+                    "total_profit": c.total_profit,
+                    "total_expense": c.total_expense,
+                }
+                for c in related_upload_history
+            ],
+            "related_country_profiles": [
+                {
+                    "user_id": cp.user_id,
+                    "country": cp.country,
+                    "stock_unit": cp.stock_unit,
+                    "transit_time": cp.transit_time,
+                }
+                for cp in related_profiles
+            ],
+            "skuwise_tables": skuwise_data,
         }), 200
-        
-    # Default case - return all users and admins
+
+    # ✅ CASE 2: No email -> return USERS + ADMINS with requested fields
     try:
         user_admins = UserAdmin.query.all()
         users = User.query.all()
 
         return jsonify({
-            'user_admins': [{'id': ua.id, 'email': ua.email} for ua in user_admins],
-            'users': [{'id': u.id, 'email': u.email, 'brand_name': u.brand_name, 'annual_sales_range': u.annual_sales_range} for u in users],
+            "user_admins": [_safe_admin_dict(ua) for ua in user_admins],
+            "users": [_safe_user_dict(u) for u in users],
         }), 200
+
     except Exception as e:
-        return jsonify({'message': f'Error fetching data: {str(e)}'}), 500  
+        return jsonify({"message": f"Error fetching data: {str(e)}"}), 500
 
 
+# --------------------------- existing file listing route (unchanged except upload_dir fix) ---------------------------
 
-@superadmin_dashboard_bp.route('/superadmin/Filesofuploadfolder', methods=['GET'])
-def list_uploaded_files():
-    # Get email parameter from query string
-    email_to_search = request.args.get('email')
-    
-    if not email_to_search:
-        return jsonify({'error': 'Email parameter is required'}), 400
+# @superadmin_dashboard_bp.route("/superadmin/Filesofuploadfolder", methods=["GET"])
+# def list_uploaded_files():
+#     email_to_search = request.args.get("email")
+#     if not email_to_search:
+#         return jsonify({"error": "Email parameter is required"}), 400
 
-    # Search for user in both User and UserAdmin tables
-    user = User.query.filter_by(email=email_to_search).first()
-    user_admin = UserAdmin.query.filter_by(email=email_to_search).first()
+#     user = User.query.filter_by(email=email_to_search).first()
+#     user_admin = UserAdmin.query.filter_by(email=email_to_search).first()
 
-    if not user and not user_admin:
-        return jsonify({'message': 'No user found with that email'}), 404
+#     if not user and not user_admin:
+#         return jsonify({"message": "No user found with that email"}), 404
 
-    # Get user_id from either table
-    user_id = user.id if user else user_admin.user_id
-    if not user_id:
-        return jsonify({'message': 'User ID not found for this email'}), 404
+#     user_id = user.id if user else getattr(user_admin, "user_id", None)
+#     if not user_id:
+#         return jsonify({"message": "User ID not found for this email"}), 404
 
-    # Get user's upload history and profiles
-    related_upload_history = UploadHistory.query.filter_by(user_id=user_id).all()
-    related_profiles = CountryProfile.query.filter_by(user_id=user_id).all()
+#     related_upload_history = UploadHistory.query.filter_by(user_id=user_id).all()
+#     related_profiles = CountryProfile.query.filter_by(user_id=user_id).all()
 
-    # Create a set of filenames associated with this user
-    user_filenames = set()
-    
-    # Add filenames from upload history
-    for upload in related_upload_history:
-        if hasattr(upload, 'filename') and upload.filename:
-            user_filenames.add(upload.filename)
-        # If filename is stored in a different field, adjust accordingly
-        # Example: if it's in 'file_path', extract filename from path
-        if hasattr(upload, 'file_path') and upload.file_path:
-            filename = os.path.basename(upload.file_path)
-            user_filenames.add(filename)
-    
-    # Add filenames from country profiles if they have file references
-    for profile in related_profiles:
-        if hasattr(profile, 'filename') and profile.filename:
-            user_filenames.add(profile.filename)
-        # Add other file fields if they exist in CountryProfile
-        if hasattr(profile, 'file_path') and profile.file_path:
-            filename = os.path.basename(profile.file_path)
-            user_filenames.add(filename)
+#     user_filenames = set()
+#     for upload in related_upload_history:
+#         if hasattr(upload, "filename") and upload.filename:
+#             user_filenames.add(upload.filename)
+#         if hasattr(upload, "file_path") and upload.file_path:
+#             user_filenames.add(os.path.basename(upload.file_path))
 
-    # Function to check if filename belongs to this user based on naming patterns
-    def is_user_file(filename, user_id):
-        # Check direct filename match first
-        if filename in user_filenames:
-            return True
-        
-        # Check pattern-based matches for files like:
-        # error_file_{user_id}{country}{month}_{year}.xlsx
-        # user_{user_id}_{country}_{month}{year}_inventory_file.xlsx
-        import re
-        
-        # Pattern for error files: error_file_{user_id}...
-        error_pattern = rf"^error_file_{user_id}.*\.xlsx$"
-        if re.match(error_pattern, filename):
-            return True
-            
-        # Pattern for inventory files: user_{user_id}_...
-        inventory_pattern = rf"^user_{user_id}_.*\.xlsx$"
-        if re.match(inventory_pattern, filename):
-            return True
-        
-        purchase_pattern = rf"^purchase_order_{user_id}.*\.xlsx$"
-        if re.match(purchase_pattern, filename):
-            return True
-        
-        forecastpnl_pattern = rf"^forecastpnl_{user_id}.*\.xlsx$"
-        if re.match(forecastpnl_pattern, filename):
-            return True
-        
-        inventory_pattern = rf"^inventory_{user_id}.*\.xlsx$"
-        if re.match(inventory_pattern, filename):
-            return True
-        
-        forecasts_pattern = rf"^forecasts_{user_id}.*\.xlsx$"
-        if re.match(forecasts_pattern, filename):
-            return True 
-        
-        currentinventory_pattern = rf"^currentinventory_{user_id}.*\.xlsx$"
-        if re.match(currentinventory_pattern, filename):
-            return True  
-        
-        inventory_forecast_pattern=rf"^inventory_forecast_{user_id}_.*\.xlsx$"
-        if re.match(inventory_forecast_pattern, filename):
-            return True  
-        
-            
-        # Add more patterns as needed
-        return False
+#     for profile in related_profiles:
+#         if hasattr(profile, "filename") and profile.filename:
+#             user_filenames.add(profile.filename)
+#         if hasattr(profile, "file_path") and profile.file_path:
+#             user_filenames.add(os.path.basename(profile.file_path))
 
-    # Check if upload directory exists
-    upload_dir = current_app.config.get()
-    if not os.path.isdir(upload_dir):
-        return jsonify({'error': 'Uploads directory not found'}), 404
+#     def is_user_file(filename, user_id):
+#         if filename in user_filenames:
+#             return True
 
-    # Process only files that belong to the searched user
-    files_info = []
-    for filename in os.listdir(upload_dir):
-        # Skip files that don't belong to this user
-        if not is_user_file(filename, user_id):
-            continue
-            
-        file_path = os.path.join(upload_dir, filename)
-        if not os.path.isfile(file_path):
-            continue
+#         import re
+#         patterns = [
+#             rf"^error_file_{user_id}.*\.xlsx$",
+#             rf"^user_{user_id}_.*\.xlsx$",
+#             rf"^purchase_order_{user_id}.*\.xlsx$",
+#             rf"^forecastpnl_{user_id}.*\.xlsx$",
+#             rf"^inventory_{user_id}.*\.xlsx$",
+#             rf"^forecasts_{user_id}.*\.xlsx$",
+#             rf"^currentinventory_{user_id}.*\.xlsx$",
+#             rf"^inventory_forecast_{user_id}_.*\.xlsx$",
+#         ]
+#         return any(re.match(p, filename) for p in patterns)
 
-        stat = os.stat(file_path)
-        file_info = {
-            'filename': filename,
-            'size': stat.st_size,
-            'last_modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
-        }
+#     # ✅ FIX: your old code had current_app.config.get() without key
+#     upload_dir = current_app.config.get("")
+#     if not upload_dir or not os.path.isdir(upload_dir):
+#         return jsonify({"error": "Uploads directory not found", "upload_dir": upload_dir}), 404
 
-        try:
-            ext = os.path.splitext(filename)[1].lower()
-            
-            if ext in ['.xls', '.xlsx']:
-                df = pd.read_excel(file_path)
-                df_cleaned = df.head(20)
-                file_info['headers'] = list(df_cleaned.columns)
-                file_info['rows'] = json.loads(df_cleaned.to_json(orient='values'))
+#     files_info = []
+#     for filename in os.listdir(upload_dir):
+#         if not is_user_file(filename, user_id):
+#             continue
 
-            elif ext == '.csv':
-                df = pd.read_csv(file_path)
-                df_cleaned = df.head(20)
-                file_info['headers'] = list(df_cleaned.columns)
-                file_info['rows'] = json.loads(df_cleaned.to_json(orient='values'))
+#         file_path = os.path.join(upload_dir, filename)
+#         if not os.path.isfile(file_path):
+#             continue
 
-            elif ext == '.json':
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    file_info['json_preview'] = data if isinstance(data, (dict, list)) else str(data)
+#         stat = os.stat(file_path)
+#         file_info = {
+#             "filename": filename,
+#             "size": stat.st_size,
+#             "last_modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+#         }
 
-            elif ext == '.txt':
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                    file_info['text_preview'] = lines[:20]
+#         try:
+#             ext = os.path.splitext(filename)[1].lower()
+#             if ext in [".xls", ".xlsx"]:
+#                 df = pd.read_excel(file_path).head(20)
+#                 file_info["headers"] = list(df.columns)
+#                 file_info["rows"] = json.loads(df.to_json(orient="values"))
+#             elif ext == ".csv":
+#                 df = pd.read_csv(file_path).head(20)
+#                 file_info["headers"] = list(df.columns)
+#                 file_info["rows"] = json.loads(df.to_json(orient="values"))
+#             elif ext == ".json":
+#                 with open(file_path, "r", encoding="utf-8") as f:
+#                     data = json.load(f)
+#                 file_info["json_preview"] = data if isinstance(data, (dict, list)) else str(data)
+#             elif ext == ".txt":
+#                 with open(file_path, "r", encoding="utf-8") as f:
+#                     file_info["text_preview"] = f.readlines()[:20]
+#             else:
+#                 file_info["note"] = "Unsupported file type or not previewable"
+#         except Exception as e:
+#             file_info["error"] = f"Failed to read file: {str(e)}"
 
-            else:
-                file_info['note'] = 'Unsupported file type or not previewable'
+#         files_info.append(file_info)
 
-        except Exception as e:
-            file_info['error'] = f'Failed to read file: {str(e)}'
+#     return jsonify({
+#         "user_id": user_id,
+#         "total_files": len(files_info),
+#         "files": files_info,
+#     }), 200
 
-        files_info.append(file_info)
-
-    return jsonify({
-        'user_id': user_id,
-        'total_files': len(files_info),
-        'files': files_info,
-    }), 200
 
 
 @superadmin_dashboard_bp.route('/superadmin/dashboard/upload_currency_file', methods=['POST'])

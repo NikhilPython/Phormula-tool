@@ -44,6 +44,35 @@ class CurrencyConversion(db.Model):
     year = Column(Integer, nullable=False)
     conversion_rate = Column(Float, nullable=False)
 
+# ------------------------------------------------- Member Models -------------------------------------------------
+
+class Member(db.Model):
+    __tablename__ = "member"
+    __bind_key__ = "superadmin"   # ✅ correct
+
+    id = Column(Integer, primary_key=True)
+
+    # IMPORTANT: Don't use ForeignKey if 'user' table is in another DB bind
+    owner_user_id = Column(Integer, nullable=False, index=True)
+
+    email = Column(String(150), nullable=False)
+    password = Column(String(500), nullable=False)  # hashed
+
+    is_verified = Column(Boolean, default=False)
+
+    # Permissions
+    marketplace_ids = Column(JSON, nullable=True)  # ["ATVPDKIKX0DER", ...]
+    countries = Column(JSON, nullable=True)        # ["US", "UK"]
+    modules = Column(JSON, nullable=True)          # ["LIVE_DASHBOARD", ...]
+
+    token_name = Column(String(80), unique=True, nullable=False, index=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "email", name="uq_member_owner_email"),
+    )
+
 
 # ------------------------------------------------- User Models -------------------------------------------------
 
