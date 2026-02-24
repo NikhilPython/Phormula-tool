@@ -14,6 +14,7 @@ from calendar import month_name, month_abbr
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAIError
 from app.utils.monthwise_ai_summary_utils import get_or_create_summary, resolve_latest_available_month
+from app.models.user_models import UserObjective
 
 
 
@@ -710,7 +711,7 @@ def analyze_skus():
 
         
 
-        def generate_insight(item, app):
+        def generate_insight(item, app, objective_v2):
             sku = item.get('sku')
             product_name = item.get('product_name', 'this product').strip()
             
@@ -942,7 +943,7 @@ Data:
                             period="monthly",
                             timeline=str(latest_month),   # ✅ FORCE LATEST
                             year=int(latest_year),        # ✅ FORCE LATEST
-                            objective=None,
+                            objective=objective_v2,
                             target_sku=key,
                             force_regenerate=False
                         )
@@ -965,7 +966,9 @@ Data:
                     'recommendation': recommendation,
                     'inventory_recommendation': inventory_recommendation,
                     'key_used': key,
-                    'is_global': is_global
+                    'is_global': is_global,
+                    'objective': objective_v2,
+
                 }
             except OpenAIError as e:
                 # 🔴 CREDIT / BILLING / QUOTA ERROR
@@ -975,7 +978,7 @@ Data:
                     'sku': sku,
                     'product_name': product_name,
                     'insight': (
-                        "AI insights are temporarily unavailable due to account limits. "
+                        "AI insights are temporarily unavailable. "
                         "Please contact us at care@phormula.io."
                     ),
                     'key_used': key,
@@ -1002,9 +1005,35 @@ Data:
         error_count = 0
 
         app = current_app._get_current_object()
+
+        # 🔥 ADD OBJECTIVE BUILD HERE
+        with app.app_context():
+            user_objective_row = UserObjective.query.filter_by(
+                user_id=int(user_id),
+                country=country.lower()
+            ).first()
+
+        if user_objective_row:
+            objective_v2 = {
+                "growth_intent": user_objective_row.growth_intent,
+                "profit_priority": user_objective_row.profit_priority,
+                "inventory_clearance_priority": user_objective_row.inventory_clearance_priority,
+                "business_context": user_objective_row.business_context,
+                "country": country.lower(),
+                "time_horizon": "1_month"
+            }
+        else:
+            objective_v2 = {
+                "growth_intent": "balanced",
+                "profit_priority": "protect_growth",
+                "inventory_clearance_priority": False,
+                "business_context": None,
+                "country": country.lower(),
+                "time_horizon": "1_month"
+            }
         
         with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_sku = {executor.submit(generate_insight, item, app): item
+            future_to_sku = {executor.submit(generate_insight, item, app, objective_v2): item
                 for item in enriched_skus
                     }
             for future in as_completed(future_to_sku):
