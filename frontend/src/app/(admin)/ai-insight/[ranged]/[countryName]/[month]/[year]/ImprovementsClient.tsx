@@ -93,8 +93,28 @@ interface CategorizedGrowth {
 
 interface SkuInsight {
   product_name: string;
-  insight: string;[key: string]: any;
+  insight?: string;
+
+  inventory_recommendation?: string;
+  recommendation?: string;
+
+  objective?: {
+    growth_intent?: string;
+    inventory_clearance_priority?: string;
+    profit_priority?: string;
+  } | string; // fallback if backend still sends string
 }
+
+type ObjectiveObj = {
+  growth_intent?: string;
+  inventory_clearance_priority?: string;
+  profit_priority?: string;
+};
+
+const isObjectiveObj = (v: unknown): v is ObjectiveObj =>
+  !!v && typeof v === "object" && !Array.isArray(v);
+
+
 
 interface ApiResponse {
   comparison_range?: { month2_label: string };
@@ -2261,75 +2281,147 @@ useEffect(() => {
 
 
 
-  // =====================
-  // Save feedback (Summary)
-  // =====================
-  const submitSummaryFeedback = async () => {
-    try {
-      if (!selectedSku) return;
-      if (!fbType) {
-        setError('Please choose 👍 or 👎 before submitting.');
-        return;
-      }
+  const renderSection = (title: string, raw?: string) => {
+  if (!raw) return null;
 
-      setFbSubmitting(true);
-      setError(null);
+  const sentences = raw
+    .split(/(?<=\.)\s+|[\n\r]+/g)     // dot-space OR new lines
+    .map(s => s.replace(/^-+\s*/, "").trim())
+    .filter(Boolean);
 
-      // Current insight
-      const insightData = skuInsights[selectedSku as keyof typeof skuInsights] || getInsightByProductName(selectedSku as string)?.[1];
-      const productName = insightData?.product_name || selectedSku;
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 10 }}>
+        {title}
+      </div>
 
-      // ⬇️ send FULL text; no front-end truncation
-      const fullInsightText = (insightData?.insight || '');
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {sentences.map((sentence, idx) => (
+          <div
+            key={idx}
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              fontSize: 14,
+              lineHeight: 1.6,
+              color: "#374151",
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                marginTop: 7,
+                borderRadius: "50%",
+                backgroundColor: "#9CA3AF",
+                flexShrink: 0,
+              }}
+            />
+            <span>{sentence}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
-      // Find row index for active tab (optional)
-      const currentRows = categorizedGrowth[activeTab] || [];
-      const rowIndex = Math.max(
-        currentRows.findIndex((r) =>
-          (r.sku && r.sku === selectedSku) ||
-          (r.product_name &&
-            r.product_name.toLowerCase().trim() === String(productName).toLowerCase().trim())
-        ),
-        -1
-      );
+const normalizeBullets = (raw?: string) => {
+  if (!raw) return [];
 
-      const payload = {
-        country: countryName,
-        rowIndex: rowIndex === -1 ? 0 : rowIndex,
-        tab: getTabNumberForFeedback(activeTab),
-        type: fbType,             // 'like' | 'dislike'
-        text: fbText || '',
-        productData: {
-          product_name: productName,
-          // backend prefers combined_text; also send raw as fallback
-          combined_text: fullInsightText,
-          raw_ai_response: fullInsightText,
-        },
-      };
+  let parts = raw
+    .split(/\r?\n+/g)
+    .map(s => s.trim())
+    .filter(Boolean);
 
-      await api.post('/row-feedback', payload, {
-        headers: { 'Content-Type': 'application/json' },
-      });
+  if (parts.length <= 1) {
+    parts = raw
+      .split(/(?<=[.!?])\s+/g)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
 
-      setFbSuccess(true);
-      setTimeout(() => setFbSuccess(false), 2500);
-      setFbText('');
-      setFbType(null);
-    } catch (err: any) {
-      console.error('row-feedback error:', err?.response?.data || err.message);
-      setError(
-        err?.response?.data?.error ||
-        err?.response?.data?.message ||
-        'Failed to submit feedback. Please try again.'
-      );
-    } finally {
-      setFbSubmitting(false);
-    }
-  };
+  return parts
+    .map((s) =>
+      s
+        .replace(/^[-•*]+\s*/, "")
+        .replace(/^\d+[\).\]]\s*/, "")
+        .trim()
+    )
+    .filter(Boolean);
+};
 
-  // =====================
-  // Insight renderer (headings + bullets)
-  // =====================
+const renderBullets = (raw?: string) => {
+  const bullets = normalizeBullets(raw);
+  if (!bullets.length) return null;
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+       Product Journey
+      </div>
+
+      <div style={{ border: "1px solid #E5E7EB", borderRadius: 16, padding: 14 }}>
+        <ul
+          style={{
+            margin: 0,
+            paddingLeft: 22,
+            listStyleType: "disc",         // ✅ THIS LINE fixes Tailwind reset
+            listStylePosition: "outside",
+          }}
+        >
+          {bullets.map((b, i) => (
+            <li key={i} style={{ marginBottom: 10, display: "list-item" }}>
+              {b}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+};
+
+
+
+const pill = (label: string, value: any) => {
+  const displayValue = (() => {
+    if (value === null || value === undefined) return "-";
+    if (typeof value === "boolean") return value ? "true" : "false"; // 👈 ye important
+    if (value === "") return "-";
+    return String(value);
+  })();
+
+  return (
+    <div
+      style={{
+        border: "1px solid #E5E7EB",
+        borderRadius: 12,
+        padding: "10px 12px",
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>
+        {displayValue}
+      </div>
+    </div>
+  );
+};
+
+
+const bigBox = (title: string, text?: string) => (
+  <div style={{ marginTop: 14 }}>
+    <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 8 }}>{title}</div>
+    <div style={{ border: "1px solid #E5E7EB", borderRadius: 14, padding: "12px 14px", background: "#fff", color: "#374151", lineHeight: 1.6, fontSize: 14 }}>
+      {text || "--"}
+    </div>
+  </div>
+);
+
+
+
 
 
   useEffect(() => {
@@ -3352,6 +3444,10 @@ const renderFormattedInsight = (raw: string) => {
 
         if (!insightData) return null;
 
+        const objectiveObj = isObjectiveObj(insightData.objective)
+  ? insightData.objective
+  : undefined;
+
         return (
           <Drawer
             anchor="right"
@@ -3424,7 +3520,31 @@ const renderFormattedInsight = (raw: string) => {
                   paddingRight: 4,
                 }}
               >
-                {renderFormattedInsight(insightData.insight)}
+
+<div style={{ flex: 1, overflowY: "auto", marginTop: 8, paddingRight: 4 }}>
+  <div style={{ marginTop: 4 }}>
+    <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 10 }}>
+      Objective
+    </div>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+        gap: 12,
+      }}
+    >
+      {pill("Growth Intent", objectiveObj?.growth_intent)}
+{pill("Inventory Clearance Priority", objectiveObj?.inventory_clearance_priority)}
+{pill("Profit Priority", objectiveObj?.profit_priority)}
+    </div>
+  </div>
+    {renderBullets(insightData.insight)}
+    {bigBox("Recommendation", insightData.recommendation)}
+    {bigBox("Inventory Recommendation", insightData.inventory_recommendation)} 
+</div>
+
+
               </div>
             </div>
           </Drawer>

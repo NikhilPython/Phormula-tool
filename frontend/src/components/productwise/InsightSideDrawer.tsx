@@ -10,11 +10,29 @@ import PageBreadcrumb from '../common/PageBreadCrumb';
 // =========================
 // Types (same as your page)
 // =========================
+export interface BestPerfItem {
+  month: string;
+  value: number;
+}
+
+export interface BestPerformance {
+  sales?: BestPerfItem;
+  units?: BestPerfItem;
+  profit?: BestPerfItem;
+}
+
 export interface SkuInsight {
   product_name: string;
   insight: string;
+
+  inventory_recommendation?: string;
+  objective?: Record<string, any> | null;
+  recommendation?: string;
+  best_performance?: BestPerformance;
+
   [key: string]: any;
 }
+
 
 export interface InsightSideDrawerProps {
   open: boolean;
@@ -23,7 +41,7 @@ export interface InsightSideDrawerProps {
   skuInsights: Record<string, SkuInsight>;
 
   /** Your existing lookup (exact + global partial fallback etc.) */
-  getInsightByProductName: (productName: string) => [string, SkuInsight] | null;
+  getInsightByProductName?: (productName: string) => [string, SkuInsight] | null;
 
   onClose: () => void;
 
@@ -340,8 +358,9 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
   if (!open || !selectedSku) return null;
 
   const insightData =
-    skuInsights[selectedSku as keyof typeof skuInsights] ||
-    getInsightByProductName(selectedSku)?.[1];
+  skuInsights[selectedSku as keyof typeof skuInsights] ||
+  getInsightByProductName?.(selectedSku)?.[1];
+
 
   if (!insightData) return null;
 
@@ -390,27 +409,178 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
 
 
         {/* Insight */}
-        <div style={{ flex: 1, overflowY: 'auto', marginTop: 8, paddingRight: 4 }}>
+<div style={{ flex: 1, overflowY: 'auto', marginTop: 8, paddingRight: 4 }}>
   <div
     style={{
       background: "#F9FAFB",
       border: "1px solid #E5E7EB",
       borderRadius: 16,
       padding: 16,
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
     }}
   >
-    {renderFormattedInsight(insightData.insight, {
-      enable: enableFeedback,
-      fbType,
-      setFbType,
-      fbText,
-      setFbText,
-      fbSubmitting,
-      fbSuccess,
-      onSubmit: onSubmitFeedback,
-    })}
+    {/* ✅ Best Performance */}
+    {insightData.best_performance && (
+      <div>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: "#111827" }}>
+          Best Performance
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+          <div style={{ border: "1px solid #E5E7EB", borderRadius: 14, padding: 12, background: "#fff" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>Sales</div>
+            <div style={{ fontSize: 12, color: "#6B7280" }}>{insightData.best_performance.sales?.month || "-"}</div>
+            <div style={{ marginTop: 6, fontWeight: 800, color: "#111827" }}>
+              {insightData.best_performance.sales?.value?.toLocaleString?.() ?? "-"}
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid #E5E7EB", borderRadius: 14, padding: 12, background: "#fff" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>Units</div>
+            <div style={{ fontSize: 12, color: "#6B7280" }}>{insightData.best_performance.units?.month || "-"}</div>
+            <div style={{ marginTop: 6, fontWeight: 800, color: "#111827" }}>
+              {insightData.best_performance.units?.value?.toLocaleString?.() ?? "-"}
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid #E5E7EB", borderRadius: 14, padding: 12, background: "#fff" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>Profit</div>
+            <div style={{ fontSize: 12, color: "#6B7280" }}>{insightData.best_performance.profit?.month || "-"}</div>
+            <div style={{ marginTop: 6, fontWeight: 800, color: "#111827" }}>
+              {insightData.best_performance.profit?.value?.toLocaleString?.() ?? "-"}
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    
+{/* ✅ Objective (Styled UI version) */}
+{insightData.objective && (
+  <div>
+    <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: "#111827" }}>
+      Objective
+    </div>
+
+    <div
+       className='flex  justify-between gap-4 w-full'
+    >
+      {/* Growth Intent */}
+      {insightData.objective.growth_intent && (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #E5E7EB",
+            borderRadius: 12,
+            padding: 12,
+            width: "100%",
+          }}
+        >
+          <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>
+            Growth Intent
+          </div>
+          <div style={{ fontWeight: 600, color: "#111827" }}>
+            {insightData.objective.growth_intent}
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Clearance Priority */}
+      {typeof insightData.objective.inventory_clearance_priority !== "undefined" && (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #E5E7EB",
+            borderRadius: 12,
+            padding: 12,
+            width: "100%",
+          }}
+        >
+          <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>
+            Inventory Clearance Priority
+          </div>
+          <div style={{ fontWeight: 600, color: "#111827" }}>
+            {insightData.objective.inventory_clearance_priority ? "High Priority" : "No"}
+          </div>
+        </div>
+      )}
+
+      {/* Profit Priority */}
+      {insightData.objective.profit_priority && (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #E5E7EB",
+            borderRadius: 12,
+            padding: 12,
+            width: "100%",
+          }}
+        >
+          <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>
+            Profit Priority
+          </div>
+          <div style={{ fontWeight: 600, color: "#111827" }}>
+            {insightData.objective.profit_priority}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+ <div>
+  <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: "#111827" }}>
+         Product Journey
+        </div>
+      {renderFormattedInsight(insightData.insight, {
+        enable: enableFeedback,
+        fbType,
+        setFbType,
+        fbText,
+        setFbText,
+        fbSubmitting,
+        fbSuccess,
+        onSubmit: onSubmitFeedback,
+      })}
+    </div>
+
+        {/* ✅ Recommendation */}
+    {!!insightData.recommendation && (
+      <div>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6, color: "#111827" }}>
+          Recommendation
+        </div>
+        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 12 }}>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "#374151" }}>
+            {insightData.recommendation}
+          </p>
+        </div>
+      </div>
+    )}
+
+    {/* ✅ Inventory Recommendation */}
+    {!!insightData.inventory_recommendation && (
+      <div>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6, color: "#111827" }}>
+          Inventory Recommendation
+        </div>
+        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 12 }}>
+          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "#374151" }}>
+            {insightData.inventory_recommendation}
+          </p>
+        </div>
+      </div>
+    )}
+
+
+
+    {/* ✅ Existing AI Insight (bullets) */}
+   
   </div>
 </div>
+
 
       </div>
     </Drawer>

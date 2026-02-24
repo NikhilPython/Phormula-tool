@@ -129,6 +129,30 @@ const buildInsightsCacheKey = (
   country: string
 ) => `productwise_insights:${country}:${identifier.toLowerCase()}`;
 
+type BestPerfItem = { month: string; value: number };
+type BestPerformance = { sales?: BestPerfItem; units?: BestPerfItem; profit?: BestPerfItem };
+
+const computeBestPerformance = (monthly: MonthDatum[] = []): BestPerformance | undefined => {
+  if (!monthly.length) return undefined;
+
+  const bestSales = monthly.reduce((best, m) => (m.net_sales > best.net_sales ? m : best), monthly[0]);
+  const bestUnits = monthly.reduce((best, m) => (m.quantity > best.quantity ? m : best), monthly[0]);
+  const bestProfit = monthly.reduce((best, m) => (m.profit > best.profit ? m : best), monthly[0]);
+
+  return {
+    sales: { month: bestSales.month, value: bestSales.net_sales },
+    units: { month: bestUnits.month, value: bestUnits.quantity },
+    profit: { month: bestProfit.month, value: bestProfit.profit },
+  };
+};
+
+const findCountryKeyFor = (sourceData: Record<string, any>, target: string) => {
+  const t = target.toLowerCase();
+  const keys = Object.keys(sourceData || {});
+  return keys.find((k) => normalizeCountryKey(k) === t) || null;
+};
+
+
 const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   productname: propProductName,
 }) => {
@@ -158,9 +182,21 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const [insightsError, setInsightsError] = useState<string | null>(null);
 
   const [selectedSku, setSelectedSku] = useState<string | null>(null);
-  const [skuInsights, setSkuInsights] = useState<
-    Record<string, { product_name: string; insight: string }>
-  >({});
+ type BestPerfItem = { month: string; value: number };
+type BestPerformance = { sales?: BestPerfItem; units?: BestPerfItem; profit?: BestPerfItem };
+
+type SkuInsightExtended = {
+  product_name: string;
+  insight: string;
+
+  inventory_recommendation?: string;
+  objective?: Record<string, any> | null;
+  recommendation?: string;
+  best_performance?: BestPerformance;
+};
+
+const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsightExtended>>({});
+
 
   const handleViewBusinessInsights = async () => {
     const { key: identifier, isSku } = resolveProductKey(productname, selectedSku);
@@ -179,18 +215,20 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         try {
-          const parsed = JSON.parse(cached) as {
-            product_name: string;
-            insight: string;
-            cachedAt: number;
-          };
+         const parsed = JSON.parse(cached) as (SkuInsightExtended & { cachedAt: number });
 
-          setSkuInsights({
+
+         setSkuInsights({
             [identifier]: {
-              product_name: parsed.product_name,
-              insight: parsed.insight,
-            },
-          });
+            product_name: parsed.product_name,
+             insight: parsed.insight,
+            inventory_recommendation: parsed.inventory_recommendation,
+            objective: parsed.objective ?? null,
+            recommendation: parsed.recommendation,
+            best_performance: parsed.best_performance,
+  },
+});
+
           setSelectedSku(identifier);
           setInsightsLoading(false);
           return;
@@ -229,26 +267,59 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         throw new Error(json?.error || `HTTP ${res.status}`);
       }
 
-      const returnedName = json.product_name || identifier;
-      const insightText = json.ai_insights || "";
+const returnedName = json.product_name || identifier;
+const insightText = json.ai_insights || "";
 
-      setSkuInsights({
-        [identifier]: {
-          product_name: returnedName,
-          insight: insightText,
-        },
-      });
+// NEW fields from API
+const inventoryRec = json.inventory_recommendation || "";
+const objective = json.objective ?? null;
+const recommendation = json.recommendation || "";
+
+// Best performance from already fetched ProductwisePerformance data
+let bestPerformance: any = undefined;
+const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
+
+if (sourceData) {
+  const key =
+    countryForApi === "global"
+      ? globalKey
+      : (findCountryKeyFor(sourceData as any, countryForApi) as any);
+
+  const monthly: MonthDatum[] = key ? (sourceData as any)[key] : [];
+  bestPerformance = computeBestPerformance(Array.isArray(monthly) ? monthly : []);
+}
+
+setSkuInsights({
+  [identifier]: {
+    product_name: returnedName,
+    insight: insightText,
+
+    // NEW
+    inventory_recommendation: inventoryRec,
+    objective,
+    recommendation,
+    best_performance: bestPerformance,
+  },
+});
+
       setSelectedSku(identifier);
 
       // 4️⃣ Save cache
-      localStorage.setItem(
-        cacheKey,
-        JSON.stringify({
-          product_name: returnedName,
-          insight: insightText,
-          cachedAt: Date.now(),
-        })
-      );
+     localStorage.setItem(
+  cacheKey,
+  JSON.stringify({
+    product_name: returnedName,
+    insight: insightText,
+
+    inventory_recommendation: inventoryRec,
+    objective,
+    recommendation,
+    best_performance: bestPerformance,
+
+    cachedAt: Date.now(),
+  })
+);
+
     } catch (e: any) {
       console.error("Growth AI Error:", e);
       setInsightsError(e?.message || "Failed to load insights");
@@ -1069,9 +1140,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             selectedSku={selectedSku}
             skuInsights={skuInsights}
             onClose={() => setIsDrawerOpen(false)}
-            enableFeedback={false} getInsightByProductName={function (productName: string): [string, SkuInsight] | null {
-              throw new Error("Function not implemented.");
-            }} />
+            enableFeedback={false} 
+             />
 
           {isDrawerOpen && insightsError && (
             <div className="fixed right-6 top-16 z-[9999] rounded bg-red-50 px-3 py-2 shadow text-sm text-red-700">

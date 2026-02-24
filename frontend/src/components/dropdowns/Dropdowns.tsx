@@ -113,10 +113,15 @@ type RecommendationsMap = Record<
   {
     journey_summary?: string[];
     recommendation?: string;
+
+    // ✅ ADD THESE (new API fields)
+    inventory_recommendation?: string;
+    ads_recommendation?: string;
   }
 > & {
   remaining_skus_recommendation?: string;
 };
+
 
 type AiSummaryResponse = {
   summary?: string | null;
@@ -167,6 +172,14 @@ type ComparisonItem = {
   value?: number;
   diffPct?: number | null;
 };
+
+const normalizeKey = (s: string) =>
+  (s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^\w\s-]/g, "");
+
 
 const monthIndexMap: Record<string, number> = {
   january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
@@ -313,13 +326,13 @@ const monthNameToNumber = (m: string): string => {
 };
 
 type ProductInsightBlock = {
-  name: string;
+  name: string;         // display name (product name)
+  skuKey?: string;      // ✅ lookup key for recommendations (SKU)
   metrics: { label: string; value: string; color?: string }[];
-
-  // ✅ separate sections
   journeyBullets: string[];
   recommendationBullets: string[];
 };
+
 
 
 const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
@@ -362,7 +375,29 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
 
     if (isProductHeader) {
       pushCurrent();
-      current = { name: line, metrics: [], journeyBullets: [], recommendationBullets: [] };
+      if (isProductHeader) {
+  pushCurrent();
+
+  const skuFromParen = line.match(/\(([A-Z0-9-]+)\)/i)?.[1]?.trim();
+  const skuFromPrefix = line.match(/^([A-Z0-9-]+)\s*[-–]\s*/i)?.[1]?.trim();
+
+  const cleanName = line
+    .replace(/\([A-Z0-9-]+\)/i, "")          // remove (SKU)
+    .replace(/^([A-Z0-9-]+)\s*[-–]\s*/i, "") // remove "SKU - "
+    .trim();
+
+  current = {
+    name: cleanName || line,
+    skuKey: skuFromParen || skuFromPrefix,   // ✅ IMPORTANT
+    metrics: [],
+    journeyBullets: [],
+    recommendationBullets: [],
+  };
+
+  inJourney = false;
+  continue;
+}
+
       inJourney = false;
       continue;
     }
@@ -504,13 +539,36 @@ const extractRecoAndInventoryBullets = (
   };
 };
 
+const toBullets = (text?: string) => {
+  if (!text) return [];
+  const t = text.trim();
+
+  // if already multiline / bullets
+  if (t.includes("\n")) {
+    return t
+      .split("\n")
+      .map((x) => x.replace(/^[-•]\s+/, "").trim())
+      .filter(Boolean);
+  }
+
+  // otherwise split by sentences
+  return t
+    .split(/(?:\.\s+|;\s+|\s\|\s)/g)
+    .map((x) => x.trim())
+    .filter(Boolean);
+};
+
 
 const ProductInsightsSection = ({
   blocks,
   objective,
+  recommendationsMap, // ✅ ADD
+  nameToSkuMap,
 }: {
   blocks: ProductInsightBlock[];
   objective?: ObjectivePayload;
+  recommendationsMap?: RecommendationsMap; // ✅ ADD
+  nameToSkuMap?: Record<string, string>;
 }) => {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   if (!blocks.length) return null;
@@ -529,7 +587,26 @@ const ProductInsightsSection = ({
       <div className="space-y-2">
 
 
-        {blocks.map((b, idx) => (
+       {blocks.map((b, idx) => {
+const skuActions =
+  (recommendationsMap as any)?.sku_actions ??
+  (recommendationsMap as any)?.recommendations ??
+  recommendationsMap ??
+  {};
+
+const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
+const skuKey = b.skuKey || mappedSku;
+
+const recObj =
+  (skuKey && (skuActions as any)[skuKey]) ||
+  (skuActions as any)[b.name] ||
+  (skuActions as any)[b.name.trim()];
+
+
+  const inventoryRecoBullets = toBullets(recObj?.inventory_recommendation);
+
+  return (
+          
           <motion.div
             key={idx}
             initial={{ opacity: 0, y: 20 }}
@@ -572,18 +649,27 @@ const ProductInsightsSection = ({
 
 
             {/* Recommendation */}
-            {b.recommendationBullets.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-                className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2"
-              >
-                <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-                  💡 {b.recommendationBullets.join(" ")}
-                </p>
-              </motion.div>
-            )}
+{b.recommendationBullets.length > 0 && (
+  <motion.div className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2">
+    <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+      💡 {b.recommendationBullets.join(" ")}
+    </p>
+  </motion.div>
+)}
+
+{inventoryRecoBullets.length > 0 && (
+  <div className="bg-amber-50 border-l-2 border-amber-500 rounded-lg p-3">
+    <div className="text-xs font-semibold text-amber-800 mb-1">📦 Inventory Recommendation</div>
+
+    <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-amber-900">
+      {inventoryRecoBullets.map((pt, i) => (
+        <li key={i}>{pt}</li>
+      ))}
+    </ul>
+  </div>
+)}
+
+
 
             {/* Product Journey – Collapsible */}
             {b.journeyBullets.length > 0 && (
@@ -648,7 +734,8 @@ const ProductInsightsSection = ({
             )}
 
           </motion.div>
-        ))}
+        );
+})}
       </div>
     </div>
   );
@@ -669,13 +756,13 @@ type AiSingleInsightCardProps = {
   recommendationBullets: string[];
   skuInsightsBullets: string[];
   inventoryBullets: string[];
-
-  // ✅ ADD THIS
   recommendationsMap?: RecommendationsMap;
   remainingSkusRecommendation?: string;
-
   objective?: ObjectivePayload;
+
+  nameToSkuMap?: Record<string, string>; // ✅ ADD
 };
+
 
 
 const Section = ({
@@ -719,6 +806,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   inventoryBullets,
   remainingSkusRecommendation,   // ✅ ADD
   objective,
+  recommendationsMap, // ✅ ADD
+  nameToSkuMap, // ✅ ADD
 }) => {
   if (loading) {
     return (
@@ -988,6 +1077,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
           <ProductInsightsSection
             blocks={parseProductInsightsBlocks(skuInsightsBullets)}
             objective={objective}
+            recommendationsMap={recommendationsMap} 
+             nameToSkuMap={nameToSkuMap}
           />
 
           {/* ✅ Remaining SKUs Recommendation */}
@@ -1071,6 +1162,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   const [skuRows, setSkuRows] = useState<TableRow[]>([]);
+
+  const nameToSkuMap = useMemo(() => {
+  const map: Record<string, string> = {};
+
+  for (const r of skuRows || []) {
+    const name = normalizeKey(String((r as any).product_name ?? ""));
+    const sku = String((r as any).sku ?? "").trim();
+
+    if (name && sku) map[name] = sku;
+  }
+
+  return map;
+}, [skuRows]);
+
 
 
   const toggleFocus = (which: Exclude<FocusedChart, null>) => {
@@ -2869,6 +2974,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+                 nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
               />
             </div>
           )}
@@ -3077,6 +3183,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+                 nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
               />
             </div>
           )}
@@ -3286,6 +3393,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+                 nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
               />
             </div>
           )}
