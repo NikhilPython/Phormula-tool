@@ -2,23 +2,27 @@ import { create } from "zustand";
 import { v4 as uuid } from "uuid";
 
 export type Message = {
-  id: string                 // ✅ CLIENT ID (uuid)
-  sender: "user" | "bot"
-  text: string
+  id: string; // client id or server history item id
+  sender: "user" | "bot";
+  text: string;
 
   // backend related
-  serverId?: number          // ✅ SERVER ID
-  promptText?: string
+  serverId?: number;
+  promptText?: string;
 
   // ui
-  liked?: "like" | "dislike"
-  error?: boolean
-  timestamp?: number
-}
+  liked?: "like" | "dislike";
+  error?: boolean;
+  timestamp?: number; // epoch ms
+};
+
 type ChatStore = {
   messages: Message[];
   loading: boolean;
-  loadFromStorage: () => void;
+
+  // ✅ async now (DB se load karega)
+  loadFromStorage: () => Promise<void>;
+
   sendMessage: (text: string) => Promise<void>;
   clearChat: () => void;
   reactToMessage: (id: string, reaction: Message["liked"]) => void;
@@ -29,7 +33,7 @@ type ChatStore = {
   ) => Promise<void>;
 };
 
-const DEFAULT_BOT_MESSAGE = {
+const DEFAULT_BOT_MESSAGE: Message = {
   id: "welcome-message",
   sender: "bot",
   text: "Hey! 👋 I can help you analyze Amazon sales, fees, taxes, profit, and trends. What would you like to explore?",
@@ -40,55 +44,97 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
 const getAuthToken = () =>
-  typeof window !== "undefined"
-    ? localStorage.getItem("jwtToken")
-    : null;
+  typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+// ✅ backend history fetcher (uses your existing API)
+const fetchHistoryFromDB = async (): Promise<Message[] | null> => {
+  const token = getAuthToken();
+  if (!token) return null;
+
+  try {
+    const res = await fetch(
+      `${API_BASE_URL.replace(/\/$/, "")}/chatbot/history?limit=500&offset=0`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.success || !Array.isArray(data?.items)) return null;
+
+    const items: Message[] = data.items.map((m: any) => ({
+      id: String(m.id), // backend returns "12-u" / "12-b"
+      sender: m.sender,
+      text: m.text,
+      timestamp: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
+    }));
+
+    return items.length ? items : null;
+  } catch {
+    return null;
+  }
+};
 
 export const useChatbotStore = create<ChatStore>((set, get) => ({
   messages: [],
   loading: false,
 
-  
+  // ✅ DB -> local fallback -> default
+  loadFromStorage: async () => {
+    // agar pehle se messages loaded hain → kuch mat karo
+    if (get().messages.length > 0) return;
 
-  loadFromStorage: () => {
-  const saved = localStorage.getItem("chatbot_history");
+    // 1) Try DB history first
+    const dbMsgs = await fetchHistoryFromDB();
+    if (dbMsgs && dbMsgs.length > 0) {
+      set({ messages: dbMsgs });
+      if (typeof window !== "undefined") {
+        localStorage.setItem("chatbot_history", JSON.stringify(dbMsgs));
+      }
+      return;
+    }
 
-  // agar pehle se messages loaded hain → kuch mat karo
-  set((state) => {
-    if (state.messages.length > 0) return state;
+    // 2) fallback localStorage
+    const saved =
+      typeof window !== "undefined"
+        ? localStorage.getItem("chatbot_history")
+        : null;
 
-    // Case 1: localStorage me data hai
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return { messages: parsed };
+          set({ messages: parsed });
+          return;
         }
       } catch {
-        // ignore parse error
+        // ignore
       }
     }
 
-    // Case 2: first time / empty / no storage
-    return { messages: [DEFAULT_BOT_MESSAGE] };
-  });
-},
-
+    // 3) default welcome
+    set({ messages: [DEFAULT_BOT_MESSAGE] });
+  },
 
   sendMessage: async (text) => {
     if (!text.trim()) return;
 
     const userMsg: Message = {
-  id: uuid(),
-  sender: "user",
-  text,
-  timestamp: Date.now(),
-};
+      id: uuid(),
+      sender: "user",
+      text,
+      timestamp: Date.now(),
+    };
 
-    set((s) => ({
-      messages: [...s.messages, userMsg],
-      loading: true,
-    }));
+    // ✅ add user msg + sync local
+    set((s) => {
+      const updated = [...s.messages, userMsg];
+      if (typeof window !== "undefined") {
+        localStorage.setItem("chatbot_history", JSON.stringify(updated));
+      }
+      return { messages: updated, loading: true };
+    });
 
     try {
       const res = await fetch(`${API_BASE_URL}/chatbot`, {
@@ -106,30 +152,34 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
       const data = await res.json();
 
       const botMsg: Message = {
-  id: uuid(),
-  sender: "bot",
-  text: data?.response || "No response",
-  timestamp: Date.now(),
-  
-};
+        id: uuid(),
+        sender: "bot",
+        text: data?.response || "No response",
+        timestamp: Date.now(),
+        // (optional) agar backend return karta ho
+        serverId: data?.message_id,
+        promptText: data?.original_prompt,
+      };
 
-      set((s) => ({
-        messages: [...s.messages, botMsg],
-        loading: false,
-      }));
-
-      localStorage.setItem(
-        "chatbot_history",
-        JSON.stringify([...get().messages, botMsg])
-      );
+      // ✅ add bot msg + sync local (no stale get().messages)
+      set((s) => {
+        const updated = [...s.messages, botMsg];
+        if (typeof window !== "undefined") {
+          localStorage.setItem("chatbot_history", JSON.stringify(updated));
+        }
+        return { messages: updated, loading: false };
+      });
     } catch {
       set({ loading: false });
     }
   },
 
   clearChat: () => {
-    localStorage.removeItem("chatbot_history");
-    set({ messages: [] });
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("chatbot_history");
+    }
+    // ✅ keep welcome instead of empty (optional but better UX)
+    set({ messages: [DEFAULT_BOT_MESSAGE] });
   },
 
   reactToMessage: (id, reaction) => {
@@ -137,7 +187,6 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
       const updated = s.messages.map((m) =>
         m.id === id ? { ...m, liked: reaction } : m
       );
-      // keep storage in sync for both page + window
       if (typeof window !== "undefined") {
         localStorage.setItem("chatbot_history", JSON.stringify(updated));
       }
@@ -164,7 +213,7 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
         }),
       });
     } catch {
-      // ignore (UI should still feel responsive)
+      // ignore
     }
   },
 }));
