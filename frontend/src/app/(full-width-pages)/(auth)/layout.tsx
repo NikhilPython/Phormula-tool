@@ -27,7 +27,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           </Link>
 
           {/* Centered content */}
-          <div className="flex flex-col 2xl:gap-12 gap-10 mt-4 2xl:mt-10">
+          <div className="flex flex-col 2xl:gap-12 gap-10 mt-4 2xl:mt-8 min-[1700px]:mt-10">
             {/* Heading */}
             <h1 className="text-[#414042] text-xl sm:text-xl lg:text-[42px] xl:text-5xl 2xl:text-6xl font-medium leading-tight text-right xl:pr-10">
               <span className="xl:text-nowrap">Trusted Finance Partner </span>
@@ -42,7 +42,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
                 alt="Trusted Finance partner for D2C Entrepreneur"
                 width={700}
                 height={500}
-                className="object-contain 2xl:w-[800px] 2xl:h-[600px] xl:w-[500px] w-[400px]"
+                className="object-contain min-[1700px]-w-[800px] min-[1700px]-h-[600px] 2xl:w-[650px] xl:w-[500px] w-[400px]"
                 priority
               />
             </div>
@@ -88,7 +88,7 @@ if (
                 alt="Performance Analysis dashboard"
                  width={700}
                 height={500}
-                className="object-contain 2xl:w-[800px] 2xl:h-[600px] xl:w-[450px] w-[400px]"
+                className="object-contain min-[1700px]-w-[800px]  min-[1700px]-h-[600px] 2xl:w-[600px]  xl:w-[450px] w-[400px]"
                 priority
               />
             </div>
