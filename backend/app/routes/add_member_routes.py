@@ -126,7 +126,7 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
     )
 
     # ✅ Update to your real frontend URL
-    login_url = "http://localhost:3000/member-login"
+    login_url = "http://localhost:3000/signin"
 
     countries_str = ", ".join(countries) if countries else "-"
     marketplaces_str = ", ".join(marketplaces) if marketplaces else "-"
