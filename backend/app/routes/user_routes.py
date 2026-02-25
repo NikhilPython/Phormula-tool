@@ -456,7 +456,7 @@ def get_user_data():
     token = auth_header.split(' ')[1]
 
     try:
-        payload, user_id, member_id = get_effective_user_id_from_token(token)  # ✅ always OWNER id
+        payload, user_id, member_id = get_effective_user_id_from_token(token) 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

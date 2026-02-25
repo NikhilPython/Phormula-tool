@@ -23,7 +23,7 @@ from sqlalchemy import Column, Float, Integer, MetaData, String, Table, create_e
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import inspect as sa_inspect  # IMPORTANT: sqlalchemy inspect
-
+from app.utils.token_utils import get_effective_user_id_from_token
 from config import Config
 from app import db
 from app.models.user_models import Category, CountryProfile, Fee
@@ -832,7 +832,7 @@ def fees_sync():
 
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
     except jwt.ExpiredSignatureError:
         return jsonify({"success": False, "error": "Token has expired"}), 401
@@ -914,7 +914,7 @@ def list_fees():
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            payload, user_id, member_id = get_effective_user_id_from_token(token)
             user_id = payload.get("user_id")
         except Exception:
             pass
@@ -977,7 +977,7 @@ def fees_sync_and_upload():
 
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
     except jwt.ExpiredSignatureError:
         return jsonify({"success": False, "error": "Token has expired"}), 401

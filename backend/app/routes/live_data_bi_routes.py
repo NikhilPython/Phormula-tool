@@ -15,6 +15,7 @@ from app.utils.live_bi_utils import (build_inventory_signals, build_movement_con
                                      compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
+from app.utils.token_utils import get_effective_user_id_from_token
 
 
 # -----------------------------------------------------------------------------
@@ -239,7 +240,7 @@ def live_mtd_vs_previous():
     token = auth_header.split(" ")[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
         if not user_id:
             return jsonify({"error": "Invalid token payload: user_id missing"}), 401

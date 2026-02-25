@@ -87,7 +87,7 @@ def productwise_performance():
 
         token = auth_header.split(' ')[1]
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            payload, user_id, member_id = get_effective_user_id_from_token(token)
             user_id = str(payload.get('user_id'))
         except jwt.ExpiredSignatureError:
             return jsonify({'error': 'Token expired'}), 401
@@ -507,7 +507,7 @@ def productwise_growth_ai():
             return jsonify({'error': 'Unauthorized'}), 401
 
         token = auth_header.split(' ')[1]
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = str(payload['user_id'])
 
         data = request.get_json()

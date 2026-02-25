@@ -18,6 +18,7 @@ import datetime as dt
 import jwt
 from app import db
 from app.models.user_models import ChatHistory
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.chatbot_utils import generate_openai_answer, PENDING, parse_top_k, parse_country,parse_country_strict, parse_time_expr_or_none, slots_missing_for,  make_ask_prompt
 from app.utils.chatbot_utils import plan_query, product_candidates, choose_best_candidate, route_intent, generate_general_answer,first_seen_by_sku, overview_metrics_for_period
 from app.utils.chatbot_utils import _ym_to_span,_last_full_month_today,_normalize_plan_for_sku_language,infer_group_by, df_to_records_safe,_json_sanitize,_finalize_records,BusinessAdvisor
@@ -185,7 +186,7 @@ def _decode_jwt_or_401(auth_header: Optional[str]) -> Tuple[Optional[int], Optio
         return None, "Authorization token is missing or invalid"
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         return int(payload["user_id"]), None
     except jwt.ExpiredSignatureError:
         return None, "Token has expired"

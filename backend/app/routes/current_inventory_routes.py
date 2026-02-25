@@ -17,6 +17,7 @@ from datetime import datetime
 from calendar import monthrange
 from sqlalchemy.exc import ProgrammingError
 from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
+from app.utils.token_utils import get_effective_user_id_from_token
 
 # ===== Setup =====
 SECRET_KEY = Config.SECRET_KEY
@@ -64,7 +65,7 @@ def current_inventory():
 
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload["user_id"]
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "Token has expired"}), 401

@@ -6,6 +6,7 @@ from config import Config
 from app import db
 from app.models.user_models import HistoricAISummary, UserObjective
 from app.utils.monthwise_ai_summary_utils import get_or_create_summary
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.history_graph_utils import get_performance_trend
 
 summary_bp = Blueprint("summary_bp", __name__)
@@ -120,7 +121,7 @@ def _objective_from_row(row):
 #     token = auth_header.split(" ")[1]
 
 #     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
 #         user_id = payload.get("user_id")
 #         if not user_id:
 #             return jsonify({"error": "Invalid token payload: user_id missing"}), 401
@@ -277,7 +278,7 @@ def summary():
     token = auth_header.split(" ")[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
 
         if not user_id:
@@ -353,7 +354,7 @@ def summary():
 #     token = auth_header.split(" ")[1]
 
 #     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
 #         user_id = payload.get("user_id")
 #         if not user_id:
 #             return jsonify({"error": "Invalid token payload"}), 401
@@ -407,7 +408,7 @@ def save_user_objective():
     token = auth_header.split(" ")[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
         if not user_id:
             return jsonify({"error": "Invalid token payload"}), 401

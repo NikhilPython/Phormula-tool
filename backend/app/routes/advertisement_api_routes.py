@@ -9,6 +9,7 @@ import pandas as pd
 from flask import Blueprint, jsonify, request, send_file, Response
 from app import db
 from config import Config
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.models.user_models import amazon_user, amazon_sponsored_products , amazon_sponsored_display_advertised_products
 from app.utils.amazon_ads_utils_reporting import (
     build_ads_lwa_auth_url,
@@ -36,7 +37,7 @@ def _require_jwt_user_id() -> int:
         raise PermissionError("Authorization token is missing or invalid")
 
     token = auth_header.split(" ")[1]
-    payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    payload, user_id, member_id = get_effective_user_id_from_token(token)
     return int(payload["user_id"])
 
 
@@ -242,7 +243,7 @@ def ads_status():
 
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload["user_id"]
     except jwt.ExpiredSignatureError:
         return jsonify({"success": False, "error": "Token has expired"}), 401

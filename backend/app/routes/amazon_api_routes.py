@@ -282,7 +282,7 @@ def list_skus():
 
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "Token has expired"}), 401
@@ -424,7 +424,7 @@ def finances_monthly_transactions():
 
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload["user_id"]
     except jwt.ExpiredSignatureError:
         return jsonify({"success": False, "error": "Token has expired"}), 401
@@ -712,7 +712,7 @@ def _country_to_sku_col(country: str) -> str:
 
 #     token = auth_header.split(" ")[1]
 #     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
 #         user_id = int(payload["user_id"])
 #     except jwt.ExpiredSignatureError:
 #         return jsonify({"success": False, "error": "Token has expired"}), 401
@@ -1389,7 +1389,7 @@ def finances_mtd_transactions():
 
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = int(payload["user_id"])
     except jwt.ExpiredSignatureError:
         return jsonify({"success": False, "error": "Token has expired"}), 401

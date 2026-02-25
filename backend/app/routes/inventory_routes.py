@@ -612,7 +612,7 @@ def inventory_all():
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            payload, user_id, member_id = get_effective_user_id_from_token(token)
             user_id = payload.get("user_id")
         except jwt.ExpiredSignatureError:
             return jsonify({"error": "Token has expired"}), 401
@@ -944,7 +944,7 @@ def sync_inventory_aged():
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            payload, user_id, member_id = get_effective_user_id_from_token(token)
             user_id = payload.get("user_id")
         except jwt.ExpiredSignatureError:
             return jsonify({"error": "Token has expired"}), 401
@@ -1118,7 +1118,7 @@ def get_inventory_aged_selected_columns():
 
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "Token has expired"}), 401
@@ -1586,7 +1586,7 @@ def inventory_ledger_summary():
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+            payload, user_id, member_id = get_effective_user_id_from_token(token)
             user_id = payload.get("user_id")
         except jwt.ExpiredSignatureError:
             return jsonify({"error": "Token has expired"}), 401
@@ -2135,7 +2135,7 @@ def _get_user_id_from_bearer() -> int | None:
         return None
     token = auth_header.split(" ")[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         return payload.get("user_id")
     except Exception:
         return None
