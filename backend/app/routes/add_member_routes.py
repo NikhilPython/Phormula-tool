@@ -65,8 +65,9 @@ def _error(message: str, status: int = 400, **extra):
 
 def _get_owner_user_id_from_token():
     """
-    Expects main user's token in Authorization: Bearer <token>
+    Expects OWNER user's token in Authorization: Bearer <token>
     Token must contain user_id.
+    Blocks member tokens (is_member == True).
     """
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -80,9 +81,15 @@ def _get_owner_user_id_from_token():
             algorithms=["HS256"],
             options={"require": ["exp"]},
         )
+
+        # ✅ Prevent members from adding members
+        if payload.get("is_member") is True:
+            return None, _error("Members are not allowed to add other members", 403)
+
         user_id = payload.get("user_id")
         if not user_id:
             return None, _error("Invalid token: missing user_id", 401)
+
         return int(user_id), None
 
     except jwt.ExpiredSignatureError:
@@ -115,7 +122,7 @@ def _validate_modules(modules):
 # Email
 # ==========================================================
 
-def send_member_invite_email(email, password, token_name, countries, marketplaces, modules, role):
+def send_member_invite_email(member_name, email, password, token_name, countries, marketplaces, modules, role):
     """
     Invite email with role + access summary.
     """
@@ -130,7 +137,6 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
 
     countries_str = ", ".join(countries) if countries else "-"
     marketplaces_str = ", ".join(marketplaces) if marketplaces else "-"
-    modules_str = ", ".join(modules) if modules else "-"
     role_str = role or "-"
 
     module_labels = {
@@ -142,6 +148,7 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
     modules_pretty = ", ".join([module_labels.get(m, m) for m in modules]) if modules else "-"
 
     year = datetime.utcnow().year
+    greet = f"Welcome, {member_name}!" if member_name else "Welcome!"
 
     msg.html = f"""
 <!DOCTYPE html>
@@ -167,7 +174,7 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
       </div>
 
       <div style="padding:24px;">
-        <h2 style="margin:0 0 12px; color:#101828; font-size:20px;">Welcome!</h2>
+        <h2 style="margin:0 0 12px; color:#101828; font-size:20px;">{greet}</h2>
         <p style="margin:0 0 14px; color:#475467; font-size:14px; line-height:1.6;">
           An administrator has added you as a <b>Member</b> in Phormula. Below are your login details and the access you’ve been granted.
         </p>
@@ -266,9 +273,10 @@ def add_member():
 
     Body:
     {
+      "member_name": "John Analyst",
       "email": "analyst@skinelements.com",
       "password": "Test1234",
-      "role": "MARKETING",  # ✅ NEW (MARKETING / ACCOUNTED / INVENTORY)
+      "role": "MARKETING",
       "marketplaces": ["ATVPDKIKX0DER","A1F83G8C2ARO7P"],
       "modules": ["LIVE_DASHBOARD","INVENTORY_PLANNING"]
     }
@@ -280,19 +288,20 @@ def add_member():
 
         data = request.get_json(silent=True) or {}
 
+        member_name = (data.get("member_name") or "").strip()  # ✅ NEW
         email = (data.get("email") or "").strip().lower()
         password = data.get("password") or ""
 
-        role = _normalize_role(data.get("role")) or DEFAULT_ROLE  # ✅ NEW
+        role = _normalize_role(data.get("role")) or DEFAULT_ROLE
         marketplaces = _normalize_list(data.get("marketplaces"))
         modules = _normalize_list(data.get("modules")) or list(DEFAULT_MODULES)
 
         # ✅ required validation
+        if not member_name:
+            return _error("member_name is required", 400)
+
         if not email or not password or not marketplaces:
-            return _error(
-                "email, password and marketplaces are required",
-                400,
-            )
+            return _error("email, password and marketplaces are required", 400)
 
         if "@" not in email or "." not in email:
             return _error("Invalid email", 400)
@@ -330,14 +339,14 @@ def add_member():
                 allowed_modules=sorted(list(ALLOWED_MODULES)),
             )
 
-        # ✅ token_name: add owner id to reduce collision chance
         token_name = f"m{owner_user_id}_{'_'.join([c.lower() for c in countries])}_{_random_token(10)}"
 
         new_member = Member(
             owner_user_id=owner_user_id,
+            member_name=member_name,  # ✅ NEW
             email=email,
             password=generate_password_hash(password),
-            role=role,  # ✅ NEW
+            role=role,
             marketplace_ids=marketplaces,
             countries=countries,
             modules=modules,
@@ -348,31 +357,38 @@ def add_member():
         db.session.add(new_member)
         db.session.commit()
 
-        # ✅ email sending should not break creation
         email_sent = False
         email_message = ""
         try:
-            send_member_invite_email(email, password, token_name, countries, marketplaces, modules, role)
+            send_member_invite_email(
+                member_name,
+                email,
+                password,
+                token_name,
+                countries,
+                marketplaces,
+                modules,
+                role,
+            )
             email_sent = True
             email_message = "Invitation email sent successfully."
         except Exception as e:
             email_message = f"Member created but invite email failed: {str(e)}"
 
-        return jsonify(
-            {
-                "message": "Member added successfully",
-                "member_id": new_member.id,
-                "owner_user_id": owner_user_id,
-                "email": email,
-                "role": role,  # ✅ NEW
-                "countries": countries,
-                "marketplaces": marketplaces,
-                "modules": modules,
-                "token_name": token_name,
-                "email_sent": email_sent,
-                "email_message": email_message,
-            }
-        ), 201
+        return jsonify({
+            "message": "Member added successfully",
+            "member_id": int(new_member.id),
+            "owner_user_id": int(owner_user_id),
+            "member_name": member_name,
+            "email": email,
+            "role": role,
+            "countries": countries,
+            "marketplaces": marketplaces,
+            "modules": modules,
+            "token_name": token_name,
+            "email_sent": email_sent,
+            "email_message": email_message,
+        }), 201
 
     except IntegrityError:
         db.session.rollback()

@@ -52,6 +52,8 @@ class Member(db.Model):
 
     id = Column(Integer, primary_key=True)
     owner_user_id = Column(Integer, nullable=False, index=True)
+    member_name = Column(String(150), nullable=True)  # ✅ NEW
+
 
     email = Column(String(150), nullable=False)
     password = Column(String(500), nullable=False)

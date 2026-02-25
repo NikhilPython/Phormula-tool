@@ -79,7 +79,7 @@ def amazon_login():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -208,7 +208,7 @@ def amazon_status():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'success': False, 'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -388,7 +388,7 @@ def list_amazon_connections():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

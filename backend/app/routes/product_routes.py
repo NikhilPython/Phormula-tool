@@ -128,7 +128,7 @@ def YearlySKU():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -202,7 +202,7 @@ def quarterlyskutable():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -238,7 +238,7 @@ def get_currency_rates():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -329,7 +329,7 @@ def get_asp_data():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -444,7 +444,7 @@ def skup():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -529,7 +529,7 @@ def update_prices():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -641,7 +641,7 @@ def skuprice():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -688,7 +688,7 @@ def get_error_file(country, month, year):
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -719,7 +719,7 @@ def get_consolidated_table_name(country_name):
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -792,7 +792,7 @@ def skutableprofit(skuwise_file_name):
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -854,7 +854,7 @@ def get_table_data(file_name):
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except:
         return jsonify({'error': 'Invalid or expired token'}), 401
 

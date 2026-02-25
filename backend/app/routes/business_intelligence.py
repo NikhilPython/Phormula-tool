@@ -97,7 +97,7 @@ def print_comparison_range():
     token = auth_header.split(' ')[1]
 
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         month1 = request.args.get('month1')
         year1 = request.args.get('year1')
         month2 = request.args.get('month2')
@@ -691,7 +691,7 @@ def analyze_skus():
     token = auth_header.split(' ')[1]
 
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         data = request.get_json()
         enriched_skus = data.get('skus', [])
         month1 = data.get('month1')
@@ -1109,7 +1109,7 @@ def get_available_periods_for_bi():
     token = auth_header.split(' ')[1]
 
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         country = request.args.get('countryName')
         if not country:
             return jsonify({'error': 'Missing required query parameter: countryName'}), 400

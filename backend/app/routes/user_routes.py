@@ -11,7 +11,7 @@ import numpy as np
 from app.utils.data_utils import  create_user_session
 from app.utils.email_utils import send_welcome_and_verification_emails , send_reset_email
 from app import db
-from app.models.user_models import User, CountryProfile, Category , amazon_user
+from app.models.user_models import User, CountryProfile, Category , amazon_user, Member
 import jwt
 import secrets
 import string
@@ -216,20 +216,25 @@ def login():
         return jsonify({'success': False, 'message': 'Email and password are required'}), 400
 
     user = User.query.filter_by(email=email).first()
-
     if not user:
         return jsonify({'success': False, 'message': 'User not found'}), 404
 
     if not user.is_verified:
         return jsonify({'error': 'Your email is not verified. Please verify your email first.'}), 403
 
-    if user and check_password_hash(user.password, password):
+    if check_password_hash(user.password, password):
         session['user_id'] = user.id
         token = generate_token(user.id)
-        return jsonify({'success': True, 'message': 'Valid email and password', 'token': token})
-    else:
-        return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
 
+        return jsonify({
+            'success': True,
+            'message': 'Valid email and password',
+            'token': token,
+            'is_member': False,     # ✅ add
+            'user_id': user.id      # ✅ add
+        }), 200
+
+    return jsonify({'success': False, 'message': 'Invalid email or password'}), 401
 
 
 @user_bp.route('/forgot_password', methods=['POST'])
@@ -380,6 +385,68 @@ def resend_verification_email():
 def _has_token(val):
     return bool(val and str(val).strip())
 
+# @user_bp.route('/get_user_data', methods=['GET'])
+# def get_user_data():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+
+#     user = User.query.filter_by(id=user_id).first()
+#     if not user:
+#         return jsonify({'error': 'User not found'}), 404
+
+#     # ✅ Fetch amazon tokens row (can be None if not connected)
+#     arow = amazon_user.query.filter_by(user_id=user_id).first()
+
+#     spapi_connected = False
+#     ads_connected = False
+
+#     if arow:
+#         spapi_connected = _has_token(arow.refresh_token)
+#         ads_connected = _has_token(arow.amazon_ads_refresh_token)
+
+#     # ✅ Your rule: amazon_user_exists True only if BOTH tokens exist
+#     amazon_user_exists = bool(spapi_connected and ads_connected)
+
+#     # ✅ Save in User table (optional but you asked “add column in User class and fill it”)
+#     user.amazon_user_exists = amazon_user_exists
+#     user.amazon_ads_exists = ads_connected
+
+#     try:
+#         db.session.commit()
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({'error': 'Failed to update amazon flags', 'details': str(e)}), 500
+
+#     return jsonify({
+#         'name': user.name,
+#         'company_name': user.company_name,
+#         'brand_name': user.brand_name,
+#         'email': user.email,
+#         'phone_number': user.phone_number,
+#         'annual_sales_range': user.annual_sales_range,
+#         'password': user.password,
+#         'marketplace_id': user.marketplace_id,
+#         'country': user.country,
+#         'homeCurrency': user.homeCurrency,
+#         'target_sales': float(user.target_sales) if user.target_sales is not None else None,
+#         'tax_id': user.tax_id,
+#         'address': user.address,
+
+#         # ✅ NEW FIELDS returned to frontend
+#         'amazon_user_exists': user.amazon_user_exists,   # both tokens
+#         'amazon_ads_exists': user.amazon_ads_exists,     # ads token only
+#     }), 200
+
+
 @user_bp.route('/get_user_data', methods=['GET'])
 def get_user_data():
     auth_header = request.headers.get('Authorization')
@@ -387,13 +454,29 @@ def get_user_data():
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     token = auth_header.split(' ')[1]
+
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)  # ✅ always OWNER id
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
 
+    # ✅ Identify if member login
+    is_member = payload.get("is_member") is True
+    member_id = payload.get("member_id")  # optional
+
+    member_name = None
+    member_role = None
+
+    # ✅ If member token, load member record (optional but useful)
+    if is_member and member_id:
+        m = Member.query.filter_by(id=int(member_id), owner_user_id=int(user_id)).first()
+        if m:
+            member_name = getattr(m, "member_name", None)
+            member_role = getattr(m, "role", None)
+
+    # ✅ Owner scoped user record
     user = User.query.filter_by(id=user_id).first()
     if not user:
         return jsonify({'error': 'User not found'}), 404
@@ -408,10 +491,9 @@ def get_user_data():
         spapi_connected = _has_token(arow.refresh_token)
         ads_connected = _has_token(arow.amazon_ads_refresh_token)
 
-    # ✅ Your rule: amazon_user_exists True only if BOTH tokens exist
     amazon_user_exists = bool(spapi_connected and ads_connected)
 
-    # ✅ Save in User table (optional but you asked “add column in User class and fill it”)
+    # ✅ Save flags
     user.amazon_user_exists = amazon_user_exists
     user.amazon_ads_exists = ads_connected
 
@@ -422,6 +504,15 @@ def get_user_data():
         return jsonify({'error': 'Failed to update amazon flags', 'details': str(e)}), 500
 
     return jsonify({
+        # ✅ Member/Owner identity info (FE can use)
+        "is_member": is_member,
+        "user_id": int(user_id),                 # ✅ always owner id
+        "owner_user_id": int(user_id),           # ✅ same as user_id (owner scope)
+        "member_id": int(member_id) if member_id else None,
+        "member_name": member_name,
+        "member_role": member_role,
+
+        # ✅ User fields
         'name': user.name,
         'company_name': user.company_name,
         'brand_name': user.brand_name,
@@ -436,9 +527,9 @@ def get_user_data():
         'tax_id': user.tax_id,
         'address': user.address,
 
-        # ✅ NEW FIELDS returned to frontend
-        'amazon_user_exists': user.amazon_user_exists,   # both tokens
-        'amazon_ads_exists': user.amazon_ads_exists,     # ads token only
+        # ✅ Amazon flags
+        'amazon_user_exists': user.amazon_user_exists,
+        'amazon_ads_exists': user.amazon_ads_exists,
     }), 200
 
 
@@ -451,7 +542,7 @@ def get_user_countries():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -479,7 +570,7 @@ def add_sales():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -616,7 +707,7 @@ def profileupdate():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -699,7 +790,7 @@ def feepreviewupload():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

@@ -40,7 +40,7 @@ def check_country_profile(country):
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -67,7 +67,7 @@ def passcountryfromprofiles():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -105,7 +105,7 @@ def getDispatchfile():
     token = auth_header.split(' ')[1]
 
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         country = request.args.get('country')
         month = request.args.get('month')
         year = request.args.get('year')
@@ -312,7 +312,7 @@ def getDispatchfile2():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         country = request.args.get('country')
         month = request.args.get('month')
         year = request.args.get('year')
@@ -416,7 +416,7 @@ def PO_generated():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -640,7 +640,7 @@ def global_PO_generated():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -907,7 +907,7 @@ def get_global_dispatch_file():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -965,7 +965,7 @@ def getForecastFile():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
         country = request.args.get('country')
         month = request.args.get('month')  
         short_month = month[:3].lower() if month else None
@@ -1069,7 +1069,7 @@ def cashflow():
 
     token = auth_header.split(' ')[1]
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

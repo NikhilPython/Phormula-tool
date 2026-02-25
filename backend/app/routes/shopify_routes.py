@@ -32,7 +32,7 @@ def install():
             return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -580,7 +580,7 @@ def get_shopify_upload_history():
             return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -639,7 +639,7 @@ def get_shopify_store():
 
     # 2. Decode JWT → get user_id
     try:
-        payload, user_id = get_effective_user_id_from_token(token)
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except Exception:
         return jsonify({'error': 'Invalid or expired token'}), 401
 

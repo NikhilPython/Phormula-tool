@@ -77,25 +77,26 @@ def verify_admin_token(token):
 
 
 
-def generate_token(user_id):
-    """Generate a JWT token for user authentication"""
+def generate_token(user_id, is_member=False, member_id=None):
     payload = {
-        'user_id': user_id,
-        'exp': datetime.utcnow() + timedelta(days=12)
+        "user_id": int(user_id),  # ✅ always owner id for both owner + member
+        "is_member": bool(is_member),
+        "exp": datetime.utcnow() + timedelta(days=12),
+        "iat": datetime.utcnow(),
     }
-    return jwt.encode(payload, Config.SECRET_KEY, algorithm='HS256')
+    if is_member and member_id:
+        payload["member_id"] = int(member_id)
 
+    return jwt.encode(payload, current_app.config["SECRET_KEY"], algorithm="HS256")
 
 
 def decode_token(token):
-    """Decode a JWT token and return the user_id"""
     try:
-        payload = jwt.decode(token, Config.SECRET_KEY, algorithms=['HS256'])
-        return payload.get('user_id')
-    except:
+        payload = jwt.decode(token, current_app.config["SECRET_KEY"], algorithms=["HS256"])
+        return payload  # return full payload (better than only user_id)
+    except Exception:
         return None
-
-
+    
 
 def generate_verification_token(email):
     """Generate a token for email verification"""
@@ -129,13 +130,10 @@ def generate_reset_token(user_id):
 def get_effective_user_id_from_token(token: str):
     payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
 
-    # owner login -> payload["user_id"]
-    # member login -> payload["owner_user_id"] (or whatever you set)
-    effective_user_id = payload.get("user_id") or payload.get("owner_user_id")
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise jwt.InvalidTokenError("Token payload missing user_id")
 
-    if not effective_user_id:
-        # token is valid but missing required identity fields
-        raise jwt.InvalidTokenError("Token payload missing user_id/owner_user_id")
+    member_id = payload.get("member_id")  # optional (None for owner)
 
-    return payload, effective_user_id
-
+    return payload, int(user_id), (int(member_id) if member_id else None)

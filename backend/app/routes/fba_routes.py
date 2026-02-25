@@ -101,7 +101,7 @@ def fba_email_notification():
             token = auth_header.split(' ')[1]
             try:
                 # Decode JWT token to get user info
-                payload, user_id = get_effective_user_id_from_token(token)
+                payload, user_id, member_id = get_effective_user_id_from_token(token)
                 # Get user email from database
                 user = User.query.get(user_id)
                 if user:
