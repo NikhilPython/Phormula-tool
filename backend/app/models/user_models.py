@@ -48,25 +48,24 @@ class CurrencyConversion(db.Model):
 
 class Member(db.Model):
     __tablename__ = "member"
-    __bind_key__ = "superadmin"   # ✅ correct
+    __bind_key__ = "superadmin"
 
     id = Column(Integer, primary_key=True)
-
-    # IMPORTANT: Don't use ForeignKey if 'user' table is in another DB bind
     owner_user_id = Column(Integer, nullable=False, index=True)
 
     email = Column(String(150), nullable=False)
-    password = Column(String(500), nullable=False)  # hashed
+    password = Column(String(500), nullable=False)
 
     is_verified = Column(Boolean, default=False)
 
-    # Permissions
-    marketplace_ids = Column(JSON, nullable=True)  # ["ATVPDKIKX0DER", ...]
-    countries = Column(JSON, nullable=True)        # ["US", "UK"]
-    modules = Column(JSON, nullable=True)          # ["LIVE_DASHBOARD", ...]
+    # ✅ NEW: role
+    role = Column(String(50), nullable=False, default="Marketing")  # or no default if you want required
+
+    marketplace_ids = Column(JSON, nullable=True)
+    countries = Column(JSON, nullable=True)
+    modules = Column(JSON, nullable=True)
 
     token_name = Column(String(80), unique=True, nullable=False, index=True)
-
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
