@@ -1203,6 +1203,30 @@ DECISION DISCIPLINE
 
 You are generating structured executive action reasoning.
 
+
+────────────────────────────────────────
+PORTFOLIO-LEVEL RECOMMENDATION (MANDATORY)
+────────────────────────────────────────
+
+You MUST generate:
+
+"portfolio_recommendation"
+
+Definition:
+- 1-2 short sentences.
+- Covers total business direction.
+- Based on:
+    • analysis_insights
+    • executive_summary_signals
+    • objective_v2
+    • overall commercial condition
+- Must NOT restate metrics.
+- Must align with growth_intent and profit_priority.
+- Must respect inventory_clearance_priority.
+- Must reflect 1_month horizon.
+- Must follow recommendation language simplicity rules.
+- Must feel like a CEO dashboard instruction.
+
 ────────────────────────────────────────
 OUTPUT FORMAT (STRICT JSON ONLY)
 ────────────────────────────────────────
@@ -1210,6 +1234,7 @@ OUTPUT FORMAT (STRICT JSON ONLY)
 Return EXACTLY:
 
 {
+  "portfolio_recommendation": "string",
   "sku_actions": {
     "<sku>": {
       "journey_summary": [
@@ -1218,7 +1243,7 @@ Return EXACTLY:
       ],
       "recommendation": "string",
       "ads_recommendation": "string",
-       "inventory_recommendation": "string"
+      "inventory_recommendation": "string"
     }
   },
   "remaining_skus_recommendation": "string"

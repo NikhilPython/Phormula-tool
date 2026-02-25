@@ -293,8 +293,6 @@ def process_skuwise_data(user_id, country, month, year):
 
         # ------------------- LOST / LEFTOUT LOGIC (NEW) -------------------
 
-        # ------------------- LOST / LEFTOUT LOGIC (NEW) -------------------
-
         desc_str = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
         type_str2 = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip()
 
@@ -452,14 +450,11 @@ def process_skuwise_data(user_id, country, month, year):
 
         df_base = df.loc[~is_refund & ~is_lost].copy()     # ✅ core metrics only
         df_refund = df.loc[is_refund].copy()              # ✅ refund-only metrics
-        # --------------------------------------------------------------------------
-        # ---------- BASE DF (exclude Refund + LOST rows from core metrics) ----------
-                     # ✅ refund-only metrics
-        # --------------------------------------------------------------------------
+        
 
 
         
-# ------------------- END NEW LOGIC -------------------
+        # ------------------- END NEW LOGIC -------------------
 
 
         # ================= LEFTOUT OTHER TRANSACTION (TOTAL ONLY) =================
@@ -511,10 +506,6 @@ def process_skuwise_data(user_id, country, month, year):
             .sum()
         )
 
-# ========================================================================
-
-
-
         # ---------------------------------------------------------------------
         # Centralized platform fee & advertising using helpers
         # ---------------------------------------------------------------------
@@ -563,12 +554,6 @@ def process_skuwise_data(user_id, country, month, year):
             columns={"newrefundsales": "refund_sales"}
         )
 
-
-
-
-
-
-
         # ============================================================
         # FIXED: Refund-only Sales + Net Tax (SKU-wise) with breakup prints
         # ============================================================
@@ -581,32 +566,6 @@ def process_skuwise_data(user_id, country, month, year):
         df_non_refund   = df.loc[refund_mask].copy()
         df_non_refund  = df.loc[~refund_mask].copy()
 
-        
-
-        # # ---------- 3) digital_transaction_tax (NON-refund rows only) ----------
-        # # formula you gave, but for non-refund rows
-        # non_refund_digital_cols = ["product_sales_tax", "shipping_credits", "shipping_credits_tax", "promotional_rebates_tax"]
-        # for c in non_refund_digital_cols:
-        #     if c not in df_non_refund.columns:
-        #         df_non_refund[c] = 0.0
-
-        # digital_tax_non_refund_df = (
-        #     df_non_refund.groupby("sku", as_index=False)[non_refund_digital_cols].sum()
-        # )
-
-        # digital_tax_non_refund_df["digital_transaction_tax"] = (
-        #     pd.to_numeric(digital_tax_non_refund_df["product_sales_tax"], errors="coerce").fillna(0.0)
-        #     + pd.to_numeric(digital_tax_non_refund_df["shipping_credits"], errors="coerce").fillna(0.0)
-        #     + pd.to_numeric(digital_tax_non_refund_df["shipping_credits_tax"], errors="coerce").fillna(0.0)
-        #     + pd.to_numeric(digital_tax_non_refund_df["promotional_rebates_tax"], errors="coerce").fillna(0.0)
-        # )
-
-        # digital_tax_non_refund_df = digital_tax_non_refund_df[["sku", "digital_transaction_tax"]]
-
-        
-        
-# ============================================================
-
 
         refund_fees = df[type_str.eq("Refund")].groupby("sku")["selling_fees"].sum().reset_index()
         refund_fees.rename(columns={"selling_fees": "refund_selling_fees"}, inplace=True)
@@ -615,7 +574,7 @@ def process_skuwise_data(user_id, country, month, year):
 
         df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
 
-# ---------------- REFUND / RETURN QTY ----------------
+        # ---------------- REFUND / RETURN QTY ----------------
         df_refund = df[type_str.eq("Refund")].copy()
 
         # return_quantity = sum(quantity) where type == "Refund" (SKU wise)
@@ -672,12 +631,6 @@ def process_skuwise_data(user_id, country, month, year):
         type_str_main = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip()
         desc_str_main = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
 
-
-        is_refund = type_str_main.str.contains("refund", case=False, na=False)  # type me refund likha ho
-        is_lost   = desc_str_main.isin(LOST_DESCRIPTIONS)
-
-        df_base = df.loc[~is_refund & ~is_lost].copy()     # ✅ core metrics only
-        df_refund = df.loc[is_refund].copy() 
 
 
         sku_grouped = df_base.groupby('sku').agg({
@@ -768,36 +721,15 @@ def process_skuwise_data(user_id, country, month, year):
         df_non_refund   = df.loc[refund_mask].copy()
         df_non_refund  = df.loc[~refund_mask].copy()
 
-        
-
-
-
         # ---------------- merge TOP computed columns into sku_grouped ----------------
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
 
         # 1) newrefundsales
         sku_grouped = sku_grouped.merge(newrefundsales_df, on="sku", how="left")
         sku_grouped["refund_sales"] = pd.to_numeric(sku_grouped.get("refund_sales", 0), errors="coerce").fillna(0.0)
-
-        # 2) net_tax + digital_transaction_tax
-      
-        # sku_grouped = sku_grouped.merge(digital_tax_non_refund_df, on="sku", how="left")
-        # sku_grouped["digital_transaction_tax"] = pd.to_numeric(
-        #     sku_grouped.get("digital_transaction_tax", 0),
-        #     errors="coerce"
-        # ).fillna(0.0)
-
-        
-
-
-
         sku_grouped = sku_grouped.merge(lost_total_df, on="sku", how="left")
         sku_grouped["lost_total"] = pd.to_numeric(sku_grouped["lost_total"], errors="coerce").fillna(0)
-
-        
-
         sku_grouped = sku_grouped.merge(df_prev, on="sku", how="left").fillna(0)
-
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
         sku_grouped = sku_grouped.merge(refund_fees, on="sku", how="left")
 
@@ -868,11 +800,6 @@ def process_skuwise_data(user_id, country, month, year):
 
         sku_grouped = sku_grouped.merge(refund_rebate_df, on="sku", how="left")
         sku_grouped["refund_rebate"] = pd.to_numeric(sku_grouped["refund_rebate"], errors="coerce").fillna(0.0)
-
-        
-
-
-
         # Merge shared results into the working table with your expected column names
         if not sales_by_sku.empty:
             sku_grouped = sku_grouped.merge(
@@ -881,13 +808,6 @@ def process_skuwise_data(user_id, country, month, year):
             )
         else:
             sku_grouped["Net Sales"] = 0.0
-
-        
-        # --------------------------------------------------------------
-
-
-        # ---------- UPDATED: Gross Sales formula ----------
-
 
         for _c in [
             "product_sales", "product_sales_tax",
@@ -912,8 +832,6 @@ def process_skuwise_data(user_id, country, month, year):
 
         for _col in [ "sales_tax_refund", "sales_credit_refund", "refund_rebate", "gross_sales"]:
             sku_grouped[_col] = pd.to_numeric(sku_grouped[_col], errors="coerce").fillna(0.0)
-
-      
 
         credits_total, credits_by_sku, credit_parts = uk_credits(df)
 
@@ -957,10 +875,6 @@ def process_skuwise_data(user_id, country, month, year):
             - cogs_total
         )
 
-        
-
-
-
         if not fees_by_sku.empty:
             sku_grouped = sku_grouped.merge(
                 fees_by_sku[["sku", "__metric__"]].rename(columns={"__metric__": "amazon_fee"}),
@@ -982,11 +896,6 @@ def process_skuwise_data(user_id, country, month, year):
         # ✅ platform_fee = platform_fee + lost_total (SKU-wise)
         sku_grouped["platform_fee"] = pd.to_numeric(sku_grouped.get("platform_fee", 0), errors="coerce").fillna(0.0)
         sku_grouped["lost_total"]   = pd.to_numeric(sku_grouped.get("lost_total", 0), errors="coerce").fillna(0.0)
-
-        sku_grouped["platform_fee"] = sku_grouped["platform_fee"] + sku_grouped["lost_total"]
-
-       
-
 
         if not advertising_by_sku.empty:
             sku_grouped = sku_grouped.merge(
@@ -1011,23 +920,13 @@ def process_skuwise_data(user_id, country, month, year):
             + sku_grouped["promotional_rebates_tax"].sum()
         )
 
-
-
-
-        
-        
         sku_grouped["asp"] = (sku_grouped["Net Sales"] / sku_grouped["quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
-        
         sku_grouped["previous_text_credit_change"] = ((sku_grouped["previous_net_taxes"] - sku_grouped["previous_net_credits"]) / sku_grouped["previous_quantity"]).replace([float('inf'), -float('inf')], 0).fillna(0)
-
-        # Profit change & growth
-
         sku_grouped["month"] = month
         sku_grouped["year"] = year
         sku_grouped["country"] = country
         # misc_transaction is ONLY for TOTAL row
         sku_grouped["misc_transaction"] = 0.0
-
         # these will already be merged; keep initialization for schema safety (won't hurt)
         sku_grouped["platform_fee"] = sku_grouped.get("platform_fee", 0).fillna(0)
         sku_grouped["rembursement_fee"] = 0
@@ -1066,12 +965,6 @@ def process_skuwise_data(user_id, country, month, year):
 
         # Totals
         total_sales = abs(sku_grouped["Net Sales"].sum())
-        
-        # Fee ratios
-        
-        
-        # ---- merge refund digital tax into sku_grouped
-        
 
         # ---- postage_credit_tax column fallback
         postage_credit_tax_col = "postage_credits_tax" if "postage_credits_tax" in sku_grouped.columns else "shipping_credits_tax"
@@ -1135,15 +1028,6 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped["year"] = year
         sku_grouped["country"] = country
 
-
-
-        
-
-
-
-
-
-
         # Ensure integer quantities for DB
         sku_grouped["quantity"] = pd.to_numeric(sku_grouped["quantity"], errors="coerce").fillna(0).astype(int)
         sku_grouped["previous_quantity"] = pd.to_numeric(sku_grouped["previous_quantity"], errors="coerce").fillna(0).astype(int)
@@ -1166,14 +1050,19 @@ def process_skuwise_data(user_id, country, month, year):
             2
         )
 
-        # Additional Metrics
-        platform_fee = float(platform_total)
+        # Additional Metrics (FIXED platform fee)
         advertising_total = float(advertising_total_all)
-        lost_total_amount = float(pd.to_numeric(sku_grouped["lost_total"], errors="coerce").fillna(0).sum())
 
+        lost_total_amount = float(
+            pd.to_numeric(sku_grouped["lost_total"], errors="coerce").fillna(0).sum()
+        )
+
+        # ✅ platform fee should be only your breakup totals (NOT uk_platform_fee helper total)
+        platform_fee_fixed_total = float(platform_fee_inventory_storage_total) + float(platformfeenew_total)
 
         reimbursement_vs_sales = abs((rembursement_fee / total_sales) * 100) if total_sales != 0 else 0
-        cm2_profit = total_profit - lost_total_amount - (abs(advertising_total) + abs(platform_fee))
+
+        cm2_profit = total_profit - lost_total_amount - (abs(advertising_total) + abs(platform_fee_fixed_total))
         cm2_margins = (cm2_profit / total_sales) * 100 if total_sales != 0 else 0
         acos = (advertising_total / total_sales) * 100 if total_sales != 0 else 0
         rembursment_vs_cm2_margins = abs((rembursement_fee / cm2_profit) * 100) if cm2_profit != 0 else 0
@@ -1197,8 +1086,6 @@ def process_skuwise_data(user_id, country, month, year):
             "misc_transaction",
             "promotional_rebates_percentage",
             "promotional_rebates_percentage",
-
-    # NEW total-only columns
             "visible_ads",
             "dealsvouchar_ads",
             "platformfeenew",
@@ -1228,21 +1115,20 @@ def process_skuwise_data(user_id, country, month, year):
         total_pr = float(sum_row.get("promotional_rebates", 0) or 0)
 
         sum_row["promotional_rebates_percentage"] = (total_pr / total_ns) * 100 if total_ns != 0 else 0.0
-
-
-        # sum_row["platform_fee"] = abs(platform_fee)
-        # sum_row["rembursement_fee"]= abs(rembursement_fee)
-        lost_total_total = float(sum_row.get("lost_total", 0) or 0)  # this is -334.62 in your case
-        sum_row["platform_fee"] = float(platform_total) + lost_total_total
+        lost_total_total = float(sum_row.get("lost_total", 0) or 0)  
+        sum_row["platform_fee"] = round(
+            float(platform_fee_inventory_storage_total)
+            + float(platformfeenew_total)
+            - float(lost_total_total),
+            2
+        )
         sum_row["rembursement_fee"] = abs(rembursement_fee) 
-
         sum_row["advertising_total"]= abs(advertising_total)
         sum_row["reimbursement_vs_sales"]= abs(reimbursement_vs_sales)
         sum_row["cm2_profit"]= cm2_profit
         # TOTAL-only safety (after sum_row["cm2_profit"] is set)
         ns_total = float(sum_row.get("Net Sales", 0) or 0)
         sum_row["cm2_profit_percentage"] = (float(sum_row.get("cm2_profit", 0) or 0) / ns_total) * 100 if ns_total != 0 else 0.0
-
         sum_row["cm2_margins"]= abs(cm2_margins)
         sum_row["acos"]= abs(acos)
         sum_row["rembursment_vs_cm2_margins"]= abs(rembursment_vs_cm2_margins)
@@ -1271,16 +1157,6 @@ def process_skuwise_data(user_id, country, month, year):
             float(sum_row.get("net_taxes", 0))
             - float(sum_row.get("net_credits", 0))
         )
-
-
-
-
-        # sum_row["digital_transaction_tax"] = int(float(sum_row.get("digital_transaction_tax", 0) or 0))
-
-
-
-
-
         # Totals part 2 (derived)
         qty = float(sum_row.get("total_quantity", 0) or 0)
         prev_qty = float(sum_row.get("previous_quantity", 0) or 0)
@@ -1288,9 +1164,6 @@ def process_skuwise_data(user_id, country, month, year):
         prev_net_sales_total = float(sum_row.get("previous_net_sales", 0) or 0)
 
         sum_row["unit_wise_profitability"] = ((float(sum_row.get("profit", 0))) / qty) if qty != 0 else 0
-
-
-
         sum_row["unit_increase"] = (
             (qty - prev_qty) / prev_qty
         ) * 100 if prev_qty != 0 else 0
@@ -1324,8 +1197,6 @@ def process_skuwise_data(user_id, country, month, year):
         ) * 100 if prev_uwaf != 0 else 0
 
         prev_profit_total = float(sum_row.get("previous_profit", 0) or 0)
-        
-
         prev_profit_mix_total = float(sum_row.get("previous_profit_mix", 0) or 0)
         sum_row["profit_mix_percentage"] = (
             (float(sum_row.get("profit_mix", 0) or 0) - prev_profit_mix_total) /
@@ -1409,7 +1280,6 @@ def process_skuwise_data(user_id, country, month, year):
         )
 
         # ---------- NEW: Promotional Rebates Percentage ----------
-# promotional_rebates_percentage = promotional_rebates / net_sales * 100
         sku_grouped["promotional_rebates_percentage"] = np.where(
             pd.to_numeric(sku_grouped["net_sales"], errors="coerce").fillna(0) != 0,
             (pd.to_numeric(sku_grouped["promotional_rebates"], errors="coerce").fillna(0) /
@@ -1439,7 +1309,6 @@ def process_skuwise_data(user_id, country, month, year):
 
         # Recreate monthly & rolling tables with aligned schemas
         conn.execute(text(f"DROP TABLE IF EXISTS {target_table}"))
-        # conn.execute(text(f"DROP TABLE IF EXISTS {target_table2}"))
         conn.execute(text(f"DROP TABLE IF EXISTS {target_table_nse}"))
 
         for tbl in (target_table, target_table_usd_month):
@@ -1631,8 +1500,6 @@ def process_skuwise_data(user_id, country, month, year):
             """))
 
         currency1 = 'gbp'  # fallback/default
-
-
         def get_conversion_rate(dest_country: str):
             with engine1.connect() as conn1:
                 currency_query = text("""
@@ -1666,25 +1533,15 @@ def process_skuwise_data(user_id, country, month, year):
             'profit', 'profit_percentage', 'amazon_fee', 'cost_of_unit_sold',
             'other_transaction_fees', 'platform_fee', 'shipment_charges', 'rembursement_fee',
             'advertising_total', 'reimbursement_vs_sales', 'cm2_profit', 'cm2_margins', 'acos',
-            'rembursment_vs_cm2_margins', 'total', 
-             'profit_change',
-            
-            'unit_wise_profitability', 
+            'rembursment_vs_cm2_margins', 'total', 'profit_change','unit_wise_profitability', 
             'unit_wise_profitability_percentage', 'asp', 'sales_percentage',
-            'asp_percentag', 'text_credit_change', 
-              'unit_increase', 'change_in_fee',
-             'precentage_change_in_fee', 'unit_wise_amazon_fee',
-            'unit_wise_amazon_fee_percentage',
-            'profit_mix_percentage', 'unit_sales_analysis',
-            'unit_asp_analysis', 'amazon_fee_increase', 'total_analysis', 'cross_check_analysis',
-           
-            'cross_check_analysis_backup', 'text_credit_increase', 'final_total_analysis', 'postage_credits', 'refund_sales', 'gross_sales', 'sales_tax_refund', 'sales_credit_refund', 'refund_rebate', 'lost_total',
-            'misc_transaction', 'promotional_rebates_percentage','visible_ads' ,
-            'dealsvouchar_ads',
-            'platform_fee_inventory_storage',
-            "tex_and_credits",       
-            "cm2_profit_percentage",  
-
+            'asp_percentag', 'text_credit_change', 'unit_increase', 'change_in_fee',
+            'precentage_change_in_fee', 'unit_wise_amazon_fee','unit_wise_amazon_fee_percentage',
+            'profit_mix_percentage', 'unit_sales_analysis','unit_asp_analysis', 'amazon_fee_increase', 
+            'total_analysis', 'cross_check_analysis', 'cross_check_analysis_backup', 'text_credit_increase', 
+            'final_total_analysis', 'postage_credits', 'refund_sales', 'gross_sales', 'sales_tax_refund', 
+            'sales_credit_refund', 'refund_rebate', 'lost_total', 'misc_transaction', 'promotional_rebates_percentage',
+            'visible_ads' ,'dealsvouchar_ads', 'platform_fee_inventory_storage','tex_and_credits', 'cm2_profit_percentage',  
 
         ]
 
@@ -1744,7 +1601,6 @@ def process_skuwise_data(user_id, country, month, year):
                     refund_sales REAL,
                     net_sales REAL,
                     cost_of_unit_sold REAL,
-
                     sales_tax_refund REAL,
                     sales_credit_refund REAL,
                     refund_rebate REAL,
@@ -1770,9 +1626,7 @@ def process_skuwise_data(user_id, country, month, year):
                     cm2_profit_percentage REAL,
                     acos REAL,
                     rembursement_fee REAL,
-                    
                     reimbursement_vs_sales REAL,
-                    
                     cm2_margins REAL,
                     rembursment_vs_cm2_margins REAL,
                     misc_transaction REAL,
@@ -1866,67 +1720,19 @@ def process_skuwise_data(user_id, country, month, year):
 
         sanitize_for_db(sku_grouped)
 
-        # NOTE: if_exists="replace" will DROP/CREATE based on df columns.
-# If you want strict DB schema, DON'T use replace. Prefer delete+append.
         safe_to_sql(df_month, target_table, conn, if_exists="append", index=False, method="multi", chunksize=100)
 
         # ✅ Only insert columns that exist in target_table_nse (skuwisemonthly_{user_id}_{country}_{month}{year})
         NSE_COLS = [
-            "sku",
-            "product_name",
-
-            "quantity",
-            "return_quantity",
-            "total_quantity",
-
-            "asp",
-            "gross_sales",
-            "refund_sales",
-            "tex_and_credits",
-
-            "net_sales",
-            "promotional_rebates",
-            "promotional_rebates_percentage",
-
-            "cost_of_unit_sold",
-            "selling_fees",
-            "fba_fees",
-            "amazon_fee",
-
-            "net_taxes",
-            "net_credits",
-
-            "misc_transaction",
-            "other_transaction_fees",
-
-            "profit",
-            "unit_wise_profitability",
-            "profit_percentage",
-
-            "visible_ads",
-            "dealsvouchar_ads",
-            "advertising_total",
-
-            "platformfeenew",
-            "platform_fee",  # ✅ NEW (as per your desired schema)
-            "platform_fee_inventory_storage",
-
-            "cm2_profit",
-            "cm2_profit_percentage",
-            "acos",
-
-            "rembursement_fee",
-            "rembursment_vs_cm2_margins",
-            "reimbursement_vs_sales",
-            "lost_total",
-            "sales_mix",
-            "profit_mix",
-
-            "user_id"
+            "sku","product_name","quantity","return_quantity","total_quantity",
+            "asp","gross_sales","refund_sales","tex_and_credits","net_sales","promotional_rebates",
+            "promotional_rebates_percentage","cost_of_unit_sold","selling_fees","fba_fees","amazon_fee",
+            "net_taxes","net_credits","misc_transaction","other_transaction_fees","profit","unit_wise_profitability",
+            "profit_percentage","visible_ads","dealsvouchar_ads","advertising_total","platformfeenew",
+            "platform_fee", "platform_fee_inventory_storage","cm2_profit","cm2_profit_percentage",
+            "acos","rembursement_fee","rembursment_vs_cm2_margins","reimbursement_vs_sales","lost_total",
+            "sales_mix","profit_mix","user_id"
         ]
-
-
-
 
         # Ensure all required columns exist in df_month (fill defaults if missing)
         for c in NSE_COLS:
@@ -1959,9 +1765,6 @@ def process_skuwise_data(user_id, country, month, year):
 
         safe_to_sql(df_roll, target_table2, conn, if_exists="append", index=False, method="multi", chunksize=100)
 
-
-                # ========= NEW: USD per-country tables =========
-        # Monthly USD data (same structure, but values in USD)
         df_month_usd = df_usd.copy()
 
         # Rolling USD data (selling_fees & fba_fees positive just like df_roll)
@@ -2073,7 +1876,7 @@ def process_skuwise_data(user_id, country, month, year):
                     user_id=int(user_id),
                     year=str(year),
                     month=str(month),
-                    country=logical_country,      # 🔥 yahan "uk_usd"
+                    country=logical_country,     
                     file_name=None,
                     sales_chart_img=None,
                     expense_chart_img=None,
@@ -2113,8 +1916,6 @@ def process_skuwise_data(user_id, country, month, year):
         finally:
             session.close()
 
-        # df_conv.to_sql(tbl, conn, if_exists="append", index=False, method="multi", chunksize=100)
-
         # Fill NaNs for any object/numeric leftovers (post-write safety if reused)
         for col in sku_grouped.columns:
             if sku_grouped[col].dtype == 'object':
@@ -2139,10 +1940,9 @@ def process_skuwise_data(user_id, country, month, year):
                     total_quantity = int(pd.to_numeric(total_row_qty.iloc[0], errors="coerce") or 0)
             except Exception:
                 total_quantity = int(pd.to_numeric(sku_grouped["total_quantity"], errors="coerce").fillna(0).sum())
-        # -------------------------------------------------------------------------------
 
 
-        return (total_cous, total_amazon_fee, cm2_profit, abs(rembursement_fee), abs(platform_fee),
+        return (total_cous, total_amazon_fee, cm2_profit, abs(rembursement_fee), abs(platform_fee_fixed_total),
                 total_expense, total_profit_final, total_fba_fees, total_advertising, sum_row["tex_and_credits"],
                 reimbursement_vs_sales, cm2_margins, acos, rembursment_vs_cm2_margins, total_sales, total_quantity, total_product_sales)
 
@@ -2694,5 +2494,6 @@ def process_yearly_skuwise_data(user_id, country, year):
         raise
     finally:
         conn.close()
+
 
 

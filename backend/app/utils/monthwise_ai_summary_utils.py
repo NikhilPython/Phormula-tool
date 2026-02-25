@@ -1301,6 +1301,7 @@ def render_month_end_summary(
     inventory_lost: float,
     currency_symbol: str,
     strategy_actions: dict | None = None,
+    portfolio_recommendation: str | None = None,
 ) -> str:
     """
     Deterministic executive month-end / year-end summary renderer.
@@ -1416,6 +1417,13 @@ def render_month_end_summary(
             )
 
     # =========================================================
+    # PORTFOLIO RECOMMENDATION
+    # =========================================================
+    if portfolio_recommendation and portfolio_recommendation.strip():
+        lines.append("\n## PORTFOLIO DIRECTION")
+        lines.append(f"• {portfolio_recommendation}")        
+
+    # =========================================================
     # PRODUCT INSIGHTS (PERCENTAGE ONLY)
     # =========================================================
     lines.append("\n## PRODUCT INSIGHTS")
@@ -1516,12 +1524,6 @@ def render_month_end_summary(
 
 
     return "\n".join(lines)
-
-
-
-
-
-
 
 
 def get_or_create_summary(
@@ -1835,6 +1837,7 @@ def get_or_create_summary(
         try:
             parsed = json.loads(strategy_raw)
 
+            portfolio_recommendation = parsed.get("portfolio_recommendation", "")
             # Core SKU actions
             sku_actions = parsed.get("sku_actions") or {}
 
@@ -1864,6 +1867,7 @@ def get_or_create_summary(
     mom=None,
     sku_mom=sku_mom,
     focus_skus=top_5_skus,
+    portfolio_recommendation=portfolio_recommendation,
     inventory_alerts=inventory_alerts if allow_inventory else {},
     inventory_lost=inventory_lost,
     currency_symbol="£" if country == "uk" else "$",
@@ -1888,6 +1892,7 @@ def get_or_create_summary(
         "summary": final_text,
         # "overall_month_summary": overall_month_summary,
         "portfolio_level_narrative": portfolio_level_narrative,
+        "portfolio_recommendation": portfolio_recommendation,
         "recommendations": sku_actions if allow_recommendations else {},
         "inventory_lost": inventory_lost,
         "inventory_alerts": inventory_alerts if allow_inventory else {},
