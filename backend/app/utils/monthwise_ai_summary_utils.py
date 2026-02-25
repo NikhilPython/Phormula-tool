@@ -1148,25 +1148,72 @@ def run_prompt_3_polish(bullets: dict) -> dict:
     return json.loads(resp.choices[0].message.content)
 
 
-def select_top_5_skus_by_current_cm1_profit(sku_current: dict) -> list[str]:
+# def select_top_5_skus_by_current_cm1_profit(sku_current: dict) -> list[str]:
+#     """
+#     Select Top 5 SKUs by current month CM1 profit (descending).
+#     """
+#     ranked = []
+
+#     for sku, data in sku_current.items():
+#         cm1 = data.get("profit")
+
+#         if cm1 is None:
+#             continue
+
+#         try:
+#             ranked.append((sku, float(cm1)))
+#         except (TypeError, ValueError):
+#             continue
+
+#     ranked.sort(key=lambda x: x[1], reverse=True)
+#     return [sku for sku, _ in ranked[:5]]
+
+def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -> list[str]:
     """
-    Select Top 5 SKUs by current month CM1 profit (descending).
+    Select SKUs based on cumulative sales mix logic:
+
+    1. Sort by sales_mix descending
+    2. Take SKUs until cumulative >= threshold (default 80%)
+    3. If count < 5 → return top 5 by sales_mix
+    4. If count >= 5 → return all SKUs within threshold
     """
+
     ranked = []
 
     for sku, data in sku_current.items():
-        cm1 = data.get("profit")
+        sales_mix = data.get("sales_mix")
 
-        if cm1 is None:
+        if sales_mix is None:
             continue
 
         try:
-            ranked.append((sku, float(cm1)))
+            ranked.append((sku, float(sales_mix)))
         except (TypeError, ValueError):
             continue
 
+    # Sort descending
     ranked.sort(key=lambda x: x[1], reverse=True)
-    return [sku for sku, _ in ranked[:5]]
+
+    if not ranked:
+        return []
+
+    cumulative = 0.0
+    selected = []
+
+    for sku, mix in ranked:
+        cumulative += mix
+        selected.append(sku)
+
+        if cumulative >= threshold:
+            break
+
+    # 🎯 Decision logic
+    if len(selected) < 5:
+        # Return top 5 by sales mix
+        return [sku for sku, _ in ranked[:5]]
+
+    return selected
+
 
 def build_comparison_label(period: str, timeline: str, year: int):
     if period == "monthly":
@@ -1311,6 +1358,28 @@ def render_month_end_summary(
     def fmt_pct(x):
         return f"{x:+.2f}%" if isinstance(x, (int, float)) else "N/A"
 
+    def fmt_number(x):
+        return f"{x:,.2f}" if isinstance(x, (int, float)) else "N/A"
+
+    def fmt_currency(x):
+        return f"{currency_symbol}{x:,.2f}" if isinstance(x, (int, float)) else "N/A"
+
+    def fmt_value_with_pct(metric_dict, is_currency=False):
+        if not isinstance(metric_dict, dict):
+            return "N/A"
+
+        current = metric_dict.get("current")
+        pct = metric_dict.get("delta_pct")
+
+        if is_currency:
+            current_str = fmt_currency(current)
+        else:
+            current_str = fmt_number(current)
+
+        pct_str = fmt_pct(pct)
+
+        return f"{current_str} ({pct_str})"    
+
     is_yearly = period == "yearly"
     comparison = build_comparison_label(period, timeline, year)
 
@@ -1438,17 +1507,25 @@ def render_month_end_summary(
         name = s.get("product_name", sku)
         lines.append(f"\n{name}")
 
-        def sku_pct(metric):
-            m = s.get(metric, {})
-            if not isinstance(m, dict):
-                return "N/A"
-            return fmt_pct(m.get("delta_pct"))
+        lines.append(
+            f"• ASP: {fmt_value_with_pct(s.get('asp'), is_currency=True)}"
+        )
 
-        lines.append(f"• ASP: {sku_pct('asp')}")
-        lines.append(f"• Units: {sku_pct('total_quantity')}")
-        lines.append(f"• Net sales: {sku_pct('net_sales')}")
-        lines.append(f"• CM1 profit: {sku_pct('profit')}")
-        lines.append(f"• CM1 profit per unit: {sku_pct('unit_wise_profitability')}")
+        lines.append(
+            f"• Units: {fmt_value_with_pct(s.get('total_quantity'))}"
+        )
+
+        lines.append(
+            f"• Net sales: {fmt_value_with_pct(s.get('net_sales'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• CM1 profit: {fmt_value_with_pct(s.get('profit'), is_currency=True)}"
+        )
+
+        lines.append(
+            f"• CM1 profit per unit: {fmt_value_with_pct(s.get('unit_wise_profitability'), is_currency=True)}"
+        )
 
         # Product Journey
         sku_data = sku_actions.get(sku, {})
@@ -1628,7 +1705,7 @@ def get_or_create_summary(
     df_current_detail, df_current_total = _split_total_row(df_current)
 
     sku_current = compute_sku_precalc(df_current_detail)
-    top_5_skus = select_top_5_skus_by_current_cm1_profit(sku_current)
+    top_5_skus = select_focus_skus_by_sales_mix(sku_current)
 
     # ============================================================
     # SINGLE SKU MODE
