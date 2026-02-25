@@ -448,19 +448,20 @@ export default function Loader({
       style={
         fullscreen
           ? {
-              position: "fixed",
-              inset: 0,
-              width: "100vw",
-              height: "100vh",
-              zIndex,
-              background: transparent ? "transparent" : "rgba(0,0,0,0.35)",
-            }
+            position: "fixed",
+            inset: 0,
+            width: "100vw",
+            height: "100vh",
+            zIndex,
+            // background: transparent ? "transparent" : "rgba(0,0,0,0.35)",
+            background: transparent ? "transparent" : undefined,
+          }
           : {
-              width: size,
-              height: size,
-              minWidth: size,
-              minHeight: size,
-            }
+            width: size,
+            height: size,
+            minWidth: size,
+            minHeight: size,
+          }
       }
     >
       {children}

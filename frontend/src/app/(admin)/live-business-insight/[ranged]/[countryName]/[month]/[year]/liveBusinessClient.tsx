@@ -19,12 +19,23 @@ import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 
 
+// type MonthsforBIProps = {
+//   countryName: string; // "uk" | "us" | "ca"
+//   ranged: string; // "QTD", "MTD", etc
+//   month: string; // "november"
+//   year: string; // "2025"
+//   initialData?: any;
+// };
+
 type MonthsforBIProps = {
-  countryName: string; // "uk" | "us" | "ca"
-  ranged: string; // "QTD", "MTD", etc
-  month: string; // "november"
-  year: string; // "2025"
-  initialData?: any;
+  countryName: string; // "uk" | "us" | "ca" | "global"
+  ranged: string;      // "QTD", "MTD", etc
+  month: string;       // "november"
+  year: string;        // "2025"
+  initialData?: ApiResponse | null;
+
+  disableAutoFetch?: boolean; // when true, LiveBusinessClient will NOT fetch
+  onGenerateInsights?: () => Promise<ApiResponse | void>; // optional: parent fetch
 };
 
 // =========================
@@ -128,18 +139,18 @@ interface ApiResponse {
     metric_bullets: string[];
   };
   objective_context?: {
-  growth_intent?: string;
-  inventory_clearance_priority?: boolean;
-  profit_priority?: string;
-  inventory_summary?: {
-  alert_bullets?: string[];
-  summary_text?: string;
-};
+    growth_intent?: string;
+    inventory_clearance_priority?: boolean;
+    profit_priority?: string;
+    inventory_summary?: {
+      alert_bullets?: string[];
+      summary_text?: string;
+    };
 
-ads_recommendation?: string;
-journey_summary?: string[];
-recommendation?: string;
-};
+    ads_recommendation?: string;
+    journey_summary?: string[];
+    recommendation?: string;
+  };
 
 
   overall_actions?: string[];
@@ -195,12 +206,22 @@ const capitalizeWords = (value: string) =>
 // Main Component
 // =========================
 
+// export default function LiveBusinessClient({
+//   countryName,
+//   ranged,
+//   month,
+//   year,
+//   initialData,
+// }: MonthsforBIProps) {
+
 export default function LiveBusinessClient({
   countryName,
   ranged,
   month,
   year,
   initialData,
+  disableAutoFetch = false,
+  onGenerateInsights,
 }: MonthsforBIProps) {
   const { data: userData } = useGetUserDataQuery();
 
@@ -276,11 +297,11 @@ export default function LiveBusinessClient({
   const [fbText, setFbText] = useState<string>('');
   const [fbSubmitting, setFbSubmitting] = useState<boolean>(false);
   const [fbSuccess, setFbSuccess] = useState<boolean>(false);
- const [objectiveContext, setObjectiveContext] = useState<{
-  growth_intent?: string;
-  inventory_clearance_priority?: boolean;
-  profit_priority?: string;
-} | null>(null);
+  const [objectiveContext, setObjectiveContext] = useState<{
+    growth_intent?: string;
+    inventory_clearance_priority?: boolean;
+    profit_priority?: string;
+  } | null>(null);
 
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const isGlobalData = () => normalizedCountry === 'global';
@@ -298,60 +319,60 @@ export default function LiveBusinessClient({
   const currPeriod = getMonthYearFromLabel(periods?.current_mtd?.label);
 
   const renderJourneyAndRecommendation = (text: string) => {
-  if (!text) return null;
+    if (!text) return null;
 
-  const journeyMatch = text.match(
-  /Product\s*Journey\s*:\s*([\s\S]*?)(?=Recommendation\s*:|$)/i
-);
+    const journeyMatch = text.match(
+      /Product\s*Journey\s*:\s*([\s\S]*?)(?=Recommendation\s*:|$)/i
+    );
 
-const recommendationMatch = text.match(
-  /Recommendation\s*:\s*([\s\S]*)/i
-);
+    const recommendationMatch = text.match(
+      /Recommendation\s*:\s*([\s\S]*)/i
+    );
 
-  const journeyText = journeyMatch?.[1]?.trim() || "";
-let recommendationText = recommendationMatch?.[1]?.trim() || "";
+    const journeyText = journeyMatch?.[1]?.trim() || "";
+    let recommendationText = recommendationMatch?.[1]?.trim() || "";
 
-if (adsRecommendation) {
-  recommendationText += ` ${adsRecommendation}`;
-}
+    if (adsRecommendation) {
+      recommendationText += ` ${adsRecommendation}`;
+    }
 
-  const splitIntoPoints = (para: string) =>
-    para
-      .split(/(?<=\.)\s+/) // sentence split
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const splitIntoPoints = (para: string) =>
+      para
+        .split(/(?<=\.)\s+/) // sentence split
+        .map((s) => s.trim())
+        .filter(Boolean);
 
-  const journeyPoints = splitIntoPoints(journeyText);
-  const recommendationPoints = splitIntoPoints(recommendationText);
+    const journeyPoints = splitIntoPoints(journeyText);
+    const recommendationPoints = splitIntoPoints(recommendationText);
 
-  return (
-    <div className="space-y-4 text-sm text-charcoal-600">
+    return (
+      <div className="space-y-4 text-sm text-charcoal-600">
 
-      {journeyPoints.length > 0 && (
-        <div>
-          <div className="font-bold mb-2">Product Journey</div>
-          <ol className="list-decimal pl-5 space-y-1">
-            {journeyPoints.map((point, idx) => (
-              <li key={idx}>{point}</li>
-            ))}
-          </ol>
-        </div>
-      )}
+        {journeyPoints.length > 0 && (
+          <div>
+            <div className="font-bold mb-2">Product Journey</div>
+            <ol className="list-decimal pl-5 space-y-1">
+              {journeyPoints.map((point, idx) => (
+                <li key={idx}>{point}</li>
+              ))}
+            </ol>
+          </div>
+        )}
 
-      {recommendationPoints.length > 0 && (
-        <div>
-          <div className="font-bold mt-3 mb-2">Recommendation</div>
-          <ol className="list-decimal pl-5 space-y-1">
-            {recommendationPoints.map((point, idx) => (
-              <li key={idx}>{point}</li>
-            ))}
-          </ol>
-        </div>
-      )}
+        {recommendationPoints.length > 0 && (
+          <div>
+            <div className="font-bold mt-3 mb-2">Recommendation</div>
+            <ol className="list-decimal pl-5 space-y-1">
+              {recommendationPoints.map((point, idx) => (
+                <li key={idx}>{point}</li>
+              ))}
+            </ol>
+          </div>
+        )}
 
-    </div>
-  );
-};
+      </div>
+    );
+  };
 
 
 
@@ -515,6 +536,48 @@ if (adsRecommendation) {
     };
   };
 
+  const hydrateFromPayload = (payload: ApiResponse) => {
+    const newPeriods = payload.periods || null;
+
+    const rawCat = payload.categorized_growth || {
+      top_80_skus: [],
+      new_or_reviving_skus: [],
+      other_skus: [],
+    };
+
+    const normalized = normalizeCategorizedGrowth(rawCat);
+
+    setPeriods(newPeriods);
+    setCategorizedGrowth(normalized);
+
+    const currentLabel = newPeriods?.current_mtd?.label || '';
+    setMonth2Label(currentLabel);
+
+    const summaryObj = payload.overall_summary;
+    setSummaryText(summaryObj?.summary_text || "");
+    setOverallSummary(summaryObj?.metric_bullets || []);
+
+    setOverallActions(payload.overall_actions || []);
+    setRecommendedActions(payload.recommended_actions_mtd || {});
+    setRemainingSkusRecommendation(payload.remaining_skus_recommendation || "");
+
+    // these are in your type under objective_context
+    setObjectiveContext(payload.objective_context || null);
+
+    // these seem top-level in your current code
+    setAdsRecommendation((payload as any).ads_recommendation || "");
+    setInventorySummary((payload as any).inventory_summary || null);
+
+    const liveInsights = payload.ai_insights || {};
+    if (liveInsights && Object.keys(liveInsights).length) {
+      setSkuInsights(liveInsights);
+      saveInsightsToStorage(liveInsights);
+    }
+
+    
+    // setPageLoading(false);
+  };
+
   // =========================
   // Initial load (cached + live)
   // =========================
@@ -672,18 +735,49 @@ if (adsRecommendation) {
   };
 
   useEffect(() => {
+    if (initialData) {
+      hydrateFromPayload(initialData);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData]);
+
+  // useEffect(() => {
+  //   if (!normalizedCountry || normalizedCountry === 'global') return;
+  //   fetchLiveBi(false);
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [normalizedCountry, ranged, month, year]);
+
+  useEffect(() => {
+    if (disableAutoFetch) return;
     if (!normalizedCountry || normalizedCountry === 'global') return;
     fetchLiveBi(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedCountry, ranged, month, year]);
+  }, [normalizedCountry, ranged, month, year, disableAutoFetch]);
 
   // =========================
   // AI insights generate (button)
   // =========================
 
+  // const analyzeSkus = async () => {
+  //   setLoadingInsight(true);
+  //   try {
+  //     await fetchLiveBi(true);
+  //   } catch (err: any) {
+  //     console.error('generate insights error:', err?.response?.data || err.message);
+  //   } finally {
+  //     setLoadingInsight(false);
+  //   }
+  // };
+
   const analyzeSkus = async () => {
     setLoadingInsight(true);
     try {
+      // ✅ prefer parent fetch in Dashboard mode
+      if (onGenerateInsights) {
+        const updated = await onGenerateInsights();
+        if (updated) hydrateFromPayload(updated as ApiResponse);
+        return;
+      }
       await fetchLiveBi(true);
     } catch (err: any) {
       console.error('generate insights error:', err?.response?.data || err.message);
@@ -2778,8 +2872,8 @@ if (adsRecommendation) {
       `}</style>
 
       {pageLoading ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <Loader fullscreen transparent />
+        <div className="py-6">
+          <Loader label="Loading BI…" />
         </div>
       ) : (
         <div className="flex flex-col mt-4">
@@ -2792,7 +2886,7 @@ if (adsRecommendation) {
 
               <div className="flex gap-4 flex-col md:flex-row">
                 {(summaryText || overallSummary.length > 0) && (
-                  <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
+                  <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
                     <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
 
                     {summaryMetricPoints.length > 0 && (
@@ -2803,36 +2897,36 @@ if (adsRecommendation) {
                       </ul>
                     )}
 
-                     {summaryText && (
+                    {summaryText && (
                       <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
                         {summaryText}
                       </div>
                     )}
 
                     {/* Inventory Alerts */}
-{inventorySummary?.alert_bullets?.length > 0 && (
-  <div className="mt-3">
-    <div className="font-semibold text-charcoal-600 mb-1">
-      Inventory Alerts
-    </div>
+                    {inventorySummary?.alert_bullets?.length > 0 && (
+                      <div className="mt-3">
+                        <div className="font-semibold text-charcoal-600 mb-1">
+                          Inventory Alerts
+                        </div>
 
-    <ul className="list-disc pl-5 space-y-1">
-      {inventorySummary.alert_bullets.map((bullet: string, idx: number) => (
-        <li key={idx}>{bullet}</li>
-      ))}
-    </ul>
-  </div>
-)}
+                        <ul className="list-disc pl-5 space-y-1">
+                          {inventorySummary.alert_bullets.map((bullet: string, idx: number) => (
+                            <li key={idx}>{bullet}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
-{inventorySummary?.summary_text && (
-  <div className="mt-3 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-orange-400 pl-3">
-    {inventorySummary.summary_text}
-  </div>
-)}
+                    {inventorySummary?.summary_text && (
+                      <div className="mt-3 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-orange-400 pl-3">
+                        {inventorySummary.summary_text}
+                      </div>
+                    )}
 
 
                     {/* ✅ Executive summary LAST */}
-                   
+
                   </div>
                 )}
 
@@ -2840,103 +2934,103 @@ if (adsRecommendation) {
                   (skuInsights && Object.keys(skuInsights).length > 0)) && (
 
 
-                    <div className="bg-[#D9D9D94D] border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+                    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
                       <PageBreadcrumb
                         pageTitle="Recommended Actions (MTD)"
                         variant="page"
                         align="left"
                       />
 
-{objectiveContext && (
-  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 border-l-4 border-l-blue-500">
+                      {objectiveContext && (
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 border-l-4 border-l-blue-500">
 
-    <div className="text-sm font-semibold text-charcoal-700 mb-3">
-      Objective
-    </div>
+                          <div className="text-sm font-semibold text-charcoal-700 mb-3">
+                            Objective
+                          </div>
 
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-charcoal-600">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-charcoal-600">
 
-      {/* Growth Intent */}
-      <div className="space-y-1">
-        <div className="text-charcoal-400">Growth Intent</div>
-        <div className="font-semibold capitalize">
-          {objectiveContext.growth_intent?.replaceAll("_", " ") || "Not Defined"}
-        </div>
-      </div>
+                            {/* Growth Intent */}
+                            <div className="space-y-1">
+                              <div className="text-charcoal-400">Growth Intent</div>
+                              <div className="font-semibold capitalize">
+                                {objectiveContext.growth_intent?.replaceAll("_", " ") || "Not Defined"}
+                              </div>
+                            </div>
 
-      {/* Inventory Clearance */}
-      <div className="space-y-1">
-        <div className="text-charcoal-400">Inventory Clearance</div>
-        <div className="font-semibold">
-          {objectiveContext.inventory_clearance_priority ? "Yes" : "No"}
-        </div>
-      </div>
+                            {/* Inventory Clearance */}
+                            <div className="space-y-1">
+                              <div className="text-charcoal-400">Inventory Clearance</div>
+                              <div className="font-semibold">
+                                {objectiveContext.inventory_clearance_priority ? "Yes" : "No"}
+                              </div>
+                            </div>
 
-      {/* Profit Priority */}
-      <div className="space-y-1">
-        <div className="text-charcoal-400">Profit Priority</div>
-        <div className="font-semibold capitalize">
-          {objectiveContext.profit_priority?.replaceAll("_", " ") || "Not Defined"}
-        </div>
-      </div>
+                            {/* Profit Priority */}
+                            <div className="space-y-1">
+                              <div className="text-charcoal-400">Profit Priority</div>
+                              <div className="font-semibold capitalize">
+                                {objectiveContext.profit_priority?.replaceAll("_", " ") || "Not Defined"}
+                              </div>
+                            </div>
 
-    </div>
-  </div>
-)}
+                          </div>
+                        </div>
+                      )}
 
 
                       <div className="space-y-3 ">
 
                         <div className="bg-[#]  rounded-xl p-2 space-y-4">
                           {Object.entries(recommendedActions).map(([_, text], idx) => {
-  const parsed = parseRecommendedAction(text);
+                            const parsed = parseRecommendedAction(text);
 
-  return (
-    <div key={idx} className="space-y-2">
-      {/* Product title */}
-      <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
-        {idx + 1}. Product Name – {parsed.productName}
-      </div>
+                            return (
+                              <div key={idx} className="space-y-2">
+                                {/* Product title */}
+                                <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
+                                  {idx + 1}. Product Name – {parsed.productName}
+                                </div>
 
-      {/* Metrics */}
-      <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs 2xl:text-sm">
-        {parsed.metrics.map((m, i) => (
-          <div key={i} className="flex items-center gap-1">
-            <span className="text-charcoal-600 text-xs">{m.label}:</span>
-            <span className="font-semibold" style={{ color: m.color || "#414042" }}>
-              {m.value}
-            </span>
-          </div>
-        ))}
-      </div>
+                                {/* Metrics */}
+                                <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs 2xl:text-sm">
+                                  {parsed.metrics.map((m, i) => (
+                                    <div key={i} className="flex items-center gap-1">
+                                      <span className="text-charcoal-600 text-xs">{m.label}:</span>
+                                      <span className="font-semibold" style={{ color: m.color || "#414042" }}>
+                                        {m.value}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
 
-      {/* Insight */}
-      <p className="text-xs 2xl:text-sm text-charcoal-600">
-        {renderJourneyAndRecommendation(parsed.insight)}
-      </p>
+                                {/* Insight */}
+                                <p className="text-xs 2xl:text-sm text-charcoal-600">
+                                  {renderJourneyAndRecommendation(parsed.insight)}
+                                </p>
 
-      {/* Action */}
-      {parsed.actions.length > 0 && (
-        <div className="text-xs 2xl:text-sm text-charcoal-600">
-          <span className="font-bold">Action – </span>
-          <span>{parsed.actions.join(" ")}</span>
-        </div>
-      )}
-    </div>
-  );
-})}
+                                {/* Action */}
+                                {parsed.actions.length > 0 && (
+                                  <div className="text-xs 2xl:text-sm text-charcoal-600">
+                                    <span className="font-bold">Action – </span>
+                                    <span>{parsed.actions.join(" ")}</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
 
-{remainingSkusRecommendation && (
-  <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
-    <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
-      Overall – Remaining SKUs
-    </div>
+                          {remainingSkusRecommendation && (
+                            <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
+                              <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
+                                Overall – Remaining SKUs
+                              </div>
 
-    <p className="text-xs 2xl:text-sm text-charcoal-600">
-      {remainingSkusRecommendation}
-    </p>
-  </div>
-)}
+                              <p className="text-xs 2xl:text-sm text-charcoal-600">
+                                {remainingSkusRecommendation}
+                              </p>
+                            </div>
+                          )}
 
                         </div>
 
@@ -3029,15 +3123,15 @@ if (adsRecommendation) {
 
               )}
               <div className="flex justify-center mt-2">
-  <div
-    className="
+                <div
+                  className="
       grid grid-cols-2 gap-x-6 gap-y-2
       sm:grid-cols-4
       lg:flex lg:items-center lg:gap-10 lg:flex-wrap
       text-xs 2xl:text-sm text-[#414042] mt-1
       justify-items-start
     "
-  >
+                >
 
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-flex items-center gap-2 text-[#5EA68E] font-bold">

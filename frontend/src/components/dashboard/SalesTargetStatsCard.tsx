@@ -69,7 +69,7 @@ export default function SalesTargetStatsCard({
   }, [regions]);
 
   return (
-    <div className="rounded-2xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-[#D9D9D933]">
+    <div className="rounded-2xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
       <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
         <div className="flex items-center gap-1">
           <PageBreadcrumb
@@ -78,18 +78,8 @@ export default function SalesTargetStatsCard({
             variant="page"
             align="center"
           />
-
-          {/* <span className="text-green-500 text-base sm:text-xl lg:text-lg 2xl:text-2xl ">
-            {monthYearLabel}
-          </span>
-
-          <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-            MTD
-          </span> */}
         </div>
 
-
-        {/* ✅ Toggle moved here */}
         {!hideTabs && (
           <SegmentedToggle<RegionKey>
             value={value}

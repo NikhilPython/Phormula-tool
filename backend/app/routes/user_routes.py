@@ -73,21 +73,86 @@ def compute_marketplace_ids_from_country(country_value: str) -> str:
 
 
 
+# @user_bp.route('/register', methods=['POST'])
+# def register():
+#     try:
+#         data = request.get_json()
+#         name = data.get('name')
+#         email = data['email']
+#         password = data['password']
+#         phone_number = data['phone_number']
+
+#         hashed_password = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
+
+#         # Check if user already exists
+#         existing_user = User.query.filter_by(email=email).first()
+#         if existing_user:
+#             return jsonify({'success': False, 'message': 'Email already exists. Please choose a different email. Please Login.'})
+
+#         # Generate token_name for new user
+#         token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+#         token_name = f"user_{token}"
+
+#         # Register new user with token_name
+#         new_user = User(
+#             name=name,
+#             email=email, 
+#             password=hashed_password, 
+#             phone_number=phone_number,
+#             token_name=token_name
+#         )
+#         db.session.add(new_user)
+#         db.session.commit()
+
+#         # Generate token and verification link
+#         token = generate_token(new_user.id)
+#         verification_token = generate_verification_token(email)
+#         verification_link = f'http://localhost:3000/verify-email/{verification_token}'
+
+#         # Send welcome and verification emails
+#         try:
+#             # test_send_email()
+#             send_welcome_and_verification_emails(email, name, verification_link)
+#         except Exception as e:
+#             return jsonify({'success': False, 'message': 'Failed to send verification or welcome email', 'error': str(e)})
+
+#         # ✅ Return success and instruct frontend to show country selection UI
+#         return jsonify({
+#             'success': True,
+#             'message': 'User registered successfully. Please check your email to verify your account.',
+#             'show_country_selection': True,
+#             'user_id': new_user.id,  # optional: can be used to store in frontend state
+#             'token_name': token_name  # Include token_name in response
+#         })
+
+#     except Exception as e:
+#         db.session.rollback()
+#         print(f"Registration error: {str(e)}")
+#         return jsonify({'success': False, 'message': 'Server error during registration', 'error': str(e)}), 500
+
 @user_bp.route('/register', methods=['POST'])
 def register():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         name = data.get('name')
-        email = data['email']
-        password = data['password']
-        phone_number = data['phone_number']
+        email = (data.get('email') or "").strip().lower()
+        password = data.get('password')
+        phone_number = data.get('phone_number')
 
-        hashed_password = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
+        if not email or not password:
+            return jsonify({'success': False, 'message': 'Email and password are required'}), 400
+
+        hashed_password = generate_password_hash(
+            password, method='pbkdf2:sha256', salt_length=8
+        )
 
         # Check if user already exists
         existing_user = User.query.filter_by(email=email).first()
         if existing_user:
-            return jsonify({'success': False, 'message': 'Email already exists. Please choose a different email. Please Login.'})
+            return jsonify({
+                'success': False,
+                'message': 'Email already exists. Please choose a different email. Please Login.'
+            }), 409
 
         # Generate token_name for new user
         token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
@@ -96,41 +161,47 @@ def register():
         # Register new user with token_name
         new_user = User(
             name=name,
-            email=email, 
-            password=hashed_password, 
+            email=email,
+            password=hashed_password,
             phone_number=phone_number,
-            token_name=token_name
+            token_name=token_name,
+            is_verified=False  # ✅ ensure default false
         )
         db.session.add(new_user)
         db.session.commit()
 
-        # Generate token and verification link
-        token = generate_token(new_user.id)
+        # ✅ Generate verification token and link (IMPORTANT: link should hit BACKEND)
         verification_token = generate_verification_token(email)
-        verification_link = f'http://localhost:3000/verify-email/{verification_token}'
+
+        # change port if your flask runs somewhere else
+        verification_link = f'http://127.0.0.1:5000/verify-email/{verification_token}'
 
         # Send welcome and verification emails
         try:
-            # test_send_email()
             send_welcome_and_verification_emails(email, name, verification_link)
         except Exception as e:
-            return jsonify({'success': False, 'message': 'Failed to send verification or welcome email', 'error': str(e)})
+            return jsonify({
+                'success': False,
+                'message': 'Failed to send verification or welcome email',
+                'error': str(e)
+            }), 500
 
-        # ✅ Return success and instruct frontend to show country selection UI
         return jsonify({
             'success': True,
             'message': 'User registered successfully. Please check your email to verify your account.',
             'show_country_selection': True,
-            'user_id': new_user.id,  # optional: can be used to store in frontend state
-            'token_name': token_name  # Include token_name in response
-        })
+            'user_id': new_user.id,
+            'token_name': token_name
+        }), 201
 
     except Exception as e:
         db.session.rollback()
         print(f"Registration error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Server error during registration', 'error': str(e)}), 500
-
-
+        return jsonify({
+            'success': False,
+            'message': 'Server error during registration',
+            'error': str(e)
+        }), 500
 
 @user_bp.route('/login', methods=['POST'])
 def login():
@@ -248,7 +319,7 @@ def google_register():
             created = True
 
             try:
-                verification_link = 'http://127.0.0.1:5000/dashboard'
+                verification_link = 'http://127.0.0.1:5000/signin'
                 send_welcome_and_verification_emails(email, name, verification_link)
             except Exception as e:
                 print(f"Failed to send welcome email to {email}: {e}")
@@ -488,31 +559,62 @@ def add_sales():
 
 
 
+# @user_bp.route('/verify-email/<token>', methods=['GET'])
+# def verify_email(token):
+#     try:
+#         email = confirm_verification_token(token)
+#         user = User.query.filter_by(email=email).first()
+#         if not user:
+#             return jsonify({'success': False, 'message': 'Invalid verification token.'})
+
+#         # Update user's email verification status
+#         user.is_verified = True
+#         db.session.commit()
+
+#         # Create user-specific database after successful email verification
+        
+#         create_user_session(db_url)
+
+#         # Store user session after verification
+#         session['user_id'] = user.id
+
+#         return redirect('http://localhost:3000/verify-email?status=success')
+#     except Exception as e:
+#         print(f"Email verification error: {str(e)}")
+#         return jsonify({'success': False, 'message': 'Invalid or expired verification token.', 'error': str(e)})
+    
 @user_bp.route('/verify-email/<token>', methods=['GET'])
 def verify_email(token):
     try:
         email = confirm_verification_token(token)
+        email = (email or "").strip().lower()
+
+        if not email:
+            return redirect('http://localhost:3000/verify-email?status=failed')
+
         user = User.query.filter_by(email=email).first()
         if not user:
-            return jsonify({'success': False, 'message': 'Invalid verification token.'})
+            return redirect('http://localhost:3000/verify-email?status=failed')
 
-        # Update user's email verification status
+        # ✅ mark verified (idempotent)
         user.is_verified = True
         db.session.commit()
 
-        # Create user-specific database after successful email verification
-        
-        create_user_session(db_url)
+        # ✅ Create user-specific database after successful email verification
+        try:
+            create_user_session(db_url)
+        except Exception as e:
+            print(f"create_user_session error: {e}")
 
         # Store user session after verification
         session['user_id'] = user.id
 
-        return redirect('http://localhost:3000/verify-email?status=success')
+        # ✅ redirect to frontend page that you already have
+        return redirect(f'http://localhost:3000/verify-email?status=success&email={email}')
+
     except Exception as e:
         print(f"Email verification error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Invalid or expired verification token.', 'error': str(e)})
-    
-
+        return redirect('http://localhost:3000/verify-email?status=failed')
 
 
 @user_bp.route('/switch_profile/<int:profile_id>', methods=['GET'])

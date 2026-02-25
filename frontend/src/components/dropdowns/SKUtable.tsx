@@ -1331,7 +1331,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   return (
     <>
-      <div className="rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 sm:p-5">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <div className="mb-4 flex  gap-3 flex-row items-center justify-between">
           <div className="flex flex-wrap items-baseline gap-0 sm:gap-2 justify-left sm:justify-start">
             <PageBreadcrumb pageTitle={getTitle()} variant="page" textSize="2xl" />
