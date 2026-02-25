@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Bargraph from "./BarGraph";
 import GraphPage from "./GraphPage";
 import CircleChart from "./CircleChart";
@@ -12,35 +11,38 @@ import PageBreadcrumb from "../common/PageBreadCrumb";
 import { Modal } from "@/components/ui/modal";
 import FileUploadForm from "@/app/(admin)/(ui-elements)/modals/FileUploadForm";
 import PeriodFiltersTable from "../filters/PeriodFiltersTable";
-import { FaBoxArchive, FaMoneyBillTrendUp } from "react-icons/fa6";
 import { IoMdLock } from "react-icons/io";
-import { MdEditDocument } from "react-icons/md";
-import { TbMoneybag } from "react-icons/tb";
-import { FcSalesPerformance } from "react-icons/fc";
 import Loader from "@/components/loader/Loader";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import type { ProfitChartExportApi, SkuExportPayload, TrendChartExportApi } from "@/lib/utils/exportTypes";
-import DownloadIconButton from "../ui/button/DownloadIconButton";
-import MonthEndBusinessSummaryCard from "./MonthEndBusinessSummaryCard";
-import RecommendationsCard from "./RecommendationsCard";
 import PerformanceTrendChart from "./PerformanceTrendChart";
 import SummaryMetricCard from "./SummaryMetricCard";
 import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
-import Button from "@mui/material/Button";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
-import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
-import { motion, AnimatePresence } from "framer-motion";
-
 import SkuTopBottomTables from "./SkuTopBottomTables";
 import type { TopBottomData } from "@/lib/pnl/topBottom";
 import type { TableRow } from "./SKUtable";
+import { motion, AnimatePresence } from "framer-motion";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
+import {
+  TrendingUp,
+  DollarSign,
+  Package,
+  Target,
+  AlertCircle,
+  Wallet,
+} from "lucide-react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
+
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -85,8 +87,6 @@ type UploadHistoryResponse = {
   [key: string]: unknown;
 };
 
-
-/* ---------------------- AI Summary Types ---------------------- */
 type PerformanceTrendSeries = {
   label: string;          // "Dec'25"
   net_sales: number[];    // per-sku OR per-day array (as your API gives)
@@ -121,7 +121,6 @@ type RecommendationsMap = Record<
 > & {
   remaining_skus_recommendation?: string;
 };
-
 
 type AiSummaryResponse = {
   summary?: string | null;
@@ -225,9 +224,6 @@ const markFetched = (year: string, month?: string) => {
   }
 };
 
-// ✅ default year for YEARLY view:
-// - If current year has ANY fetched month that is strictly before current month → show current year
-// - Else show previous year
 const computeDefaultYearlyYear = () => {
   const now = new Date();
   const cy = now.getFullYear();
@@ -254,8 +250,6 @@ const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {
   return `${mon}'${yy}`; // Nov'25
 };
 
-
-/* ---------------------- Utils ---------------------- */
 const getCurrencySymbol = (codeOrCountry: string) => {
   const v = (codeOrCountry || "").toLowerCase();
 
@@ -284,19 +278,6 @@ const getCurrencySymbol = (codeOrCountry: string) => {
   }
 };
 
-const getQuarterFromMonth = (m: string): Quarter | "" => {
-  const month = (m ?? "").toLowerCase();
-  const quarters: Record<Quarter, string[]> = {
-    Q1: ["january", "february", "march"],
-    Q2: ["april", "may", "june"],
-    Q3: ["july", "august", "september"],
-    Q4: ["october", "november", "december"],
-  };
-  for (const q of Object.keys(quarters) as Quarter[]) {
-    if (quarters[q].includes(month)) return q;
-  }
-  return "";
-};
 
 const getPrevQuarterLabel = (q: Quarter, selectedYear: number) => {
   const order: Quarter[] = ["Q1", "Q2", "Q3", "Q4"];
@@ -317,9 +298,6 @@ const getPrevYearLabel = (selectedYear: number) => {
 };
 
 
-
-
-// ---------------------- AI Summary Helpers ----------------------
 const monthNameToNumber = (m: string): string => {
   const idx = monthIndexMap[(m || "").toLowerCase()];
   return typeof idx === "number" ? String(idx + 1) : "";
@@ -332,7 +310,6 @@ type ProductInsightBlock = {
   journeyBullets: string[];
   recommendationBullets: string[];
 };
-
 
 
 const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
@@ -375,8 +352,8 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
 
     if (isProductHeader) {
       pushCurrent();
-      if (isProductHeader) {
-        pushCurrent();
+       if (isProductHeader) {
+  pushCurrent();
 
         const skuFromParen = line.match(/\(([A-Z0-9-]+)\)/i)?.[1]?.trim();
         const skuFromPrefix = line.match(/^([A-Z0-9-]+)\s*[-–]\s*/i)?.[1]?.trim();
@@ -447,21 +424,7 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
 
 
 
-const extractBullets = (md: string | null | undefined): string[] => {
-  if (!md) return [];
-  return md
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.startsWith("- "))
-    .map((l) => l.replace(/^-\s+/, "").trim())
-    .filter(Boolean);
-};
-const renderMarkdownInline = (text: string) => {
-  const html = text.replace(/\\(.?)\\*/g, "<strong>$1</strong>");
-  return { __html: html };
-};
-// Pull only bullets under "## SUMMARY" section if present; otherwise fallback to all bullets
-// --- NEW: split markdown into sections by "## " headings
+
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
   if (!md) return {};
 
@@ -499,18 +462,7 @@ const parseMdSections = (md?: string | null): Record<string, string[]> => {
   return out;
 };
 
-const extractSummaryAndSkuBullets = (md?: string | null) => {
-  if (!md || typeof md !== "string") {
-    return { summaryBullets: [], skuInsightsBullets: [] };
-  }
 
-  const sections = parseMdSections(md);
-
-  return {
-    summaryBullets: sections["SUMMARY"] ?? [],
-    skuInsightsBullets: sections["PRODUCT INSIGHTS"] ?? [],
-  };
-};
 
 const extractRecoAndInventoryBullets = (
   mdOrObj?: string | RecommendationsMap | null
@@ -558,184 +510,396 @@ const toBullets = (text?: string) => {
     .filter(Boolean);
 };
 
+const toNum = (v: any) => {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  const n = Number(String(v).replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+};
 
-const ProductInsightsSection = ({
-  blocks,
-  objective,
-  recommendationsMap, // ✅ ADD
-  nameToSkuMap,
-}: {
-  blocks: ProductInsightBlock[];
-  objective?: ObjectivePayload;
-  recommendationsMap?: RecommendationsMap; // ✅ ADD
-  nameToSkuMap?: Record<string, string>;
-}) => {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  if (!blocks.length) return null;
+const normalizePerfToChartData = (
+  raw: any,
+  metric: "net_sales" | "units" = "net_sales"
+): { x: any; y: number }[] => {
+  if (!raw) return [];
+
+  const pickMetricArr = (obj: any) => {
+    if (!obj) return [];
+    const primary = metric === "units" ? obj?.units : obj?.net_sales;
+    const secondary = metric === "units" ? obj?.net_sales : obj?.units;
+
+    if (Array.isArray(primary) && primary.length) return primary;
+    if (Array.isArray(secondary) && secondary.length) return secondary;
+    return [];
+  };
+
+  // Case A: already rows [{x,y}]
+  if (Array.isArray(raw?.rows)) {
+    return raw.rows
+      .map((r: any) => ({ x: r?.x ?? r?.label ?? "-", y: toNum(r?.y ?? r?.value) }))
+      .filter((p) => p.x !== "-" && Number.isFinite(p.y));
+  }
+
+  // Case B: {x:[], y:[]}
+  if (Array.isArray(raw?.x) && Array.isArray(raw?.y)) {
+    return raw.x.map((x: any, i: number) => ({ x, y: toNum(raw.y?.[i]) }));
+  }
+
+  // ✅ Case: { x:[], series:[{ net_sales:[], units:[] }] }
+  if (Array.isArray(raw?.x) && Array.isArray(raw?.series) && raw.series.length) {
+    const s0 = raw.series[0];
+    const arr = pickMetricArr(s0);
+
+    if (arr.length) {
+      return raw.x.map((x: any, i: number) => ({ x, y: toNum(arr[i]) }));
+    }
+  }
+
+  // ✅ Case: { x:[], series:{...} }  (series object instead of array)
+  if (Array.isArray(raw?.x) && raw?.series && typeof raw.series === "object" && !Array.isArray(raw.series)) {
+    const firstKey = Object.keys(raw.series)[0];
+    const s0 = raw.series[firstKey];
+    const arr = pickMetricArr(s0);
+
+    if (arr.length) {
+      return raw.x.map((x: any, i: number) => ({ x, y: toNum(arr[i]) }));
+    }
+  }
+
+  // Case C: { x:[], net_sales:[] } or { x:[], units:[] }
+  if (Array.isArray(raw?.x)) {
+    const arr = pickMetricArr(raw);
+    if (arr.length) {
+      return raw.x.map((x: any, i: number) => ({ x, y: toNum(arr[i]) }));
+    }
+  }
+
+  // Case D: raw is array [{label/value}]
+  if (Array.isArray(raw)) {
+    return raw
+      .map((r: any) => ({ x: r?.x ?? r?.label ?? "-", y: toNum(r?.y ?? r?.value) }))
+      .filter((p) => p.x !== "-");
+  }
+
+  // Case E: {data:[{x,y}]}
+  if (Array.isArray(raw?.data)) {
+    return raw.data
+      .map((r: any) => ({ x: r?.x ?? r?.label ?? "-", y: toNum(r?.y ?? r?.value) }))
+      .filter((p) => p.x !== "-");
+  }
+
+  return [];
+};
+
+type ProductPerformanceChartProps = {
+  perfData: any;
+};
+
+const ProductPerformanceChart: React.FC<{ perfData: any; metric?: "net_sales" | "units" }> = ({ perfData, metric = "net_sales" }) => {
+  const chartData = useMemo(() => normalizePerfToChartData(perfData, metric), [perfData, metric]);
+
+  if (!chartData.length) {
+    return (
+      <div className="h-full flex items-center justify-center text-xs text-slate-500">
+        No usable chart points.
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-5">
-      <div className="border-b-2 border-blue-500 pb-3">
-        <PageBreadcrumb
-          pageTitle="Action Items"
-          variant="page"
-          align="left"
-          textSize="2xl"
-        />
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={chartData}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="x" tick={{ fontSize: 10 }} />
+        <YAxis tick={{ fontSize: 10 }} />
+        <Tooltip />
+        <Line type="monotone" dataKey="y" stroke="#3B82F6" strokeWidth={2} dot={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+};
+
+type RightProductDrawerProps = {
+  open: boolean;
+  onClose: () => void;
+  block: ProductInsightBlock | null;
+  objective?: ObjectivePayload;
+  recObj?: any;
+  perfMetric?: "net_sales" | "units";
+
+  // ✅ ADD
+  perfLoading?: boolean;
+  perfError?: string | null;
+  perfData?: any;
+};
+
+const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
+  open,
+  onClose,
+  block,
+  objective,
+  recObj,
+  perfLoading,
+  perfError,
+   perfMetric = "net_sales",
+  perfData,
+}) => {
+  const inventoryRecoBullets = toBullets(recObj?.inventory_recommendation);
+  const adsRecoBullets = toBullets(recObj?.ads_recommendation);
+
+  if (!open || !block) return null;
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* overlay */}
+          <motion.div
+            className="fixed inset-0 z-[999999] bg-black/40"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+          />
+
+          {/* drawer */}
+          <motion.aside
+className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-white shadow-2xl flex flex-col"
+            initial={{ x: 520 }}
+            animate={{ x: 0 }}
+            exit={{ x: 520 }}
+            transition={{ type: "tween", duration: 0.25 }}
+          >
+            {/* header */}
+            <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm text-slate-500">Detailed View</div>
+                <div className="text-lg font-semibold text-slate-900">{block.name}</div>
+              </div>
+              <button
+                onClick={onClose}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {/* 1) Objective strip (same as page) */}
+              {objective && (
+  <div className="space-y-2">
+    <div className="text-sm font-semibold text-slate-800">Objectives</div>
+
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+        <div className="text-xs text-slate-500">Primary Focus</div>
+        <div className="text-sm font-bold text-slate-800 mt-1">
+          {objective?.growth_intent || "balanced"}
+        </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+        <div className="text-xs text-slate-500">Profit Strategy</div>
+        <div className="text-sm font-bold text-slate-800 mt-1">
+          {(objective?.profit_priority?.replaceAll("_", " ") || "protect growth")}
+        </div>
+      </div>
 
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+        <div className="text-xs text-slate-500">Inventory Dilution</div>
+        <div className="text-sm font-bold text-slate-800 mt-1">
+          {objective?.inventory_clearance_priority ? "Yes" : "No"}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
-        {blocks.map((b, idx) => {
-          const skuActions =
-            (recommendationsMap as any)?.sku_actions ??
-            (recommendationsMap as any)?.recommendations ??
-            recommendationsMap ??
-            {};
-
-          const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
-          const skuKey = b.skuKey || mappedSku;
-
-          const recObj =
-            (skuKey && (skuActions as any)[skuKey]) ||
-            (skuActions as any)[b.name] ||
-            (skuActions as any)[b.name.trim()];
-
-
-          const inventoryRecoBullets = toBullets(recObj?.inventory_recommendation);
-
-          return (
-
-            <motion.div
-              key={idx}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: idx * 0.1 }}
-              className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
-            >
-              {/* Product Name with Index */}
-
-              <div className="text-sm font-semibold text-charcoal-700">
-                {idx + 1}. {b.name}
-              </div>
-
-              {/* Metrics */}
-              {b.metrics.length > 0 && (
-                <div className="bg-slate-50 rounded-lg px-2 py-2">
-                  <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
-
-                    {b.metrics.map((m, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
-                      >
-                        <span className="text-slate-600 mr-1">
-                          {m.label}:
-                        </span>
-
-                        <span
-                          className="font-semibold"
-                          style={{ color: m.color || "#414042" }}
-                        >
+              {/* 2) Metrics */}
+              {block.metrics?.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-800">Metrics</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {block.metrics.map((m, i) => (
+                      <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        <div className="text-xs text-slate-500">{m.label}</div>
+                        <div className="text-sm font-bold mt-1" style={{ color: m.color || "#414042" }}>
                           {m.value}
-                        </span>
+                        </div>
                       </div>
                     ))}
-
                   </div>
                 </div>
               )}
 
+              {/* 3) Recommendations (incl inventory) */}
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-slate-800">Recommendations</div>
 
-              {/* Recommendation */}
-              {b.recommendationBullets.length > 0 && (
-                <motion.div className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2">
-                  <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-                    💡 {b.recommendationBullets.join(" ")}
-                  </p>
-                </motion.div>
-              )}
+                {block.recommendationBullets?.length > 0 && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                    <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-blue-900">
+                      {block.recommendationBullets.map((pt, i) => (
+                        <li key={i}>{pt}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
-              {inventoryRecoBullets.length > 0 && (
-                <div className="bg-amber-50 border-l-2 border-amber-500 rounded-lg p-3">
-                  <div className="text-xs font-semibold text-amber-800 mb-1">📦 Inventory Recommendation</div>
+                {inventoryRecoBullets.length > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-amber-900">
+                      {inventoryRecoBullets.map((pt, i) => (
+                        <li key={i}>{pt}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
-                  <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-amber-900">
-                    {inventoryRecoBullets.map((pt, i) => (
-                      <li key={i}>{pt}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                {adsRecoBullets.length > 0 && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                    <div className="text-xs font-semibold text-emerald-900 mb-1">📣 Ads</div>
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-emerald-900">
+                      {adsRecoBullets.map((pt, i) => (
+                        <li key={i}>{pt}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
+                {!block.recommendationBullets?.length &&
+                  !inventoryRecoBullets.length &&
+                  !adsRecoBullets.length && (
+                    <div className="text-xs text-slate-500">No recommendation available.</div>
+                  )}
+              </div>
 
+              {/* 4) Chart placeholder (you’ll tell later) */}
+{/* 4) Chart */}
+<div className="space-y-2">
+  <div className="text-sm font-semibold text-slate-800">Chart</div>
 
-              {/* Product Journey – Collapsible */}
-              {b.journeyBullets.length > 0 && (
+  <div className="h-[220px] rounded-xl border border-slate-200 bg-white p-3">
+    {perfLoading ? (
+      <div className="h-full flex items-center justify-center text-xs text-slate-500">
+        Loading chart…
+      </div>
+    ) : perfError ? (
+      <div className="h-full flex items-center justify-center text-xs text-red-600">
+        {perfError}
+      </div>
+    ) : !perfData ? (
+      <div className="h-full flex items-center justify-center text-xs text-slate-500">
+        No chart data.
+      </div>
+    ) : (
+     <ProductPerformanceChart perfData={perfData} metric={perfMetric} />
+    )}
+  </div>
+</div>
+
+              {/* 5) Product Journey */}
+              {block.journeyBullets?.length > 0 && (
                 <div className="space-y-2">
-                  <button
-                    onClick={() =>
-                      setOpenIndex(openIndex === idx ? null : idx)
-                    }
-                    className="
-    w-full
-    flex
-    items-center
-    justify-between
-    gap-2
-    px-4
-    py-2.5
-    rounded-lg
-    2xl:text-sm text-xs
-    font-semibold
-    bg-gradient-to-r from-slate-700 to-slate-800
-    text-slate-50
-    transition-all
-    duration-200
-    hover:shadow-md
-    hover:from-slate-600 hover:to-slate-700
-    active:scale-98
-  "
-                  >
-                    <span className="flex items-center gap-2">
-                      📈
-                      {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
-                    </span>
-
-                    <span
-                      className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
-                    >
-                      ▼
-                    </span>
-                  </button>
-
-                  <AnimatePresence>
-                    {openIndex === idx && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="bg-slate-50 rounded-lg p-4 overflow-hidden"
-                      >
-                        <ul className="list-none space-y-2">
-                          {b.journeyBullets.map((j, i) => (
-                            <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
-                              <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
-                              <span>{j}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  <div className="text-sm font-semibold text-slate-800">Product Journey</div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <ul className="space-y-2 text-sm text-slate-700">
+                      {block.journeyBullets.map((j, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="text-slate-400 mt-[2px]">→</span>
+                          <span>{j}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               )}
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
+  );
+};
 
-            </motion.div>
-          );
-        })}
+
+
+type ProductJourneyModalProps = {
+  open: boolean;
+  onClose: () => void;
+  block: ProductInsightBlock | null;
+};
+
+const ProductJourneyModal: React.FC<ProductJourneyModalProps> = ({
+  open,
+  onClose,
+  block,
+}) => {
+  if (!open || !block) return null;
+
+  return (
+    <div className="fixed inset-0 z-999999 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl w-[95%] max-w-2xl shadow-xl p-6 space-y-5 relative">
+
+        {/* Close */}
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
+        >
+          ✕
+        </button>
+
+        {/* Product Name */}
+        <h2 className="text-lg font-semibold text-slate-800">
+          {block.name}
+        </h2>
+
+        {/* Metrics */}
+        {block.metrics.length > 0 && (
+          <div className="flex flex-wrap gap-3">
+            {block.metrics.map((m, i) => (
+              <div
+                key={i}
+                className="px-3 py-1 rounded-full text-xs font-medium border"
+                style={{
+                  color: m.color || "#414042",
+                  borderColor: "#E2E8F0",
+                }}
+              >
+                {m.label}: {m.value}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Action Summary */}
+        {block.recommendationBullets.length > 0 && (
+          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md">
+            <p className="text-sm text-blue-900">
+              💡 {block.recommendationBullets.join(" ")}
+            </p>
+          </div>
+        )}
+
+        {/* Product Journey */}
+        {block.journeyBullets.length > 0 && (
+          <div>
+            <h3 className="font-semibold text-slate-700 mb-2">
+              Product Journey
+            </h3>
+            <ul className="space-y-2 text-sm text-slate-600">
+              {block.journeyBullets.map((j, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="text-slate-400">→</span>
+                  <span>{j}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -744,9 +908,365 @@ const ProductInsightsSection = ({
 
 
 
+const ProductInsightsSection = ({
+  blocks,
+  objective,
+  recommendationsMap,
+  nameToSkuMap,
+
+  // ✅ ADD THESE
+  range,
+  selectedYear,
+  selectedQuarter,
+  homeCurrency,
+  countryName, // ✅ ADD
+}: {
+  blocks: ProductInsightBlock[];
+  objective?: ObjectivePayload;
+  recommendationsMap?: RecommendationsMap;
+  nameToSkuMap?: Record<string, string>;
+
+  // ✅ ADD TYPES
+  range: RangeType;                 // "monthly" | "quarterly" | "yearly" | ""
+  selectedYear: string;             // "2025"
+  selectedQuarter: Quarter | "";     // "Q1".."Q4" or ""
+  homeCurrency?: string;  
+  countryName: string; // ✅ ADD          // only global
+}) => {
+  const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
+  const [selectedRecObj, setSelectedRecObj] = useState<any>(null);
+  const [perfLoading, setPerfLoading] = useState(false);
+const [perfError, setPerfError] = useState<string | null>(null);
+const [perfData, setPerfData] = useState<any>(null);
+const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
+
+  if (!blocks.length) return null;
+
+  // top border colors (rotate)
+  const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
+
+  const skuActions =
+    (recommendationsMap as any)?.sku_actions ??
+    (recommendationsMap as any)?.recommendations ??
+    recommendationsMap ??
+    {};
+
+useEffect(() => {
+  if (!selectedBlock) return;
+
+  const ac = new AbortController();
+
+  (async () => {
+    try {
+      setPerfLoading(true);
+      setPerfError(null);
+      setPerfData(null);
+
+      const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+      if (!token) throw new Error("Missing token");
+
+      const time_range = "Yearly";
+
+      const quarterNum =
+        range === "quarterly" && selectedQuarter
+          ? String(["Q1","Q2","Q3","Q4"].indexOf(selectedQuarter) + 1)
+          : undefined;
+
+const productKeyForApi = selectedBlock.name; // ✅ Always product name
+
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+body: JSON.stringify({
+  country: countryName,
+  product_name: productKeyForApi,   // "Passion Fruit"
+  time_range: "Yearly",             // ✅ forced
+  year: Number(selectedYear),
+  quarter: undefined,               // (optional; can remove)
+  home_currency: homeCurrency,
+}),
+        cache: "no-store",
+        signal: ac.signal,
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Failed to fetch product performance");
+
+      // ✅ SHAPE FIX
+// pick a country series from response
+const pickSeries = (j: any) => {
+  const d = j?.data;
+  if (!d || typeof d !== "object") return null;
+
+  const country = (countryName || "").toLowerCase(); // "uk"
+  const keys = Object.keys(d);
+
+  // UK page -> prefer uk / uk_usd / uk_gbp (jo bhi backend deta)
+  if (country && country !== "global") {
+    const match =
+      keys.find(k => k.toLowerCase() === country) ||
+      keys.find(k => k.toLowerCase().startsWith(country + "_")) || // uk_usd
+      keys.find(k => k.toLowerCase().startsWith(country));         // fallback
+
+    if (match) return d[match];
+  }
+
+  // Global page
+  const g = keys.find(k => k.toLowerCase().startsWith("global"));
+  return g ? d[g] : d[keys[0]];
+};
+
+const rows = pickSeries(json);
+
+setPerfData({
+  rows: Array.isArray(rows)
+    ? rows.map((r: any) => ({
+        x: r?.month ?? r?.label ?? "-",
+        y:
+          perfMetric === "units"
+            ? toNum(r?.quantity ?? r?.units ?? 0)
+            : toNum(r?.net_sales ?? 0),
+      }))
+    : [],
+});
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      setPerfError(e?.message || "Failed to load product chart");
+    } finally {
+      setPerfLoading(false);
+    }
+  })();
+
+  return () => ac.abort();
+}, [selectedBlock, range, selectedYear, selectedQuarter, homeCurrency, nameToSkuMap]);
+
+const openDrawer = (b: ProductInsightBlock) => {
+  const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
+  const skuKey = b.skuKey || mappedSku;
+
+  const recObj =
+    (skuKey && (skuActions as any)[skuKey]) ||
+    (skuActions as any)[b.name] ||
+    (skuActions as any)[b.name.trim()] ||
+    null;
+
+  setSelectedRecObj(recObj);
+  setSelectedBlock(b);
+};
 
 
+  return (
+    <div className="space-y-5">
+      <div>
+        <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" textSize="2xl" />
+      </div>
 
+      <div className="grid grid-cols-3 gap-6">
+        {blocks.map((b, idx) => {
+          const borderColor = topBorderColors[idx % topBorderColors.length];
+
+          return (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: idx * 0.06 }}
+              className={[
+                "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+                "border-t-4", // ✅ top border like SS2
+                borderColor,
+                "p-4 space-y-3",
+              ].join(" ")}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-800">
+                  {idx + 1}. {b.name}
+                </div>
+
+                <button
+                  onClick={() => openDrawer(b)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition"
+                >
+                  Detailed View
+                </button>
+              </div>
+
+              {/* ✅ Metrics in BOXES (SS2 style) */}
+              {b.metrics?.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {b.metrics.map((m, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2"
+                    >
+                      <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none">
+                        {m.label}
+                      </div>
+                      <div
+                        className="text-xs 2xl:text-sm font-bold mt-1"
+                        style={{ color: m.color || "#414042" }}
+                      >
+                        {m.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* short inline recommendation (optional, like your SS1) */}
+              {b.recommendationBullets?.length > 0 && (
+                <p className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+                  {b.recommendationBullets.join(" ")}
+                </p>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* ✅ Right Drawer */}
+      <RightProductDrawer
+  open={!!selectedBlock}
+  onClose={() => {
+    setSelectedBlock(null);
+    setSelectedRecObj(null);
+  }}
+  block={selectedBlock}
+  objective={objective}
+  recObj={selectedRecObj}
+  perfLoading={perfLoading}
+  perfError={perfError}
+  perfData={perfData}
+  perfMetric={perfMetric}
+/>
+    </div>
+  );
+};
+
+const MonthlyObjectiveStrip = ({
+  objective,
+}: {
+  objective?: ObjectivePayload;
+}) => {
+  const Item = ({
+  label,
+  value,
+  icon,
+  topColor,
+  iconBg,
+  iconColor,
+  valueClass = "text-slate-800",
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  topColor: string;
+  iconBg: string;
+  iconColor?: string;
+  valueClass?: string;
+}) => (
+  <div className="relative flex flex-col justify-center px-6 py-4 bg-white border border-slate-200 rounded-xl">
+
+    {/* Top Color Bar */}
+    <div
+      className="absolute top-0 left-0 w-full h-1"
+    />
+
+    <div className="flex items-center gap-3">
+
+      {/* Icon with independent background */}
+      <div
+        className="w-8 h-8 flex items-center justify-center rounded-lg"
+        style={{
+          backgroundColor: iconBg,
+          color: iconColor || topColor,
+        }}
+      >
+        {icon}
+      </div>
+
+      <div className="flex flex-col">
+        <span className="text-xs text-slate-500">{label}</span>
+        <span className={`text-sm font-semibold ${valueClass}`}>
+          {value}
+        </span>
+      </div>
+    </div>
+  </div>
+);
+
+
+  return (
+    <div className="w-full rounded-xl bg-[#ffffff] ">
+      
+      {/* Title */}
+      <div className=" pb-3 ">
+        <h2 className="text-2xl font-semibold text-[#414042]">
+          Monthly Objectives & Targets
+        </h2>
+      </div>
+
+      {/* Strip Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5  rounded-sm">
+
+       <Item
+  label="Primary Focus"
+  value={objective?.growth_intent || "Growth"}
+  icon={<TrendingUp size={16} />}
+  topColor="#3A8EA4"
+  iconBg="#E0F2F1"
+/>
+
+<Item
+  label="Profit Strategy"
+  value={objective?.profit_priority?.replaceAll("_", " ") || "Profit"}
+  icon={<DollarSign size={16} />}
+  topColor="#ED9F50"
+  iconBg="#FFF3E0"
+/>
+
+<Item
+  label="Inventory Dilution"
+  value={objective?.inventory_clearance_priority ? "Yes" : "No"}
+  icon={<Package size={16} />}
+  topColor="#C0BFC1"
+  iconBg="#F3F4F6"
+/>
+
+<Item
+  label="Target Set"
+  value="$140K"
+  icon={<Target size={16} />}
+  topColor="#5EA68E"
+  iconBg="#E6F4EA"
+/>
+
+<Item
+  label="Shortfall"
+  value="-$3.6K"
+  icon={<AlertCircle size={16} />}
+  topColor="#B75A5A"
+  iconBg="#FDECEA"
+  valueClass="text-red-600"
+/>
+
+<Item
+  label="Cash Flow"
+  value="$130K"
+  icon={<Wallet size={16} />}
+  topColor="#75BBDA"
+  iconBg="#E3F2FD"
+/>
+
+
+      </div>
+    </div>
+  );
+};
 
 
 type AiSingleInsightCardProps = {
@@ -756,45 +1276,18 @@ type AiSingleInsightCardProps = {
   recommendationBullets: string[];
   skuInsightsBullets: string[];
   inventoryBullets: string[];
+
   recommendationsMap?: RecommendationsMap;
   remainingSkusRecommendation?: string;
+  nameToSkuMap?: Record<string, string>;
   objective?: ObjectivePayload;
 
-  nameToSkuMap?: Record<string, string>; // ✅ ADD
-};
-
-
-
-const Section = ({
-  title,
-  bullets,
-}: {
-  title: string;
-  bullets: string[];
-}) => {
-  if (!bullets.length) return null;
-
-  return (
-    <div className="space-y-2">
-      {/* <h3 className="text-sm font-semibold text-charcoal-600">
-        {title}
-      </h3> */}
-      <PageBreadcrumb
-        pageTitle={title}
-        variant="page"
-        align="left"
-        textSize="2xl"
-      />
-      <ul className="list-disc pl-4 space-y-1 text-xs 2xl:text-sm text-charcoal-500">
-        {bullets.map((b, i) => (
-          <li
-            key={i}
-            dangerouslySetInnerHTML={renderMarkdownInline(b)}
-          />
-        ))}
-      </ul>
-    </div>
-  );
+  // ✅ ADD THESE
+  range: RangeType;
+  selectedYear: string;
+  selectedQuarter: Quarter | "";
+  homeCurrency?: string;
+  countryName: string; // ✅ ADD
 };
 
 const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
@@ -804,10 +1297,17 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   recommendationBullets,
   skuInsightsBullets,
   inventoryBullets,
-  remainingSkusRecommendation,   // ✅ ADD
+  remainingSkusRecommendation,
   objective,
-  recommendationsMap, // ✅ ADD
-  nameToSkuMap, // ✅ ADD
+  recommendationsMap,
+  nameToSkuMap,
+  countryName, // ✅ ADD
+
+  // ✅ ADD
+  range,
+  selectedYear,
+  selectedQuarter,
+  homeCurrency,
 }) => {
   if (loading) {
     return (
@@ -856,67 +1356,16 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
     (l) => !l.includes(":")
   );
 
-
-  const leftMetrics = summaryMetrics.slice(0, 5);
-  const rightMetrics = summaryMetrics.slice(5, 10);
-
   return (
-    <div className="flex flex-col lg:flex-row gap-5">
-      <div className="flex-1 rounded-2xl border border-slate-200 bg-white shadow-sm p-7 space-y-6">
-        <div className="border-b-2 border-blue-500 pb-3">
-          <PageBreadcrumb
-            pageTitle="Monthly Objectives"
-            variant="page"
-            align="left"
-            textSize="2xl"
-          />
-        </div>
-
-        {/* ================= OBJECTIVE SECTION ================= */}
-        {objective && (
-          <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-blue-50 to-slate-50 p-5 border-l-4 border-l-blue-500 space-y-4">
-            <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Business Strategy</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-slate-700">
-
-              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-                <div className="text-slate-500 text-xs font-medium">Growth Intent</div>
-                <div className="font-bold text-slate-800 capitalize text-sm">
-                  {objective.growth_intent}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-                <div className="text-slate-500 text-xs font-medium">
-                  Inventory Clearance
-                </div>
-                <div className="font-bold text-slate-800 text-sm">
-                  <span className={objective.inventory_clearance_priority ? "text-emerald-600" : "text-slate-600"}>
-                    {objective.inventory_clearance_priority ? "✓ Yes" : "✗ No"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-3 space-y-1 border border-blue-100">
-                <div className="text-slate-500 text-xs font-medium">
-                  Profit Priority
-                </div>
-                <div className="font-bold text-slate-800 capitalize text-sm">
-                  {objective.profit_priority?.replaceAll("_", " ")}
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
-
-
-        {/* ================= PERFORMANCE SUMMARY ================= */}
-        <div className="space-y-5">
-          {/* Narrative Summary */}
-          {narrativeInsights.length > 0 && (
+    <div className="flex flex-col  gap-5">
+      <div className="w-full  space-y-4">
+        
+  <div className="space-y-4">
+    {/* Narrative Summary */}
+  {narrativeInsights.length > 0 && (
             <>
-              <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-100 rounded-lg p-4 space-y-3">
-                <h2 className="text-base 2xl:text-lg text-slate-800">
+              <div className="  space-y-3">
+                <h2 className="text-base 2xl:text-2xl text-slate-800">
                   <span className="font-bold text-slate-900">
                     {narrativeInsights[0]?.split("(")[0]?.trim()}
                   </span>
@@ -935,166 +1384,136 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
               </div>
             </>
           )}
+  </div>
 
-          {/* Metrics Heading */}
-          <div className="flex items-center gap-2 pt-2">
-            <span className="text-sm font-bold text-slate-800">📊 Key Metrics</span>
-            <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-300 to-transparent"></div>
-          </div>
+   <div className="w-full">
+<div className="space-y-5 ">
+  <ProductInsightsSection
+  blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+  objective={objective}
+  recommendationsMap={recommendationsMap}
+  nameToSkuMap={nameToSkuMap}
 
-          {/* Metrics Grid */}
+  // ✅ PASS THESE
+  range={range}
+  selectedYear={selectedYear}
+  selectedQuarter={selectedQuarter}
+  homeCurrency={homeCurrency}
+  countryName={countryName} // ✅ ADD
+/>
+ 
+
+  {/* ✅ Remaining SKUs Recommendation */}
+  {remainingSkusRecommendation && (
+    <div className="border border-slate-200 rounded-xl p-4  ">
+      <div className="text-sm font-semibold text-slate-800 mb-2">
+        OverAll
+         SKUs – Action Plan
+      </div>
+
+      <p className="text-xs 2xl:text-sm text-[#414042] leading-relaxed">
+        💡 {remainingSkusRecommendation}
+      </p>
+    </div>
+  )}
+</div>
+      </div>
 
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+  {/* ================= INVENTORY SECTION ================= */}
+ {/* ================= INVENTORY SECTION ================= */}
+{inventoryBullets.length > 0 && (
+  <div className="space-y-4">
+    <div className="flex items-center gap-2">
+      <span className="text-base 2xl:text-2xl font-bold text-slate-800">
+        Inventory Insights
+      </span>
+    </div>
 
-            {/* LEFT COLUMN */}
-            <div className="space-y-3">
-              {leftMetrics.map((p, i) => {
-                let mainValue = p.value.split(",")[0]?.replace(/\(.*?\)/g, "").trim();
+    {(() => {
+      // ✅ 1) separate "For detailed..." lines (no box)
+      const detailLines = inventoryBullets.filter((b) =>
+        /for detailed/i.test(b)
+      );
 
-                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-                const n = num ? Number(num) : NaN;
+      // ✅ 2) main bullets that go inside boxes
+      const mainLines = inventoryBullets.filter((b) => !/for detailed/i.test(b));
 
-                const colorClass =
-                  !isNaN(n)
-                    ? n < 0
-                      ? "text-red-600 bg-red-50"
-                      : n > 0
-                        ? "text-emerald-600 bg-emerald-50"
-                        : "text-slate-700"
-                    : "text-slate-700";
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {mainLines.map((b, i) => {
+              const raw = String(b || "").trim();
+
+              // ✅ Unfulfillable: extract value inside (...) and show right
+              const isUnfulfillable = /unfulfillable/i.test(raw);
+              if (isUnfulfillable) {
+                const match = raw.match(/\(([^)]+)\)/); // (0.02%)
+                const value = match?.[1]?.trim();
+                const label = raw.replace(/\([^)]+\)/, "").trim();
 
                 return (
-                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-slate-100 hover:border-slate-200 transition-all">
-                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{p.label}</span>
-                    <span className={`font-bold text-sm px-2 py-1 rounded ${colorClass}`}>
-                      {mainValue}
+                  <div
+                    key={i}
+                    className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
+                  >
+                    <span className="text-sm font-medium text-slate-700">
+                      {label}
                     </span>
-                  </div>
-                );
-              })}
-            </div>
 
-            {/* RIGHT COLUMN */}
-            <div className="space-y-3">
-              {rightMetrics.map((p, i) => {
-                const valueParts = p.value.split(",");
-
-                let mainValue = valueParts[0]?.replace(/\(.*?\)/g, "").trim();
-                const extraPart = valueParts[1]?.trim();
-
-                let acosLabel = "";
-                let acosValue = "";
-
-                if (extraPart && extraPart.toLowerCase().includes("acos")) {
-                  const parts = extraPart.split(":");
-                  acosLabel = parts[0] + ":";
-                  acosValue = parts[1]?.trim();
-                }
-
-                const num = mainValue.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-                const n = num ? Number(num) : NaN;
-
-                const colorClass =
-                  !isNaN(n)
-                    ? n < 0
-                      ? "text-red-600"
-                      : n > 0
-                        ? "text-emerald-600"
-                        : "text-slate-700"
-                    : "text-slate-700";
-
-                const acosNum = acosValue?.match(/[-+]?[\d,.]+/)?.[0]?.replace(/,/g, "");
-                const acosN = acosNum ? Number(acosNum) : NaN;
-
-                const acosColor =
-                  !isNaN(acosN)
-                    ? acosN < 0
-                      ? "text-red-600"
-                      : "text-emerald-600"
-                    : "text-slate-700";
-
-                return (
-                  <div key={i} className="space-y-1 text-xs 2xl:text-sm">
-
-                    {/* Main Row */}
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">{p.label}</span>
-                      <span className={`font-semibold ${colorClass}`}>
-                        {mainValue}
+                    {value ? (
+                      <span className="font-bold text-amber-700 text-sm whitespace-nowrap">
+                        {value}
                       </span>
-                    </div>
-
-                    {/* ACOS Row */}
-                    {acosLabel && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-600">{acosLabel}</span>
-                        <span className={`font-semibold ${acosColor}`}>
-                          {acosValue}
-                        </span>
-                      </div>
-                    )}
+                    ) : null}
                   </div>
                 );
-              })}
-            </div>
+              }
 
-          </div>
+              // ✅ Default behavior (keeps others same):
+              // if bullet has "Label: Value" -> show value on right
+              const colonIdx = raw.indexOf(":");
+              const hasColon = colonIdx > -1;
 
+              const left = hasColon ? raw.slice(0, colonIdx).trim() : raw;
+              const right = hasColon ? raw.slice(colonIdx + 1).trim() : "";
 
-        </div>
+              return (
+                <div
+                  key={i}
+                  className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
+                >
+                  <span className="text-sm font-medium text-slate-700">
+                    {left}
+                  </span>
 
-
-        {/* ================= INVENTORY SECTION ================= */}
-        {inventoryBullets.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="text-base 2xl:text-lg font-bold text-slate-800">📦 Inventory Insights</span>
-              <div className="flex-1 h-0.5 bg-gradient-to-r from-amber-300 to-transparent"></div>
-            </div>
-
-            <div className="border border-amber-200 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 p-5 space-y-3">
-              <div className="grid grid-cols-1 gap-3">
-                {inventoryBullets.map((b, i) => (
-                  <div key={i} className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100 hover:shadow-sm transition-shadow">
-                    <span className="text-xs 2xl:text-sm font-medium text-slate-700">{b.split(":")[0]}</span>
-                    <span className="font-bold text-amber-700 text-sm">
-                      {b.includes(":") ? b.split(":")[1] : ""}
+                  {right ? (
+                    <span className="font-bold text-amber-700 text-sm whitespace-nowrap">
+                      {right}
                     </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
-        )}
+
+          {/* ✅ detail lines as simple text, not a box */}
+          {detailLines.map((line, idx) => (
+            <p key={idx} className="text-xs text-slate-500 italic mt-2">
+              {line}
+            </p>
+          ))}
+        </>
+      );
+    })()}
+  </div>
+)}
 
       </div>
 
 
-      <div className="flex-1 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 shadow-sm p-7">
-        <div className="space-y-5">
-          <ProductInsightsSection
-            blocks={parseProductInsightsBlocks(skuInsightsBullets)}
-            objective={objective}
-            recommendationsMap={recommendationsMap}
-            nameToSkuMap={nameToSkuMap}
-          />
 
-          {/* ✅ Remaining SKUs Recommendation */}
-          {remainingSkusRecommendation && (
-            <div className="border border-slate-200 rounded-xl p-4 bg-blue-50 border-l-4 border-l-blue-500">
-              <div className="text-sm font-semibold text-slate-800 mb-2">
-                OverAll SKUs – Action Plan
-              </div>
-
-              <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-                💡 {remainingSkusRecommendation}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
+     
     </div>
 
   );
@@ -1114,8 +1533,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   // Normalized home currency from profile (e.g. "usd", "inr")
   const homeCurrency = (userData?.homeCurrency || "USD").toLowerCase();
 
-  const router = useRouter();
-
   // params from parent
   const ranged = initialRanged;
   const countryName = initialCountryName;
@@ -1132,7 +1549,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const currencySymbol = isGlobalPage
     ? getCurrencySymbol(homeCurrency) // GLOBAL → homeCurrency
     : getCurrencySymbol(countryName || ""); // Country → country currency
-  const [collapsed, setCollapsed] = useState(false);
 
   const [range, setRange] = useState<RangeType>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -1173,9 +1589,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       if (name && sku) map[name] = sku;
     }
 
-    return map;
-  }, [skuRows]);
-
+  return map;
+}, [skuRows]);
 
 
   const toggleFocus = (which: Exclude<FocusedChart, null>) => {
@@ -1197,14 +1612,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
   const [expenseBreakdownPieBase64, setExpenseBreakdownPieBase64] = useState<string | null>(null);
   const [productWiseCm1PieBase64, setProductWiseCm1PieBase64] = useState<string | null>(null);
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
 
-  const [primaryGoal, setPrimaryGoal] = useState("");
-  const [riskLevel, setRiskLevel] = useState("");
-  const [maxTacos, setMaxTacos] = useState<number | "">("");
-  const [adBudget, setAdBudget] = useState<number | "">("");
-  const [summaryNotes, setSummaryNotes] = useState("");
-  const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
 
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const [overlayBounds, setOverlayBounds] = useState<{
@@ -1215,72 +1623,72 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     width: 0,
   });
 
-  const computeTopBottom5 = (
-    rows: TableRow[]
-  ): { topData: TopBottomData; bottomData: TopBottomData } => {
-    const clean = (rows || []).filter(Boolean);
+const computeTopBottom5 = (
+  rows: TableRow[]
+): { topData: TopBottomData; bottomData: TopBottomData } => {
+  const clean = (rows || []).filter(Boolean);
 
-    // ✅ robust number parser (handles "1,234.56", null, undefined, "")
-    const num = (v: any) => {
-      if (v === null || v === undefined) return 0;
-      if (typeof v === "number") return isFinite(v) ? v : 0;
-      const s = String(v).replace(/,/g, "").trim();
-      const n = Number(s);
-      return isFinite(n) ? n : 0;
-    };
+  // ✅ robust number parser (handles "1,234.56", null, undefined, "")
+  const num = (v: any) => {
+    if (v === null || v === undefined) return 0;
+    if (typeof v === "number") return isFinite(v) ? v : 0;
+    const s = String(v).replace(/,/g, "").trim();
+    const n = Number(s);
+    return isFinite(n) ? n : 0;
+  };
 
-    const lower = (v: any) => String(v || "").trim().toLowerCase();
+  const lower = (v: any) => String(v || "").trim().toLowerCase();
 
-    // remove Total if present (supports product_name or sku)
-    const withoutTotal = clean.filter((r) => {
-      const name = lower((r as any).product_name ?? (r as any).sku);
-      return name !== "total";
-    });
+  // remove Total if present (supports product_name or sku)
+  const withoutTotal = clean.filter((r) => {
+    const name = lower((r as any).product_name ?? (r as any).sku);
+    return name !== "total";
+  });
 
-    // ✅ sort using parsed numbers (prevents string-sorting bugs)
-    const sortByProfitDesc = [...withoutTotal].sort((a, b) => num(b.profit) - num(a.profit));
-    const sortByProfitAsc = [...withoutTotal].sort((a, b) => num(a.profit) - num(b.profit));
+  // ✅ sort using parsed numbers (prevents string-sorting bugs)
+  const sortByProfitDesc = [...withoutTotal].sort((a, b) => num(b.profit) - num(a.profit));
+  const sortByProfitAsc = [...withoutTotal].sort((a, b) => num(a.profit) - num(b.profit));
 
-    const top5 = sortByProfitDesc.slice(0, 5);
-    const bottom5 = sortByProfitAsc.slice(0, 5);
+  const top5 = sortByProfitDesc.slice(0, 5);
+  const bottom5 = sortByProfitAsc.slice(0, 5);
 
-    const mapRows = (arr: TableRow[]) =>
-      arr.map((item) => {
-        const netUnits = num(item.net_units_sold);
-        const profit = num(item.profit);
-        const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
-
-        return {
-          product_name: String((item as any).product_name || (item as any).sku || "-"),
-          profit: profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          profitMix: num(item.profit_mix).toFixed(2),
-          salesMix: num(item.sales_mix).toFixed(2),
-          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        };
-      });
-
-    const totalsFor = (arr: TableRow[]) => {
-      const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
-      const totalProfitMix = arr.reduce((s, r) => s + num(r.profit_mix), 0);
-      const totalSalesMix = arr.reduce((s, r) => s + num(r.sales_mix), 0);
-      const totalNetUnits = arr.reduce((s, r) => s + num(r.net_units_sold), 0);
-      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+  const mapRows = (arr: TableRow[]) =>
+    arr.map((item) => {
+      const netUnits = num(item.net_units_sold);
+      const profit = num(item.profit);
+      const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
 
       return {
-        profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        profitMix: totalProfitMix.toFixed(2),
-        salesMix: totalSalesMix.toFixed(2),
-        avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        product_name: String((item as any).product_name || (item as any).sku || "-"),
+        profit: profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        profitMix: num(item.profit_mix).toFixed(2),
+        salesMix: num(item.sales_mix).toFixed(2),
+        cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       };
-    };
+    });
+
+  const totalsFor = (arr: TableRow[]) => {
+    const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
+    const totalProfitMix = arr.reduce((s, r) => s + num(r.profit_mix), 0);
+    const totalSalesMix = arr.reduce((s, r) => s + num(r.sales_mix), 0);
+    const totalNetUnits = arr.reduce((s, r) => s + num(r.net_units_sold), 0);
+    const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
 
     return {
-      topData: { rows: mapRows(top5), totals: totalsFor(top5) },
-      bottomData: { rows: mapRows(bottom5), totals: totalsFor(bottom5) },
+      profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      profitMix: totalProfitMix.toFixed(2),
+      salesMix: totalSalesMix.toFixed(2),
+      avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     };
   };
 
-  const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
+  return {
+    topData: { rows: mapRows(top5), totals: totalsFor(top5) },
+    bottomData: { rows: mapRows(bottom5), totals: totalsFor(bottom5) },
+  };
+};
+
+const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
 
 
   useEffect(() => {
@@ -1426,7 +1834,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
 
-  const fetchAiSummary = async (rangeType: RangeType) => {
+const fetchAiSummary = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
 
     const requestId = ++aiRequestIdRef.current; // ✅ 1️⃣ request version
@@ -1482,35 +1890,35 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       const summaryLines = sections["SUMMARY"] ?? [];
       const inventoryLines = sections["INVENTORY"] ?? [];
       const productLines = sections["PRODUCT INSIGHTS"] ?? [];
-      const { recommendationBullets, inventoryBullets, recommendationsMap } =
-        extractRecoAndInventoryBullets(data.recommendations as any);
+const { recommendationBullets, inventoryBullets, recommendationsMap } =
+  extractRecoAndInventoryBullets(data.recommendations as any);
 
-      // ✅ extract remaining_skus_recommendation safely
-      let remainingSkusRecommendation: string | undefined;
+// ✅ extract remaining_skus_recommendation safely
+let remainingSkusRecommendation: string | undefined;
 
-      if (
-        data.recommendations &&
-        typeof data.recommendations === "object" &&
-        "remaining_skus_recommendation" in data.recommendations
-      ) {
-        remainingSkusRecommendation =
-          (data.recommendations as any).remaining_skus_recommendation;
-      }
+if (
+  data.recommendations &&
+  typeof data.recommendations === "object" &&
+  "remaining_skus_recommendation" in data.recommendations
+) {
+  remainingSkusRecommendation =
+    (data.recommendations as any).remaining_skus_recommendation;
+}
 
-      setAiPanel({
-        summaryBullets: summaryLines,
-        skuInsightsBullets: productLines,
-        recommendationBullets,
-        inventoryBullets: inventoryLines,
-        recommendationsMap,
-        objective: data.objective,
-        rawSummary: data.summary ?? null,
-        rawRecommendations:
-          typeof data.recommendations === "string" ? data.recommendations : null,
+setAiPanel({
+  summaryBullets: summaryLines,
+  skuInsightsBullets: productLines,
+  recommendationBullets,
+  inventoryBullets: inventoryLines,
+  recommendationsMap,
+  objective: data.objective,
+  rawSummary: data.summary ?? null,
+  rawRecommendations:
+    typeof data.recommendations === "string" ? data.recommendations : null,
 
-        // ✅ NEW
-        remainingSkusRecommendation,
-      });
+  // ✅ NEW
+  remainingSkusRecommendation,
+});
 
 
 
@@ -1686,160 +2094,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     fetchPerformanceTrendFromHistory(range);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric]);
-
-
-  const cropPngBase64WithSize = async (
-    base64: string,
-    pad = 0,
-    opts?: {
-      // how close to white counts as background (0-255)
-      whiteThreshold?: number;     // default 253
-      // how much non-bg must exist in a row/col to keep it (0..1)
-      minContentRatio?: number;    // default 0.002 (0.2%)
-    }
-  ): Promise<{ base64: string; w: number; h: number }> => {
-    const isDataUrl = base64.startsWith("data:image/");
-    const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
-
-    const img = new Image();
-
-    // ✅ Use original data URL if present (jpeg/png)
-    // ✅ Otherwise assume png (your older charts send raw png base64)
-    img.src = isDataUrl ? base64 : `data:image/png;base64,${raw}`;
-
-
-    await new Promise<void>((res, rej) => {
-      img.onload = () => res();
-      img.onerror = () => rej(new Error("Failed to load image for cropping"));
-    });
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return { base64: raw, w: img.width, h: img.height };
-
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx.drawImage(img, 0, 0);
-
-    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-    const whiteThreshold = opts?.whiteThreshold ?? 253;
-    const minContentRatio = opts?.minContentRatio ?? 0.002; // 0.2%
-
-    // Background: transparent OR near-white
-    const isBg = (r: number, g: number, b: number, a: number) => {
-      if (a === 0) return true;
-      return r >= whiteThreshold && g >= whiteThreshold && b >= whiteThreshold;
-    };
-
-    // Count non-bg pixels in a row
-    const rowContentRatio = (y: number) => {
-      let nonBg = 0;
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-        if (!isBg(r, g, b, a)) nonBg++;
-      }
-      return nonBg / width;
-    };
-
-    // Count non-bg pixels in a col
-    const colContentRatio = (x: number) => {
-      let nonBg = 0;
-      for (let y = 0; y < height; y++) {
-        const i = (y * width + x) * 4;
-        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-        if (!isBg(r, g, b, a)) nonBg++;
-      }
-      return nonBg / height;
-    };
-
-    // Trim top/bottom by density
-    let top = 0;
-    while (top < height && rowContentRatio(top) < minContentRatio) top++;
-
-    let bottom = height - 1;
-    while (bottom >= 0 && rowContentRatio(bottom) < minContentRatio) bottom--;
-
-    // Trim left/right by density
-    let left = 0;
-    while (left < width && colContentRatio(left) < minContentRatio) left++;
-
-    let right = width - 1;
-    while (right >= 0 && colContentRatio(right) < minContentRatio) right--;
-
-    // If nothing meaningful found, return original
-    if (right <= left || bottom <= top) return { base64: raw, w: img.width, h: img.height };
-
-    // Apply pad
-    left = Math.max(0, left - pad);
-    top = Math.max(0, top - pad);
-    right = Math.min(width - 1, right + pad);
-    bottom = Math.min(height - 1, bottom + pad);
-
-    const cropW = right - left + 1;
-    const cropH = bottom - top + 1;
-
-    const out = document.createElement("canvas");
-    const outCtx = out.getContext("2d");
-    if (!outCtx) return { base64: raw, w: img.width, h: img.height };
-
-    out.width = cropW;
-    out.height = cropH;
-
-    outCtx.drawImage(canvas, left, top, cropW, cropH, 0, 0, cropW, cropH);
-
-    return {
-      base64: out.toDataURL("image/png").split("base64,")[1],
-      w: cropW,
-      h: cropH,
-    };
-  };
-
-  const toJpegBase64 = async (
-    base64: string,
-    quality = 0.98,
-    opts?: { scale?: number; bg?: string }
-  ): Promise<{ base64: string; w: number; h: number }> => {
-    const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
-
-    // allow passing either png or jpeg data (we always load as image/*)
-    const img = new Image();
-    img.src = base64.startsWith("data:image/")
-      ? base64
-      : `data:image/png;base64,${raw}`;
-
-    await new Promise<void>((res, rej) => {
-      img.onload = () => res();
-      img.onerror = () => rej(new Error("Failed to load image for JPEG conversion"));
-    });
-
-    const scale = opts?.scale ?? 1;          // ✅ upscale to reduce Excel seams
-    const bg = opts?.bg ?? "#FFFFFF";        // ✅ solid bg
-
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(img.width * scale));
-    canvas.height = Math.max(1, Math.round(img.height * scale));
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return { base64: raw, w: img.width, h: img.height };
-
-    // ✅ high quality scaling
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-
-    // ✅ solid white background
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-    return {
-      base64: canvas.toDataURL("image/jpeg", quality).split("base64,")[1],
-      w: canvas.width,
-      h: canvas.height,
-    };
-  };
 
   const handleDownloadSkuSheet1 = async () => {
     try {
@@ -2061,8 +2315,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency]);
 
 
-  const goBack = () => router.push("/pnl-dashboard/QTD/global/NA/NA");
-
   if (month === "NA" || year === "NA") {
     return <IntegrationDashboard />;
   }
@@ -2104,12 +2356,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return `${capitalizeFirstLetter(range)} Tracking Profitability - ${selectedYear}`;
   };
 
-
-  const getCountryLabel = () => {
-    const c = (countryName || "").toLowerCase();
-    return c === "global" ? "GLOBAL" : (countryName || "").toUpperCase();
-  };
-
   const getPeriodLabelShort = () => {
     const yy = String(selectedYear || "").slice(-2);
 
@@ -2123,38 +2369,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return String(selectedYear);
     }
     return "";
-  };
-
-  const getPnLTitleParts = () => {
-    return {
-      country: getCountryLabel(),
-      period: getPeriodLabelShort(),
-    };
-  };
-
-
-  const renderAiPanel = () => {
-    if (!allDropdownsSelected) return null;
-
-    return (
-      // <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <MonthEndBusinessSummaryCard
-          loading={aiPanelLoading}
-          error={aiPanelError}
-          summaryBullets={aiPanel?.summaryBullets ?? []}
-          skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-        />
-
-        <RecommendationsCard
-          loading={aiPanelLoading}
-          error={aiPanelError}
-          recommendationBullets={aiPanel?.recommendationBullets ?? []}
-          inventoryBullets={aiPanel?.inventoryBullets ?? []}
-        />
-      </div>
-      // </div>
-    );
   };
 
   const getTrendWrapperHeight = () => {
@@ -2732,7 +2946,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               ];
             };
 
-            const cards = [
+           const cards = [
               {
                 key: "units",
                 title: "Units",
@@ -2846,6 +3060,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           })()}
 
       </div>
+
 
       {/* Charts & Tables */}
       {range === "monthly" && selectedMonth && selectedYear && (
@@ -2967,7 +3182,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
           {allDropdownsSelected && (
-            <div id="business-summary" className="scroll-mt-[80px]">
+            <div id="business-summary" className="scroll-mt-[80px] space-y-6 bg-white p-3">
+
+              {aiPanel?.objective && (
+      <MonthlyObjectiveStrip objective={aiPanel.objective} />
+    )}
               <AiSingleInsightCard
                 loading={aiPanelLoading}
                 error={aiPanelError}
@@ -2977,9 +3196,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 inventoryBullets={aiPanel?.inventoryBullets ?? []}
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
-                remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
-              />
+                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+ nameToSkuMap={nameToSkuMap}    
+ range={range}
+  selectedYear={selectedYear}
+  selectedQuarter={selectedQuarter}
+  homeCurrency={globalHomeCurrency}  
+  countryName={initialCountryName} // ✅ ADD (ya countryName)
+        />
             </div>
           )}
 
@@ -3177,6 +3401,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
           {allDropdownsSelected && (
             <div id="business-summary" className="scroll-mt-[80px]">
+
+              {aiPanel?.objective && (
+      <MonthlyObjectiveStrip objective={aiPanel.objective} />
+    )}
               <AiSingleInsightCard
                 loading={aiPanelLoading}
                 error={aiPanelError}
@@ -3187,7 +3415,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
+                nameToSkuMap={nameToSkuMap} 
+                range={range}
+  selectedYear={selectedYear}
+  selectedQuarter={selectedQuarter}
+  homeCurrency={globalHomeCurrency} 
+  countryName={initialCountryName} // ✅ ADD (ya countryName)
+ // ✅ ADD THIS
               />
             </div>
           )}
@@ -3387,6 +3621,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
           {allDropdownsSelected && (
             <div id="business-summary" className="scroll-mt-[80px]">
+
+              {aiPanel?.objective && (
+      <MonthlyObjectiveStrip objective={aiPanel.objective} />
+    )}
               <AiSingleInsightCard
                 loading={aiPanelLoading}
                 error={aiPanelError}
@@ -3397,7 +3635,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
+                nameToSkuMap={nameToSkuMap} 
+                range={range}
+  selectedYear={selectedYear}
+  selectedQuarter={selectedQuarter}
+  homeCurrency={globalHomeCurrency} 
+  countryName={initialCountryName} // ✅ ADD (ya countryName)
+ // ✅ ADD THIS
               />
             </div>
           )}
