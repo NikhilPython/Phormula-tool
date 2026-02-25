@@ -464,7 +464,12 @@ def get_user_data():
 
     # ✅ Identify if member login
     is_member = payload.get("is_member") is True
-    member_id = payload.get("member_id")  # optional
+    member_id = payload.get("member_id")  
+    marketplace_ids = payload.get("marketplace_ids")
+    modules = payload.get("modules")
+    countries = payload.get("countries")
+    email = payload.get("email")
+
 
     member_name = None
     member_role = None
@@ -511,6 +516,10 @@ def get_user_data():
         "member_id": int(member_id) if member_id else None,
         "member_name": member_name,
         "member_role": member_role,
+        "marketplace_ids": marketplace_ids,   # ✅ can be used by FE to conditionally show features based on marketplace connectivity
+        "modules": modules,
+        "countries": countries,
+        "email": email,
 
         # ✅ User fields
         'name': user.name,
