@@ -57,19 +57,22 @@ const FiltersAndSearchRow: React.FC<FiltersAndSearchRowProps> = ({
   }, [safeRange, selectedYear, years, onYearChange]);
 
   return (
-    <div className="flex items-center gap-3">
-      <PeriodFiltersTable
-        range={safeRange}
-        selectedMonth={selectedMonth}
-        selectedQuarter={selectedQuarter}
-        selectedYear={selectedYear}
-        yearOptions={years}
-        allowedRanges={safeAllowedRanges}
-        onRangeChange={(r) => onRangeChange(r)}
-        onMonthChange={onMonthChange}
-        onQuarterChange={onQuarterChange}
-        onYearChange={onYearChange}
-      />
+    // <div className="flex items-center gap-3">
+    <div className="mb-2 sm:mb-0">
+      <div className="flex flex-col md:flex-row sm:items-center  gap-[0.5vw]">
+        <PeriodFiltersTable
+          range={safeRange}
+          selectedMonth={selectedMonth}
+          selectedQuarter={selectedQuarter}
+          selectedYear={selectedYear}
+          yearOptions={years}
+          allowedRanges={safeAllowedRanges}
+          onRangeChange={(r) => onRangeChange(r)}
+          onMonthChange={onMonthChange}
+          onQuarterChange={onQuarterChange}
+          onYearChange={onYearChange}
+        />
+      </div>
     </div>
   );
 };

@@ -169,12 +169,12 @@ const MonthsforBI: React.FC = () => {
   const [year2, setYear2] = useState<string>('');
   const [isMobile, setIsMobile] = useState(false);
 
-useEffect(() => {
-  const check = () => setIsMobile(window.innerWidth < 768);
-  check();
-  window.addEventListener("resize", check);
-  return () => window.removeEventListener("resize", check);
-}, []);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // Data + UI state
   const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>({
@@ -231,113 +231,113 @@ useEffect(() => {
   const compareBtnRef = React.useRef<HTMLButtonElement | null>(null);
 
   const isPreviewMode =
-  params?.month === "NA" || params?.year === "NA";
+    params?.month === "NA" || params?.year === "NA";
 
   const effectiveCountry = isPreviewMode ? "global" : countryName;
 
 
- // =========================
-// PREVIEW / DUMMY DATA
-// =========================
+  // =========================
+  // PREVIEW / DUMMY DATA
+  // =========================
 
-const TOP_80_DUMMY: SkuItem[] = [
-  {
-    product_name: "Demo Product A",
-    sku: "DEMO-A",
+  const TOP_80_DUMMY: SkuItem[] = [
+    {
+      product_name: "Demo Product A",
+      sku: "DEMO-A",
 
-    total_quantity_month1: 120,
-    total_quantity_month2: 150,
+      total_quantity_month1: 120,
+      total_quantity_month2: 150,
 
-    net_sales_month1: 32000,
-    net_sales_month2: 41000,
+      net_sales_month1: 32000,
+      net_sales_month2: 41000,
 
-    asp_month1: 267,
-    asp_month2: 273,
+      asp_month1: 267,
+      asp_month2: 273,
 
-    profit_month1: 8200,
-    profit_month2: 10400,
+      profit_month1: 8200,
+      profit_month2: 10400,
 
-    "Sales Mix (Month2)": 45,
+      "Sales Mix (Month2)": 45,
 
-    "Unit Growth": { category: "High Growth", value: 25 },
-    "ASP Growth": { category: "Low Growth", value: 2.2 },
-    "Net Sales Growth": { category: "High Growth", value: 28 },
-    "CM1 Profit Impact": { category: "High Growth", value: 27 },
-    "Profit Per Unit": { category: "High Growth", value: 18 },
-  },
-];
+      "Unit Growth": { category: "High Growth", value: 25 },
+      "ASP Growth": { category: "Low Growth", value: 2.2 },
+      "Net Sales Growth": { category: "High Growth", value: 28 },
+      "CM1 Profit Impact": { category: "High Growth", value: 27 },
+      "Profit Per Unit": { category: "High Growth", value: 18 },
+    },
+  ];
 
-const NEW_REV_DUMMY: SkuItem[] = [
-  {
-    product_name: "Demo Product B",
-    sku: "DEMO-B",
+  const NEW_REV_DUMMY: SkuItem[] = [
+    {
+      product_name: "Demo Product B",
+      sku: "DEMO-B",
 
-    total_quantity_month1: 40,
-    total_quantity_month2: 80,
+      total_quantity_month1: 40,
+      total_quantity_month2: 80,
 
-    net_sales_month1: 9000,
-    net_sales_month2: 18000,
+      net_sales_month1: 9000,
+      net_sales_month2: 18000,
 
-    asp_month1: 225,
-    asp_month2: 225,
+      asp_month1: 225,
+      asp_month2: 225,
 
-    profit_month1: 1800,
-    profit_month2: 3900,
+      profit_month1: 1800,
+      profit_month2: 3900,
 
-    "Sales Mix (Month2)": 25,
+      "Sales Mix (Month2)": 25,
 
-    "Unit Growth": { category: "High Growth", value: 100 },
-    "ASP Growth": { category: "Low Growth", value: 0 },
-    "Net Sales Growth": { category: "High Growth", value: 100 },
-    "CM1 Profit Impact": { category: "High Growth", value: 116 },
-    "Profit Per Unit": { category: "High Growth", value: 30 },
-  },
-];
+      "Unit Growth": { category: "High Growth", value: 100 },
+      "ASP Growth": { category: "Low Growth", value: 0 },
+      "Net Sales Growth": { category: "High Growth", value: 100 },
+      "CM1 Profit Impact": { category: "High Growth", value: 116 },
+      "Profit Per Unit": { category: "High Growth", value: 30 },
+    },
+  ];
 
-const OTHER_DUMMY: SkuItem[] = [
-  {
-    product_name: "Demo Product C",
-    sku: "DEMO-C",
+  const OTHER_DUMMY: SkuItem[] = [
+    {
+      product_name: "Demo Product C",
+      sku: "DEMO-C",
 
-    total_quantity_month1: 200,
-    total_quantity_month2: 180,
+      total_quantity_month1: 200,
+      total_quantity_month2: 180,
 
-    net_sales_month1: 26000,
-    net_sales_month2: 24000,
+      net_sales_month1: 26000,
+      net_sales_month2: 24000,
 
-    asp_month1: 130,
-    asp_month2: 133,
+      asp_month1: 130,
+      asp_month2: 133,
 
-    profit_month1: 6000,
-    profit_month2: 5400,
+      profit_month1: 6000,
+      profit_month2: 5400,
 
-    "Sales Mix (Month2)": 30,
+      "Sales Mix (Month2)": 30,
 
-    "Unit Growth": { category: "Negative Growth", value: -10 },
-    "ASP Growth": { category: "Low Growth", value: 2.3 },
-    "Net Sales Growth": { category: "Negative Growth", value: -8 },
-    "CM1 Profit Impact": { category: "Negative Growth", value: -10 },
-    "Profit Per Unit": { category: "Negative Growth", value: -5 },
-  },
-];
+      "Unit Growth": { category: "Negative Growth", value: -10 },
+      "ASP Growth": { category: "Low Growth", value: 2.3 },
+      "Net Sales Growth": { category: "Negative Growth", value: -8 },
+      "CM1 Profit Impact": { category: "Negative Growth", value: -10 },
+      "Profit Per Unit": { category: "Negative Growth", value: -5 },
+    },
+  ];
 
-const DUMMY_CATEGORIZED_GROWTH: CategorizedGrowth = {
-  top_80_skus: TOP_80_DUMMY,
-  new_or_reviving_skus: NEW_REV_DUMMY,
-  other_skus: OTHER_DUMMY,
+  const DUMMY_CATEGORIZED_GROWTH: CategorizedGrowth = {
+    top_80_skus: TOP_80_DUMMY,
+    new_or_reviving_skus: NEW_REV_DUMMY,
+    other_skus: OTHER_DUMMY,
 
-  // ✅ merged list for All SKUs tab
-  all_skus: [
-    ...TOP_80_DUMMY,
-    ...NEW_REV_DUMMY,
-    ...OTHER_DUMMY,
-  ],
+    // ✅ merged list for All SKUs tab
+    all_skus: [
+      ...TOP_80_DUMMY,
+      ...NEW_REV_DUMMY,
+      ...OTHER_DUMMY,
+    ],
 
-  top_80_total: null,
-  new_or_reviving_total: null,
-  other_total: null,
-  all_skus_total: null,
-};
+    top_80_total: null,
+    new_or_reviving_total: null,
+    other_total: null,
+    all_skus_total: null,
+  };
 
 
 
@@ -383,17 +383,17 @@ const DUMMY_CATEGORIZED_GROWTH: CategorizedGrowth = {
   }, [introReady]);
 
   useEffect(() => {
-  if (isPreviewMode) {
-    setActiveTab('top_80_skus');
-  }
-}, [isPreviewMode]);
+    if (isPreviewMode) {
+      setActiveTab('top_80_skus');
+    }
+  }, [isPreviewMode]);
 
-useEffect(() => {
-  if (isPreviewMode) {
-    handleSubmit();
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [isPreviewMode]);
+  useEffect(() => {
+    if (isPreviewMode) {
+      handleSubmit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPreviewMode]);
 
 
   const toggleTotalsMetric = (key: string) => {
@@ -459,22 +459,22 @@ useEffect(() => {
     metricKeyBase: 'net_sales' | 'profit' | 'total_quantity' | 'rembursement_fee' | 'asp'
   ) => {
     if (isPreviewMode) {
-  const x = ["Jan'24", "", "Feb'24"];
+      const x = ["Jan'24", "", "Feb'24"];
 
-  return {
-    x,
-    values: {
-      top80_m1: 12000,
-      top80_m2: 16500,
+      return {
+        x,
+        values: {
+          top80_m1: 12000,
+          top80_m2: 16500,
 
-      newRev_m1: 4000,
-      newRev_m2: 7200,
+          newRev_m1: 4000,
+          newRev_m2: 7200,
 
-      other_m1: 8000,
-      other_m2: 6500,
-    },
-  };
-}
+          other_m1: 8000,
+          other_m2: 6500,
+        },
+      };
+    }
     const m1Label = `${getAbbr(month1)}'${String(year1).slice(2)}`;
     const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
     const x = [`${m1Label}`, '', `${m2Label}`];
@@ -562,8 +562,8 @@ useEffect(() => {
       const { x, values } = buildCompareSeries('net_sales');
       const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
       const currency = effectiveCountry === "global"
-  ? "$"
-  : getCurrencySymbol(effectiveCountry);
+        ? "$"
+        : getCurrencySymbol(effectiveCountry);
 
       const hasAny =
         top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2
@@ -611,7 +611,7 @@ useEffect(() => {
         color: ['#7B9A6D', '#3a8ea4', '#ed9F50',], // Net Sales palette
         xAxis: {
           type: 'category',
-          boundaryGap: false,  
+          boundaryGap: false,
           data: x,
           axisLabel: {
             interval: 0,
@@ -754,8 +754,8 @@ useEffect(() => {
       const { x, values } = buildCompareSeries('profit');
       const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
       const currency = effectiveCountry === "global"
-  ? "$"
-  : getCurrencySymbol(effectiveCountry);
+        ? "$"
+        : getCurrencySymbol(effectiveCountry);
 
 
       const hasAny =
@@ -1112,8 +1112,8 @@ useEffect(() => {
       const { x, values } = buildCompareSeries('asp');
       const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
       const currency = effectiveCountry === "global"
-  ? "$"
-  : getCurrencySymbol(effectiveCountry);
+        ? "$"
+        : getCurrencySymbol(effectiveCountry);
 
 
       const hasAny =
@@ -1286,8 +1286,8 @@ useEffect(() => {
       const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
       const x = [m1Label, '', m2Label];
       const currency = effectiveCountry === "global"
-  ? "$"
-  : getCurrencySymbol(effectiveCountry);
+        ? "$"
+        : getCurrencySymbol(effectiveCountry);
 
 
       const netSales_m1 = totalOf('net_sales_month1');
@@ -1612,27 +1612,27 @@ useEffect(() => {
   }, [year2, availablePeriods]);
 
   useEffect(() => {
-  if (isPreviewMode) return; // 🔥 ADD THIS LINE
-  if (!availablePeriods?.length) return;
+    if (isPreviewMode) return; // 🔥 ADD THIS LINE
+    if (!availablePeriods?.length) return;
 
-  const hasValid =
-    month1 && year1 && month2 && year2 &&
-    isPeriodAvailable(year1, month1) &&
-    isPeriodAvailable(year2, month2);
+    const hasValid =
+      month1 && year1 && month2 && year2 &&
+      isPeriodAvailable(year1, month1) &&
+      isPeriodAvailable(year2, month2);
 
-  if (hasValid) return;
+    if (hasValid) return;
 
-  const def = pickDefaultComparePeriods(availablePeriods);
-  if (!def) return;
+    const def = pickDefaultComparePeriods(availablePeriods);
+    if (!def) return;
 
-  const [y2, m2] = def.newer.split("-");
-  const [y1, m1] = def.older.split("-");
+    const [y2, m2] = def.newer.split("-");
+    const [y1, m1] = def.older.split("-");
 
-  setYear1(y1);
-  setMonth1(m1);
-  setYear2(y2);
-  setMonth2(m2);
-}, [availablePeriods, isPreviewMode]);
+    setYear1(y1);
+    setMonth1(m1);
+    setYear2(y2);
+    setMonth2(m2);
+  }, [availablePeriods, isPreviewMode]);
 
 
 
@@ -1641,18 +1641,18 @@ useEffect(() => {
   // =====================
   const handleSubmit = async (e?: React.FormEvent) => {
     if (isPreviewMode) {
-  setError(null);
+      setError(null);
 
-  setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
+      setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
 
-  setAdvertisingTotals({ month1: 4200, month2: 5200 });
-  setExpenseTotals({ month1: 3800, month2: 4100 });
-  setReimbursementTotals({ month1: 900, month2: 1100 });
+      setAdvertisingTotals({ month1: 4200, month2: 5200 });
+      setExpenseTotals({ month1: 3800, month2: 4100 });
+      setReimbursementTotals({ month1: 900, month2: 1100 });
 
-  setMonth2Label("Preview");
+      setMonth2Label("Preview");
 
-  return;
-}
+      return;
+    }
 
     e?.preventDefault?.();
     setError(null);
@@ -2190,8 +2190,8 @@ useEffect(() => {
   const m1Label = `${getAbbr(month1)}'${String(year1).slice(2)}`;
   const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
   const currency = effectiveCountry === "global"
-  ? "$"
-  : getCurrencySymbol(effectiveCountry);
+    ? "$"
+    : getCurrencySymbol(effectiveCountry);
 
 
   const totalsLine = useMemo(() => {
@@ -2282,143 +2282,143 @@ useEffect(() => {
 
 
   const renderSection = (title: string, raw?: string) => {
-  if (!raw) return null;
+    if (!raw) return null;
 
-  const sentences = raw
-    .split(/(?<=\.)\s+|[\n\r]+/g)     // dot-space OR new lines
-    .map(s => s.replace(/^-+\s*/, "").trim())
-    .filter(Boolean);
+    const sentences = raw
+      .split(/(?<=\.)\s+|[\n\r]+/g)     // dot-space OR new lines
+      .map(s => s.replace(/^-+\s*/, "").trim())
+      .filter(Boolean);
 
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 10 }}>
-        {title}
-      </div>
+    return (
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 10 }}>
+          {title}
+        </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {sentences.map((sentence, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 10,
-              fontSize: 14,
-              lineHeight: 1.6,
-              color: "#374151",
-            }}
-          >
-            <span
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {sentences.map((sentence, idx) => (
+            <div
+              key={idx}
               style={{
-                width: 6,
-                height: 6,
-                marginTop: 7,
-                borderRadius: "50%",
-                backgroundColor: "#9CA3AF",
-                flexShrink: 0,
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: "#374151",
               }}
-            />
-            <span>{sentence}</span>
-          </div>
-        ))}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  marginTop: 7,
+                  borderRadius: "50%",
+                  backgroundColor: "#9CA3AF",
+                  flexShrink: 0,
+                }}
+              />
+              <span>{sentence}</span>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
-const normalizeBullets = (raw?: string) => {
-  if (!raw) return [];
+  const normalizeBullets = (raw?: string) => {
+    if (!raw) return [];
 
-  let parts = raw
-    .split(/\r?\n+/g)
-    .map(s => s.trim())
-    .filter(Boolean);
-
-  if (parts.length <= 1) {
-    parts = raw
-      .split(/(?<=[.!?])\s+/g)
+    let parts = raw
+      .split(/\r?\n+/g)
       .map(s => s.trim())
       .filter(Boolean);
-  }
 
-  return parts
-    .map((s) =>
-      s
-        .replace(/^[-•*]+\s*/, "")
-        .replace(/^\d+[\).\]]\s*/, "")
-        .trim()
-    )
-    .filter(Boolean);
-};
+    if (parts.length <= 1) {
+      parts = raw
+        .split(/(?<=[.!?])\s+/g)
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
 
-const renderBullets = (raw?: string) => {
-  const bullets = normalizeBullets(raw);
-  if (!bullets.length) return null;
+    return parts
+      .map((s) =>
+        s
+          .replace(/^[-•*]+\s*/, "")
+          .replace(/^\d+[\).\]]\s*/, "")
+          .trim()
+      )
+      .filter(Boolean);
+  };
 
-  return (
+  const renderBullets = (raw?: string) => {
+    const bullets = normalizeBullets(raw);
+    if (!bullets.length) return null;
+
+    return (
+      <div style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+          Product Journey
+        </div>
+
+        <div style={{ border: "1px solid #E5E7EB", borderRadius: 16, padding: 14 }}>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: 22,
+              listStyleType: "disc",         // ✅ THIS LINE fixes Tailwind reset
+              listStylePosition: "outside",
+            }}
+          >
+            {bullets.map((b, i) => (
+              <li key={i} style={{ marginBottom: 10, display: "list-item" }}>
+                {b}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  };
+
+
+
+  const pill = (label: string, value: any) => {
+    const displayValue = (() => {
+      if (value === null || value === undefined) return "-";
+      if (typeof value === "boolean") return value ? "true" : "false"; // 👈 ye important
+      if (value === "") return "-";
+      return String(value);
+    })();
+
+    return (
+      <div
+        style={{
+          border: "1px solid #E5E7EB",
+          borderRadius: 12,
+          padding: "10px 12px",
+          background: "#fff",
+        }}
+      >
+        <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 4 }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>
+          {displayValue}
+        </div>
+      </div>
+    );
+  };
+
+
+  const bigBox = (title: string, text?: string) => (
     <div style={{ marginTop: 14 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
-       Product Journey
-      </div>
-
-      <div style={{ border: "1px solid #E5E7EB", borderRadius: 16, padding: 14 }}>
-        <ul
-          style={{
-            margin: 0,
-            paddingLeft: 22,
-            listStyleType: "disc",         // ✅ THIS LINE fixes Tailwind reset
-            listStylePosition: "outside",
-          }}
-        >
-          {bullets.map((b, i) => (
-            <li key={i} style={{ marginBottom: 10, display: "list-item" }}>
-              {b}
-            </li>
-          ))}
-        </ul>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 8 }}>{title}</div>
+      <div style={{ border: "1px solid #E5E7EB", borderRadius: 14, padding: "12px 14px", background: "#fff", color: "#374151", lineHeight: 1.6, fontSize: 14 }}>
+        {text || "--"}
       </div>
     </div>
   );
-};
-
-
-
-const pill = (label: string, value: any) => {
-  const displayValue = (() => {
-    if (value === null || value === undefined) return "-";
-    if (typeof value === "boolean") return value ? "true" : "false"; // 👈 ye important
-    if (value === "") return "-";
-    return String(value);
-  })();
-
-  return (
-    <div
-      style={{
-        border: "1px solid #E5E7EB",
-        borderRadius: 12,
-        padding: "10px 12px",
-        background: "#fff",
-      }}
-    >
-      <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 4 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>
-        {displayValue}
-      </div>
-    </div>
-  );
-};
-
-
-const bigBox = (title: string, text?: string) => (
-  <div style={{ marginTop: 14 }}>
-    <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 8 }}>{title}</div>
-    <div style={{ border: "1px solid #E5E7EB", borderRadius: 14, padding: "12px 14px", background: "#fff", color: "#374151", lineHeight: 1.6, fontSize: 14 }}>
-      {text || "--"}
-    </div>
-  </div>
-);
 
 
 
@@ -2432,61 +2432,61 @@ const bigBox = (title: string, text?: string) => (
 
 
 
-const renderFormattedInsight = (raw: string) => {
-  if (!raw) return null;
+  const renderFormattedInsight = (raw: string) => {
+    if (!raw) return null;
 
-  const sentences = raw
-    .split(/(?<=\.)\s+/)
-    .map(s => s.replace(/^-+\s*/, "").trim()) // remove leading "-"
-    .filter(Boolean);
+    const sentences = raw
+      .split(/(?<=\.)\s+/)
+      .map(s => s.replace(/^-+\s*/, "").trim()) // remove leading "-"
+      .filter(Boolean);
 
-  return (
-    <div style={{ marginTop: 8 }}>
-      
-      {/* Heading */}
-      <div
-        style={{
-          fontSize: 16,
-          fontWeight: 600,
-          color: "#111827",
-          marginBottom: 12,
-        }}
-      >
-        AI Insight
-      </div>
+    return (
+      <div style={{ marginTop: 8 }}>
 
-      {/* Bullet Points */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {sentences.map((sentence, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 10,
-              fontSize: 14,
-              lineHeight: 1.6,
-              color: "#374151",
-            }}
-          >
-            {/* Clean subtle bullet */}
-            <span
+        {/* Heading */}
+        <div
+          style={{
+            fontSize: 16,
+            fontWeight: 600,
+            color: "#111827",
+            marginBottom: 12,
+          }}
+        >
+          AI Insight
+        </div>
+
+        {/* Bullet Points */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {sentences.map((sentence, idx) => (
+            <div
+              key={idx}
               style={{
-                width: 6,
-                height: 6,
-                marginTop: 7,
-                borderRadius: "50%",
-                backgroundColor: "#9CA3AF",
-                flexShrink: 0,
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: "#374151",
               }}
-            />
-            <span>{sentence}</span>
-          </div>
-        ))}
+            >
+              {/* Clean subtle bullet */}
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  marginTop: 7,
+                  borderRadius: "50%",
+                  backgroundColor: "#9CA3AF",
+                  flexShrink: 0,
+                }}
+              />
+              <span>{sentence}</span>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
 
 
@@ -3051,21 +3051,24 @@ const renderFormattedInsight = (raw: string) => {
 
       <div className='w-full'>
         {/* Month selectors */}
-        <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
+        <div className="sticky top-0 z-40 w-full flex flex-col
+  bg-[#F7F7F7]
+  sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
+  border-b border-gray-200">
           <div className='mb-3'>
-<h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] ">
-          Business Insights - AI Analyst&nbsp;-
-          <span className="text-[#5EA68E] pl-1">
-            {effectiveCountry && formatCountryLabel(effectiveCountry)}<span className="text-[#5EA68E] px-2">
-            </span>
-          </span>
-        </h2>
-         <p><i className="2xl:text-sm text-xs">Select the year and month for both periods to compare growth metrics.</i></p>
+            <h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] ">
+              Business Insights - AI Analyst&nbsp;-
+              <span className="text-[#5EA68E] pl-1">
+                {effectiveCountry && formatCountryLabel(effectiveCountry)}<span className="text-[#5EA68E] px-2">
+                </span>
+              </span>
+            </h2>
+            <p><i className="2xl:text-sm text-xs">Select the year and month for both periods to compare growth metrics.</i></p>
           </div>
 
         </div>
-        
-       
+
+
         <form onSubmit={handleSubmit} className="month-form ">
           {/* Row 1 */}
           <div className="month-row">
@@ -3155,7 +3158,7 @@ const renderFormattedInsight = (raw: string) => {
 
         {error && <p style={{ color: 'red' }}>{error}</p>}
 
-        <div className="mt-4 mb-3 rounded-xl border border-gray-200  p-3 w-full bg-[#D9D9D933]">
+        <div className="mt-4 mb-3 rounded-xl border border-gray-200  p-3 w-full bg-white">
           <div className="2xl:text-2xl text-[18px] font-bold text-[#414042]">Profitability</div>
 
           {/* Center labels like GraphPage */}
@@ -3265,14 +3268,14 @@ const renderFormattedInsight = (raw: string) => {
         {(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).some(
           (k) => (categorizedGrowth[k] || []).length > 0
         ) && (
-            <div className='border border-gray-200 rounded-xl p-4 mt-6 w-full bg-[#D9D9D933]'>
+            <div className='border border-gray-200 rounded-xl p-4 mt-6 w-full bg-white'>
               <div className='flex xl:flex-row flex-col lg:justify-between justify-start xl:items-center items-start '>
                 <div className='flex 2xl:flex-row flex-col justify-between  2xl:items-center  items-start w-full xl:gap-0 gap-3'>
                   <h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] text-nowrap">SKU Analysis MTD</h2>
                   <div className='flex flex-col md:flex-row 2xl:justify-end justify-between 2xl:gap-3 mt-2 2xl:mt-0 w-full'>
 
-<div
-  className="
+                    <div
+                      className="
     inline-flex
     p-1 gap-2
     overflow-x-auto
@@ -3280,11 +3283,11 @@ const renderFormattedInsight = (raw: string) => {
     scroll-smooth
     no-scrollbar
   "
-  style={{
-    border: "1px solid #D9D9D9E5",
-    borderRadius: 8,
-  }}
->
+                      style={{
+                        border: "1px solid #D9D9D9E5",
+                        borderRadius: 8,
+                      }}
+                    >
                       {(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).map(key => {
                         const isActive = activeTab === key
 
@@ -3300,9 +3303,9 @@ const renderFormattedInsight = (raw: string) => {
   transition-colors duration-200
   whitespace-nowrap py-1
   ${isActive
-    ? 'bg-[#5EA68E80] font-semibold'
-    : 'bg-white hover:bg-[#5EA68E33] font-normal'
-  }
+                                ? 'bg-[#5EA68E80] font-semibold'
+                                : 'bg-white hover:bg-[#5EA68E33] font-normal'
+                              }
 `}
                             style={{
                               color: '#414042',
@@ -3321,12 +3324,12 @@ const renderFormattedInsight = (raw: string) => {
                       <button
                         onClick={analyzeSkus}
                         disabled={
-  isPreviewMode ||
-  !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
-    (k) =>
-      (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
-  )
-}
+                          isPreviewMode ||
+                          !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
+                            (k) =>
+                              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
+                          )
+                        }
                         className="
     bg-custom-effect shin text-[#F8EDCE]
     rounded-sm xl:px-4 px-3
@@ -3370,7 +3373,7 @@ const renderFormattedInsight = (raw: string) => {
               </div>
 
               <div className="table-wrapper pt-4">
-                
+
                 <div className="pt-4">
                   <DataTable<TableRow>
                     columns={columns}
@@ -3395,7 +3398,7 @@ const renderFormattedInsight = (raw: string) => {
                     alignItems: 'center',
                     gap: 14,
                     flexWrap: 'wrap',
-                    
+
                     color: '#414042',
                     marginTop: 6,
                   }}
@@ -3445,8 +3448,8 @@ const renderFormattedInsight = (raw: string) => {
         if (!insightData) return null;
 
         const objectiveObj = isObjectiveObj(insightData.objective)
-  ? insightData.objective
-  : undefined;
+          ? insightData.objective
+          : undefined;
 
         return (
           <Drawer
@@ -3470,7 +3473,7 @@ const renderFormattedInsight = (raw: string) => {
               }}
             >
               {/* Header */}
-             
+
               <div
                 style={{
                   display: "flex",
@@ -3521,28 +3524,28 @@ const renderFormattedInsight = (raw: string) => {
                 }}
               >
 
-<div style={{ flex: 1, overflowY: "auto", marginTop: 8, paddingRight: 4 }}>
-  <div style={{ marginTop: 4 }}>
-    <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 10 }}>
-      Objective
-    </div>
+                <div style={{ flex: 1, overflowY: "auto", marginTop: 8, paddingRight: 4 }}>
+                  <div style={{ marginTop: 4 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 10 }}>
+                      Objective
+                    </div>
 
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
-        gap: 12,
-      }}
-    >
-      {pill("Growth Intent", objectiveObj?.growth_intent)}
-{pill("Inventory Clearance Priority", objectiveObj?.inventory_clearance_priority)}
-{pill("Profit Priority", objectiveObj?.profit_priority)}
-    </div>
-  </div>
-    {renderBullets(insightData.insight)}
-    {bigBox("Recommendation", insightData.recommendation)}
-    {bigBox("Inventory Recommendation", insightData.inventory_recommendation)} 
-</div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
+                        gap: 12,
+                      }}
+                    >
+                      {pill("Growth Intent", objectiveObj?.growth_intent)}
+                      {pill("Inventory Clearance Priority", objectiveObj?.inventory_clearance_priority)}
+                      {pill("Profit Priority", objectiveObj?.profit_priority)}
+                    </div>
+                  </div>
+                  {renderBullets(insightData.insight)}
+                  {bigBox("Recommendation", insightData.recommendation)}
+                  {bigBox("Inventory Recommendation", insightData.inventory_recommendation)}
+                </div>
 
 
               </div>

@@ -116,19 +116,19 @@ const Pnlforecast: React.FC = () => {
   const router = useRouter();
   const params = useParams();
   const countryName = (params?.countryName as string) || '';
-const urlMonth = (params?.month as string) || '';
-const urlYear = (params?.year as string) || '';
+  const urlMonth = (params?.month as string) || '';
+  const urlYear = (params?.year as string) || '';
 
-const isDemoMode =
-  urlMonth?.toUpperCase() === "NA" &&
-  urlYear?.toUpperCase() === "NA";
+  const isDemoMode =
+    urlMonth?.toUpperCase() === "NA" &&
+    urlYear?.toUpperCase() === "NA";
 
-const effectiveCountry = isDemoMode
-  ? "global"
-  : countryName;
+  const effectiveCountry = isDemoMode
+    ? "global"
+    : countryName;
 
-// ✅ currency now follows effectiveCountry
-const currencySymbol = getCurrencySymbol(effectiveCountry);
+  // ✅ currency now follows effectiveCountry
+  const currencySymbol = getCurrencySymbol(effectiveCountry);
 
   const { month, year } = getPreviousMonthYear(urlMonth, urlYear);
 
@@ -136,132 +136,132 @@ const currencySymbol = getCurrencySymbol(effectiveCountry);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<ChartDataItem[]>([]);
-  
+
   const [showCm1, setshowCm1] = useState<boolean>(false);
-  
+
   const [LosSalesUnits, setLosSalesUnits] = useState<boolean>(false);
- 
-  
-
-
- 
-
- const DUMMY_PNL_ROWS: RowData[] = [
-  {
-    sku: "SKU-DEMO-1",
-    product_name: "Demo Product A",
-
-    // ✅ Units
-    units_1st: 120,
-    units_2nd: 140,
-    units_3rd: 160,
-    units_sum: 420,
-
-    // ✅ Sales & CM1
-    Total_Sales_1st: 15000,
-    profit_1st: 4200,
-    profit_percentage_1st: 28,
-
-    Total_Sales_2nd: 18000,
-    profit_2nd: 5200,
-    profit_percentage_2nd: 29,
-
-    Total_Sales_3rd: 21000,
-    profit_3rd: 6100,
-    profit_percentage_3rd: 29,
-
-    // ✅ 3-month total
-    Total_Sales_sum: 54000,
-    profit_sum: 15500,
-  },
-  {
-    sku: "SKU-DEMO-2",
-    product_name: "Demo Product B",
-
-    units_1st: 220,
-    units_2nd: 250,
-    units_3rd: 280,
-    units_sum: 750,
-
-    Total_Sales_1st: 30000,
-    profit_1st: 7800,
-    profit_percentage_1st: 26,
-
-    Total_Sales_2nd: 34000,
-    profit_2nd: 9300,
-    profit_percentage_2nd: 27,
-
-    Total_Sales_3rd: 39000,
-    profit_3rd: 10900,
-    profit_percentage_3rd: 28,
-
-    Total_Sales_sum: 103000,
-    profit_sum: 28000,
-  },
-  {
-    sku: "Total",
-    product_name: "Total",
-
-    units_1st: 340,
-    units_2nd: 390,
-    units_3rd: 440,
-    units_sum: 1170,
-
-    Total_Sales_1st: 45000,
-    profit_1st: 12000,
-    profit_percentage_1st: 26.6,
-
-    Total_Sales_2nd: 52000,
-    profit_2nd: 14500,
-    profit_percentage_2nd: 27.8,
-
-    Total_Sales_3rd: 60000,
-    profit_3rd: 17000,
-    profit_percentage_3rd: 28.3,
-
-    Total_Sales_sum: 157000,
-    profit_sum: 43500,
-    profit_percentage_sum: 27.7,
-  },
-];
 
 
 
 
-const DUMMY_PNL_CHART: ChartDataItem[] = [
-  {
-    month: "Dec 25",
-    SALES: 42000,
-    "ADVERTISING COSTS": 3500,
-    "CM1 PROFIT": 11000,
-    "CM2 PROFIT": 5700,
-    isHistorical: true,
-  },
-  {
-    month: "Jan 26",
-    SALES: 45000,
-    "ADVERTISING COSTS": 4200,
-    "CM1 PROFIT": 12000,
-    "CM2 PROFIT": 7100,
-    isForecast: true,
-  },
-  {
-    month: "Feb 26",
-    SALES: 52000,
-    "ADVERTISING COSTS": 4800,
-    "CM1 PROFIT": 14500,
-    "CM2 PROFIT": 8600,
-    isForecast: true,
-  },
-  {
-    month: "Mar 26",
-    SALES: 60000,
-    "ADVERTISING COSTS": 5200,
-    "CM1 PROFIT": 17000,
-    "CM2 PROFIT": 10200,
-    isForecast: true,
-  },
-];
+
+
+  const DUMMY_PNL_ROWS: RowData[] = [
+    {
+      sku: "SKU-DEMO-1",
+      product_name: "Demo Product A",
+
+      // ✅ Units
+      units_1st: 120,
+      units_2nd: 140,
+      units_3rd: 160,
+      units_sum: 420,
+
+      // ✅ Sales & CM1
+      Total_Sales_1st: 15000,
+      profit_1st: 4200,
+      profit_percentage_1st: 28,
+
+      Total_Sales_2nd: 18000,
+      profit_2nd: 5200,
+      profit_percentage_2nd: 29,
+
+      Total_Sales_3rd: 21000,
+      profit_3rd: 6100,
+      profit_percentage_3rd: 29,
+
+      // ✅ 3-month total
+      Total_Sales_sum: 54000,
+      profit_sum: 15500,
+    },
+    {
+      sku: "SKU-DEMO-2",
+      product_name: "Demo Product B",
+
+      units_1st: 220,
+      units_2nd: 250,
+      units_3rd: 280,
+      units_sum: 750,
+
+      Total_Sales_1st: 30000,
+      profit_1st: 7800,
+      profit_percentage_1st: 26,
+
+      Total_Sales_2nd: 34000,
+      profit_2nd: 9300,
+      profit_percentage_2nd: 27,
+
+      Total_Sales_3rd: 39000,
+      profit_3rd: 10900,
+      profit_percentage_3rd: 28,
+
+      Total_Sales_sum: 103000,
+      profit_sum: 28000,
+    },
+    {
+      sku: "Total",
+      product_name: "Total",
+
+      units_1st: 340,
+      units_2nd: 390,
+      units_3rd: 440,
+      units_sum: 1170,
+
+      Total_Sales_1st: 45000,
+      profit_1st: 12000,
+      profit_percentage_1st: 26.6,
+
+      Total_Sales_2nd: 52000,
+      profit_2nd: 14500,
+      profit_percentage_2nd: 27.8,
+
+      Total_Sales_3rd: 60000,
+      profit_3rd: 17000,
+      profit_percentage_3rd: 28.3,
+
+      Total_Sales_sum: 157000,
+      profit_sum: 43500,
+      profit_percentage_sum: 27.7,
+    },
+  ];
+
+
+
+
+  const DUMMY_PNL_CHART: ChartDataItem[] = [
+    {
+      month: "Dec 25",
+      SALES: 42000,
+      "ADVERTISING COSTS": 3500,
+      "CM1 PROFIT": 11000,
+      "CM2 PROFIT": 5700,
+      isHistorical: true,
+    },
+    {
+      month: "Jan 26",
+      SALES: 45000,
+      "ADVERTISING COSTS": 4200,
+      "CM1 PROFIT": 12000,
+      "CM2 PROFIT": 7100,
+      isForecast: true,
+    },
+    {
+      month: "Feb 26",
+      SALES: 52000,
+      "ADVERTISING COSTS": 4800,
+      "CM1 PROFIT": 14500,
+      "CM2 PROFIT": 8600,
+      isForecast: true,
+    },
+    {
+      month: "Mar 26",
+      SALES: 60000,
+      "ADVERTISING COSTS": 5200,
+      "CM1 PROFIT": 17000,
+      "CM2 PROFIT": 10200,
+      isForecast: true,
+    },
+  ];
 
 
 
@@ -312,26 +312,26 @@ const DUMMY_PNL_CHART: ChartDataItem[] = [
   }, [LosSalesUnits, showCm1]);
 
   const getChartPngWithWhiteBg = (): string | null => {
-  const chartInstance = chartRef.current;
-  if (!chartInstance) return null;
+    const chartInstance = chartRef.current;
+    if (!chartInstance) return null;
 
-  const sourceCanvas =
-    chartInstance.canvas || chartInstance.ctx?.canvas;
-  if (!sourceCanvas) return null;
+    const sourceCanvas =
+      chartInstance.canvas || chartInstance.ctx?.canvas;
+    if (!sourceCanvas) return null;
 
-  const exportCanvas = document.createElement("canvas");
-  exportCanvas.width = sourceCanvas.width;
-  exportCanvas.height = sourceCanvas.height;
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = sourceCanvas.width;
+    exportCanvas.height = sourceCanvas.height;
 
-  const ctx = exportCanvas.getContext("2d");
-  if (!ctx) return null;
+    const ctx = exportCanvas.getContext("2d");
+    if (!ctx) return null;
 
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-  ctx.drawImage(sourceCanvas, 0, 0);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    ctx.drawImage(sourceCanvas, 0, 0);
 
-  return exportCanvas.toDataURL("image/png");
-};
+    return exportCanvas.toDataURL("image/png");
+  };
 
 
   const [selectedGraphs, setSelectedGraphs] = useState<SelectedGraphs>({
@@ -405,7 +405,7 @@ const DUMMY_PNL_CHART: ChartDataItem[] = [
               });
             }
           }
-        } catch {}
+        } catch { }
         date.setMonth(date.getMonth() + 1);
       }
       return previousMonths;
@@ -458,101 +458,101 @@ const DUMMY_PNL_CHART: ChartDataItem[] = [
   };
 
   useEffect(() => {
-  // 🧪 DEMO MODE: month=NA & year=NA
-  if (isDemoMode) {
-    setData(DUMMY_PNL_ROWS);
-    setChartData(DUMMY_PNL_CHART);
-    setLoading(false);
-    setError(null);
-    return; // ⛔ API CALL SKIP
-  }
-
-  const fetchForecastData = async () => {
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("jwtToken")
-        : null;
-
-    if (!token) {
-      setError("Authorization token is missing");
+    // 🧪 DEMO MODE: month=NA & year=NA
+    if (isDemoMode) {
+      setData(DUMMY_PNL_ROWS);
+      setChartData(DUMMY_PNL_CHART);
       setLoading(false);
-      return;
+      setError(null);
+      return; // ⛔ API CALL SKIP
     }
 
-    try {
-      const previousData = await fetchPreviousMonthsData();
+    const fetchForecastData = async () => {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("jwtToken")
+          : null;
 
-      const endpoint =
-        countryName.toLowerCase() === "global"
-          ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/global?month=${month}&year=${year}`
-          : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast?country=${countryName}&month=${month}&year=${year}`;
-
-      const response = await fetch(endpoint, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          setError(
-            "You need to load Inventory forecast first to load PnL forecast"
-          );
-        } else {
-          setError(`Error fetching data: ${response.statusText}`);
-        }
+      if (!token) {
+        setError("Authorization token is missing");
         setLoading(false);
         return;
       }
 
-      const contentType = response.headers.get("Content-Type") || "";
+      try {
+        const previousData = await fetchPreviousMonthsData();
 
-      if (
-        contentType.startsWith(
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-      ) {
-        const blob = await response.blob();
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          if (!e.target) return;
-          const arr = new Uint8Array(e.target.result as ArrayBuffer);
-          const workbook = XLSX.read(arr, { type: "array" });
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json<RowData>(sheet);
+        const endpoint =
+          countryName.toLowerCase() === "global"
+            ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/global?month=${month}&year=${year}`
+            : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast?country=${countryName}&month=${month}&year=${year}`;
 
-          if (jsonData.length === 0) {
-            setError("Empty table found in the Excel file");
+        const response = await fetch(endpoint, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            setError(
+              "You need to load Inventory forecast first to load PnL forecast"
+            );
           } else {
-            setData(jsonData);
-            setChartData(prepareChartData(jsonData, previousData));
+            setError(`Error fetching data: ${response.statusText}`);
           }
-        };
-        reader.readAsArrayBuffer(blob);
-        return;
-      }
-
-      if (contentType.includes("application/json")) {
-        const json = (await response.json()) as RowData[];
-        if (Array.isArray(json)) {
-          setData(json);
-          setChartData(prepareChartData(json, previousData));
-        } else {
-          throw new Error("Invalid JSON format");
+          setLoading(false);
+          return;
         }
-      }
-    } catch (err: any) {
-      setError(err?.message || "An error occurred while fetching the data");
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  fetchForecastData();
-}, [countryName, month, year, isDemoMode]);
+        const contentType = response.headers.get("Content-Type") || "";
+
+        if (
+          contentType.startsWith(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          )
+        ) {
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            if (!e.target) return;
+            const arr = new Uint8Array(e.target.result as ArrayBuffer);
+            const workbook = XLSX.read(arr, { type: "array" });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json<RowData>(sheet);
+
+            if (jsonData.length === 0) {
+              setError("Empty table found in the Excel file");
+            } else {
+              setData(jsonData);
+              setChartData(prepareChartData(jsonData, previousData));
+            }
+          };
+          reader.readAsArrayBuffer(blob);
+          return;
+        }
+
+        if (contentType.includes("application/json")) {
+          const json = (await response.json()) as RowData[];
+          if (Array.isArray(json)) {
+            setData(json);
+            setChartData(prepareChartData(json, previousData));
+          } else {
+            throw new Error("Invalid JSON format");
+          }
+        }
+      } catch (err: any) {
+        setError(err?.message || "An error occurred while fetching the data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchForecastData();
+  }, [countryName, month, year, isDemoMode]);
 
 
   useEffect(() => {
@@ -592,220 +592,220 @@ const DUMMY_PNL_CHART: ChartDataItem[] = [
         headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` },
         body: formData,
       });
-    } catch {}
+    } catch { }
   };
 
- const exportTableToExcel = async () => {
-  const workbook = new ExcelJS.Workbook();
+  const exportTableToExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
 
-  /* =====================
-     SHEET 1: P&L TABLE
-     ===================== */
-  const tableSheet = workbook.addWorksheet("P&L Forecast");
+    /* =====================
+       SHEET 1: P&L TABLE
+       ===================== */
+    const tableSheet = workbook.addWorksheet("P&L Forecast");
 
-  tableSheet.addRow([
-    "Product Name",
-    "SKU",
-    "Sales M1",
-    "CM1 M1",
-    "Sales M2",
-    "CM1 M2",
-    "Sales M3",
-    "CM1 M3",
-    "Sales Total",
-    "CM1 Total",
-  ]).font = { bold: true };
-
-  const rows = [
-    ...(productRows || []),
-    ...summaryAsRows,
-  ];
-
-  rows.forEach(r => {
     tableSheet.addRow([
-      r.product_name,
-      r.sku,
-      r.Total_Sales_1st,
-      r.profit_1st,
-      r.Total_Sales_2nd,
-      r.profit_2nd,
-      r.Total_Sales_3rd,
-      r.profit_3rd,
-      r.Total_Sales_sum,
-      r.profit_sum,
-    ]);
-  });
+      "Product Name",
+      "SKU",
+      "Sales M1",
+      "CM1 M1",
+      "Sales M2",
+      "CM1 M2",
+      "Sales M3",
+      "CM1 M3",
+      "Sales Total",
+      "CM1 Total",
+    ]).font = { bold: true };
 
-  tableSheet.columns.forEach(col => col.width = 18);
+    const rows = [
+      ...(productRows || []),
+      ...summaryAsRows,
+    ];
 
-  /* =====================
-     SHEET 2: CHART IMAGE
-     ===================== */
-  const chartSheet = workbook.addWorksheet("P&L Chart");
-
-  const dataUrl = getChartPngWithWhiteBg();
-  if (dataUrl) {
-    const base64 = dataUrl.split(",")[1];
-const binary = atob(base64);
-const buffer = new ArrayBuffer(binary.length);
-const view = new Uint8Array(buffer);
-
-for (let i = 0; i < binary.length; i++) {
-  view[i] = binary.charCodeAt(i);
-}
-    const imageId = workbook.addImage({
-      buffer,
-      extension: "png",
+    rows.forEach(r => {
+      tableSheet.addRow([
+        r.product_name,
+        r.sku,
+        r.Total_Sales_1st,
+        r.profit_1st,
+        r.Total_Sales_2nd,
+        r.profit_2nd,
+        r.Total_Sales_3rd,
+        r.profit_3rd,
+        r.Total_Sales_sum,
+        r.profit_sum,
+      ]);
     });
 
-    chartSheet.addImage(imageId, "A1:J25");
-  }
+    tableSheet.columns.forEach(col => col.width = 18);
 
-  /* =====================
-     DOWNLOAD
-     ===================== */
-  const buf = await workbook.xlsx.writeBuffer();
-  saveAs(
-    new Blob([buf], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }),
-    "PNL_Forecast_With_Chart.xlsx"
-  );
-};
+    /* =====================
+       SHEET 2: CHART IMAGE
+       ===================== */
+    const chartSheet = workbook.addWorksheet("P&L Chart");
 
+    const dataUrl = getChartPngWithWhiteBg();
+    if (dataUrl) {
+      const base64 = dataUrl.split(",")[1];
+      const binary = atob(base64);
+      const buffer = new ArrayBuffer(binary.length);
+      const view = new Uint8Array(buffer);
 
+      for (let i = 0; i < binary.length; i++) {
+        view[i] = binary.charCodeAt(i);
+      }
+      const imageId = workbook.addImage({
+        buffer,
+        extension: "png",
+      });
 
+      chartSheet.addImage(imageId, "A1:J25");
+    }
 
-const monthGroup = (
-  id: string,
-  label: string,
-  u: string,
-  s: string,
-  p: string,
-  pp: string
-): ColGroup<RowData> => ({
-  id,
-  label,
-  collapsedCols: [
-    { key: s, label: `Sales (${currencySymbol})`, align: "center" },
-    { key: p, label: `CM1 (${currencySymbol})`, align: "center" },
-  ],
-  expandedCols: [
-    { key: u, label: "Units", align: "center" },
-    { key: s, label: `Sales (${currencySymbol})`, align: "center" },
-    { key: p, label: `CM1 (${currencySymbol})`, align: "center" },
-    { key: pp, label: "CM1 %", align: "center" },
-  ],
-});
+    /* =====================
+       DOWNLOAD
+       ===================== */
+    const buf = await workbook.xlsx.writeBuffer();
+    saveAs(
+      new Blob([buf], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+      "PNL_Forecast_With_Chart.xlsx"
+    );
+  };
 
 
 
-const leftCols: LeafCol<RowData>[] = [
-  {
-    key: "sr_no",
-    label: "S. No.",
-    align: "center",
-    thClassName: "th-center",
-    tdClassName: "td-center",
-  },
-  {
-    key: "product_name",
-    label: "Product Name",
-    align: "left",
-    thClassName: "th-left",
-  },
-  {
-    key: "sku",
-    label: "SKU",
-    align: "center",
-  },
-];
+
+  const monthGroup = (
+    id: string,
+    label: string,
+    u: string,
+    s: string,
+    p: string,
+    pp: string
+  ): ColGroup<RowData> => ({
+    id,
+    label,
+    collapsedCols: [
+      { key: s, label: `Sales (${currencySymbol})`, align: "center" },
+      { key: p, label: `CM1 (${currencySymbol})`, align: "center" },
+    ],
+    expandedCols: [
+      { key: u, label: "Units", align: "center" },
+      { key: s, label: `Sales (${currencySymbol})`, align: "center" },
+      { key: p, label: `CM1 (${currencySymbol})`, align: "center" },
+      { key: pp, label: "CM1 %", align: "center" },
+    ],
+  });
 
 
-const groups: ColGroup<RowData>[] = [
-  monthGroup(
-    "m1",
-    `P&L Forecast for ${formatMonthYear(currentMonth, currentYear)}`,
-    "forecast_1st",
-    "Total_Sales_1st",
-    "profit_1st",
-    "profit_percentage_1st"
-  ),
-  monthGroup(
-    "m2",
-    `P&L Forecast for ${formatMonthYear(nextMonth, nextMonthYear)}`,
-    "forecast_2nd",
-    "Total_Sales_2nd",
-    "profit_2nd",
-    "profit_percentage_2nd"
-  ),
-  monthGroup(
-    "m3",
-    `P&L Forecast for ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
-    "forecast_3rd",
-    "Total_Sales_3rd",
-    "profit_3rd",
-    "profit_percentage_3rd"
-  ),
-  monthGroup(
-    "sum",
-    "P&L Forecast for 3 months",
-    "forecast_sum",
-    "Total_Sales_sum",
-    "profit_sum",
-    "profit_percentage_sum"
-  ),
-];
 
-const DUMMY_SUMMARY_ROWS = [
-  {
-    label: "Cost of Advertisement",
-    m1: 3500,
-    m2: 4200,
-    m3: 4800,
-    sum: 12500,
-  },
-  {
-    label: "Platform Fees",
-    m1: 2800,
-    m2: 3200,
-    m3: 3600,
-    sum: 9600,
-  },
-  {
-    label: "Other Expenses",
-    m1: 6300,
-    m2: 7400,
-    m3: 8400,
-    sum: 22100,
-  },
-  {
-    label: "CM2 Profit/Loss",
-    m1: 5700,
-    m2: 7100,
-    m3: 8600,
-    sum: 21400,
-  },
-  {
-    label: "Net Reimbursement (Projected)",
-    m1: 900,
-    m2: 1100,
-    m3: 1300,
-    sum: 3300,
-  },
-  {
-    label: "Reimbursement vs CM2 Margins",
-    m1: 16.5,
-    m2: 15.4,
-    m3: 15.1,
-    sum: 15.7,
-  },
-];
+  const leftCols: LeafCol<RowData>[] = [
+    {
+      key: "sr_no",
+      label: "S. No.",
+      align: "center",
+      thClassName: "th-center",
+      tdClassName: "td-center",
+    },
+    {
+      key: "product_name",
+      label: "Product Name",
+      align: "left",
+      thClassName: "th-left",
+    },
+    {
+      key: "sku",
+      label: "SKU",
+      align: "center",
+    },
+  ];
 
 
-const summaryRows = isDemoMode
-  ? DUMMY_SUMMARY_ROWS
-  : [
+  const groups: ColGroup<RowData>[] = [
+    monthGroup(
+      "m1",
+      `P&L Forecast for ${formatMonthYear(currentMonth, currentYear)}`,
+      "forecast_1st",
+      "Total_Sales_1st",
+      "profit_1st",
+      "profit_percentage_1st"
+    ),
+    monthGroup(
+      "m2",
+      `P&L Forecast for ${formatMonthYear(nextMonth, nextMonthYear)}`,
+      "forecast_2nd",
+      "Total_Sales_2nd",
+      "profit_2nd",
+      "profit_percentage_2nd"
+    ),
+    monthGroup(
+      "m3",
+      `P&L Forecast for ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
+      "forecast_3rd",
+      "Total_Sales_3rd",
+      "profit_3rd",
+      "profit_percentage_3rd"
+    ),
+    monthGroup(
+      "sum",
+      "P&L Forecast for 3 months",
+      "forecast_sum",
+      "Total_Sales_sum",
+      "profit_sum",
+      "profit_percentage_sum"
+    ),
+  ];
+
+  const DUMMY_SUMMARY_ROWS = [
+    {
+      label: "Cost of Advertisement",
+      m1: 3500,
+      m2: 4200,
+      m3: 4800,
+      sum: 12500,
+    },
+    {
+      label: "Platform Fees",
+      m1: 2800,
+      m2: 3200,
+      m3: 3600,
+      sum: 9600,
+    },
+    {
+      label: "Other Expenses",
+      m1: 6300,
+      m2: 7400,
+      m3: 8400,
+      sum: 22100,
+    },
+    {
+      label: "CM2 Profit/Loss",
+      m1: 5700,
+      m2: 7100,
+      m3: 8600,
+      sum: 21400,
+    },
+    {
+      label: "Net Reimbursement (Projected)",
+      m1: 900,
+      m2: 1100,
+      m3: 1300,
+      sum: 3300,
+    },
+    {
+      label: "Reimbursement vs CM2 Margins",
+      m1: 16.5,
+      m2: 15.4,
+      m3: 15.1,
+      sum: 15.7,
+    },
+  ];
+
+
+  const summaryRows = isDemoMode
+    ? DUMMY_SUMMARY_ROWS
+    : [
       {
         label: "Cost of Advertisement",
         m1: data?.find(r => r.sku === "advertising_total1")?.value,
@@ -860,78 +860,78 @@ const summaryRows = isDemoMode
 
 
 
-const productRows = data?.filter(
-  (row) =>
-    row.sku &&
-    ![
-      "acos1",
-      "acos2",
-      "acos3",
-      "Platform_Fees1",
-      "Platform_Fees2",
-      "Platform_Fees3",
-      "advertising_total1",
-      "advertising_total2",
-      "advertising_total3",
-      "cm2profit1",
-      "cm2profit2",
-      "cm2profit3",
-      "NetReimbursement1",
-      "NetReimbursement2",
-      "NetReimbursement3",
-      "ReimbursementvsCM2Margins1",
-      "ReimbursementvsCM2Margins2",
-      "ReimbursementvsCM2Margins3",
-      "Reimbursementvssales1",
-      "Reimbursementvssales2",
-      "Reimbursementvssales3",
-      "cm2margin1",
-      "cm2margin2",
-      "cm2margin3",
-      "platform_fees_total",
-      "advertising_total",
-      "cm2profit_total",
-      "cm2margin_total",
-      "acos_total",
-      "NetReimbursement_total",
-      "ReimbursementvsCM2Margins_total",
-      "Reimbursementvssales_total",
-    ].includes(row.sku)
-);
+  const productRows = data?.filter(
+    (row) =>
+      row.sku &&
+      ![
+        "acos1",
+        "acos2",
+        "acos3",
+        "Platform_Fees1",
+        "Platform_Fees2",
+        "Platform_Fees3",
+        "advertising_total1",
+        "advertising_total2",
+        "advertising_total3",
+        "cm2profit1",
+        "cm2profit2",
+        "cm2profit3",
+        "NetReimbursement1",
+        "NetReimbursement2",
+        "NetReimbursement3",
+        "ReimbursementvsCM2Margins1",
+        "ReimbursementvsCM2Margins2",
+        "ReimbursementvsCM2Margins3",
+        "Reimbursementvssales1",
+        "Reimbursementvssales2",
+        "Reimbursementvssales3",
+        "cm2margin1",
+        "cm2margin2",
+        "cm2margin3",
+        "platform_fees_total",
+        "advertising_total",
+        "cm2profit_total",
+        "cm2margin_total",
+        "acos_total",
+        "NetReimbursement_total",
+        "ReimbursementvsCM2Margins_total",
+        "Reimbursementvssales_total",
+      ].includes(row.sku)
+  );
 
-const summaryAsRows: RowData[] = summaryRows.map(r => ({
-  product_name: r.label,
-  sku: "",
+  const summaryAsRows: RowData[] = summaryRows.map(r => ({
+    product_name: r.label,
+    sku: "",
 
-  // Month 1
-  forecast_1st: "",
-  Total_Sales_1st: r.m1 ?? "",
-  profit_1st: "",
-  profit_percentage_1st: "",
+    // Month 1
+    forecast_1st: "",
+    Total_Sales_1st: r.m1 ?? "",
+    profit_1st: "",
+    profit_percentage_1st: "",
 
-  // Month 2
-  forecast_2nd: "",
-  Total_Sales_2nd: r.m2 ?? "",
-  profit_2nd: "",
-  profit_percentage_2nd: "",
+    // Month 2
+    forecast_2nd: "",
+    Total_Sales_2nd: r.m2 ?? "",
+    profit_2nd: "",
+    profit_percentage_2nd: "",
 
-  // Month 3
-  forecast_3rd: "",
-  Total_Sales_3rd: r.m3 ?? "",
-  profit_3rd: "",
-  profit_percentage_3rd: "",
+    // Month 3
+    forecast_3rd: "",
+    Total_Sales_3rd: r.m3 ?? "",
+    profit_3rd: "",
+    profit_percentage_3rd: "",
 
-  // Sum
-  forecast_sum: "",
-  Total_Sales_sum: r.sum ?? "",
-  profit_sum: "",
-  profit_percentage_sum: "",
-}));
+    // Sum
+    forecast_sum: "",
+    Total_Sales_sum: r.sum ?? "",
+    profit_sum: "",
+    profit_percentage_sum: "",
+  }));
 
-const normalizedProductRows = productRows?.map(r => ({
-  ...r,
-  sku: r.sku === "Total" ? "" : r.sku,
-}));
+  const normalizedProductRows = productRows?.map(r => ({
+    ...r,
+    sku: r.sku === "Total" ? "" : r.sku,
+  }));
 
 
 
@@ -941,101 +941,100 @@ const normalizedProductRows = productRows?.map(r => ({
   return (
     <div className='flex flex-col gap-8'>
       <div className='flex justify-between'>
-<h2 style={{ marginBottom: 10, color: '#414042' }} className='2xl:text-2xl text-lg text-[#414042] font-bold'>
-        P &amp; L Forecast -{' '}
-  <span style={{ color: '#60a68e' }}>
-    {effectiveCountry.toUpperCase()} (
-    {formatMonthYear(currentMonth, currentYear)} to
-    {formatMonthYear(nextToNextMonth, nextToNextMonthYear)}
-    )
-  </span>
+        <h2 style={{ marginBottom: 10, color: '#414042' }} className='2xl:text-2xl text-lg text-[#414042] font-bold'>
+          P&amp;L Forecast -{' '}
+          <span style={{ color: '#60a68e' }}>
+            {effectiveCountry.toUpperCase()} (
+            {formatMonthYear(currentMonth, currentYear)} to
+            {formatMonthYear(nextToNextMonth, nextToNextMonthYear)}
+            )
+          </span>
 
-      </h2>
-     <button
-              onClick={() => exportTableToExcel()}
-              disabled={isDemoMode}
-            className={`bg-white border border-[#8B8585] px-1 rounded-sm ${
-    isDemoMode ? "opacity-50 cursor-not-allowed" : ""
-  }`}
-                                        style={{
-                             boxShadow: "0px 4px 4px 0px #00000040",  
-                           }}
-                                     >
-                                     <IoDownload size={27} />
-            </button>
+        </h2>
+        <button
+          onClick={() => exportTableToExcel()}
+          disabled={isDemoMode}
+          className={`bg-white border border-[#8B8585] px-1 rounded-sm ${isDemoMode ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          style={{
+            boxShadow: "0px 4px 4px 0px #00000040",
+          }}
+        >
+          <IoDownload size={27} />
+        </button>
       </div>
-      
+
 
       {loading && <div className="loading">Loading...</div>}
       {error && !isDemoMode && (
-  <div className="error">{error}</div>
-)}
+        <div className="error">{error}</div>
+      )}
 
       {data && chartData.length > 0 && (
-        <div className='border border-[#414042] rounded-sm'>
+        <div className='border border-[#414042] rounded-sm bg-white'>
           <PnlForecastChart
-  ref={chartRef}
-  chartData={chartData}
-  currencySymbol={currencySymbol}
-  selectedGraphs={selectedGraphs}
-  handleCheckboxChange={handleCheckboxChange}
-/>
+            ref={chartRef}
+            chartData={chartData}
+            currencySymbol={currencySymbol}
+            selectedGraphs={selectedGraphs}
+            handleCheckboxChange={handleCheckboxChange}
+          />
         </div>
-        
+
       )}
-{data && (
-  <div>
-    <div className="overflow-x-auto rounded-sm">
-    <GroupedCollapsibleTables<RowData>
-  rows={[
-    ...(normalizedProductRows || []),
-    ...summaryAsRows,
-  ]}
-  getRowKey={(r, idx) =>
-    r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
-  }
-  leftCols={leftCols}
-  groups={groups}
-  singleCols={[]}
- getValue={(row, key, rowIndex) => {
-  if (key === "sr_no") {
-    // ❌ No serial number for Total & Summary rows
-    if (
-      row.product_name === "Total" ||
-      summaryRows.some(s => s.label === row.product_name)
-    ) {
-      return "";
-    }
+      {data && (
+        <div>
+          <div className="overflow-x-auto rounded-sm">
+            <GroupedCollapsibleTables<RowData>
+              rows={[
+                ...(normalizedProductRows || []),
+                ...summaryAsRows,
+              ]}
+              getRowKey={(r, idx) =>
+                r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
+              }
+              leftCols={leftCols}
+              groups={groups}
+              singleCols={[]}
+              getValue={(row, key, rowIndex) => {
+                if (key === "sr_no") {
+                  // ❌ No serial number for Total & Summary rows
+                  if (
+                    row.product_name === "Total" ||
+                    summaryRows.some(s => s.label === row.product_name)
+                  ) {
+                    return "";
+                  }
 
-    // ✅ Count ONLY product rows
-    const productIndex = normalizedProductRows?.findIndex(
-      r => r === row
-    );
+                  // ✅ Count ONLY product rows
+                  const productIndex = normalizedProductRows?.findIndex(
+                    r => r === row
+                  );
 
-    return productIndex !== undefined && productIndex >= 0
-      ? productIndex + 1
-      : "";
-  }
+                  return productIndex !== undefined && productIndex >= 0
+                    ? productIndex + 1
+                    : "";
+                }
 
-  return formatCellValue(key, row[key]);
-}}
+                return formatCellValue(key, row[key]);
+              }}
 
-  getRowClassName={(row) => {
-    if (row.product_name === "Total") {
-      return "bg-[#D9D9D9]/90 font-bold ";
-    }
-    if (summaryRows.some(s => s.label === row.product_name)) {
-      return "bg-[#ffffff]";
-    }
-    return "";
-  }}
-/>
+              getRowClassName={(row) => {
+                if (row.product_name === "Total") {
+                  return "bg-[#D9D9D9]/90 font-bold ";
+                }
+                if (summaryRows.some(s => s.label === row.product_name)) {
+                  return "bg-[#ffffff]";
+                }
+                return "";
+              }}
+            />
 
-    </div>
-    
-    <br />
-  </div>
-)}
+          </div>
+
+          <br />
+        </div>
+      )}
     </div>
   );
 };

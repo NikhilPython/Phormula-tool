@@ -1320,7 +1320,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
   return (
     <div className="w-full">
-      <div className="w-full">
+      {/* <div className="w-full">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <PageBreadcrumb
             variant="page"
@@ -1361,6 +1361,65 @@ export default function InventoryReconciliationPage({ params }: Params) {
           </div>
 
         </div>
+      </div> */}
+
+      <div className="sticky top-0 z-40 w-full flex flex-col
+        bg-[#F7F7F7] py-2
+        sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
+        border-b border-gray-200">
+        {/* LEFT: Title */}
+        <div className="mb-2 flex flex-wrap items-start gap-2">
+          <div>
+            <div className="flex flex-wrap items-baseline gap-2 justify-start">
+              <PageBreadcrumb
+                variant="page"
+                align="left"
+                textSize="2xl"
+                pageTitle={
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-[#414042] font-bold">Inventory Reconciliation -</span>
+                    <span className="text-[#60a68e] font-bold">{countryName?.toUpperCase()}</span>
+                  </div>
+                }
+              />
+            </div>
+
+
+          </div>
+        </div>
+
+        {/* RIGHT: Filters */}
+        <div className="mb-2 sm:mb-0">
+          <div className="flex flex-col md:flex-row sm:items-center  gap-[0.5vw]">
+            <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
+              <PeriodFiltersTable
+                range={range}
+                selectedMonth={selectedMonth}
+                selectedQuarter={selectedQuarter}
+                selectedYear={selectedYear}
+                yearOptions={yearOptions}
+                onRangeChange={(v) => setRange(v)}
+                onMonthChange={(v) => {
+                  const raw = String(v ?? "").trim();
+                  // PeriodFiltersTable may emit values like "Jan" or "Jan 2026".
+                  const parts = raw.split(/\s+/).filter(Boolean);
+                  const monthPart = parts[0] ?? raw;
+                  const yearPart = parts.find((p) => /^\d{4}$/.test(p));
+
+                  setSelectedMonth(normalizeMonth(monthPart));
+                  if (yearPart) setSelectedYear(normalizeYear(yearPart));
+                }}
+                onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
+                onYearChange={(v) => setSelectedYear(String(v))}
+                allowedRanges={['monthly', 'quarterly', 'yearly']}
+              />
+
+              <DownloadIconButton onClick={handleDownloadXLSX} size="md" />
+            </div>
+          </div>
+        </div>
+
+        {/* </div> */}
       </div>
 
       {/* Table */}

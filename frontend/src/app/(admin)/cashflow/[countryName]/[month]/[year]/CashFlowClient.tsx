@@ -774,196 +774,208 @@ const CashFlowPage: React.FC = () => {
   return (
     <div className="w-full">
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between sm:gap-4 gap-2 mb-2">
+      {/* <div className="sticky top-0 z-40 bg-[#F7F7F7] border-b border-gray-200"> */}
+      {/* <div className="flex flex-col md:flex-row md:items-center md:justify-between sm:gap-4 gap-2 mb-2"> */}
 
-          {/* LEFT: Title */}
-          <div className="mb-2 flex flex-wrap items-start gap-2">
-            <div>
-              <div className="flex flex-wrap items-baseline gap-2 justify-start">
-                <PageBreadcrumb
-                  pageTitle="Cash Flow –"
-                  variant="page"
-                  align="left"
-                  className=""
-                />
-                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                  Amazon {countryName?.toLowerCase() === "global"
-                    ? "Global"
-                    : countryName?.toUpperCase()}
-                </span>
-              </div>
-
-              <p className="2xl:text-sm text-xs">
-                Track cash generation from performance
-              </p>
-            </div>
-          </div>
-
-          {/* RIGHT: Filters */}
-          <div className="mb-2">
-            <div className="flex flex-col md:flex-row sm:items-center  gap-[0.5vw]">
-              <PeriodFiltersTable
-                range={periodType}
-                selectedMonth={month.toLowerCase()}
-                selectedQuarter={selectedQuarter}
-                selectedYear={year}
-                yearOptions={years}
-                onRangeChange={handleRangeChange}
-                onMonthChange={handleMonthChange}
-                onQuarterChange={handleQuarterChange}
-                onYearChange={handleYearChange}
+      <div className="sticky top-0 z-40 w-full flex flex-col
+  bg-[#F7F7F7]
+  sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
+  border-b border-gray-200">
+        {/* LEFT: Title */}
+        <div className="mb-2 flex flex-wrap items-start gap-2">
+          <div>
+            <div className="flex flex-wrap items-baseline gap-2 justify-start">
+              <PageBreadcrumb
+                pageTitle="Cash Flow –"
+                variant="page"
+                align="left"
+                className=""
               />
+              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                Amazon {countryName?.toLowerCase() === "global"
+                  ? "Global"
+                  : countryName?.toUpperCase()}
+              </span>
             </div>
-          </div>
 
+            <p className="2xl:text-sm text-xs">
+              Track cash generation from performance
+            </p>
+          </div>
         </div>
+
+        {/* RIGHT: Filters */}
+        <div className="mb-2 sm:mb-0">
+          <div className="flex flex-col md:flex-row sm:items-center  gap-[0.5vw]">
+            <PeriodFiltersTable
+              range={periodType}
+              selectedMonth={month.toLowerCase()}
+              selectedQuarter={selectedQuarter}
+              selectedYear={year}
+              yearOptions={years}
+              onRangeChange={handleRangeChange}
+              onMonthChange={handleMonthChange}
+              onQuarterChange={handleQuarterChange}
+              onYearChange={handleYearChange}
+            />
+          </div>
+        </div>
+
+        {/* </div> */}
       </div>
 
 
 
       {/* Show alert until a valid period selection is made */}
-      {!isPreviewMode && !canShowResults && (
-        <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
-          <div className="flex items-center">
-            <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
-            <span>
-              Choose a period to view cash flow.
-            </span>
+      {
+        !isPreviewMode && !canShowResults && (
+          <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
+            <div className="flex items-center">
+              <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
+              <span>
+                Choose a period to view cash flow.
+              </span>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
 
       {/* Loading – now using Loader */}
-      {!isPreviewMode && loading && (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <Loader fullscreen transparent />
-        </div>
-      )}
+      {
+        !isPreviewMode && loading && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Loader fullscreen transparent />
+          </div>
+        )
+      }
 
       {/* Error */}
-      {!isPreviewMode && !!error && (
-        <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
-          <div className="flex items-center">
-            <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
-            <span>{error}</span>
+      {
+        !isPreviewMode && !!error && (
+          <div className="mt-5 box-border flex w-full items-center justify-between rounded-md border-t-4 border-[#ff5c5c] bg-[#f2f2f2] px-4 py-3 text-sm text-[#414042] lg:max-w-fit">
+            <div className="flex items-center">
+              <i className="fa-solid fa-circle-exclamation mr-2 text-lg text-[#ff5c5c]" />
+              <span>{error}</span>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Results */}
-      {(effectiveData) && (
-        <div className="flex flex-col">
-          {/* Header + Download in one responsive row */}
-          <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {/* Left: title + period */}
+      {
+        (effectiveData) && (
+          <div className="flex flex-col">
+            {/* Header + Download in one responsive row */}
+            <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              {/* Left: title + period */}
 
-            {/* Right: Download button */}
-            {/* <div className="flex justify-center sm:justify-end">
+              {/* Right: Download button */}
+              {/* <div className="flex justify-center sm:justify-end">
               <DownloadIconButton onClick={downloadCombinedExcelWithImage} />
             </div> */}
-          </div>
+            </div>
 
-          {/* Summary Table using DataTable */}
-          {effectiveData?.summary && (
-            <CashFlowSankey
-              data={effectiveData.summary}
-              previous_summary={
-                isPreviewMode ? undefined : data?.previous_summary
-              }
-              previousLabel={isPreviewMode ? undefined : previousLabel}
-              periodType={periodType}
-              currency={currencySymbol}
-            />
-          )}
+            {/* Summary Table using DataTable */}
+            {effectiveData?.summary && (
+              <CashFlowSankey
+                data={effectiveData.summary}
+                previous_summary={
+                  isPreviewMode ? undefined : data?.previous_summary
+                }
+                previousLabel={isPreviewMode ? undefined : previousLabel}
+                periodType={periodType}
+                currency={currencySymbol}
+              />
+            )}
 
 
 
-          {/* Chart Section */}
-          <div className="mt-6 rounded-xl bg-white p-4 shadow border">
-            <div
-              className={[
-                "my-3 sm:my-4",
-                "flex flex-wrap items-center justify-center",
-                "gap-3 sm:gap-4 md:gap-5",
-                "w-full mx-auto",
-                allValuesZero ? "opacity-30" : "opacity-100",
-                "transition-opacity duration-300",
-              ].join(" ")}
-            >
-              {metrics.map(({ name, label, color }) => {
-                const isChecked = !!selectedGraphs[name];
+            {/* Chart Section */}
+            <div className="mt-6 rounded-xl bg-white p-4 shadow border">
+              <div
+                className={[
+                  "my-3 sm:my-4",
+                  "flex flex-wrap items-center justify-center",
+                  "gap-3 sm:gap-4 md:gap-5",
+                  "w-full mx-auto",
+                  allValuesZero ? "opacity-30" : "opacity-100",
+                  "transition-opacity duration-300",
+                ].join(" ")}
+              >
+                {metrics.map(({ name, label, color }) => {
+                  const isChecked = !!selectedGraphs[name];
 
-                return (
-                  <label
-                    key={name}
-                    className={[
-                      "shrink-0",
-                      "flex items-center gap-1 sm:gap-1.5",
-                      "font-semibold select-none whitespace-nowrap",
-                      "text-[9px] sm:text-[10px] md:text-[11px] lg:text-xs xl:text-sm",
-                      "text-charcoal-500",
-                      isChecked ? "opacity-100" : "opacity-40",
-                      allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
-                    ].join(" ")}
-                  >
-                    <span
-                      className="
+                  return (
+                    <label
+                      key={name}
+                      className={[
+                        "shrink-0",
+                        "flex items-center gap-1 sm:gap-1.5",
+                        "font-semibold select-none whitespace-nowrap",
+                        "text-[9px] sm:text-[10px] md:text-[11px] lg:text-xs xl:text-sm",
+                        "text-charcoal-500",
+                        isChecked ? "opacity-100" : "opacity-40",
+                        allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
+                      ].join(" ")}
+                    >
+                      <span
+                        className="
             flex items-center justify-center
             h-3 w-3 sm:h-3.5 sm:w-3.5
             rounded-sm border transition
           "
-                      style={{
-                        borderColor: color,
-                        backgroundColor: isChecked ? color : "white",
-                        opacity: allValuesZero ? 0.6 : 1,
-                      }}
-                      onClick={() => !allValuesZero && toggleMetric(name)}
-                    >
-                      {isChecked && (
-                        <svg
-                          viewBox="0 0 24 24"
-                          width="14"
-                          height="14"
-                          className="text-white"
-                        >
-                          <path
-                            fill="currentColor"
-                            d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
-                          />
-                        </svg>
-                      )}
-                    </span>
+                        style={{
+                          borderColor: color,
+                          backgroundColor: isChecked ? color : "white",
+                          opacity: allValuesZero ? 0.6 : 1,
+                        }}
+                        onClick={() => !allValuesZero && toggleMetric(name)}
+                      >
+                        {isChecked && (
+                          <svg
+                            viewBox="0 0 24 24"
+                            width="14"
+                            height="14"
+                            className="text-white"
+                          >
+                            <path
+                              fill="currentColor"
+                              d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                            />
+                          </svg>
+                        )}
+                      </span>
 
-                    {/* same as GraphPage: capitalized label, not all-caps */}
-                    <span className="capitalize">{label}</span>
-                  </label>
-                );
-              })}
+                      {/* same as GraphPage: capitalized label, not all-caps */}
+                      <span className="capitalize">{label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+
+              <div className="h-[50vh] sm:h-[40vw] max-h-[560px]">
+                {periodType === "monthly" ? (
+                  <Bar
+                    ref={chartRef}
+                    data={getFilteredBarChartData() as any}
+                    options={barChartOptions as any}
+                  />
+                ) : (
+                  <Line
+                    ref={chartRef}
+                    data={getLineChartData() as any}
+                    options={lineChartOptions as any}
+                  />
+                )}
+              </div>
+
             </div>
-
-
-            <div className="h-[50vh] sm:h-[40vw] max-h-[560px]">
-              {periodType === "monthly" ? (
-                <Bar
-                  ref={chartRef}
-                  data={getFilteredBarChartData() as any}
-                  options={barChartOptions as any}
-                />
-              ) : (
-                <Line
-                  ref={chartRef}
-                  data={getLineChartData() as any}
-                  options={lineChartOptions as any}
-                />
-              )}
-            </div>
-
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };
 

@@ -182,20 +182,20 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const [insightsError, setInsightsError] = useState<string | null>(null);
 
   const [selectedSku, setSelectedSku] = useState<string | null>(null);
- type BestPerfItem = { month: string; value: number };
-type BestPerformance = { sales?: BestPerfItem; units?: BestPerfItem; profit?: BestPerfItem };
+  type BestPerfItem = { month: string; value: number };
+  type BestPerformance = { sales?: BestPerfItem; units?: BestPerfItem; profit?: BestPerfItem };
 
-type SkuInsightExtended = {
-  product_name: string;
-  insight: string;
+  type SkuInsightExtended = {
+    product_name: string;
+    insight: string;
 
-  inventory_recommendation?: string;
-  objective?: Record<string, any> | null;
-  recommendation?: string;
-  best_performance?: BestPerformance;
-};
+    inventory_recommendation?: string;
+    objective?: Record<string, any> | null;
+    recommendation?: string;
+    best_performance?: BestPerformance;
+  };
 
-const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsightExtended>>({});
+  const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsightExtended>>({});
 
 
   const handleViewBusinessInsights = async () => {
@@ -215,19 +215,19 @@ const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsightExtended
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         try {
-         const parsed = JSON.parse(cached) as (SkuInsightExtended & { cachedAt: number });
+          const parsed = JSON.parse(cached) as (SkuInsightExtended & { cachedAt: number });
 
 
-         setSkuInsights({
+          setSkuInsights({
             [identifier]: {
-            product_name: parsed.product_name,
-             insight: parsed.insight,
-            inventory_recommendation: parsed.inventory_recommendation,
-            objective: parsed.objective ?? null,
-            recommendation: parsed.recommendation,
-            best_performance: parsed.best_performance,
-  },
-});
+              product_name: parsed.product_name,
+              insight: parsed.insight,
+              inventory_recommendation: parsed.inventory_recommendation,
+              objective: parsed.objective ?? null,
+              recommendation: parsed.recommendation,
+              best_performance: parsed.best_performance,
+            },
+          });
 
           setSelectedSku(identifier);
           setInsightsLoading(false);
@@ -267,58 +267,58 @@ const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsightExtended
         throw new Error(json?.error || `HTTP ${res.status}`);
       }
 
-const returnedName = json.product_name || identifier;
-const insightText = json.ai_insights || "";
+      const returnedName = json.product_name || identifier;
+      const insightText = json.ai_insights || "";
 
-// NEW fields from API
-const inventoryRec = json.inventory_recommendation || "";
-const objective = json.objective ?? null;
-const recommendation = json.recommendation || "";
+      // NEW fields from API
+      const inventoryRec = json.inventory_recommendation || "";
+      const objective = json.objective ?? null;
+      const recommendation = json.recommendation || "";
 
-// Best performance from already fetched ProductwisePerformance data
-let bestPerformance: any = undefined;
-const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
+      // Best performance from already fetched ProductwisePerformance data
+      let bestPerformance: any = undefined;
+      const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
 
-if (sourceData) {
-  const key =
-    countryForApi === "global"
-      ? globalKey
-      : (findCountryKeyFor(sourceData as any, countryForApi) as any);
+      if (sourceData) {
+        const key =
+          countryForApi === "global"
+            ? globalKey
+            : (findCountryKeyFor(sourceData as any, countryForApi) as any);
 
-  const monthly: MonthDatum[] = key ? (sourceData as any)[key] : [];
-  bestPerformance = computeBestPerformance(Array.isArray(monthly) ? monthly : []);
-}
+        const monthly: MonthDatum[] = key ? (sourceData as any)[key] : [];
+        bestPerformance = computeBestPerformance(Array.isArray(monthly) ? monthly : []);
+      }
 
-setSkuInsights({
-  [identifier]: {
-    product_name: returnedName,
-    insight: insightText,
+      setSkuInsights({
+        [identifier]: {
+          product_name: returnedName,
+          insight: insightText,
 
-    // NEW
-    inventory_recommendation: inventoryRec,
-    objective,
-    recommendation,
-    best_performance: bestPerformance,
-  },
-});
+          // NEW
+          inventory_recommendation: inventoryRec,
+          objective,
+          recommendation,
+          best_performance: bestPerformance,
+        },
+      });
 
       setSelectedSku(identifier);
 
       // 4️⃣ Save cache
-     localStorage.setItem(
-  cacheKey,
-  JSON.stringify({
-    product_name: returnedName,
-    insight: insightText,
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          product_name: returnedName,
+          insight: insightText,
 
-    inventory_recommendation: inventoryRec,
-    objective,
-    recommendation,
-    best_performance: bestPerformance,
+          inventory_recommendation: inventoryRec,
+          objective,
+          recommendation,
+          best_performance: bestPerformance,
 
-    cachedAt: Date.now(),
-  })
-);
+          cachedAt: Date.now(),
+        })
+      );
 
     } catch (e: any) {
       console.error("Growth AI Error:", e);
@@ -1059,8 +1059,11 @@ setSkuInsights({
     <div className="w-full">
       {/* Header + filters row */}
       {/* 🔒 STICKY HEADER */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-2">
+      <div className="sticky top-0 z-40 w-full flex flex-col
+  bg-[#F7F7F7]
+  sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
+  border-b border-gray-200">
+        {/* <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-2"> */}
           <ProductwiseHeader
             canShowResults={canShowResults}
             countryName={countryName}
@@ -1083,7 +1086,7 @@ setSkuInsights({
               setSelectedYear(val ? Number(val) : "");
             }}
           />
-        </div>
+        {/* </div> */}
       </div>
 
       {/* ⬇️ margin moved HERE */}
@@ -1140,8 +1143,8 @@ setSkuInsights({
             selectedSku={selectedSku}
             skuInsights={skuInsights}
             onClose={() => setIsDrawerOpen(false)}
-            enableFeedback={false} 
-             />
+            enableFeedback={false}
+          />
 
           {isDrawerOpen && insightsError && (
             <div className="fixed right-6 top-16 z-[9999] rounded bg-red-50 px-3 py-2 shadow text-sm text-red-700">
