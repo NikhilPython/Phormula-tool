@@ -376,27 +376,27 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
     if (isProductHeader) {
       pushCurrent();
       if (isProductHeader) {
-  pushCurrent();
+        pushCurrent();
 
-  const skuFromParen = line.match(/\(([A-Z0-9-]+)\)/i)?.[1]?.trim();
-  const skuFromPrefix = line.match(/^([A-Z0-9-]+)\s*[-–]\s*/i)?.[1]?.trim();
+        const skuFromParen = line.match(/\(([A-Z0-9-]+)\)/i)?.[1]?.trim();
+        const skuFromPrefix = line.match(/^([A-Z0-9-]+)\s*[-–]\s*/i)?.[1]?.trim();
 
-  const cleanName = line
-    .replace(/\([A-Z0-9-]+\)/i, "")          // remove (SKU)
-    .replace(/^([A-Z0-9-]+)\s*[-–]\s*/i, "") // remove "SKU - "
-    .trim();
+        const cleanName = line
+          .replace(/\([A-Z0-9-]+\)/i, "")          // remove (SKU)
+          .replace(/^([A-Z0-9-]+)\s*[-–]\s*/i, "") // remove "SKU - "
+          .trim();
 
-  current = {
-    name: cleanName || line,
-    skuKey: skuFromParen || skuFromPrefix,   // ✅ IMPORTANT
-    metrics: [],
-    journeyBullets: [],
-    recommendationBullets: [],
-  };
+        current = {
+          name: cleanName || line,
+          skuKey: skuFromParen || skuFromPrefix,   // ✅ IMPORTANT
+          metrics: [],
+          journeyBullets: [],
+          recommendationBullets: [],
+        };
 
-  inJourney = false;
-  continue;
-}
+        inJourney = false;
+        continue;
+      }
 
       inJourney = false;
       continue;
@@ -587,98 +587,98 @@ const ProductInsightsSection = ({
       <div className="space-y-2">
 
 
-       {blocks.map((b, idx) => {
-const skuActions =
-  (recommendationsMap as any)?.sku_actions ??
-  (recommendationsMap as any)?.recommendations ??
-  recommendationsMap ??
-  {};
+        {blocks.map((b, idx) => {
+          const skuActions =
+            (recommendationsMap as any)?.sku_actions ??
+            (recommendationsMap as any)?.recommendations ??
+            recommendationsMap ??
+            {};
 
-const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
-const skuKey = b.skuKey || mappedSku;
+          const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
+          const skuKey = b.skuKey || mappedSku;
 
-const recObj =
-  (skuKey && (skuActions as any)[skuKey]) ||
-  (skuActions as any)[b.name] ||
-  (skuActions as any)[b.name.trim()];
+          const recObj =
+            (skuKey && (skuActions as any)[skuKey]) ||
+            (skuActions as any)[b.name] ||
+            (skuActions as any)[b.name.trim()];
 
 
-  const inventoryRecoBullets = toBullets(recObj?.inventory_recommendation);
+          const inventoryRecoBullets = toBullets(recObj?.inventory_recommendation);
 
-  return (
-          
-          <motion.div
-            key={idx}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: idx * 0.1 }}
-            className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
-          >
-            {/* Product Name with Index */}
+          return (
 
-            <div className="text-sm font-semibold text-charcoal-700">
-              {idx + 1}. {b.name}
-            </div>
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: idx * 0.1 }}
+              className="border border-slate-200 rounded-xl p-3 bg-white space-y-3 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow duration-200"
+            >
+              {/* Product Name with Index */}
 
-            {/* Metrics */}
-            {b.metrics.length > 0 && (
-              <div className="bg-slate-50 rounded-lg px-2 py-2">
-                <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
-
-                  {b.metrics.map((m, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
-                    >
-                      <span className="text-slate-600 mr-1">
-                        {m.label}:
-                      </span>
-
-                      <span
-                        className="font-semibold"
-                        style={{ color: m.color || "#414042" }}
-                      >
-                        {m.value}
-                      </span>
-                    </div>
-                  ))}
-
-                </div>
+              <div className="text-sm font-semibold text-charcoal-700">
+                {idx + 1}. {b.name}
               </div>
-            )}
+
+              {/* Metrics */}
+              {b.metrics.length > 0 && (
+                <div className="bg-slate-50 rounded-lg px-2 py-2">
+                  <div className="flex flex-wrap items-center text-xs 2xl:text-sm">
+
+                    {b.metrics.map((m, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center pr-4 mr-4 border-r border-slate-300 last:border-r-0 last:mr-0 last:pr-0"
+                      >
+                        <span className="text-slate-600 mr-1">
+                          {m.label}:
+                        </span>
+
+                        <span
+                          className="font-semibold"
+                          style={{ color: m.color || "#414042" }}
+                        >
+                          {m.value}
+                        </span>
+                      </div>
+                    ))}
+
+                  </div>
+                </div>
+              )}
 
 
-            {/* Recommendation */}
-{b.recommendationBullets.length > 0 && (
-  <motion.div className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2">
-    <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
-      💡 {b.recommendationBullets.join(" ")}
-    </p>
-  </motion.div>
-)}
+              {/* Recommendation */}
+              {b.recommendationBullets.length > 0 && (
+                <motion.div className="bg-blue-50 border-l-2 border-blue-500 rounded-lg p-3 space-y-2">
+                  <p className="text-xs 2xl:text-sm text-blue-900 leading-relaxed">
+                    💡 {b.recommendationBullets.join(" ")}
+                  </p>
+                </motion.div>
+              )}
 
-{inventoryRecoBullets.length > 0 && (
-  <div className="bg-amber-50 border-l-2 border-amber-500 rounded-lg p-3">
-    <div className="text-xs font-semibold text-amber-800 mb-1">📦 Inventory Recommendation</div>
+              {inventoryRecoBullets.length > 0 && (
+                <div className="bg-amber-50 border-l-2 border-amber-500 rounded-lg p-3">
+                  <div className="text-xs font-semibold text-amber-800 mb-1">📦 Inventory Recommendation</div>
 
-    <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-amber-900">
-      {inventoryRecoBullets.map((pt, i) => (
-        <li key={i}>{pt}</li>
-      ))}
-    </ul>
-  </div>
-)}
+                  <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-amber-900">
+                    {inventoryRecoBullets.map((pt, i) => (
+                      <li key={i}>{pt}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
 
 
-            {/* Product Journey – Collapsible */}
-            {b.journeyBullets.length > 0 && (
-              <div className="space-y-2">
-                <button
-                  onClick={() =>
-                    setOpenIndex(openIndex === idx ? null : idx)
-                  }
-                  className="
+              {/* Product Journey – Collapsible */}
+              {b.journeyBullets.length > 0 && (
+                <div className="space-y-2">
+                  <button
+                    onClick={() =>
+                      setOpenIndex(openIndex === idx ? null : idx)
+                    }
+                    className="
     w-full
     flex
     items-center
@@ -697,45 +697,45 @@ const recObj =
     hover:from-slate-600 hover:to-slate-700
     active:scale-98
   "
-                >
-                  <span className="flex items-center gap-2">
-                    📈
-                    {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
-                  </span>
-
-                  <span
-                    className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
                   >
-                    ▼
-                  </span>
-                </button>
+                    <span className="flex items-center gap-2">
+                      📈
+                      {openIndex === idx ? "Hide Product Journey" : "View Product Journey"}
+                    </span>
 
-                <AnimatePresence>
-                  {openIndex === idx && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="bg-slate-50 rounded-lg p-4 overflow-hidden"
+                    <span
+                      className={`transition-transform duration-300 ${openIndex === idx ? "rotate-180" : ""}`}
                     >
-                      <ul className="list-none space-y-2">
-                        {b.journeyBullets.map((j, i) => (
-                          <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
-                            <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
-                            <span>{j}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
+                      ▼
+                    </span>
+                  </button>
 
-          </motion.div>
-        );
-})}
+                  <AnimatePresence>
+                    {openIndex === idx && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="bg-slate-50 rounded-lg p-4 overflow-hidden"
+                      >
+                        <ul className="list-none space-y-2">
+                          {b.journeyBullets.map((j, i) => (
+                            <li key={i} className="flex gap-3 text-xs 2xl:text-sm text-slate-700">
+                              <span className="text-slate-400 font-bold flex-shrink-0 mt-0.5">→</span>
+                              <span>{j}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1077,8 +1077,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
           <ProductInsightsSection
             blocks={parseProductInsightsBlocks(skuInsightsBullets)}
             objective={objective}
-            recommendationsMap={recommendationsMap} 
-             nameToSkuMap={nameToSkuMap}
+            recommendationsMap={recommendationsMap}
+            nameToSkuMap={nameToSkuMap}
           />
 
           {/* ✅ Remaining SKUs Recommendation */}
@@ -1164,17 +1164,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [skuRows, setSkuRows] = useState<TableRow[]>([]);
 
   const nameToSkuMap = useMemo(() => {
-  const map: Record<string, string> = {};
+    const map: Record<string, string> = {};
 
-  for (const r of skuRows || []) {
-    const name = normalizeKey(String((r as any).product_name ?? ""));
-    const sku = String((r as any).sku ?? "").trim();
+    for (const r of skuRows || []) {
+      const name = normalizeKey(String((r as any).product_name ?? ""));
+      const sku = String((r as any).sku ?? "").trim();
 
-    if (name && sku) map[name] = sku;
-  }
+      if (name && sku) map[name] = sku;
+    }
 
-  return map;
-}, [skuRows]);
+    return map;
+  }, [skuRows]);
 
 
 
@@ -2175,7 +2175,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     relative
   "
     >
-      <div className="sticky top-0 z-40 w-full flex flex-col bg-white  md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200">
+      {/* <div className="sticky top-0 z-40 w-full flex flex-col bg-white  md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200"> */}
+      <div className="sticky top-0 z-40 w-full flex flex-col
+  bg-[#F7F7F7]
+  sm:flex-row md:items-center md:justify-between gap-4
+  border-b border-gray-200">
 
         {/* LEFT: Title + Subtitle */}
         <div className="flex flex-col leading-tight w-full md:w-auto md:mb-5">
@@ -2200,7 +2204,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </div>
 
         {/* RIGHT: Filters */}
-        <div className="flex w-full md:w-auto justify-start md:justify-end">
+        <div className="flex w-full mb-2 sm:mb-0 md:w-auto justify-start md:justify-end">
           <PeriodFiltersTable
             range={range === "" ? "yearly" : (range as "monthly" | "quarterly" | "yearly")}
             selectedMonth={selectedMonth}
@@ -2974,7 +2978,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                 nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
+                nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
               />
             </div>
           )}
@@ -3183,7 +3187,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                 nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
+                nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
               />
             </div>
           )}
@@ -3393,7 +3397,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 recommendationsMap={aiPanel?.recommendationsMap}
                 objective={aiPanel?.objective}
                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                 nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
+                nameToSkuMap={nameToSkuMap}   // ✅ ADD THIS
               />
             </div>
           )}

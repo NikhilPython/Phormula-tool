@@ -355,7 +355,7 @@ export default function Cm1ProfitBreakdownPie({
   }, [chartData, onExportBase64Ready]);
 
   return (
-    <div className="relative w-full h-full rounded-xl border border-slate-200 bg-[#D9D9D933] shadow-sm p-4 flex flex-col">
+    <div className="relative w-full h-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col">
       <div className="mb-1">
         <div className="w-fit mx-auto md:mx-0">
           <PageBreadcrumb

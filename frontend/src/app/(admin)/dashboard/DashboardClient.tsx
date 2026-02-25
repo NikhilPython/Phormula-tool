@@ -49,6 +49,7 @@ import InfoTip from "@/components/ui/InfoTip";
 import * as XLSX from "xlsx-js-style";
 import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData"; // wherever you put it
 import Alert from "@/components/ui/alert/Alert";
+import { ApiResponse } from "@/components/businessInsight/types";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     asp: "Average Selling Price",
@@ -1247,7 +1248,7 @@ export default function DashboardPage() {
         "idle" | "loading" | "processing" | "ready" | "error"
     >("idle");
 
-    const biUiLoading = biStatus === "loading" || biStatus === "processing";
+    // const biUiLoading = biStatus === "loading" || biStatus === "processing";
     const [closedAlerts, setClosedAlerts] = useState<string[]>([]);
 
 
@@ -1271,16 +1272,34 @@ export default function DashboardPage() {
     const [biError, setBiError] = useState<string | null>(null);
     const [biDailySeries, setBiDailySeries] = useState<DailySeries | null>(null);
     const [biPeriods, setBiPeriods] = useState<BiApiResponse["periods"] | null>(null);
-    const [liveBiPayload, setLiveBiPayload] = useState<BiApiResponse | null>(null);
+    // const [liveBiPayload, setLiveBiPayload] = useState<BiApiResponse | null>(null);
+    const [liveBiPayload, setLiveBiPayload] = useState<any>(null);
     const [biAlignedTotals, setBiAlignedTotals] = useState<BiAlignedTotals | null>(null);
-
+    const [liveBiReady, setLiveBiReady] = useState(false);
     const retryRef = useRef(0);
+
+
 
     /* ===================== FX RATES ===================== */
     const [gbpToUsd, setGbpToUsd] = useState(GBP_TO_USD_ENV);
     const [inrToUsd, setInrToUsd] = useState(INR_TO_USD_ENV);
     const [cadToUsd, setCadToUsd] = useState(CAD_TO_USD_ENV);
     const [fxLoading, setFxLoading] = useState(false);
+
+    const biUiLoading = biStatus === "loading" || biStatus === "processing";
+
+    // Parent controls BI readiness now
+    const pageLoading =
+        loading ||
+        shopifyLoading ||
+        fxLoading ||
+        adsLoading ||
+        monthlySpLoading ||
+        invLoading ||
+        biUiLoading; // keep only this for BI
+
+    // Optional: if you want to block until BI payload exists when showLiveBI:
+    /// || (showLiveBI && !liveBiPayload && biStatus !== "error")
 
     type CurrencyRateRow = {
         conversion_rate: number;
@@ -1352,6 +1371,7 @@ export default function DashboardPage() {
     //     displayCurrency,
     //   });
     // }, [gbpToUsd, inrToUsd, cadToUsd, displayCurrency]);
+
 
 
     useEffect(() => {
@@ -2075,6 +2095,7 @@ export default function DashboardPage() {
                 ai: aiRequestedRef.current, // ✅ IMPORTANT
             });
             setBiError(null);
+            setBiLoading(true);
             try {
                 const token =
                     typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -2148,6 +2169,7 @@ export default function DashboardPage() {
                 setBiAlignedTotals(null);
                 setBiError(e?.message || "Failed to load BI series");
             } finally {
+                setBiLoading(false);
             }
         },
         [showLiveBI, biCountryName, currMonthName, currYear]
@@ -2175,6 +2197,18 @@ export default function DashboardPage() {
     }, [biStatus, fetchBiSeries, selectedStartDay, selectedEndDay]);
 
 
+    // put this near your BI hooks/refs, after fetchBiSeries is defined:
+
+    const fetchLiveBiPayload = useCallback(
+        async ({ generateInsights }: { generateInsights?: boolean } = {}) => {
+            // toggle AI insights flag
+            aiRequestedRef.current = !!generateInsights;
+
+            // re-fetch using current selected range (or no range if not set)
+            await fetchBiSeries(selectedStartDay, selectedEndDay);
+        },
+        [fetchBiSeries, selectedStartDay, selectedEndDay]
+    );
 
     useEffect(() => {
         if (!showLiveBI) return;
@@ -2203,6 +2237,7 @@ export default function DashboardPage() {
 
         refreshAll();
     }, []);
+
 
 
     /* ===================== AMAZON DERIVED DATA ===================== */
@@ -3884,23 +3919,26 @@ export default function DashboardPage() {
     return (
         <div className="relative w-full">
             <HashScroll offset={80} />
-            {(loading || shopifyLoading) && !data && !shopify && (
+            {/* {(loading || shopifyLoading) && !data && !shopify && (
                 <>
                     <div className="fixed inset-0 z-40 bg-white/70" />
                     <div className="fixed inset-0 z-50 flex items-center justify-center">
-                        <Loader fullscreen transparent />
+                        <Loader fullscreen />
                     </div>
                 </>
+            )} */}
+            {/* {(loading || shopifyLoading) && !data && !shopify && (
+                <Loader
+                    fullscreen
+                    backgroundClass="bg-white/80"
+                />
+            )} */}
+
+            {(loading || shopifyLoading || biLoading) && !data && !shopify && !liveBiPayload && (
+                <Loader fullscreen backgroundClass="bg-white/80" />
             )}
 
-
-
-
-
-
-            <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-                {/* TOP ALERTS (using Alert component) */}
-
+            <div className="sticky top-0 z-40 bg-[#F7F7F7] border-b border-gray-200">
                 <div className="mb-2 2xl:mb-4 flex items-center justify-between gap-2">
 
                     {/* LEFT SIDE */}
@@ -3949,7 +3987,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Top 5 alerts */}
-            <div className="my-2 md:my-4 space-y-3">
+            {/* <div className="my-2 md:my-4 space-y-3">
                 {top5Skus
                     .map((sku) => ({
                         sku,
@@ -3972,7 +4010,7 @@ export default function DashboardPage() {
                             onClose={() => handleDismiss(sku)} // ✅ persist dismissal
                         />
                     ))}
-            </div>
+            </div> */}
 
             {/* <div className={`grid grid-cols-12 gap-6 items-stretch`}> */}
             <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-4 items-stretch scroll-mt-[80px] mt-2 md:mt-4">
@@ -4720,7 +4758,7 @@ export default function DashboardPage() {
             }
 
             {/* ✅ Global-only Performance Trend BELOW top section */}
-            {
+            {/* {
                 platform === "global" && showLiveBI && (
                     // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
                     <div
@@ -4740,17 +4778,28 @@ export default function DashboardPage() {
                         </div>
                     </div>
                 )
-            }
+            } */}
 
 
             <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
-                {showLiveBI && liveBiPayload && (
+                {/* {showLiveBI && liveBiPayload && (
                     <LiveBusinessClient
                         countryName={countryName}
                         ranged="MTD"
                         month={currMonthName.toLowerCase()}
                         year={String(currYear)}
                         initialData={liveBiPayload}
+                    />
+                )} */}
+                {showLiveBI && liveBiPayload && (
+                    <LiveBusinessClient
+                        countryName={countryName}
+                        ranged="MTD"
+                        month={(currMonthName || "").toLowerCase()}
+                        year={String(currYear)}
+                        initialData={liveBiPayload}
+                        disableAutoFetch
+                        onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
                     />
                 )}
             </div>
@@ -4768,7 +4817,7 @@ export default function DashboardPage() {
                                     isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
                                 ].join(" ")}
                             >
-                                <div className="rounded-2xl border bg-[#D9D9D933] p-5 shadow-sm min-w-0">
+                                <div className="rounded-2xl border bg-white p-5 shadow-sm min-w-0">
                                     <div className="md:mb-3 flex items-center justify-between">
                                         <div className="text-sm text-charcoal-500">
                                             <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
