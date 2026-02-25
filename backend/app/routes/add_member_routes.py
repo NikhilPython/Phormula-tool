@@ -2,11 +2,12 @@ from flask import Blueprint, request, jsonify, current_app
 from werkzeug.security import generate_password_hash
 from flask_mail import Message
 from sqlalchemy.exc import IntegrityError
-from app import db, mail
-from app.models.user_models import Member
+from datetime import datetime
 import jwt
 import secrets, string
-from datetime import datetime, timedelta
+
+from app import db, mail
+from app.models.user_models import Member
 
 add_member_bp = Blueprint("add_member", __name__)
 
@@ -25,8 +26,11 @@ ALLOWED_MODULES = {
     "INVENTORY_PLANNING",
 }
 
-# Optional: set defaults if frontend doesn't send modules
 DEFAULT_MODULES = ["LIVE_DASHBOARD"]
+
+# ✅ Roles you allow for members
+ALLOWED_ROLES = {"MARKETING", "ACCOUNTED", "INVENTORY"}
+DEFAULT_ROLE = "MARKETING"
 
 # ==========================================================
 # Helpers
@@ -49,6 +53,9 @@ def _normalize_list(val):
     if isinstance(val, str):
         return [x.strip() for x in val.split(",") if x.strip()]
     return []
+
+def _normalize_role(val):
+    return (val or "").strip().upper()
 
 def _error(message: str, status: int = 400, **extra):
     payload = {"error": message}
@@ -77,6 +84,7 @@ def _get_owner_user_id_from_token():
         if not user_id:
             return None, _error("Invalid token: missing user_id", 401)
         return int(user_id), None
+
     except jwt.ExpiredSignatureError:
         return None, _error("Token expired", 401)
     except jwt.InvalidTokenError:
@@ -103,42 +111,39 @@ def _validate_modules(modules):
         return False, invalid
     return True, []
 
+# ==========================================================
+# Email
+# ==========================================================
 
-
-def send_member_invite_email(email, password, token_name, countries, marketplaces, modules):
+def send_member_invite_email(email, password, token_name, countries, marketplaces, modules, role):
     """
-    Improved HTML invite email:
-    - Looks professional
-    - Clear access summary (countries / marketplaces / modules)
-    - Includes security note
-    - Includes token_name for support/debug
+    Invite email with role + access summary.
     """
-    try:
-        msg = Message(
-            subject="Welcome to Phormula — Your Member Account Access",
-            sender=("Phormula Care Team", "care@phormula.io"),
-            recipients=[email],
-        )
+    msg = Message(
+        subject="Welcome to Phormula — Your Member Account Access",
+        sender=("Phormula Care Team", "care@phormula.io"),
+        recipients=[email],
+    )
 
-        # ✅ Update to your real frontend URL
-        login_url = "http://localhost:3000/member-login"
+    # ✅ Update to your real frontend URL
+    login_url = "http://localhost:3000/signin"
 
-        countries_str = ", ".join(countries) if countries else "-"
-        marketplaces_str = ", ".join(marketplaces) if marketplaces else "-"
-        modules_str = ", ".join(modules) if modules else "-"
+    countries_str = ", ".join(countries) if countries else "-"
+    marketplaces_str = ", ".join(marketplaces) if marketplaces else "-"
+    modules_str = ", ".join(modules) if modules else "-"
+    role_str = role or "-"
 
-        # Optional: map module keys -> friendly names
-        module_labels = {
-            "LIVE_DASHBOARD": "Live Dashboard",
-            "FINANCE_DASHBOARDS": "Finance Dashboards",
-            "BUSINESS_INTELLIGENCE": "Business Intelligence",
-            "INVENTORY_PLANNING": "Inventory Planning",
-        }
-        modules_pretty = ", ".join([module_labels.get(m, m) for m in modules]) if modules else "-"
+    module_labels = {
+        "LIVE_DASHBOARD": "Live Dashboard",
+        "FINANCE_DASHBOARDS": "Finance Dashboards",
+        "BUSINESS_INTELLIGENCE": "Business Intelligence",
+        "INVENTORY_PLANNING": "Inventory Planning",
+    }
+    modules_pretty = ", ".join([module_labels.get(m, m) for m in modules]) if modules else "-"
 
-        year = datetime.utcnow().year
+    year = datetime.utcnow().year
 
-        msg.html = f"""
+    msg.html = f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -148,8 +153,6 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
 </head>
 <body style="margin:0; padding:0; background:#f5f7fb; font-family:Arial, Helvetica, sans-serif;">
   <div style="max-width:640px; margin:0 auto; padding:24px;">
-    
-    <!-- Header -->
     <div style="background:#ffffff; border-radius:14px; overflow:hidden; box-shadow:0 6px 20px rgba(16,24,40,0.08); border:1px solid #e6eaf2;">
       <div style="padding:22px 24px; background:linear-gradient(135deg, #37455F 0%, #5EA68E 100%);">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
@@ -163,14 +166,12 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
         </div>
       </div>
 
-      <!-- Body -->
       <div style="padding:24px;">
         <h2 style="margin:0 0 12px; color:#101828; font-size:20px;">Welcome!</h2>
         <p style="margin:0 0 14px; color:#475467; font-size:14px; line-height:1.6;">
           An administrator has added you as a <b>Member</b> in Phormula. Below are your login details and the access you’ve been granted.
         </p>
 
-        <!-- Credentials Card -->
         <div style="background:#f8fafc; border:1px solid #e6eaf2; border-radius:12px; padding:16px; margin:18px 0;">
           <div style="font-size:14px; font-weight:700; color:#101828; margin-bottom:10px;">
             Your Login Credentials
@@ -193,7 +194,6 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
           </div>
         </div>
 
-        <!-- Access Card -->
         <div style="background:#ffffff; border:1px solid #e6eaf2; border-radius:12px; padding:16px; margin:18px 0;">
           <div style="font-size:14px; font-weight:700; color:#101828; margin-bottom:10px;">
             Your Access
@@ -201,6 +201,10 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
 
           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
             <tr>
+              <td style="padding:10px 0; color:#667085; font-size:12px; width:140px;">Role</td>
+              <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">{role_str}</td>
+            </tr>
+            <tr style="border-top:1px solid #eef2f7;">
               <td style="padding:10px 0; color:#667085; font-size:12px; width:140px;">Countries</td>
               <td style="padding:10px 0; color:#101828; font-size:13px; font-weight:600;">{countries_str}</td>
             </tr>
@@ -219,7 +223,6 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
           </table>
         </div>
 
-        <!-- CTA Button -->
         <div style="text-align:center; margin:22px 0 6px;">
           <a href="{login_url}"
              style="display:inline-block; background:#37455F; color:#F8EDCF; text-decoration:none; padding:12px 22px;
@@ -233,30 +236,23 @@ def send_member_invite_email(email, password, token_name, countries, marketplace
           <span style="color:#344054; word-break:break-all;">{login_url}</span>
         </div>
 
-        <!-- Footer Note -->
         <div style="margin-top:18px; padding-top:14px; border-top:1px solid #eef2f7; color:#667085; font-size:12px; line-height:1.6;">
           If you did not expect this email, please contact support at
           <a href="mailto:care@phormula.io" style="color:#5EA68E; text-decoration:none; font-weight:700;">care@phormula.io</a>.
           <br/>
+          Token reference: <span style="color:#344054; font-weight:700;">{token_name}</span>
         </div>
       </div>
     </div>
 
-    <!-- Bottom -->
     <div style="text-align:center; color:#98a2b3; font-size:12px; margin-top:14px;">
       © {year} Phormula. All rights reserved.
     </div>
-
   </div>
 </body>
 </html>
-        """
-        mail.send(msg)
-
-    except Exception as e:
-        # Re-raise so API can return "email failed" without breaking member creation
-        raise e
-    
+    """
+    mail.send(msg)
 
 # ==========================================================
 # Route
@@ -272,6 +268,7 @@ def add_member():
     {
       "email": "analyst@skinelements.com",
       "password": "Test1234",
+      "role": "MARKETING",  # ✅ NEW (MARKETING / ACCOUNTED / INVENTORY)
       "marketplaces": ["ATVPDKIKX0DER","A1F83G8C2ARO7P"],
       "modules": ["LIVE_DASHBOARD","INVENTORY_PLANNING"]
     }
@@ -286,6 +283,7 @@ def add_member():
         email = (data.get("email") or "").strip().lower()
         password = data.get("password") or ""
 
+        role = _normalize_role(data.get("role")) or DEFAULT_ROLE  # ✅ NEW
         marketplaces = _normalize_list(data.get("marketplaces"))
         modules = _normalize_list(data.get("modules")) or list(DEFAULT_MODULES)
 
@@ -294,12 +292,6 @@ def add_member():
             return _error(
                 "email, password and marketplaces are required",
                 400,
-                example={
-                    "email": "analyst@skinelements.com",
-                    "password": "Test1234",
-                    "marketplaces": ["ATVPDKIKX0DER", "A1F83G8C2ARO7P"],
-                    "modules": ["LIVE_DASHBOARD", "INVENTORY_PLANNING"],
-                },
             )
 
         if "@" not in email or "." not in email:
@@ -307,6 +299,14 @@ def add_member():
 
         if len(password) < 6:
             return _error("Password must be at least 6 characters", 400)
+
+        if role not in ALLOWED_ROLES:
+            return _error(
+                "Invalid role",
+                400,
+                invalid_role=role,
+                allowed_roles=sorted(list(ALLOWED_ROLES)),
+            )
 
         ok, invalid_mps = _validate_marketplaces(marketplaces)
         if not ok:
@@ -337,11 +337,12 @@ def add_member():
             owner_user_id=owner_user_id,
             email=email,
             password=generate_password_hash(password),
+            role=role,  # ✅ NEW
             marketplace_ids=marketplaces,
             countries=countries,
             modules=modules,
             token_name=token_name,
-            is_verified=True,  # you set true for direct login
+            is_verified=True,
         )
 
         db.session.add(new_member)
@@ -351,7 +352,7 @@ def add_member():
         email_sent = False
         email_message = ""
         try:
-            send_member_invite_email(email, password, token_name, countries, marketplaces, modules)
+            send_member_invite_email(email, password, token_name, countries, marketplaces, modules, role)
             email_sent = True
             email_message = "Invitation email sent successfully."
         except Exception as e:
@@ -363,6 +364,7 @@ def add_member():
                 "member_id": new_member.id,
                 "owner_user_id": owner_user_id,
                 "email": email,
+                "role": role,  # ✅ NEW
                 "countries": countries,
                 "marketplaces": marketplaces,
                 "modules": modules,
@@ -374,10 +376,9 @@ def add_member():
 
     except IntegrityError:
         db.session.rollback()
-        # ✅ handles uq_member_owner_email or token_name unique collisions
         return _error("Member already exists for this owner (or token collision). Try again.", 409)
 
     except Exception as e:
         db.session.rollback()
         return _error(str(e), 500)
-
+    

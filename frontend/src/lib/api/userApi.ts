@@ -2,7 +2,7 @@ import { baseApi } from "./baseApi";
 
 export type User = {
   id?: number;
-  name?: string;              // ✅ add this
+  name?: string;
   email?: string;
   phone_number?: string;
   brand_name?: string;
@@ -12,6 +12,18 @@ export type User = {
   target_sales?: number | null;
   tax_id?: any;
   address?: any;
+
+  // ✅ CLIENT onboarding / profile fields (agar backend bhejta hai)
+  country?: string;          // e.g. "UK" or "US,UK"
+  marketplace_id?: string;   // current selected marketplace id (client)
+
+  // ✅ MEMBER SUPPORT (token/member_login response se store karne ke liye)
+  is_member?: boolean;
+  member_id?: number;
+  owner_user_id?: number;
+  modules?: string[];        // allowed sidebar modules
+  marketplaces?: string[];   // member marketplace_ids
+  countries?: string[];      // member countries array
 };
 
 

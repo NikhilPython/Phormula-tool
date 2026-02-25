@@ -24,15 +24,17 @@ import { useShopifyStore } from "@/lib/utils/useShopifyStore";
 import { usePlatform } from "@/components/context/PlatformContext";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { buildCountryMarketplaceMap } from "@/lib/utils/countryMarketplace";
+import { useAppSelector } from "@/lib/hooks"; // ✅ add
 
 type NavSubItem = {
   name: string;
   path:
-  | string
-  | ((params: { ranged: string; countryName: string; month: string; year: string }) => string);
+    | string
+    | ((
+        params: { ranged: string; countryName: string; month: string; year: string }
+      ) => string);
   onClick?: () => void | Promise<void>;
 };
-
 
 type NavSection = {
   key: string;
@@ -55,36 +57,38 @@ const AppSidebar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   const routeParams = useParams();
-  const { data: user } = useGetUserDataQuery();
 
-  const isPreviewMode =
-  routeParams?.month === "NA" &&
-  routeParams?.year === "NA";
+  // ✅ Auth info (client vs member)
+  const authUser = useAppSelector((s: any) => s.auth.user);
+  const token = useAppSelector((s: any) => s.auth.token);
+ // ✅ token payload read (refresh pe user null hota hai)
+const getJwtPayload = (jwt?: string | null) => {
+  try {
+    if (!jwt) return null;
+    const payloadPart = jwt.split(".")[1];
+    if (!payloadPart) return null;
+    const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(base64));
+  } catch {
+    return null;
+  }
+};
 
-  //   useEffect(() => {
-  //   if (typeof window === "undefined") return;
+const tokenPayload = React.useMemo(() => getJwtPayload(token), [token]);
 
-  //   // 🔑 country URL se aayega (uk / us / global)
-  //   const countryFromRoute = routeParams?.countryName as string | undefined;
+// ✅ member detect: store OR token
+const isMember = !!authUser?.is_member || tokenPayload?.is_member === true;
 
-  //   // ✅ CASE 1: URL me country present hai
-  //   if (countryFromRoute) {
-  //     let platformFromRoute = "global";
+// ✅ modules: store OR token
+const allowedModules: string[] =
+  authUser?.modules || tokenPayload?.modules || [];
 
-  //     if (countryFromRoute === "uk") platformFromRoute = "amazon_uk";
-  //     if (countryFromRoute === "us") platformFromRoute = "amazon_us";
+  // ✅ Skip client-only user-data call for members (prevents 500 spam)
+  const { data: user } = useGetUserDataQuery(undefined, {
+    skip: !token || isMember,
+  });
 
-  //     setSelectedPlatform(platformFromRoute);
-  //     localStorage.setItem("selectedPlatform", platformFromRoute);
-  //     return;
-  //   }
-
-  //   // ✅ CASE 2: URL me kuch nahi → localStorage fallback
-  //   const saved = localStorage.getItem("selectedPlatform");
-  //   if (saved) {
-  //     setSelectedPlatform(saved);
-  //   }
-  // }, [routeParams]);
+  const isPreviewMode = routeParams?.month === "NA" && routeParams?.year === "NA";
 
   // ✅ Smaller / laptop friendly typography
   const textMain = "text-[11px] sm:text-[12px] lg:text-[12.5px] xl:text-[13px]";
@@ -120,50 +124,48 @@ const AppSidebar: React.FC = () => {
   };
 
   // ===== Data from RTK Query =====
-  useGetProfileCountriesQuery();
-  useGetUploadHistoryQuery();
+  // ✅ Skip for members (these endpoints usually expect client token)
+  useGetProfileCountriesQuery(undefined, { skip: !token || isMember });
+  useGetUploadHistoryQuery(undefined, { skip: !token || isMember });
 
   // ===== Platform data =====
   const connectedPlatforms = useConnectedPlatforms();
-  const rawOptions: RegionOption[] =
-    buildPlatformOptions(connectedPlatforms);
+  const rawOptions: RegionOption[] = buildPlatformOptions(connectedPlatforms);
 
   const countryFromRoute = routeParams?.countryName as string | undefined;
 
   const regionOptions: RegionOption[] = React.useMemo(() => {
-  const opts = buildPlatformOptions(connectedPlatforms);
+    const opts = buildPlatformOptions(connectedPlatforms);
 
-  const countryFromRoute = routeParams?.countryName as string | undefined;
+    const countryFromRoute = routeParams?.countryName as string | undefined;
 
-  // ✅ ONLY force Amazon country if NOT global
-  if (countryFromRoute && countryFromRoute !== "global") {
-    const forcedValue = `amazon-${countryFromRoute}`;
+    // ✅ ONLY force Amazon country if NOT global
+    if (countryFromRoute && countryFromRoute !== "global") {
+      const forcedValue = `amazon-${countryFromRoute}`;
 
-    const exists = opts.some(o => o.value === forcedValue);
-    if (!exists) {
-      opts.unshift({
-        value: forcedValue,
-        label: `Amazon ${countryFromRoute.toUpperCase()}`,
-      });
+      const exists = opts.some((o) => o.value === forcedValue);
+      if (!exists) {
+        opts.unshift({
+          value: forcedValue,
+          label: `Amazon ${countryFromRoute.toUpperCase()}`,
+        });
+      }
     }
-  }
 
-  return opts;
-}, [connectedPlatforms, routeParams?.countryName]);
-
-
+    return opts;
+  }, [connectedPlatforms, routeParams?.countryName]);
 
   // ===== Selected platform =====
+  const [selectedPlatform, setSelectedPlatform] = useState<string>(() => {
+    if (isPreviewMode) return "global";
 
- const [selectedPlatform, setSelectedPlatform] = useState<string>(() => {
-  if (isPreviewMode) return "global";
+    if (!countryFromRoute || countryFromRoute === "global") {
+      return "global";
+    }
 
-  if (!countryFromRoute || countryFromRoute === "global") {
-    return "global";
-  }
+    return `amazon-${countryFromRoute}`;
+  });
 
-  return `amazon-${countryFromRoute}`;
-});
   const decodeJwtUserId = (jwt: string): string | null => {
     try {
       const payloadPart = jwt.split(".")[1];
@@ -178,41 +180,57 @@ const AppSidebar: React.FC = () => {
       );
 
       const payload = JSON.parse(json);
-      return payload?.user_id != null ? String(payload.user_id) : null;
+
+      // ✅ client token uses user_id; member token uses owner_user_id
+      return payload?.user_id != null
+        ? String(payload.user_id)
+        : payload?.owner_user_id != null
+        ? String(payload.owner_user_id)
+        : null;
     } catch {
       return null;
     }
   };
 
+  const { setPlatform: setPlatformCtx } = usePlatform();
+
   useEffect(() => {
-  if (isPreviewMode) {
-    setSelectedPlatform("global");
-    setPlatformCtx("global" as PlatformId);
-    localStorage.setItem("selectedPlatform", "global");
-    return;
-  }
+    if (isPreviewMode) {
+      setSelectedPlatform("global");
+      setPlatformCtx("global" as PlatformId);
+      localStorage.setItem("selectedPlatform", "global");
+      return;
+    }
 
-  const country = routeParams?.countryName as string | undefined;
-if (country) {
-  if (country === "global") {
-    setSelectedPlatform("global");
-    setPlatformCtx("global" as PlatformId);
-    localStorage.setItem("selectedPlatform", "global");
-  } else {
-    const platform = `amazon-${country}` as PlatformId;
-    setSelectedPlatform(platform);
-    setPlatformCtx(platform);
-    localStorage.setItem("selectedPlatform", platform);
-  }
-  return;
-}
-}, [routeParams?.countryName, isPreviewMode]);
-
-
+    const country = routeParams?.countryName as string | undefined;
+    if (country) {
+      if (country === "global") {
+        setSelectedPlatform("global");
+        setPlatformCtx("global" as PlatformId);
+        localStorage.setItem("selectedPlatform", "global");
+      } else {
+        const platform = `amazon-${country}` as PlatformId;
+        setSelectedPlatform(platform);
+        setPlatformCtx(platform);
+        localStorage.setItem("selectedPlatform", platform);
+      }
+      return;
+    }
+  }, [routeParams?.countryName, isPreviewMode, setPlatformCtx]);
 
   const monthNames = [
-    "january", "february", "march", "april", "may", "june",
-    "july", "august", "september", "october", "november", "december",
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
   ];
 
   const [initialPeriod] = useState(() => {
@@ -231,15 +249,12 @@ if (country) {
             year = String(parsed.year);
           }
         }
-      } catch { }
+      } catch {}
     }
     return { ranged, month, year };
   });
 
-
-
-  const currentCountryName =
-    (routeParams?.countryName as string) || "global";
+  const currentCountryName = (routeParams?.countryName as string) || "global";
 
   const currentParams = {
     ranged: (routeParams?.ranged as string) || initialPeriod.ranged,
@@ -248,29 +263,31 @@ if (country) {
     year: (routeParams?.year as string) || initialPeriod.year,
   };
 
-
-  const { setPlatform: setPlatformCtx } = usePlatform();
-
-
-
   const handleInventoryForecastFetch = async () => {
     try {
       const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("jwtToken")
-          : null;
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
       if (!token) {
         console.error("No auth token found");
         return;
       }
 
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL;
+      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
       const months = [
-        "january", "february", "march", "april", "may", "june",
-        "july", "august", "september", "october", "november", "december",
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december",
       ];
 
       const monthIndex = months.indexOf(currentParams.month.toLowerCase());
@@ -282,7 +299,10 @@ if (country) {
       const year = Number(currentParams.year);
       const lastDay = new Date(year, monthIndex + 1, 0).getDate();
 
-      const lastDateISO = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      const lastDateISO = `${year}-${String(monthIndex + 1).padStart(
+        2,
+        "0"
+      )}-${String(lastDay).padStart(2, "0")}`;
 
       const url =
         `${baseUrl}/amazon_api/inventory/ledger-summary` +
@@ -320,9 +340,10 @@ if (country) {
     const end = new Date(Date.UTC(y, m, 0)); // last day of month
 
     const toISO = (d: Date) =>
-      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(
-        d.getUTCDate()
-      ).padStart(2, "0")}`;
+      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(d.getUTCDate()).padStart(2, "0")}`;
 
     return { start_date: toISO(start), end_date: toISO(end) };
   };
@@ -350,19 +371,22 @@ if (country) {
       start_date: range.start_date,
       end_date: range.end_date,
       time_unit: "SUMMARY",
-      countries: [country],     // backend expects list
+      countries: [country],
       return_excel: false,
     };
 
-    const res = await fetch(`${baseUrl}/api/ads/manager/sp_advertised_product_report`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${jwtToken}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    const res = await fetch(
+      `${baseUrl}/api/ads/manager/sp_advertised_product_report`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${jwtToken}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    );
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -375,35 +399,32 @@ if (country) {
   const getCurrentMonthToYesterdayRangeISO = () => {
     const today = new Date();
 
-    // yesterday in local time
     const y = new Date(today);
     y.setDate(today.getDate() - 1);
 
-    // If today is 1st, yesterday is previous month -> skip
     if (today.getDate() === 1) return null;
 
     const year = y.getFullYear();
-    const month = y.getMonth(); // 0..11
+    const month = y.getMonth();
 
     const start = new Date(year, month, 1);
 
     const toISO = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(d.getDate()).padStart(2, "0")}`;
 
     return { start_date: toISO(start), end_date: toISO(y) };
   };
 
-  const ensureSdReportSeedOnce = async (
-    baseUrl: string,
-    jwtToken: string
-  ) => {
+  const ensureSdReportSeedOnce = async (baseUrl: string, jwtToken: string) => {
     const userId = decodeJwtUserId(jwtToken) || "unknown";
 
     const range = getCurrentMonthToYesterdayRangeISO();
     if (!range) return;
 
-    // ✅ once per user per month
-    const ym = range.start_date.slice(0, 7); // "YYYY-MM"
+    const ym = range.start_date.slice(0, 7);
     const storageKey = `sd_report_seed_${userId}_${ym}`;
     if (localStorage.getItem(storageKey) === "1") return;
 
@@ -428,7 +449,6 @@ if (country) {
       }
     );
 
-    // 202 means pending in your backend logic — treat it as "seed started"
     if (res.status === 202) {
       localStorage.setItem(storageKey, "1");
       return;
@@ -441,7 +461,6 @@ if (country) {
 
     localStorage.setItem(storageKey, "1");
   };
-
 
   const onRegionChange = (val: string) => {
     const platform = val as PlatformId;
@@ -540,7 +559,6 @@ if (country) {
   };
 
   const sections: NavSection[] = [
-    // A) Live Dashboard (real-time page sections only)
     {
       key: "live-dashboard",
       name: "LIVE DASHBOARD",
@@ -574,16 +592,9 @@ if (country) {
           name: "Current Inventory",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
         },
-        // {
-        //   name: "Advertisements",
-        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#advertisements`,
-        //   // onClick: handleConnectAmazonAds,
-        // },
-
       ],
     },
 
-    // B) Finance Dashboards
     {
       key: "finance-dashboards",
       name: "FINANCE DASHBOARDS",
@@ -599,9 +610,10 @@ if (country) {
           path: ({ ranged, countryName, month, year }) =>
             `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
               countryName
-            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}#business-summary`,
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#business-summary`,
         },
-
         {
           name: "Cash Flow",
           path: ({ countryName, month, year }) =>
@@ -622,12 +634,13 @@ if (country) {
         {
           name: "Expense Reconcilliation",
           path: ({ countryName, month, year }) =>
-            `/expense-reconciliation/${encodeURIComponent(countryName)}/${encodeURIComponent(month)}/${encodeURIComponent(year)}` // your Amazon/Referral Fees page
+            `/expense-reconciliation/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
         },
       ],
     },
 
-    // C) Business Intelligence
     {
       key: "business-intelligence",
       name: "BUSINESS INTELLIGENCE",
@@ -652,7 +665,6 @@ if (country) {
         {
           name: "Inventory Forecast",
           path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-          // onClick: handleInventoryForecastFetch,
         },
         {
           name: "P&L Forecast",
@@ -661,7 +673,6 @@ if (country) {
       ],
     },
 
-    // D) Inventory Planning
     {
       key: "inventory-planning",
       name: "INVENTORY PLANNING",
@@ -677,9 +688,8 @@ if (country) {
       subItems: [
         {
           name: "Inventory Reconcilliation",
-          path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`, // ✅ Current Inventory
+          path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
-
         {
           name: "Dispatch Planning",
           path: `/dispatch/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
@@ -692,15 +702,22 @@ if (country) {
     },
   ];
 
+  // ✅ module mapping for member permissions
+  const SECTION_TO_MODULE: Record<string, string> = {
+    "live-dashboard": "LIVE_DASHBOARD",
+    "finance-dashboards": "FINANCE_DASHBOARDS",
+    "business-intelligence": "BUSINESS_INTELLIGENCE",
+    "inventory-planning": "INVENTORY_PLANNING",
+  };
 
-  // const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-  //   "Live Analytics": true,
-  //   dashboard: true,
-  //   "business-intelligence": true,
-  //   inventory: true,
-  //   recon: true,
-  //   integrations: false,
-  // });
+  // ✅ filtered sections for member
+  const visibleSections = React.useMemo(() => {
+    if (!isMember) return sections; // client sees all
+    return sections.filter((s) => {
+      const moduleKey = SECTION_TO_MODULE[s.key];
+      return moduleKey ? allowedModules.includes(moduleKey) : false;
+    });
+  }, [isMember, allowedModules, sections]);
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     "live-dashboard": true,
@@ -708,7 +725,6 @@ if (country) {
     "business-intelligence": true,
     "inventory-planning": true,
   });
-
 
   const toggleSection = useCallback((key: string) => {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -733,9 +749,10 @@ if (country) {
     <aside
       className={`fixed mt-16 flex flex-col lg:mt-0 top-0 left-0 bg-white text-gray-900 h-screen overflow-y-auto transition-all duration-300 ease-in-out z-[1100]
         px-3 sm:px-4 lg:px-3 xl:px-4
-        ${isMobileOpen
-          ? "w-full"
-          : showText
+        ${
+          isMobileOpen
+            ? "w-full"
+            : showText
             ? "w-[clamp(155px,13vw,210px)] xl:w-[clamp(180px,16vw,250px)]"
             : "w-[56px] sm:w-[64px] xl:w-[72px]"
         }
@@ -744,56 +761,51 @@ if (country) {
       `}
     >
       {/* Logo + toggle */}
-      <div
-  className={`py-4 sm:py-5 lg:py-6 flex items-center justify-between`}
->
-  {/* Logo */}
-  <Link
-    href={`/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`}
-    className="flex items-center gap-2"
-  >
-    {showText ? (
-      <Image
-        className="dark:hidden hidden lg:block"
-        src="/images/logo/Logo_Phormula.png"
-        alt="Logo"
-        width={132}
-        height={36}
-      />
-    ) : null}
-  </Link>
+      <div className={`py-4 sm:py-5 lg:py-6 flex items-center justify-between`}>
+        <Link
+          href={`/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`}
+          className="flex items-center gap-2"
+        >
+          {showText ? (
+            <Image
+              className="dark:hidden hidden lg:block"
+              src="/images/logo/Logo_Phormula.png"
+              alt="Logo"
+              width={132}
+              height={36}
+            />
+          ) : null}
+        </Link>
 
-  {/* 🔥 TOGGLE BUTTON (always visible) */}
-  <button
-    type="button"
-    onClick={handleToggle}
-    className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200"
-    aria-label="Toggle sidebar"
-  >
-    {showText ? (
-      <Image
-        src="/images/icons/sidebarin.png"
-        alt="Close sidebar"
-        width={20}
-        height={20}
-      />
-    ) : (
-      <Image
-        src="/images/icons/hamburger.png"
-        alt="Open sidebar"
-        width={20}
-        height={20}
-      />
-    )}
-  </button>
-</div>
-
+        <button
+          type="button"
+          onClick={handleToggle}
+          className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200"
+          aria-label="Toggle sidebar"
+        >
+          {showText ? (
+            <Image
+              src="/images/icons/sidebarin.png"
+              alt="Close sidebar"
+              width={20}
+              height={20}
+            />
+          ) : (
+            <Image
+              src="/images/icons/hamburger.png"
+              alt="Open sidebar"
+              width={20}
+              height={20}
+            />
+          )}
+        </button>
+      </div>
 
       {/* Platform Select */}
       {showText && regionOptions.length > 0 && (
         <RegionSelect
           label="Platform"
-          selectedCountry={safeSelectedPlatform}   // ✅ yahin use
+          selectedCountry={safeSelectedPlatform}
           options={regionOptions}
           onChange={onRegionChange}
           className={`mb-2 rounded bg-transparent text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#5EA68E]
@@ -805,13 +817,11 @@ if (country) {
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
           <div className="flex flex-col gap-1">
-            {sections.map((section) => {
+            {visibleSections.map((section) => {
               const resolvedSubPaths = section.subItems.map((sub) =>
                 typeof sub.path === "function" ? sub.path(currentParams) : sub.path
               );
-              const isSectionActive = resolvedSubPaths.some((p) =>
-                isActive(p as any)
-              );
+              const isSectionActive = resolvedSubPaths.some((p) => isActive(p as any));
 
               return (
                 <div key={section.key} className="flex flex-col">
@@ -819,8 +829,7 @@ if (country) {
                     onClick={() => toggleSection(section.key)}
                     className={`w-full rounded hover:bg-[#5EA68E]/15 transition-colors cursor-pointer group
                       ${padHeader} ${textSection} text-left text-[#5EA68E] font-semibold
-                      flex items-center ${showText ? "justify-between" : "justify-center"
-                      }
+                      flex items-center ${showText ? "justify-between" : "justify-center"}
                       ${isSectionActive ? "bg-[#5EA68E]/10" : ""}`}
                   >
                     <div className="flex items-center">
@@ -830,11 +839,13 @@ if (country) {
 
                     {showText && (
                       <FaChevronDown
-                        className={`h-3 w-3 sm:h-3.5 sm:w-3.5 transition-transform duration-200 ${openSections[section.key] ? "rotate-0" : "rotate-90"
-                          }`}
+                        className={`h-3 w-3 sm:h-3.5 sm:w-3.5 transition-transform duration-200 ${
+                          openSections[section.key] ? "rotate-0" : "rotate-90"
+                        }`}
                       />
                     )}
                   </button>
+
                   {openSections[section.key] && showText && (
                     <div className="ml-4 sm:ml-5 lg:ml-6 mt-1 space-y-1 overflow-hidden">
                       {section.subItems.map((subItem, idx) => {
@@ -847,7 +858,6 @@ if (country) {
                           <Link
                             key={idx}
                             href={resolvedPath}
-                            // onClick={() => subItem.onClick?.()}
                             onClick={async (e) => {
                               if (!subItem.onClick) return;
                               e.preventDefault();
@@ -855,15 +865,15 @@ if (country) {
                                 await subItem.onClick();
                               } catch (err) {
                                 console.error(err);
-                                router.push(resolvedPath); // optional fallback
+                                router.push(resolvedPath);
                               }
                             }}
-
                             className={`block rounded transition-colors
                               ${padItem} ${textMain} text-gray-700 hover:bg-[#5EA68E]/15
-                              ${isActive(subItem.path as any)
-                                ? "bg-[#5EA68E]/20 text-[#5EA68E] font-medium"
-                                : ""
+                              ${
+                                isActive(subItem.path as any)
+                                  ? "bg-[#5EA68E]/20 text-[#5EA68E] font-medium"
+                                  : ""
                               }`}
                           >
                             {subItem.name}

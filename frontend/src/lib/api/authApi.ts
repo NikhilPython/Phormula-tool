@@ -1,34 +1,24 @@
 import { baseApi } from "./baseApi";
 
 export type LoginReq = { email: string; password: string };
-export type LoginRes = { token: string; message?: string };
 
-// --- Register types ---
-export type RegisterReq = {
-  name: string; 
-  email: string;
-  password: string;
-  phone_number: string;     // formatted, e.g. "+1 5551234567"
-  phone_number_raw: string; // raw input
-};
-export type RegisterRes = {
-  success: boolean;
-  message?: string;
-};
-
-// --- Reset Password types ---
-export type ResetPasswordReq = {
+// ✅ common response (client + member)
+export type LoginRes = {
   token: string;
-  password: string;
-};
-export type ResetPasswordRes = {
-  success: boolean;
   message?: string;
+
+  // member props (backend member_login returns these)
+  is_member?: boolean;
+  member_id?: number;
+  owner_user_id?: number;
+  modules?: string[];
+  marketplaces?: string[];
+  countries?: string[];
 };
 
 export const authApi = baseApi.injectEndpoints({
   endpoints: (build) => ({
-    // 🔹 LOGIN
+    // 🔹 CLIENT LOGIN
     login: build.mutation<LoginRes, LoginReq>({
       query: (body) => ({
         url: "/login",
@@ -36,21 +26,22 @@ export const authApi = baseApi.injectEndpoints({
         body,
         headers: { "Content-Type": "application/json" },
       }),
-      async onQueryStarted(arg, { queryFulfilled }) {
-        try {
-          const { data } = await queryFulfilled;
-          if (data?.token) {
-            console.log("🟢 Auth Token (Login):", data.token);
-          }
-        } catch (error) {
-          console.error("Login failed:", error);
-        }
-      },
+      invalidatesTags: ["User"],
+    }),
+
+    // ✅ MEMBER LOGIN
+    memberLogin: build.mutation<LoginRes, LoginReq>({
+      query: (body) => ({
+        url: "/member_login",
+        method: "POST",
+        body,
+        headers: { "Content-Type": "application/json" },
+      }),
       invalidatesTags: ["User"],
     }),
 
     // 🔹 REGISTER
-    register: build.mutation<RegisterRes, RegisterReq>({
+    register: build.mutation<any, any>({
       query: (body) => ({
         url: "/register",
         method: "POST",
@@ -61,21 +52,21 @@ export const authApi = baseApi.injectEndpoints({
     }),
 
     // 🔹 RESET PASSWORD
-    resetPassword: build.mutation<ResetPasswordRes, ResetPasswordReq>({
-  query: ({ token, password }) => ({
-    url: `/reset_password/${encodeURIComponent(token)}`, // 👈 important
-    method: "POST",
-    body: { password },
-    headers: { "Content-Type": "application/json" },
-  }),
-}),
-
+    resetPassword: build.mutation<any, { token: string; password: string }>({
+      query: ({ token, password }) => ({
+        url: `/reset_password/${encodeURIComponent(token)}`,
+        method: "POST",
+        body: { password },
+        headers: { "Content-Type": "application/json" },
+      }),
+    }),
   }),
   overrideExisting: false,
 });
 
 export const {
   useLoginMutation,
+  useMemberLoginMutation, // ✅ export
   useRegisterMutation,
   useResetPasswordMutation,
 } = authApi;
