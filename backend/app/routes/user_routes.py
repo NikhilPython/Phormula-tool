@@ -508,37 +508,45 @@ def get_user_data():
         db.session.rollback()
         return jsonify({'error': 'Failed to update amazon flags', 'details': str(e)}), 500
 
+    # ✅ pick the correct email for FE display
+    effective_email = email if is_member else user.email
+
     return jsonify({
-        # ✅ Member/Owner identity info (FE can use)
+        # identity
         "is_member": is_member,
-        "user_id": int(user_id),                 # ✅ always owner id
-        "owner_user_id": int(user_id),           # ✅ same as user_id (owner scope)
+        "user_id": int(user_id),
+        "owner_user_id": int(user_id),
         "member_id": int(member_id) if member_id else None,
+
         "member_name": member_name,
         "member_role": member_role,
-        "marketplace_ids": marketplace_ids,   # ✅ can be used by FE to conditionally show features based on marketplace connectivity
+
+        # ✅ emails (no overwriting)
+        "email": effective_email,                 # ✅ FE should use this
+        "owner_email": user.email,                # always owner email
+        "member_email": email if is_member else None,
+
+        "marketplace_ids": marketplace_ids,
         "modules": modules,
         "countries": countries,
-        "email": email,
 
-        # ✅ User fields
-        'name': user.name,
-        'company_name': user.company_name,
-        'brand_name': user.brand_name,
-        'email': user.email,
-        'phone_number': user.phone_number,
-        'annual_sales_range': user.annual_sales_range,
-        'password': user.password,
-        'marketplace_id': user.marketplace_id,
-        'country': user.country,
-        'homeCurrency': user.homeCurrency,
-        'target_sales': float(user.target_sales) if user.target_sales is not None else None,
-        'tax_id': user.tax_id,
-        'address': user.address,
+        # user fields
+        "name": user.name,
+        "company_name": user.company_name,
+        "brand_name": user.brand_name,
+        "phone_number": user.phone_number,
+        "annual_sales_range": user.annual_sales_range,
+        "password": user.password,
+        "marketplace_id": user.marketplace_id,
+        "country": user.country,
+        "homeCurrency": user.homeCurrency,
+        "target_sales": float(user.target_sales) if user.target_sales is not None else None,
+        "tax_id": user.tax_id,
+        "address": user.address,
 
-        # ✅ Amazon flags
-        'amazon_user_exists': user.amazon_user_exists,
-        'amazon_ads_exists': user.amazon_ads_exists,
+        # amazon flags
+        "amazon_user_exists": user.amazon_user_exists,
+        "amazon_ads_exists": user.amazon_ads_exists,
     }), 200
 
 
