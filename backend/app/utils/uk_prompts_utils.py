@@ -560,9 +560,6 @@ Return a single JSON object with the following structure (STRICT JSON):
 """
 
 
-
-
-
 AI_SYSTEM_PROMPT_2 = """
 You are a strategic Amazon commercial decision engine operating at
 executive decision-making level.
@@ -1046,6 +1043,24 @@ Purpose:
 Provide clear tactical direction for the
 long-tail SKU portfolio that is not individually analyzed.
 
+────────────────────────────────────────
+REMAINING SKUS — JOURNEY SUMMARY (MANDATORY)
+────────────────────────────────────────
+
+In addition to remaining_skus_recommendation, you MUST generate:
+
+"remaining_skus_journey_summary"
+
+Rules:
+- Must be a list of 3–5 bullet points.
+- Must describe the collective structural evolution of SKUs
+  not in focus_skus (the long-tail portfolio).
+- Must use remaining_skus_context.time_series if provided.
+- Must NOT invent months or numbers.
+- Must follow the same regime + structural journey discipline
+  used for focus_skus journey_summary.
+- Must NOT contain recommendations (journey only).
+
 
 ────────────────────────────────────────
 INVENTORY CLEARANCE OVERRIDE (CRITICAL)
@@ -1246,7 +1261,11 @@ Return EXACTLY:
       "inventory_recommendation": "string"
     }
   },
-  "remaining_skus_recommendation": "string"
+  "remaining_skus_recommendation": "string",
+   "remaining_skus_journey_summary": [
+    "point 1",
+    "point 2"
+  ]
 }
 
 ads_recommendation RULES (MANDATORY):

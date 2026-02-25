@@ -386,6 +386,44 @@ def build_rolling_sku_series(
 
     return series
 
+def build_remaining_skus_time_series(
+    user_id: int,
+    country: str,
+    focus_skus: list[str],
+    anchor_year: int,
+    anchor_month: int,
+    months: int = 24
+) -> list[dict]:
+
+    series = []
+    for y, m in rolling_months(anchor_year, anchor_month, months):
+        df = fetch_precalc_table(user_id, country, "monthly", str(m), y)
+        if df.empty:
+            continue
+
+        df_detail, _ = _split_total_row(df)
+        sku_month = compute_sku_precalc(df_detail)
+
+        # aggregate "remaining" SKUs for this month (no previous needed)
+        # we only need current month snapshot metrics for the journey
+        agg = build_remaining_skus_aggregate(
+            sku_current=sku_month,
+            sku_prev={},
+            focus_skus=focus_skus
+        )
+        if not agg:
+            continue
+
+        series.append({
+            "year": y,
+            "month": m,
+            "units": agg.get("total_quantity", {}).get("current"),
+            "asp": agg.get("asp", {}).get("current"),
+            "cm1_profit": agg.get("profit", {}).get("current"),
+        })
+
+    return series
+
 def compute_generic_movement(series: list, col: str):
     points = []
 
@@ -1009,6 +1047,77 @@ def compare_sku_metrics(current: dict, previous: dict) -> dict:
 
     return output
 
+def build_remaining_skus_aggregate(
+    sku_current: dict,
+    sku_prev: dict,
+    focus_skus: list[str],
+) -> dict:
+
+    focus_set = set(str(s) for s in (focus_skus or []))
+
+    remaining = [
+        sku for sku in (set(sku_current.keys()) | set(sku_prev.keys()))
+        if str(sku) not in focus_set
+        and str(sku).strip().lower() not in TOTAL_LABELS
+    ]
+
+    if not remaining:
+        return {}
+
+    def sum_metric(source: dict, metric: str) -> float:
+        total = 0.0
+        for sku in remaining:
+            try:
+                total += float(source.get(sku, {}).get(metric, 0.0) or 0.0)
+            except (TypeError, ValueError):
+                continue
+        return round(total, 2)
+
+    # --- additive ---
+    cur_units = sum_metric(sku_current, "total_quantity")
+    prev_units = sum_metric(sku_prev, "total_quantity")
+
+    cur_sales = sum_metric(sku_current, "net_sales")
+    prev_sales = sum_metric(sku_prev, "net_sales")
+
+    cur_profit = sum_metric(sku_current, "profit")
+    prev_profit = sum_metric(sku_prev, "profit")
+
+    # --- recalculated ---
+    cur_asp = round(cur_sales / cur_units, 2) if cur_units else None
+    prev_asp = round(prev_sales / prev_units, 2) if prev_units else None
+
+    cur_ppu = round(cur_profit / cur_units, 2) if cur_units else None
+    prev_ppu = round(prev_profit / prev_units, 2) if prev_units else None
+
+    def mk(cur, prev):
+        if cur is None or prev is None:
+            return {
+                "current": cur,
+                "previous": prev,
+                "delta": None,
+                "delta_pct": None
+            }
+
+        delta = round(cur - prev, 2)
+        pct = round((delta / prev) * 100, 2) if prev != 0 else None
+
+        return {
+            "current": round(cur, 2),
+            "previous": round(prev, 2),
+            "delta": delta,
+            "delta_pct": pct
+        }
+
+    return {
+        "product_name": "Other SKUs",
+        "total_quantity": mk(cur_units, prev_units),
+        "net_sales": mk(cur_sales, prev_sales),
+        "profit": mk(cur_profit, prev_profit),
+        "asp": mk(cur_asp, prev_asp),
+        "unit_wise_profitability": mk(cur_ppu, prev_ppu),
+    }
+
 
 def compute_yoy_pct(df_current_total, df_prev_total, col):
     cur = _total_value(df_current_total, col)
@@ -1076,6 +1185,8 @@ def run_prompt_2_strategy(
     ads_monthly: dict | None = None,
     sku_live_context: list | None = None,
     sku_inventory_flags: dict | None = None,
+    remaining_skus_context: dict | None = None,
+
 ):
 
     # -------------------------------------------------
@@ -1117,6 +1228,7 @@ def run_prompt_2_strategy(
         "sku_ads_context": sku_ads_context or [],
         "ads_monthly": ads_monthly or {},
         "sku_live_context": sku_live_context or [],
+        "remaining_skus_context": remaining_skus_context or {},
     }
 
     # -------------------------------------------------
@@ -1148,25 +1260,7 @@ def run_prompt_3_polish(bullets: dict) -> dict:
     return json.loads(resp.choices[0].message.content)
 
 
-# def select_top_5_skus_by_current_cm1_profit(sku_current: dict) -> list[str]:
-#     """
-#     Select Top 5 SKUs by current month CM1 profit (descending).
-#     """
-#     ranked = []
 
-#     for sku, data in sku_current.items():
-#         cm1 = data.get("profit")
-
-#         if cm1 is None:
-#             continue
-
-#         try:
-#             ranked.append((sku, float(cm1)))
-#         except (TypeError, ValueError):
-#             continue
-
-#     ranked.sort(key=lambda x: x[1], reverse=True)
-#     return [sku for sku, _ in ranked[:5]]
 
 def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -> list[str]:
     """
@@ -1349,6 +1443,7 @@ def render_month_end_summary(
     currency_symbol: str,
     strategy_actions: dict | None = None,
     portfolio_recommendation: str | None = None,
+    remaining_agg: dict | None = None,
 ) -> str:
     """
     Deterministic executive month-end / year-end summary renderer.
@@ -1547,12 +1642,45 @@ def render_month_end_summary(
             lines.append(f"• Inventory action: {inv_rec}")    
 
     # =========================================================
-    # REMAINING SKUS — CONSOLIDATED RECOMMENDATION
+    # REMAINING SKUS — METRICS + JOURNEY + RECOMMENDATION
     # =========================================================
     remaining_rec = sku_actions.get("remaining_skus_recommendation")
 
     if isinstance(remaining_rec, str) and remaining_rec.strip():
         lines.append("\nOther SKUs")
+
+        # --- Aggregated Metrics ---
+        if isinstance(remaining_agg, dict) and remaining_agg:
+
+            lines.append(
+                f"• ASP: {fmt_value_with_pct(remaining_agg.get('asp'), is_currency=True)}"
+            )
+
+            lines.append(
+                f"• Units: {fmt_value_with_pct(remaining_agg.get('total_quantity'))}"
+            )
+
+            lines.append(
+                f"• Net sales: {fmt_value_with_pct(remaining_agg.get('net_sales'), is_currency=True)}"
+            )
+
+            lines.append(
+                f"• CM1 profit: {fmt_value_with_pct(remaining_agg.get('profit'), is_currency=True)}"
+            )
+
+            lines.append(
+                f"• CM1 profit per unit: {fmt_value_with_pct(remaining_agg.get('unit_wise_profitability'), is_currency=True)}"
+            )
+
+        # --- LLM Journey ---
+        remaining_journey = sku_actions.get("remaining_skus_journey_summary")
+
+        if isinstance(remaining_journey, list) and remaining_journey:
+            lines.append("• Product journey:")
+            for point in remaining_journey:
+                lines.append(f"   - {point}")
+
+        # --- Recommendation ---
         lines.append(f"• Recommendation: {remaining_rec}")
 
 
@@ -1778,6 +1906,9 @@ def get_or_create_summary(
             if period == "yearly":
                 yearly_temporal_signals = build_yearly_temporal_signals(rolling_series) or None
 
+
+                
+
     # ============================================================
     # INVENTORY
     # ============================================================
@@ -1841,6 +1972,33 @@ def get_or_create_summary(
 
     sku_prev = compute_sku_precalc(df_prev_detail)
     sku_mom = compare_sku_metrics(sku_current, sku_prev)
+
+    remaining_agg = build_remaining_skus_aggregate(
+    sku_current=sku_current,
+    sku_prev=sku_prev,
+    focus_skus=top_5_skus
+    )
+
+    # -------------------------------------------------
+    # Remaining SKUs time series (for LLM journey)
+    # -------------------------------------------------
+
+    remaining_series = []
+
+    if analysis_anchor_year and analysis_anchor_month:
+        remaining_series = build_remaining_skus_time_series(
+            user_id=user_id,
+            country=country,
+            focus_skus=top_5_skus,
+            anchor_year=analysis_anchor_year,
+            anchor_month=analysis_anchor_month,
+            months=24
+        )
+
+    remaining_skus_context = {
+        "aggregated_metrics": remaining_agg,
+        "time_series": remaining_series
+    }
 
     if single_sku_mode:
         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
@@ -1908,7 +2066,8 @@ def get_or_create_summary(
             sku_time_series=sku_time_series,
             inventory_alerts=inventory_alerts,
             country=str(country).lower(),
-            sku_inventory_flags=sku_inventory_flags   # ✅ NEW
+            sku_inventory_flags=sku_inventory_flags,
+            remaining_skus_context=remaining_skus_context   # ✅ NEW
         )
 
         try:
@@ -1922,6 +2081,10 @@ def get_or_create_summary(
             remaining_skus_rec = parsed.get("remaining_skus_recommendation")
             if isinstance(remaining_skus_rec, str) and remaining_skus_rec.strip():
                 sku_actions["remaining_skus_recommendation"] = remaining_skus_rec
+
+            remaining_journey = parsed.get("remaining_skus_journey_summary")
+            if isinstance(remaining_journey, list) and remaining_journey:
+                sku_actions["remaining_skus_journey_summary"] = remaining_journey    
 
         except Exception:
             print("\n❌ Prompt-2 JSON PARSE FAILED")
@@ -1948,7 +2111,8 @@ def get_or_create_summary(
     inventory_alerts=inventory_alerts if allow_inventory else {},
     inventory_lost=inventory_lost,
     currency_symbol="£" if country == "uk" else "$",
-    strategy_actions=sku_actions
+    strategy_actions=sku_actions,
+    remaining_agg=remaining_agg,
     )
 
 

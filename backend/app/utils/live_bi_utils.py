@@ -1665,68 +1665,18 @@ Mandatory format:
 
 
 
-def fmt_metric(delta, pct, symbol="£"):
-    if delta is None:
-        delta = 0.0
+def fmt_metric(value, pct, symbol="£", decimals=2):
+    if value is None:
+        value = 0.0
     if pct is None:
         pct = 0.0
-    sign = "+" if delta >= 0 else "-"
-    return f"{symbol}{sign}{abs(delta):,.2f} ({pct:+.2f}%)"
+
+    formatted_value = f"{value:,.{decimals}f}"
+    return f"{symbol}{formatted_value} ({pct:+.2f}%)"
 
 
 
 
-
-# def render_live_recommended_action(
-#     *,
-#     growth_row: dict,
-#     recommendation: str,
-#     ads_recommendation: str | None = None,
-    
-#     journey_summary: list[str] | None = None,
-#     currency_symbol="£"
-# ) -> str:
-#     lines = []
-
-#     name = growth_row.get("product_name") or growth_row.get("sku")
-#     lines.append(name)
-#     lines.append("")
-
-#     # ---------- Metrics ----------
-#     lines.append(
-#         f"ASP: {fmt_metric(growth_row['asp_curr'] - growth_row['asp_prev'], growth_row['ASP Growth (%)']['value'], currency_symbol)}"
-#     )
-#     lines.append(
-#         f"Units: {fmt_metric(growth_row['quantity_curr'] - growth_row['quantity_prev'], growth_row['Unit Growth (%)']['value'], '')}"
-#     )
-#     lines.append(
-#         f"Net sales: {fmt_metric(growth_row['net_sales_curr'] - growth_row['net_sales_prev'], growth_row['Net Sales Growth (%)']['value'], currency_symbol)}"
-#     )
-#     lines.append(
-#         f"CM1 profit: {fmt_metric(growth_row['profit_curr'] - growth_row['profit_prev'], growth_row['CM1 Profit Impact (%)']['value'], currency_symbol)}"
-#     )
-#     lines.append(
-#         f"CM1 profit per unit: {fmt_metric(growth_row['unit_wise_profitability_curr'] - growth_row['unit_wise_profitability_prev'], growth_row['Profit Per Unit (%)']['value'], currency_symbol)}"
-#     )
-
-#     # ---------- Product Journey ----------
-#     if journey_summary:
-#         lines.append("")
-#         lines.append("Product Journey:")
-#         for bullet in journey_summary:
-#             lines.append(f"- {bullet}")
-
-#     # ---------- Recommendation ----------
-#     lines.append("")
-#     lines.append(f"Recommendation: {recommendation}")
-
-#     # ---------- Ads Recommendation ----------
-#     if ads_recommendation:
-#         lines.append("")
-#         lines.append(f"Advertising: {ads_recommendation}")
-
-  
-#     return "\n".join(lines)
 
 def render_live_recommended_action(
     *,
@@ -1745,19 +1695,19 @@ def render_live_recommended_action(
 
     # ---------- Metrics ----------
     lines.append(
-        f"ASP: {fmt_metric(growth_row['asp_curr'] - growth_row['asp_prev'], growth_row['ASP Growth (%)']['value'], currency_symbol)}"
+        f"ASP: {fmt_metric(growth_row['asp_curr'], growth_row['ASP Growth (%)']['value'], currency_symbol)}"
     )
     lines.append(
-        f"Units: {fmt_metric(growth_row['quantity_curr'] - growth_row['quantity_prev'], growth_row['Unit Growth (%)']['value'], '')}"
+        f"Units: {fmt_metric(growth_row['quantity_curr'], growth_row['Unit Growth (%)']['value'], '', decimals=0)}"
     )
     lines.append(
-        f"Net sales: {fmt_metric(growth_row['net_sales_curr'] - growth_row['net_sales_prev'], growth_row['Net Sales Growth (%)']['value'], currency_symbol)}"
+        f"Net sales: {fmt_metric(growth_row['net_sales_curr'], growth_row['Net Sales Growth (%)']['value'], currency_symbol)}"
     )
     lines.append(
-        f"CM1 profit: {fmt_metric(growth_row['profit_curr'] - growth_row['profit_prev'], growth_row['CM1 Profit Impact (%)']['value'], currency_symbol)}"
+        f"CM1 profit: {fmt_metric(growth_row['profit_curr'], growth_row['CM1 Profit Impact (%)']['value'], currency_symbol)}"
     )
     lines.append(
-        f"CM1 profit per unit: {fmt_metric(growth_row['unit_wise_profitability_curr'] - growth_row['unit_wise_profitability_prev'], growth_row['Profit Per Unit (%)']['value'], currency_symbol)}"
+        f"CM1 profit per unit: {fmt_metric(growth_row['unit_wise_profitability_curr'], growth_row['Profit Per Unit (%)']['value'], currency_symbol)}"
     )
 
     # ---------- Product Journey ----------
@@ -2288,6 +2238,7 @@ def fetch_skuwisemonthly_ads_cm2_current_month(
         }
 
     return sku_map, totals
+
 
 
 
