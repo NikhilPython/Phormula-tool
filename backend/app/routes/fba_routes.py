@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_mail import Message
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from app.utils.token_utils import get_effective_user_id_from_token
 import jwt
 import os
 import base64
@@ -100,9 +101,7 @@ def fba_email_notification():
             token = auth_header.split(' ')[1]
             try:
                 # Decode JWT token to get user info
-                payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-                user_id = payload.get('user_id')
-                
+                payload, user_id = get_effective_user_id_from_token(token)
                 # Get user email from database
                 user = User.query.get(user_id)
                 if user:

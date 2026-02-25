@@ -16,6 +16,7 @@ SECRET_KEY = Config.SECRET_KEY
 from app import db
 from app.models.user_models import UploadHistory , CountryProfile , User
 from app.utils.data_utils import generate_pnl_report 
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.us_process_utils  import process_skuwise_us_data , process_us_yearly_skuwise_data, process_us_quarterly_skuwise_data
 from app.utils.uk_process_utils import process_skuwise_data , process_quarterly_skuwise_data, process_yearly_skuwise_data 
 from app.utils.plotting_utils import (
@@ -124,8 +125,7 @@ def upload():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -1151,8 +1151,7 @@ def multiCountry():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -1431,8 +1430,7 @@ def check_file_upload_status():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -1483,8 +1481,7 @@ def upload_history():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -1662,8 +1659,7 @@ def upload_history2():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -1903,8 +1899,7 @@ def upload_historyforacos():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

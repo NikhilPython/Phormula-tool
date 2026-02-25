@@ -14,6 +14,7 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import MetaData, Table, inspect, select
 import logging
 from app.routes.amazon_sales_api_routes import _normalize_sku_row
+from app.utils.token_utils import get_effective_user_id_from_token
 from sqlalchemy import text
 import pandas as pd
 
@@ -127,8 +128,7 @@ def YearlySKU():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -202,8 +202,7 @@ def quarterlyskutable():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -239,8 +238,7 @@ def get_currency_rates():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        _user_id = payload.get('user_id')  # not used, but keeps auth consistent
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -331,8 +329,7 @@ def get_asp_data():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -437,37 +434,6 @@ def get_asp_data():
         return jsonify({'error': 'Unexpected error', 'message': str(e)}), 500
 
     
-# @product_bp.route('/skup', methods=['POST'])
-# def skup():
-#     auth_header = request.headers.get('Authorization')
-    
-#     # Validate authorization token
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-#         user_id = payload['user_id']
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-
-#     # Check if a file is included in the request
-#     if 'file' not in request.files:
-#         return jsonify({'error': 'No file part'}), 400
-
-#     file = request.files['file']
-#     if file.filename == '':
-#         return jsonify({'error': 'No selected file'}), 400
-
-#     # Save the uploaded file
-#     file_path = os.path.join(secure_filename(file.filename))
-#     file.save(file_path)
-
-#     return jsonify({'success': True, 'message': 'File uploaded successfully'}), 200
-
 
 @product_bp.route('/skup', methods=['POST'])
 def skup():
@@ -478,8 +444,7 @@ def skup():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -554,86 +519,6 @@ def skup():
 
 
 
-# @product_bp.route('/updatePrices', methods=['POST'])
-# def update_prices():
-#     # Authorization
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-#         user_id = payload['user_id']
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-
-#     # Parse price update payload
-#     data = request.get_json()
-#     edited_prices = data.get('prices', {})  
-
-#     if not edited_prices:
-#         return jsonify({'error': 'No prices provided to update'}), 400
-
-#     # DB setup
-#     user_engine = create_engine(db_url)
-#     Session = sessionmaker(bind=user_engine)
-#     user_session = Session()
-#     sku_table_name = f"sku_{user_id}_data_table"
-#     sku_data_table = Table(sku_table_name, MetaData(), autoload_with=user_engine)
-
-#     failed_products = []
-#     updated_products = []
-
-#     try:
-#         # Fetch all existing product_names for validation
-#         existing_products_result = user_session.execute(
-#             select(sku_data_table.c.product_name)
-#         ).fetchall()
-#         existing_products = set(row[0] for row in existing_products_result)
-
-#         for product_name, new_price in edited_prices.items():
-#             if product_name not in existing_products:
-#                 failed_products.append(product_name)
-#                 continue
-
-#             try:
-#                 update_stmt = sku_data_table.update().where(
-#                     sku_data_table.c.product_name == product_name
-#                 ).values(price=new_price)
-
-#                 result = user_session.execute(update_stmt)
-
-#                 if result.rowcount == 0:
-#                     failed_products.append(product_name)
-#                 else:
-#                     updated_products.append(product_name)
-
-#             except Exception as e:
-#                 failed_products.append(product_name)
-
-#         user_session.commit()
-
-#         # Return updated table
-#         select_stmt = select(sku_data_table).order_by(sku_data_table.c.id.asc())
-#         result = user_session.execute(select_stmt)
-#         updated_data = [dict(row._mapping) for row in result]
-
-#         return jsonify({
-#             'message': 'Prices update completed',
-#             'updated_products': updated_products,
-#             'not_updated_products': failed_products,
-#             'data': updated_data
-#         }), 200
-
-#     except Exception as e:
-#         user_session.rollback()
-#         return jsonify({'error': f'Error updating prices: {str(e)}'}), 500
-#     finally:
-#         user_session.close()
-
 
 @product_bp.route('/updatePrices', methods=['POST'])
 def update_prices():
@@ -644,8 +529,7 @@ def update_prices():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -757,8 +641,7 @@ def skuprice():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -805,8 +688,7 @@ def get_error_file(country, month, year):
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -837,8 +719,7 @@ def get_consolidated_table_name(country_name):
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -911,8 +792,7 @@ def skutableprofit(skuwise_file_name):
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -974,8 +854,7 @@ def get_table_data(file_name):
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except:
         return jsonify({'error': 'Invalid or expired token'}), 401
 

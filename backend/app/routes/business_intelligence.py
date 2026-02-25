@@ -14,6 +14,7 @@ from calendar import month_name, month_abbr
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAIError
 from app.utils.monthwise_ai_summary_utils import get_or_create_summary, resolve_latest_available_month
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.models.user_models import UserObjective
 
 
@@ -96,12 +97,7 @@ def print_comparison_range():
     token = auth_header.split(' ')[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
-        # Extract query parameters
+        payload, user_id = get_effective_user_id_from_token(token)
         month1 = request.args.get('month1')
         year1 = request.args.get('year1')
         month2 = request.args.get('month2')
@@ -695,11 +691,7 @@ def analyze_skus():
     token = auth_header.split(' ')[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
+        payload, user_id = get_effective_user_id_from_token(token)
         data = request.get_json()
         enriched_skus = data.get('skus', [])
         month1 = data.get('month1')
@@ -1117,11 +1109,7 @@ def get_available_periods_for_bi():
     token = auth_header.split(' ')[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
+        payload, user_id = get_effective_user_id_from_token(token)
         country = request.args.get('countryName')
         if not country:
             return jsonify({'error': 'Missing required query parameter: countryName'}), 400

@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app import db
 from sqlalchemy import delete, text
 from app.models.user_models import Inventory, CountryProfile, MonthwiseInventory , InventoryAged
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.amazon_utils import amazon_client, _apply_region_and_marketplace_from_request
 from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
 from config import Config
@@ -1188,8 +1189,7 @@ def upsert_country_profile():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

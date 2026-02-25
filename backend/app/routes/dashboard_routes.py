@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify , send_file
 from sqlalchemy import create_engine , MetaData , text, inspect
 from sqlalchemy.orm import sessionmaker
+from app.utils.token_utils import get_effective_user_id_from_token
 import jwt
 import os
 import base64
@@ -39,8 +40,7 @@ def check_country_profile(country):
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -67,8 +67,7 @@ def passcountryfromprofiles():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -96,193 +95,6 @@ def passcountryfromprofiles():
     return jsonify({'countries': global_countries}), 200
 
 
-# @dashboard_bp.route('/getDispatchfile', methods=['GET'])
-# def getDispatchfile():
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-#         if 'user_id' not in payload:
-#             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
-#         user_id = payload['user_id']
-#         country = request.args.get('country')
-#         month = request.args.get('month')
-#         year = request.args.get('year')
-
-#         if not country or not month or not year:
-#             return jsonify({'error': 'Missing country, month, or year parameters'}), 400
-
-
-#         # ---------------- MONTH RESOLUTION (FIX) ----------------
-      
-
-#         requested_month = month.lower()
-#         requested_year = int(year)
-
-#         current_month = datetime.now().strftime("%B").lower()
-#         current_year = datetime.now().year
-
-#         # Dispatch files are always saved using CURRENT ongoing month
-#         if requested_year == current_year:
-#             effective_month = current_month
-#         else:
-#             effective_month = requested_month
-
-#         short_month = effective_month[:3].lower()
-
-#         uploads_folder = os.path.abspath()
-
-#         def find_latest_file(user_id, ctry):
-#             pattern = re.compile(
-#                 rf"inventory_forecast_{user_id}_{re.escape(ctry)}_{short_month}.*\.xlsx$"
-#             )
-#             matched_files = [
-#                 f for f in os.listdir(uploads_folder)
-#                 if pattern.match(f)
-#             ]
-#             matched_files.sort(reverse=True)
-#             return os.path.join(uploads_folder, matched_files[0]) if matched_files else None
-
-#         # ---------- GLOBAL: merge UK + US ----------
-#         if country.lower() == 'global':
-#             file_uk = find_latest_file(user_id, 'uk')
-#             file_us = find_latest_file(user_id, 'us')
-
-#             if not file_uk and not file_us:
-#                 return jsonify({'error': 'No UK or US dispatch files found'}), 404
-
-#             frames = []
-#             for f in [file_uk, file_us]:
-#                 if f and os.path.exists(f):
-#                     frames.append(pd.read_excel(f))
-
-#             if not frames:
-#                 return jsonify({'error': 'No readable UK/US dispatch files found'}), 404
-
-#             combined_df = pd.concat(frames, ignore_index=True)
-
-#             expected_columns = [
-#                 'Product Name',
-#                 'Inventory at Month End',
-#                 'Projected Sales Total',
-#                 'Dispatch',
-#                 'Current Inventory + Dispatch',
-#                 'Inventory Coverage Ratio Before Dispatch'
-#             ]
-
-#             have = [c for c in expected_columns if c in combined_df.columns]
-#             if 'Product Name' not in have:
-#                 return jsonify({'error': "'Product Name' column missing in dispatch files"}), 400
-
-#             combined_df = combined_df[have].copy()
-
-#             combined_df['Product Name'] = combined_df['Product Name'].astype(str)
-#             combined_df = combined_df[combined_df['Product Name'].str.lower() != 'total']
-
-#             for col in [
-#                 'Inventory at Month End',
-#                 'Projected Sales Total',
-#                 'Dispatch',
-#                 'Current Inventory + Dispatch'
-#             ]:
-#                 if col in combined_df.columns:
-#                     combined_df[col] = pd.to_numeric(
-#                         combined_df[col], errors='coerce'
-#                     ).fillna(0)
-
-#             agg_spec = {
-#                 col: 'sum'
-#                 for col in [
-#                     'Inventory at Month End',
-#                     'Projected Sales Total',
-#                     'Dispatch',
-#                     'Current Inventory + Dispatch'
-#                 ]
-#                 if col in combined_df.columns
-#             }
-
-#             grouped = (
-#                 combined_df.groupby('Product Name', as_index=False).agg(agg_spec)
-#                 if agg_spec else
-#                 combined_df[['Product Name']].drop_duplicates()
-#             )
-
-#             if (
-#                 'Inventory Coverage Ratio Before Dispatch' in combined_df.columns and
-#                 'Inventory at Month End' in combined_df.columns
-#             ):
-#                 def weighted_avg(df):
-#                     denom = df['Inventory at Month End'].sum()
-#                     if denom <= 0:
-#                         return 0
-#                     ratio_num = pd.to_numeric(
-#                         df['Inventory Coverage Ratio Before Dispatch'],
-#                         errors='coerce'
-#                     ).fillna(0)
-#                     return (ratio_num * df['Inventory at Month End']).sum() / denom
-
-#                 ratio_df = (
-#                     combined_df
-#                     .groupby('Product Name', as_index=False)
-#                     .apply(weighted_avg)
-#                     .rename(columns={None: 'Inventory Coverage Ratio Before Dispatch'})
-#                 )
-
-#                 final_df = pd.merge(grouped, ratio_df, on='Product Name', how='left')
-#                 final_df['Inventory Coverage Ratio Before Dispatch'] = final_df[
-#                     'Inventory Coverage Ratio Before Dispatch'
-#                 ].apply(lambda x: "-" if pd.isna(x) or x == 0 else round(float(x), 2))
-#             else:
-#                 final_df = grouped.copy()
-
-#             total_row = {'Product Name': 'Total'}
-#             for col in [
-#                 'Inventory at Month End',
-#                 'Projected Sales Total',
-#                 'Dispatch',
-#                 'Current Inventory + Dispatch'
-#             ]:
-#                 if col in final_df.columns:
-#                     total_row[col] = final_df[col].sum()
-
-#             if 'Inventory Coverage Ratio Before Dispatch' in final_df.columns:
-#                 total_row['Inventory Coverage Ratio Before Dispatch'] = ''
-
-#             final_df = pd.concat(
-#                 [final_df, pd.DataFrame([total_row])],
-#                 ignore_index=True
-#             )
-
-#             output = BytesIO()
-#             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-#                 final_df.to_excel(writer, index=False, sheet_name='Dispatch')
-#             output.seek(0)
-
-#             return send_file(
-#                 output,
-#                 download_name='global_dispatch.xlsx',
-#                 as_attachment=False
-#             )
-
-#         # ---------- NON-GLOBAL ----------
-#         file_path = find_latest_file(user_id, country.lower())
-#         if not file_path:
-#             return jsonify({
-#                 'error': 'Forecast file not found. Please generate inventory forecast first!'
-#             }), 404
-
-#         return send_file(file_path, as_attachment=False)
-
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-#     except Exception as e:
-#         return jsonify({'error': str(e)}), 500
 
 @dashboard_bp.route('/getDispatchfile', methods=['GET'])
 def getDispatchfile():
@@ -293,11 +105,7 @@ def getDispatchfile():
     token = auth_header.split(' ')[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
+        payload, user_id = get_effective_user_id_from_token(token)
         country = request.args.get('country')
         month = request.args.get('month')
         year = request.args.get('year')
@@ -504,11 +312,7 @@ def getDispatchfile2():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        if 'user_id' not in payload:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
         country = request.args.get('country')
         month = request.args.get('month')
         year = request.args.get('year')
@@ -612,8 +416,7 @@ def PO_generated():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -837,8 +640,7 @@ def global_PO_generated():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -1105,8 +907,7 @@ def get_global_dispatch_file():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -1164,11 +965,7 @@ def getForecastFile():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        if 'user_id' not in payload:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
         country = request.args.get('country')
         month = request.args.get('month')  
         short_month = month[:3].lower() if month else None
@@ -1272,8 +1069,7 @@ def cashflow():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

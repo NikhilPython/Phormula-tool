@@ -8,6 +8,7 @@ import openai
 from sqlalchemy import create_engine, inspect, text
 from dotenv import load_dotenv
 from config import Config
+from app.utils.token_utils import get_effective_user_id_from_token
 import re
 import calendar
 from calendar import month_name as calendar_month_name
@@ -170,8 +171,7 @@ def improvement_tab_suggestion():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -561,8 +561,7 @@ def sku_pattern_improvement():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -811,8 +810,7 @@ def improvement_tab_suggestion_bottom():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -1133,8 +1131,7 @@ def save_row_feedback():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

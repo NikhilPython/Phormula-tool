@@ -7,6 +7,7 @@ from config import Config
 SECRET_KEY = Config.SECRET_KEY
 from app.utils.data_utils import MONTHS_MAP, MONTHS_REVERSE_MAP 
 from app.utils.data_utils import send_forecast_email, send_pnlforecast_email 
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.forecasting_utils import process_forecasting
 from app.models.user_models import UploadHistory , User, CountryProfile, StoredFile, db
 from app.utils.manual_forecast_utils import generate_manual_forecast
@@ -200,9 +201,7 @@ def forecast_allmonths():
     token = auth_header.split(' ')[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-
+        payload, user_id = get_effective_user_id_from_token(token)
         if not user_id:
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
@@ -306,9 +305,7 @@ def forecast_monthrange():
     token = auth_header.split(' ')[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-
+        payload, user_id = get_effective_user_id_from_token(token)
         if not user_id:
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
@@ -372,8 +369,7 @@ def forecast_monthrange():
 #     token = auth_header.split(' ')[1]
 
 #     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-#         user_id = payload.get('user_id')
+#         payload, user_id = get_effective_user_id_from_token(token)
 #         if not user_id:
 #             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
@@ -460,8 +456,7 @@ def get_forecast():
     token = auth_header.split(' ')[1]
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
+        payload, user_id = get_effective_user_id_from_token(token)
         if not user_id:
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
@@ -553,11 +548,7 @@ def forecast_global():
             return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
         token = auth_header.split(' ')[1]
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
+        payload, user_id = get_effective_user_id_from_token(token)
         mv = request.args.get('month')
         year = request.args.get('year')
         if not all([mv, year]):
@@ -697,10 +688,7 @@ def manual_forecast():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -954,12 +942,7 @@ def Pnlforecast():
     token = auth_header.split(' ')[1]
 
     try:
-        # Decode JWT Token
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        if 'user_id' not in payload:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
         country = request.args.get('country')
         month = request.args.get('month')
         year = request.args.get('year')
@@ -1584,11 +1567,7 @@ def Pnlforecasts():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
+        payload, user_id = get_effective_user_id_from_token(token)
         country = 'global'
         month = request.args.get('month')
         year = request.args.get('year')
@@ -2012,11 +1991,7 @@ def Pnlforecast_previous_months():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
-
+        payload, user_id = get_effective_user_id_from_token(token)
         month = request.args.get('month')
         year = request.args.get('year')
         period_type = request.args.get('period_type', 'monthly')
@@ -2211,10 +2186,7 @@ def save_pnl_forecast():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        if not user_id:
-            return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

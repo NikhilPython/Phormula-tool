@@ -12,6 +12,7 @@ from dotenv import find_dotenv, load_dotenv
 from flask import Blueprint, jsonify, make_response, request
 from app import db
 from app.models.user_models import amazon_user
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.formulas_utils import uk_advertising, uk_platform_fee
 from app.utils.amazon_utils import (_fetch_fba_skus_all,
 _upsert_products_to_db_with_open_date , 
@@ -78,8 +79,7 @@ def amazon_login():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -208,8 +208,7 @@ def amazon_status():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'success': False, 'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -389,8 +388,7 @@ def list_amazon_connections():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

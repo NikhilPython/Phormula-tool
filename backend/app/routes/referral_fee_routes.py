@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import traceback
 from sqlalchemy import inspect as sa_inspect
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.amazon_utils import amazon_client
 
 load_dotenv()
@@ -144,14 +145,7 @@ def get_user_from_token(auth_header):
     
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
-        
-        user = User.query.get(user_id)
-        if not user:
-            return None, {'error': 'User not found', 'status_code': 404}
-        
-        return user, None
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return None, {'error': 'Token has expired', 'status_code': 401}
     except jwt.InvalidTokenError:
@@ -505,8 +499,7 @@ def fetch_and_store_fees():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

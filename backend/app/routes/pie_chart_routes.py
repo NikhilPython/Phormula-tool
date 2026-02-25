@@ -3,6 +3,7 @@ import os
 import psycopg2
 import pandas as pd
 import matplotlib.pyplot as plt
+from app.utils.token_utils import get_effective_user_id_from_token
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import io
@@ -336,153 +337,6 @@ def resolve_country(country, currency):
     return country
 
 
-# @pie_chart_bp.route('/pie-chart', methods=['GET', 'POST'])
-# def generate_pie_chart():
-
-#     # ---------------- Auth ----------------
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-#         user_id = payload['user_id']
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-
-#     try:
-#         # ---------------- Read params (GET + POST) ----------------
-#         body = request.get_json(silent=True) or {}
-
-#         # Prefer JSON body if present, else query string
-#         country_param = (body.get('country') or request.args.get('country') or '').strip().lower()
-
-#         # ✅ IMPORTANT FIX:
-#         # Only use homeCurrency when requesting GLOBAL views
-#         currency_param = None
-#         if country_param == "global":
-#             currency_param = (body.get('homeCurrency') or request.args.get('homeCurrency') or 'USD').strip().lower()
-
-#         country = resolve_country(country_param, currency_param)
-
-#         month = (body.get('month') if request.method == 'POST' else request.args.get('month')) or body.get('month') or request.args.get('month')
-#         year = (body.get('year') if request.method == 'POST' else request.args.get('year')) or body.get('year') or request.args.get('year')
-#         quarter = (body.get('quarter') if request.method == 'POST' else request.args.get('quarter')) or body.get('quarter') or request.args.get('quarter')
-#         range_type = (body.get('range') if request.method == 'POST' else request.args.get('range')) or body.get('range') or request.args.get('range')
-
-#         table_type = (body.get('table_type') or request.args.get('table_type') or 'auto')
-#         response_format = (body.get('format') or request.args.get('format') or 'json')
-
-#         # ---------------- Validate ----------------
-#         if not user_id or not country:
-#             return jsonify({'error': 'user_id and country are required parameters'}), 400
-
-#         if year:
-#             year = str(year)
-
-#         # ---------------- Fetch data from DB ----------------
-#         df = None
-#         used_table = None
-
-#         if table_type == 'auto':
-#             table_names = generate_table_names(user_id, country, month, year, quarter, range_type)
-#             for table_name in table_names:
-#                 df = fetch_data_from_table(table_name)
-#                 if df is not None and not df.empty:
-#                     used_table = table_name
-#                     break
-#         else:
-#             table_names = get_table_name_by_type(user_id, country, table_type, month, year, quarter)
-#             if not table_names:
-#                 return jsonify({'error': 'Invalid parameters for specified table type'}), 400
-
-#             for table_name in table_names:
-#                 df = fetch_data_from_table(table_name)
-#                 if df is not None and not df.empty:
-#                     used_table = table_name
-#                     break
-
-#         if df is None or df.empty:
-#             tables_checked = (
-#                 generate_table_names(user_id, country, month, year, quarter, range_type)
-#                 if table_type == 'auto'
-#                 else get_table_name_by_type(user_id, country, table_type, month, year, quarter)
-#             )
-#             return jsonify({
-#                 'error': 'No data found in any of the available tables',
-#                 'tables_checked': tables_checked,
-#                 'parameters': {
-#                     'user_id': user_id,
-#                     'country': country,
-#                     'month': month,
-#                     'year': year,
-#                     'quarter': quarter,
-#                     'range_type': range_type
-#                 }
-#             }), 404
-
-#         # ---------------- Prepare pie data ----------------
-#         labels, values = prepare_pie_chart_data(df)
-
-#         if not labels or not values:
-#             return jsonify({'error': 'No valid data available for pie chart'}), 404
-
-#         # ---------------- Title ----------------
-#         title_parts = ["Top 5 Products by Profit"]
-
-#         if range_type == 'quarterly' or quarter:
-#             quarter_display = quarter if quarter else (month if is_quarter_format(month) else None)
-#             if quarter_display and year:
-#                 title_parts.append(f"({quarter_display} {year})")
-#         elif month and not is_quarter_format(month):
-#             if year:
-#                 title_parts.append(f"({str(month).title()} {year})")
-#             else:
-#                 title_parts.append(f"({str(month).title()})")
-#         elif year:
-#             title_parts.append(f"({year})")
-
-#         if used_table and 'global' in used_table.lower():
-#             title_parts.append("- Global")
-#         elif country:
-#             title_parts.append(f"- {country.title()}")
-
-#         title = " ".join(title_parts)
-
-#         # ---------------- Generate chart ----------------
-#         chart_base64 = create_pie_chart(labels, values, title)
-#         if not chart_base64:
-#             return jsonify({'error': 'Failed to generate chart'}), 500
-
-#         # ---------------- Response ----------------
-#         response_data = {
-#             'success': True,
-#             'data': {
-#                 'labels': labels,
-#                 'values': values,
-#                 'total_products': len(df),
-#                 'top_5_count': min(5, len(df)),
-#                 'others_count': max(0, len(df) - 5),
-#                 'total_profit': sum(values),
-#                 'table_used': used_table,
-#                 'title': title,
-#                 'is_global_data': ('global' in used_table.lower()) if used_table else False
-#             }
-#         }
-
-#         if response_format == 'image':
-#             response_data['data']['chart_image'] = f"data:image/png;base64,{chart_base64}"
-#         else:
-#             response_data['data']['chart_base64'] = chart_base64
-
-#         return jsonify(response_data), 200
-
-#     except Exception as e:
-#         return jsonify({'error': f'An error occurred: {str(e)}'}), 500
-
 
 def _prev_month_year(month: str, year: str) -> tuple[str, str]:
     # month can be "jan" / "January" / "12" / "2025-12" etc.
@@ -591,8 +445,7 @@ def generate_pie_chart():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

@@ -2,6 +2,7 @@ from flask import Blueprint, redirect, request, jsonify, current_app
 import os, jwt, math, json, calendar, requests, pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import text
+from app.utils.token_utils import get_effective_user_id_from_token
 from datetime import datetime, timedelta, timezone
 from app.models.user_models import ShopifyStore
 from config import Config
@@ -31,8 +32,7 @@ def install():
             return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        _ = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -580,8 +580,7 @@ def get_shopify_upload_history():
             return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -640,8 +639,7 @@ def get_shopify_store():
 
     # 2. Decode JWT → get user_id
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload.get('user_id')
+        payload, user_id = get_effective_user_id_from_token(token)
     except Exception:
         return jsonify({'error': 'Invalid or expired token'}), 401
 

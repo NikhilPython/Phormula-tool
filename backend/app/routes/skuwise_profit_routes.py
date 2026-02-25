@@ -13,6 +13,7 @@ from sqlalchemy import text
 SECRET_KEY = Config.SECRET_KEY
 from dotenv import load_dotenv
 from app.routes.business_intelligence import get_sku_monthly_history
+from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy, build_sku_inventory_flags, fetch_inventory_aged_by_user, get_or_create_summary
 from app.models.user_models  import UserObjective
 
@@ -285,8 +286,7 @@ def product_search():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -337,8 +337,7 @@ def product_names():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

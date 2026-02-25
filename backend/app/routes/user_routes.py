@@ -2,7 +2,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Blueprint, request, session, jsonify, redirect 
 from app.utils.token_utils import (
     decode_token, generate_reset_token, confirm_verification_token,
-    generate_token, generate_verification_token
+    generate_token, generate_verification_token, get_effective_user_id_from_token
 )
 import os  
 import pandas as pd
@@ -377,42 +377,6 @@ def resend_verification_email():
 
 
 
-# @user_bp.route('/get_user_data', methods=['GET'])
-# def get_user_data():
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-#     try:
-#         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])  # ✅ Fixed here
-#         user_id = payload['user_id']
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-
-#     user = User.query.filter_by(id=user_id).first()
-#     if not user:
-#         return jsonify({'error': 'User not found'}), 404
-
-#     return jsonify({
-#         'name': user.name,
-#         'company_name': user.company_name,
-#         'brand_name': user.brand_name,
-#         'email': user.email,
-#         'phone_number': user.phone_number,
-#         'annual_sales_range': user.annual_sales_range,
-#         'password': user.password,
-#         'marketplace_id': user.marketplace_id,
-#         'country': user.country,
-#         'homeCurrency': user.homeCurrency,
-#         'target_sales': float(user.target_sales) if user.target_sales is not None else None,  # ✅ add
-#         'tax_id': user.tax_id,
-#         'address': user.address
-#     })
-
-
 def _has_token(val):
     return bool(val and str(val).strip())
 
@@ -424,8 +388,7 @@ def get_user_data():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -488,8 +451,7 @@ def get_user_countries():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -517,8 +479,7 @@ def add_sales():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -655,8 +616,7 @@ def profileupdate():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
@@ -739,8 +699,7 @@ def feepreviewupload():
 
     token = auth_header.split(' ')[1]
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-        user_id = payload['user_id']
+        payload, user_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:

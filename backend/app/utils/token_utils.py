@@ -5,6 +5,7 @@ from flask import current_app
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy.engine.url import make_url
+SECRET_KEY = Config.SECRET_KEY
 
 
 
@@ -124,4 +125,17 @@ def generate_reset_token(user_id):
     }
     return jwt.encode(payload, Config.SECRET_KEY, algorithm='HS256')
 
+
+def get_effective_user_id_from_token(token: str):
+    payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+
+    # owner login -> payload["user_id"]
+    # member login -> payload["owner_user_id"] (or whatever you set)
+    effective_user_id = payload.get("user_id") or payload.get("owner_user_id")
+
+    if not effective_user_id:
+        # token is valid but missing required identity fields
+        raise jwt.InvalidTokenError("Token payload missing user_id/owner_user_id")
+
+    return payload, effective_user_id
 
