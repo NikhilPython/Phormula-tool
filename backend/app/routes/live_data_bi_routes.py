@@ -859,16 +859,38 @@ def live_mtd_vs_previous():
         prev_aligned_totals = totals_from_daily_series(prev_daily_aligned)
         curr_aligned_totals = totals_from_daily_series(curr_daily)
 
+        # safely cast everything to float to avoid None / Decimal issues
+        total_current_profit = float(curr_aligned_totals.get("profit", 0) or 0)
+        total_previous_profit = float(prev_aligned_totals.get("profit", 0) or 0)
+
+        total_current_platform_fees = float(curr_aligned_totals.get("platform_fee", 0) or 0)
+        total_previous_platform_fees = float(prev_aligned_totals.get("platform_fee", 0) or 0)
+
+        total_current_advertising = float(curr_aligned_totals.get("advertising", 0) or 0)
+        total_previous_advertising = float(prev_aligned_totals.get("advertising", 0) or 0)
+
+        # ✅ NEW CM2 totals (portfolio-level)
+        total_current_profit_cm2 = total_current_profit - total_current_advertising - total_current_platform_fees
+        total_previous_profit_cm2 = total_previous_profit - total_previous_advertising - total_previous_platform_fees
+
         aligned_totals_payload = {
-            "total_current_profit": curr_aligned_totals["profit"],
-            "total_previous_profit": prev_aligned_totals["profit"],
-            "total_current_platform_fees": curr_aligned_totals["platform_fee"],
-            "total_previous_platform_fees": prev_aligned_totals["platform_fee"],
-            "total_current_advertising": curr_aligned_totals["advertising"],
-            "total_previous_advertising": prev_aligned_totals["advertising"],
-            "total_current_net_sales": curr_aligned_totals["net_sales"],
-            "total_previous_net_sales": prev_aligned_totals["net_sales"],
-            "total_previous_net_sales_full_month": total_previous_net_sales_full_month,
+            "total_current_profit": total_current_profit,
+            "total_previous_profit": total_previous_profit,
+
+            "total_current_platform_fees": total_current_platform_fees,
+            "total_previous_platform_fees": total_previous_platform_fees,
+
+            "total_current_advertising": total_current_advertising,
+            "total_previous_advertising": total_previous_advertising,
+
+            "total_current_net_sales": float(curr_aligned_totals.get("net_sales", 0) or 0),
+            "total_previous_net_sales": float(prev_aligned_totals.get("net_sales", 0) or 0),
+
+            "total_previous_net_sales_full_month": float(total_previous_net_sales_full_month or 0),
+
+            # ✅ NEW FIELDS
+            "total_current_profit_cm2": total_current_profit_cm2,
+            "total_previous_profit_cm2": total_previous_profit_cm2,
         }
 
         # ---------------------------
