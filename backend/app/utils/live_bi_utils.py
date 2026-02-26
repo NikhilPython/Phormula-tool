@@ -175,6 +175,32 @@ def build_movement_context(rolling_series: list) -> dict:
     return context
 
 
+def compute_net_reimbursement_from_df(df: pd.DataFrame) -> float:
+    """
+    Net reimbursement = sum(Transfer/Disbursement totals) - abs(sum(DebtRecovery totals))
+    Adjust if your DebtRecovery totals are already negative (then abs() is still safe).
+    """
+    if df is None or df.empty:
+        return 0.0
+
+    tmp = df.copy()
+
+    # ensure cols exist
+    for col, default in [("type", ""), ("description", ""), ("total", 0.0)]:
+        if col not in tmp.columns:
+            tmp[col] = default
+
+    t = tmp["type"].astype(str).str.strip().str.lower()
+    d = tmp["description"].astype(str).str.strip().str.lower()
+    tot = safe_num(tmp["total"])
+
+    disb = float(tot[(t == "transfer") & (d == "disbursement")].sum())
+
+    # If you only want DebtRecovery/DebtPayment specifically, add (d=="debtpayment") too
+    debt = float(tot[t == "debtrecovery"].sum())
+
+    net = disb - abs(debt)
+    return float(net or 0.0)
 
 
 def get_mtd_and_prev_ranges(as_of=None, start_day=None, end_day=None):
@@ -825,6 +851,9 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
             # ✅ FIXED: fees computed on ALL rows using hist classifier (NOT uk_platform_fee/uk_advertising)
             platform_fee_total, advertising_total = _calc_fees_from_hist(day_all)
 
+            # ✅ NEW: reimbursement from raw hist transactions
+            remb_total = float(compute_net_reimbursement_from_df(day_all))
+
             daily_series.append({
                 "date": d.isoformat(),
                 "quantity": float(quantity),
@@ -834,6 +863,8 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 "profit": float(profit),
                 "platform_fee": float(platform_fee_total),
                 "advertising": float(advertising_total),
+                 # ✅ NEW
+                "rembursement_fee": float(remb_total),
             })
 
     daily_series = sorted(daily_series, key=lambda x: x["date"])
@@ -1050,13 +1081,17 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     daily_profit = df.groupby("date_only", as_index=False)["profit"].sum()
     profit_map = {d: float(v) for d, v in zip(daily_profit["date_only"], daily_profit["profit"])}
 
-    pf_map, ad_map = {}, {}
+    pf_map, ad_map, remb_map = {}, {}, {}
+
     for d, day_df in df.groupby("date_only"):
         pf, ad = _calc_fees_from_liveorders(day_df)
         pf_map[d] = float(pf)
         ad_map[d] = float(ad)
 
-    all_days = sorted(set(qty_map) | set(ns_map) | set(ps_map) | set(gs_map) | set(profit_map) | set(pf_map) | set(ad_map))
+        # ✅ NEW: reimbursement from raw transactions
+        remb_map[d] = float(compute_net_reimbursement_from_df(day_df))
+
+    all_days = sorted(set(qty_map) | set(ns_map) | set(ps_map) | set(gs_map) | set(profit_map) | set(pf_map) | set(ad_map) | set(remb_map))
     for d in all_days:
         daily_series.append({
             "date": d.isoformat(),
@@ -1067,6 +1102,9 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
             "profit": profit_map.get(d, 0.0),
             "platform_fee": pf_map.get(d, 0.0),
             "advertising": ad_map.get(d, 0.0),
+            # ✅ NEW
+            "rembursement_fee": remb_map.get(d, 0.0),
+
         })
 
     return sku_metrics, daily_series

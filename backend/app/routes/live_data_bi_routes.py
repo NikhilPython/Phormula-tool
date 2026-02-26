@@ -11,7 +11,7 @@ import json
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.utils.live_bi_utils import (build_inventory_signals, build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
+from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
                                      compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
@@ -229,6 +229,8 @@ def build_cm1_profit_pie_slices(
         "pareto_threshold": pareto_threshold,
         "slices": slices,
     }
+
+
 
 
 @live_data_bi_bp.route("/live_mtd_bi", methods=["GET"])
@@ -926,17 +928,45 @@ def live_mtd_vs_previous():
         # ---------------------------
         prev_aligned_totals = totals_from_daily_series(prev_daily_aligned)
         curr_aligned_totals = totals_from_daily_series(curr_daily)
+        # ✅ NEW: reimbursement (net) from settlement df
+        # curr_daily and prev_daily_aligned are the dataframes you already have
+        total_current_rembursement_fee = float(sum((r.get("rembursement_fee", 0) or 0) for r in (curr_daily or [])))
+        total_previous_rembursement_fee = float(sum((r.get("rembursement_fee", 0) or 0) for r in (prev_daily_aligned or [])))
+
+        # safely cast everything to float to avoid None / Decimal issues
+        total_current_profit = float(curr_aligned_totals.get("profit", 0) or 0)
+        total_previous_profit = float(prev_aligned_totals.get("profit", 0) or 0)
+
+        total_current_platform_fees = float(curr_aligned_totals.get("platform_fee", 0) or 0)
+        total_previous_platform_fees = float(prev_aligned_totals.get("platform_fee", 0) or 0)
+
+        total_current_advertising = float(curr_aligned_totals.get("advertising", 0) or 0)
+        total_previous_advertising = float(prev_aligned_totals.get("advertising", 0) or 0)
+
+        # ✅ NEW CM2 totals (portfolio-level)
+        total_current_profit_cm2 = total_current_profit - total_current_advertising - total_current_platform_fees
+        total_previous_profit_cm2 = total_previous_profit - total_previous_advertising - total_previous_platform_fees
 
         aligned_totals_payload = {
-            "total_current_profit": curr_aligned_totals["profit"],
-            "total_previous_profit": prev_aligned_totals["profit"],
-            "total_current_platform_fees": curr_aligned_totals["platform_fee"],
-            "total_previous_platform_fees": prev_aligned_totals["platform_fee"],
-            "total_current_advertising": curr_aligned_totals["advertising"],
-            "total_previous_advertising": prev_aligned_totals["advertising"],
-            "total_current_net_sales": curr_aligned_totals["net_sales"],
-            "total_previous_net_sales": prev_aligned_totals["net_sales"],
-            "total_previous_net_sales_full_month": total_previous_net_sales_full_month,
+            "total_current_profit": total_current_profit,
+            "total_previous_profit": total_previous_profit,
+
+            "total_current_platform_fees": total_current_platform_fees,
+            "total_previous_platform_fees": total_previous_platform_fees,
+
+            "total_current_advertising": total_current_advertising,
+            "total_previous_advertising": total_previous_advertising,
+
+            "total_current_net_sales": float(curr_aligned_totals.get("net_sales", 0) or 0),
+            "total_previous_net_sales": float(prev_aligned_totals.get("net_sales", 0) or 0),
+
+            "total_previous_net_sales_full_month": float(total_previous_net_sales_full_month or 0),
+
+            # ✅ NEW FIELDS
+            "total_current_profit_cm2": total_current_profit_cm2,
+            "total_previous_profit_cm2": total_previous_profit_cm2,
+            "total_current_rembursement_fee": total_current_rembursement_fee,
+            "total_previous_rembursement_fee": total_previous_rembursement_fee,
         }
 
         # ---------------------------
