@@ -1058,7 +1058,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                 {/* Objective */}
                 <div className="lg:col-span-2">
                   <InfoCard
-                    title={<PageBreadcrumb pageTitle="Objective" variant="table" align="left" />}
+                    title={<PageBreadcrumb pageTitle="Strategic Objectives" variant="table" align="left" />}
                     action={
                       !isObjectiveEditMode ? (
                         <button

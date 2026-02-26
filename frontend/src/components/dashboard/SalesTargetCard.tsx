@@ -10,31 +10,42 @@ import type { RegionMetrics } from "@/lib/dashboard/types";
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
+type BiAlignedTotalsCard = {
+  total_current_advertising: number;
+  total_current_net_sales: number;
+  total_current_platform_fees: number;
+  total_current_profit: number;
+
+  total_previous_advertising: number;
+  total_previous_net_sales: number;
+  total_previous_net_sales_full_month: number;
+  total_previous_platform_fees: number;
+  total_previous_profit: number;
+  total_current_rembursement_fee: number;
+  total_previous_rembursement_fee: number;
+
+};
+
 
 type Props = {
   data: RegionMetrics; // selected region metrics
   homeCurrency: CurrencyCode;
-
-  /**
-   * If your parent passes numbers already in HOME currency (as you do now),
-   * pass identityConvert here. If later you truly need conversion, keep this.
-   */
   convertToHomeCurrency: (value: number, from: CurrencyCode) => number;
-
   formatHomeK: (value: number) => string;
   todaySales?: number;
 
-  // already HOME currency (parent wins)
   targetHome?: number;
   mtdHome?: number;
   lastMonthTotalHome?: number;
   lastMonthToDateHome?: number;
-  // ✅ NEW: Dec target in HOME currency (parent wins). Optional.
   decTargetHome?: number;
-
   currentReimbursement?: number;
   previousReimbursement?: number;
   reimbursementDeltaPct?: number | null;
+  biEnabled?: boolean;
+  biAlignedTotals?: BiAlignedTotalsCard | null;
+  periodCompletedPct?: number; // for BI/range mode
+  periodCompletedLabel?: string;
 };
 
 const currencySymbolMap: Record<CurrencyCode, string> = {
@@ -60,11 +71,13 @@ export default function SalesTargetCard({
   currentReimbursement,
   previousReimbursement,
   reimbursementDeltaPct,
+  biEnabled,
+  biAlignedTotals,
+  periodCompletedPct,
+  periodCompletedLabel,
 }: Props) {
-
+ 
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
-
-
 
   const [extraBottom, setExtraBottom] = useState(20);
 
@@ -126,6 +139,23 @@ export default function SalesTargetCard({
       ? lastMonthToDateHome
       : computedLastMonthToDateHome;
 
+  // ✅ BI overrides (date-range mode)
+  const useBi = !!biEnabled && !!biAlignedTotals;
+
+  const mtdHomeFinal = useBi
+    ? biAlignedTotals!.total_current_net_sales
+    : mtdHomeResolved;
+
+  // full last month total
+  const lastMonthTotalHomeFinal = useBi
+    ? biAlignedTotals!.total_previous_net_sales_full_month
+    : lastMonthTotalHomeResolved;
+
+  // last month MTD-to-date for the same day-range
+  const lastMonthToDateHomeFinal = useBi
+    ? biAlignedTotals!.total_previous_net_sales
+    : lastMonthToDateHomeResolved;
+
 
   // ---- Gauge ratios (all in HOME currency) ----
   // const ratio =
@@ -169,11 +199,13 @@ export default function SalesTargetCard({
 
 
   // ---- Gauge ratios (all in HOME currency) ----
-  // We want all arcs to be comparable on one scale.
-  // Scale = max(MTD, Target, Prev Month Sale). This prevents "everything full".
-  const mtdVal = Math.max(0, Number(mtdHomeResolved) || 0);
+
+  // const mtdVal = Math.max(0, Number(mtdHomeResolved) || 0);
   const targetVal = Math.max(0, Number(targetHomeResolved) || 0);
-  const prevVal = Math.max(0, Number(lastMonthTotalHomeResolved) || 0);
+  // const prevVal = Math.max(0, Number(lastMonthTotalHomeResolved) || 0);
+
+  const mtdVal = Math.max(0, Number(mtdHomeFinal) || 0);
+  const prevVal = Math.max(0, Number(lastMonthTotalHomeFinal) || 0);
 
   const gaugeMax = Math.max(mtdVal, targetVal, prevVal, 1);
 
@@ -196,7 +228,7 @@ export default function SalesTargetCard({
     typeof todaySales === "number" && !Number.isNaN(todaySales)
       ? todaySales
       : todayDay > 0
-        ? mtdHomeResolved / todayDay
+        ? mtdHomeFinal / todayDay
         : 0;
 
   const now = new Date();
@@ -208,6 +240,15 @@ export default function SalesTargetCard({
 
   // Compare (positive means you're ahead of pace)
   const paceDeltaPct = pctDisplay - monthCompletedPct;
+
+  const completedPct =
+    biEnabled && typeof periodCompletedPct === "number"
+      ? periodCompletedPct
+      : monthCompletedPct;
+
+  const completedLabel = useBi
+    ? (periodCompletedLabel ?? "Period")
+    : "Month";
 
 
   const prevLabel = getPrevMonthShortLabel();
@@ -260,7 +301,8 @@ export default function SalesTargetCard({
   const knobYellow = toXYRadius(toDeg_Orange, rLastMTD);
   const knobDec = toXYRadius(toDeg_DecTarget, rDecTarget);
 
-  const prevToDateVal = Math.max(0, Number(lastMonthToDateHomeResolved) || 0);
+  // const prevToDateVal = Math.max(0, Number(lastMonthToDateHomeResolved) || 0);
+  const prevToDateVal = Math.max(0, Number(lastMonthToDateHomeFinal) || 0);
   const prevToDateNorm = prevToDateVal / gaugeMax;
   const toDeg_PrevToDate = 180 * Math.min(Math.max(prevToDateNorm, 0), 1);
 
@@ -310,13 +352,19 @@ export default function SalesTargetCard({
   const hideTip = () => setTip((t) => ({ ...t, show: false }));
 
   const tipTitle = "Sales Snapshot";
-  const tipLines = [
-    `MTD Sale: ${formatHomeK(mtdHomeResolved)} (${pctDisplay.toFixed(2)}%)`,
-    `${thisMonthLabel} Target: ${formatHomeK(targetHomeResolved)}`,
-    `${prevLabel} Sale: ${formatHomeK(lastMonthTotalHomeResolved)}`,
-    `Last month by today: ${formatHomeK(lastMonthToDateHomeResolved)}`,
-  ];
+  // const tipLines = [
+  //   `MTD Sale: ${formatHomeK(mtdHomeResolved)} (${pctDisplay.toFixed(2)}%)`,
+  //   `${thisMonthLabel} Target: ${formatHomeK(targetHomeResolved)}`,
+  //   `${prevLabel} Sale: ${formatHomeK(lastMonthTotalHomeResolved)}`,
+  //   `Last month by today: ${formatHomeK(lastMonthToDateHomeResolved)}`,
+  // ];
 
+  const tipLines = [
+    `MTD Sale: ${formatHomeK(mtdHomeFinal)} (${pctDisplay.toFixed(2)}%)`,
+    `${thisMonthLabel} Target: ${formatHomeK(targetHomeResolved)}`,
+    `${prevLabel} Sale: ${formatHomeK(lastMonthTotalHomeFinal)}`,
+    `Last month by today: ${formatHomeK(lastMonthToDateHomeFinal)}`,
+  ];
 
   // Reimbursement labels
   const reimbNowLabel = new Intl.DateTimeFormat("en-US", {
@@ -329,8 +377,17 @@ export default function SalesTargetCard({
     year: "2-digit",
   }).format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
 
-  const reimbNow = currentReimbursement ?? 0;
-  const reimbPrev = previousReimbursement ?? 0;
+  const reimbNow =
+    biEnabled && biAlignedTotals
+      ? (biAlignedTotals.total_current_rembursement_fee ?? 0)
+      : (currentReimbursement ?? 0);
+
+  const reimbPrev =
+    biEnabled && biAlignedTotals
+      ? (biAlignedTotals.total_previous_rembursement_fee ?? 0)
+      : (previousReimbursement ?? 0);
+
+      console.log("Reimbursement curr and prev", currentReimbursement, previousReimbursement);
 
   const reimbMax = Math.max(reimbNow, reimbPrev, 1);
   const reimbNowPct = (reimbNow / reimbMax) * 100;
@@ -339,14 +396,16 @@ export default function SalesTargetCard({
   const homeCurrencySymbol = currencySymbolMap[homeCurrency];
 
   const reimbNowSalesPct =
-    mtdHomeResolved > 0
-      ? (reimbNow / mtdHomeResolved) * 100
-      : 0;
+    // mtdHomeResolved > 0
+    //   ? (reimbNow / mtdHomeResolved) * 100
+    //   : 0;
+    mtdHomeFinal > 0 ? (reimbNow / mtdHomeFinal) * 100 : 0;
 
   const reimbPrevSalesPct =
-    lastMonthTotalHomeResolved > 0
-      ? (reimbPrev / lastMonthTotalHomeResolved) * 100
-      : 0;
+    // lastMonthTotalHomeResolved > 0
+    //   ? (reimbPrev / lastMonthTotalHomeResolved) * 100
+    // : 0;
+    lastMonthTotalHomeFinal > 0 ? (reimbPrev / lastMonthTotalHomeFinal) * 100 : 0;
 
   const fmtPct = (v: number) => `${v.toFixed(2)}%`;
 
@@ -556,8 +615,15 @@ export default function SalesTargetCard({
           <div className="text-3xl font-semibold">{pctDisplay.toFixed(2)}%</div>
           <div className="text-[10px] 2xl:text-xs text-charcoal-500">Target Achieved</div>
           <div className="mt-1 text-[10px] 2xl:text-xs text-charcoal-500">
-            <span className=" text-green-500 font-bold">{monthCompletedPct.toFixed(2)}%</span> of Month Completed vs {" "}
-            <span className=" text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span> of Target Achieved
+            {/* <span className=" text-green-500 font-bold">{monthCompletedPct.toFixed(2)}%</span> of Month Completed vs {" "}
+            <span className=" text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span> of Target Achieved */}
+
+            <span className="text-green-500 font-bold">{completedPct.toFixed(2)}%
+            </span>
+            {" "}of Month Completed vs{" "}
+            <span className="text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span>
+            {" "}of Target Achieved
+
             {/* <span
               className={`ml-2 font-medium ${paceDeltaPct >= 0 ? "text-green-700" : "text-rose-700"
                 }`}

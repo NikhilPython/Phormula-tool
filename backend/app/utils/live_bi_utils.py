@@ -2320,6 +2320,7 @@ def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
 
 
 
+
 def build_ai_summary(
     prev_totals,
     curr_totals,

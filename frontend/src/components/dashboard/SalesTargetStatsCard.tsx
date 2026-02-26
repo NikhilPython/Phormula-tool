@@ -8,6 +8,19 @@ import SegmentedToggle from "../ui/SegmentedToggle";
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
+type BiAlignedTotalsCard = {
+  total_current_advertising: number;
+  total_current_net_sales: number;
+  total_current_platform_fees: number;
+  total_current_profit: number;
+
+  total_previous_advertising: number;
+  total_previous_net_sales: number;
+  total_previous_net_sales_full_month: number;
+  total_previous_platform_fees: number;
+  total_previous_profit: number;
+};
+
 type Props = {
   regions: Record<RegionKey, RegionMetrics>;
   value: RegionKey;
@@ -26,6 +39,9 @@ type Props = {
 
   currentReimbursement?: number;
   previousReimbursement?: number;
+
+  biEnabled?: boolean;
+  biAlignedTotals?: BiAlignedTotalsCard | null;
 };
 
 export default function SalesTargetStatsCard({
@@ -43,6 +59,8 @@ export default function SalesTargetStatsCard({
   targetTrendPct,
   currentReimbursement,
   previousReimbursement,
+  biEnabled,
+  biAlignedTotals,
 }: Props) {
 
   const prevLabel = getPrevMonthShortLabel();
@@ -67,6 +85,49 @@ export default function SalesTargetStatsCard({
 
     return list;
   }, [regions]);
+
+  const currMtd = biEnabled && biAlignedTotals
+    ? biAlignedTotals.total_current_net_sales
+    : mtdHome;
+
+  // last month MTD-to-date (same day range)
+  const prevMtd = biEnabled && biAlignedTotals
+    ? biAlignedTotals.total_previous_net_sales
+    : (regions[value]?.lastMonthToDateUSD ?? 0);
+
+  // full last month total
+  const prevFullMonth = biEnabled && biAlignedTotals
+    ? biAlignedTotals.total_previous_net_sales_full_month
+    : lastMonthTotalHome;
+
+  // Get today's date and total days in current month (IST aligned to your existing helpers)
+  const today = new Date();
+  const currentDay = today.getDate();
+
+  // Get total days in current month
+  const totalDaysInMonth = new Date(
+    today.getFullYear(),
+    today.getMonth() + 1,
+    0
+  ).getDate();
+
+  // X = (Current Date / Total Days in Month) * Target
+  const expectedSalesTillDate =
+    totalDaysInMonth > 0
+      ? (currentDay / totalDaysInMonth) * targetHome
+      : 0;
+
+  // Sales Trend (unchanged – vs last month MTD)
+  const salesTrendPctToUse =
+    prevMtd > 0 ? ((currMtd - prevMtd) / prevMtd) * 100 : 0;
+
+  // ✅ New Target Trend formula
+  const targetTrendPctToUse =
+    targetHome > 0
+      ? ((currMtd - expectedSalesTillDate) / targetHome) * 100
+      : 0;
+
+  console.log("SalesTargetStatsCard ", currMtd, prevMtd, prevFullMonth);
 
   return (
     <div className="rounded-2xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
@@ -94,17 +155,17 @@ export default function SalesTargetStatsCard({
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 text-sm h-full ">
           {[
             { title: "Today", value: formatHomeK(todayHome), helper: "\u00A0" },
-            { title: "MTD Sales", value: formatHomeK(mtdHome), helper: "\u00A0" },
+            { title: "MTD Sales", value: formatHomeK(currMtd), helper: "\u00A0" },
             { title: "Target", value: formatHomeK(targetHome), helper: "\u00A0" },
-            { title: prevLabel, value: formatHomeK(lastMonthTotalHome), helper: "\u00A0" },
+            { title: prevLabel, value: formatHomeK(prevMtd), helper: "\u00A0" },
             {
               title: "Sales Trend",
-              value: `${salesTrendPct >= 0 ? "+" : ""}${salesTrendPct.toFixed(2)}%`,
+              value: `${salesTrendPctToUse >= 0 ? "+" : ""}${salesTrendPctToUse.toFixed(2)}%`,
               helper: `vs ${prevLabel} MTD`,
             },
             {
               title: "Target Trend",
-              value: `${targetTrendPct >= 0 ? "+" : ""}${targetTrendPct.toFixed(2)}%`,
+              value: `${targetTrendPctToUse >= 0 ? "+" : ""}${targetTrendPctToUse.toFixed(2)}%`,
               helper: `MTD vs Target`,
             },
           ].map((t) => (

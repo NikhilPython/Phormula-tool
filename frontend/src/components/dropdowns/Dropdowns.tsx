@@ -42,7 +42,9 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-
+import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
+import { useRouter } from "next/navigation";
+import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -297,6 +299,24 @@ const getPrevYearLabel = (selectedYear: number) => {
   return String(selectedYear - 1); // 2024
 };
 
+const splitMetricValue = (value: string) => {
+  const v = (value || "").trim();
+
+  // matches: "£10.55 (+7.54%)" OR "80.00 (-31.62%)"
+  const m = v.match(/^(.+?)\s*(\(([-+])[^)]+\))\s*$/);
+
+  if (!m) {
+    return { main: v, delta: "", deltaColor: "" };
+  }
+
+  const main = m[1].trim();
+  const delta = m[2].trim();     // "(+7.54%)"
+  const sign = m[3];             // "+" | "-"
+
+  const deltaColor = sign === "+" ? "text-emerald-600" : "text-red-600";
+  return { main, delta, deltaColor };
+};
+
 
 const monthNameToNumber = (m: string): string => {
   const idx = monthIndexMap[(m || "").toLowerCase()];
@@ -304,11 +324,13 @@ const monthNameToNumber = (m: string): string => {
 };
 
 type ProductInsightBlock = {
-  name: string;         // display name (product name)
-  skuKey?: string;      // ✅ lookup key for recommendations (SKU)
+  name: string;
+  skuKey?: string;
   metrics: { label: string; value: string; color?: string }[];
   journeyBullets: string[];
   recommendationBullets: string[];
+  inventoryBullets: string[];
+  isOtherSkus?: boolean; // ✅ ADD
 };
 
 
@@ -347,33 +369,32 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       !isMetric(line) &&
       !line.toLowerCase().startsWith("recommendation:") &&
       !line.toLowerCase().startsWith("product journey") &&
+      !line.toLowerCase().startsWith("inventory action:") &&   // ✅ ADD
       !!nextLine &&
       isMetric(nextLine);
 
     if (isProductHeader) {
       pushCurrent();
-       if (isProductHeader) {
-  pushCurrent();
 
-        const skuFromParen = line.match(/\(([A-Z0-9-]+)\)/i)?.[1]?.trim();
-        const skuFromPrefix = line.match(/^([A-Z0-9-]+)\s*[-–]\s*/i)?.[1]?.trim();
+      const skuFromParen = line.match(/\(([A-Z0-9-]+)\)/i)?.[1]?.trim();
+      const skuFromPrefix = line.match(/^([A-Z0-9-]+)\s*[-–]\s*/i)?.[1]?.trim();
 
-        const cleanName = line
-          .replace(/\([A-Z0-9-]+\)/i, "")          // remove (SKU)
-          .replace(/^([A-Z0-9-]+)\s*[-–]\s*/i, "") // remove "SKU - "
-          .trim();
+      const cleanName = line
+        .replace(/\([A-Z0-9-]+\)/i, "")
+        .replace(/^([A-Z0-9-]+)\s*[-–]\s*/i, "")
+        .trim();
 
-        current = {
-          name: cleanName || line,
-          skuKey: skuFromParen || skuFromPrefix,   // ✅ IMPORTANT
-          metrics: [],
-          journeyBullets: [],
-          recommendationBullets: [],
-        };
+      const isOther = (cleanName || line).trim().toLowerCase() === "other skus";
 
-        inJourney = false;
-        continue;
-      }
+      current = {
+        name: cleanName || line,
+        skuKey: skuFromParen || skuFromPrefix,
+        metrics: [],
+        journeyBullets: [],
+        recommendationBullets: [],
+        inventoryBullets: [],          // ✅ ADD
+        isOtherSkus: isOther,
+      };
 
       inJourney = false;
       continue;
@@ -394,6 +415,14 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       continue;
     }
 
+    // ✅ ADD: inventory action lines
+    if (line.toLowerCase().startsWith("inventory action:")) {
+      inJourney = false;
+      const inv = line.replace(/^inventory action:\s*/i, "").trim();
+      if (inv) current.inventoryBullets.push(inv);
+      continue;
+    }
+
     // metrics
     if (isMetric(line)) {
       const [label, ...rest] = line.split(":");
@@ -408,14 +437,12 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       continue;
     }
 
-    // journey bullets (handles "- ..." style too)
+    // journey bullets
     if (inJourney) {
       const cleaned = line.replace(/^-+\s*/, "").trim();
       if (cleaned) current.journeyBullets.push(cleaned);
       continue;
     }
-
-    // fallback: ignore extra text
   }
 
   pushCurrent();
@@ -517,107 +544,15 @@ const toNum = (v: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const normalizePerfToChartData = (
-  raw: any,
-  metric: "net_sales" | "units" = "net_sales"
-): { x: any; y: number }[] => {
-  if (!raw) return [];
-
-  const pickMetricArr = (obj: any) => {
-    if (!obj) return [];
-    const primary = metric === "units" ? obj?.units : obj?.net_sales;
-    const secondary = metric === "units" ? obj?.net_sales : obj?.units;
-
-    if (Array.isArray(primary) && primary.length) return primary;
-    if (Array.isArray(secondary) && secondary.length) return secondary;
-    return [];
-  };
-
-  // Case A: already rows [{x,y}]
-  if (Array.isArray(raw?.rows)) {
-    return raw.rows
-      .map((r: any) => ({ x: r?.x ?? r?.label ?? "-", y: toNum(r?.y ?? r?.value) }))
-      .filter((p) => p.x !== "-" && Number.isFinite(p.y));
-  }
-
-  // Case B: {x:[], y:[]}
-  if (Array.isArray(raw?.x) && Array.isArray(raw?.y)) {
-    return raw.x.map((x: any, i: number) => ({ x, y: toNum(raw.y?.[i]) }));
-  }
-
-  // ✅ Case: { x:[], series:[{ net_sales:[], units:[] }] }
-  if (Array.isArray(raw?.x) && Array.isArray(raw?.series) && raw.series.length) {
-    const s0 = raw.series[0];
-    const arr = pickMetricArr(s0);
-
-    if (arr.length) {
-      return raw.x.map((x: any, i: number) => ({ x, y: toNum(arr[i]) }));
-    }
-  }
-
-  // ✅ Case: { x:[], series:{...} }  (series object instead of array)
-  if (Array.isArray(raw?.x) && raw?.series && typeof raw.series === "object" && !Array.isArray(raw.series)) {
-    const firstKey = Object.keys(raw.series)[0];
-    const s0 = raw.series[firstKey];
-    const arr = pickMetricArr(s0);
-
-    if (arr.length) {
-      return raw.x.map((x: any, i: number) => ({ x, y: toNum(arr[i]) }));
-    }
-  }
-
-  // Case C: { x:[], net_sales:[] } or { x:[], units:[] }
-  if (Array.isArray(raw?.x)) {
-    const arr = pickMetricArr(raw);
-    if (arr.length) {
-      return raw.x.map((x: any, i: number) => ({ x, y: toNum(arr[i]) }));
-    }
-  }
-
-  // Case D: raw is array [{label/value}]
-  if (Array.isArray(raw)) {
-    return raw
-      .map((r: any) => ({ x: r?.x ?? r?.label ?? "-", y: toNum(r?.y ?? r?.value) }))
-      .filter((p) => p.x !== "-");
-  }
-
-  // Case E: {data:[{x,y}]}
-  if (Array.isArray(raw?.data)) {
-    return raw.data
-      .map((r: any) => ({ x: r?.x ?? r?.label ?? "-", y: toNum(r?.y ?? r?.value) }))
-      .filter((p) => p.x !== "-");
-  }
-
-  return [];
+const mergeToSingleBullet = (arr: string[]) => {
+  const cleaned = (arr || []).map(s => String(s).trim()).filter(Boolean);
+  if (!cleaned.length) return [];
+  return [cleaned.join(" ")]; // single bullet line
 };
 
-type ProductPerformanceChartProps = {
-  perfData: any;
-};
 
-const ProductPerformanceChart: React.FC<{ perfData: any; metric?: "net_sales" | "units" }> = ({ perfData, metric = "net_sales" }) => {
-  const chartData = useMemo(() => normalizePerfToChartData(perfData, metric), [perfData, metric]);
 
-  if (!chartData.length) {
-    return (
-      <div className="h-full flex items-center justify-center text-xs text-slate-500">
-        No usable chart points.
-      </div>
-    );
-  }
 
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="x" tick={{ fontSize: 10 }} />
-        <YAxis tick={{ fontSize: 10 }} />
-        <Tooltip />
-        <Line type="monotone" dataKey="y" stroke="#3B82F6" strokeWidth={2} dot={false} />
-      </LineChart>
-    </ResponsiveContainer>
-  );
-};
 
 type RightProductDrawerProps = {
   open: boolean;
@@ -625,12 +560,17 @@ type RightProductDrawerProps = {
   block: ProductInsightBlock | null;
   objective?: ObjectivePayload;
   recObj?: any;
-  perfMetric?: "net_sales" | "units";
 
-  // ✅ ADD
-  perfLoading?: boolean;
-  perfError?: string | null;
-  perfData?: any;
+  // ❌ REMOVE
+  // perfLoading?: boolean;
+  // perfError?: string | null;
+  // perfData?: any;
+  // perfMetric?: "net_sales" | "units";
+
+  // ✅ ADD (so we can pass proper period)
+  countryName: string;
+  month: string;
+  year: string;
 };
 
 const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
@@ -639,12 +579,15 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   block,
   objective,
   recObj,
-  perfLoading,
-  perfError,
-   perfMetric = "net_sales",
-  perfData,
+  countryName,
+  month,
+  year,
 }) => {
-  const inventoryRecoBullets = toBullets(recObj?.inventory_recommendation);
+  const inventoryText =
+    recObj?.inventory_recommendation ||
+    block?.inventoryBullets?.join(" ");   // ✅ fallback from parsed markdown
+
+  const inventoryRecoBullets = mergeToSingleBullet(toBullets(inventoryText));
   const adsRecoBullets = toBullets(recObj?.ads_recommendation);
 
   if (!open || !block) return null;
@@ -664,7 +607,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
           {/* drawer */}
           <motion.aside
-className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-white shadow-2xl flex flex-col"
+            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-white shadow-2xl flex flex-col"
             initial={{ x: 520 }}
             animate={{ x: 0 }}
             exit={{ x: 520 }}
@@ -688,45 +631,57 @@ className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-wh
             <div className="flex-1 overflow-y-auto p-4 space-y-5">
               {/* 1) Objective strip (same as page) */}
               {objective && (
-  <div className="space-y-2">
-    <div className="text-sm font-semibold text-slate-800">Objectives</div>
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-800">Objectives</div>
 
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-        <div className="text-xs text-slate-500">Primary Focus</div>
-        <div className="text-sm font-bold text-slate-800 mt-1">
-          {objective?.growth_intent || "balanced"}
-        </div>
-      </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-xs text-slate-500">Primary Focus</div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {objective?.growth_intent || "balanced"}
+                      </div>
+                    </div>
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-        <div className="text-xs text-slate-500">Profit Strategy</div>
-        <div className="text-sm font-bold text-slate-800 mt-1">
-          {(objective?.profit_priority?.replaceAll("_", " ") || "protect growth")}
-        </div>
-      </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-xs text-slate-500">Profit Strategy</div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {(objective?.profit_priority?.replaceAll("_", " ") || "protect growth")}
+                      </div>
+                    </div>
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-        <div className="text-xs text-slate-500">Inventory Dilution</div>
-        <div className="text-sm font-bold text-slate-800 mt-1">
-          {objective?.inventory_clearance_priority ? "Yes" : "No"}
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-xs text-slate-500">Inventory Dilution</div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {objective?.inventory_clearance_priority ? "Yes" : "No"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* 2) Metrics */}
               {block.metrics?.length > 0 && (
                 <div className="space-y-2">
                   <div className="text-sm font-semibold text-slate-800">Metrics</div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {block.metrics.map((m, i) => (
                       <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <div className="text-xs text-slate-500">{m.label}</div>
-                        <div className="text-sm font-bold mt-1" style={{ color: m.color || "#414042" }}>
-                          {m.value}
-                        </div>
+                        {(() => {
+                          const { main, delta, deltaColor } = splitMetricValue(m.value);
+
+                          return (
+                            <div className="mt-1 flex items-baseline gap-1">
+                              <span className="text-sm font-bold text-slate-900">{main}</span>
+
+                              {delta ? (
+                                <span className={`text-xs font-semibold ${deltaColor}`}>
+                                  {delta}
+                                </span>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
@@ -738,9 +693,9 @@ className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-wh
                 <div className="text-sm font-semibold text-slate-800">Recommendations</div>
 
                 {block.recommendationBullets?.length > 0 && (
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <div className="">
                     <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-blue-900">
+                    <ul className="list-disc pl-5 space-y-1 text-xs ">
                       {block.recommendationBullets.map((pt, i) => (
                         <li key={i}>{pt}</li>
                       ))}
@@ -749,21 +704,10 @@ className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-wh
                 )}
 
                 {inventoryRecoBullets.length > 0 && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="">
                     <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-amber-900">
+                    <ul className="list-disc pl-5 space-y-1 text-xs ">
                       {inventoryRecoBullets.map((pt, i) => (
-                        <li key={i}>{pt}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {adsRecoBullets.length > 0 && (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                    <div className="text-xs font-semibold text-emerald-900 mb-1">📣 Ads</div>
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-emerald-900">
-                      {adsRecoBullets.map((pt, i) => (
                         <li key={i}>{pt}</li>
                       ))}
                     </ul>
@@ -778,35 +722,38 @@ className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-wh
               </div>
 
               {/* 4) Chart placeholder (you’ll tell later) */}
-{/* 4) Chart */}
-<div className="space-y-2">
-  <div className="text-sm font-semibold text-slate-800">Chart</div>
+              {/* 4) Chart */}
+              <div className="space-y-2">
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
+                  <Productinfoinpopup
+                    productname={block.name}
+                    countryName={countryName}   // ✅ PASS COUNTRY
+                  />
 
-  <div className="h-[220px] rounded-xl border border-slate-200 bg-white p-3">
-    {perfLoading ? (
-      <div className="h-full flex items-center justify-center text-xs text-slate-500">
-        Loading chart…
-      </div>
-    ) : perfError ? (
-      <div className="h-full flex items-center justify-center text-xs text-red-600">
-        {perfError}
-      </div>
-    ) : !perfData ? (
-      <div className="h-full flex items-center justify-center text-xs text-slate-500">
-        No chart data.
-      </div>
-    ) : (
-     <ProductPerformanceChart perfData={perfData} metric={perfMetric} />
-    )}
+
+                  {/* {!block.isOtherSkus ? (
+  <Productinfoinpopup
+    embedded
+    productname={block.name}
+    onClose={() => {}}
+    countryName={countryName}
+    month={month}
+    year={year}
+  />
+) : (
+  <div className="text-xs text-slate-500 italic">
+    Chart is not available for Other SKUs (aggregated long-tail).
   </div>
-</div>
+)} */}
+                </div>
+              </div>
 
               {/* 5) Product Journey */}
               {block.journeyBullets?.length > 0 && (
                 <div className="space-y-2">
                   <div className="text-sm font-semibold text-slate-800">Product Journey</div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <ul className="space-y-2 text-sm text-slate-700">
+                  <div className="">
+                    <ul className="space-y-2 2xl:text-sm text-xs text-slate-700">
                       {block.journeyBullets.map((j, i) => (
                         <li key={i} className="flex gap-2">
                           <span className="text-slate-400 mt-[2px]">→</span>
@@ -930,15 +877,15 @@ const ProductInsightsSection = ({
   range: RangeType;                 // "monthly" | "quarterly" | "yearly" | ""
   selectedYear: string;             // "2025"
   selectedQuarter: Quarter | "";     // "Q1".."Q4" or ""
-  homeCurrency?: string;  
+  homeCurrency?: string;
   countryName: string; // ✅ ADD          // only global
 }) => {
   const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
   const [selectedRecObj, setSelectedRecObj] = useState<any>(null);
   const [perfLoading, setPerfLoading] = useState(false);
-const [perfError, setPerfError] = useState<string | null>(null);
-const [perfData, setPerfData] = useState<any>(null);
-const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
+  const [perfError, setPerfError] = useState<string | null>(null);
+  const [perfData, setPerfData] = useState<any>(null);
+  const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
 
   if (!blocks.length) return null;
 
@@ -951,111 +898,121 @@ const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales")
     recommendationsMap ??
     {};
 
-useEffect(() => {
-  if (!selectedBlock) return;
+  useEffect(() => {
+    if (!selectedBlock) return;
+    if (selectedBlock.isOtherSkus) return; // ✅ skip chart API for Other SKUs
 
-  const ac = new AbortController();
+    const ac = new AbortController();
 
-  (async () => {
-    try {
-      setPerfLoading(true);
-      setPerfError(null);
-      setPerfData(null);
+    (async () => {
+      try {
+        setPerfLoading(true);
+        setPerfError(null);
+        setPerfData(null);
 
-      const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-      if (!token) throw new Error("Missing token");
+        const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+        if (!token) throw new Error("Missing token");
 
-      const time_range = "Yearly";
+        const time_range = "Yearly";
 
-      const quarterNum =
-        range === "quarterly" && selectedQuarter
-          ? String(["Q1","Q2","Q3","Q4"].indexOf(selectedQuarter) + 1)
-          : undefined;
+        const quarterNum =
+          range === "quarterly" && selectedQuarter
+            ? String(["Q1", "Q2", "Q3", "Q4"].indexOf(selectedQuarter) + 1)
+            : undefined;
 
-const productKeyForApi = selectedBlock.name; // ✅ Always product name
+        const productKeyForApi = selectedBlock.name; // ✅ Always product name
+        console.log("API countryName:", countryName);
+        console.log("API payload:", {
+          country: countryName,
+          product_name: productKeyForApi,
+          time_range: "Yearly",
+          year: Number(selectedYear),
+          quarter: undefined,
+          home_currency: homeCurrency,
+        });
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-body: JSON.stringify({
-  country: countryName,
-  product_name: productKeyForApi,   // "Passion Fruit"
-  time_range: "Yearly",             // ✅ forced
-  year: Number(selectedYear),
-  quarter: undefined,               // (optional; can remove)
-  home_currency: homeCurrency,
-}),
-        cache: "no-store",
-        signal: ac.signal,
-      });
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            country: countryName,
+            product_name: productKeyForApi,   // "Passion Fruit"
+            time_range: "Yearly",             // ✅ forced
+            year: Number(selectedYear),
+            quarter: undefined,               // (optional; can remove)
+            home_currency: homeCurrency,
+          }),
+          cache: "no-store",
+          signal: ac.signal,
+        });
 
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || "Failed to fetch product performance");
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || "Failed to fetch product performance");
 
-      // ✅ SHAPE FIX
-// pick a country series from response
-const pickSeries = (j: any) => {
-  const d = j?.data;
-  if (!d || typeof d !== "object") return null;
+        // ✅ SHAPE FIX
+        // pick a country series from response
+        const pickSeries = (j: any) => {
+          const d = j?.data;
+          if (!d || typeof d !== "object") return null;
 
-  const country = (countryName || "").toLowerCase(); // "uk"
-  const keys = Object.keys(d);
+          const country = (countryName || "").toLowerCase(); // "uk"
+          const keys = Object.keys(d);
 
-  // UK page -> prefer uk / uk_usd / uk_gbp (jo bhi backend deta)
-  if (country && country !== "global") {
-    const match =
-      keys.find(k => k.toLowerCase() === country) ||
-      keys.find(k => k.toLowerCase().startsWith(country + "_")) || // uk_usd
-      keys.find(k => k.toLowerCase().startsWith(country));         // fallback
+          // UK page -> prefer uk / uk_usd / uk_gbp (jo bhi backend deta)
+          if (country && country !== "global") {
+            const match =
+              keys.find(k => k.toLowerCase() === country) ||
+              keys.find(k => k.toLowerCase().startsWith(country + "_")) || // uk_usd
+              keys.find(k => k.toLowerCase().startsWith(country));         // fallback
 
-    if (match) return d[match];
-  }
+            if (match) return d[match];
+          }
 
-  // Global page
-  const g = keys.find(k => k.toLowerCase().startsWith("global"));
-  return g ? d[g] : d[keys[0]];
-};
+          // Global page
+          const g = keys.find(k => k.toLowerCase().startsWith("global"));
+          return g ? d[g] : d[keys[0]];
+        };
 
-const rows = pickSeries(json);
+        const rows = pickSeries(json);
 
-setPerfData({
-  rows: Array.isArray(rows)
-    ? rows.map((r: any) => ({
-        x: r?.month ?? r?.label ?? "-",
-        y:
-          perfMetric === "units"
-            ? toNum(r?.quantity ?? r?.units ?? 0)
-            : toNum(r?.net_sales ?? 0),
-      }))
-    : [],
-});
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      setPerfError(e?.message || "Failed to load product chart");
-    } finally {
-      setPerfLoading(false);
-    }
-  })();
+        setPerfData({
+          rows: Array.isArray(rows)
+            ? rows.map((r: any) => ({
+              x: r?.month ?? r?.label ?? "-",
+              y:
+                perfMetric === "units"
+                  ? toNum(r?.quantity ?? r?.units ?? 0)
+                  : toNum(r?.net_sales ?? 0),
+            }))
+            : [],
+        });
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setPerfError(e?.message || "Failed to load product chart");
+      } finally {
+        setPerfLoading(false);
+      }
+    })();
 
-  return () => ac.abort();
-}, [selectedBlock, range, selectedYear, selectedQuarter, homeCurrency, nameToSkuMap]);
+    return () => ac.abort();
+  }, [selectedBlock, range, selectedYear, selectedQuarter, homeCurrency, nameToSkuMap]);
 
-const openDrawer = (b: ProductInsightBlock) => {
-  const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
-  const skuKey = b.skuKey || mappedSku;
+  const openDrawer = (b: ProductInsightBlock) => {
+    const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
+    const skuKey = b.skuKey || mappedSku;
 
-  const recObj =
-    (skuKey && (skuActions as any)[skuKey]) ||
-    (skuActions as any)[b.name] ||
-    (skuActions as any)[b.name.trim()] ||
-    null;
+    const recObj =
+      (skuKey && (skuActions as any)[skuKey]) ||
+      (skuActions as any)[b.name] ||
+      (skuActions as any)[b.name.trim()] ||
+      null;
 
-  setSelectedRecObj(recObj);
-  setSelectedBlock(b);
-};
+    setSelectedRecObj(recObj);
+    setSelectedBlock(b);
+  };
 
 
   return (
@@ -1078,7 +1035,7 @@ const openDrawer = (b: ProductInsightBlock) => {
                 "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
                 "border-t-4", // ✅ top border like SS2
                 borderColor,
-                "p-4 space-y-3",
+                "p-3 space-y-3",
               ].join(" ")}
             >
               {/* Header */}
@@ -1101,17 +1058,28 @@ const openDrawer = (b: ProductInsightBlock) => {
                   {b.metrics.map((m, i) => (
                     <div
                       key={i}
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2"
+                      className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
                     >
-                      <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none">
+                      <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
                         {m.label}
                       </div>
-                      <div
-                        className="text-xs 2xl:text-sm font-bold mt-1"
-                        style={{ color: m.color || "#414042" }}
-                      >
-                        {m.value}
-                      </div>
+                      {(() => {
+                        const { main, delta, deltaColor } = splitMetricValue(m.value);
+
+                        return (
+                          <div className="mt-1 flex items-baseline gap-1 min-w-0">
+                            <span className="text-[10px] 2xl:text-xs font-bold text-slate-900 truncate">
+                              {main}
+                            </span>
+
+                            {delta ? (
+                              <span className={`text-[10px] 2xl:text-xs font-semibold shrink-0 ${deltaColor}`}>
+                                {delta}
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -1130,19 +1098,18 @@ const openDrawer = (b: ProductInsightBlock) => {
 
       {/* ✅ Right Drawer */}
       <RightProductDrawer
-  open={!!selectedBlock}
-  onClose={() => {
-    setSelectedBlock(null);
-    setSelectedRecObj(null);
-  }}
-  block={selectedBlock}
-  objective={objective}
-  recObj={selectedRecObj}
-  perfLoading={perfLoading}
-  perfError={perfError}
-  perfData={perfData}
-  perfMetric={perfMetric}
-/>
+        open={!!selectedBlock}
+        onClose={() => {
+          setSelectedBlock(null);
+          setSelectedRecObj(null);
+        }}
+        block={selectedBlock}
+        objective={objective}
+        recObj={selectedRecObj}
+        countryName={countryName}
+        month=""              // ✅ no monthly/quarterly
+        year={selectedYear}   // ✅ keep year if you want, but time_range will be Yearly anyway
+      />
     </div>
   );
 };
@@ -1153,59 +1120,51 @@ const MonthlyObjectiveStrip = ({
   objective?: ObjectivePayload;
 }) => {
   const Item = ({
-  label,
-  value,
-  icon,
-  topColor,
-  iconBg,
-  iconColor,
-  valueClass = "text-slate-800",
-}: {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  topColor: string;
-  iconBg: string;
-  iconColor?: string;
-  valueClass?: string;
-}) => (
-  <div className="relative flex flex-col justify-center px-6 py-4 bg-white border border-slate-200 rounded-xl">
+    label,
+    value,
+    icon,
+    topColor,
+    iconBg,
+    iconColor,
+    valueClass = "text-slate-800",
+  }: {
+    label: string;
+    value: string;
+    icon: React.ReactNode;
+    topColor: string;
+    iconBg: string;
+    iconColor?: string;
+    valueClass?: string;
+  }) => (
+    <div className="relative flex flex-col justify-center px-6 py-4 bg-white border border-slate-200 rounded-xl">
 
-    {/* Top Color Bar */}
-    <div
-      className="absolute top-0 left-0 w-full h-1"
-    />
-
-    <div className="flex items-center gap-3">
-
-      {/* Icon with independent background */}
+      {/* Top Color Bar */}
       <div
-        className="w-8 h-8 flex items-center justify-center rounded-lg"
-        style={{
-          backgroundColor: iconBg,
-          color: iconColor || topColor,
-        }}
-      >
-        {icon}
-      </div>
+        className="absolute top-0 left-0 w-full h-1"
+      />
 
-      <div className="flex flex-col">
-        <span className="text-xs text-slate-500">{label}</span>
-        <span className={`text-sm font-semibold ${valueClass}`}>
-          {value}
-        </span>
+      <div className="flex items-center gap-3">
+
+        {/* Icon with independent background */}
+
+
+        <div className="flex flex-col">
+          <span className="text-xs text-slate-500">{label}</span>
+          <span className={`text-sm font-semibold ${valueClass}`}>
+            {value}
+          </span>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
 
 
   return (
-    <div className="w-full rounded-xl bg-[#ffffff] ">
-      
+    <div className="w-full rounded-xl bg-[#ffffff]  ">
+
       {/* Title */}
       <div className=" pb-3 ">
-        <h2 className="text-2xl font-semibold text-[#414042]">
+        <h2 className="2xl:text-2xl text-xl font-semibold text-[#414042]">
           Monthly Objectives & Targets
         </h2>
       </div>
@@ -1213,54 +1172,54 @@ const MonthlyObjectiveStrip = ({
       {/* Strip Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5  rounded-sm">
 
-       <Item
-  label="Primary Focus"
-  value={objective?.growth_intent || "Growth"}
-  icon={<TrendingUp size={16} />}
-  topColor="#3A8EA4"
-  iconBg="#E0F2F1"
-/>
+        <Item
+          label="Primary Focus"
+          value={objective?.growth_intent || "Growth"}
+          icon={<TrendingUp size={16} />}
+          topColor="#3A8EA4"
+          iconBg="#E0F2F1"
+        />
 
-<Item
-  label="Profit Strategy"
-  value={objective?.profit_priority?.replaceAll("_", " ") || "Profit"}
-  icon={<DollarSign size={16} />}
-  topColor="#ED9F50"
-  iconBg="#FFF3E0"
-/>
+        <Item
+          label="Profit Strategy"
+          value={objective?.profit_priority?.replaceAll("_", " ") || "Profit"}
+          icon={<DollarSign size={16} />}
+          topColor="#ED9F50"
+          iconBg="#FFF3E0"
+        />
 
-<Item
-  label="Inventory Dilution"
-  value={objective?.inventory_clearance_priority ? "Yes" : "No"}
-  icon={<Package size={16} />}
-  topColor="#C0BFC1"
-  iconBg="#F3F4F6"
-/>
+        <Item
+          label="Inventory Dilution"
+          value={objective?.inventory_clearance_priority ? "Yes" : "No"}
+          icon={<Package size={16} />}
+          topColor="#C0BFC1"
+          iconBg="#F3F4F6"
+        />
 
-<Item
-  label="Target Set"
-  value="$140K"
-  icon={<Target size={16} />}
-  topColor="#5EA68E"
-  iconBg="#E6F4EA"
-/>
+        <Item
+          label="Target Set"
+          value="$140K"
+          icon={<Target size={16} />}
+          topColor="#5EA68E"
+          iconBg="#E6F4EA"
+        />
 
-<Item
-  label="Shortfall"
-  value="-$3.6K"
-  icon={<AlertCircle size={16} />}
-  topColor="#B75A5A"
-  iconBg="#FDECEA"
-  valueClass="text-red-600"
-/>
+        <Item
+          label="Shortfall"
+          value="-$3.6K"
+          icon={<AlertCircle size={16} />}
+          topColor="#B75A5A"
+          iconBg="#FDECEA"
+          valueClass="text-red-600"
+        />
 
-<Item
-  label="Cash Flow"
-  value="$130K"
-  icon={<Wallet size={16} />}
-  topColor="#75BBDA"
-  iconBg="#E3F2FD"
-/>
+        <Item
+          label="Cash Flow"
+          value="$130K"
+          icon={<Wallet size={16} />}
+          topColor="#75BBDA"
+          iconBg="#E3F2FD"
+        />
 
 
       </div>
@@ -1352,6 +1311,26 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
       };
     });
 
+  const formatSummaryPeriod = (text?: string) => {
+    if (!text || !text.includes("(")) return "";
+
+    const inside = text.substring(
+      text.indexOf("(") + 1,
+      text.lastIndexOf(")")
+    );
+
+    const formatPart = (part: string) => {
+      const [month, year] = part.trim().split(" ");
+      const shortMonth = month.slice(0, 3);
+      const shortYear = year?.slice(-2);
+      return `${shortMonth}’${shortYear}`;
+    };
+
+    const [left, right] = inside.split("vs");
+
+    return `(${formatPart(left)} vs ${formatPart(right)})`;
+  };
+
   const narrativeInsights = summaryBullets.filter(
     (l) => !l.includes(":")
   );
@@ -1359,21 +1338,17 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   return (
     <div className="flex flex-col  gap-5">
       <div className="w-full  space-y-4">
-        
-  <div className="space-y-4">
-    {/* Narrative Summary */}
-  {narrativeInsights.length > 0 && (
+
+        <div className="space-y-4">
+          {/* Narrative Summary */}
+          {narrativeInsights.length > 0 && (
             <>
               <div className="  space-y-3">
-                <h2 className="text-base 2xl:text-2xl text-slate-800">
-                  <span className="font-bold text-slate-900">
-                    {narrativeInsights[0]?.split("(")[0]?.trim()}
+                <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold">
+                  {narrativeInsights[0]?.split("(")[0]?.trim()}
+                  <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
+                    {formatSummaryPeriod(narrativeInsights[0])}
                   </span>
-                  {narrativeInsights[0]?.includes("(") && (
-                    <span className="font-normal text-slate-600 text-sm ml-2">
-                      {`(${narrativeInsights[0].split("(")[1]}`}
-                    </span>
-                  )}
                 </h2>
 
                 <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
@@ -1384,142 +1359,152 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
               </div>
             </>
           )}
-  </div>
+        </div>
 
-   <div className="w-full">
-<div className="space-y-5 ">
-  <ProductInsightsSection
-  blocks={parseProductInsightsBlocks(skuInsightsBullets)}
-  objective={objective}
-  recommendationsMap={recommendationsMap}
-  nameToSkuMap={nameToSkuMap}
+        <div className="w-full">
+          <div className="space-y-5 ">
+            <ProductInsightsSection
+              blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+              objective={objective}
+              recommendationsMap={recommendationsMap}
+              nameToSkuMap={nameToSkuMap}
 
-  // ✅ PASS THESE
-  range={range}
-  selectedYear={selectedYear}
-  selectedQuarter={selectedQuarter}
-  homeCurrency={homeCurrency}
-  countryName={countryName} // ✅ ADD
-/>
- 
-
-  {/* ✅ Remaining SKUs Recommendation */}
-  {remainingSkusRecommendation && (
-    <div className="border border-slate-200 rounded-xl p-4  ">
-      <div className="text-sm font-semibold text-slate-800 mb-2">
-        OverAll
-         SKUs – Action Plan
-      </div>
-
-      <p className="text-xs 2xl:text-sm text-[#414042] leading-relaxed">
-        💡 {remainingSkusRecommendation}
-      </p>
-    </div>
-  )}
-</div>
-      </div>
+              // ✅ PASS THESE
+              range={range}
+              selectedYear={selectedYear}
+              selectedQuarter={selectedQuarter}
+              homeCurrency={homeCurrency}
+              countryName={countryName} // ✅ ADD
+            />
 
 
-  {/* ================= INVENTORY SECTION ================= */}
- {/* ================= INVENTORY SECTION ================= */}
-{inventoryBullets.length > 0 && (
-  <div className="space-y-4">
-    <div className="flex items-center gap-2">
-      <span className="text-base 2xl:text-2xl font-bold text-slate-800">
-        Inventory Insights
-      </span>
-    </div>
+            {/* ✅ Remaining SKUs Recommendation */}
 
-    {(() => {
-      // ✅ 1) separate "For detailed..." lines (no box)
-      const detailLines = inventoryBullets.filter((b) =>
-        /for detailed/i.test(b)
-      );
+          </div>
+        </div>
 
-      // ✅ 2) main bullets that go inside boxes
-      const mainLines = inventoryBullets.filter((b) => !/for detailed/i.test(b));
 
-      return (
-        <>
-          <div className="grid grid-cols-2 gap-3">
-            {mainLines.map((b, i) => {
-              const raw = String(b || "").trim();
+        {/* ================= INVENTORY SECTION ================= */}
+        {/* ================= INVENTORY SECTION ================= */}
+        {inventoryBullets.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-base 2xl:text-2xl font-bold text-slate-800">
+                Inventory Insights
+              </span>
+            </div>
 
-              // ✅ Unfulfillable: extract value inside (...) and show right
-              const isUnfulfillable = /unfulfillable/i.test(raw);
-              if (isUnfulfillable) {
-                const match = raw.match(/\(([^)]+)\)/); // (0.02%)
-                const value = match?.[1]?.trim();
-                const label = raw.replace(/\([^)]+\)/, "").trim();
+            {(() => {
+              // ✅ 1) separate "For detailed..." lines (no box)
+              const detailLines = inventoryBullets.filter((b) =>
+                /for detailed/i.test(b)
+              );
 
-                return (
-                  <div
-                    key={i}
-                    className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
-                  >
-                    <span className="text-sm font-medium text-slate-700">
-                      {label}
-                    </span>
-
-                    {value ? (
-                      <span className="font-bold text-amber-700 text-sm whitespace-nowrap">
-                        {value}
-                      </span>
-                    ) : null}
-                  </div>
-                );
-              }
-
-              // ✅ Default behavior (keeps others same):
-              // if bullet has "Label: Value" -> show value on right
-              const colonIdx = raw.indexOf(":");
-              const hasColon = colonIdx > -1;
-
-              const left = hasColon ? raw.slice(0, colonIdx).trim() : raw;
-              const right = hasColon ? raw.slice(colonIdx + 1).trim() : "";
+              // ✅ 2) main bullets that go inside boxes
+              const mainLines = inventoryBullets.filter((b) => !/for detailed/i.test(b));
 
               return (
-                <div
-                  key={i}
-                  className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
-                >
-                  <span className="text-sm font-medium text-slate-700">
-                    {left}
-                  </span>
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    {mainLines.map((b, i) => {
+                      const raw = String(b || "").trim();
 
-                  {right ? (
-                    <span className="font-bold text-amber-700 text-sm whitespace-nowrap">
-                      {right}
-                    </span>
-                  ) : null}
-                </div>
+                      // ✅ Unfulfillable: extract value inside (...) and show right
+                      const isUnfulfillable = /unfulfillable/i.test(raw);
+                      if (isUnfulfillable) {
+                        const match = raw.match(/\(([^)]+)\)/); // (0.02%)
+                        const value = match?.[1]?.trim();
+                        const label = raw.replace(/\([^)]+\)/, "").trim();
+
+                        return (
+                          <div
+                            key={i}
+                            className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
+                          >
+                            <span className="text-sm font-medium text-slate-700">
+                              {label}
+                            </span>
+
+                            {value ? (
+                              <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
+                                {value}
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      }
+
+                      // ✅ Default behavior (keeps others same):
+                      // if bullet has "Label: Value" -> show value on right
+                      const colonIdx = raw.indexOf(":");
+                      const hasColon = colonIdx > -1;
+
+                      const left = hasColon ? raw.slice(0, colonIdx).trim() : raw;
+                      const right = hasColon ? raw.slice(colonIdx + 1).trim() : "";
+
+                      return (
+                        <div
+                          key={i}
+                          className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
+                        >
+                          <span className="text-sm font-medium text-slate-700">
+                            {left}
+                          </span>
+
+                          {right ? (
+                            <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
+                              {right}
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* ✅ detail lines as simple text, not a box */}
+                  {detailLines.map((line, idx) => (
+                    <p key={idx} className="text-xs text-slate-500 italic mt-2">
+                      {line}
+                    </p>
+                  ))}
+                </>
               );
-            })}
+            })()}
           </div>
-
-          {/* ✅ detail lines as simple text, not a box */}
-          {detailLines.map((line, idx) => (
-            <p key={idx} className="text-xs text-slate-500 italic mt-2">
-              {line}
-            </p>
-          ))}
-        </>
-      );
-    })()}
-  </div>
-)}
+        )}
 
       </div>
 
 
 
-     
+
     </div>
 
   );
 };
 
 type FocusedChart = "trend" | "pnl" | null;
+
+type DashboardTab =
+  | "graphs"
+  | "businessSummary"
+  // | "breakdowns"    
+  | "skuBreakdown";
+
+const TAB_LABELS: Record<DashboardTab, string> = {
+  graphs: "Finance Dashboard",
+  businessSummary: "AI Insights & Recommendations",
+  // breakdowns: "Breakdowns",    
+  skuBreakdown: "P&L Breakdown",
+};
+
+const TAB_OPTIONS: { value: DashboardTab; label: string }[] = [
+  { value: "graphs", label: TAB_LABELS.graphs },
+  { value: "businessSummary", label: TAB_LABELS.businessSummary },
+  // { value: "breakdowns", label: TAB_LABELS.breakdowns },
+  { value: "skuBreakdown", label: TAB_LABELS.skuBreakdown },
+];
+
 
 /* ---------------------- Component ---------------------- */
 const Dropdowns: React.FC<DropdownsProps> = ({
@@ -1532,6 +1517,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   // Normalized home currency from profile (e.g. "usd", "inr")
   const homeCurrency = (userData?.homeCurrency || "USD").toLowerCase();
+
+  const router = useRouter();
 
   // params from parent
   const ranged = initialRanged;
@@ -1549,6 +1536,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const currencySymbol = isGlobalPage
     ? getCurrencySymbol(homeCurrency) // GLOBAL → homeCurrency
     : getCurrencySymbol(countryName || ""); // Country → country currency
+  const [collapsed, setCollapsed] = useState(false);
 
   const [range, setRange] = useState<RangeType>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -1575,9 +1563,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [graphPageLoading, setGraphPageLoading] = useState(false);
   const [graphPageUserMeta, setGraphPageUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
   const [graphPageError, setGraphPageError] = useState<string | null>(null);
-
-
   const [skuRows, setSkuRows] = useState<TableRow[]>([]);
+
+  // ✅ Inside Dropdowns component (add with your other state)
+  const [activeTab, setActiveTab] = useState<DashboardTab>("graphs");
+
+  // Optional: reset tab when filters change (prevents “empty” tab confusion)
+  useEffect(() => {
+    setActiveTab("graphs");
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
+
+  const tabsDisabled: Partial<Record<DashboardTab, boolean>> = useMemo(() => {
+    const disabled = !allDropdownsSelected;
+    return {
+      graphs: disabled,
+      businessSummary: disabled,
+      // breakdowns: disabled,
+      skuBreakdown: disabled,
+    };
+  }, [allDropdownsSelected]);
 
   const nameToSkuMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -1589,8 +1593,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       if (name && sku) map[name] = sku;
     }
 
-  return map;
-}, [skuRows]);
+    return map;
+  }, [skuRows]);
+
 
 
   const toggleFocus = (which: Exclude<FocusedChart, null>) => {
@@ -1612,7 +1617,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [skuExportPayload, setSkuExportPayload] = useState<SkuExportPayload | null>(null);
   const [expenseBreakdownPieBase64, setExpenseBreakdownPieBase64] = useState<string | null>(null);
   const [productWiseCm1PieBase64, setProductWiseCm1PieBase64] = useState<string | null>(null);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
 
+  const [primaryGoal, setPrimaryGoal] = useState("");
+  const [riskLevel, setRiskLevel] = useState("");
+  const [maxTacos, setMaxTacos] = useState<number | "">("");
+  const [adBudget, setAdBudget] = useState<number | "">("");
+  const [summaryNotes, setSummaryNotes] = useState("");
+  const [maxPriceIncreasePct, setMaxPriceIncreasePct] = useState<number | "">("");
 
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const [overlayBounds, setOverlayBounds] = useState<{
@@ -1623,72 +1635,72 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     width: 0,
   });
 
-const computeTopBottom5 = (
-  rows: TableRow[]
-): { topData: TopBottomData; bottomData: TopBottomData } => {
-  const clean = (rows || []).filter(Boolean);
+  const computeTopBottom5 = (
+    rows: TableRow[]
+  ): { topData: TopBottomData; bottomData: TopBottomData } => {
+    const clean = (rows || []).filter(Boolean);
 
-  // ✅ robust number parser (handles "1,234.56", null, undefined, "")
-  const num = (v: any) => {
-    if (v === null || v === undefined) return 0;
-    if (typeof v === "number") return isFinite(v) ? v : 0;
-    const s = String(v).replace(/,/g, "").trim();
-    const n = Number(s);
-    return isFinite(n) ? n : 0;
-  };
+    // ✅ robust number parser (handles "1,234.56", null, undefined, "")
+    const num = (v: any) => {
+      if (v === null || v === undefined) return 0;
+      if (typeof v === "number") return isFinite(v) ? v : 0;
+      const s = String(v).replace(/,/g, "").trim();
+      const n = Number(s);
+      return isFinite(n) ? n : 0;
+    };
 
-  const lower = (v: any) => String(v || "").trim().toLowerCase();
+    const lower = (v: any) => String(v || "").trim().toLowerCase();
 
-  // remove Total if present (supports product_name or sku)
-  const withoutTotal = clean.filter((r) => {
-    const name = lower((r as any).product_name ?? (r as any).sku);
-    return name !== "total";
-  });
-
-  // ✅ sort using parsed numbers (prevents string-sorting bugs)
-  const sortByProfitDesc = [...withoutTotal].sort((a, b) => num(b.profit) - num(a.profit));
-  const sortByProfitAsc = [...withoutTotal].sort((a, b) => num(a.profit) - num(b.profit));
-
-  const top5 = sortByProfitDesc.slice(0, 5);
-  const bottom5 = sortByProfitAsc.slice(0, 5);
-
-  const mapRows = (arr: TableRow[]) =>
-    arr.map((item) => {
-      const netUnits = num(item.net_units_sold);
-      const profit = num(item.profit);
-      const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
-
-      return {
-        product_name: String((item as any).product_name || (item as any).sku || "-"),
-        profit: profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        profitMix: num(item.profit_mix).toFixed(2),
-        salesMix: num(item.sales_mix).toFixed(2),
-        cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      };
+    // remove Total if present (supports product_name or sku)
+    const withoutTotal = clean.filter((r) => {
+      const name = lower((r as any).product_name ?? (r as any).sku);
+      return name !== "total";
     });
 
-  const totalsFor = (arr: TableRow[]) => {
-    const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
-    const totalProfitMix = arr.reduce((s, r) => s + num(r.profit_mix), 0);
-    const totalSalesMix = arr.reduce((s, r) => s + num(r.sales_mix), 0);
-    const totalNetUnits = arr.reduce((s, r) => s + num(r.net_units_sold), 0);
-    const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+    // ✅ sort using parsed numbers (prevents string-sorting bugs)
+    const sortByProfitDesc = [...withoutTotal].sort((a, b) => num(b.profit) - num(a.profit));
+    const sortByProfitAsc = [...withoutTotal].sort((a, b) => num(a.profit) - num(b.profit));
+
+    const top5 = sortByProfitDesc.slice(0, 5);
+    const bottom5 = sortByProfitAsc.slice(0, 5);
+
+    const mapRows = (arr: TableRow[]) =>
+      arr.map((item) => {
+        const netUnits = num(item.net_units_sold);
+        const profit = num(item.profit);
+        const cm1PerUnit = netUnits > 0 ? profit / netUnits : 0;
+
+        return {
+          product_name: String((item as any).product_name || (item as any).sku || "-"),
+          profit: profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          profitMix: num(item.profit_mix).toFixed(2),
+          salesMix: num(item.sales_mix).toFixed(2),
+          cm1_per_unit: cm1PerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        };
+      });
+
+    const totalsFor = (arr: TableRow[]) => {
+      const totalProfit = arr.reduce((s, r) => s + num(r.profit), 0);
+      const totalProfitMix = arr.reduce((s, r) => s + num(r.profit_mix), 0);
+      const totalSalesMix = arr.reduce((s, r) => s + num(r.sales_mix), 0);
+      const totalNetUnits = arr.reduce((s, r) => s + num(r.net_units_sold), 0);
+      const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
+
+      return {
+        profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        profitMix: totalProfitMix.toFixed(2),
+        salesMix: totalSalesMix.toFixed(2),
+        avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      };
+    };
 
     return {
-      profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-      profitMix: totalProfitMix.toFixed(2),
-      salesMix: totalSalesMix.toFixed(2),
-      avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      topData: { rows: mapRows(top5), totals: totalsFor(top5) },
+      bottomData: { rows: mapRows(bottom5), totals: totalsFor(bottom5) },
     };
   };
 
-  return {
-    topData: { rows: mapRows(top5), totals: totalsFor(top5) },
-    bottomData: { rows: mapRows(bottom5), totals: totalsFor(bottom5) },
-  };
-};
-
-const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
+  const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
 
 
   useEffect(() => {
@@ -1834,7 +1846,7 @@ const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRo
   };
 
 
-const fetchAiSummary = async (rangeType: RangeType) => {
+  const fetchAiSummary = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
 
     const requestId = ++aiRequestIdRef.current; // ✅ 1️⃣ request version
@@ -1890,35 +1902,35 @@ const fetchAiSummary = async (rangeType: RangeType) => {
       const summaryLines = sections["SUMMARY"] ?? [];
       const inventoryLines = sections["INVENTORY"] ?? [];
       const productLines = sections["PRODUCT INSIGHTS"] ?? [];
-const { recommendationBullets, inventoryBullets, recommendationsMap } =
-  extractRecoAndInventoryBullets(data.recommendations as any);
+      const { recommendationBullets, inventoryBullets, recommendationsMap } =
+        extractRecoAndInventoryBullets(data.recommendations as any);
 
-// ✅ extract remaining_skus_recommendation safely
-let remainingSkusRecommendation: string | undefined;
+      // ✅ extract remaining_skus_recommendation safely
+      let remainingSkusRecommendation: string | undefined;
 
-if (
-  data.recommendations &&
-  typeof data.recommendations === "object" &&
-  "remaining_skus_recommendation" in data.recommendations
-) {
-  remainingSkusRecommendation =
-    (data.recommendations as any).remaining_skus_recommendation;
-}
+      if (
+        data.recommendations &&
+        typeof data.recommendations === "object" &&
+        "remaining_skus_recommendation" in data.recommendations
+      ) {
+        remainingSkusRecommendation =
+          (data.recommendations as any).remaining_skus_recommendation;
+      }
 
-setAiPanel({
-  summaryBullets: summaryLines,
-  skuInsightsBullets: productLines,
-  recommendationBullets,
-  inventoryBullets: inventoryLines,
-  recommendationsMap,
-  objective: data.objective,
-  rawSummary: data.summary ?? null,
-  rawRecommendations:
-    typeof data.recommendations === "string" ? data.recommendations : null,
+      setAiPanel({
+        summaryBullets: summaryLines,
+        skuInsightsBullets: productLines,
+        recommendationBullets,
+        inventoryBullets: inventoryLines,
+        recommendationsMap,
+        objective: data.objective,
+        rawSummary: data.summary ?? null,
+        rawRecommendations:
+          typeof data.recommendations === "string" ? data.recommendations : null,
 
-  // ✅ NEW
-  remainingSkusRecommendation,
-});
+        // ✅ NEW
+        remainingSkusRecommendation,
+      });
 
 
 
@@ -2094,6 +2106,160 @@ setAiPanel({
     fetchPerformanceTrendFromHistory(range);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric]);
+
+
+  const cropPngBase64WithSize = async (
+    base64: string,
+    pad = 0,
+    opts?: {
+      // how close to white counts as background (0-255)
+      whiteThreshold?: number;     // default 253
+      // how much non-bg must exist in a row/col to keep it (0..1)
+      minContentRatio?: number;    // default 0.002 (0.2%)
+    }
+  ): Promise<{ base64: string; w: number; h: number }> => {
+    const isDataUrl = base64.startsWith("data:image/");
+    const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
+
+    const img = new Image();
+
+    // ✅ Use original data URL if present (jpeg/png)
+    // ✅ Otherwise assume png (your older charts send raw png base64)
+    img.src = isDataUrl ? base64 : `data:image/png;base64,${raw}`;
+
+
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res();
+      img.onerror = () => rej(new Error("Failed to load image for cropping"));
+    });
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return { base64: raw, w: img.width, h: img.height };
+
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+
+    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const whiteThreshold = opts?.whiteThreshold ?? 253;
+    const minContentRatio = opts?.minContentRatio ?? 0.002; // 0.2%
+
+    // Background: transparent OR near-white
+    const isBg = (r: number, g: number, b: number, a: number) => {
+      if (a === 0) return true;
+      return r >= whiteThreshold && g >= whiteThreshold && b >= whiteThreshold;
+    };
+
+    // Count non-bg pixels in a row
+    const rowContentRatio = (y: number) => {
+      let nonBg = 0;
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+        if (!isBg(r, g, b, a)) nonBg++;
+      }
+      return nonBg / width;
+    };
+
+    // Count non-bg pixels in a col
+    const colContentRatio = (x: number) => {
+      let nonBg = 0;
+      for (let y = 0; y < height; y++) {
+        const i = (y * width + x) * 4;
+        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+        if (!isBg(r, g, b, a)) nonBg++;
+      }
+      return nonBg / height;
+    };
+
+    // Trim top/bottom by density
+    let top = 0;
+    while (top < height && rowContentRatio(top) < minContentRatio) top++;
+
+    let bottom = height - 1;
+    while (bottom >= 0 && rowContentRatio(bottom) < minContentRatio) bottom--;
+
+    // Trim left/right by density
+    let left = 0;
+    while (left < width && colContentRatio(left) < minContentRatio) left++;
+
+    let right = width - 1;
+    while (right >= 0 && colContentRatio(right) < minContentRatio) right--;
+
+    // If nothing meaningful found, return original
+    if (right <= left || bottom <= top) return { base64: raw, w: img.width, h: img.height };
+
+    // Apply pad
+    left = Math.max(0, left - pad);
+    top = Math.max(0, top - pad);
+    right = Math.min(width - 1, right + pad);
+    bottom = Math.min(height - 1, bottom + pad);
+
+    const cropW = right - left + 1;
+    const cropH = bottom - top + 1;
+
+    const out = document.createElement("canvas");
+    const outCtx = out.getContext("2d");
+    if (!outCtx) return { base64: raw, w: img.width, h: img.height };
+
+    out.width = cropW;
+    out.height = cropH;
+
+    outCtx.drawImage(canvas, left, top, cropW, cropH, 0, 0, cropW, cropH);
+
+    return {
+      base64: out.toDataURL("image/png").split("base64,")[1],
+      w: cropW,
+      h: cropH,
+    };
+  };
+
+  const toJpegBase64 = async (
+    base64: string,
+    quality = 0.98,
+    opts?: { scale?: number; bg?: string }
+  ): Promise<{ base64: string; w: number; h: number }> => {
+    const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
+
+    // allow passing either png or jpeg data (we always load as image/*)
+    const img = new Image();
+    img.src = base64.startsWith("data:image/")
+      ? base64
+      : `data:image/png;base64,${raw}`;
+
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res();
+      img.onerror = () => rej(new Error("Failed to load image for JPEG conversion"));
+    });
+
+    const scale = opts?.scale ?? 1;          // ✅ upscale to reduce Excel seams
+    const bg = opts?.bg ?? "#FFFFFF";        // ✅ solid bg
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.width * scale));
+    canvas.height = Math.max(1, Math.round(img.height * scale));
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return { base64: raw, w: img.width, h: img.height };
+
+    // ✅ high quality scaling
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    // ✅ solid white background
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    return {
+      base64: canvas.toDataURL("image/jpeg", quality).split("base64,")[1],
+      w: canvas.width,
+      h: canvas.height,
+    };
+  };
 
   const handleDownloadSkuSheet1 = async () => {
     try {
@@ -2315,6 +2481,8 @@ setAiPanel({
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency]);
 
 
+  const goBack = () => router.push("/pnl-dashboard/QTD/global/NA/NA");
+
   if (month === "NA" || year === "NA") {
     return <IntegrationDashboard />;
   }
@@ -2356,6 +2524,12 @@ setAiPanel({
     return `${capitalizeFirstLetter(range)} Tracking Profitability - ${selectedYear}`;
   };
 
+
+  const getCountryLabel = () => {
+    const c = (countryName || "").toLowerCase();
+    return c === "global" ? "GLOBAL" : (countryName || "").toUpperCase();
+  };
+
   const getPeriodLabelShort = () => {
     const yy = String(selectedYear || "").slice(-2);
 
@@ -2371,6 +2545,38 @@ setAiPanel({
     return "";
   };
 
+  const getPnLTitleParts = () => {
+    return {
+      country: getCountryLabel(),
+      period: getPeriodLabelShort(),
+    };
+  };
+
+
+  // const renderAiPanel = () => {
+  //   if (!allDropdownsSelected) return null;
+
+  //   return (
+  //     // <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+  //     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  //       <MonthEndBusinessSummaryCard
+  //         loading={aiPanelLoading}
+  //         error={aiPanelError}
+  //         summaryBullets={aiPanel?.summaryBullets ?? []}
+  //         skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+  //       />
+
+  //       <RecommendationsCard
+  //         loading={aiPanelLoading}
+  //         error={aiPanelError}
+  //         recommendationBullets={aiPanel?.recommendationBullets ?? []}
+  //         inventoryBullets={aiPanel?.inventoryBullets ?? []}
+  //       />
+  //     </div>
+  //     // </div>
+  //   );
+  // };
+
   const getTrendWrapperHeight = () => {
     if (focusedChart === "trend") return "h-[50vh]";
     // monthly stays perfect
@@ -2379,39 +2585,19 @@ setAiPanel({
     return "h-[375px] 2xl:h-[500px]";
   };
 
-
   return (
-    <div
-      ref={layoutRef}
-      className="
-    space-y-3
-    2xl:space-y-6
-    relative
-  "
-    >
-      {/* <div className="sticky top-0 z-40 w-full flex flex-col bg-white  md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200"> */}
-      <div className="sticky top-0 z-40 w-full flex flex-col
-  bg-[#F7F7F7]
-  sm:flex-row md:items-center md:justify-between gap-4
-  border-b border-gray-200">
-
+    <div ref={layoutRef} className="space-y-3 relative">
+      {/* ===================== STICKY HEADER (EXISTING) ===================== */}
+      <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4 ">
         {/* LEFT: Title + Subtitle */}
-        <div className="flex flex-col leading-tight w-full md:w-auto md:mb-5">
+        <div className="flex flex-col leading-tight w-full md:w-auto ">
           <div className="flex items-baseline gap-2">
-            <PageBreadcrumb
-              pageTitle="Financial Metrics -"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
-
+            <PageBreadcrumb pageTitle="Financial Metrics -" variant="page" align="left" textSize="2xl" />
             <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              Amazon {countryName?.toLowerCase() === "global"
-                ? "Global"
-                : countryName?.toUpperCase()}
+              Amazon{" "}
+              {countryName?.toLowerCase() === "global" ? "Global" : countryName?.toUpperCase()}
             </span>
           </div>
-
           <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
             Track your profitability and key metrics
           </p>
@@ -2433,9 +2619,27 @@ setAiPanel({
         </div>
       </div>
 
-      {/* WRAPPER: stacked layout */}
-      <div className="flex flex-col gap-5 w-full mt-4">
+      {/* ===================== NEW: TABS (UNDER HEADER) ===================== */}
 
+      <div className="sticky top-[59px] z-30 bg-[#F7F7F7] border-b border-gray-200 
+    py-2">
+        <SegmentedToggle<DashboardTab>
+          value={activeTab}
+          options={TAB_OPTIONS}
+          onChange={(t) => {
+            // optional: prevent switching if disabled
+            if (tabsDisabled?.[t]) return;
+            setActiveTab(t);
+          }}
+          className="w-full"
+          textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+          compact
+        />
+      </div>
+
+      {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
+      {/* If you want summary cards ALWAYS visible regardless of tab, keep this block here */}
+      <div className="flex flex-col gap-5 w-full mt-4">
         {/* Summary Cards */}
         {uploadsData?.summary &&
           (() => {
@@ -2946,7 +3150,7 @@ setAiPanel({
               ];
             };
 
-           const cards = [
+            const cards = [
               {
                 key: "units",
                 title: "Units",
@@ -3058,287 +3262,84 @@ setAiPanel({
               </div>
             );
           })()}
-
       </div>
 
+      {/* ===================== TAB CONTENT AREA ===================== */}
+      <div className="w-full">
+        {/* ---------- TAB 1: GRAPHS ---------- */}
+        {activeTab === "graphs" && (
+          <>
+            {/* ✅ Keep your existing monthly/quarterly/yearly graph blocks here, unchanged */}
 
-      {/* Charts & Tables */}
-      {range === "monthly" && selectedMonth && selectedYear && (
-        <>
-          <div className="w-full rounded-xl space-y-4">
-            {/* Two separate sections */}
-            <div
-              className={[
-                "grid grid-cols-1 gap-4",
-                focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
-              ].join(" ")}
-            >
-              {/* LEFT card */}
-              {(focusedChart === null || focusedChart === "trend") && (
-                <div
-                  className={[
-                    "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-default select-none",
-                    focusedChart === "trend" ? "cursor-default" : "",
-                  ].join(" ")}
-                  title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
-                >
-                  <div className={getTrendWrapperHeight()}>
-                    <PerformanceTrendChart
-                      range={range}
-                      month={selectedMonth}
-                      year={selectedYear}
-                      countryName={initialCountryName}
-                      homeCurrency={globalHomeCurrency}
-                      currencySymbol={currencySymbol}
-                      data={performanceTrend}
-                      metric={performanceTrendMetric}
-                      onExportApiReady={setTrendExportApi}
-                      isExpanded={focusedChart === "trend"}
-                      onToggleExpand={() => toggleFocus("trend")}
-                    />
-                  </div>
-
-                </div>
-              )}
-
-              {/* RIGHT card */}
-              {(focusedChart === null || focusedChart === "pnl") && (
-                <div
-                  className={[
-                    "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-default select-none",
-                    "min-h-0 overflow-hidden",
-                    "flex flex-col",
-                    focusedChart === "pnl" ? "cursor-default" : "",
-                  ].join(" ")}
-                  title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
-                >
-                  {/* Heading */}
-                  <div className="shrink-0 flex items-center justify-between gap-3">
-                    {/* LEFT: title */}
-                    <div className="flex items-baseline gap-2 min-w-0">
-                      <PageBreadcrumb pageTitle="P&L" variant="page" align="left" textSize="2xl" />
-                    </div>
-
-                    {/* RIGHT: icon button (always pinned right) */}
-                    <button
-                      type="button"
-                      data-no-expand
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFocus("pnl");
-                      }}
-                      aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
-                      title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className=" hidden lg:inline-flex rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md"
-                    >
-                      {focusedChart === "pnl" ? (
-                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                      ) : (
-                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="flex-1 min-h-0 overflow-hidden mt-4">
-                    <Bargraph
-                      range={range}
-                      selectedMonth={selectedMonth}
-                      selectedYear={selectedYear}
-                      countryName={initialCountryName}
-                      homeCurrency={globalHomeCurrency}
-                      hideDownloadButton
-                      onExportApiReady={setChartExportApi}
-                      onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                      isCollapsed={pnlCollapsed}
-
-                      // ✅ NEW
-                      uploads={bargraphUploads}
-                      loading={bargraphLoading}
-                      userMeta={bargraphUserMeta}
-                    />
-
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
-
-          {/* </div> */}
-
-
-          {allDropdownsSelected && (
-            <div id="business-summary" className="scroll-mt-[80px] space-y-6 bg-white p-3">
-
-              {aiPanel?.objective && (
-      <MonthlyObjectiveStrip objective={aiPanel.objective} />
-    )}
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-                recommendationsMap={aiPanel?.recommendationsMap}
-                objective={aiPanel?.objective}
-                 remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
- nameToSkuMap={nameToSkuMap}    
- range={range}
-  selectedYear={selectedYear}
-  selectedQuarter={selectedQuarter}
-  homeCurrency={globalHomeCurrency}  
-  countryName={initialCountryName} // ✅ ADD (ya countryName)
-        />
-            </div>
-          )}
-
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4 mb-4">
-            <div className="flex-1 min-w-[300px]">
-              <CircleChart
-                range={range}
-                month={selectedMonth}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setExpenseBreakdownPieBase64}
-              />
-            </div>
-            <div className="flex-1 min-w-[300px]">
-              <CMchartofsku
-                range={range}
-                month={selectedMonth}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setProductWiseCm1PieBase64}
-              />
-            </div>
-          </div>
-          <SKUtable
-            range={range}
-            month={selectedMonth}
-            year={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton={false}
-            onExportPayloadChange={setSkuExportPayload}
-            onDownload={handleDownloadSkuSheet1}
-            onRowsChange={setSkuRows}
-          />
-          {skuRows.length > 0 && (
-            <SkuTopBottomTables
-              topData={topData}
-              bottomData={bottomData}
-              currencySymbol={currencySymbol}
-            />
-          )}
-
-
-        </>
-      )}
-
-      {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
-        <>
-          <div className="w-full rounded-xl space-y-4">
-            <div
-              className={[
-                "grid grid-cols-1 gap-4",
-                focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
-              ].join(" ")}
-            >
-              {/* LEFT card (Trend) */}
-              {(focusedChart === null || focusedChart === "trend") && (
-                <div
-                  className={[
-                    "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-default select-none",
-                    focusedChart === "trend" ? "cursor-default" : "",
-                  ].join(" ")}
-                  title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
-                >
-                  {/* <button
-                    type="button"
-                    data-no-expand
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFocus("trend");
-                    }}
-                    aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
-                    title={focusedChart === "trend" ? "Collapse" : "Expand"}
-                    className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
+            {range === "monthly" && selectedMonth && selectedYear && (
+              <>
+                <div className="w-full rounded-xl space-y-4">
+                  {/* Two separate sections */}
+                  <div
+                    className={[
+                      "grid grid-cols-1 gap-4",
+                      focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+                    ].join(" ")}
                   >
-                    {focusedChart === "trend" ? (
-                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                    ) : (
-                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                    {/* LEFT card */}
+                    {(focusedChart === null || focusedChart === "trend") && (
+                      <div
+                        className={[
+                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "cursor-default select-none",
+                          focusedChart === "trend" ? "cursor-default" : "",
+                        ].join(" ")}
+                        title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
+                      >
+                        <div className={getTrendWrapperHeight()}>
+                          <PerformanceTrendChart
+                            range={range}
+                            month={selectedMonth}
+                            year={selectedYear}
+                            countryName={initialCountryName}
+                            homeCurrency={globalHomeCurrency}
+                            currencySymbol={currencySymbol}
+                            data={performanceTrend}
+                            metric={performanceTrendMetric}
+                            onExportApiReady={setTrendExportApi}
+                            isExpanded={focusedChart === "trend"}
+                            onToggleExpand={() => toggleFocus("trend")}
+                          />
+                        </div>
+
+                      </div>
                     )}
 
-                  </button> */}
+                    {/* RIGHT card */}
+                    {(focusedChart === null || focusedChart === "pnl") && (
+                      <div
+                        className={[
+                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "cursor-default select-none",
+                          "min-h-0 overflow-hidden",
+                          "flex flex-col",
+                          focusedChart === "pnl" ? "cursor-default" : "",
+                        ].join(" ")}
+                        title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
+                      >
+                        {/* Heading */}
+                        <div className="shrink-0 flex items-center justify-between gap-3">
+                          {/* LEFT: title */}
+                          <div className="flex items-baseline gap-2 min-w-0">
+                            <PageBreadcrumb pageTitle="P&L" variant="page" align="left" textSize="2xl" />
+                          </div>
 
-                  <div className={getTrendWrapperHeight()}>
-                    <PerformanceTrendChart
-                      range={range}
-                      quarter={selectedQuarter}
-                      year={selectedYear}
-                      countryName={initialCountryName}
-                      homeCurrency={globalHomeCurrency}
-                      currencySymbol={currencySymbol}
-                      data={performanceTrend}
-                      metric={performanceTrendMetric}
-                      onExportApiReady={setTrendExportApi}
-                      isExpanded={focusedChart === "trend"}
-                      onToggleExpand={() => toggleFocus("trend")}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* RIGHT card (PnL) */}
-              {(focusedChart === null || focusedChart === "pnl") && (
-                <div
-                  className={[
-                    "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-default select-none",
-                    "min-h-0 overflow-hidden",
-                    "flex flex-col",
-                    focusedChart === "pnl" ? "cursor-default" : "",
-                  ].join(" ")}
-                >
-                  <div className="shrink-0 flex items-center justify-between gap-3">
-                    <div className="flex items-baseline gap-2">
-                      <PageBreadcrumb
-                        pageTitle="P&L "
-                        variant="page"
-                        align="left"
-                        textSize="2xl"
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      data-no-expand
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFocus("pnl");
-                      }}
-                      aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
-                      title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className=" hidden lg:inline-flex rounded-md
+                          {/* RIGHT: icon button (always pinned right) */}
+                          <button
+                            type="button"
+                            data-no-expand
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFocus("pnl");
+                            }}
+                            aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
+                            title={focusedChart === "pnl" ? "Collapse" : "Expand"}
+                            className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -3351,213 +3352,142 @@ setAiPanel({
       hover:shadow-lg
       active:translate-y-0
       active:shadow-md"
-                    >
-                      {focusedChart === "pnl" ? (
-                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                      ) : (
-                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                      )}
+                          >
+                            {focusedChart === "pnl" ? (
+                              <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                            ) : (
+                              <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                            )}
+                          </button>
+                        </div>
 
-                    </button>
+                        <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                          <Bargraph
+                            range={range}
+                            selectedMonth={selectedMonth}
+                            selectedYear={selectedYear}
+                            countryName={initialCountryName}
+                            homeCurrency={globalHomeCurrency}
+                            hideDownloadButton
+                            onExportApiReady={setChartExportApi}
+                            onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                            isCollapsed={pnlCollapsed}
 
+                            // ✅ NEW
+                            uploads={bargraphUploads}
+                            loading={bargraphLoading}
+                            userMeta={bargraphUserMeta}
+                          />
 
-                    {/* <DownloadIconButton
-                      onClick={(e) => {
-                        e.stopPropagation(); // ✅ don’t trigger zoom
-                        handleDownloadProfitabilityBundle();
-                      }}
-                      disabled={
-                        !trendExportApi ||              // ✅ ADD
-                        !chartExportApi ||
-                        !skuExportPayload ||
-                        !expenseBreakdownPieBase64 ||
-                        !productWiseCm1PieBase64
-                      }
-
-                    /> */}
-                  </div>
-
-                  <div className="flex-1 min-h-0 overflow-hidden mt-4">
-                    <GraphPage
-                      range={range}
-                      selectedQuarter={selectedQuarter}
-                      selectedYear={selectedYear}
-                      countryName={initialCountryName}
-                      homeCurrency={globalHomeCurrency}
-                      hideDownloadButton
-                      onExportApiReady={setChartExportApi}
-                      onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                      isCollapsed={pnlCollapsed}
-                      uploads={graphPageUploads}
-                      loading={graphPageLoading}
-                      userMeta={graphPageUserMeta}
-                      error={graphPageError}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {allDropdownsSelected && (
-            <div id="business-summary" className="scroll-mt-[80px]">
-
-              {aiPanel?.objective && (
-      <MonthlyObjectiveStrip objective={aiPanel.objective} />
-    )}
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-                recommendationsMap={aiPanel?.recommendationsMap}
-                objective={aiPanel?.objective}
-                remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                nameToSkuMap={nameToSkuMap} 
-                range={range}
-  selectedYear={selectedYear}
-  selectedQuarter={selectedQuarter}
-  homeCurrency={globalHomeCurrency} 
-  countryName={initialCountryName} // ✅ ADD (ya countryName)
- // ✅ ADD THIS
-              />
-            </div>
-          )}
-
-          <div className="flex flex-wrap justify-between gap-6 md:gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <CircleChart
-                range={range}
-                selectedQuarter={selectedQuarter}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setExpenseBreakdownPieBase64}
-              />
-            </div>
-            <div className="flex-1 min-w-[300px]">
-              <CMchartofsku
-                range={range}
-                selectedQuarter={selectedQuarter}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setProductWiseCm1PieBase64}
-              />
-            </div>
-          </div>
-
-          <SKUtable
-            range={range}
-            quarter={selectedQuarter}
-            year={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton={false}
-            onExportPayloadChange={setSkuExportPayload}
-            onDownload={handleDownloadSkuSheet1}
-            onRowsChange={setSkuRows}
-          />
-          {skuRows.length > 0 && (
-            <SkuTopBottomTables
-              topData={topData}
-              bottomData={bottomData}
-              currencySymbol={currencySymbol}
-            />
-          )}
-        </>
-      )}
-
-      {allDropdownsSelected && range === "yearly" && selectedYear && (
-        <>
-          <div className="w-full rounded-xl space-y-4">
-            <div
-              className={[
-                "grid grid-cols-1 gap-4",
-                focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
-              ].join(" ")}
-            >
-              {/* LEFT card (Trend) */}
-              {(focusedChart === null || focusedChart === "trend") && (
-                <div
-                  className={[
-                    "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-default select-none",
-                    focusedChart === "trend" ? "cursor-default" : "",
-                  ].join(" ")}
-                  title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
-                >
-                  {/* <button
-                    type="button"
-                    data-no-expand
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFocus("trend");
-                    }}
-                    aria-label={focusedChart === "trend" ? "Collapse trend chart" : "Expand trend chart"}
-                    title={focusedChart === "trend" ? "Collapse" : "Expand"}
-                    className=" absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white/80 text-gray-700 shadow-sm hover:bg-gray-50"
-                  >
-                    {focusedChart === "trend" ? (
-                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                    ) : (
-                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                        </div>
+                      </div>
                     )}
 
-                  </button> */}
-                  <div className={getTrendWrapperHeight()}>
-                    <PerformanceTrendChart
-                      range={range}
-                      year={selectedYear}
-                      countryName={initialCountryName}
-                      homeCurrency={globalHomeCurrency}
-                      currencySymbol={currencySymbol}
-                      data={performanceTrend}
-                      metric={performanceTrendMetric}
-                      onExportApiReady={setTrendExportApi}
-                      isExpanded={focusedChart === "trend"}
-                      onToggleExpand={() => toggleFocus("trend")}
-                    />
                   </div>
-
-
                 </div>
-              )}
-
-              {/* RIGHT card (PnL) */}
-              {(focusedChart === null || focusedChart === "pnl") && (
-                <div
-                  className={[
-                    "rounded-xl border border-gray-300 bg-white p-4",
-                    "cursor-default select-none",
-                    "min-h-0 overflow-hidden",
-                    "flex flex-col",
-                    focusedChart === "pnl" ? "cursor-default" : "",
-                  ].join(" ")}
-                  title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
-                >
-                  <div className="shrink-0 flex items-center justify-between gap-3">
-                    <div className="flex items-baseline gap-2">
-                      <PageBreadcrumb
-                        pageTitle="P&L "
-                        variant="page"
-                        align="left"
-                        textSize="2xl"
+                {allDropdownsSelected && (
+                  <div className="mt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                      {/* EXPENSE BREAKUP */}
+                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
+                      <CircleChart
+                        range={range as Exclude<RangeType, "">}
+                        month={range === "monthly" ? selectedMonth : undefined}
+                        selectedQuarter={range === "quarterly" ? (selectedQuarter || undefined) : undefined}
+                        year={selectedYear}
+                        countryName={initialCountryName}
+                        homeCurrency={globalHomeCurrency}
+                        onExportBase64Ready={setExpenseBreakdownPieBase64}
                       />
-                    </div>
+                      {/* </div> */}
 
-                    <button
-                      type="button"
-                      data-no-expand
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleFocus("pnl");
-                      }}
-                      aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
-                      title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                      className=" hidden lg:inline-flex rounded-md
+                      {/* CM1 PROFIT BREAKDOWN */}
+                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
+                      <CMchartofsku
+                        range={range as Exclude<RangeType, "">}
+                        month={range === "monthly" ? selectedMonth : undefined}
+                        selectedQuarter={range === "quarterly" ? (selectedQuarter || undefined) : undefined}
+                        year={selectedYear}
+                        countryName={initialCountryName}
+                        homeCurrency={globalHomeCurrency}
+                        onExportBase64Ready={setProductWiseCm1PieBase64}
+                      />
+                      {/* </div> */}
+                    </div>
+                  </div>
+                )}
+
+              </>
+            )}
+
+            {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
+              <>
+                <div className="w-full rounded-xl space-y-4">
+                  <div
+                    className={[
+                      "grid grid-cols-1 gap-4",
+                      focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+                    ].join(" ")}
+                  >
+                    {/* LEFT card (Trend) */}
+                    {(focusedChart === null || focusedChart === "trend") && (
+                      <div
+                        className={[
+                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "cursor-default select-none",
+                          focusedChart === "trend" ? "cursor-default" : "",
+                        ].join(" ")}
+                        title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
+                      >
+                        <div className={getTrendWrapperHeight()}>
+                          <PerformanceTrendChart
+                            range={range}
+                            quarter={selectedQuarter}
+                            year={selectedYear}
+                            countryName={initialCountryName}
+                            homeCurrency={globalHomeCurrency}
+                            currencySymbol={currencySymbol}
+                            data={performanceTrend}
+                            metric={performanceTrendMetric}
+                            onExportApiReady={setTrendExportApi}
+                            isExpanded={focusedChart === "trend"}
+                            onToggleExpand={() => toggleFocus("trend")}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* RIGHT card (PnL) */}
+                    {(focusedChart === null || focusedChart === "pnl") && (
+                      <div
+                        className={[
+                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "cursor-default select-none",
+                          "min-h-0 overflow-hidden",
+                          "flex flex-col",
+                          focusedChart === "pnl" ? "cursor-default" : "",
+                        ].join(" ")}
+                      >
+                        <div className="shrink-0 flex items-center justify-between gap-3">
+                          <div className="flex items-baseline gap-2">
+                            <PageBreadcrumb
+                              pageTitle="P&L "
+                              variant="page"
+                              align="left"
+                              textSize="2xl"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            data-no-expand
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFocus("pnl");
+                            }}
+                            aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
+                            title={focusedChart === "pnl" ? "Collapse" : "Expand"}
+                            className=" hidden lg:inline-flex rounded-md
       border
       border-gray-300
       bg-white
@@ -3570,162 +3500,376 @@ setAiPanel({
       hover:shadow-lg
       active:translate-y-0
       active:shadow-md"
-                    >
-                      {focusedChart === "pnl" ? (
-                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                      ) : (
-                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                      )}
+                          >
+                            {focusedChart === "pnl" ? (
+                              <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                            ) : (
+                              <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                            )}
 
-                    </button>
+                          </button>
 
+                        </div>
 
-                    {/* <DownloadIconButton
-                      onClick={(e) => {
-                        e.stopPropagation(); // ✅ don’t trigger zoom
-                        handleDownloadProfitabilityBundle();
-                      }}
-                      disabled={
-                        !trendExportApi ||              // ✅ ADD
-                        !chartExportApi ||
-                        !skuExportPayload ||
-                        !expenseBreakdownPieBase64 ||
-                        !productWiseCm1PieBase64
-                      }
-
-                    /> */}
-                  </div>
-
-                  <div className="flex-1 min-h-0 overflow-hidden mt-4">
-                    <GraphPage
-                      range={range}
-                      selectedYear={selectedYear}
-                      countryName={initialCountryName}
-                      homeCurrency={globalHomeCurrency}
-                      hideDownloadButton
-                      onExportApiReady={setChartExportApi}
-                      onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                      isCollapsed={pnlCollapsed}
-                      uploads={graphPageUploads}
-                      loading={graphPageLoading}
-                      userMeta={graphPageUserMeta}
-                      error={graphPageError}
-                    />
-
+                        <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                          <GraphPage
+                            range={range}
+                            selectedQuarter={selectedQuarter}
+                            selectedYear={selectedYear}
+                            countryName={initialCountryName}
+                            homeCurrency={globalHomeCurrency}
+                            hideDownloadButton
+                            onExportApiReady={setChartExportApi}
+                            onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                            isCollapsed={pnlCollapsed}
+                            uploads={graphPageUploads}
+                            loading={graphPageLoading}
+                            userMeta={graphPageUserMeta}
+                            error={graphPageError}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
+                {allDropdownsSelected && (
+                  <div className="mt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                      {/* EXPENSE BREAKUP */}
+                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
+                      <CircleChart
+                        range={range as Exclude<RangeType, "">}
+                        month={range === "monthly" ? selectedMonth : undefined}
+                        selectedQuarter={range === "quarterly" ? selectedQuarter : undefined}
+                        year={selectedYear}
+                        countryName={initialCountryName}
+                        homeCurrency={globalHomeCurrency}
+                        onExportBase64Ready={setExpenseBreakdownPieBase64}
+                      />
+                      {/* </div> */}
+
+                      {/* CM1 PROFIT BREAKDOWN */}
+                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
+                      <CMchartofsku
+                        range={range as Exclude<RangeType, "">}
+                        month={range === "monthly" ? selectedMonth : undefined}
+                        selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
+                        year={selectedYear}
+                        countryName={initialCountryName}
+                        homeCurrency={globalHomeCurrency}
+                        onExportBase64Ready={setProductWiseCm1PieBase64}
+                      />
+                      {/* </div> */}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {allDropdownsSelected && range === "yearly" && selectedYear && (
+              <>
+                <div className="w-full rounded-xl space-y-4">
+                  <div
+                    className={[
+                      "grid grid-cols-1 gap-4",
+                      focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+                    ].join(" ")}
+                  >
+                    {/* LEFT card (Trend) */}
+                    {(focusedChart === null || focusedChart === "trend") && (
+                      <div
+                        className={[
+                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "cursor-default select-none",
+                          focusedChart === "trend" ? "cursor-default" : "",
+                        ].join(" ")}
+                        title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
+                      >
+
+                        <div className={getTrendWrapperHeight()}>
+                          <PerformanceTrendChart
+                            range={range}
+                            year={selectedYear}
+                            countryName={initialCountryName}
+                            homeCurrency={globalHomeCurrency}
+                            currencySymbol={currencySymbol}
+                            data={performanceTrend}
+                            metric={performanceTrendMetric}
+                            onExportApiReady={setTrendExportApi}
+                            isExpanded={focusedChart === "trend"}
+                            onToggleExpand={() => toggleFocus("trend")}
+                          />
+                        </div>
 
 
-          {allDropdownsSelected && (
-            <div id="business-summary" className="scroll-mt-[80px]">
+                      </div>
+                    )}
 
-              {aiPanel?.objective && (
-      <MonthlyObjectiveStrip objective={aiPanel.objective} />
-    )}
-              <AiSingleInsightCard
-                loading={aiPanelLoading}
-                error={aiPanelError}
-                summaryBullets={aiPanel?.summaryBullets ?? []}
-                recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                inventoryBullets={aiPanel?.inventoryBullets ?? []}
-                recommendationsMap={aiPanel?.recommendationsMap}
-                objective={aiPanel?.objective}
-                remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                nameToSkuMap={nameToSkuMap} 
-                range={range}
-  selectedYear={selectedYear}
-  selectedQuarter={selectedQuarter}
-  homeCurrency={globalHomeCurrency} 
-  countryName={initialCountryName} // ✅ ADD (ya countryName)
- // ✅ ADD THIS
-              />
-            </div>
-          )}
+                    {/* RIGHT card (PnL) */}
+                    {(focusedChart === null || focusedChart === "pnl") && (
+                      <div
+                        className={[
+                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "cursor-default select-none",
+                          "min-h-0 overflow-hidden",
+                          "flex flex-col",
+                          focusedChart === "pnl" ? "cursor-default" : "",
+                        ].join(" ")}
+                        title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
+                      >
+                        <div className="shrink-0 flex items-center justify-between gap-3">
+                          <div className="flex items-baseline gap-2">
+                            <PageBreadcrumb
+                              pageTitle="P&L "
+                              variant="page"
+                              align="left"
+                              textSize="2xl"
+                            />
+                          </div>
+
+                          <button
+                            type="button"
+                            data-no-expand
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFocus("pnl");
+                            }}
+                            aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
+                            title={focusedChart === "pnl" ? "Collapse" : "Expand"}
+                            className=" hidden lg:inline-flex rounded-md
+      border
+      border-gray-300
+      bg-white
+      text-blue-700
+      p-1.5
+      transition-all
+      duration-200
+      ease-out
+      hover:-translate-y-[2px]
+      hover:shadow-lg
+      active:translate-y-0
+      active:shadow-md"
+                          >
+                            {focusedChart === "pnl" ? (
+                              <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                            ) : (
+                              <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                            )}
+
+                          </button>
 
 
-          <div className="flex flex-wrap justify-between gap-6 items-stretch md:gap-4">
-            <div className="flex-1 min-w-[300px]">
-              <CircleChart
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setExpenseBreakdownPieBase64}
-              />
-            </div>
+                        </div>
 
-            <div className="flex-1 min-w-[300px]">
-              <CMchartofsku
-                range={range}
-                year={selectedYear}
-                countryName={initialCountryName}
-                homeCurrency={globalHomeCurrency}
-                onExportBase64Ready={setProductWiseCm1PieBase64}
-              />
-            </div>
-          </div>
+                        <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                          <GraphPage
+                            range={range}
+                            selectedYear={selectedYear}
+                            countryName={initialCountryName}
+                            homeCurrency={globalHomeCurrency}
+                            hideDownloadButton
+                            onExportApiReady={setChartExportApi}
+                            onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                            isCollapsed={pnlCollapsed}
+                            uploads={graphPageUploads}
+                            loading={graphPageLoading}
+                            userMeta={graphPageUserMeta}
+                            error={graphPageError}
+                          />
 
-          <SKUtable
-            range={range}
-            year={selectedYear}
-            countryName={initialCountryName}
-            homeCurrency={globalHomeCurrency}
-            hideDownloadButton={false}
-            onExportPayloadChange={setSkuExportPayload}
-            onDownload={handleDownloadSkuSheet1}
-            onRowsChange={setSkuRows}
-          />
-          {skuRows.length > 0 && (
-            <SkuTopBottomTables
-              topData={topData}
-              bottomData={bottomData}
-              currencySymbol={currencySymbol}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {allDropdownsSelected && (
+                  <div className="mt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                      {/* EXPENSE BREAKUP */}
+                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
+                      <CircleChart
+                        range={range as Exclude<RangeType, "">}
+                        month={range === "monthly" ? selectedMonth : undefined}
+                        selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
+                        year={selectedYear}
+                        countryName={initialCountryName}
+                        homeCurrency={globalHomeCurrency}
+                        onExportBase64Ready={setExpenseBreakdownPieBase64}
+                      />
+                      {/* </div> */}
+
+                      {/* CM1 PROFIT BREAKDOWN */}
+                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
+                      <CMchartofsku
+                        range={range as Exclude<RangeType, "">}
+                        month={range === "monthly" ? selectedMonth : undefined}
+                        selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
+                        year={selectedYear}
+                        countryName={initialCountryName}
+                        homeCurrency={globalHomeCurrency}
+                        onExportBase64Ready={setProductWiseCm1PieBase64}
+                      />
+                      {/* </div> */}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ---------- TAB 2: BUSINESS SUMMARY ---------- */}
+        {activeTab === "businessSummary" && range === "monthly" && allDropdownsSelected && (
+
+          <div id="business-summary" className="scroll-mt-[80px] space-y-6 bg-white p-3">
+
+            {aiPanel?.objective && (
+              <MonthlyObjectiveStrip objective={aiPanel.objective} />
+            )}
+            <AiSingleInsightCard
+              loading={aiPanelLoading}
+              error={aiPanelError}
+              summaryBullets={aiPanel?.summaryBullets ?? []}
+              recommendationBullets={aiPanel?.recommendationBullets ?? []}
+              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+              inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              recommendationsMap={aiPanel?.recommendationsMap}
+              objective={aiPanel?.objective}
+              remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+              nameToSkuMap={nameToSkuMap}
+              range={range}
+              selectedYear={selectedYear}
+              selectedQuarter={selectedQuarter}
+              homeCurrency={globalHomeCurrency}
+              countryName={initialCountryName} // ✅ ADD (ya countryName)
             />
-          )}
-        </>
-      )}
+          </div>
+        )}
+
+        {activeTab === "businessSummary" && range === "quarterly" && allDropdownsSelected && (
+
+          <div id="business-summary" className="scroll-mt-[80px] space-y-6 bg-white p-3">
+
+            {aiPanel?.objective && (
+              <MonthlyObjectiveStrip objective={aiPanel.objective} />
+            )}
+            <AiSingleInsightCard
+              loading={aiPanelLoading}
+              error={aiPanelError}
+              summaryBullets={aiPanel?.summaryBullets ?? []}
+              recommendationBullets={aiPanel?.recommendationBullets ?? []}
+              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+              inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              recommendationsMap={aiPanel?.recommendationsMap}
+              objective={aiPanel?.objective}
+              remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+              nameToSkuMap={nameToSkuMap}
+              range={range}
+              selectedYear={selectedYear}
+              selectedQuarter={selectedQuarter}
+              homeCurrency={globalHomeCurrency}
+              countryName={initialCountryName} // ✅ ADD (ya countryName)
+            // ✅ ADD THIS
+            />
+          </div>
+        )}
+
+        {activeTab === "businessSummary" && range === "yearly" && allDropdownsSelected && (
+
+          <div id="business-summary" className="scroll-mt-[80px] space-y-6 bg-white p-3">
+
+            {aiPanel?.objective && (
+              <MonthlyObjectiveStrip objective={aiPanel.objective} />
+            )}
+            <AiSingleInsightCard
+              loading={aiPanelLoading}
+              error={aiPanelError}
+              summaryBullets={aiPanel?.summaryBullets ?? []}
+              recommendationBullets={aiPanel?.recommendationBullets ?? []}
+              skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+              inventoryBullets={aiPanel?.inventoryBullets ?? []}
+              recommendationsMap={aiPanel?.recommendationsMap}
+              objective={aiPanel?.objective}
+              remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+              nameToSkuMap={nameToSkuMap}
+              range={range}
+              selectedYear={selectedYear}
+              selectedQuarter={selectedQuarter}
+              homeCurrency={globalHomeCurrency}
+              countryName={initialCountryName} // ✅ ADD (ya countryName)
+            />
+          </div>
+        )}
 
 
+        {/* ---------- TAB 3: EXPENSE BREAKUP ---------- */}
+        {/* {activeTab === "breakdowns" && allDropdownsSelected && (
+          <div className="mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+            
+              <div className="w-full rounded-xl border border-gray-200 bg-white p-4">
+                <CircleChart
+                  range={range as Exclude<RangeType, "">}
+                  month={range === "monthly" ? selectedMonth : undefined}
+                  selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
+                  year={selectedYear}
+                  countryName={initialCountryName}
+                  homeCurrency={globalHomeCurrency}
+                  onExportBase64Ready={setExpenseBreakdownPieBase64}
+                />
+              </div>
+
+             
+              <div className="w-full rounded-xl border border-gray-200 bg-white p-4">
+                <CMchartofsku
+                  range={range as Exclude<RangeType, "">}
+                  month={range === "monthly" ? selectedMonth : undefined}
+                  selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
+                  year={selectedYear}
+                  countryName={initialCountryName}
+                  homeCurrency={globalHomeCurrency}
+                  onExportBase64Ready={setProductWiseCm1PieBase64}
+                />
+              </div>
+            </div>
+          </div>
+        )} */}
+
+        {/* ---------- TAB 4: SKU / PRODUCTWISE P&L ---------- */}
+        {activeTab === "skuBreakdown" && allDropdownsSelected && (
+          <div className="mt-4 space-y-4">
+            <SKUtable
+              range={range as Exclude<RangeType, "">}
+              month={range === "monthly" ? selectedMonth : undefined}
+              quarter={range === "quarterly" ? selectedQuarter : undefined}
+              year={selectedYear}
+              countryName={initialCountryName}
+              homeCurrency={globalHomeCurrency}
+              hideDownloadButton={false}
+              onExportPayloadChange={setSkuExportPayload}
+              onDownload={handleDownloadSkuSheet1}
+              onRowsChange={setSkuRows}
+            />
+
+            {skuRows.length > 0 && (
+              <SkuTopBottomTables
+                topData={topData}
+                bottomData={bottomData}
+                currencySymbol={currencySymbol}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ===================== YOUR EXISTING OVERLAYS / MODALS (KEEP) ===================== */}
       {showNoDataOverlay && (
         <div
           className="fixed inset-y-0 z-[9999] flex items-center justify-center pointer-events-none"
           style={{ left: overlayBounds.left, width: overlayBounds.width || "100%" }}
         >
-          <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-xl p-6 max-w-lg w-[90%] text-center pointer-events-auto">
-            {/* Lock icon */}
-            <div className="mb-4 flex items-center justify-center">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#D9D9D9]">
-                <IoMdLock className="text-green-500 text-2xl" />
-              </div>
-            </div>
-
-            <PageBreadcrumb
-              pageTitle="No Data Available"
-              variant="table"
-              align="center"
-              textSize="2xl"
-            />
-
-            <p className="text-charcoal-500 text-xs sm:text-sm leading-relaxed my-4">
-              To see performance metrics, you need to upload more files for
-              <span className="block mt-0.5">{getTitle()}</span>
-            </p>
-
-            {/* {countryName.toLowerCase() !== "global" && (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setShowUploadModal(true)}
-                className="mt-1 inline-flex items-center justify-center text-sm font-medium"
-              >
-                Upload MTD(s)
-              </Button>
-            )} */}
-          </div>
+          {/* keep your existing overlay card */}
         </div>
       )}
 
@@ -3741,19 +3885,14 @@ setAiPanel({
             onClose={() => setShowUploadModal(false)}
             onComplete={() => {
               setShowUploadModal(false);
-              fetchUploadHistory(
-                range,
-                selectedMonth,
-                selectedQuarter || "",
-                selectedYear,
-                initialCountryName
-              );
+              fetchUploadHistory(range, selectedMonth, selectedQuarter || "", selectedYear, initialCountryName);
             }}
           />
         </div>
       </Modal>
     </div>
   );
+
 };
 
 export default Dropdowns;

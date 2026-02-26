@@ -382,7 +382,25 @@ return point;
     const raw = prepareChartData();
     if (!raw || raw.length === 0) return null;
 
-    const labels = raw.map(item => item.month);
+    const monthShort = (m: string) => {
+  const map: Record<string, string> = {
+    January: "Jan",
+    February: "Feb",
+    March: "Mar",
+    April: "Apr",
+    May: "May",
+    June: "Jun",
+    July: "Jul",
+    August: "Aug",
+    September: "Sep",
+    October: "Oct",
+    November: "Nov",
+    December: "Dec",
+  };
+  return map[m] || m?.slice(0, 3);
+};
+
+    const labels = raw.map(item => monthShort(item.month));
   const datasets = Object.keys(selectedCountries)
   .filter(country => selectedCountries[country])
 .filter((country) => {
@@ -431,12 +449,14 @@ tension: 0.35,
       }
     },
     scales: {
-      x: {
-        title: {
-          display: true,
-          text: 'Month'
-        }
-      },
+     x: {
+  title: { display: true, text: "Month" },
+  ticks: {
+    maxRotation: 0,
+    minRotation: 0,
+    autoSkip: true,
+  },
+},
       y: {
         title: {
           display: true,

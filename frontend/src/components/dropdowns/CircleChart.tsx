@@ -243,7 +243,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
     const s = uploadsData.summary;
 
     // const colors = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
-    const labelsRaw = ["COGS", "Amazon Fees", "Tax and credits", "Ads", "Others", "CM2 Profit"];
+    const labelsRaw = ["COGS", "Amazon Fees", "Tax and credits", "Ads",  "CM2 Profit","Others"];
     const valuesRaw = [
       Math.abs(s.total_cous || 0),
       Math.abs(s.total_amazon_fee || 0),
