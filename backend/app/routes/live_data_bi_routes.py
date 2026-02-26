@@ -240,6 +240,12 @@ def live_mtd_vs_previous():
     token = auth_header.split(" ")[1]
 
     try:
+        # ✅ PRE-INITIALIZE (VERY IMPORTANT)
+        portfolio_recommendation = None
+        sku_strategy_actions = {}
+        remaining_skus_reco = None
+        remaining_skus_journey = None
+
         payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
         if not user_id:
@@ -402,6 +408,8 @@ def live_mtd_vs_previous():
             
         )
 
+       
+
         prev_keys = {r.get(key_column) for r in prev_data_aligned if r.get(key_column)}
         curr_keys = {r.get(key_column) for r in curr_data if r.get(key_column)}
 
@@ -495,6 +503,42 @@ def live_mtd_vs_previous():
             build_segment_total_row(prev_new, curr_new, key=key_column, label="Total")
             if new_reviving else None
         )
+
+        # =========================================================
+        # ✅ Build Remaining SKUs (NOT in top_80_skus)
+        # =========================================================
+
+        remaining_growth_row = None  # safety
+
+        top_keys = {r.get("sku") for r in top_80_skus}
+
+        remaining_prev = [
+            r for r in prev_data_aligned
+            if r.get("sku") not in top_keys
+        ]
+
+        remaining_curr = [
+            r for r in curr_data
+            if r.get("sku") not in top_keys
+        ]
+
+        if remaining_curr:
+            agg_prev = aggregate_totals(remaining_prev)
+            agg_curr = aggregate_totals(remaining_curr)
+
+            remaining_growth_row = calculate_growth(
+                prev_data=[{
+                    "sku": "REMAINING",
+                    "product_name": "Other SKUs",
+                    **agg_prev
+                }],
+                curr_data=[{
+                    "sku": "REMAINING",
+                    "product_name": "Other SKUs",
+                    **agg_curr
+                }],
+                key="sku"
+            )[0]
 
         # ---------------------------
         # CM1 PROFIT PIE (SAFE, NON-BREAKING)
@@ -665,9 +709,6 @@ def live_mtd_vs_previous():
 
 
         # ---------------------------
-        # PROMPT-2 (DECISIONS)
-        # ---------------------------
-        # ---------------------------
         # STRATEGY ENGINE (MONTH-END PROMPT 2)
         # ---------------------------
         sku_live_context = []
@@ -732,7 +773,7 @@ def live_mtd_vs_previous():
             print("[WARN] Failed to build SKU inventory flags:", e)
             sku_inventory_flags = {}
 
-        print("LIVE SKU INVENTORY FLAGS:", sku_inventory_flags)    
+            
 
 
         # ==========================================
@@ -760,28 +801,40 @@ def live_mtd_vs_previous():
             "total_cm2_profit": ads_monthly_totals.get("cm2_profit", 0),
         }
 
-        strategy_raw = run_prompt_2_strategy(
-            analysis_insights=analysis,
-            objective_v2=user_objective,
-            focus_skus=[r.get("sku") for r in top_80_skus],
-            sku_time_series={},   # optional
-            inventory_alerts=payload_ai.get("inventory_signals", {}),
-            sku_inventory_flags=sku_inventory_flags,
-            country=country,
-            sku_ads_context=sku_ads_context,
-            sku_live_context=sku_live_context,
-            ads_monthly=ads_monthly,
-        )
+        
+
+        # ---------------------------------------
+        # STRATEGY ENGINE (SAFE WRAPPED)
+        # ---------------------------------------
 
         try:
-            strategy_parsed = json.loads(strategy_raw)
-        except Exception:
-            print("❌ Strategy JSON parse failed")
+            strategy_raw = run_prompt_2_strategy(
+                analysis_insights=analysis,
+                objective_v2=user_objective,
+                focus_skus=[r.get("sku") for r in top_80_skus],
+                sku_time_series={},   # optional
+                inventory_alerts=payload_ai.get("inventory_signals", {}),
+                sku_inventory_flags=sku_inventory_flags,
+                country=country,
+                sku_ads_context=sku_ads_context,
+                sku_live_context=sku_live_context,
+                ads_monthly=ads_monthly,
+                remaining_skus_context={
+                    "aggregated_metrics": remaining_growth_row
+                } if remaining_growth_row else {},
+            )
+
+            strategy_parsed = json.loads(strategy_raw) if strategy_raw else {}
+
+        except Exception as e:
+            print("[STRATEGY ERROR]", e)
             strategy_parsed = {}
 
+        # Safe extraction (always executes)
+        portfolio_recommendation = strategy_parsed.get("portfolio_recommendation")
         sku_strategy_actions = strategy_parsed.get("sku_actions", {})
         remaining_skus_reco = strategy_parsed.get("remaining_skus_recommendation")
-
+        remaining_skus_journey = strategy_parsed.get("remaining_skus_journey_summary")
 
         # ===========================
         # BUILD RECOMMENDED ACTIONS
@@ -804,13 +857,28 @@ def live_mtd_vs_previous():
             sku_strategy = sku_strategy_actions.get(sku, {})
 
             recommended_actions_mtd[sku] = render_live_recommended_action(
-            growth_row=growth_row,
-            recommendation=sku_strategy.get("recommendation", "Monitor performance"),
-            ads_recommendation=sku_strategy.get("ads_recommendation"),
-            inventory_recommendation=sku_strategy.get("inventory_recommendation"),
-            journey_summary=sku_strategy.get("journey_summary"),
-            currency_symbol=currency["symbol"],
-        )
+                growth_row=growth_row,
+                recommendation=sku_strategy.get("recommendation", "Monitor performance"),
+                ads_recommendation=sku_strategy.get("ads_recommendation"),
+                inventory_recommendation=sku_strategy.get("inventory_recommendation"),
+                journey_summary=sku_strategy.get("journey_summary"),
+                currency_symbol=currency["symbol"],
+            )
+
+
+        # =========================================================
+        # ✅ ADD THIS BLOCK RIGHT HERE (AFTER LOOP)
+        # =========================================================
+
+        remaining_skus_block = None
+
+        if remaining_growth_row and remaining_skus_reco:
+            remaining_skus_block = render_live_recommended_action(
+                growth_row=remaining_growth_row,
+                recommendation=remaining_skus_reco,
+                journey_summary=remaining_skus_journey,
+                currency_symbol=currency["symbol"],
+            )    
 
 
         # ===========================
@@ -897,7 +965,8 @@ def live_mtd_vs_previous():
                 "other_skus": other_skus,
                 "other_total": other_total_row,
             },
-                "cm1_profit_pie": cm1_profit_pie,
+            "cm1_profit_pie": cm1_profit_pie,
+
             "daily_series": {
                 "previous": prev_daily_full,
                 "current_mtd": curr_daily,
@@ -906,13 +975,19 @@ def live_mtd_vs_previous():
                 "previous": prev_daily_aligned,
                 "current_mtd": curr_daily,
             },
+
             "inventory_summary": inventory_summary,
             "ai_insights": insights,
             "overall_summary": overall_summary,
             "overall_actions": overall_actions,
-            "recommended_actions_mtd": recommended_actions_mtd,
-            "remaining_skus_recommendation": remaining_skus_reco,
+            "portfolio_recommendation": portfolio_recommendation,
 
+            # 🔥 SKU CARDS
+            "recommended_actions_mtd": recommended_actions_mtd,
+
+            # 🔥 Remaining SKUs
+            "remaining_skus_recommendation": remaining_skus_reco,
+            "remaining_skus_block": remaining_skus_block,   # ✅ ADD THIS
         }
 
         # ---------------------------

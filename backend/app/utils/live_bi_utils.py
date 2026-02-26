@@ -2239,6 +2239,46 @@ def fetch_skuwisemonthly_ads_cm2_current_month(
 
     return sku_map, totals
 
+def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
+    focus_set = set([str(x).strip() for x in (focus_skus or [])])
+
+    remaining = [
+        r for r in (top_80_skus or [])
+        if str(r.get("sku")).strip() not in focus_set
+    ]
+
+    if not remaining:
+        return None
+
+    prev_qty = sum(safe0(r.get("quantity_prev")) for r in remaining)
+    curr_qty = sum(safe0(r.get("quantity_curr")) for r in remaining)
+
+    prev_sales = sum(safe0(r.get("net_sales_prev")) for r in remaining)
+    curr_sales = sum(safe0(r.get("net_sales_curr")) for r in remaining)
+
+    prev_profit = sum(safe0(r.get("profit_prev")) for r in remaining)
+    curr_profit = sum(safe0(r.get("profit_curr")) for r in remaining)
+
+    prev_asp = prev_sales / prev_qty if prev_qty else None
+    curr_asp = curr_sales / curr_qty if curr_qty else None
+
+    prev_ppu = prev_profit / prev_qty if prev_qty else None
+    curr_ppu = curr_profit / curr_qty if curr_qty else None
+
+    return {
+        "sku": "REMAINING_SEGMENT",
+        "product_name": "Remaining SKUs",
+        "quantity_prev": prev_qty,
+        "quantity_curr": curr_qty,
+        "net_sales_prev": prev_sales,
+        "net_sales_curr": curr_sales,
+        "profit_prev": prev_profit,
+        "profit_curr": curr_profit,
+        "asp_prev": prev_asp,
+        "asp_curr": curr_asp,
+        "unit_wise_profitability_prev": prev_ppu,
+        "unit_wise_profitability_curr": curr_ppu,
+    }
 
 
 
@@ -2269,6 +2309,7 @@ def build_ai_summary(
     focus_skus=None,
 ):
   
+
 
     # =========================================================
     # Numeric calculations (UNCHANGED)
@@ -2366,6 +2407,39 @@ def build_ai_summary(
             sku for sku in focus_skus
             if sku not in SKUS_TO_SKIP
         ]
+
+    # ✅ Build aggregated remaining segment
+    remaining_segment_raw = build_remaining_skus_aggregate(
+        top_80_skus=top_80_skus,
+        focus_skus=focus_skus,
+    )
+
+    remaining_growth_row = None
+
+    if remaining_segment_raw:
+        remaining_growth_row = calculate_growth(
+            prev_data=[{
+                "sku": remaining_segment_raw["sku"],
+                "product_name": remaining_segment_raw["product_name"],
+                "quantity": remaining_segment_raw["quantity_prev"],
+                "net_sales": remaining_segment_raw["net_sales_prev"],
+                "profit": remaining_segment_raw["profit_prev"],
+                "asp": remaining_segment_raw["asp_prev"],
+                "unit_wise_profitability": remaining_segment_raw["unit_wise_profitability_prev"],
+                "sales_mix": 0,
+            }],
+            curr_data=[{
+                "sku": remaining_segment_raw["sku"],
+                "product_name": remaining_segment_raw["product_name"],
+                "quantity": remaining_segment_raw["quantity_curr"],
+                "net_sales": remaining_segment_raw["net_sales_curr"],
+                "profit": remaining_segment_raw["profit_curr"],
+                "asp": remaining_segment_raw["asp_curr"],
+                "unit_wise_profitability": remaining_segment_raw["unit_wise_profitability_curr"],
+                "sales_mix": 0,
+            }],
+            key="sku"
+        )[0]    
 
     # =========================================================
     # ✅ SKU-Level Ads + CM2 Enrichment (Current Month Only)
@@ -2490,69 +2564,10 @@ def build_ai_summary(
         "user_objective": user_objective,
         "movement_context": movement_context or {},
     }
-    # =========================================================
-    # ✅ SKU-Level Inventory Flags (Top 5 Only)
-    # =========================================================
-    sku_inventory_flags = {}
+   
+    
 
-    if user_id and country and focus_skus:
-        try:
-            sku_inventory_flags = generate_sku_inventory_flags(
-                user_id=user_id,
-                country=country,
-                focus_skus=focus_skus,
-            )
-        except Exception as e:
-            print("[WARN] sku_inventory_flags build failed:", e)
-            sku_inventory_flags = {}
-    # =========================================================
-    # 🔥 Month-End Strategy Engine (Single Source of Truth)
-    # =========================================================
-    strategy_actions = {}
-
-    if analysis_output and focus_skus:
-        try:
-            strategy_raw = run_prompt_2_strategy(
-            analysis_insights=analysis_output,
-            objective_v2=user_objective,
-            focus_skus=focus_skus,
-            sku_time_series=None,
-            inventory_alerts=inventory_signals,
-            country=(currency or {}).get("country", "uk"),
-
-            # ✅ NEW
-            sku_inventory_flags=sku_inventory_flags,
-            sku_ads_context=top_80_skus,
-            ads_monthly=ads_monthly_totals,
-            )
-
-
-            parsed = json.loads(strategy_raw)
-            strategy_actions = parsed.get("sku_actions") or {}
-
-        except Exception as e:
-            print("[STRATEGY ERROR]", e)
-            strategy_actions = {}
-
-    # =========================================================
-    # 🚫 FINAL HARD FILTER (Strategy Output Level)
-    # =========================================================
-    SKUS_TO_SKIP = {
-        "B075HB7GSJ",
-        "B0CRYQ6HBH",
-        "B0F9FS43K3",
-        "X001VGZOM9",
-    }
-
-    if isinstance(strategy_actions, dict):
-        strategy_actions = {
-            k: v
-            for k, v in strategy_actions.items()
-            if k not in SKUS_TO_SKIP
-        }
-
-    payload["strategy_actions"] = strategy_actions
-
+  
     return payload
 
 
@@ -2835,17 +2850,17 @@ def generate_sku_inventory_flags(
 
         if alert == "High alert" and cov_str is not None:
             inventory_recommendation = (
-                f"Your coverage ratio is {cov_str}. Please immediately send stock to avoid stock-out."
+                f"Your coverage ratio is {cov_str} months. Please immediately send stock to avoid stock-out."
             )
 
         elif alert == "Please send shipment" and cov_str is not None:
             inventory_recommendation = (
-                f"Your coverage ratio is {cov_str}. Please supply inventory soon to avoid stock-out risk."
+                f"Your coverage ratio is {cov_str} months. Please supply inventory soon to avoid stock-out risk."
             )
 
         elif alert == "High inventory coverage ratio" and cov_str is not None:
             inventory_recommendation = (
-                f"Your coverage ratio is {cov_str}, which may increase storage cost. "
+                f"Your coverage ratio is {cov_str} months, which may increase storage cost. "
                 f"Please improve sell-through to avoid excess storage fees."
             )
 
