@@ -880,14 +880,38 @@ def live_mtd_vs_previous():
 
         total_current_advertising = float(curr_aligned_totals.get("advertising", 0) or 0)
         total_previous_advertising = float(prev_aligned_totals.get("advertising", 0) or 0)
+        
 
         # ✅ NEW CM2 totals (portfolio-level)
         total_current_profit_cm2 = total_current_profit - total_current_advertising - total_current_platform_fees
         total_previous_profit_cm2 = total_previous_profit - total_previous_advertising - total_previous_platform_fees
 
+        # ---------------------------
+        # PROFIT % (CM2 Margin %)
+        # ---------------------------
+
+        total_current_net_sales = float(curr_aligned_totals.get("net_sales", 0) or 0)
+        total_previous_net_sales = float(prev_aligned_totals.get("net_sales", 0) or 0)
+
+        if total_current_net_sales != 0:
+            total_current_profit_percentage = (
+                total_current_profit_cm2 / total_current_net_sales
+            ) * 100.0
+        else:
+            total_current_profit_percentage = 0.0
+
+        if total_previous_net_sales != 0:
+            total_previous_profit_percentage = (
+                total_previous_profit_cm2 / total_previous_net_sales
+            ) * 100.0
+        else:
+            total_previous_profit_percentage = 0.0
+
         aligned_totals_payload = {
             "total_current_profit": total_current_profit,
             "total_previous_profit": total_previous_profit,
+            "total_current_profit_percentage": total_current_profit_percentage,
+            "total_previous_profit_percentage": total_previous_profit_percentage,
 
             "total_current_platform_fees": total_current_platform_fees,
             "total_previous_platform_fees": total_previous_platform_fees,

@@ -2268,8 +2268,8 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
             ) AS other_total,
 
             (
-                COALESCE(SUM(COALESCE(mi.customer_shipments, 0)), 0)
-              - COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
+            COALESCE(SUM(COALESCE(mi.customer_shipments, 0)), 0)
+            + COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
             ) AS sold_total,
 
             (
@@ -2306,9 +2306,9 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
                 )
 
                 - ABS(
-                    COALESCE(SUM(COALESCE(mi.customer_shipments, 0)), 0)
-                  - COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
-                )
+                        COALESCE(SUM(COALESCE(mi.customer_shipments, 0)), 0)
+                    + COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
+                    )
 
                 - COALESCE(
                     SUM(COALESCE(mi.ending_warehouse_balance, 0))
