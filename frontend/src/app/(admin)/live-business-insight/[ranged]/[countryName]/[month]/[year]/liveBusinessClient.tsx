@@ -139,6 +139,7 @@ interface ApiResponse {
     summary_text: string;
     metric_bullets: string[];
   };
+
   objective_context?: {
     growth_intent?: string;
     inventory_clearance_priority?: boolean;
@@ -147,17 +148,21 @@ interface ApiResponse {
       alert_bullets?: string[];
       summary_text?: string;
     };
-
     ads_recommendation?: string;
     journey_summary?: string[];
     recommendation?: string;
   };
 
+  // ✅ ADD THESE (top-level)
+  ads_recommendation?: string;
+  inventory_summary?: {
+    alert_bullets?: string[];
+    summary_text?: string;
+  };
 
   overall_actions?: string[];
   recommended_actions_mtd?: Record<string, string>;
   remaining_skus_recommendation?: string;
-
 }
 
 // =========================
