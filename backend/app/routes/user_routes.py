@@ -464,15 +464,19 @@ def get_user_data():
 
     # ✅ Identify if member login
     is_member = payload.get("is_member") is True
-    member_id = payload.get("member_id")  
+    member_id = payload.get("member_id")
     marketplace_ids = payload.get("marketplace_ids")
     modules = payload.get("modules")
     countries = payload.get("countries")
-    email = payload.get("email")
-
+    token_email = payload.get("email")
 
     member_name = None
     member_role = None
+
+    # ✅ Owner scoped user record
+    user = User.query.filter_by(id=int(user_id)).first()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
 
     # ✅ If member token, load member record (optional but useful)
     if is_member and member_id:
@@ -481,13 +485,8 @@ def get_user_data():
             member_name = getattr(m, "member_name", None)
             member_role = getattr(m, "role", None)
 
-    # ✅ Owner scoped user record
-    user = User.query.filter_by(id=user_id).first()
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-
     # ✅ Fetch amazon tokens row (can be None if not connected)
-    arow = amazon_user.query.filter_by(user_id=user_id).first()
+    arow = amazon_user.query.filter_by(user_id=int(user_id)).first()
 
     spapi_connected = False
     ads_connected = False
@@ -509,9 +508,10 @@ def get_user_data():
         return jsonify({'error': 'Failed to update amazon flags', 'details': str(e)}), 500
 
     # ✅ pick the correct email for FE display
-    effective_email = email if is_member else user.email
+    effective_email = token_email if is_member else user.email
 
-    return jsonify({
+    # ✅ Base response (safe for both member + owner)
+    response = {
         # identity
         "is_member": is_member,
         "user_id": int(user_id),
@@ -521,34 +521,64 @@ def get_user_data():
         "member_name": member_name,
         "member_role": member_role,
 
-        # ✅ emails (no overwriting)
-        "email": effective_email,                 # ✅ FE should use this
+        # emails
+        "email": effective_email,                 # FE should use this
         "owner_email": user.email,                # always owner email
-        "member_email": email if is_member else None,
+        "member_email": token_email if is_member else None,
 
+        # token scoped permissions
         "marketplace_ids": marketplace_ids,
         "modules": modules,
         "countries": countries,
 
-        # user fields
-        "name": user.name,
-        "company_name": user.company_name,
-        "brand_name": user.brand_name,
-        "phone_number": user.phone_number,
-        "annual_sales_range": user.annual_sales_range,
-        "password": user.password,
-        "marketplace_id": user.marketplace_id,
-        "country": user.country,
-        "homeCurrency": user.homeCurrency,
-        "target_sales": float(user.target_sales) if user.target_sales is not None else None,
-        "tax_id": user.tax_id,
-        "address": user.address,
-
         # amazon flags
         "amazon_user_exists": user.amazon_user_exists,
         "amazon_ads_exists": user.amazon_ads_exists,
-    }), 200
+    }
 
+    # ✅ OWNER LOGIN: show all user fields + all members list
+    if not is_member:
+        response.update({
+            "name": user.name,
+            "company_name": user.company_name,
+            "brand_name": user.brand_name,
+            "phone_number": user.phone_number,
+            "annual_sales_range": user.annual_sales_range,
+
+            # 🚫 NEVER expose password in response
+            # "password": user.password,
+
+            "marketplace_id": user.marketplace_id,
+            "country": user.country,
+            "homeCurrency": user.homeCurrency,
+            "target_sales": float(user.target_sales) if user.target_sales is not None else None,
+            "tax_id": user.tax_id,
+            "address": user.address,
+        })
+
+        # ✅ Include all members under this owner
+        members = Member.query.filter_by(owner_user_id=int(user_id)).all()
+        response["members"] = [
+            {
+                "id": int(m.id),
+                "member_name": getattr(m, "member_name", None),
+                "email": getattr(m, "email", None),
+                "role": getattr(m, "role", None),
+                "is_active": getattr(m, "is_active", None),
+
+                # optional permissions/scope fields (only if exist on Member model)
+                "modules": getattr(m, "modules", None),
+                "countries": getattr(m, "countries", None),
+                "marketplace_ids": getattr(m, "marketplace_ids", None),
+
+                # optional timestamps
+                "created_at": getattr(m, "created_at", None),
+                "updated_at": getattr(m, "updated_at", None),
+            }
+            for m in members
+        ]
+
+    return jsonify(response), 200
 
 
 @user_bp.route('/passcountry', methods=['GET'])

@@ -52,28 +52,22 @@ class Member(db.Model):
 
     id = Column(Integer, primary_key=True)
     owner_user_id = Column(Integer, nullable=False, index=True)
-    member_name = Column(String(150), nullable=True)  # ✅ NEW
-
-
+    member_name = Column(String(150), nullable=True)
     email = Column(String(150), nullable=False)
     password = Column(String(500), nullable=False)
-
     is_verified = Column(Boolean, default=False)
-
-    # ✅ NEW: role
-    role = Column(String(50), nullable=False, default="Marketing")  # or no default if you want required
-
+    role = Column(String(50), nullable=False, default="Marketing")
     marketplace_ids = Column(JSON, nullable=True)
     countries = Column(JSON, nullable=True)
     modules = Column(JSON, nullable=True)
-
     token_name = Column(String(80), unique=True, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # ✅ NEW (for secure reset single-use)
+    password_changed_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("owner_user_id", "email", name="uq_member_owner_email"),
     )
-
 
 # ------------------------------------------------- User Models -------------------------------------------------
 
