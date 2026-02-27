@@ -2873,7 +2873,6 @@ const extractJourneyAndRecommendation = (text: string) => {
               className={[
                 "bg-white rounded-xl  border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
                 "border-t-4",
-                borderColor,
                 "p-3 space-y-3",
               ].join(" ")}
             >

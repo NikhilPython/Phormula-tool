@@ -1071,7 +1071,7 @@ const ProductInsightsSection = ({
               className={[
                 "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
                 "border-t-4", // ✅ top border like SS2
-                borderColor,
+
                 "p-3 space-y-3",
               ].join(" ")}
             >
@@ -3332,7 +3332,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     {(focusedChart === null || focusedChart === "trend") && (
                       <div
                         className={[
-                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
                           "cursor-default select-none",
                           focusedChart === "trend" ? "cursor-default" : "",
                         ].join(" ")}
@@ -3361,7 +3361,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     {(focusedChart === null || focusedChart === "pnl") && (
                       <div
                         className={[
-                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
                           "cursor-default select-none",
                           "min-h-0 overflow-hidden",
                           "flex flex-col",
@@ -3480,7 +3480,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     {(focusedChart === null || focusedChart === "trend") && (
                       <div
                         className={[
-                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
                           "cursor-default select-none",
                           focusedChart === "trend" ? "cursor-default" : "",
                         ].join(" ")}
@@ -3508,7 +3508,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     {(focusedChart === null || focusedChart === "pnl") && (
                       <div
                         className={[
-                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
                           "cursor-default select-none",
                           "min-h-0 overflow-hidden",
                           "flex flex-col",
@@ -3626,7 +3626,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     {(focusedChart === null || focusedChart === "trend") && (
                       <div
                         className={[
-                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
                           "cursor-default select-none",
                           focusedChart === "trend" ? "cursor-default" : "",
                         ].join(" ")}
@@ -3656,7 +3656,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     {(focusedChart === null || focusedChart === "pnl") && (
                       <div
                         className={[
-                          "rounded-xl border border-gray-300 bg-white p-4",
+                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
                           "cursor-default select-none",
                           "min-h-0 overflow-hidden",
                           "flex flex-col",
@@ -3769,7 +3769,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         {/* ---------- TAB 2: BUSINESS SUMMARY ---------- */}
         {activeTab === "businessSummary" && range === "monthly" && allDropdownsSelected && (
 
-          <div id="business-summary" className="scroll-mt-[80px] space-y-6 bg-white p-3">
+          <div id="business-summary" className="scroll-mt-[80px] space-y-6 rounded-xl border border-slate-200 bg-white shadow-sm p-3">
 
             {aiPanel?.objective && (
               <MonthlyObjectiveStrip objective={aiPanel.objective} />
@@ -3796,7 +3796,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
         {activeTab === "businessSummary" && range === "quarterly" && allDropdownsSelected && (
 
-          <div id="business-summary" className="scroll-mt-[80px] space-y-6 bg-white p-3">
+          <div id="business-summary" className="scroll-mt-[80px] space-y-6 rounded-xl border border-slate-200 bg-white shadow-sm p-3">
 
             {aiPanel?.objective && (
               <MonthlyObjectiveStrip objective={aiPanel.objective} />
@@ -3824,7 +3824,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
         {activeTab === "businessSummary" && range === "yearly" && allDropdownsSelected && (
 
-          <div id="business-summary" className="scroll-mt-[80px] space-y-6 bg-white p-3">
+          <div id="business-summary" className="scroll-mt-[80px] space-y-6 rounded-xl border border-slate-200 bg-white shadow-sm p-3">
 
             {aiPanel?.objective && (
               <MonthlyObjectiveStrip objective={aiPanel.objective} />
