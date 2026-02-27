@@ -285,8 +285,8 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
 
   const selectCls =
     "appearance-none bg-transparent text-center text-[#414042] focus:outline-none cursor-pointer " +
-    "px-1 py-0.5 pr-5 lg:px-1.5 lg:py-1 lg:pr-7 xl:px-2 xl:py-1 xl:pr-6 " +
-    "text-[10px] sm:text-xs lg:text-sm 2xl:text-sm";
+    "px-1 py-0.5 pr-5 sm:px-1.5 sm:py-1 sm:pr-7 2xl:px-2 2xl:py-1 2xl:pr-6 " +
+    "text-[10px] sm:text-xs 2xl:text-sm";
 
 
   return (
