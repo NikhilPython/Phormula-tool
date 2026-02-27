@@ -387,8 +387,6 @@ export default function SalesTargetCard({
       ? (biAlignedTotals.total_previous_rembursement_fee ?? 0)
       : (previousReimbursement ?? 0);
 
-      console.log("Reimbursement curr and prev", currentReimbursement, previousReimbursement);
-
   const reimbMax = Math.max(reimbNow, reimbPrev, 1);
   const reimbNowPct = (reimbNow / reimbMax) * 100;
   const reimbPrevPct = (reimbPrev / reimbMax) * 100;

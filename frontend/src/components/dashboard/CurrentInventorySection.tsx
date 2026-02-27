@@ -629,14 +629,14 @@ export default function CurrentInventorySection({
   /* -------- Build DataTable columns -------- */
 
   const columns: ColumnDef<InventoryUiRow>[] = useMemo(() => {
-    const responsiveWidth = "w-24 lg:min-w-fit";
+    const responsiveWidth = "w-20 lg:min-w-fit";
 
     return [
-      { key: "sno", header: "Sno.", width: responsiveWidth, cellClassName: "text-center" },
+      { key: "sno", header: "Sno.", width: "w-[40px]", cellClassName: "text-center" },
       {
         key: "productName",
         header: "Product Name",
-        width: "w-40 lg:min-w-fit",
+        width: "w-[120px]",
         cellClassName: "text-left",
         headerClassName: "text-left break-words",
       },
@@ -681,7 +681,7 @@ export default function CurrentInventorySection({
       {
         key: "alert",
         header: "Inventory Alerts",
-        width: responsiveWidth,
+        width: "w-32 lg:min-w-fit",
         cellClassName: "text-center font-medium",
         headerClassName: "break-words",
       },

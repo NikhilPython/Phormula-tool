@@ -127,7 +127,6 @@ export default function SalesTargetStatsCard({
       ? ((currMtd - expectedSalesTillDate) / targetHome) * 100
       : 0;
 
-  console.log("Today Home", todayHome);
 
   return (
     <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
