@@ -550,6 +550,25 @@ const mergeToSingleBullet = (arr: string[]) => {
   return [cleaned.join(" ")]; // single bullet line
 };
 
+const getPeriodBadge = (range: RangeType, year: string, month?: string, quarter?: string) => {
+  const yy = String(year || "").slice(-2);
+
+  if (range === "monthly" && month) {
+    const shortMonth = month.slice(0, 3);
+    return `${shortMonth}'${yy}`; // Jan'26
+  }
+
+  if (range === "quarterly" && quarter) {
+    return `${quarter}'${yy}`;    // Q1'26
+  }
+
+  if (range === "yearly" && year) {
+    return String(year);         // 2026
+  }
+
+  return "";
+};
+
 
 
 
@@ -561,16 +580,14 @@ type RightProductDrawerProps = {
   objective?: ObjectivePayload;
   recObj?: any;
 
-  // ❌ REMOVE
-  // perfLoading?: boolean;
-  // perfError?: string | null;
-  // perfData?: any;
-  // perfMetric?: "net_sales" | "units";
-
-  // ✅ ADD (so we can pass proper period)
   countryName: string;
   month: string;
   year: string;
+
+  // ✅ add
+  range: RangeType;
+  quarter?: string;
+  drawerPeriodText?: string;
 };
 
 const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
@@ -582,6 +599,9 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   countryName,
   month,
   year,
+  range,
+  quarter,
+  drawerPeriodText,
 }) => {
   const inventoryText =
     recObj?.inventory_recommendation ||
@@ -589,6 +609,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
   const inventoryRecoBullets = mergeToSingleBullet(toBullets(inventoryText));
   const adsRecoBullets = toBullets(recObj?.ads_recommendation);
+  const periodBadge = getPeriodBadge(range, year, month, quarter);
 
   if (!open || !block) return null;
 
@@ -616,7 +637,19 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
             {/* header */}
             <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm text-slate-500">Detailed View</div>
+               <div className="flex items-center gap-2">
+      <div className="text-sm text-slate-500">Detailed View</div>
+
+      {drawerPeriodText ? (
+  <span className="text-[#5EA68E] font-semibold text-sm">
+    {drawerPeriodText}
+  </span>
+) : periodBadge ? (
+  <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700">
+    {periodBadge}
+  </span>
+) : null}
+    </div>
                 <div className="text-lg font-semibold text-slate-900">{block.name}</div>
               </div>
               <button
@@ -867,11 +900,15 @@ const ProductInsightsSection = ({
   selectedQuarter,
   homeCurrency,
   countryName, // ✅ ADD
+  drawerPeriodText,
+selectedMonth,
 }: {
   blocks: ProductInsightBlock[];
   objective?: ObjectivePayload;
   recommendationsMap?: RecommendationsMap;
   nameToSkuMap?: Record<string, string>;
+  drawerPeriodText?: string;
+selectedMonth?: string; // 👈 optional but useful
 
   // ✅ ADD TYPES
   range: RangeType;                 // "monthly" | "quarterly" | "yearly" | ""
@@ -1098,18 +1135,23 @@ const ProductInsightsSection = ({
 
       {/* ✅ Right Drawer */}
       <RightProductDrawer
-        open={!!selectedBlock}
-        onClose={() => {
-          setSelectedBlock(null);
-          setSelectedRecObj(null);
-        }}
-        block={selectedBlock}
-        objective={objective}
-        recObj={selectedRecObj}
-        countryName={countryName}
-        month=""              // ✅ no monthly/quarterly
-        year={selectedYear}   // ✅ keep year if you want, but time_range will be Yearly anyway
-      />
+  open={!!selectedBlock}
+  onClose={() => {
+    setSelectedBlock(null);
+    setSelectedRecObj(null);
+  }}
+  block={selectedBlock}
+  objective={objective}
+  recObj={selectedRecObj}
+  countryName={countryName}
+
+  // ✅ pass correct period
+  range={range}
+  year={selectedYear}
+  month={range === "monthly" ? /* selectedMonth parent se pass karna hoga */ "" : ""}
+  quarter={range === "quarterly" ? selectedQuarter : ""}
+  drawerPeriodText={drawerPeriodText} // ✅ ADD
+/>
     </div>
   );
 };
@@ -1249,6 +1291,34 @@ type AiSingleInsightCardProps = {
   countryName: string; // ✅ ADD
 };
 
+  const formatSummaryPeriod = (text?: string) => {
+  if (!text) return "";
+
+  const m = text.match(/\(([^)]+)\)/);     // pick "(...)" safely
+  if (!m) return "";
+
+  const inside = m[1].trim();             // e.g. "2026 vs 2025" OR "Jan 2026 vs Jan 2025"
+  const [leftRaw, rightRaw] = inside.split(/\s*vs\s*/i);
+  if (!leftRaw || !rightRaw) return `(${inside})`;
+
+  const formatPart = (part: string) => {
+    const p = part.trim();
+
+    // ✅ Case 1: Year only ("2026")
+    if (/^\d{4}$/.test(p)) return p;
+
+    // ✅ Case 2: Month Year ("January 2026")
+    const [month, year] = p.split(/\s+/);
+    if (!month || !year) return p;
+
+    const shortMonth = month.slice(0, 3);
+    const shortYear = year.slice(-2);
+    return `${shortMonth}’${shortYear}`;
+  };
+
+  return `(${formatPart(leftRaw)} vs ${formatPart(rightRaw)})`;
+};
+
 const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   loading,
   error,
@@ -1300,40 +1370,16 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
     return null;
   }
 
-  // 🔹 Split summary into metrics + narrative
-  const summaryMetrics = summaryBullets
-    .filter((l) => l.includes(":"))
-    .map((l) => {
-      const [label, ...rest] = l.split(":");
-      return {
-        label: label.trim(),
-        value: rest.join(":").trim(),
-      };
-    });
+  
 
-  const formatSummaryPeriod = (text?: string) => {
-    if (!text || !text.includes("(")) return "";
 
-    const inside = text.substring(
-      text.indexOf("(") + 1,
-      text.lastIndexOf(")")
-    );
-
-    const formatPart = (part: string) => {
-      const [month, year] = part.trim().split(" ");
-      const shortMonth = month.slice(0, 3);
-      const shortYear = year?.slice(-2);
-      return `${shortMonth}’${shortYear}`;
-    };
-
-    const [left, right] = inside.split("vs");
-
-    return `(${formatPart(left)} vs ${formatPart(right)})`;
-  };
 
   const narrativeInsights = summaryBullets.filter(
     (l) => !l.includes(":")
   );
+
+  const drawerPeriodText =
+  narrativeInsights?.[0] ? formatSummaryPeriod(narrativeInsights[0]) : "";
 
   return (
     <div className="flex flex-col  gap-5">
@@ -1375,6 +1421,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
               selectedQuarter={selectedQuarter}
               homeCurrency={homeCurrency}
               countryName={countryName} // ✅ ADD
+               drawerPeriodText={drawerPeriodText}   // ✅ ADD THIS
             />
 
 

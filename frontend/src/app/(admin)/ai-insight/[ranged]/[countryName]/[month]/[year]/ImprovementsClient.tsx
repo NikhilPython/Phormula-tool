@@ -3542,9 +3542,10 @@ const MonthsforBI: React.FC = () => {
                       {pill("Profit Priority", objectiveObj?.profit_priority)}
                     </div>
                   </div>
-                  {renderBullets(insightData.insight)}
                   {bigBox("Recommendation", insightData.recommendation)}
                   {bigBox("Inventory Recommendation", insightData.inventory_recommendation)}
+                  {renderBullets(insightData.insight)}
+                  
                 </div>
 
 
