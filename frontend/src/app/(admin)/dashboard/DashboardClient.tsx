@@ -3729,7 +3729,6 @@ export default function DashboardPage() {
         toNumber(sponsoredProductsSpend + sponsoredBrandSpend)
     );
     const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
-    console.log("cm2Profit", cm2Profit)
 
 
     const costOfAds = Math.abs(
@@ -4015,7 +4014,7 @@ export default function DashboardPage() {
         };
     }, [rangeActive, liveBiPayload]);
 
-    const targets_todayHome = targetKpisFromBi ? targetKpisFromBi.todayHome : stats_todayHome;
+    const targets_todayHome = stats_todayHome;
     const targets_mtdHome = targetKpisFromBi ? targetKpisFromBi.mtdHome : stats_mtdHome;
     const targets_lastMonthTotalHome = targetKpisFromBi ? targetKpisFromBi.lastMonthTotalHome : stats_lastMonthTotalHome;
     const targets_lastMonthToDateHome = targetKpisFromBi ? targetKpisFromBi.lastMonthToDateHome : stats_lastMtdHome;
@@ -4069,8 +4068,8 @@ export default function DashboardPage() {
             )}
 
 
-            <div className="sticky top-0 z-40 bg-[#F7F7F7] border-b border-gray-200">
-                <div className="mb-2 2xl:mb-4 flex items-center justify-between gap-2">
+            <div className="sticky top-0 z-40 bg-[#F7F7F7] ">
+                <div className="flex items-center justify-between gap-2">
 
                     {/* LEFT SIDE */}
                     <div className="flex flex-col leading-tight min-w-0">
@@ -4117,7 +4116,8 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="sticky max-[480px]:top-[44px] max-[640px]:top-[44px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
+    max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
                 <SegmentedToggle<TopTab>
                     value={activeTab}
                     options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
@@ -4163,7 +4163,7 @@ export default function DashboardPage() {
                         {/* GLOBAL CARD */}
                         {!isCountryMode && hasGlobalCard && (
                             <div className="flex">
-                                <div className="w-full rounded-2xl border bg-white p-4 lg:p-3 2xl:p-5 shadow-sm">
+                                <div className="w-full rounded-xl border bg-white p-4 lg:p-3 2xl:p-5 shadow-sm">
                                     <div className="mb-4 flex items-start justify-between gap-3">
                                         <div className="flex items-baseline gap-2">
                                             <PageBreadcrumb pageTitle="Global" variant="page" align="left" />
@@ -4434,7 +4434,7 @@ export default function DashboardPage() {
                         {hasAmazonCard && (
                             <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-4">
                                 {/* Amazon KPI Box */}
-                                <div className="w-full rounded-2xl border bg-white p-3 2xl:p-5 shadow-sm">
+                                <div className="w-full rounded-xl border bg-white p-3 2xl:p-5 shadow-sm">
                                     <div className="mb-3 lg:mb-2 2xl:mb-4 flex flex-row gap-3 items-start md:items-start md:justify-between">
                                         <div className="flex flex-col flex-1 min-w-0">
                                         </div>
@@ -4705,7 +4705,7 @@ export default function DashboardPage() {
 
                                 {/* Live BI graph */}
                                 {showLiveBI && isCountryMode && (
-                                    <div className="w-full rounded-2xl border bg-white p-3 lg:p-3 2xl:p-5 shadow-sm overflow-x-hidden">
+                                    <div className="w-full rounded-xl border bg-white p-3 lg:p-3 2xl:p-5 shadow-sm overflow-x-hidden">
                                         <div className="w-full max-w-full min-w-0">
 
                                             {/* ✅ CASE 1: 202 → processing */}
@@ -4752,7 +4752,7 @@ export default function DashboardPage() {
                         {/* Shopify Block */}
                         {!isCountryMode && hasShopifyCard && (
                             <div className="flex lg:flex-1">
-                                <div className="w-full rounded-2xl border bg-white p-5 shadow-sm">
+                                <div className="w-full rounded-xl border bg-white p-5 shadow-sm">
                                     <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                                         <div className="flex flex-col">
                                             <div className="flex items-baseline gap-2">
@@ -4768,7 +4768,7 @@ export default function DashboardPage() {
                                     {/* Shopify Block */}
                                     {!isCountryMode && hasShopifyCard && (
                                         <div className="flex lg:flex-1">
-                                            <div className="w-full rounded-2xl border bg-white p-5 shadow-sm">
+                                            <div className="w-full rounded-xl border bg-white p-5 shadow-sm">
                                                 <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between ">
                                                     <div className="flex flex-col">
                                                         <div className="flex items-baseline gap-2">
@@ -4920,7 +4920,7 @@ export default function DashboardPage() {
                     // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
                     <div
                         id="targets-action-items"
-                        className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
+                        className="mt-6 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
                     >
                         <div className="w-full max-w-full min-w-0">
                             <LiveBiLineGraph
@@ -4979,7 +4979,7 @@ export default function DashboardPage() {
 
 
             {activeTab === "summary" && (
-                <div className="mt-4 w-full overflow-x-hidden">
+                <div className="w-full overflow-x-hidden">
                     {showLiveBI && liveBiPayload && (
                         <LiveBusinessClient
                             countryName={countryName}
@@ -5145,7 +5145,7 @@ export default function DashboardPage() {
 
             {activeTab === "productwise" && (
                 <>
-                    <div id="pnl-mtd" className="scroll-mt-[80px] mt-4 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
+                    <div id="pnl-mtd" className="scroll-mt-[80px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
                         <div className="mb-3 relative flex items-center justify-between gap-3">
 
                             {/* LEFT: Title */}
@@ -5407,7 +5407,7 @@ export default function DashboardPage() {
                                 isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
                             ].join(" ")}
                         >
-                            <div className="rounded-2xl border bg-white p-5 shadow-sm min-w-0">
+                            <div className="rounded-xl border bg-white p-5 shadow-sm min-w-0">
                                 <div className="md:mb-3 flex items-center justify-between">
                                     <div className="text-sm text-charcoal-500">
                                         <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">

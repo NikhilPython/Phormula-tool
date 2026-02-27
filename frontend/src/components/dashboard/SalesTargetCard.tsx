@@ -435,7 +435,7 @@ export default function SalesTargetCard({
 
 
   return (
-    <div className="rounded-2xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
+    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
       {/* Legend */}
       <div className="mt-2 2xl:mt-2 flex items-center justify-center gap-6 text-[10px] 2xl:text-xs">
         <div className="flex items-center gap-2">

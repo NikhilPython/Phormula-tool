@@ -691,7 +691,7 @@ export default function CurrentInventorySection({
   return (
     <div
       className="
-        mt-4 rounded-2xl border bg-white p-4 shadow-sm
+        mt-2 md:mt-4 rounded-2xl border bg-white p-4 shadow-sm
         w-full max-w-full overflow-hidden
         flex flex-col
       "
