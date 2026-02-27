@@ -637,19 +637,19 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
             {/* header */}
             <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
               <div>
-               <div className="flex items-center gap-2">
-      <div className="text-sm text-slate-500">Detailed View</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-slate-500">Detailed View</div>
 
-      {drawerPeriodText ? (
-  <span className="text-[#5EA68E] font-semibold text-sm">
-    {drawerPeriodText}
-  </span>
-) : periodBadge ? (
-  <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700">
-    {periodBadge}
-  </span>
-) : null}
-    </div>
+                  {drawerPeriodText ? (
+                    <span className="text-[#5EA68E] font-semibold text-sm">
+                      {drawerPeriodText}
+                    </span>
+                  ) : periodBadge ? (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700">
+                      {periodBadge}
+                    </span>
+                  ) : null}
+                </div>
                 <div className="text-lg font-semibold text-slate-900">{block.name}</div>
               </div>
               <button
@@ -901,14 +901,14 @@ const ProductInsightsSection = ({
   homeCurrency,
   countryName, // ✅ ADD
   drawerPeriodText,
-selectedMonth,
+  selectedMonth,
 }: {
   blocks: ProductInsightBlock[];
   objective?: ObjectivePayload;
   recommendationsMap?: RecommendationsMap;
   nameToSkuMap?: Record<string, string>;
   drawerPeriodText?: string;
-selectedMonth?: string; // 👈 optional but useful
+  selectedMonth?: string; // 👈 optional but useful
 
   // ✅ ADD TYPES
   range: RangeType;                 // "monthly" | "quarterly" | "yearly" | ""
@@ -1135,23 +1135,23 @@ selectedMonth?: string; // 👈 optional but useful
 
       {/* ✅ Right Drawer */}
       <RightProductDrawer
-  open={!!selectedBlock}
-  onClose={() => {
-    setSelectedBlock(null);
-    setSelectedRecObj(null);
-  }}
-  block={selectedBlock}
-  objective={objective}
-  recObj={selectedRecObj}
-  countryName={countryName}
+        open={!!selectedBlock}
+        onClose={() => {
+          setSelectedBlock(null);
+          setSelectedRecObj(null);
+        }}
+        block={selectedBlock}
+        objective={objective}
+        recObj={selectedRecObj}
+        countryName={countryName}
 
-  // ✅ pass correct period
-  range={range}
-  year={selectedYear}
-  month={range === "monthly" ? /* selectedMonth parent se pass karna hoga */ "" : ""}
-  quarter={range === "quarterly" ? selectedQuarter : ""}
-  drawerPeriodText={drawerPeriodText} // ✅ ADD
-/>
+        // ✅ pass correct period
+        range={range}
+        year={selectedYear}
+        month={range === "monthly" ? /* selectedMonth parent se pass karna hoga */ "" : ""}
+        quarter={range === "quarterly" ? selectedQuarter : ""}
+        drawerPeriodText={drawerPeriodText} // ✅ ADD
+      />
     </div>
   );
 };
@@ -1291,7 +1291,7 @@ type AiSingleInsightCardProps = {
   countryName: string; // ✅ ADD
 };
 
-  const formatSummaryPeriod = (text?: string) => {
+const formatSummaryPeriod = (text?: string) => {
   if (!text) return "";
 
   const m = text.match(/\(([^)]+)\)/);     // pick "(...)" safely
@@ -1370,7 +1370,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
     return null;
   }
 
-  
+
 
 
 
@@ -1379,7 +1379,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   );
 
   const drawerPeriodText =
-  narrativeInsights?.[0] ? formatSummaryPeriod(narrativeInsights[0]) : "";
+    narrativeInsights?.[0] ? formatSummaryPeriod(narrativeInsights[0]) : "";
 
   return (
     <div className="flex flex-col  gap-5">
@@ -1421,7 +1421,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
               selectedQuarter={selectedQuarter}
               homeCurrency={homeCurrency}
               countryName={countryName} // ✅ ADD
-               drawerPeriodText={drawerPeriodText}   // ✅ ADD THIS
+              drawerPeriodText={drawerPeriodText}   // ✅ ADD THIS
             />
 
 
