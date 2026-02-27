@@ -2621,8 +2621,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       {/* ===================== NEW: TABS (UNDER HEADER) ===================== */}
 
-      <div className="sticky top-[59px] z-30 bg-[#F7F7F7] border-b border-gray-200 
-    py-2">
+      <div className="sticky max-[480px]:top-[97px] top-[83px] sm:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
+    max-[480px]:pb-1 py-0 sm:py-2">
         <SegmentedToggle<DashboardTab>
           value={activeTab}
           options={TAB_OPTIONS}

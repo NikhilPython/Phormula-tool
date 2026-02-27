@@ -17,6 +17,7 @@ import SegmentedToggle from '@/components/ui/SegmentedToggle';
 import { AiButton } from '@/components/ui/button/AiButton';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
+import { motion } from "framer-motion";
 
 
 // type MonthsforBIProps = {
@@ -304,6 +305,15 @@ export default function LiveBusinessClient({
   } | null>(null);
 
   const [pageLoading, setPageLoading] = useState<boolean>(false);
+  const [recDrawerOpen, setRecDrawerOpen] = useState(false);
+const [selectedRec, setSelectedRec] = useState<{
+  productName: string;
+  metrics: { label: string; value: string; color?: string }[];
+  journeyPoints: string[];
+  recommendationPoints: string[];
+  actions: string[];
+} | null>(null);
+
   const isGlobalData = () => normalizedCountry === 'global';
 
   const getMonthYearFromLabel = (label?: string) => {
@@ -317,6 +327,30 @@ export default function LiveBusinessClient({
 
   const prevPeriod = getMonthYearFromLabel(periods?.previous?.label);
   const currPeriod = getMonthYearFromLabel(periods?.current_mtd?.label);
+
+  const splitIntoPoints = (para: string) =>
+  (para || "")
+    .split(/(?<=\.)\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+const extractJourneyAndRecommendation = (text: string) => {
+  const journeyMatch = text?.match(
+    /Product\s*Journey\s*:\s*([\s\S]*?)(?=Recommendation\s*:|$)/i
+  );
+  const recommendationMatch = text?.match(/Recommendation\s*:\s*([\s\S]*)/i);
+
+  const journeyText = journeyMatch?.[1]?.trim() || "";
+  let recommendationText = recommendationMatch?.[1]?.trim() || "";
+
+  // adsRecommendation ko recommendation ke saath attach (same as tumhara current)
+  if (adsRecommendation) recommendationText = `${recommendationText} ${adsRecommendation}`.trim();
+
+  return {
+    journeyPoints: splitIntoPoints(journeyText),
+    recommendationPoints: splitIntoPoints(recommendationText),
+  };
+};
 
   const renderJourneyAndRecommendation = (text: string) => {
     if (!text) return null;
@@ -1890,106 +1924,57 @@ export default function LiveBusinessClient({
     });
   };
 
-  const ActionCard = ({
-    title,
-    metrics,
-    insight,
-    actions,
-  }: {
-    title: string;
-    metrics: { label: string; value: string; color?: string }[];
-    insight: string;
-    actions: string[];
-  }) => {
-    return (
-      <div className="bg-[#F5F7FA] border border-[#D9D9D9] rounded-xl p-4 space-y-2">
-        {/* Title */}
-        <div className="font-bold text-sm text-charcoal-600">
-          Product Name - {title}
-        </div>
 
-        {/* Metrics */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {metrics.map((m, i) => (
-            <div
-              key={i}
-              className="bg-white rounded-lg p-2 text-center shadow-sm"
-            >
-              <div className="text-xs text-gray-500">{m.label}</div>
-              <div
-                className="font-bold text-sm"
-                style={{ color: m.color || "#414042" }}
-              >
-                {m.value}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Insight */}
-        <p className="text-sm text-charcoal-600">
-          {insight}
-        </p>
-
-        {/* Actions */}
-        {actions.length > 0 && (
-          <div className="text-sm text-charcoal-600">
-            <span className="font-bold">Action – </span>
-            <span>{actions.join(" ")}</span>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const parseRecommendedAction = (raw: string) => {
-    const lines = raw
-      .split("\n")
-      .map(l => l.trim())
-      .filter(Boolean);
+  const lines = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 
-    // 1️⃣ Product name = first non-empty line
-    const productName = lines[0];
+  const productName = lines[0] || "";
 
-    const metrics: { label: string; value: string; color?: string }[] = [];
-    const actions: string[] = [];
-    const insightLines: string[] = [];
+  const metrics: { label: string; value: string; color?: string }[] = [];
+  const actions: string[] = [];
+  const insightLines: string[] = [];
 
-    const metricRegex =
-      /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit)\s*:\s*(.+)$/i;
+  const metricRegex =
+    /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit)\s*:\s*(.+)$/i;
 
-    for (const line of lines.slice(1)) {
-      // 2️⃣ Metrics
-      const metricMatch = line.match(metricRegex);
-      if (metricMatch) {
-        const label = metricMatch[1];
-        const value = metricMatch[2];
+  for (const line of lines.slice(1)) {
+    const metricMatch = line.match(metricRegex);
+    if (metricMatch) {
+      const label = metricMatch[1];
+      const value = metricMatch[2];
 
-        metrics.push({
-          label,
-          value,
-          color: value.includes("-") ? "#FF5C5C" : "#5EA68E",
-        });
-        continue;
-      }
-
-      // 3️⃣ Action
-      if (line.toLowerCase().startsWith("action:")) {
-        actions.push(line.replace(/action\s*:\s*/i, ""));
-        continue;
-      }
-
-      // 4️⃣ Insight text
-      insightLines.push(line);
+      metrics.push({
+        label,
+        value,
+        color: value.includes("-") ? "#FF5C5C" : "#5EA68E",
+      });
+      continue;
     }
 
-    return {
-      productName,
-      metrics,
-      insight: insightLines.join(" "),
-      actions,
-    };
+    if (line.toLowerCase().startsWith("action:")) {
+      actions.push(line.replace(/action\s*:\s*/i, ""));
+      continue;
+    }
+
+    insightLines.push(line);
+  }
+
+  const insightText = insightLines.join(" ").trim();
+  const { journeyPoints, recommendationPoints } = extractJourneyAndRecommendation(insightText);
+
+  return {
+    productName,
+    metrics,
+    insightText,
+    journeyPoints,
+    recommendationPoints,
+    actions,
   };
+};
 
 
   const formatBulletLine = (line: string) => {
@@ -2038,95 +2023,6 @@ export default function LiveBusinessClient({
     });
   };
 
-  const renderAiActionLine = (line: string) => {
-    if (!line) return null;
-
-    // 1) Remove leading "Product name -"
-    const cleaned = line.replace(/^\s*Product\s*name\s*[-–:]\s*/i, "").trim();
-
-    // 2) Extract product name safely:
-    //    take text from start until we hit common sentence starters like "The/There/A/An/Increase/Decrease/..."
-    const productMatch = cleaned.match(
-      /^(.+?)(?=\s+(?:The|There|A|An|Increase|Decreased|Decreasing|Increased|Increasing)\b|$)/i
-    );
-
-    const productName = (productMatch?.[1] || "").trim();
-
-    // 3) Remaining text (everything after product name)
-    let rest = cleaned;
-    if (productName) {
-      // remove ONLY first occurrence at the start
-      rest = rest.replace(new RegExp("^" + productName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*", "i"), "");
-    }
-    rest = rest.trim();
-
-    // 4) Split into sentences (keeps simple, works for your AI text)
-    const sentences = rest
-      .split(/(?<=[.!?])\s+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const verbs = [
-      "Check",
-      "Review",
-      "Monitor",
-      "Increase",
-      "Reduce",
-      "Maintain",
-      "Push",
-      "If your objective"
-    ];
-
-    const isAction = (s: string) =>
-      new RegExp(`^(?:⚠\\s*)?(?:${verbs.join("|")})\\b`, "i").test(s);
-
-    const isInventory = (s: string) =>
-      /inventory\s*:/i.test(s) || /^\s*⚠\s*inventory\s*:/i.test(s);
-
-    const inventoryLines: string[] = [];
-    const actionLines: string[] = [];
-    const descLines: string[] = [];
-
-    for (const s of sentences) {
-      if (isInventory(s)) inventoryLines.push(s);
-      else if (isAction(s)) actionLines.push(s);
-      else descLines.push(s);
-    }
-
-    const description = descLines.join(" ");
-
-    return (
-      <div className="space-y-2">
-        {/* Product Name */}
-        {productName && (
-          <div className="font-bold text-charcoal-500">
-            Product name – {productName}
-          </div>
-        )}
-
-        {/* Description */}
-        {description && (
-          <div className="text-xs 2xl:text-sm text-charcoal-500">
-            {formatBulletLine(description)}
-          </div>
-        )}
-
-        {/* Actions (bold, separate lines) */}
-        {actionLines.map((a, i) => (
-          <div key={i} className="font-bold text-xs 2xl:text-sm text-charcoal-500">
-            {a.replace(/^⚠\s*/, "")}
-          </div>
-        ))}
-
-        {/* Inventory (always last, bold) */}
-        {inventoryLines.map((inv, i) => (
-          <div key={i} className="font-bold text-xs 2xl:text-sm text-charcoal-500">
-            ⚠ {inv.replace(/^⚠?\s*Inventory\s*:\s*/i, "Inventory: ")}
-          </div>
-        ))}
-      </div>
-    );
-  };
 
 
 
@@ -2853,9 +2749,44 @@ export default function LiveBusinessClient({
     overallSummary[overallSummary.length - 1]; // safe fallback
   console.log("123", overallSummary, recommendedActions, skuInsights);
 
+  const ObjectiveCards = ({
+  objective,
+  className = "",
+}: {
+  objective?: {
+    growth_intent?: string;
+    profit_priority?: string;
+    inventory_clearance_priority?: boolean;
+  } | null;
+  className?: string;
+}) => {
+  const growth = objective?.growth_intent?.replaceAll("_", " ") || "Not Defined";
+  const profit = objective?.profit_priority?.replaceAll("_", " ") || "Not Defined";
+  const inv = objective?.inventory_clearance_priority ? "Yes" : "No";
+
+  const Card = ({ label, value }: { label: string; value: string }) => (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <div className="2xl:text-sm text-xs text-[#7A7A7A]">{label}</div>
+      <div className="mt-1 2xl:text-sm text-xs font-semibold text-[#0F172A] capitalize">
+        {value}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`grid grid-cols-1 sm:grid-cols-3 gap-5 ${className}`}>
+      <Card label="Primary Focus" value={growth} />
+      <Card label="Profit Strategy" value={profit} />
+      <Card label="Inventory Dilution" value={inv} />
+    </div>
+  );
+};
+
   // =========================
   // Render
   // =========================
+
+  const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
 
   return (
     <>
@@ -2884,162 +2815,160 @@ export default function LiveBusinessClient({
             Object.keys(recommendedActions).length > 0 ||
             overallActions.length > 0) && (
 
-              <div className="flex gap-4 flex-col md:flex-row">
-                {(summaryText || overallSummary.length > 0) && (
-                  <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
-                    <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
+              <div className="flex gap-4 flex-col">
 
-                    {summaryMetricPoints.length > 0 && (
-                      <ul className="list-disc pl-5 space-y-1 pt-2">
-                        {summaryMetricPoints.map((line, idx) => (
-                          <li key={idx}>{formatBulletLine(line)}</li>
-                        ))}
-                      </ul>
-                    )}
+  {/* 1) Monthly Objective */}
+  {objectiveContext && (
+    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+      <PageBreadcrumb pageTitle="Monthly Objective" variant="page" align="left" />
 
-                    {summaryText && (
-                      <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
-                        {summaryText}
-                      </div>
-                    )}
+      <ObjectiveCards objective={objectiveContext} className="mt-3" />
+    </div>
+  )}
 
-                    {/* Inventory Alerts */}
-                    {inventorySummary?.alert_bullets?.length > 0 && (
-                      <div className="mt-3">
-                        <div className="font-semibold text-charcoal-600 mb-1">
-                          Inventory Alerts
-                        </div>
+  {/* 2) Business Summary */}
+  {(summaryText || overallSummary.length > 0) && (
+    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
+      <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
 
-                        <ul className="list-disc pl-5 space-y-1">
-                          {inventorySummary.alert_bullets.map((bullet: string, idx: number) => (
-                            <li key={idx}>{bullet}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+      {summaryMetricPoints.length > 0 && (
+        <ul className="list-disc pl-5 space-y-1 pt-2">
+          {summaryMetricPoints.map((line, idx) => (
+            <li key={idx}>{formatBulletLine(line)}</li>
+          ))}
+        </ul>
+      )}
 
-                    {inventorySummary?.summary_text && (
-                      <div className="mt-3 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-orange-400 pl-3">
-                        {inventorySummary.summary_text}
-                      </div>
-                    )}
+      {summaryText && (
+        <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
+          {summaryText}
+        </div>
+      )}
+    </div>
+  )}
 
+  {/* 3) Recommended Actions (cards) */}
+  {recommendedActions && Object.keys(recommendedActions).length > 0 && (
+    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+      <PageBreadcrumb pageTitle="Recommended Actions (MTD)" variant="page" align="left" />
 
-                    {/* ✅ Executive summary LAST */}
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {Object.entries(recommendedActions).map(([_, text], idx) => {
+          const parsed = parseRecommendedAction(text);
+          const { recommendationPoints } = extractJourneyAndRecommendation(parsed.insightText || "");
 
-                  </div>
-                )}
+          const borderColor = topBorderColors[idx % topBorderColors.length];
 
-                {((recommendedActions && Object.keys(recommendedActions).length > 0) ||
-                  (skuInsights && Object.keys(skuInsights).length > 0)) && (
+          return (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: idx * 0.06 }}
+              className={[
+                "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+                "border-t-4",
+                borderColor,
+                "p-3 space-y-3",
+              ].join(" ")}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-800 line-clamp-2">
+                  {idx + 1}. {parsed.productName}
+                </div>
 
-
-                    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
-                      <PageBreadcrumb
-                        pageTitle="Recommended Actions (MTD)"
-                        variant="page"
-                        align="left"
-                      />
-
-                      {objectiveContext && (
-                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4 border-l-4 border-l-blue-500">
-
-                          <div className="text-sm font-semibold text-charcoal-700 mb-3">
-                            Objective
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs 2xl:text-sm text-charcoal-600">
-
-                            {/* Growth Intent */}
-                            <div className="space-y-1">
-                              <div className="text-charcoal-400">Growth Intent</div>
-                              <div className="font-semibold capitalize">
-                                {objectiveContext.growth_intent?.replaceAll("_", " ") || "Not Defined"}
-                              </div>
-                            </div>
-
-                            {/* Inventory Clearance */}
-                            <div className="space-y-1">
-                              <div className="text-charcoal-400">Inventory Clearance</div>
-                              <div className="font-semibold">
-                                {objectiveContext.inventory_clearance_priority ? "Yes" : "No"}
-                              </div>
-                            </div>
-
-                            {/* Profit Priority */}
-                            <div className="space-y-1">
-                              <div className="text-charcoal-400">Profit Priority</div>
-                              <div className="font-semibold capitalize">
-                                {objectiveContext.profit_priority?.replaceAll("_", " ") || "Not Defined"}
-                              </div>
-                            </div>
-
-                          </div>
-                        </div>
-                      )}
-
-
-                      <div className="space-y-3 ">
-
-                        <div className="bg-[#]  rounded-xl p-2 space-y-4">
-                          {Object.entries(recommendedActions).map(([_, text], idx) => {
-                            const parsed = parseRecommendedAction(text);
-
-                            return (
-                              <div key={idx} className="space-y-2">
-                                {/* Product title */}
-                                <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
-                                  {idx + 1}. Product Name – {parsed.productName}
-                                </div>
-
-                                {/* Metrics */}
-                                <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs 2xl:text-sm">
-                                  {parsed.metrics.map((m, i) => (
-                                    <div key={i} className="flex items-center gap-1">
-                                      <span className="text-charcoal-600 text-xs">{m.label}:</span>
-                                      <span className="font-semibold" style={{ color: m.color || "#414042" }}>
-                                        {m.value}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-
-                                {/* Insight */}
-                                <p className="text-xs 2xl:text-sm text-charcoal-600">
-                                  {renderJourneyAndRecommendation(parsed.insight)}
-                                </p>
-
-                                {/* Action */}
-                                {parsed.actions.length > 0 && (
-                                  <div className="text-xs 2xl:text-sm text-charcoal-600">
-                                    <span className="font-bold">Action – </span>
-                                    <span>{parsed.actions.join(" ")}</span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-
-                          {remainingSkusRecommendation && (
-                            <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
-                              <div className="font-bold text-xs 2xl:text-sm text-charcoal-600">
-                                Overall – Remaining SKUs
-                              </div>
-
-                              <p className="text-xs 2xl:text-sm text-charcoal-600">
-                                {remainingSkusRecommendation}
-                              </p>
-                            </div>
-                          )}
-
-                        </div>
-
-
-                      </div>
-                    </div>
-                  )}
-
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedRec({
+                      productName: parsed.productName,
+                      metrics: parsed.metrics,
+                      journeyPoints: parsed.journeyPoints,
+                      recommendationPoints: parsed.recommendationPoints,
+                      actions: parsed.actions || [],
+                    });
+                    setRecDrawerOpen(true);
+                  }}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition whitespace-nowrap"
+                >
+                  Detailed View
+                </button>
               </div>
+
+              {parsed.metrics?.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {parsed.metrics.map((m, i) => (
+                    <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0">
+                      <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+                        {m.label}
+                      </div>
+<div className="mt-1 flex items-baseline gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
+  {(() => {
+    const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
+    const mainValue = match?.[1]?.trim() || m.value;
+    const percentPart = match?.[2] || "";
+
+    const isNegative = percentPart.includes("-");
+    const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+
+    return (
+      <>
+        {/* Main value always neutral */}
+        <span className="text-slate-900 truncate">
+          {mainValue}
+        </span>
+
+        {/* % part colored */}
+        {percentPart && (
+          <span style={{ color: percentColor }}>
+            {percentPart}
+          </span>
+        )}
+      </>
+    );
+  })()}
+</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {recommendationPoints?.length > 0 && (
+  <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+    <div className="line-clamp-2">
+      {recommendationPoints[0]}
+    </div>
+  </div>
+)}
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  )}
+
+  {/* 4) Inventory Insight */}
+  {(inventorySummary?.alert_bullets?.length > 0 || inventorySummary?.summary_text) && (
+    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+      <PageBreadcrumb pageTitle="Inventory Insight" variant="page" align="left" />
+
+      {inventorySummary?.alert_bullets?.length > 0 && (
+        <ul className="list-disc pl-5 space-y-1 pt-2">
+          {inventorySummary.alert_bullets.map((bullet: string, idx: number) => (
+            <li key={idx}>{bullet}</li>
+          ))}
+        </ul>
+      )}
+
+      {inventorySummary?.summary_text && (
+        <div className="mt-3 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-orange-400 pl-3">
+          {inventorySummary.summary_text}
+        </div>
+      )}
+    </div>
+  )}
+
+</div>
             )}
 
           <div>
@@ -3165,6 +3094,199 @@ export default function LiveBusinessClient({
           </div>
         </div>
       )}
+      <Drawer
+  anchor="right"
+  open={recDrawerOpen}
+  onClose={() => setRecDrawerOpen(false)}
+  PaperProps={{
+    sx: {
+      width: { xs: "100vw", sm: "70vw", md: "50vw", lg: "55vw" },
+      maxWidth: 900,
+     
+    },
+  }}
+>
+  <div className="flex flex-col gap-4 h-full ">
+    {/* Header */}
+     <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
+      <div>
+                <div className="text-sm text-slate-500">Detailed View</div>
+                <div className="text-lg font-semibold text-slate-900">{selectedRec?.productName || "Details"}</div>
+              </div>
+              <button
+                 onClick={() => setRecDrawerOpen(false)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                ✕
+              </button>
+    </div>
+
+    {/* 1) Objective */}
+
+
+    {/* Scroll area */}
+    <div className="flex-1 overflow-y-auto  space-y-4 px-3 ">
+      {objectiveContext && (
+  <div className="mt-1">
+    <div className="text-sm font-semibold text-charcoal-700 mb-3">Objective</div>
+    <ObjectiveCards objective={objectiveContext} />
+  </div>
+)}
+      {/* 2) Metrics */}
+      <div className="">
+        <div className="text-sm font-semibold text-charcoal-700 mb-3">Metrics</div>
+
+        <div className="grid grid-cols-3 gap-3">
+          {(selectedRec?.metrics || []).map((m, i) => (
+            <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="text-[11px] 2xl:text-xs text-charcoal-400">{m.label}</div>
+              <div className="text-sm 2xl:text-base font-bold flex items-baseline gap-1">
+  {(() => {
+    const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
+    const mainValue = match?.[1]?.trim() || m.value;
+    const percentPart = match?.[2] || "";
+
+    const isNegative = percentPart.includes("-");
+    const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+
+    return (
+      <>
+        {/* Main price/value - always neutral */}
+        <span style={{ color: "#414042" }}>
+          {mainValue}
+        </span>
+
+        {/* % part - colored */}
+        {percentPart && (
+          <span style={{ color: percentColor }}>
+            {percentPart}
+          </span>
+        )}
+      </>
+    );
+  })()}
+</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 3) Recommendation */}
+<div className="">
+  <div className="text-sm font-semibold text-charcoal-700 mb-3">
+    Recommendation
+  </div>
+
+  {selectedRec?.recommendationPoints?.length ? (
+    <div className="space-y-4 text-xs 2xl:text-sm text-charcoal-600">
+
+      {(() => {
+        const general: string[] = [];
+        const advertising: string[] = [];
+        const inventory: string[] = [];
+
+        selectedRec.recommendationPoints.forEach((p) => {
+          const lower = p.toLowerCase();
+          if (lower.includes("advertising")) advertising.push(p);
+          else if (lower.includes("inventory")) inventory.push(p);
+          else general.push(p);
+        });
+
+        return (
+          <>
+            {/* General Actions */}
+            {general.length > 0 && (
+              <div>
+               <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  {general.map((p, i) => <li key={i}>{p}</li>)}
+                </ul>
+              </div>
+            )}
+
+            {/* Advertising */}
+            {advertising.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-purple-900 mb-1 flex items-center gap-1">
+      📢 Advertising
+    </div>
+                <ul className="list-disc pl-5 space-y-1">
+                  {advertising.map((p, i) => (
+                    <li key={i}>{p.replace(/advertising\s*:\s*/i, "")}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Inventory */}
+            {inventory.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  {inventory.map((p, i) => (
+                    <li key={i}>{p.replace(/inventory\s*:\s*/i, "")}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        );
+      })()}
+    </div>
+  ) : (
+    <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
+  )}
+</div>
+
+{/* 3.5) Product Chart (same as AI drawer) */}
+{selectedRec?.productName && (
+  
+    
+
+    <div className="w-full overflow-hidden rounded-lg border border-slate-200 p-3 bg-white">
+      {/* same functionality as other drawer */}
+      <div className="w-full">
+        <Productinfoinpopup
+          productname={selectedRec.productName}
+          countryName={countryName}
+        />
+      </div>
+    </div>
+)}
+
+      {/* 4) Product Journey */}
+      <div className='pb-4'>
+  <div className="text-sm font-semibold text-charcoal-700 mb-3">
+    Product Journey
+  </div>
+
+  {selectedRec?.journeyPoints?.length ? (
+    <ul className="space-y-1 text-xs 2xl:text-sm text-charcoal-600">
+      {selectedRec.journeyPoints.map((p, i) => (
+        <li key={i} className="flex items-start gap-2">
+          
+          {/* Arrow */}
+          <span className=" text-charcoal-400">
+            →
+          </span>
+
+          {/* Cleaned Text */}
+          <span>
+            {p
+              .replace(/^\d+\.\s*-\s*/, "")   
+              .replace(/^\d+\.\s*/, "")      
+              .replace(/^-+\s*/, "")}       
+          </span>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
+  )}
+</div>
+    </div>
+  </div>
+</Drawer>
 
       {(() => {
         if (!modalOpen || !selectedSku) return null;

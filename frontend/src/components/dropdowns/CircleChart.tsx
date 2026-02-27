@@ -243,7 +243,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
     const s = uploadsData.summary;
 
     // const colors = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
-    const labelsRaw = ["COGS", "Amazon Fees", "Tax and credits", "Ads",  "CM2 Profit","Others"];
+    const labelsRaw = ["COGS", "Amazon Fees", "Tax and credits", "Ads", "Others", "CM2 Profit"];
     const valuesRaw = [
       Math.abs(s.total_cous || 0),
       Math.abs(s.total_amazon_fee || 0),
@@ -256,15 +256,15 @@ const CircleChart: React.FC<CircleChartProps> = ({
     const colorsRaw = ["#FDD36F", "#B75A5A", "#ED9F50", "#C49466", "#3A8EA4", "#B8C78C"];
 
     // ✅ force Others to last
-    const { labels, values, colors } = moveLabelToEnd(labelsRaw, valuesRaw, colorsRaw, "Others");
+    // const { labels, values, colors } = moveLabelToEnd(labelsRaw, valuesRaw, colorsRaw, "Others");
 
     const next: ChartData<"pie", number[], string> = {
-      labels,
+      labels: labelsRaw,
       datasets: [
         {
-          data: values,
-          backgroundColor: colors,
-          hoverBackgroundColor: colors,
+          data: valuesRaw,
+          backgroundColor: colorsRaw,
+          hoverBackgroundColor: colorsRaw,
           borderWidth: 0,
           borderColor: "transparent",
           spacing: 0,
@@ -420,121 +420,118 @@ const CircleChart: React.FC<CircleChartProps> = ({
     });
   }, [displayChartData, isLaptop, currencySymbol]);
 
-return (
-  <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col">
-    {/* Heading */}
-    <div className="mb-1 w-fit mx-right md:mx-0">
-      <PageBreadcrumb
-        pageTitle="Expense Breakup"
-        variant="page"
-        textSize="2xl"
-        align="left"
-      />
-    </div>
+  return (
+    <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col">
+      {/* Heading */}
+      <div className="mb-1 w-fit mx-right md:mx-0">
+        <PageBreadcrumb
+          pageTitle="Expense Breakup"
+          variant="page"
+          textSize="2xl"
+          align="left"
+        />
+      </div>
 
-    {/* Chart */}
-    <div
-      className={`flex-1 min-h-0 w-full ${
-        allValuesZero ? "opacity-30" : "opacity-100"
-      } transition-opacity duration-300`}
-    >
-      {displayChartData && legendModel ? (
-        <div className="relative w-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
-          {/* LEFT: PIE */}
-          <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[287px] xl:h-[300px] 2xl:h-[360px]">
-            <Pie
-              ref={chartRef}
-              data={displayChartData}
-              options={options}
-              className="!block"
-              style={{ width: "100%", height: "100%" }}
-            />
-          </div>
+      {/* Chart */}
+      <div
+        className={`flex-1 min-h-0 w-full ${allValuesZero ? "opacity-30" : "opacity-100"
+          } transition-opacity duration-300`}
+      >
+        {displayChartData && legendModel ? (
+          <div className="relative w-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
+            {/* LEFT: PIE */}
+            <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[287px] xl:h-[300px] 2xl:h-[360px]">
+              <Pie
+                ref={chartRef}
+                data={displayChartData}
+                options={options}
+                className="!block"
+                style={{ width: "100%", height: "100%" }}
+              />
+            </div>
 
-          {/* RIGHT: CUSTOM LEGEND */}
-          <div
-            className="w-full xl:shrink-0 xl:self-center overflow-y-auto overflow-x-hidden pr-1 flex justify-center xl:justify-start"
-            style={{
-              width: isDesktop ? 260 : isLaptop ? 170 : "100%",
-              maxHeight: "100%",
-            }}
-          >
-            {/* ✅ grid improved for alignment */}
-            <div className="grid w-full grid-cols-2 sm:grid-cols-3 xl:flex xl:w-auto xl:flex-col gap-x-6 gap-y-3 xl:gap-y-2">
-              {legendModel.map((item) => {
-                const chart = chartRef.current;
-                const isVisible = chart
-                  ? chart.getDataVisibility(item.index)
-                  : true;
+            {/* RIGHT: CUSTOM LEGEND */}
+            <div
+              className="w-full xl:shrink-0 xl:self-center overflow-y-auto overflow-x-hidden pr-1 flex justify-center xl:justify-start"
+              style={{
+                width: isDesktop ? 260 : isLaptop ? 170 : "100%",
+                maxHeight: "100%",
+              }}
+            >
+              {/* ✅ grid improved for alignment */}
+              <div className="grid w-full grid-cols-2 sm:grid-cols-3 xl:flex xl:w-auto xl:flex-col gap-x-6 gap-y-3 xl:gap-y-2">
+                {legendModel.map((item) => {
+                  const chart = chartRef.current;
+                  const isVisible = chart
+                    ? chart.getDataVisibility(item.index)
+                    : true;
 
-                return (
-                  <button
-                    key={`${item.fullLabel}-${item.index}`}
-                    type="button"
-                    className="text-left w-full min-w-0"
-                    onClick={() => {
-                      const c = chartRef.current;
-                      if (!c) return;
-                      c.toggleDataVisibility(item.index);
-                      c.update();
-                      setLegendTick((t) => t + 1);
-                    }}
-                  >
-                    {/* ✅ items-start ensures same starting line */}
-                    <div
-                      className={`flex items-start gap-2 sm:gap-3 min-w-0 ${
-                        isVisible ? "opacity-100" : "opacity-40"
-                      }`}
+                  return (
+                    <button
+                      key={`${item.fullLabel}-${item.index}`}
+                      type="button"
+                      className="text-left w-full min-w-0"
+                      onClick={() => {
+                        const c = chartRef.current;
+                        if (!c) return;
+                        c.toggleDataVisibility(item.index);
+                        c.update();
+                        setLegendTick((t) => t + 1);
+                      }}
                     >
-                      {/* ✅ fixed dot alignment */}
-                      <span
-                        className="mt-[3px] inline-block h-2.5 w-2.5 rounded-full flex-none shrink-0"
-                        style={{ backgroundColor: item.color }}
-                      />
-
-                      <div className="min-w-0 flex flex-col items-start">
-                        {/* line 1: Label */}
-                        <div
-                          className={`truncate text-[10px] 2xl:text-xs ${
-                            isVisible ? "" : "line-through"
+                      {/* ✅ items-start ensures same starting line */}
+                      <div
+                        className={`flex items-start gap-2 sm:gap-3 min-w-0 ${isVisible ? "opacity-100" : "opacity-40"
                           }`}
-                          style={{ color: "#414042" }}
-                          title={item.fullLabel}
-                        >
-                          {item.label}
-                        </div>
+                      >
+                        {/* ✅ fixed dot alignment */}
+                        <span
+                          className="mt-[3px] inline-block h-2.5 w-2.5 rounded-full flex-none shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        />
 
-                        {/* line 2: value + percentage */}
-                        <div
-                          className="text-[10px] 2xl:text-xs break-words"
-                          style={{ color: "#414042" }}
-                        >
-                          {currencySymbol}
-                          {item.value.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}{" "}
-                          ({item.pct.toFixed(2)}%)
+                        <div className="min-w-0 flex flex-col items-start">
+                          {/* line 1: Label */}
+                          <div
+                            className={`truncate text-[10px] 2xl:text-xs ${isVisible ? "" : "line-through"
+                              }`}
+                            style={{ color: "#414042" }}
+                            title={item.fullLabel}
+                          >
+                            {item.label}
+                          </div>
+
+                          {/* line 2: value + percentage */}
+                          <div
+                            className="text-[10px] 2xl:text-xs break-words"
+                            style={{ color: "#414042" }}
+                          >
+                            {currencySymbol}
+                            {item.value.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}{" "}
+                            ({item.pct.toFixed(2)}%)
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          {/* force rerender */}
-          <span className="hidden">{legendTick}</span>
-        </div>
-      ) : (
-        <p className="text-center text-sm text-gray-500">
-          Loading chart data...
-        </p>
-      )}
+            {/* force rerender */}
+            <span className="hidden">{legendTick}</span>
+          </div>
+        ) : (
+          <p className="text-center text-sm text-gray-500">
+            Loading chart data...
+          </p>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 
 };
 
