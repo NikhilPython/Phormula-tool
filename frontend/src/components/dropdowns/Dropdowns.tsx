@@ -619,7 +619,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
         <>
           {/* overlay */}
           <motion.div
-            className="fixed inset-0 z-[999999] bg-black/40"
+            className="fixed h-full inset-0 z-[999999] bg-black/40"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
