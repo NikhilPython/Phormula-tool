@@ -127,10 +127,9 @@ export default function SalesTargetStatsCard({
       ? ((currMtd - expectedSalesTillDate) / targetHome) * 100
       : 0;
 
-  console.log("SalesTargetStatsCard ", currMtd, prevMtd, prevFullMonth);
 
   return (
-    <div className="rounded-2xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
+    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
       <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
         <div className="flex items-center gap-1">
           <PageBreadcrumb

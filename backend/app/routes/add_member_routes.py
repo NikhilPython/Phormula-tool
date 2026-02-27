@@ -398,3 +398,168 @@ def add_member():
         db.session.rollback()
         return _error(str(e), 500)
     
+@add_member_bp.route("/delete_member", methods=["DELETE"])
+def delete_member():
+    """
+    DELETE /delete_member
+    Header: Authorization: Bearer <OWNER_USER_JWT>
+
+    Body (either):
+    { "member_id": 7 }
+    OR
+    { "email": "analyst@skinelements.com" }
+    """
+    try:
+        owner_user_id, auth_err = _get_owner_user_id_from_token()
+        if auth_err:
+            return auth_err
+
+        data = request.get_json(silent=True) or {}
+        member_id = data.get("member_id")
+        email = (data.get("email") or "").strip().lower()
+
+        if not member_id and not email:
+            return _error("member_id or email is required", 400)
+
+        q = Member.query.filter_by(owner_user_id=int(owner_user_id))
+        if member_id:
+            q = q.filter_by(id=int(member_id))
+        else:
+            q = q.filter_by(email=email)
+
+        member = q.first()
+        if not member:
+            return _error("Member not found for this owner", 404)
+
+        db.session.delete(member)
+        db.session.commit()
+
+        return jsonify({
+            "message": "Member deleted successfully",
+            "member_id": int(member.id),
+            "email": member.email,
+            "owner_user_id": int(owner_user_id),
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return _error(f"Failed to delete member: {str(e)}", 500)
+    
+@add_member_bp.route("/update_member_access", methods=["PUT", "PATCH"])
+def update_member_access():
+    """
+    PUT/PATCH /update_member_access
+    Header: Authorization: Bearer <OWNER_USER_JWT>
+
+    Body:
+    {
+      "member_id": 7,                       # required (or use email)
+      "email": "analyst@skinelements.com",  # optional alternative key
+
+      "marketplace_ids": ["A1F83G8C2ARO7P"],   # optional
+      "modules": ["LIVE_DASHBOARD"],           # optional
+      "role": "MARKETING"                      # optional
+    }
+
+    countries will be auto-derived from marketplace_ids if marketplace_ids is provided.
+    """
+    try:
+        owner_user_id, auth_err = _get_owner_user_id_from_token()
+        if auth_err:
+            return auth_err
+
+        data = request.get_json(silent=True) or {}
+
+        member_id = data.get("member_id")
+        email = (data.get("email") or "").strip().lower()
+
+        if not member_id and not email:
+            return _error("member_id or email is required", 400)
+
+        q = Member.query.filter_by(owner_user_id=int(owner_user_id))
+        if member_id:
+            q = q.filter_by(id=int(member_id))
+        else:
+            q = q.filter_by(email=email)
+
+        member = q.first()
+        if not member:
+            return _error("Member not found for this owner", 404)
+
+        # --------- updates (only if provided) ----------
+        # marketplace_ids
+        if "marketplace_ids" in data:
+            marketplace_ids = _normalize_list(data.get("marketplace_ids"))
+            if not marketplace_ids:
+                return _error("marketplace_ids cannot be empty", 400)
+
+            ok, invalid_mps = _validate_marketplaces(marketplace_ids)
+            if not ok:
+                return _error(
+                    "Invalid marketplace IDs",
+                    400,
+                    invalid_marketplaces=invalid_mps,
+                    allowed_marketplaces=list(ALLOWED_MARKETPLACES.keys()),
+                )
+
+            member.marketplace_ids = marketplace_ids
+            # ✅ derive countries from marketplaces
+            member.countries = _derive_countries_from_marketplaces(marketplace_ids)
+
+        # modules
+        if "modules" in data:
+            modules = _normalize_list(data.get("modules"))
+            if not modules:
+                return _error("modules cannot be empty", 400)
+
+            ok, invalid_modules = _validate_modules(modules)
+            if not ok:
+                return _error(
+                    "Invalid modules",
+                    400,
+                    invalid_modules=invalid_modules,
+                    allowed_modules=sorted(list(ALLOWED_MODULES)),
+                )
+
+            member.modules = modules
+
+        # role (optional)
+        if "role" in data:
+            role = _normalize_role(data.get("role")) or DEFAULT_ROLE
+            if role not in ALLOWED_ROLES:
+                return _error(
+                    "Invalid role",
+                    400,
+                    invalid_role=role,
+                    allowed_roles=sorted(list(ALLOWED_ROLES)),
+                )
+            member.role = role
+
+        # optional: verify flag
+        if "is_verified" in data:
+            member.is_verified = bool(data.get("is_verified"))
+
+        # optional timestamp (only if you have this column)
+        if hasattr(member, "updated_at"):
+            member.updated_at = datetime.utcnow()
+
+        db.session.commit()
+
+        return jsonify({
+            "message": "Member access updated successfully",
+            "member_id": int(member.id),
+            "owner_user_id": int(owner_user_id),
+            "member_name": member.member_name,
+            "email": member.email,
+            "role": member.role,
+            "marketplace_ids": member.marketplace_ids,
+            "countries": member.countries,
+            "modules": member.modules,
+            "token_name": member.token_name,
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return _error(f"Failed to update member access: {str(e)}", 500)
+    
+

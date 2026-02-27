@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
 from app import db, mail
-from app.models.user_models import SuperAdmin, UserAdmin
+from app.models.user_models import SuperAdmin, UserAdmin, User
 from flask_mail import Message
 import jwt
 import random
@@ -508,12 +508,12 @@ def delete_admin_by_email():
         email = data['email']
 
         # Find admin by email
-        admin = UserAdmin.query.filter_by(email=email).first()
-        if not admin:
+        user = User.query.filter_by(email=email).first()
+        if not user:
             return jsonify({'message': 'Admin not found'}), 404
 
         # Delete the admin
-        db.session.delete(admin)
+        db.session.delete(user)
         db.session.commit()
 
         return jsonify({'message': 'Admin deleted successfully'}), 200

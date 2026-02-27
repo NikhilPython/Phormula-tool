@@ -83,6 +83,7 @@ def create_app():
     from app.routes.monthwise_ai_summary_routes import objective_bp
     from app.routes.advertisement_api_routes import advertisement_api_routes_bp
     from app.routes.member_auth import member_auth_bp
+    from app.routes.inventory_breakup_routes import inventory_breakup_bp 
     
      # Register the new fee_preview_bp
    
@@ -116,6 +117,7 @@ def create_app():
     app.register_blueprint(objective_bp)
     app.register_blueprint(advertisement_api_routes_bp)
     app.register_blueprint(member_auth_bp)
+    app.register_blueprint(inventory_breakup_bp)
     
     
     

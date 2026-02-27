@@ -2812,7 +2812,7 @@ const extractJourneyAndRecommendation = (text: string) => {
           <Loader label="Loading BI…" />
         </div>
       ) : (
-        <div className="flex flex-col mt-4">
+        <div className="mt-2 md:mt-4 flex flex-col ">
           {error && <p style={{ color: 'red' }}>{error}</p>}
 
           {(summaryText ||
@@ -2824,7 +2824,7 @@ const extractJourneyAndRecommendation = (text: string) => {
 
   {/* 1) Monthly Objective */}
   {objectiveContext && (
-    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+    <div className="bg-white border border-[#D9D9D9] rounded-xl sm:p-5 shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
       <PageBreadcrumb pageTitle="Monthly Objective" variant="page" align="left" />
 
       <ObjectiveCards objective={objectiveContext} className="mt-3" />
@@ -2833,7 +2833,7 @@ const extractJourneyAndRecommendation = (text: string) => {
 
   {/* 2) Business Summary */}
   {(summaryText || overallSummary.length > 0) && (
-    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
+    <div className="bg-white border border-[#D9D9D9] rounded-xl sm:p-5 shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
       <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
 
       {summaryMetricPoints.length > 0 && (
@@ -2854,7 +2854,7 @@ const extractJourneyAndRecommendation = (text: string) => {
 
   {/* 3) Recommended Actions (cards) */}
   {recommendedActions && Object.keys(recommendedActions).length > 0 && (
-    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+    <div className="bg-white border border-[#D9D9D9] rounded-xl sm:p-5 shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
       <PageBreadcrumb pageTitle="Recommended Actions (MTD)" variant="page" align="left" />
 
       <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -2871,7 +2871,7 @@ const extractJourneyAndRecommendation = (text: string) => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: idx * 0.06 }}
               className={[
-                "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+                "bg-white rounded-xl  border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
                 "border-t-4",
                 borderColor,
                 "p-3 space-y-3",
@@ -2954,7 +2954,7 @@ const extractJourneyAndRecommendation = (text: string) => {
 
   {/* 4) Inventory Insight */}
   {(inventorySummary?.alert_bullets?.length > 0 || inventorySummary?.summary_text) && (
-    <div className="bg-white border border-[#D9D9D9] rounded-md p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+    <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
       <PageBreadcrumb pageTitle="Inventory Insight" variant="page" align="left" />
 
       {inventorySummary?.alert_bullets?.length > 0 && (
@@ -2977,7 +2977,7 @@ const extractJourneyAndRecommendation = (text: string) => {
             )}
 
           <div>
-            <div className="mt-4 rounded-2xl border bg-white p-5 shadow-sm">
+            <div className="mt-4 rounded-xl border bg-white p-4 sm:p-5 p-5 shadow-sm">
 
               <div className="flex flex-col 2xl:flex-row gap-4  xl:items-left xl:justify-between">
                 {/* <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" /> */}

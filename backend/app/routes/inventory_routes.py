@@ -2281,43 +2281,42 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
               + COALESCE(SUM(COALESCE(mi.ending_warehouse_balance, 0)) FILTER (WHERE mi.date = :end_date AND mi.disposition = 'DISTRIBUTOR_DAMAGED'), 0)
             ) AS ending_total,
 
-            -- ✅ difference_total uses ABS(other_total) and ABS(sold_total)
             (
                 COALESCE(
                     SUM(COALESCE(mi.starting_warehouse_balance, 0))
                     FILTER (
                         WHERE mi.date = :start_date
-                          AND mi.disposition IN (
+                        AND mi.disposition IN (
                             'SELLABLE','DEFECTIVE','WAREHOUSE_DAMAGED',
                             'EXPIRED','CUSTOMER_DAMAGED','DISTRIBUTOR_DAMAGED'
-                          )
+                        )
                     ),
                 0)
                 + COALESCE(SUM(COALESCE(mi.receipts, 0)), 0)
 
-                - ABS(
+                + (
                     COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0)
-                  + COALESCE(SUM(COALESCE(mi.found, 0)), 0)
-                  + COALESCE(SUM(COALESCE(mi.lost, 0)), 0)
-                  + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
-                  + COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
-                  + COALESCE(SUM(COALESCE(mi.other_events, 0)), 0)
-                  + COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0)
+                + COALESCE(SUM(COALESCE(mi.found, 0)), 0)
+                + COALESCE(SUM(COALESCE(mi.lost, 0)), 0)
+                + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
+                + COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
+                + COALESCE(SUM(COALESCE(mi.other_events, 0)), 0)
+                + COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0)
                 )
 
-                - ABS(
-                        COALESCE(SUM(COALESCE(mi.customer_shipments, 0)), 0)
-                    + COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
-                    )
+                + (
+                    COALESCE(SUM(COALESCE(mi.customer_shipments, 0)), 0)
+                + COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
+                )
 
                 - COALESCE(
                     SUM(COALESCE(mi.ending_warehouse_balance, 0))
                     FILTER (
                         WHERE mi.date = :end_date
-                          AND mi.disposition IN (
+                        AND mi.disposition IN (
                             'SELLABLE','DEFECTIVE','WAREHOUSE_DAMAGED',
                             'EXPIRED','CUSTOMER_DAMAGED','DISTRIBUTOR_DAMAGED'
-                          )
+                        )
                     ),
                 0)
             ) AS difference_total
@@ -2380,6 +2379,7 @@ def _compute_grand_total(items: list[dict]) -> dict:
         "sold_total": 0,
         "ending_total": 0,
         "difference_total": 0,
+        "inventory_coverage_ratio": 0.0,
 
 
     }
@@ -2415,6 +2415,7 @@ def _compute_grand_total(items: list[dict]) -> dict:
         gt["sold_total"] += int(r.get("sold_total") or 0)
         gt["ending_total"] += int(r.get("ending_total") or 0)
         gt["difference_total"] += int(r.get("difference_total") or 0)
+        gt["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(gt["ending_total"], gt["sold_total"])
 
 
     return gt
@@ -2467,6 +2468,7 @@ def _ensure_inventory_summary_table_exists(conn, table_name: str) -> None:
             sold_total BIGINT DEFAULT 0,
             ending_total BIGINT DEFAULT 0,
             difference_total BIGINT DEFAULT 0,
+            inventory_coverage_ratio DOUBLE PRECISION,
 
             computed_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
         );
@@ -2500,10 +2502,19 @@ def _ensure_inventory_summary_table_exists(conn, table_name: str) -> None:
             ADD COLUMN IF NOT EXISTS other_total BIGINT DEFAULT 0,
             ADD COLUMN IF NOT EXISTS sold_total BIGINT DEFAULT 0,
             ADD COLUMN IF NOT EXISTS ending_total BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS inventory_coverage_ratio DOUBLE PRECISION,
             ADD COLUMN IF NOT EXISTS difference_total BIGINT DEFAULT 0;
     """))
 
-
+def _compute_inventory_coverage_ratio(ending_total, sold_total):
+    try:
+        ending = float(ending_total or 0)
+        sold = float(sold_total or 0)
+        if sold == 0:
+            return None
+        return ending / sold   # per your formula
+    except Exception:
+        return None
 
 def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> int:
     if not rows:
@@ -2546,9 +2557,7 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             sold_total,
             ending_total,
             difference_total,
-
-
-
+            inventory_coverage_ratio,
             computed_at
         )
         VALUES (
@@ -2587,7 +2596,7 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             :sold_total,
             :ending_total,
             :difference_total,
-
+            :inventory_coverage_ratio,
             NOW()
         )
         ON CONFLICT (msku) DO UPDATE SET
@@ -2625,7 +2634,7 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             sold_total = EXCLUDED.sold_total,   
             ending_total = EXCLUDED.ending_total,
             difference_total = EXCLUDED.difference_total,
-
+            inventory_coverage_ratio = EXCLUDED.inventory_coverage_ratio,
             computed_at = NOW();
     """)
 
@@ -2666,6 +2675,7 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             "sold_total": int(r.get("sold_total") or 0),
             "ending_total": int(r.get("ending_total") or 0),
             "difference_total": int(r.get("difference_total") or 0),
+            "inventory_coverage_ratio": float(r.get("inventory_coverage_ratio") or 0.0),
 
         })
 
@@ -2727,6 +2737,15 @@ def inventory_ledger_summary_store_month():
     try:
         with amazon_conn() as conn:
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+            for r in items:
+                r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                    r.get("ending_total"), r.get("sold_total")
+                )
+
+            grand_total = _compute_grand_total(items)
+            grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                grand_total.get("ending_total"), grand_total.get("sold_total")
+            )
             grand_total = _compute_grand_total(items)
             to_save = items + [grand_total]
 
@@ -2778,6 +2797,15 @@ def inventory_ledger_summary_store_quarter():
     try:
         with amazon_conn() as conn:
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+            for r in items:
+                r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                    r.get("ending_total"), r.get("sold_total")
+                )
+
+            grand_total = _compute_grand_total(items)
+            grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                grand_total.get("ending_total"), grand_total.get("sold_total")
+            )
             grand_total = _compute_grand_total(items)
             to_save = items + [grand_total]
 
@@ -2827,6 +2855,15 @@ def inventory_ledger_summary_store_year():
     try:
         with amazon_conn() as conn:
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+            for r in items:
+                r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                    r.get("ending_total"), r.get("sold_total")
+                )
+
+            grand_total = _compute_grand_total(items)
+            grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                grand_total.get("ending_total"), grand_total.get("sold_total")
+            )
             grand_total = _compute_grand_total(items)
             to_save = items + [grand_total]
 
