@@ -508,6 +508,7 @@ def get_user_data():
         return jsonify({'error': 'Failed to update amazon flags', 'details': str(e)}), 500
 
     # ✅ pick the correct email for FE display
+    effective_name = member_name if is_member else user.name
     effective_email = token_email if is_member else user.email
 
     # ✅ Base response (safe for both member + owner)
@@ -522,6 +523,7 @@ def get_user_data():
         "member_role": member_role,
 
         # emails
+        "name": effective_name,                 # FE should use this
         "email": effective_email,                 # FE should use this
         "owner_email": user.email,                # always owner email
         "member_email": token_email if is_member else None,
