@@ -44,6 +44,10 @@ const authSlice = createSlice({
       state.status = "failed";
       state.error = action.payload || "Authentication failed";
     },
+    clearAuthError(state) {
+  state.error = undefined;
+  if (state.status === "failed") state.status = "idle";
+},
     logout(state) {
       state.token = null;
       state.user = null;
@@ -122,7 +126,7 @@ const authSlice = createSlice({
   },
 });
 
-export const { setCredentials, setUser, setAuthLoading, setAuthError, logout } =
+export const { setCredentials, setUser, setAuthLoading, setAuthError, logout, clearAuthError } =
   authSlice.actions;
 
 export default authSlice.reducer;

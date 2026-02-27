@@ -12,6 +12,7 @@ export type User = {
   target_sales?: number | null;
   tax_id?: any;
   address?: any;
+  member_name?: string;     // agar user member hai to ye field aayegi (client profile tab ke liye)
 
   // ✅ CLIENT onboarding / profile fields (agar backend bhejta hai)
   country?: string;          // e.g. "UK" or "US,UK"

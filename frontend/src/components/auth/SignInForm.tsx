@@ -13,7 +13,7 @@ import {
   setAuthError,
   setAuthLoading,
   setCredentials,
-  setUser,
+  setUser,clearAuthError, 
 } from "@/lib/features/auth/authSlice";
 import { useLoginMutation, useMemberLoginMutation } from "@/lib/api/authApi"; // ✅
 import { API_BASE } from "@/config/env";
@@ -36,6 +36,7 @@ export default function SignInForm() {
   const [password, setPassword] = useState("");
 
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [isFallbacking, setIsFallbacking] = useState(false);
 
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
   const [memberLogin, { isLoading: isMemberLoggingIn }] =
@@ -68,6 +69,7 @@ export default function SignInForm() {
       return;
 
     dispatch(setAuthLoading());
+    dispatch(clearAuthError());
 
     const cleanEmail = email.trim().toLowerCase();
 
@@ -79,11 +81,25 @@ export default function SignInForm() {
       try {
         result = await login({ email: cleanEmail, password }).unwrap();
         loginType = "client";
-      } catch (clientErr: any) {
-        // ✅ if client login fails, try member login
-        result = await memberLogin({ email: cleanEmail, password }).unwrap();
-        loginType = "member";
-      }
+     } catch (clientErr: any) {
+  setIsFallbacking(true);
+  dispatch(clearAuthError()); // ✅ clear anything
+
+  try {
+    result = await memberLogin({ email: cleanEmail, password }).unwrap();
+    loginType = "member";
+  } catch (memberErr: any) {
+    // ✅ BOTH failed -> now show error
+    const msg =
+      memberErr?.data?.message ||
+      memberErr?.error ||
+      "Login failed. Please try again.";
+    dispatch(setAuthError(msg));
+    return; // ✅ stop
+  } finally {
+    setIsFallbacking(false);
+  }
+}
 
       // Save token
       dispatch(setCredentials({ token: result.token }));
@@ -141,11 +157,11 @@ export default function SignInForm() {
       );
 
       const memberCountry =
-        Array.isArray(result?.countries) && result.countries.length > 0
-          ? result.countries[0]
-          : "global";
+  Array.isArray(result?.countries) && result.countries.length > 0
+    ? String(result.countries[0]).trim().toLowerCase()
+    : "global";
 
-      routeToDashboard(memberCountry);
+routeToDashboard(memberCountry);
     } catch (err: any) {
       // ✅ nicer error msg
       const msg =
@@ -284,18 +300,19 @@ export default function SignInForm() {
                 </button>
               </div>
 
-              {error && (
-                <p className="text-sm text-red-500 -mt-2" aria-live="polite">
-                  {error}
-                </p>
-              )}
+             {error &&
+  !(status === "loading" || isLoggingIn || isMemberLoggingIn || isFallbacking) && (
+    <p className="text-sm text-red-500 -mt-2" aria-live="polite">
+      {error}
+    </p>
+)}
 
               <div>
                 <Button
                   className="w-full"
                   size="md"
                   type="submit"
-                  disabled={status === "loading" || isLoggingIn || isMemberLoggingIn}
+                  disabled={status === "loading" || isLoggingIn || isMemberLoggingIn || isFallbacking}
                 >
                   {status === "loading" || isLoggingIn || isMemberLoggingIn
                     ? "Signing in…"
