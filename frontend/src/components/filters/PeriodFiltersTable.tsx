@@ -280,12 +280,12 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
   /* -------- UI classes -------- */
   const wrapCls =
     "relative inline-flex items-center rounded-md sm:rounded-lg border border-gray-300 bg-white " +
-    "px-2 py-1 sm:px-3 sm:py-1.5 " +
+    "px-2 py-1 2xl:px-3 2xl:py-1.5 " +
     "text-[10px] sm:text-xs lg:text-sm 2xl:text-sm shadow-sm";
 
   const selectCls =
     "appearance-none bg-transparent text-center text-[#414042] focus:outline-none cursor-pointer " +
-    "px-1 py-0.5 pr-5 sm:px-2 sm:py-1 sm:pr-6 " +
+    "px-1 py-0.5 pr-5 lg:px-1.5 lg:py-1 lg:pr-7 xl:px-2 xl:py-1 xl:pr-6 " +
     "text-[10px] sm:text-xs lg:text-sm 2xl:text-sm";
 
 
