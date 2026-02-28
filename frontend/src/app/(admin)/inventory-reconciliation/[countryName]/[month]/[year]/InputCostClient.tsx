@@ -14,6 +14,15 @@ import InventoryBreakupPie from '@/components/inventory/InventoryBreakupPie';
 import InventoryTopProductsPie from '@/components/inventory/InventoryBreakupPie';
 import { exportInventoryReconExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+} from "recharts";
+import InventoryPieCard from "@/components/inventory/InventoryPieCard";
 
 /* ================= TYPES ================= */
 interface Params {
@@ -327,7 +336,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     if (yearParam) setSelectedYear(yearParam);
   }, [monthParam, yearParam, isNA]);
 
-
+  
 
 
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -361,6 +370,49 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const [meta, setMeta] = useState<{ mode?: string; start_date?: string; end_date?: string; count?: number } | null>(
     null
   );
+  const marketplaceId =
+    (typeof window !== "undefined" && localStorage.getItem("marketplace_id")) ||
+    "A1F83G8C2ARO7P"; // fallback
+
+  const [breakupPie, setBreakupPie] = useState<PieDatum[]>([]);
+  const [ageingPie, setAgeingPie] = useState<PieDatum[]>([]);
+  const [pieLoading, setPieLoading] = useState(false);
+
+    useEffect(() => {
+    if (pageLoading) return;
+    if (!hasValidPeriod) {
+      setBreakupPie([]);
+      setAgeingPie([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      setPieLoading(true);
+      try {
+        await Promise.all([fetchInventoryBreakup(), fetchInventoryAgeing()]);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          // fail silently or show modal (your choice)
+          // setModalMessage((e as any)?.message || "Pie fetch failed");
+          // setShowModal(true);
+          setBreakupPie([]);
+          setAgeingPie([]);
+        }
+      } finally {
+        if (!cancelled) setPieLoading(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+    // ✅ refetch when user changes filters
+  }, [range, selectedMonth, selectedQuarter, selectedYear, marketplaceId, pageLoading, hasValidPeriod]);
 
 
 
@@ -413,6 +465,71 @@ export default function InventoryReconciliationPage({ params }: Params) {
     }
   }
 
+    const INVENTORY_BREAKUP_API = `${API_BASE}/api/inventory_breakup`;
+  const INVENTORY_AGEING_API = `${API_BASE}/api/inventory_ageing`;
+
+async function fetchInventoryBreakup() {
+  const mode =
+    range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
+
+  const q: Record<string, any> = {
+    mode,
+    year: selectedYear,
+    marketplace_id: marketplaceId,
+  };
+
+  if (mode === "month") q.month = titleCase(selectedMonth);
+  if (mode === "quarter") q.quarter = String(selectedQuarter || "Q1").toLowerCase();
+
+  const url = `${INVENTORY_BREAKUP_API}?${buildQuery(q)}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  const json = await res.json();
+
+  if (!res.ok || json?.success === false) {
+    throw new Error(json?.error || "Failed to fetch inventory breakup");
+  }
+
+  const t = json?.totals || {};
+
+  // ✅ show ALL keys from totals (even if 0 you can keep or drop)
+  const mapped = [
+    { name: "Sellable", value: toInt(t.sellable) },
+    { name: "Expired", value: toInt(t.expired) },
+    { name: "Defective", value: toInt(t.defective) },
+    { name: "Customer Damaged", value: toInt(t.customer_damaged) },
+    { name: "Warehouse Damaged", value: toInt(t.warehouse_damaged) },
+    { name: "Distributor Damaged", value: toInt(t.distributor_damaged) },
+  ];
+
+  // If you DON'T want 0 slices in chart, keep this filter:
+  setBreakupPie(mapped.filter((d) => d.value > 0));
+
+  // If you DO want to show zeros in legend too, use:
+  // setBreakupPie(mapped);
+}
+
+  async function fetchInventoryAgeing() {
+    const url = `${INVENTORY_AGEING_API}?${buildQuery({
+      marketplace_id: marketplaceId,
+    })}`;
+
+    const res = await fetch(url, { headers: authHeaders() });
+    const json = await res.json();
+
+    if (!res.ok || json?.success === false) {
+      throw new Error(json?.error || "Failed to fetch inventory ageing");
+    }
+
+    const t = json?.totals || {};
+    setAgeingPie([
+      { name: "0-90", value: toInt(t.age_0_90) },
+      { name: "91-180", value: toInt(t.age_91_180) },
+      { name: "181-270", value: toInt(t.age_181_270) },
+      { name: "271-365", value: toInt(t.age_271_365) },
+      { name: "365+", value: toInt(t.age_365_plus) },
+    ]);
+  }
+
   /* ================= 2) FETCH FROM DB (store-month/quarter/year) ================= */
   async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
     const { range, year, country } = params;
@@ -462,6 +579,16 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
   const debounceRef = useRef<number | null>(null);
   const initializedRef = useRef(false);
+
+  type PieDatum = { name: string; value: number };
+
+
+
+const toInt = (v: any) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
+};
+
 
   const runDBFetchForFilters = async () => {
     if (!hasValidPeriod) {
@@ -882,16 +1009,23 @@ export default function InventoryReconciliationPage({ params }: Params) {
     []
   );
 
-  const singleCols: LeafCol<AnyRow>[] = useMemo(
-    () => [
-      {
-        key: 'difference_total',
-        label: 'Difference',
-        width: 90, align: 'center'
-      },
-    ],
-    []
-  );
+ const singleCols: LeafCol<AnyRow>[] = useMemo(
+  () => [
+    {
+      key: "inventory_coverage_ratio",
+      label: "Inventory Coverage Ratio",
+      width: 140,
+      align: "center",
+    },
+    {
+      key: "difference_total",
+      label: "Difference",
+      width: 90,
+      align: "center",
+    },
+  ],
+  []
+);
 
 
 
@@ -1083,6 +1217,12 @@ export default function InventoryReconciliationPage({ params }: Params) {
     if (colKey === '__difference_total') {
       return formatCell(row?.difference_total);
     }
+
+if (colKey === "inventory_coverage_ratio") {
+  const n = Math.abs(toNum(row?.inventory_coverage_ratio)); // ✅ force positive
+  if (!n) return "-";
+  return n.toFixed(1); // ✅ no "x"
+}
 
 
     return formatCell(row?.[colKey]);
@@ -1422,6 +1562,23 @@ export default function InventoryReconciliationPage({ params }: Params) {
         {/* </div> */}
       </div>
 
+            {/* ✅ Pie charts row */}
+     <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+  <InventoryPieCard
+    title="Inventory Breakup"
+    data={breakupPie}
+    loading={pieLoading}
+    height={320}
+  />
+
+  <InventoryPieCard
+    title="Inventory Ageing"
+    data={ageingPie}
+    loading={pieLoading}
+    height={320}
+  />
+</div>
+
       {/* Table */}
       <div
         className={[
@@ -1457,7 +1614,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
       </div>
 
-      <div className="mt-4" id="inventory-pie-export">
+      {/* <div className="mt-4" id="inventory-pie-export">
 
         <InventoryTopProductsPie
           key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
@@ -1466,7 +1623,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
           exportTick={exportTick} // ✅ NEW
           onExportBase64Ready={(b64) => setPieBase64(b64)}
         />
-      </div>
+      </div> */}
 
       {/* Multi-country modal (kept) */}
       {showMultiuseCountry && (

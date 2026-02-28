@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useGetUserDataQuery } from "@/lib/api/profileApi";
 
 const MODULE_OPTIONS = [
   "LIVE_DASHBOARD",
@@ -38,6 +39,7 @@ function ChipsMultiSelect({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
+  
 
   const toggle = (opt: string) => {
     if (value.includes(opt)) onChange(value.filter((v) => v !== opt));
@@ -134,6 +136,11 @@ export default function AddMemberModal({
   const [role, setRole] = useState<RoleOption>("MARKETING");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
+  const [success, setSuccess] = useState<string>("");
+  const { data: userData } = useGetUserDataQuery();
+
+const ownerEmail =
+  (userData as any)?.owner_email?.toLowerCase?.() || "";
 
   useEffect(() => {
     if (!isOpen) {
@@ -146,6 +153,7 @@ export default function AddMemberModal({
       setRole("MARKETING");
       setLoading(false);
       setError("");
+      setSuccess("");
     }
   }, [isOpen]);
 
@@ -153,20 +161,32 @@ export default function AddMemberModal({
     return country ? COUNTRY_TO_MARKETPLACES[country] || [] : [];
   }, [country]);
 
-  const canSubmit =
-    name.trim() &&
-    email.trim() &&
-    password.length >= 6 &&
-    password === confirmPassword &&
-    marketplaces.length > 0 &&
-    modules.length > 0 &&
-    !loading;
+const isSelfAdd =
+  ownerEmail &&
+  email.trim().toLowerCase() === ownerEmail;
+
+const canSubmit =
+  name.trim() &&
+  email.trim() &&
+  password.length >= 6 &&
+  password === confirmPassword &&
+  marketplaces.length > 0 &&
+  modules.length > 0 &&
+  !loading &&
+  !isSelfAdd;
 
   const handleSave = async () => {
+    setSuccess("");
     setError("");
 
     if (!name.trim()) return setError("Name is required");
     if (!email.trim()) return setError("Email is required");
+    if (
+  ownerEmail &&
+  email.trim().toLowerCase() === ownerEmail
+) {
+  return setError("You cannot add yourself as a member.");
+}
     if (!country) return setError("Country is required");
     if (password.length < 6) return setError("Password must be at least 6 characters");
     if (password !== confirmPassword) return setError("Password and Confirm Password must match");
@@ -201,8 +221,13 @@ export default function AddMemberModal({
         return;
       }
 
-      onClose();
-      onSuccess?.(); // ✅ refresh list
+      setSuccess("✅ Member added successfully. Access has been granted.");
+onSuccess?.(); // list refresh
+
+// 1.2 sec baad close
+setTimeout(() => {
+  onClose();
+}, 1200);
     } catch (e: any) {
       setError(e?.message || "Something went wrong");
     } finally {
@@ -247,6 +272,12 @@ export default function AddMemberModal({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
+              {ownerEmail &&
+  email.trim().toLowerCase() === ownerEmail && (
+    <p className="mt-1 text-xs text-red-600">
+      You cannot add yourself as a member.
+    </p>
+  )}
             </div>
 
             {/* Country */}
@@ -338,6 +369,12 @@ export default function AddMemberModal({
               </select>
             </div>
           </div>
+
+          {success && (
+  <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+    {success}
+  </div>
+)}
 
           {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
 

@@ -384,7 +384,7 @@ function convertPlainTextToMarkdown(text: string): string {
   }
 
   return (
-    <div className="flex flex-col bg-white font-[Lato] chatbot-container h-full ">
+<div className="flex flex-col bg-white font-[Lato] chatbot-container h-screen overflow-hidden">
       <div className="text-white bg-gradient-to-r from-[#5ea68e] to-[#37455f] rounded-t-xl message-header py-[2vw] px-[2vw] md:py-[2vw] md:px-[3.5vw] lg:py-[1vw] lg:px-[1.25vw]">
         <h1 className="2xl:text-2xl text-[18px] font-bold">
           Hi <i>{userData?.name || 'User'}!</i>
@@ -394,9 +394,12 @@ function convertPlainTextToMarkdown(text: string): string {
         </p>
       </div>
 
-      <div className="flex-1 border border-black/25 rounded-b-xl chat-container flex flex-col">
+     <div className="flex-1 min-h-0 border border-black/25 rounded-b-xl chat-container flex flex-col overflow-hidden">
         {/* Chat messages container */}
-        <div ref={scrollRef} className="w-full mx-auto h-[63vh] sm:h-[65vh] lg:h-[60vh] 2xl:h-[65vh] overflow-y-auto 2xl:p-3 p-1">
+       <div
+  ref={scrollRef}
+  className="w-full mx-auto flex-1 min-h-0 overflow-y-auto overscroll-contain 2xl:p-3 p-1"
+>
           {/* Bottom-anchoring wrapper: keeps content at the bottom until it overflows */}
           <div className="min-h-full flex flex-col justify-end space-y-3">
             {validMessages.length > 0 ? (
@@ -585,9 +588,9 @@ return (
 
         {/* Input area */}
 
-        <div className="border-t border-gray-200 p-2 sm:p-2 2xl:p-4 flex flex-col gap-2">
+       <div className="sticky bottom-0 bg-white border-t border-gray-200 p-2 sm:p-2 2xl:p-4 flex flex-col gap-2">
           <div className="flex items-center gap-4">
-            <div className="flex-1 flex items-center bg-[#D9D9D9] rounded-full px-3 2xl:py-3 py-2">
+<div className="flex-1 min-h-[44px] flex items-center bg-[#D9D9D9] rounded-full px-3 2xl:py-3 py-2">
               <input
                 type="text"
                 value={inputValue}
