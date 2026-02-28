@@ -36,20 +36,14 @@ type Props<RowT> = {
   leftCols: LeafCol<RowT>[];
   groups: ColGroup<RowT>[];
   singleCols: LeafCol<RowT>[];
-
-  /** ✅ controls order: group / single / group / single */
   layout?: LayoutItem<RowT>[];
-
   initialCollapsed?: Record<string, boolean>;
   onVisibleColCountChange?: (n: number) => void;
   getValue: (row: RowT, colKey: string, rowIndex: number) => React.ReactNode;
   getRowClassName?: (row: RowT, index: number) => string;
-
   showSignRowInBody?: boolean;
   getSignForCol?: (colKey: string) => { text: string; className?: string } | null;
-
   toggleGroupByColKey?: Record<string, string>;
-
   tableClassName?: string;
   headerRow1ClassName?: string;
   headerRow2ClassName?: string;
@@ -60,49 +54,24 @@ type Props<RowT> = {
 export type SummaryRow<RowT> = {
   id: string;
   label: React.ReactNode;
-
-  /** optional “expanded” value (the 2nd-last column in your current summary table) */
   midValue?: React.ReactNode;
-
-  /** the “total / parent” value (the LAST column) */
   endValue?: React.ReactNode;
-
-  /** optional: customize label alignment */
   labelAlign?: Align;
 };
 
 export type SummarySection<RowT> = {
   id: string;
   label: React.ReactNode;
-
-  /** parent row last-column value */
   endValue: React.ReactNode;
-
-  /** child rows shown when expanded */
   children: SummaryRow<RowT>[];
-
-  /** default collapsed/expanded */
   defaultCollapsed?: boolean;
 };
 
 export type SummaryBlock<RowT> = {
-  /** render summary only when this returns true */
   enabled?: boolean;
-
-  /** collapsible sections like Ads / Other */
   sections?: SummarySection<RowT>[];
-
-  /** always-visible rows like Shipment Charges, CM2 rows, etc. */
   fixedRows?: SummaryRow<RowT>[];
-
-  /**
-   * How many columns from the end you want to reserve for values.
-   * Your existing summary layout uses:
-   * - label spans (visibleCols - 2)
-   * - midValue in 2nd-last
-   * - endValue in last
-   */
-  valueCols?: 2; // keep it 2 for your design
+  valueCols?: 2;
 };
 
 
@@ -218,8 +187,8 @@ export default function GroupedCollapsibleTable<RowT>({
   );
 
   useEffect(() => {
-  onAnyGroupExpandedChange?.(anyGroupExpanded);
-}, [anyGroupExpanded, onAnyGroupExpandedChange]);
+    onAnyGroupExpandedChange?.(anyGroupExpanded);
+  }, [anyGroupExpanded, onAnyGroupExpandedChange]);
 
 
   const row2Cells = useMemo<LeafCol<RowT>[]>(() => {
@@ -424,7 +393,6 @@ export default function GroupedCollapsibleTable<RowT>({
                   </td>
 
                   <td colSpan={midColSpan} className="border border-gray-300 px-2 sm:px-3 py-3" />
-
                   <td colSpan={endColSpan} className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center">
                     {sec.endValue}
                   </td>

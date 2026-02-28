@@ -3736,6 +3736,7 @@ export default function DashboardPage() {
     );
 
 
+
     const reimbursementForSummary = useMemo(() => {
         return toNumber(reimbursementHome?.current);
     }, [reimbursementHome?.current]);
@@ -3765,6 +3766,12 @@ export default function DashboardPage() {
         const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
     }, [reimbursementForSummary, plSummaryTotals.net_sales, stats_mtdHome]);
+
+
+    console.log("cm2Profit ", cm2Profit)
+    console.log("adsSpend ", adsSpendTotal)
+    console.log("cm2Margins ", cm2MarginPctForSummary)
+
 
     const { todayDay: statsTodayDay } = getISTDayInfo();
 
@@ -4541,14 +4548,17 @@ export default function DashboardPage() {
                                         <AmazonStatCard
                                             label="Cost of Ads"
                                             current={
-                                                useBiForAmazonCards
-                                                    ? (cm2Ready
-                                                        ? convertToDisplayCurrency(
-                                                            biAlignedTotals?.total_current_advertising ?? 0,
-                                                            biSourceCurrency
-                                                        )
-                                                        : 0)
-                                                    : amazonCurrAdsDisp
+                                                    useBiForAmazonCards
+                                                        ? 
+                                                        (cm2Ready
+                                                            ? convertToDisplayCurrency(
+                                                                biAlignedTotals?.total_current_advertising ?? 0,
+                                                                biSourceCurrency
+                                                            )
+                                                            : 0) 
+                                                        
+                                                        : adsSpendTotal
+                                                
                                             }
                                             previous={
                                                 useBiForAmazonCards
@@ -4590,9 +4600,10 @@ export default function DashboardPage() {
                                                 useBiForAmazonCards
                                                     ? (cm2Ready
                                                         ? (() => {
-                                                            const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                                                            // const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                                                            
                                                             const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                                            return sales > 0 ? (ads / sales) * 100 : 0;
+                                                            return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
                                                         })()
                                                         : 0)
                                                     : amazonCurrRoasPct
@@ -4639,10 +4650,13 @@ export default function DashboardPage() {
                                             label="CM2 Profit"
                                             current={
                                                 useBiCm2
-                                                    ? (cm2Ready
+                                                    ? 
+                                                    (cm2Ready
                                                         ? convertToDisplayCurrency(biAlignedTotals?.total_current_profit_cm2 ?? 0, rangeCurrency)
                                                         : 0)
-                                                    : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency) // ✅ MTD Transactions prev
+                                                    : cm2Profit
+                                                    // convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency) // ✅ MTD Transactions prev
+                                                // cm2Profit
                                             }
                                             previous={
                                                 useBiCm2
@@ -4674,7 +4688,10 @@ export default function DashboardPage() {
                                             current={
                                                 useBiCm2
                                                     ? (cm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
-                                                    : (prev.profitPct ?? 0)
+                                                    : 
+                                                    // (prev.profitPct ?? 0)
+                                                    cm2MarginPctForSummary
+                                                
                                             }
                                             previous={
                                                 useBiCm2
