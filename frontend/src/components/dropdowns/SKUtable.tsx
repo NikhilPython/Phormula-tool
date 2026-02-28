@@ -522,11 +522,123 @@ const SKUtable: React.FC<SKUtableProps> = ({
     []
   );
 
+  // const groups = useMemo<ColGroup<TableRow>[]>(() => [
+  //   {
+  //     id: "units_breakdown",
+  //     label: "Net Units Sold",
+  //     collapsedCols: [{ key: "net_units_sold", label: "", align: "center" }], // hide "Total" on collapsed
+  //     expandedCols: [
+  //       { key: "sku", label: "SKU", align: "center" },
+  //       { key: "units_sold", label: "Units Sold", align: "center" },
+  //       { key: "return_units", label: "Return", align: "center" },
+  //       { key: "net_units_sold", label: "Total", align: "center" },
+  //     ],
+  //   },
+
+  //   {
+  //     id: "sales",
+  //     // label: "Sales",
+  //     label: (
+  //       <>
+  //         Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
+  //       </>
+  //     ),
+  //     collapsedCols: [{ key: "net_sales", label: "", align: "center" }], // hide "Total" on collapsed
+  //     expandedCols: [
+  //       { key: "product_sales", label: "Gross Sales", align: "center" },
+  //       { key: "refund_sales", label: "Sales - Refund", align: "center" },
+  //       { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
+  //       { key: "net_sales", label: "Total", align: "center" },
+  //     ],
+  //   },
+
+  //   {
+  //     id: "amazon_breakdown",
+  //     // label: "Marketplace Fees",
+  //     label: "Marketplace Fees",
+  //     info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
+  //     collapsedCols: [{ key: "amazon_fee", label: "", align: "center" }], // hide "Total" on collapsed
+  //     expandedCols: [
+  //       { key: "selling_fees", label: "Selling Fees", align: "center" },
+  //       { key: "fba_fees", label: "FBA Fees", align: "center" },
+  //       { key: "amazon_fee", label: "Total", align: "center" },
+  //     ],
+  //   },
+
+  //   {
+  //     id: "other_transactions_breakdown",
+  //     label: "Other Transactions",
+  //     collapsedCols: [{ key: "other_transactions", label: "", align: "center" }], // hide "Total" on collapsed
+  //     expandedCols: [
+  //       {
+  //         key: "net_taxes", label: (
+  //           <>
+  //             Net Taxes <InfoTip text={TERM_DEFINITIONS.net_taxes} />
+  //           </>
+  //         ),
+  //         align: "center",
+  //       },
+  //       {
+  //         key: "net_credits", label: (
+  //           <>
+  //             Net Credits <InfoTip text={TERM_DEFINITIONS.net_credits} />
+  //           </>
+  //         ), align: "center"
+  //       },
+  //       { key: "other_transactions", label: "Total", align: "center" },
+  //     ],
+  //   },
+
+  //   {
+  //     id: "profit_breakdown",
+  //     // label: "CM1 Profit",
+  //     label: (
+  //       <>
+  //         CM1 Profit <InfoTip text={TERM_DEFINITIONS.cm1_profit} />
+  //       </>
+  //     ),
+  //     collapsedCols: [{ key: "profit", label: "", align: "center" }], // hide "Total" on collapsed
+  //     expandedCols: [
+  //       { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
+  //       { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
+  //       { key: "profit", label: "Total", align: "center" },
+  //     ],
+  //   },
+  // ], []);
+
+
+  // const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
+  //   () => [
+  //     // {
+  //     //   key: "asp", label: (
+  //     //     <>
+  //     //       ASP <InfoTip text={TERM_DEFINITIONS.asp} />
+  //     //     </>
+  //     //   ), align: "center"
+  //     // },
+  //     {
+  //       key: "asp",
+  //       label: "ASP",
+  //       info: <InfoTip text={TERM_DEFINITIONS.asp} />,
+  //       align: "center",
+  //     },
+  //     // { key: "net_sales", label: "Net Sales", align: "center" },
+  //     { key: "cost_of_unit_sold", label: "COGS", align: "center" },
+  //     { key: "promotional_rebates", label: "Promotions", align: "center" },
+  //     { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
+  //     // { key: "net_units_sold", label: "Net Units Sold", align: "center" },
+  //     // { key: "amazon_fee", label: "Marketplace Fees", align: "center" },
+  //     // { key: "other_transactions", label: "Other Transactions", align: "center" },
+  //     // { key: "profit", label: "CM1 Profit Margin", align: "center" },
+  //   ] as LeafCol<TableRow>[],
+  //   []
+  // );
+
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
       id: "units_breakdown",
       label: "Net Units Sold",
-      collapsedCols: [{ key: "net_units_sold", label: "", align: "center" }], // hide "Total" on collapsed
+      collapsedCols: [{ key: "net_units_sold", label: "", align: "center" }],
       expandedCols: [
         { key: "sku", label: "SKU", align: "center" },
         { key: "units_sold", label: "Units Sold", align: "center" },
@@ -537,13 +649,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     {
       id: "sales",
-      // label: "Sales",
-      label: (
-        <>
-          Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
-        </>
-      ),
-      collapsedCols: [{ key: "net_sales", label: "", align: "center" }], // hide "Total" on collapsed
+      label: "Net Sales",
+      info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
+      collapsedCols: [{ key: "net_sales", label: "", align: "center" }],
       expandedCols: [
         { key: "product_sales", label: "Gross Sales", align: "center" },
         { key: "refund_sales", label: "Sales - Refund", align: "center" },
@@ -554,13 +662,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     {
       id: "amazon_breakdown",
-      // label: "Marketplace Fees",
-      label: (
-        <>
-          Marketplace Fees <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />
-        </>
-      ),
-      collapsedCols: [{ key: "amazon_fee", label: "", align: "center" }], // hide "Total" on collapsed
+      label: "Marketplace Fees",
+      info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
+      collapsedCols: [{ key: "amazon_fee", label: "", align: "center" }],
       expandedCols: [
         { key: "selling_fees", label: "Selling Fees", align: "center" },
         { key: "fba_fees", label: "FBA Fees", align: "center" },
@@ -571,22 +675,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "other_transactions_breakdown",
       label: "Other Transactions",
-      collapsedCols: [{ key: "other_transactions", label: "", align: "center" }], // hide "Total" on collapsed
+      collapsedCols: [{ key: "other_transactions", label: "", align: "center" }],
       expandedCols: [
         {
-          key: "net_taxes", label: (
-            <>
-              Net Taxes <InfoTip text={TERM_DEFINITIONS.net_taxes} />
-            </>
-          ),
+          key: "net_taxes",
+          label: "Net Taxes",
+          info: <InfoTip text={TERM_DEFINITIONS.net_taxes} />,
           align: "center",
         },
         {
-          key: "net_credits", label: (
-            <>
-              Net Credits <InfoTip text={TERM_DEFINITIONS.net_credits} />
-            </>
-          ), align: "center"
+          key: "net_credits",
+          label: "Net Credits",
+          info: <InfoTip text={TERM_DEFINITIONS.net_credits} />,
+          align: "center",
         },
         { key: "other_transactions", label: "Total", align: "center" },
       ],
@@ -594,13 +695,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     {
       id: "profit_breakdown",
-      // label: "CM1 Profit",
-      label: (
-        <>
-          CM1 Profit <InfoTip text={TERM_DEFINITIONS.cm1_profit} />
-        </>
-      ),
-      collapsedCols: [{ key: "profit", label: "", align: "center" }], // hide "Total" on collapsed
+      label: "CM1 Profit",
+      info: <InfoTip text={TERM_DEFINITIONS.cm1_profit} />,
+      collapsedCols: [{ key: "profit", label: "", align: "center" }],
       expandedCols: [
         { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
         { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
@@ -609,25 +706,26 @@ const SKUtable: React.FC<SKUtableProps> = ({
     },
   ], []);
 
-
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
       {
-        key: "asp", label: (
-          <>
-            ASP <InfoTip text={TERM_DEFINITIONS.asp} />
-          </>
-        ), align: "center"
+        key: "asp",
+        label: "ASP",
+        info: <InfoTip text={TERM_DEFINITIONS.asp} />,
+        align: "center",
+
       },
-      // { key: "net_sales", label: "Net Sales", align: "center" },
       { key: "cost_of_unit_sold", label: "COGS", align: "center" },
       { key: "promotional_rebates", label: "Promotions", align: "center" },
-      { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
-      // { key: "net_units_sold", label: "Net Units Sold", align: "center" },
-      // { key: "amazon_fee", label: "Marketplace Fees", align: "center" },
-      // { key: "other_transactions", label: "Other Transactions", align: "center" },
-      // { key: "profit", label: "CM1 Profit Margin", align: "center" },
-    ] as LeafCol<TableRow>[],
+      {
+        key: "promotional_rebates_percentage",
+        label: "Promotions %",
+        align: "center",
+        noWrap: true,                 // ✅ important
+        width: 170,                   // keep if you want
+        thClassName: "whitespace-nowrap", // optional now
+      },
+    ],
     []
   );
 

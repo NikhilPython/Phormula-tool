@@ -99,7 +99,7 @@ export default function InfoTip({ text }: InfoTipProps) {
     <>
       <span
         ref={iconRef}
-          className="ml-1 inline-flex h-3 w-3 items-center justify-center rounded-full border border-yellow-200 text-[10px] font-bold text-green-500 bg-yellow-200
+          className="inline-flex h-3 w-3 items-center justify-center rounded-full border border-yellow-200 text-[10px] font-bold text-green-500 bg-yellow-200
                    cursor-help select-none
                    group-hover:bg-slate-100 group-focus-within:bg-slate-100"
                    style={{backgroundColor:"#F8EDCE"}}

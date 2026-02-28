@@ -6,20 +6,43 @@ import React, { useEffect, useMemo, useState } from "react";
 
 export type Align = "left" | "center" | "right";
 
+// export type LeafCol<RowT> = {
+//   key: string;
+//   label: React.ReactNode;
+//   excelLabel?: string;
+//   align?: Align;
+//   width?: number | string;      // ✅ ADD
+//   tooltip?: React.ReactNode;
+//   thClassName?: string;
+//   tdClassName?: string;
+// };
+
+// export type ColGroup<RowT> = {
+//   id: string;
+//   label: React.ReactNode;
+//   headerClassName?: string;
+//   collapsedCols: LeafCol<RowT>[];
+//   expandedCols: LeafCol<RowT>[];
+// };
+
+
 export type LeafCol<RowT> = {
   key: string;
   label: React.ReactNode;
   excelLabel?: string;
   align?: Align;
-  width?: number | string;      // ✅ ADD
+  width?: number | string;
   tooltip?: React.ReactNode;
+  info?: React.ReactNode;          // ✅ ADD THIS
   thClassName?: string;
   tdClassName?: string;
+  noWrap?: boolean;
 };
 
 export type ColGroup<RowT> = {
   id: string;
   label: React.ReactNode;
+  info?: React.ReactNode;          // ✅ ADD THIS
   headerClassName?: string;
   collapsedCols: LeafCol<RowT>[];
   expandedCols: LeafCol<RowT>[];
@@ -269,12 +292,30 @@ export default function GroupedCollapsibleTable<RowT>({
                   className={`${thBase} cursor-pointer select-none text-center ${g.headerClassName || ""}`}
                   title="Click to expand/collapse"
                 >
-                  <div className="flex items-center justify-center gap-2 min-w-0">
+                  {/* <div className="flex items-center justify-center gap-2 min-w-0">
                     <span className="shrink-0 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
                       {isCollapsed ? "+" : "−"}
                     </span>
                     <span className="min-w-0 whitespace-normal break-words leading-tight">
                       {g.label}
+                    </span>
+                  </div> */}
+                  <div className="flex w-full items-start sm:items-center">
+                    {/* LEFT SLOT */}
+                    <span className="shrink-0 w-5 flex items-center justify-center">
+                      <span className="rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+                        {isCollapsed ? "+" : "−"}
+                      </span>
+                    </span>
+
+                    {/* TEXT */}
+                    <span className="flex-1 px-2 text-center whitespace-normal break-words leading-tight">
+                      {g.label}
+                    </span>
+
+                    {/* RIGHT SLOT */}
+                    <span className="shrink-0 w-5 flex items-center justify-center">
+                      {g.info ? g.info : null}
                     </span>
                   </div>
                 </th>
@@ -288,7 +329,8 @@ export default function GroupedCollapsibleTable<RowT>({
             const targetGroupId = toggleGroupByColKey?.[c.key];
             const isExpandable = Boolean(targetGroupId);
             const isTargetCollapsed = targetGroupId ? collapsed[targetGroupId] : true;
-
+            const hasLeft = isExpandable;
+            const hasRight = Boolean(c.info);
             return (
               <th
                 key={c.key}
@@ -300,18 +342,49 @@ export default function GroupedCollapsibleTable<RowT>({
                 className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${isExpandable ? "cursor-pointer select-none" : ""
                   }`}
               >
-                <div className="flex items-center justify-center gap-2 min-w-0">
+                {/* <div className="flex items-center justify-center gap-2 min-w-0">
                   {isExpandable && (
                     <span className="shrink-0 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
                       {isTargetCollapsed ? "+" : "−"}
                     </span>
                   )}
 
-                  {/* label */}
+               
                   <span className="min-w-0 whitespace-normal break-words leading-tight">
                     {c.label}
                   </span>
 
+                </div> */}
+
+                <div className="flex w-full items-start sm:items-center">
+                  {hasLeft && (
+                    <span className="shrink-0 w-4 flex items-center justify-center">
+                      <span className="rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+                        {isTargetCollapsed ? "+" : "−"}
+                      </span>
+                    </span>
+                  )}
+
+                  {/* <span
+                    className={`${hasLeft || hasRight ? "flex-1 px-2" : "w-full"
+                      } text-center whitespace-normal break-words leading-tight`}
+                  >
+                    {c.label}
+                  </span> */}
+
+                  <span
+                    className={`${hasLeft || hasRight ? "flex-1 px-2" : "w-full"
+                      } text-center leading-tight ${c.noWrap ? "whitespace-nowrap" : "whitespace-normal break-words"
+                      }`}
+                  >
+                    {c.label}
+                  </span>
+
+                  {hasRight && (
+                    <span className="shrink-0 w-4 flex items-center justify-center">
+                      {c.info}
+                    </span>
+                  )}
                 </div>
               </th>
             );
