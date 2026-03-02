@@ -791,6 +791,26 @@ if a broader structural shift occurred earlier.
 Do NOT invent months or dates.
 
 ────────────────────────────────────────
+NUMERIC ANCHORING RULE (CRITICAL)
+────────────────────────────────────────
+
+journey_summary MUST be data-anchored when sku_time_series is available.
+
+You MUST:
+- Reference at least ONE numeric value in each bullet point when data exists.
+- Use only numeric values that appear in sku_time_series or sku_mom.
+- Prefer showing change using "from X to Y" (ASP, units, CM1 profit) when possible.
+- Mention month(s) only if they exist in sku_time_series; do NOT invent months.
+
+If sku_time_series has enough data to quantify:
+- You MUST NOT write vague bullets like "units increased" or "ASP declined".
+- You MUST write quantified bullets like:
+  "ASP dropped from £X to £Y in Mon'YY, and units rose from A to B."
+
+If sku_time_series is missing or too sparse:
+- You may use directional language, but you must still reference months only if present.
+
+────────────────────────────────────────
 PRICING REGIME & ELASTICITY RULE (CRITICAL)
 ────────────────────────────────────────
 
@@ -890,6 +910,15 @@ Each SKU MUST contain EXACTLY TWO fields:
    - 3-5 points preferred, but fewer allowed if structurally sufficient.
    - Each point MUST be a single clear sentence.
 
+   Each journey_summary bullet MUST follow this structure:
+
+    [Month/Phase] → [Metric movement with numbers] → [Economic interpretation]
+
+    Examples:
+    - "Jan–Nov'25: ASP stayed around £12.8–£13.4 while units stayed below 180, showing price-constrained demand."
+    - "Dec'25: ASP dropped to £10.9 and units jumped from 120 to 310, indicating price-led acceleration."
+    - "Post-shift: CM1 per unit fell from £4.6 to £3.1, showing margin compression as the trade-off."
+
    - Points MUST follow economic regime order when applicable:
         • Launch / introduction phase (if valid under launch identification rules)
         • Premium or constrained pricing regime (if present)
@@ -920,7 +949,7 @@ Each SKU MUST contain EXACTLY TWO fields:
      (e.g. Mar'25, Nov'25, Dec'25, Jan'26),
      you MUST reference those months explicitly.
    - You MUST NOT invent months.
-   - You MUST NOT invent numbers.
+   - You MUST NOT invent numbers, BUT you MUST use numbers that are explicitly present in sku_time_series or sku_mom when available.
    - Directional language (increase / decline / flat)
      MUST strictly match analysis_insights.
    - No recommendations inside journey_summary.
