@@ -3053,11 +3053,13 @@ export default function DashboardPage() {
     const SKUWISE_GROUPS = [
         {
             id: "marketplace_fees",
-            label: (
-                <>
-                    Marketplace Fees <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />
-                </>
-            ),
+            label: "Marketplace Fees",
+            info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
+            // label: (
+            //     <>
+            //         Marketplace Fees <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />
+            //     </>
+            // ),
 
             collapsedCols: [
                 {
@@ -3087,6 +3089,7 @@ export default function DashboardPage() {
                     key: "quantity",
                     label: "Total",
                     align: "center" as const,
+                    width: 20,
                 },
             ],
 
@@ -3102,11 +3105,13 @@ export default function DashboardPage() {
 
         {
             id: "profit",
-            label: (
-                <>
-                    CM1 Profit <InfoTip text={TERM_DEFINITIONS.cm1_profit} />
-                </>
-            ),
+            // label: (
+            //     <>
+            //         CM1 Profit <InfoTip text={TERM_DEFINITIONS.cm1_profit} />
+            //     </>
+            // ),
+            label: "CM1 Profit",
+            info: <InfoTip text={TERM_DEFINITIONS.cm1_profit} />,
 
             collapsedCols: [
                 {
@@ -3140,18 +3145,26 @@ export default function DashboardPage() {
 
             expandedCols: [
                 {
-                    key: "tax", label: (
-                        <>
-                            Net Taxes <InfoTip text={TERM_DEFINITIONS.net_taxes} />
-                        </>
-                    ), align: "center" as const
+                    key: "tax",
+                    // label: (
+                    // <>
+                    //     Net Taxes <InfoTip text={TERM_DEFINITIONS.net_taxes} />
+                    // </>
+                    // ), 
+                    label: "Net Taxes",
+                    info: <InfoTip text={TERM_DEFINITIONS.net_taxes} />,
+                    align: "center" as const
                 },
                 {
-                    key: "credits", label: (
-                        <>
-                            Net Credits <InfoTip text={TERM_DEFINITIONS.net_credits} />
-                        </>
-                    ), align: "center" as const
+                    key: "credits",
+                    //  label: (
+                    //     <>
+                    //         Net Credits <InfoTip text={TERM_DEFINITIONS.net_credits} />
+                    //     </>
+                    // ), 
+                    label: "Net Credits",
+                    info: <InfoTip text={TERM_DEFINITIONS.net_credits} />,
+                    align: "center" as const
                 },
                 {
                     key: "tax_and_credits",
@@ -3162,11 +3175,13 @@ export default function DashboardPage() {
         },
         {
             id: "cm2_profit",
-            label: (
-                <>
-                    CM2 Profit <InfoTip text={TERM_DEFINITIONS.cm2_profit} />
-                </>
-            ),
+            // label: (
+            //     <>
+            //         CM2 Profit <InfoTip text={TERM_DEFINITIONS.cm2_profit} />
+            //     </>
+            // ),
+            label: "CM2 Profit",
+            info: <InfoTip text={TERM_DEFINITIONS.cm2_profit} />,
 
             collapsedCols: [
                 {
@@ -3191,18 +3206,27 @@ export default function DashboardPage() {
     const SKUWISE_SINGLE_COLS = [
         { key: "quantity", label: "Net Units Sold", align: "center" as const },
         {
-            key: "asp", label: (
-                <>
-                    ASP <InfoTip text={TERM_DEFINITIONS.asp} />
-                </>
-            ), align: "center" as const
+            key: "asp",
+            //  label: (
+            //     <>
+            //         ASP <InfoTip text={TERM_DEFINITIONS.asp} />
+            //     </>
+            // ), 
+            label: "ASP",
+            info: <InfoTip text={TERM_DEFINITIONS.asp} />,
+            align: "center" as const
         },
         {
-            key: "net_sales", label: (
-                <>
-                    Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
-                </>
-            ), align: "center" as const
+            key: "net_sales",
+            //  label: (
+            //     <>
+            //         Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
+            //     </>
+            // ), 
+            
+            label: "Net Sales",
+            info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
+            align: "center" as const
         },
         { key: "cogs", label: "COGS", align: "center" as const },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
@@ -3732,7 +3756,7 @@ export default function DashboardPage() {
 
 
     const costOfAds = Math.abs(
-        toNumber(sponsoredBrandSpend + dealVouchers)
+        toNumber(sponsoredBrandSpend - dealVouchers)
     );
 
 
@@ -4548,17 +4572,17 @@ export default function DashboardPage() {
                                         <AmazonStatCard
                                             label="Cost of Ads"
                                             current={
-                                                    useBiForAmazonCards
-                                                        ? 
-                                                        (cm2Ready
-                                                            ? convertToDisplayCurrency(
-                                                                biAlignedTotals?.total_current_advertising ?? 0,
-                                                                biSourceCurrency
-                                                            )
-                                                            : 0) 
-                                                        
-                                                        : adsSpendTotal
-                                                
+                                                useBiForAmazonCards
+                                                    ?
+                                                    (cm2Ready
+                                                        ? convertToDisplayCurrency(
+                                                            biAlignedTotals?.total_current_advertising ?? 0,
+                                                            biSourceCurrency
+                                                        )
+                                                        : 0)
+
+                                                    : adsSpendTotal
+
                                             }
                                             previous={
                                                 useBiForAmazonCards
@@ -4601,7 +4625,7 @@ export default function DashboardPage() {
                                                     ? (cm2Ready
                                                         ? (() => {
                                                             // const ads = biAlignedTotals?.total_current_advertising ?? 0;
-                                                            
+
                                                             const sales = biAlignedTotals?.total_current_net_sales ?? 0;
                                                             return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
                                                         })()
@@ -4650,12 +4674,12 @@ export default function DashboardPage() {
                                             label="CM2 Profit"
                                             current={
                                                 useBiCm2
-                                                    ? 
+                                                    ?
                                                     (cm2Ready
                                                         ? convertToDisplayCurrency(biAlignedTotals?.total_current_profit_cm2 ?? 0, rangeCurrency)
                                                         : 0)
                                                     : cm2Profit
-                                                    // convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency) // ✅ MTD Transactions prev
+                                                // convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency) // ✅ MTD Transactions prev
                                                 // cm2Profit
                                             }
                                             previous={
@@ -4688,10 +4712,10 @@ export default function DashboardPage() {
                                             current={
                                                 useBiCm2
                                                     ? (cm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
-                                                    : 
+                                                    :
                                                     // (prev.profitPct ?? 0)
                                                     cm2MarginPctForSummary
-                                                
+
                                             }
                                             previous={
                                                 useBiCm2
