@@ -638,7 +638,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     {
       id: "units_breakdown",
       label: "Net Units Sold",
-      collapsedCols: [{ key: "net_units_sold", label: "", align: "center" }],
+      collapsedCols: [{ key: "net_units_sold", label: "", align: "center", width: 20 }],
       expandedCols: [
         { key: "sku", label: "SKU", align: "center" },
         { key: "units_sold", label: "Units Sold", align: "center" },
@@ -699,7 +699,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       info: <InfoTip text={TERM_DEFINITIONS.cm1_profit} />,
       collapsedCols: [{ key: "profit", label: "", align: "center" }],
       expandedCols: [
-        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
+        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center", width: 150 },
         { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
         { key: "profit", label: "Total", align: "center" },
       ],

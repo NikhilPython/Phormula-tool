@@ -3438,22 +3438,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       {/* EXPENSE BREAKUP */}
                       {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
                       <CircleChart
-                        range={range as Exclude<RangeType, "">}
-                        month={range === "monthly" ? selectedMonth : undefined}
-                        selectedQuarter={range === "quarterly" ? (selectedQuarter || undefined) : undefined}
+                        range="monthly"
+                        month={selectedMonth}
+                        selectedQuarter={undefined}
                         year={selectedYear}
                         countryName={initialCountryName}
                         homeCurrency={globalHomeCurrency}
                         onExportBase64Ready={setExpenseBreakdownPieBase64}
                       />
-                      {/* </div> */}
 
-                      {/* CM1 PROFIT BREAKDOWN */}
-                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
                       <CMchartofsku
-                        range={range as Exclude<RangeType, "">}
-                        month={range === "monthly" ? selectedMonth : undefined}
-                        selectedQuarter={range === "quarterly" ? (selectedQuarter || undefined) : undefined}
+                        range="monthly"
+                        month={selectedMonth}
+                        selectedQuarter={undefined}
                         year={selectedYear}
                         countryName={initialCountryName}
                         homeCurrency={globalHomeCurrency}
@@ -3582,31 +3579,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 {allDropdownsSelected && (
                   <div className="mt-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-                      {/* EXPENSE BREAKUP */}
-                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
                       <CircleChart
-                        range={range as Exclude<RangeType, "">}
-                        month={range === "monthly" ? selectedMonth : undefined}
-                        selectedQuarter={range === "quarterly" ? selectedQuarter : undefined}
+                        range="quarterly"
+                        month={undefined}
+                        selectedQuarter={selectedQuarter}
                         year={selectedYear}
                         countryName={initialCountryName}
                         homeCurrency={globalHomeCurrency}
                         onExportBase64Ready={setExpenseBreakdownPieBase64}
                       />
-                      {/* </div> */}
 
-                      {/* CM1 PROFIT BREAKDOWN */}
-                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
                       <CMchartofsku
-                        range={range as Exclude<RangeType, "">}
-                        month={range === "monthly" ? selectedMonth : undefined}
-                        selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
+                        range="quarterly"
+                        month={undefined}
+                        selectedQuarter={selectedQuarter}
                         year={selectedYear}
                         countryName={initialCountryName}
                         homeCurrency={globalHomeCurrency}
                         onExportBase64Ready={setProductWiseCm1PieBase64}
                       />
-                      {/* </div> */}
                     </div>
                   </div>
                 )}
@@ -3733,31 +3724,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 {allDropdownsSelected && (
                   <div className="mt-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-                      {/* EXPENSE BREAKUP */}
-                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
                       <CircleChart
-                        range={range as Exclude<RangeType, "">}
-                        month={range === "monthly" ? selectedMonth : undefined}
-                        selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
+                        range="yearly"
+                        month={undefined}
+                        selectedQuarter={undefined}
                         year={selectedYear}
                         countryName={initialCountryName}
                         homeCurrency={globalHomeCurrency}
                         onExportBase64Ready={setExpenseBreakdownPieBase64}
                       />
-                      {/* </div> */}
 
-                      {/* CM1 PROFIT BREAKDOWN */}
-                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
                       <CMchartofsku
-                        range={range as Exclude<RangeType, "">}
-                        month={range === "monthly" ? selectedMonth : undefined}
-                        selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
+                        range="yearly"
+                        month={undefined}
+                        selectedQuarter={undefined}
                         year={selectedYear}
                         countryName={initialCountryName}
                         homeCurrency={globalHomeCurrency}
                         onExportBase64Ready={setProductWiseCm1PieBase64}
                       />
-                      {/* </div> */}
                     </div>
                   </div>
                 )}

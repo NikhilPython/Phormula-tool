@@ -292,14 +292,26 @@ export default function GroupedCollapsibleTable<RowT>({
                   className={`${thBase} cursor-pointer select-none text-center ${g.headerClassName || ""}`}
                   title="Click to expand/collapse"
                 >
-                  {/* <div className="flex items-center justify-center gap-2 min-w-0">
-                    <span className="shrink-0 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
-                      {isCollapsed ? "+" : "−"}
+
+                  {/* <div className="flex w-full items-start sm:items-center">
+                  
+                    <span className="shrink-0 w-5 flex items-center justify-center">
+                      <span className="rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+                        {isCollapsed ? "+" : "−"}
+                      </span>
                     </span>
-                    <span className="min-w-0 whitespace-normal break-words leading-tight">
+
+                   
+                    <span className="flex-1 px-2 text-center whitespace-normal break-words leading-tight">
                       {g.label}
                     </span>
+
+                  
+                    <span className="shrink-0 w-5 flex items-center justify-center">
+                      {g.info ? g.info : null}
+                    </span>
                   </div> */}
+
                   <div className="flex w-full items-start sm:items-center">
                     {/* LEFT SLOT */}
                     <span className="shrink-0 w-5 flex items-center justify-center">
@@ -314,9 +326,11 @@ export default function GroupedCollapsibleTable<RowT>({
                     </span>
 
                     {/* RIGHT SLOT */}
-                    <span className="shrink-0 w-5 flex items-center justify-center">
-                      {g.info ? g.info : null}
-                    </span>
+                    {g.info ? (
+                      <span className="shrink-0 w-5 flex items-center justify-center">
+                        {g.info}
+                      </span>
+                    ) : null}
                   </div>
                 </th>
               );
