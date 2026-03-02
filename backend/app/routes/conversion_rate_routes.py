@@ -1,12 +1,15 @@
 # routes/conversion_routes.py
 from __future__ import annotations
+
 import re
 import logging
 import datetime as dt
-from typing import Iterator, Tuple
+from typing import Iterator, Tuple, Optional
+
 import requests
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func
+
 from app import db
 from app.models.user_models import CurrencyConversion
 
@@ -95,16 +98,15 @@ def fetch_rate_from_provider(base_ccy: str, quote_ccy: str, year: int, month: st
     _validate_ccy(base_ccy, "user_currency")
     _validate_ccy(quote_ccy, "selected_currency")
 
-    month_num   = _month_to_number(month)
+    month_num = _month_to_number(month)
     target_date = dt.date(int(year), month_num, 15)
-    today       = dt.date.today()
+    today = dt.date.today()
 
     if target_date > today:
         url = "https://api.frankfurter.app/latest"
     else:
         url = f"https://api.frankfurter.app/{target_date.isoformat()}"
 
-    # For the API, use uppercase codes
     params = {"from": base_ccy.upper(), "to": quote_ccy.upper()}
 
     try:
@@ -143,7 +145,6 @@ def upsert_conversion_rate(
     _validate_ccy(user_currency, "user_currency")
     _validate_ccy(selected_currency, "selected_currency")
 
-    # Normalize everything to lowercase for storage
     month_norm = _normalize_month(month).lower()
     user_currency_norm = str(user_currency).strip().lower()
     selected_currency_norm = str(selected_currency).strip().lower()
@@ -153,11 +154,9 @@ def upsert_conversion_rate(
     if not country_norm:
         raise ValueError("country is required")
 
-    # Decide the final rate
     if rate is None:
         if not fetch_if_missing:
             raise ValueError("rate is required when fetch_if_missing=False")
-        # For the external provider, still pass original values (case-insensitive) or normalized
         rate = fetch_rate_from_provider(user_currency_norm, selected_currency_norm, year, month_norm)
 
     rate = float(rate)
@@ -181,7 +180,6 @@ def upsert_conversion_rate(
         db.session.commit()
         return existing
 
-    # Store everything in lowercase
     row = CurrencyConversion(
         user_currency=user_currency_norm,
         country=country_norm,
@@ -194,33 +192,121 @@ def upsert_conversion_rate(
     db.session.commit()
     return row
 
+# --------------------- Auto-seed "new month" helper ---------------------------
+
+def ensure_month_seeded(*, year: int, month: str | int) -> bool:
+    """
+    Ensure all SEED_COMBOS exist for (year, month).
+
+    Returns:
+      True  -> current month was already seeded in DB (NO fetch/store happened)
+      False -> some were missing; we fetched/stored them now
+    """
+    month_norm = _normalize_month(month).lower()
+    year = int(year)
+
+    existing_rows = (
+        db.session.query(
+            func.lower(CurrencyConversion.user_currency),
+            func.lower(CurrencyConversion.country),
+            func.lower(CurrencyConversion.selected_currency),
+        )
+        .filter(
+            func.lower(CurrencyConversion.month) == month_norm,
+            CurrencyConversion.year == year,
+        )
+        .all()
+    )
+    existing_keys = {(uc, c, sc) for (uc, c, sc) in existing_rows}
+    needed_keys = {(uc.lower(), c.lower(), sc.lower()) for (uc, c, sc) in SEED_COMBOS}
+
+    missing = needed_keys - existing_keys
+    if not missing:
+        return True
+
+    for user_ccy, country, sel_ccy in missing:
+        if user_ccy == sel_ccy:
+            upsert_conversion_rate(
+                user_currency=user_ccy,
+                country=country,
+                selected_currency=sel_ccy,
+                month=month_norm,
+                year=year,
+                rate=1.0,
+                fetch_if_missing=False,
+            )
+        else:
+            upsert_conversion_rate(
+                user_currency=user_ccy,
+                country=country,
+                selected_currency=sel_ccy,
+                month=month_norm,
+                year=year,
+                rate=None,
+                fetch_if_missing=True,
+            )
+
+    return False
+
 # ------------------------------- HTTP Route -----------------------------------
 
 @conversion_bp.route("/currency-rate", methods=["POST"])
 def api_create_or_update_currency_rate():
     data = request.get_json(silent=True) or request.form
 
+    # ---------------- Auto seed current month (new month logic) ----------------
+    # If current month data exists => current_month_already_seeded = True
+    # If not, it fetches + stores => current_month_already_seeded = False
+    # If seed fails => current_month_already_seeded = "error"
+    auto_seed_current_month = str(data.get("auto_seed_current_month", "true")).lower() in (
+        "1", "true", "yes", "y", "on"
+    )
+
+    current_month_already_seeded: Optional[bool | str] = None
+    if auto_seed_current_month:
+        today = dt.date.today()
+        current_year = today.year
+        current_month_name = MONTHS_REVERSE_MAP[today.month]
+        try:
+            current_month_already_seeded = ensure_month_seeded(
+                year=current_year,
+                month=current_month_name,
+            )
+        except Exception:
+            db.session.rollback()
+            logger.exception("Auto seed current month failed")
+            current_month_already_seeded = "error"
+
+    # ---------------- Seed-only mode (so Postman can call only this) ----------
+    seed_only = str(data.get("seed_only", "")).lower() in ("1", "true", "yes", "y", "on")
+    if seed_only:
+        ok = current_month_already_seeded != "error"
+        return jsonify({
+            "success": ok,
+            "message": "Current month seed checked" if ok else "Current month seed failed",
+            "current_month_already_seeded": current_month_already_seeded,
+        }), 200 if ok else 500
+
     # ----------------------- Bulk / seed mode ---------------------------------
     seed_all = str(data.get("seed_all", "")).lower() in ("1", "true", "yes", "y", "on")
     if seed_all:
         try:
-            start_year  = int(data.get("start_year", 2024))
+            start_year = int(data.get("start_year", 2024))
             start_month = data.get("start_month", "january")
-            end_year    = int(data.get("end_year", dt.date.today().year))
-            end_month   = data.get("end_month", MONTHS_REVERSE_MAP[dt.date.today().month])
+            end_year = int(data.get("end_year", dt.date.today().year))
+            end_month = data.get("end_month", MONTHS_REVERSE_MAP[dt.date.today().month])
 
             start_month_num = _month_to_number(start_month)
-            end_month_num   = _month_to_number(end_month)
+            end_month_num = _month_to_number(end_month)
 
             results = []
-            errors  = []
+            errors = []
 
             for y, mnum in _month_year_iter(start_year, start_month_num, end_year, end_month_num):
                 month_name = MONTHS_REVERSE_MAP[mnum]
 
                 for user_ccy, country, sel_ccy in SEED_COMBOS:
                     try:
-                        # Identity rates (same currency) are always 1.0
                         if user_ccy.lower() == sel_ccy.lower():
                             row = upsert_conversion_rate(
                                 user_currency=user_ccy,
@@ -265,23 +351,29 @@ def api_create_or_update_currency_rate():
                 "success": True,
                 "message": "Bulk currency conversions upserted",
                 "inserted_or_updated": len(results),
-                "errors": errors,             # may be empty
-                "preview": results[:10],      # small preview to keep payload light
+                "errors": errors,
+                "preview": results[:10],
+                "current_month_already_seeded": current_month_already_seeded,
             }), 200
 
         except Exception as e:
             db.session.rollback()
             logger.exception("Bulk seed failed")
-            return jsonify({"success": False, "error": "Bulk seed failed", "details": str(e)}), 500
+            return jsonify({
+                "success": False,
+                "error": "Bulk seed failed",
+                "details": str(e),
+                "current_month_already_seeded": current_month_already_seeded,
+            }), 500
 
     # ----------------------- Single-row mode (original) -----------------------
-    user_currency     = (data.get("user_currency") or "").strip()
-    country           = (data.get("country") or "").strip()
+    user_currency = (data.get("user_currency") or "").strip()
+    country = (data.get("country") or "").strip()
     selected_currency = (data.get("selected_currency") or "").strip()
-    month             = data.get("month")
-    year              = data.get("year")
-    rate              = data.get("rate")
-    fetch_if_missing  = data.get("fetch_if_missing", True)
+    month = data.get("month")
+    year = data.get("year")
+    rate = data.get("rate")
+    fetch_if_missing = data.get("fetch_if_missing", True)
 
     missing = [
         k for k, v in {
@@ -293,12 +385,17 @@ def api_create_or_update_currency_rate():
         }.items() if v in (None, "", [])
     ]
     if missing:
-        return jsonify({"success": False, "error": f"Missing required fields: {', '.join(missing)}"}), 400
+        return jsonify({
+            "success": False,
+            "error": f"Missing required fields: {', '.join(missing)}",
+            "current_month_already_seeded": current_month_already_seeded,
+        }), 400
 
     try:
         year = int(year)
         if isinstance(fetch_if_missing, str):
             fetch_if_missing = fetch_if_missing.lower() in ("1", "true", "yes", "y", "on")
+
         if rate is not None and rate != "":
             rate = float(rate)
         else:
@@ -317,6 +414,7 @@ def api_create_or_update_currency_rate():
         return jsonify({
             "success": True,
             "message": "Conversion rate stored",
+            "current_month_already_seeded": current_month_already_seeded,
             "record": {
                 "id": row.id,
                 "user_currency": row.user_currency,
@@ -329,12 +427,33 @@ def api_create_or_update_currency_rate():
         }), 200
 
     except ValueError as ve:
-        return jsonify({"success": False, "error": str(ve)}), 400
+        return jsonify({
+            "success": False,
+            "error": str(ve),
+            "current_month_already_seeded": current_month_already_seeded,
+        }), 400
     except requests.HTTPError as he:
-        return jsonify({"success": False, "error": "FX provider HTTP error", "details": str(he)}), 502
+        return jsonify({
+            "success": False,
+            "error": "FX provider HTTP error",
+            "details": str(he),
+            "current_month_already_seeded": current_month_already_seeded,
+        }), 502
     except requests.RequestException as rexc:
-        return jsonify({"success": False, "error": "FX provider request failed", "details": str(rexc)}), 502
+        return jsonify({
+            "success": False,
+            "error": "FX provider request failed",
+            "details": str(rexc),
+            "current_month_already_seeded": current_month_already_seeded,
+        }), 502
     except Exception as e:
         db.session.rollback()
         logger.exception("Single-row upsert failed")
-        return jsonify({"success": False, "error": "Internal error", "details": str(e)}), 500
+        return jsonify({
+            "success": False,
+            "error": "Internal error",
+            "details": str(e),
+            "current_month_already_seeded": current_month_already_seeded,
+        }), 500
+    
+
