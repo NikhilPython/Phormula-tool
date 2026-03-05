@@ -3754,12 +3754,10 @@ export default function DashboardPage() {
         toNumber(sponsoredBrandSpend - dealVouchers)
     );
 
-    console.log("ADs", ads_spend, costOfAds)
-
     const adsSpendTotal = Math.abs(
         toNumber(ads_spend + costOfAds)
     );
-    console.log("Total Ads Spend:", adsSpendTotal);
+  
 
     const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
 
