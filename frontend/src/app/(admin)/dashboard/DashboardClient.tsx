@@ -3757,7 +3757,7 @@ export default function DashboardPage() {
     const adsSpendTotal = Math.abs(
         toNumber(ads_spend + costOfAds)
     );
-  
+
 
     const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
 
@@ -4183,10 +4183,15 @@ export default function DashboardPage() {
             </div> */}
 
             {activeTab === "live" && (
-                <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-4 items-stretch scroll-mt-[80px] mt-2 md:mt-4">
+                <div
+                    id="live-sales"
+                    className="grid grid-cols-12 gap-4 items-stretch scroll-mt-[80px] mt-2 md:mt-4 lg:min-h-[calc(100vh-80px)]"
+                >
 
                     {/* LEFT COLUMN */}
-                    <div className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 lg:gap-4 2xl:gap-4 ${leftColumnHeightClass}`}>
+                    <div
+                        className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-full ${leftColumnHeightClass}`}
+                    >
 
                         {/* GLOBAL CARD */}
                         {!isCountryMode && hasGlobalCard && (
@@ -4895,7 +4900,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* RIGHT COLUMN – Sales Target */}
-                    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex flex-col gap-4 lg:gap-4 2xl:gap-4 h-full">
+                    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex flex-col gap-4 h-full">
                         <div className="w-full">
                             <SalesTargetStatsCard
                                 regions={regions}
@@ -4922,7 +4927,7 @@ export default function DashboardPage() {
                             />
                         </div>
 
-                        <div className="w-full lg:sticky lg:top-4 2xl:top-6">
+                        <div className="w-full flex-1 min-h-0 min-[1700px]:sticky min-[1700px]:top-6">
 
                             <SalesTargetCard
                                 data={targetData}
@@ -4975,47 +4980,6 @@ export default function DashboardPage() {
                 )
             }
 
-
-
-            {/* ✅ Global-only Performance Trend BELOW top section */}
-            {/* {
-                platform === "global" && showLiveBI && (
-                    // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
-                    <div
-                        id="targets-action-items"
-                        className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
-                    >
-                        <div className="w-full max-w-full min-w-0">
-                            <LiveBiLineGraph
-                                dailySeries={biDailySeriesHome}
-                                periods={biPeriods}
-                                loading={biLoading}
-                                error={biError}
-                                selectedStartDay={selectedStartDay}
-                                selectedEndDay={selectedEndDay}
-                                currencySymbol={currencySymbol}
-                            />
-                        </div>
-                    </div>
-                )
-            } */}
-
-            {/* 
-            <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
-                {showLiveBI && liveBiPayload && (
-                    <LiveBusinessClient
-                        countryName={countryName}
-                        ranged="MTD"
-                        month={(currMonthName || "").toLowerCase()}
-                        year={String(currYear)}
-                        initialData={liveBiPayload}
-                        disableAutoFetch
-                        onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
-                    />
-                )}
-            </div> */}
-
-
             {activeTab === "summary" && (
                 <div className="w-full overflow-x-hidden">
                     {showLiveBI && liveBiPayload && (
@@ -5032,154 +4996,6 @@ export default function DashboardPage() {
                 </div>
             )}
 
-
-
-            {/* Lower P&L Graph and Inventory */}
-            {/* { hasAnyGraphData && ( */}
-            {/* {activeTab === "mtd_pl" && hasAnyGraphData && (
-                <>
-                    <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
-                        <div
-                            className={[
-                                "grid grid-cols-1 gap-4 items-stretch",
-                                isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
-                            ].join(" ")}
-                        >
-                            <div className="rounded-2xl border bg-white p-5 shadow-sm min-w-0">
-                                <div className="md:mb-3 flex items-center justify-between">
-                                    <div className="text-sm text-charcoal-500">
-                                        <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
-                                            <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-3">
-                                        
-                                        {!isCountryMode && (
-                                            <>
-                                                <SegmentedToggle<RegionKey>
-                                                    value={graphRegion}
-                                                    options={graphRegions.map((r) => ({ value: r }))}
-                                                    onChange={setGraphRegion}
-                                                />
-                                                
-                                            </>
-                                        )}
-                                        <span className="relative group shrink-0">
-                                            <button
-                                                type="button"
-                                                className="
-      rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md
-    "
-                                                onClick={() => setIsMtdPlExpanded((s) => !s)}
-                                                aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
-                                            >
-                                                {isMtdPlExpanded ? (
-                                                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                                                ) : (
-                                                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                                                )}
-                                            </button>
-
-                                          
-                                            <span
-                                                className="
-      pointer-events-none
-      absolute
-      left-1/2
-      -translate-x-1/2
-      -top-9
-      z-50
-      whitespace-nowrap
-      rounded-md
-      border
-      border-gray-200
-      bg-white
-      px-2
-      py-1
-      text-[11px]
-      font-medium
-      text-[#414042]
-      shadow-sm
-      opacity-0
-      transition-opacity
-      duration-150
-      group-hover:opacity-100
-    "
-                                            >
-                                                {isMtdPlExpanded ? "Collapse" : "Expand"}
-                                                <span
-                                                    className="
-        absolute
-        left-1/2
-        top-full
-        h-2
-        w-2
-        -translate-x-1/2
-        -translate-y-1/2
-        rotate-45
-        border-r
-        border-b
-        border-gray-200
-        bg-white
-      "
-                                                />
-                                            </span>
-                                        </span>
-
-
-                                    </div>
-                                </div>
-
-
-                                <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
-                                    <div className="w-full max-w-full min-w-0 h-full">
-                                        <DashboardBargraphCard
-                                            countryName={countryNameForGraph}
-                                            formattedMonthYear={formattedMonthYear}
-                                            currencySymbol={currencySymbol}
-                                            labels={labels}
-                                            values={valuesPatched}
-                                            prevValues={prevValues}
-                                            expanded={isMtdPlExpanded}
-                                            colors={colors}
-                                            loading={loading}
-                                            allValuesZero={allValuesZero}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {!isMtdPlExpanded && (
-                                <div className="min-w-0 h-full flex flex-col">
-                                    <Cm1ProfitBreakdownPie
-                                        title="CM1 Profit Breakdown"
-                                        data={cm1ProfitPieData}
-                                        currency={displayCurrency}
-                                        height={320}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-
-
-                </>
-            )
-            } */}
 
             {activeTab === "productwise" && (
                 <>
@@ -5433,15 +5249,11 @@ export default function DashboardPage() {
                             </div>
                         )}
 
-
-
-
-
                     </div>
                     <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
                         <div
                             className={[
-                                "grid grid-cols-1 gap-4 items-stretch",
+                                "grid grid-cols-1 gap-4 items-start min-[1700px]:items-stretch",
                                 isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
                             ].join(" ")}
                         >

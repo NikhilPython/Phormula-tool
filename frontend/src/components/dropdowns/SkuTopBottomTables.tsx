@@ -62,8 +62,11 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
               <tbody>
                 {topData.rows.map((item, index) => (
                   <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm whitespace-normal break-words align-top">
-                      <span title={item.product_name} className="block">
+                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm align-top max-w-[200px]">
+                      <span
+                        title={item.product_name}
+                        className="block truncate whitespace-nowrap overflow-hidden"
+                      >
                         {item.product_name || "-"}
                       </span>
                     </td>
@@ -135,8 +138,11 @@ const SkuTopBottomTables: React.FC<Props> = ({ topData, bottomData, currencySymb
               <tbody>
                 {bottomData.rows.map((item, index) => (
                   <tr key={index} className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm whitespace-normal break-words align-top">
-                      <span title={item.product_name} className="block">
+                    <td className="border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm align-top max-w-[200px]">
+                      <span
+                        title={item.product_name}
+                        className="block truncate whitespace-nowrap overflow-hidden"
+                      >
                         {item.product_name || "-"}
                       </span>
                     </td>

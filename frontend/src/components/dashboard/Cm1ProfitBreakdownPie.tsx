@@ -371,9 +371,10 @@ export default function Cm1ProfitBreakdownPie({
         <p className="text-center text-sm text-gray-500">No CM1 data available.</p>
       ) : (
         <div className="flex-1 min-h-0 w-full">
-          <div className="relative w-full h-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
+          <div className="relative w-full h-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch">
             {/* LEFT: PIE */}
-            <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[460px]">
+            {/* <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[460px]"> */}
+            <div className="w-full xl:flex-1 min-w-0 flex-1 min-h-[260px]">
               <Pie
                 ref={chartRef}
                 data={chartData}
@@ -384,14 +385,14 @@ export default function Cm1ProfitBreakdownPie({
             </div>
 
             {/* RIGHT: LEGEND */}
-            <div
-              className="w-full xl:shrink-0 xl:self-center overflow-y-auto overflow-x-hidden pr-1 flex justify-center xl:justify-start"
+            {/* <div
+              className="w-full xl:shrink-0 overflow-y-auto overflow-x-hidden pr-1 flex justify-center xl:justify-start self-stretch"
               style={{
                 width: isDesktop ? 260 : isLaptop ? 180 : "100%",
                 maxHeight: "100%",
               }}
             >
-              {/* ✅ w-full on grid to align starts; xl column on desktop */}
+              
               <div className="grid w-full grid-cols-2 sm:grid-cols-3 xl:flex xl:w-auto xl:flex-col gap-x-6 gap-y-3 xl:gap-y-2">
                 {(displayData || []).map((slice, i) => {
                   const dot = COLORS[i % COLORS.length];
@@ -428,19 +429,19 @@ export default function Cm1ProfitBreakdownPie({
                         setLegendTick((t) => t + 1);
                       }}
                     >
-                      {/* ✅ items-start keeps all labels starting aligned */}
+                     
                       <div
                         className={`flex items-start gap-2 sm:gap-3 min-w-0 ${isVisible ? "opacity-100" : "opacity-40"
                           }`}
                       >
-                        {/* ✅ fixed dot alignment (no shifting) */}
+                        
                         <span
                           className="mt-[3px] inline-block h-2.5 w-2.5 rounded-full flex-none shrink-0"
                           style={{ backgroundColor: dot }}
                         />
 
                         <div className="min-w-0 flex flex-col items-start">
-                          {/* line 1 */}
+                         
                           <div
                             className={`truncate text-[10px] 2xl:text-xs ${isVisible ? "" : "line-through"
                               }`}
@@ -450,7 +451,7 @@ export default function Cm1ProfitBreakdownPie({
                             {slice.name}
                           </div>
 
-                          {/* line 2 */}
+                         
                           <div
                             className="text-[10px] 2xl:text-xs break-words"
                             style={{ color: "#414042" }}
@@ -469,7 +470,97 @@ export default function Cm1ProfitBreakdownPie({
                   );
                 })}
               </div>
-            </div>
+            </div> */}
+
+            {/* RIGHT: LEGEND */}
+<div
+  className="w-full xl:shrink-0 self-stretch flex justify-center xl:justify-start"
+  style={{
+    width: isDesktop ? 260 : isLaptop ? 180 : "100%",
+  }}
+>
+  {/* This wrapper centers vertically */}
+  <div className="h-full w-full flex items-center">
+    {/* This wrapper handles scrolling */}
+    <div className="w-full max-h-full overflow-y-auto overflow-x-hidden pr-1">
+      <div className="grid w-full grid-cols-2 sm:grid-cols-3 xl:flex xl:w-auto xl:flex-col gap-x-6 gap-y-3 xl:gap-y-2">
+        {(displayData || []).map((slice, i) => {
+          const dot = COLORS[i % COLORS.length];
+          const chart = chartRef.current;
+          const isVisible = chart ? chart.getDataVisibility(i) : true;
+
+          const value = Math.abs(Number(slice.value || 0));
+          const pct = Number(slice.pct || 0);
+          const delta = slice.deltaPct;
+
+          const deltaSymbol =
+            delta == null ? "—" : delta > 0 ? "▲" : delta < 0 ? "▼" : "■";
+
+          const deltaText =
+            delta == null ? "—" : `${deltaSymbol} ${Math.abs(delta).toFixed(2)}%`;
+
+          const deltaClass =
+            delta == null
+              ? "text-[#414042]"
+              : delta >= 0
+                ? "text-green-500"
+                : "text-red-500";
+
+          return (
+            <button
+              key={`${slice.name}-${i}`}
+              type="button"
+              className="text-left w-full min-w-0"
+              onClick={() => {
+                const c = chartRef.current;
+                if (!c) return;
+                c.toggleDataVisibility(i);
+                c.update();
+                setLegendTick((t) => t + 1);
+              }}
+            >
+              <div
+                className={`flex items-start gap-2 sm:gap-3 min-w-0 ${
+                  isVisible ? "opacity-100" : "opacity-40"
+                }`}
+              >
+                <span
+                  className="mt-[3px] inline-block h-2.5 w-2.5 rounded-full flex-none shrink-0"
+                  style={{ backgroundColor: dot }}
+                />
+
+                <div className="min-w-0 flex flex-col items-start">
+                  <div
+                    className={`truncate text-[10px] 2xl:text-xs ${
+                      isVisible ? "" : "line-through"
+                    }`}
+                    style={{ color: "#414042" }}
+                    title={slice.name}
+                  >
+                    {slice.name}
+                  </div>
+
+                  <div
+                    className="text-[10px] 2xl:text-xs break-words"
+                    style={{ color: "#414042" }}
+                  >
+                    {currencySymbol}
+                    {value.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    ({pct.toFixed(2)}%){" "}
+                    <span className={deltaClass}>({deltaText})</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+</div>
 
             {/* force rerender */}
             <span className="hidden">{legendTick}</span>
