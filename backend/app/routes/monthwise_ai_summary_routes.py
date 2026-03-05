@@ -10,7 +10,6 @@ from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.history_graph_utils import get_performance_trend
 
 summary_bp = Blueprint("summary_bp", __name__)
-objective_bp = Blueprint("objective_bp", __name__)
 SECRET_KEY = Config.SECRET_KEY
 
 ALLOWED_PRIMARY_GOALS = {"profit", "growth", "rank", "inventory_clearance", "balanced"}
