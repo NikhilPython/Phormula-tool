@@ -1694,7 +1694,7 @@ Output STRICT JSON only.
 
 Mandatory format:
 {
-  "summary_text": "1–2 sentence executive summary of inventory risk",
+  "summary_text": "1-2 sentence executive summary of inventory risk",
   "alert_bullets": [
     "One bullet per alert type"
   ]
@@ -1711,8 +1711,6 @@ def fmt_metric(value, pct, symbol="£", decimals=2):
 
     formatted_value = f"{value:,.{decimals}f}"
     return f"{symbol}{formatted_value} ({pct:+.2f}%)"
-
-
 
 
 
