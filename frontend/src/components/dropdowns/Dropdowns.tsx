@@ -885,8 +885,273 @@ const ProductJourneyModal: React.FC<ProductJourneyModalProps> = ({
   );
 };
 
+// const ProductInsightsSection = ({
+//   blocks,
+//   objective,
+//   recommendationsMap,
+//   nameToSkuMap,
+
+//   // ✅ ADD THESE
+//   range,
+//   selectedYear,
+//   selectedQuarter,
+//   homeCurrency,
+//   countryName, // ✅ ADD
+//   drawerPeriodText,
+//   selectedMonth,
+// }: {
+//   blocks: ProductInsightBlock[];
+//   objective?: ObjectivePayload;
+//   recommendationsMap?: RecommendationsMap;
+//   nameToSkuMap?: Record<string, string>;
+//   drawerPeriodText?: string;
+//   selectedMonth?: string; // 👈 optional but useful
+
+//   // ✅ ADD TYPES
+//   range: RangeType;                 // "monthly" | "quarterly" | "yearly" | ""
+//   selectedYear: string;             // "2025"
+//   selectedQuarter: Quarter | "";     // "Q1".."Q4" or ""
+//   homeCurrency?: string;
+//   countryName: string; // ✅ ADD          // only global
+// }) => {
+//   const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
+//   const [selectedRecObj, setSelectedRecObj] = useState<any>(null);
+//   const [perfLoading, setPerfLoading] = useState(false);
+//   const [perfError, setPerfError] = useState<string | null>(null);
+//   const [perfData, setPerfData] = useState<any>(null);
+//   const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
+
+//   if (!blocks.length) return null;
+
+//   // top border colors (rotate)
+//   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
+
+//   const skuActions =
+//     (recommendationsMap as any)?.sku_actions ??
+//     (recommendationsMap as any)?.recommendations ??
+//     recommendationsMap ??
+//     {};
+
+//   useEffect(() => {
+//     if (!selectedBlock) return;
+//     if (selectedBlock.isOtherSkus) return; // ✅ skip chart API for Other SKUs
+
+//     const ac = new AbortController();
+
+//     (async () => {
+//       try {
+//         setPerfLoading(true);
+//         setPerfError(null);
+//         setPerfData(null);
+
+//         const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+//         if (!token) throw new Error("Missing token");
+
+//         const time_range = "Yearly";
+
+//         const quarterNum =
+//           range === "quarterly" && selectedQuarter
+//             ? String(["Q1", "Q2", "Q3", "Q4"].indexOf(selectedQuarter) + 1)
+//             : undefined;
+
+//         const productKeyForApi = selectedBlock.name; // ✅ Always product name
+//         console.log("API countryName:", countryName);
+//         console.log("API payload:", {
+//           country: countryName,
+//           product_name: productKeyForApi,
+//           time_range: "Yearly",
+//           year: Number(selectedYear),
+//           quarter: undefined,
+//           home_currency: homeCurrency,
+//         });
+
+//         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
+//           method: "POST",
+//           headers: {
+//             "Content-Type": "application/json",
+//             Authorization: `Bearer ${token}`,
+//           },
+//           body: JSON.stringify({
+//             country: countryName,
+//             product_name: productKeyForApi,   // "Passion Fruit"
+//             time_range: "Yearly",             // ✅ forced
+//             year: Number(selectedYear),
+//             quarter: undefined,               // (optional; can remove)
+//             home_currency: homeCurrency,
+//           }),
+//           cache: "no-store",
+//           signal: ac.signal,
+//         });
+
+//         const json = await res.json().catch(() => ({}));
+//         if (!res.ok) throw new Error(json?.error || "Failed to fetch product performance");
+
+//         // ✅ SHAPE FIX
+//         // pick a country series from response
+//         const pickSeries = (j: any) => {
+//           const d = j?.data;
+//           if (!d || typeof d !== "object") return null;
+
+//           const country = (countryName || "").toLowerCase(); // "uk"
+//           const keys = Object.keys(d);
+
+//           // UK page -> prefer uk / uk_usd / uk_gbp (jo bhi backend deta)
+//           if (country && country !== "global") {
+//             const match =
+//               keys.find(k => k.toLowerCase() === country) ||
+//               keys.find(k => k.toLowerCase().startsWith(country + "_")) || // uk_usd
+//               keys.find(k => k.toLowerCase().startsWith(country));         // fallback
+
+//             if (match) return d[match];
+//           }
+
+//           // Global page
+//           const g = keys.find(k => k.toLowerCase().startsWith("global"));
+//           return g ? d[g] : d[keys[0]];
+//         };
+
+//         const rows = pickSeries(json);
+
+//         setPerfData({
+//           rows: Array.isArray(rows)
+//             ? rows.map((r: any) => ({
+//               x: r?.month ?? r?.label ?? "-",
+//               y:
+//                 perfMetric === "units"
+//                   ? toNum(r?.quantity ?? r?.units ?? 0)
+//                   : toNum(r?.net_sales ?? 0),
+//             }))
+//             : [],
+//         });
+//       } catch (e: any) {
+//         if (e?.name === "AbortError") return;
+//         setPerfError(e?.message || "Failed to load product chart");
+//       } finally {
+//         setPerfLoading(false);
+//       }
+//     })();
+
+//     return () => ac.abort();
+//   }, [selectedBlock, range, selectedYear, selectedQuarter, homeCurrency, nameToSkuMap]);
+
+//   const openDrawer = (b: ProductInsightBlock) => {
+//     const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
+//     const skuKey = b.skuKey || mappedSku;
+
+//     const recObj =
+//       (skuKey && (skuActions as any)[skuKey]) ||
+//       (skuActions as any)[b.name] ||
+//       (skuActions as any)[b.name.trim()] ||
+//       null;
+
+//     setSelectedRecObj(recObj);
+//     setSelectedBlock(b);
+//   };
 
 
+//   return (
+//     <div className="space-y-5">
+//       <div>
+//         <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" textSize="2xl" />
+//       </div>
+
+//       <div className="grid grid-cols-3 gap-6">
+//         {blocks.map((b, idx) => {
+//           const borderColor = topBorderColors[idx % topBorderColors.length];
+
+//           return (
+//             <motion.div
+//               key={idx}
+//               initial={{ opacity: 0, y: 16 }}
+//               animate={{ opacity: 1, y: 0 }}
+//               transition={{ duration: 0.35, delay: idx * 0.06 }}
+//               className={[
+//                 "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+//                 "border-t-4", // ✅ top border like SS2
+
+//                 "p-3 space-y-3",
+//               ].join(" ")}
+//             >
+//               {/* Header */}
+//               <div className="flex items-start justify-between gap-3">
+//                 <div className="text-sm font-semibold text-slate-800">
+//                   {idx + 1}. {b.name}
+//                 </div>
+
+//                 <button
+//                   onClick={() => openDrawer(b)}
+//                   className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition"
+//                 >
+//                   Detailed View
+//                 </button>
+//               </div>
+
+//               {/* ✅ Metrics in BOXES (SS2 style) */}
+//               {b.metrics?.length > 0 && (
+//                 <div className="grid grid-cols-3 gap-2">
+//                   {b.metrics.map((m, i) => (
+//                     <div
+//                       key={i}
+//                       className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+//                     >
+//                       <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+//                         {m.label}
+//                       </div>
+//                       {(() => {
+//                         const { main, delta, deltaColor } = splitMetricValue(m.value);
+
+//                         return (
+//                           <div className="mt-1 flex items-baseline gap-1 min-w-0">
+//                             <span className="text-[10px] 2xl:text-xs font-bold text-slate-900 truncate">
+//                               {main}
+//                             </span>
+
+//                             {delta ? (
+//                               <span className={`text-[10px] 2xl:text-xs font-semibold shrink-0 ${deltaColor}`}>
+//                                 {delta}
+//                               </span>
+//                             ) : null}
+//                           </div>
+//                         );
+//                       })()}
+//                     </div>
+//                   ))}
+//                 </div>
+//               )}
+
+//               {/* short inline recommendation (optional, like your SS1) */}
+//               {b.recommendationBullets?.length > 0 && (
+//                 <p className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+//                   {b.recommendationBullets.join(" ")}
+//                 </p>
+//               )}
+//             </motion.div>
+//           );
+//         })}
+//       </div>
+
+//       {/* ✅ Right Drawer */}
+//       <RightProductDrawer
+//         open={!!selectedBlock}
+//         onClose={() => {
+//           setSelectedBlock(null);
+//           setSelectedRecObj(null);
+//         }}
+//         block={selectedBlock}
+//         objective={objective}
+//         recObj={selectedRecObj}
+//         countryName={countryName}
+
+//         // ✅ pass correct period
+//         range={range}
+//         year={selectedYear}
+//         month={range === "monthly" ? /* selectedMonth parent se pass karna hoga */ "" : ""}
+//         quarter={range === "quarterly" ? selectedQuarter : ""}
+//         drawerPeriodText={drawerPeriodText} // ✅ ADD
+//       />
+//     </div>
+//   );
+// };
 
 const ProductInsightsSection = ({
   blocks,
@@ -899,7 +1164,7 @@ const ProductInsightsSection = ({
   selectedYear,
   selectedQuarter,
   homeCurrency,
-  countryName, // ✅ ADD
+  countryName,
   drawerPeriodText,
   selectedMonth,
 }: {
@@ -908,23 +1173,26 @@ const ProductInsightsSection = ({
   recommendationsMap?: RecommendationsMap;
   nameToSkuMap?: Record<string, string>;
   drawerPeriodText?: string;
-  selectedMonth?: string; // 👈 optional but useful
+  selectedMonth?: string;
 
-  // ✅ ADD TYPES
   range: RangeType;                 // "monthly" | "quarterly" | "yearly" | ""
   selectedYear: string;             // "2025"
-  selectedQuarter: Quarter | "";     // "Q1".."Q4" or ""
+  selectedQuarter: Quarter | "";    // "Q1".."Q4" or ""
   homeCurrency?: string;
-  countryName: string; // ✅ ADD          // only global
+  countryName: string;
 }) => {
   const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
   const [selectedRecObj, setSelectedRecObj] = useState<any>(null);
+
   const [perfLoading, setPerfLoading] = useState(false);
   const [perfError, setPerfError] = useState<string | null>(null);
   const [perfData, setPerfData] = useState<any>(null);
+
+  // If you later add metric toggle, keep this state (and include in deps)
   const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
 
-  if (!blocks.length) return null;
+  // ✅ DO NOT early-return before hooks
+  const hasBlocks = (blocks?.length ?? 0) > 0;
 
   // top border colors (rotate)
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
@@ -936,8 +1204,10 @@ const ProductInsightsSection = ({
     {};
 
   useEffect(() => {
+    // ✅ guard inside effect
+    if (!hasBlocks) return;
     if (!selectedBlock) return;
-    if (selectedBlock.isOtherSkus) return; // ✅ skip chart API for Other SKUs
+    if (selectedBlock.isOtherSkus) return;
 
     const ac = new AbortController();
 
@@ -950,23 +1220,7 @@ const ProductInsightsSection = ({
         const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
         if (!token) throw new Error("Missing token");
 
-        const time_range = "Yearly";
-
-        const quarterNum =
-          range === "quarterly" && selectedQuarter
-            ? String(["Q1", "Q2", "Q3", "Q4"].indexOf(selectedQuarter) + 1)
-            : undefined;
-
         const productKeyForApi = selectedBlock.name; // ✅ Always product name
-        console.log("API countryName:", countryName);
-        console.log("API payload:", {
-          country: countryName,
-          product_name: productKeyForApi,
-          time_range: "Yearly",
-          year: Number(selectedYear),
-          quarter: undefined,
-          home_currency: homeCurrency,
-        });
 
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
           method: "POST",
@@ -976,10 +1230,10 @@ const ProductInsightsSection = ({
           },
           body: JSON.stringify({
             country: countryName,
-            product_name: productKeyForApi,   // "Passion Fruit"
-            time_range: "Yearly",             // ✅ forced
+            product_name: productKeyForApi,
+            time_range: "Yearly", // ✅ forced
             year: Number(selectedYear),
-            quarter: undefined,               // (optional; can remove)
+            quarter: undefined,
             home_currency: homeCurrency,
           }),
           cache: "no-store",
@@ -989,27 +1243,26 @@ const ProductInsightsSection = ({
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || "Failed to fetch product performance");
 
-        // ✅ SHAPE FIX
         // pick a country series from response
         const pickSeries = (j: any) => {
           const d = j?.data;
           if (!d || typeof d !== "object") return null;
 
-          const country = (countryName || "").toLowerCase(); // "uk"
+          const country = (countryName || "").toLowerCase();
           const keys = Object.keys(d);
 
-          // UK page -> prefer uk / uk_usd / uk_gbp (jo bhi backend deta)
+          // Country page
           if (country && country !== "global") {
             const match =
-              keys.find(k => k.toLowerCase() === country) ||
-              keys.find(k => k.toLowerCase().startsWith(country + "_")) || // uk_usd
-              keys.find(k => k.toLowerCase().startsWith(country));         // fallback
+              keys.find((k) => k.toLowerCase() === country) ||
+              keys.find((k) => k.toLowerCase().startsWith(country + "_")) ||
+              keys.find((k) => k.toLowerCase().startsWith(country));
 
             if (match) return d[match];
           }
 
-          // Global page
-          const g = keys.find(k => k.toLowerCase().startsWith("global"));
+          // Global page fallback
+          const g = keys.find((k) => k.toLowerCase().startsWith("global"));
           return g ? d[g] : d[keys[0]];
         };
 
@@ -1019,10 +1272,7 @@ const ProductInsightsSection = ({
           rows: Array.isArray(rows)
             ? rows.map((r: any) => ({
               x: r?.month ?? r?.label ?? "-",
-              y:
-                perfMetric === "units"
-                  ? toNum(r?.quantity ?? r?.units ?? 0)
-                  : toNum(r?.net_sales ?? 0),
+              y: perfMetric === "units" ? toNum(r?.quantity ?? r?.units ?? 0) : toNum(r?.net_sales ?? 0),
             }))
             : [],
         });
@@ -1035,7 +1285,17 @@ const ProductInsightsSection = ({
     })();
 
     return () => ac.abort();
-  }, [selectedBlock, range, selectedYear, selectedQuarter, homeCurrency, nameToSkuMap]);
+  }, [
+    hasBlocks,
+    selectedBlock,
+    range,
+    selectedYear,
+    selectedQuarter,
+    homeCurrency,
+    countryName,
+    nameToSkuMap,
+    perfMetric, // ✅ because used inside setPerfData mapping
+  ]);
 
   const openDrawer = (b: ProductInsightBlock) => {
     const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
@@ -1051,6 +1311,8 @@ const ProductInsightsSection = ({
     setSelectedBlock(b);
   };
 
+  // ✅ Safe early return AFTER hooks
+  if (!hasBlocks) return null;
 
   return (
     <div className="space-y-5">
@@ -1070,8 +1332,8 @@ const ProductInsightsSection = ({
               transition={{ duration: 0.35, delay: idx * 0.06 }}
               className={[
                 "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
-                "border-t-4", // ✅ top border like SS2
-
+                "border-t-4",
+                borderColor, // ✅ you were computing it but not applying it
                 "p-3 space-y-3",
               ].join(" ")}
             >
@@ -1089,7 +1351,7 @@ const ProductInsightsSection = ({
                 </button>
               </div>
 
-              {/* ✅ Metrics in BOXES (SS2 style) */}
+              {/* Metrics */}
               {b.metrics?.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {b.metrics.map((m, i) => (
@@ -1100,6 +1362,7 @@ const ProductInsightsSection = ({
                       <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
                         {m.label}
                       </div>
+
                       {(() => {
                         const { main, delta, deltaColor } = splitMetricValue(m.value);
 
@@ -1122,7 +1385,7 @@ const ProductInsightsSection = ({
                 </div>
               )}
 
-              {/* short inline recommendation (optional, like your SS1) */}
+              {/* Short inline recommendation */}
               {b.recommendationBullets?.length > 0 && (
                 <p className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
                   {b.recommendationBullets.join(" ")}
@@ -1133,7 +1396,7 @@ const ProductInsightsSection = ({
         })}
       </div>
 
-      {/* ✅ Right Drawer */}
+      {/* Right Drawer */}
       <RightProductDrawer
         open={!!selectedBlock}
         onClose={() => {
@@ -1144,13 +1407,11 @@ const ProductInsightsSection = ({
         objective={objective}
         recObj={selectedRecObj}
         countryName={countryName}
-
-        // ✅ pass correct period
         range={range}
         year={selectedYear}
-        month={range === "monthly" ? /* selectedMonth parent se pass karna hoga */ "" : ""}
+        month={range === "monthly" ? (selectedMonth ?? "") : ""}
         quarter={range === "quarterly" ? selectedQuarter : ""}
-        drawerPeriodText={drawerPeriodText} // ✅ ADD
+        drawerPeriodText={drawerPeriodText}
       />
     </div>
   );
