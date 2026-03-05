@@ -51,12 +51,12 @@ export default function CDPAdminConsolePage() {
       const loadingToast = toast.loading("Authenticating...");
 
       const [superadminResponse, adminResponse] = await Promise.allSettled([
-        fetch("http://127.0.0.1:5000/superadmin_login", {
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin_login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),
         }),
-        fetch("http://127.0.0.1:5000/admin_login", {
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/admin_login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password }),

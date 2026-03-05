@@ -300,6 +300,7 @@ export default function LiveBusinessClient({
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [adsRecommendation, setAdsRecommendation] = useState<string>("");
   const [inventorySummary, setInventorySummary] = useState<any>(null);
+  const [selectedSkuItem, setSelectedSkuItem] = useState<SkuItem | null>(null);
 
   // Feedback
   const [fbType, setFbType] = useState<'like' | 'dislike' | null>(null);
@@ -367,61 +368,63 @@ const extractSections = (text: string) => {
   };
 };
 
-  const renderJourneyAndRecommendation = (text: string) => {
-    if (!text) return null;
 
-    const journeyMatch = text.match(
-      /Product\s*Journey\s*:\s*([\s\S]*?)(?=Recommendation\s*:|$)/i
-    );
 
-    const recommendationMatch = text.match(
-      /Recommendation\s*:\s*([\s\S]*)/i
-    );
+  const fmtPct = (v?: any) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
+};
 
-    const journeyText = journeyMatch?.[1]?.trim() || "";
-    let recommendationText = recommendationMatch?.[1]?.trim() || "";
+const buildMetricsForSku = (item: SkuItem) => {
+  const m: { label: string; value: string; color?: string }[] = [];
 
-    if (adsRecommendation) {
-      recommendationText += ` ${adsRecommendation}`;
-    }
+  const unit = (item as any)?.["Unit Growth"]?.value;
+  const asp = (item as any)?.["ASP Growth"]?.value;
+  const sales =
+    (item as any)?.["Sales Growth"]?.value ??
+    (item as any)?.["Net Sales Growth"]?.value;
+  const unitProfit = (item as any)?.["Profit Per Unit"]?.value;
+  const profitImpact = (item as any)?.["CM1 Profit Impact"]?.value;
 
-    const splitIntoPoints = (para: string) =>
-      para
-        .split(/(?<=\.)\s+/) // sentence split
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-    const journeyPoints = splitIntoPoints(journeyText);
-    const recommendationPoints = splitIntoPoints(recommendationText);
-
-    return (
-      <div className="space-y-4 text-sm text-charcoal-600">
-
-        {journeyPoints.length > 0 && (
-          <div>
-            <div className="font-bold mb-2">Product Journey</div>
-            <ol className="list-decimal pl-5 space-y-1">
-              {journeyPoints.map((point, idx) => (
-                <li key={idx}>{point}</li>
-              ))}
-            </ol>
-          </div>
-        )}
-
-        {recommendationPoints.length > 0 && (
-          <div>
-            <div className="font-bold mt-3 mb-2">Recommendation</div>
-            <ol className="list-decimal pl-5 space-y-1">
-              {recommendationPoints.map((point, idx) => (
-                <li key={idx}>{point}</li>
-              ))}
-            </ol>
-          </div>
-        )}
-
-      </div>
-    );
+  const push = (label: string, v: any) => {
+    if (v == null) return;
+    const pct = fmtPct(v);
+    const isNeg = String(pct).includes("-");
+    m.push({
+      label,
+      value: `(${pct})`,
+      color: isNeg ? "#FF5C5C" : "#5EA68E",
+    });
   };
+
+  push("Units", unit);
+  push("ASP", asp);
+  push("Net sales", sales);
+  push("CM1 profit per unit", unitProfit);
+  push("CM1 profit", profitImpact);
+
+  return m;
+};
+
+const buildSelectedRecFromInsight = (
+  item: SkuItem | null,
+  insightText: string,
+  productName: string
+) => {
+  const sections = extractSections(insightText || "");
+
+  return {
+    productName: productName || item?.product_name || "Details",
+    metrics: item ? buildMetricsForSku(item) : [],
+    journeyPoints: sections.journeyPoints,
+    recommendationPoints: sections.recommendationPoints,
+    advertisingPoints: sections.advertisingPoints,
+    inventoryPoints: sections.inventoryPoints,
+    showChart: true,
+  };
+};
 
 
 
@@ -2363,12 +2366,27 @@ const parseOtherSkusBlock = (raw: string) => {
         <button
           className="font-semibold underline"
           onClick={() => {
-            setSelectedSku(entry[0]);
-            setModalOpen(true);
-            setFbType(null);
-            setFbText('');
-            setFbSuccess(false);
-          }}
+  setFbType(null);
+  setFbText('');
+  setFbSuccess(false);
+
+  setSelectedSku(entry[0]);      // optional (agar feedback etc chahiye)
+  setSelectedSkuItem(item);      // ✅ store clicked row
+
+  const insightData =
+    skuInsights[entry[0] as keyof typeof skuInsights] ||
+    getInsightByProductName(item.product_name)?.[1];
+
+  const insightText = insightData?.insight || "";
+  const prodName = insightData?.product_name || item.product_name || "";
+
+  // ✅ Open SAME "Detailed View" drawer
+  setSelectedRec(buildSelectedRecFromInsight(item, insightText, prodName));
+  setRecDrawerOpen(true);
+
+  // ❌ do NOT open old AI drawer
+  // setModalOpen(true);
+}}
         >
           View Insights
         </button>
@@ -3406,64 +3424,6 @@ const parseOtherSkusBlock = (raw: string) => {
     </div>
   </div>
 </Drawer>
-
-      {(() => {
-        if (!modalOpen || !selectedSku) return null;
-
-        const insightData =
-          skuInsights[selectedSku as keyof typeof skuInsights] ||
-          getInsightByProductName(selectedSku as string)?.[1];
-
-        if (!insightData) return null;
-
-        return (
-          <Drawer
-            anchor="right"
-            open={modalOpen}
-            onClose={() => setModalOpen(false)}
-            PaperProps={{
-              sx: {
-                width: { xs: '100vw', sm: '80vw', md: '60vw', lg: '50vw' },
-                maxWidth: 900,
-                padding: 2,
-              },
-            }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 8,
-                }}
-              >
-                <h2 style={{ margin: 0, fontSize: 18 }}>
-                  AI Insight for{' '}
-                  <span style={{ color: '#60a68e' }}>
-                    {insightData.product_name || selectedSku}
-                  </span>
-                </h2>
-
-                <IconButton size="small" onClick={() => setModalOpen(false)} aria-label="Close">
-                  x
-                </IconButton>
-              </div>
-
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-                <Productinfoinpopup
-                  productname={insightData.product_name}
-                  countryName={countryName}   // ✅ PASS COUNTRY
-                />
-              </div>
-
-              <div style={{ flex: 1, overflowY: 'auto', marginTop: 8, paddingRight: 4 }}>
-                {renderFormattedInsight(insightData.insight)}
-              </div>
-            </div>
-          </Drawer>
-        );
-      })()}
     </>
   );
 };

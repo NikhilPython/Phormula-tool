@@ -72,13 +72,13 @@ export default function SuperadminResetPasswordPage() {
       const requestBody = JSON.stringify({ email });
       const headers = { "Content-Type": "application/json" };
 
-      const superadminRequest = fetch("http://127.0.0.1:5000/superadmin_reset_otp", {
+      const superadminRequest = fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin_reset_otp`, {
         method: "POST",
         headers,
         body: requestBody,
       });
 
-      const adminRequest = fetch("http://127.0.0.1:5000/admin_reset_otp", {
+      const adminRequest = fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/admin_reset_otp`, {
         method: "POST",
         headers,
         body: requestBody,
@@ -144,13 +144,13 @@ export default function SuperadminResetPasswordPage() {
 
       const headers = { "Content-Type": "application/json" };
 
-      const superadminRequest = fetch("http://127.0.0.1:5000/superadmin_reset_password", {
+      const superadminRequest = fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin_reset_password`, {
         method: "POST",
         headers,
         body: requestBody,
       });
 
-      const adminRequest = fetch("http://127.0.0.1:5000/admin_reset_password", {
+      const adminRequest = fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/admin_reset_password`, {
         method: "POST",
         headers,
         body: requestBody,
