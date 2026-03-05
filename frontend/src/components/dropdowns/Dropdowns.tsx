@@ -3434,7 +3434,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 </div>
                 {allDropdownsSelected && (
                   <div className="mt-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
                       {/* EXPENSE BREAKUP */}
                       {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
                       <CircleChart
@@ -3578,7 +3578,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 </div>
                 {allDropdownsSelected && (
                   <div className="mt-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
                       <CircleChart
                         range="quarterly"
                         month={undefined}
@@ -3723,7 +3723,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                 {allDropdownsSelected && (
                   <div className="mt-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
                       <CircleChart
                         range="yearly"
                         month={undefined}

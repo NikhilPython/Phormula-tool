@@ -180,12 +180,12 @@ export default function UserAddressCard() {
         className="m-4 max-w-[500px] shadow-[6px_6px_7px_0px_#00000026] border border-[#D9D9D9]"
       >
         <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar dark:bg-gray-900 lg:p-9">
-        <SkuMultiCountryUpload
-  onClose={skuModal.closeModal}
-  onComplete={() => {
-    skuModal.closeModal(); // upload ke baad modal band
-  }}
-/>
+          <SkuMultiCountryUpload
+            onClose={skuModal.closeModal}
+            onComplete={() => {
+              skuModal.closeModal(); // upload ke baad modal band
+            }}
+          />
         </div>
       </Modal>
     </>

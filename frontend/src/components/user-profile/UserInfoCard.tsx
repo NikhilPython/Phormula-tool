@@ -24,6 +24,10 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { useSelector } from "react-redux";
 import { useAppDispatch } from "@/lib/hooks";
 import { setUser } from "@/lib/features/auth/authSlice";
+import { TiUpload } from "react-icons/ti";
+import SkuMultiCountryUpload from "../ui/modal/SkuMultiCountryUpload";
+import FeepreviewUpload from "../ui/modal/FeepreviewUpload";
+import { useGetCountriesQuery } from "@/lib/api/profileApi";
 
 type ProfileTab = "personal" | "objectives" | "integrations";
 
@@ -154,12 +158,20 @@ function InfoCard({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">{title}</h3>
+    <div className="h-full rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3">
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+          {title}
+        </h3>
         {action}
       </div>
-      {children}
+
+      {/* ✅ Line under title */}
+      <div className="h-px w-full bg-gray-200 dark:bg-gray-800" />
+
+      {/* Body */}
+      <div className="p-4">{children}</div>
     </div>
   );
 }
@@ -272,6 +284,25 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const cancelEditTarget = () => {
     setEditingPid(null);
     setDraftTarget("");
+  };
+
+
+  // --- Product & Inventory Controls (from UserAddressCard) ---
+  const feeModal = useModal();
+  const skuModal = useModal();
+  const [selectedCountry, setSelectedCountry] = React.useState<string | null>(null);
+
+  const { data: countriesRes, isLoading: countriesLoading, isError: countriesIsError, error: countriesError } =
+    useGetCountriesQuery();
+  const countries: string[] = countriesRes?.countries ?? [];
+
+  const openFeePreview = (country: string) => {
+    setSelectedCountry(country);
+    feeModal.openModal();
+  };
+  const closeFeePreview = () => {
+    setSelectedCountry(null);
+    feeModal.closeModal();
   };
 
   const saveInlineTarget = async () => {
@@ -637,23 +668,36 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   };
 
   const handleSaveCompany = async () => {
-  try {
-    const payload = {
-      brand_name: form.brand_name,
-      company_name: form.company_name,
-      annual_sales_range: form.annual_sales_range,
-      homeCurrency: form.homeCurrency,
-    };
+    try {
+      const payload = {
+        brand_name: form.brand_name,
+        company_name: form.company_name,
+        annual_sales_range: form.annual_sales_range,
+        homeCurrency: form.homeCurrency,
 
-    await updateProfile(payload).unwrap();
-    dispatch(setUser(payload));
+        // ✅ include tax_id + address (same as buildPayloadBySection)
+        tax_id: {
+          gst_no: form.gst_no || "",
+          pan_no: form.pan_no || "",
+        },
+        address: {
+          building: form.address_building || "",
+          city: form.address_city || "",
+          country: form.address_country || "",
+          state: form.address_state || "",
+          zipcode: form.address_zipcode || "",
+        },
+      };
 
-    setIsCompanyEditMode(false);
-  } catch (err: any) {
-    console.error(err);
-    alert("Failed to update company info");
-  }
-};
+      await updateProfile(payload as any).unwrap();
+      dispatch(setUser(payload as any));
+
+      setIsCompanyEditMode(false);
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to update company info");
+    }
+  };
 
   const handleSaveObjective = async () => {
     try {
@@ -763,7 +807,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
           {isLoading && <div className="text-sm text-gray-500 dark:text-gray-400">Loading…</div>}
           {isError && <div className="text-sm text-red-500">Failed to load profile.</div>}
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
             {/* ---------------------- PERSONAL TAB ---------------------- */}
             {activeTab === "personal" && (
               <>
@@ -894,7 +938,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           <select
                             value={form.annual_sales_range}
                             onChange={handleInput("annual_sales_range")}
-                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+                            className="w-full h-11 rounded-md border border-gray-300 bg-white px-3 pr-10 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
                           >
                             <option value="">Select Revenue Range</option>
                             {REVENUE_OPTIONS.filter(Boolean).map((opt) => (
@@ -917,7 +961,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           <select
                             value={form.homeCurrency}
                             onChange={handleInput("homeCurrency")}
-                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+                            className="w-full h-11 rounded-md border border-gray-300 bg-white px-3 pr-10 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
                           >
                             {CURRENCY_OPTIONS.map((cur) => (
                               <option key={cur} value={cur}>
@@ -930,13 +974,95 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                         )
                       }
                     />
+
+                    {/* ✅ GST No */}
+                    <InfoItem
+                      label="GST No."
+                      value={
+                        isCompanyEditMode ? (
+                          <Input type="text" value={form.gst_no} onChange={handleInput("gst_no")} />
+                        ) : (
+                          show(form.gst_no)
+                        )
+                      }
+                    />
+
+                    {/* ✅ PAN No */}
+                    <InfoItem
+                      label="PAN No."
+                      value={
+                        isCompanyEditMode ? (
+                          <Input type="text" value={form.pan_no} onChange={handleInput("pan_no")} />
+                        ) : (
+                          show(form.pan_no)
+                        )
+                      }
+                    />
+
+                    {/* ✅ Address (full width) */}
+                    <div className="sm:col-span-4">
+                      <InfoItem
+                        label="Address"
+                        value={
+                          isCompanyEditMode ? (
+                            <div className="grid grid-cols-1 gap-3">
+                              <Input
+                                type="text"
+                                placeholder="Building No."
+                                value={form.address_building}
+                                onChange={handleInput("address_building")}
+                              />
+                              <Input
+                                type="text"
+                                placeholder="City"
+                                value={form.address_city}
+                                onChange={handleInput("address_city")}
+                              />
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <Input
+                                  type="text"
+                                  placeholder="Country/Region"
+                                  value={form.address_country}
+                                  onChange={handleInput("address_country")}
+                                />
+                                <Input
+                                  type="text"
+                                  placeholder="State"
+                                  value={form.address_state}
+                                  onChange={handleInput("address_state")}
+                                />
+                                <Input
+                                  type="text"
+                                  placeholder="Zipcode"
+                                  value={form.address_zipcode}
+                                  onChange={handleInput("address_zipcode")}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-sm font-medium text-gray-800 dark:text-white/90">
+                              {[
+                                form.address_building,
+                                form.address_city,
+                                form.address_state,
+                                form.address_country,
+                                form.address_zipcode,
+                              ]
+                                .map((x) => (x ?? "").trim())
+                                .filter(Boolean)
+                                .join(", ") || "-"}
+                            </div>
+                          )
+                        }
+                      />
+                    </div>
                   </div>
                 </InfoCard>
               </>
             )}
 
             {/* ---------------------- INTEGRATIONS TAB ---------------------- */}
-            {activeTab === "personal" && (
+            {/* {activeTab === "personal" && (
               <div className="lg:col-span-2">
                 <InfoCard
                   title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
@@ -991,7 +1117,188 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                   })()}
                 </InfoCard>
               </div>
+            )} */}
+
+            {/* ---------------------- PERSONAL TAB (BOTTOM ROW) ---------------------- */}
+            {activeTab === "personal" && (
+              <>
+                {/* LEFT: Integrations */}
+                <div className="lg:col-span-1 h-full">
+                  <InfoCard
+                    title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
+                  >
+                    {(() => {
+                      const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
+                        platformIsConnected(p.id, connected)
+                      );
+
+                      if (connectedPlatforms.length === 0) {
+                        return (
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            No platforms connected yet.
+                          </p>
+                        );
+                      }
+
+                      return (
+                        <>
+                          <div className="space-y-3">
+                            {connectedPlatforms.map((p) => {
+                              const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
+
+                              return (
+                                <div key={p.id} className="flex items-center gap-3">
+                                  {meta.countryCode && (
+                                    <ReactCountryFlag
+                                      svg
+                                      countryCode={meta.countryCode as any}
+                                      className="text-[22px] leading-none"
+                                      aria-label={meta.label}
+                                    />
+                                  )}
+
+                                  <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                                    {meta.label}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <Link
+                            href=""
+                            className="mt-4 inline-flex items-center gap-2 whitespace-nowrap border-b border-transparent text-sm font-semibold text-green-500 hover:border-green-500 dark:text-emerald-400 dark:hover:border-emerald-400"
+                          >
+                            <FaPlus size={12} />
+                            <span>Integrate more marketplaces</span>
+                          </Link>
+                        </>
+                      );
+                    })()}
+                  </InfoCard>
+                </div>
+
+                {/* RIGHT: Product & Inventory Controls */}
+                <div className="lg:col-span-1 h-full">
+                  <InfoCard
+                    title={
+                      <PageBreadcrumb
+                        pageTitle="Product & Inventory Controls"
+                        variant="table"
+                        align="left"
+                      />
+                    }
+                  >
+                    <div className="grid grid-cols-1 gap-4">
+                      {/* SKU Information */}
+                      {/* <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold leading-normal text-charcoal-500">
+                          SKU Information
+                        </p>
+
+                        <button
+                          onClick={skuModal.openModal}
+                          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                          aria-label="Upload SKU"
+                          title="Upload SKU"
+                          type="button"
+                        >
+                          <TiUpload size={14} />
+                        </button>
+                      </div> */}
+
+                      <div className="flex items-center justify-start gap-2">
+                        <p className="text-sm font-semibold text-charcoal-500">
+                          SKU Information
+                        </p>
+
+                        <button
+                          onClick={skuModal.openModal}
+                          className="inline-flex items-center rounded-md p-1 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                          aria-label="Upload SKU"
+                          title="Upload SKU"
+                          type="button"
+                        >
+                          <TiUpload size={16} />
+                        </button>
+                      </div>
+
+                      {/* Warehouse Inventory (chips) - keep commented if you want */}
+                      {/* <div>
+            {countriesLoading && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">Loading countries…</p>
             )}
+
+            {countriesIsError && (
+              <p className="text-sm text-red-500">
+                {(countriesError as any)?.data?.message || "Failed to load countries."}
+              </p>
+            )}
+
+            {!countriesLoading && !countriesIsError && countries.length === 0 && (
+              <p className="text-sm font-medium text-gray-800 dark:text-white/90">
+                No countries found.
+              </p>
+            )}
+
+            {!countriesLoading && !countriesIsError && countries.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {countries.map((country) => (
+                  <div
+                    key={country}
+                    className="flex items-center gap-2 rounded-full border border-gray-300 bg-gray-50 px-3 py-1 text-xs font-medium text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                  >
+                    <span>{country.toUpperCase()}</span>
+                    <button
+                      onClick={() => openFeePreview(country)}
+                      className="p-1 transition-colors hover:text-teal-600"
+                      title={`View Fee Preview for ${country}`}
+                      type="button"
+                    >
+                      <MdEdit size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div> */}
+                    </div>
+
+                    {/* 🔵 Fee Preview Modal */}
+                    <Modal
+                      isOpen={feeModal.isOpen}
+                      onClose={closeFeePreview}
+                      className="m-4 max-w-[800px] shadow-[6px_6px_7px_0px_#00000026] border border-[#D9D9D9]"
+                    >
+                      <div className="relative w-full rounded-3xl bg-white p-4 no-scrollbar dark:bg-gray-900 lg:p-11">
+                        {selectedCountry ? (
+                          <FeepreviewUpload country={selectedCountry} onClose={closeFeePreview} />
+                        ) : (
+                          <p className="text-center text-gray-500 dark:text-gray-400">
+                            No country selected
+                          </p>
+                        )}
+                      </div>
+                    </Modal>
+
+                    {/* 🟣 SKU Upload Modal */}
+                    <Modal
+                      isOpen={skuModal.isOpen}
+                      onClose={skuModal.closeModal}
+                      className="m-4 max-w-[500px] shadow-[6px_6px_7px_0px_#00000026] border border-[#D9D9D9]"
+                    >
+                      <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar dark:bg-gray-900 lg:p-9">
+                        <SkuMultiCountryUpload
+                          onClose={skuModal.closeModal}
+                          onComplete={() => skuModal.closeModal()}
+                        />
+                      </div>
+                    </Modal>
+                  </InfoCard>
+                </div>
+              </>
+            )}
+
 
             {/* ---------------------- OBJECTIVES TAB ---------------------- */}
             {activeTab === "objectives" && (
@@ -1298,7 +1605,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                         <select
                           value={form.annual_sales_range}
                           onChange={handleInput("annual_sales_range")}
-                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-4 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
                         >
                           <option value="">Select Revenue Range</option>
                           {REVENUE_OPTIONS.filter(Boolean).map((opt) => (
@@ -1314,7 +1621,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                         <select
                           value={form.homeCurrency}
                           onChange={handleInput("homeCurrency")}
-                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-4 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200"
                         >
                           <option value="">Select Currency</option>
                           {CURRENCY_OPTIONS.map((cur) => (

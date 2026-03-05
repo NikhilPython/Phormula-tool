@@ -194,7 +194,7 @@ export default function ProfileClient() {
           {tab === "personal" && (
             <>
               <UserInfoCard activeTab="personal" />
-              <UserAddressCard />
+              {/* <UserAddressCard /> */}
             </>
           )}
 
