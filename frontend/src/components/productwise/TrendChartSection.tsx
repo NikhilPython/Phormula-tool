@@ -281,13 +281,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
     tab === "sales_cm1" ? "Net Sales + CM1 Profit Trend" : "Units Trend";
 
 
-  const renderChartToImage = async (
-    data: any,
-    options: any,
-    w = 900,
-    h = 360
-  ) => {
-    // Create offscreen canvas
+  const renderChartToImage = async (data: any, options: any, w = 900, h = 360) => {
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
@@ -295,13 +289,6 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
 
-    // ✅ IMPORTANT: Make the IMAGE itself have a solid white background
-    ctx.save();
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, w, h);
-    ctx.restore();
-
-    // Render Chart.js directly
     const chart = new ChartJSCore(ctx as any, {
       type: "line",
       data,
@@ -313,12 +300,20 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
     });
 
     chart.update();
-    const imageDataUrl = canvas.toDataURL("image/png");
-    chart.destroy();
 
+    // ✅ IMPORTANT: put WHITE BEHIND what Chart.js already drew
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-over";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+
+    // ✅ Export JPEG (no transparency issues in Excel)
+    const imageDataUrl = canvas.toDataURL("image/jpeg", 1.0);
+
+    chart.destroy();
     return imageDataUrl;
   };
-
   // ---------- DOWNLOAD: Excel + chart image ----------
   // const handleDownload = async () => {
   //   try {

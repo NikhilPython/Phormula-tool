@@ -925,58 +925,85 @@ else {
   ws1.getCell("A7").value = "No data provided.";
 }
 
-  // -------------------------
-  // Sheet 2: Trend Charts (ONLY IMAGES)
-  // -------------------------
-  const ws2 = wb.addWorksheet(safeSheetName("Trend Charts"));
+// -------------------------
+// Sheet 2: Trend Charts (Header + Labels + IMAGES)
+// -------------------------
+const ws2 = wb.addWorksheet(safeSheetName("Trend Charts"));
 
-  const img1 = parseBase64(salesCm1ChartBase64);
-  const img2 = parseBase64(unitsChartBase64);
+const headerCount2 = 13; // keep consistent like Sheet 1 (or use headerCount)
+ws2.columns = Array.from({ length: headerCount2 }, () => ({ width: 18 }));
 
-  let rowCursor = 0;
+// ---- Header block (same as Sheet 1) ----
+ws2.mergeCells(1, 1, 1, headerCount2);
+ws2.getCell(1, 1).value = titleLine || "";
+ws2.getCell(1, 1).font = { bold: false };
+ws2.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
 
- const addChartImage = (
+ws2.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+ws2.getCell(2, 1).alignment = { horizontal: "left" };
+
+ws2.getCell(2, headerCount2).value = `${brandName || ""}`;
+ws2.getCell(2, headerCount2).alignment = { horizontal: "right" };
+ws2.getCell(2, headerCount2).font = { bold: true };
+
+ws2.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
+ws2.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
+ws2.getCell(5, 1).value = `Currency : ${currencyLabel || ""}`;
+ws2.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
+
+// Freeze header rows
+const CHARTS_HEADER_ROW = 7;
+ws2.views = [{ state: "frozen", xSplit: 0, ySplit: CHARTS_HEADER_ROW }];
+
+// Parse images
+const img1 = parseBase64(salesCm1ChartBase64);
+const img2 = parseBase64(unitsChartBase64);
+
+// Start AFTER header block
+let rowCursor = CHARTS_HEADER_ROW + 1; // row 8
+
+const addChartImage = (
   img: { mime: string; base64: string } | null,
   label: string
 ) => {
+  // 1) label row above image
+  ws2.mergeCells(rowCursor, 1, rowCursor, headerCount2);
+  const labelCell = ws2.getCell(rowCursor, 1);
+  labelCell.value = label;
+  labelCell.font = { bold: true, size: 12 };
+  labelCell.alignment = { horizontal: "left", vertical: "middle" };
+  ws2.getRow(rowCursor).height = 18;
+
+  rowCursor += 1;
+
+  // 2) image OR fallback text
   if (!img) {
-    ws2.getCell(rowCursor + 1, 1).value = `No chart image available: ${label}`;
+    ws2.mergeCells(rowCursor, 1, rowCursor, headerCount2);
+    ws2.getCell(rowCursor, 1).value = `No chart image available: ${label}`;
     rowCursor += 3;
     return;
   }
 
   const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
 
-  // ---------- WHITE BACKGROUND ----------
-  // const bgWidth = chartWidth + 40;
-  // const bgHeight = chartHeight + 40;
-
-  // for (let r = rowCursor; r < rowCursor + 20; r++) {
-  //   for (let c = 1; c <= 10; c++) {
-  //     ws2.getCell(r + 1, c).fill = {
-  //       type: "pattern",
-  //       pattern: "solid",
-  //       fgColor: { argb: "FFFFFFFF" },
-  //     };
-  //   }
-  // }
-
-  // ---------- INSERT CHART IMAGE ----------
   const imageId = wb.addImage({
     base64: `data:${img.mime};base64,${img.base64}`,
     extension: ext as "png" | "jpeg",
   });
 
   ws2.addImage(imageId, {
-    tl: { col: 0, row: rowCursor },
+    tl: { col: 0, row: rowCursor - 1 }, // exceljs uses 0-based row/col for anchors
     ext: { width: chartWidth, height: chartHeight },
   });
 
-  rowCursor += 24;
+  // 3) advance cursor below image (+ some spacing)
+  // This is a rough row estimate; tweak if needed
+  rowCursor += 24; // image height spacing
+  rowCursor += 2;  // extra gap between charts
 };
 
-  addChartImage(img1, "Net Sales + CM1 Profit");
-  addChartImage(img2, "Units");
+addChartImage(img1, "Net Sales & CM1 Profit");
+addChartImage(img2, "Units");
 
   // -------------------------
   // Save
