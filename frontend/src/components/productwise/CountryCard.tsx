@@ -171,7 +171,7 @@ const CountryCard: React.FC<CountryCardProps> = ({
             value={formatAmount(stats.avgSales)}
           />
           <StatTile
-            label="Avg Selling Price"
+            label="Avg. Selling Price"
             tileKey="avgMonthlyUnits" // keep same styling key so nothing else changes
             value={formatAmountWith2Decimals(stats.avgSellingPrice ?? stats.avg_selling_price ?? stats.asp ?? stats.ASP ?? 0)}
           />

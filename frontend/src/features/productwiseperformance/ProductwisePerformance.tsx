@@ -152,6 +152,15 @@ const findCountryKeyFor = (sourceData: Record<string, any>, target: string) => {
   return keys.find((k) => normalizeCountryKey(k) === t) || null;
 };
 
+const currencySymbolFromCode = (code: string) => {
+  const c = (code || "").toUpperCase();
+  if (c === "USD") return "$";
+  if (c === "GBP") return "£";
+  if (c === "EUR") return "€";
+  if (c === "CAD") return "C$";
+  if (c === "INR") return "₹";
+  return c;
+};
 
 const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   productname: propProductName,
@@ -932,7 +941,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   // };
 
   const getTitle = () => {
-    if (range === "yearly") return `Last 12 Months'${yearShort}`;
+  if (range === "yearly") return `${selectedYear}`;
     if (range === "quarterly") return `${selectedQuarter}'${yearShort}`; // selectedQuarter is "Q4"
     return selectedMonth
       ? `${cap(selectedMonth)}'${yearShort}`
@@ -940,7 +949,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   };
 
   const getHeadingPeriod = () => {
-    if (range === "yearly") return `Last 12 Months'${yearShort}`;
+  if (range === "yearly") return `${selectedYear}`;
     if (range === "quarterly") return `${selectedQuarter}'${yearShort}`;
     if (range === "monthly" && selectedMonth) {
       return `${cap(selectedMonth)}'${yearShort}`;
@@ -1054,6 +1063,52 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     return [...globals, ...others];
   }, [cards]);
 
+  const exportCurrencySymbol = useMemo(
+    () => currencySymbolFromCode(homeCurrency),
+    [homeCurrency]
+  );
+
+  const exportTitleCountry = useMemo(() => {
+    const c = (platformCountryName || "global").toLowerCase();
+    if (c === "uk") return "UK";
+    if (c === "us") return "US";
+    if (c === "ca") return "CA";
+    return "Global";
+  }, [platformCountryName]);
+
+  // This is what Sheet 1 should show (same tiles as CountryCard)
+  const exportCountryCards = useMemo(() => {
+    return orderedCards.map((card) => {
+      const norm = normalizeCountryKey(card.country); // "global", "uk", "us", ...
+      return {
+        countryKey: card.country, // backend key, keep if needed
+        countryLabel: formatCountryLabel(norm).toUpperCase(), // "GLOBAL", "UK", etc
+
+        // top tiles
+        totalSales: card.stats.totalSales,
+        totalUnits: card.stats.totalUnits,
+        totalProfit: card.stats.totalProfit,
+
+        avgMonthlySales: card.stats.avgSales,
+        avgSellingPrice: card.stats.avgSellingPrice,
+        cm1ProfitPct: card.stats.gross_margin_avg, // this is % number already (0-100)
+
+        // best performance tiles (already computed)
+        bestSalesMonth: card.stats.maxSalesMonth?.month || "",
+        bestSalesValue: card.stats.maxSalesMonth?.net_sales ?? 0,
+
+        bestUnitsMonth: card.stats.maxUnitsMonth?.month || "",
+        bestUnitsValue: card.stats.maxUnitsMonth?.quantity ?? 0,
+
+        // profit best month is not in your stats currently; you have maxSalesMonth and maxUnitsMonth only.
+        // If you want best profit too, compute it in cards memo and add it to stats.
+        // For now, use maxSalesMonth.profit as a fallback.
+        bestProfitMonth: card.stats.maxSalesMonth?.month || "",
+        bestProfitValue: card.stats.maxSalesMonth?.profit ?? 0,
+      };
+    });
+  }, [orderedCards]);
+
   /* ---------- render ---------- */
   return (
     <div className="w-full">
@@ -1064,28 +1119,28 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
   border-b border-gray-200">
         {/* <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-2"> */}
-          <ProductwiseHeader
-            canShowResults={canShowResults}
-            countryName={countryName}
-            productname={productname}
-            headingPeriod={getHeadingPeriod()}
-          />
+        <ProductwiseHeader
+          canShowResults={canShowResults}
+          countryName={countryName}
+          productname={productname}
+          headingPeriod={getHeadingPeriod()}
+        />
 
-          <FiltersAndSearchRow
-            range={range}
-            selectedMonth={selectedMonth}
-            selectedQuarter={selectedQuarter}
-            selectedYear={selectedYear}
-            years={years}
-            onRangeChange={setRange}
-            onMonthChange={setSelectedMonth}
-            onQuarterChange={(val) => {
-              setSelectedQuarter(val || "Q1");
-            }}
-            onYearChange={(val) => {
-              setSelectedYear(val ? Number(val) : "");
-            }}
-          />
+        <FiltersAndSearchRow
+          range={range}
+          selectedMonth={selectedMonth}
+          selectedQuarter={selectedQuarter}
+          selectedYear={selectedYear}
+          years={years}
+          onRangeChange={setRange}
+          onMonthChange={setSelectedMonth}
+          onQuarterChange={(val) => {
+            setSelectedQuarter(val || "Q1");
+          }}
+          onYearChange={(val) => {
+            setSelectedYear(val ? Number(val) : "");
+          }}
+        />
         {/* </div> */}
       </div>
 
@@ -1123,6 +1178,21 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       {canShowResults && data && !loading && (
         <div className="flex flex-col">
 
+          {/* <TrendChartSection
+            productname={productname}
+            title={getTitle()}
+            chartDataList={chartDataList}
+            chartOptions={chartOptions}
+            nonEmptyCountriesFromApi={nonEmptyCountriesFromApi}
+            selectedCountries={selectedCountries}
+            onToggleCountry={handleCountryChange}
+            authToken={authToken}
+            onProductSelect={handleProductSelect}
+            onViewBusinessInsights={handleViewBusinessInsights}
+            insightsLoading={insightsLoading}
+            isPreviewMode={isPreviewMode}
+          /> */}
+
           <TrendChartSection
             productname={productname}
             title={getTitle()}
@@ -1136,6 +1206,18 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             onViewBusinessInsights={handleViewBusinessInsights}
             insightsLoading={insightsLoading}
             isPreviewMode={isPreviewMode}
+
+            // ✅ NEW: sheet-1 payload + header meta
+            exportMeta={{
+              titleLine: `${productname} - Productwise Performance - ${getHeadingPeriod()}`,
+              titleCountry: exportTitleCountry,
+              platformLabel: "Amazon", // or derive from activePlatform if you want
+              periodLabel: getHeadingPeriod(),
+              companyName: userData?.company_name || "",  // adjust to your actual field name
+              brandName: userData?.brand_name || "",      // adjust to your actual field name
+              currencyLabel: exportCurrencySymbol,
+            }}
+            exportCountryCards={exportCountryCards}
           />
 
           <InsightSideDrawer
