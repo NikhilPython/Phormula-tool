@@ -127,7 +127,7 @@ export default function ViewUserPage() {
 
         if (token) {
           const res = await fetch(
-            `http://127.0.0.1:5000/superadmin/dashboard?email=${encodeURIComponent(email)}`,
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard?email=${encodeURIComponent(email)}`,
             { method: "GET", headers: { Authorization: `Bearer ${token}` } }
           );
           const json = (await res.json()) as any;
@@ -137,7 +137,7 @@ export default function ViewUserPage() {
 
         if (admin_token) {
           const res = await fetch(
-            `http://127.0.0.1:5000/admin/dashboard?email=${encodeURIComponent(email)}`,
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/admin/dashboard?email=${encodeURIComponent(email)}`,
             { method: "GET", headers: { Authorization: `Bearer ${admin_token}` } }
           );
           const json = (await res.json()) as any;
