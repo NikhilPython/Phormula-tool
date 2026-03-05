@@ -3223,7 +3223,7 @@ export default function DashboardPage() {
             //         Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
             //     </>
             // ), 
-            
+
             label: "Net Sales",
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
             align: "center" as const
@@ -3736,10 +3736,11 @@ export default function DashboardPage() {
             item.sku === "GRAND_TOTAL"
     );
 
+    console.log("Grand Total Row:", grandTotalRow);
 
+    const ads_spend = grandTotalRow?.ads_spend ?? 0;
     const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
     const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
-
 
 
     const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
@@ -3749,15 +3750,18 @@ export default function DashboardPage() {
     const dealVouchers = grandTotalRow?.dealsvouchar_ads ?? 0;
 
 
-    const adsSpendTotal = Math.abs(
-        toNumber(sponsoredProductsSpend + sponsoredBrandSpend)
-    );
-    const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
-
-
     const costOfAds = Math.abs(
         toNumber(sponsoredBrandSpend - dealVouchers)
     );
+
+    console.log("ADs", ads_spend, costOfAds)
+
+    const adsSpendTotal = Math.abs(
+        toNumber(ads_spend + costOfAds)
+    );
+    console.log("Total Ads Spend:", adsSpendTotal);
+
+    const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
 
 
 
@@ -3790,11 +3794,6 @@ export default function DashboardPage() {
         const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
     }, [reimbursementForSummary, plSummaryTotals.net_sales, stats_mtdHome]);
-
-
-    console.log("cm2Profit ", cm2Profit)
-    console.log("adsSpend ", adsSpendTotal)
-    console.log("cm2Margins ", cm2MarginPctForSummary)
 
 
     const { todayDay: statsTodayDay } = getISTDayInfo();
