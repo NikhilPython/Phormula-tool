@@ -1331,9 +1331,8 @@ const ProductInsightsSection = ({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: idx * 0.06 }}
               className={[
-                "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+                "bg-white rounded-xl  border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
                 "border-t-4",
-                borderColor, // ✅ you were computing it but not applying it
                 "p-3 space-y-3",
               ].join(" ")}
             >
