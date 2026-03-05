@@ -704,13 +704,15 @@ def analyze_skus():
         
 
         def generate_insight(item, app, objective_v2):
+
             sku = item.get('sku')
             product_name = item.get('product_name', 'this product').strip()
-            
-           
+
             is_global = country.lower() == 'global'
 
-            # ✅ DEFINE KEY FIRST (CRITICAL)
+            # -------------------------------------------------
+            # DEFINE KEY
+            # -------------------------------------------------
             if is_global and not sku:
                 key = product_name
             elif sku:
@@ -718,279 +720,63 @@ def analyze_skus():
             else:
                 key = product_name
 
-            # --- attach 24-month historical trend (SAFE parsing) ---
-            try:
-                if "-" in str(month2):
-                    # format: "YYYY-MM"
-                    year2 = int(str(month2).split("-")[0])
-                    month2_num = int(str(month2).split("-")[1])
-                else:
-                    # format: month="01", year2 provided separately
-                    year2 = int(data.get("year2"))
-                    month2_num = int(month2)
 
-                country_lower = country.lower()
-
-                monthly_history = get_sku_monthly_history(
-                    user_id, country_lower, key, year2, month2_num, 24
-                )
-
-                item["historical_trend"] = monthly_history
-
-            except Exception as e:
-                print("❌ Historical trend error → SKU:", key, "| month2:", month2, "| year2:", data.get("year2"))
-                raise e
-
-
-            # --------------------------------------------
-
-            
-            
-
-            if item.get('new_or_reviving'):  # New/reviving SKU
-                prompt = f"""
-                You are a senior ecommerce data analyst.
-
-                You are analysing the product: "{product_name}".
-
-                This is a newly launched or recently revived product.
-                Provide ONLY analytical observations based on available data.
-
-                STRICT RULES:
-                - Do NOT provide recommendations.
-                - Do NOT suggest actions or next steps.
-                - Do NOT give a verdict.
-                - Only explain launch performance analytically.
-                - Each bullet point MUST reference the product name "{product_name}" naturally in the sentence.
-
-                Analyse:
-
-                1) Launch strength
-                - Units, Sales, ASP and Profit level for "{product_name}".
-                - Whether the debut of "{product_name}" looks strong, moderate, or weak based purely on numbers.
-
-                2) Early signals
-                - Whether pricing of "{product_name}" seems premium or discounted.
-                - Whether profitability of "{product_name}" is healthy or thin.
-                - Whether volume of "{product_name}" indicates real demand or limited traction.
-
-                3) If historical_trend exists:
-                - Explain revival pattern of "{product_name}" versus earlier months.
-
-                OUTPUT:
-                - Plain bullet points only.
-                - No advice.
-                - No strategy.
-                - No recommendations.
-                - Mention "{product_name}" in the explanation where relevant.
-
-                Data:
-                {json.dumps(item, indent=2)}
-                """
-
-            else:  # Regular SKU
-                prompt = f"""
-You are a Senior Amazon Business Analyst performing a
-CAUSAL PERFORMANCE DIAGNOSIS for a single product.
-
-Product under analysis: "{product_name}"
-Marketplace: "{country}"
-
-You are given:
-- Final, pre-calculated monthly performance data
-- A rolling historical trend of up to 24 months
-- Month-over-month movement already computed
-
-Your responsibility is to identify:
-
-WHAT materially changed,
-WHY it changed,
-and WHAT business impact it created
-for "{product_name}".
-
-STRICT ANALYTICAL RULES:
-
-1) MATERIALITY FIRST  
-- Ignore minor or normal fluctuations.  
-- Focus only on movements that are:
-  • extreme  
-  • trend-defining  
-  • profitability-impacting  
-  • abnormal versus history  
-
-2) CAUSE → EFFECT DISCIPLINE  
-Every insight must clearly follow:
-
-Movement → Primary Driver → Business Impact
-
-Examples of valid causal logic:
-- ASP decline → unit growth → CM1 profit pressure  
-- Stable pricing → unit decline → demand weakness  
-- Unit growth with stable CM1/unit → healthy expansion  
-
-3) LONG-TERM TREND INTERPRETATION  
-Using the historical_trend:
-
-- Classify the trajectory of "{product_name}" as:
-  • sustained growth  
-  • structural decline  
-  • volatility  
-  • flat/stagnant  
-
-- Identify **clear turning points** in the trend.
-
-4) RECENT MOVEMENT DIAGNOSIS  
-For the latest month vs previous month:
-
-- State the **dominant commercial change**.
-- Explain the **single strongest driver**:
-  • pricing movement  
-  • unit movement  
-  • sales mix shift  
-  • per-unit profitability change  
-
-- Conclude with the **business quality impact**:
-  • profitability strengthened  
-  • margin pressure emerged  
-  • efficiency deteriorated  
-  • stable but weak growth  
-
-METRIC INTERPRETATION RULES (SKU LEVEL)
-
-- total_quantity represents net units sold after returns.
-- net_sales represents realised topline revenue.
-- asp represents realised selling price per unit.
-- profit represents CM1 profit.
-- unit_wise_profitability represents CM1 profit per unit.
-
-CM2 ATTRIBUTION CONSTRAINT:
-
-- CM2 profit movement can ONLY be driven by:
-  • advertising_total
-  • platform fees
-  • storage fees
-  • reimbursements
-
-- Do NOT attribute CM2 change to any other cost component.
-- If CM2 movement is unexplained by the allowed drivers,
-  do NOT infer additional causes.
-
-
-FORBIDDEN CONTENT (ABSOLUTE):
-
-- No recommendations  
-- No actions  
-- No strategy  
-- No future suggestions  
-- No operational or inventory commentary  
-
-OUTPUT FORMAT:
-
-- Plain text bullet points only  
-- Maximum 5 bullets  
-- Each bullet must reference "{product_name}" naturally  
-- Each bullet must follow **Movement → Driver → Impact** reasoning  
-- No headings, no markdown, no narrative paragraphs  
-
-Data:
-{json.dumps(item, indent=2)}
-"""
-
-
+            recommendation = None
+            inventory_recommendation = None
+            product_journey = []
 
             try:
-                ai_response = oa_client.chat.completions.create(  # ✅ call the instance you created
-                    model="gpt-4o",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a senior ecommerce analyst. Use plain text and bullet points only. Do not use Markdown formatting."
-                        },
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=900,
-                    temperature=0.4
-                )
 
-                ai_text = ai_response.choices[0].message.content.strip()
-                # ============================================================
-                # REUSE MAIN STRATEGY ENGINE (SINGLE SKU MODE)
-                # ============================================================
-
-                recommendation = None
-                inventory_recommendation = None
-
-                # 🔥 ALWAYS FETCH LATEST MONTH FOR STRATEGY ENGINE
+                # -------------------------------------------------
+                # GET LATEST MONTH
+                # -------------------------------------------------
                 latest_year, latest_month = resolve_latest_available_month(
                     int(user_id),
                     country.lower()
                 )
 
-                try:
-                    with app.app_context():
-                        summary_result = get_or_create_summary(
-                            user_id=int(user_id),
-                            country=country.lower(),
-                            marketplace_id=None,
-                            period="monthly",
-                            timeline=str(latest_month),   # ✅ FORCE LATEST
-                            year=int(latest_year),        # ✅ FORCE LATEST
-                            objective=objective_v2,
-                            target_sku=key,
-                            force_regenerate=False
-                        )
+                # -------------------------------------------------
+                # CALL MAIN ENGINE
+                # -------------------------------------------------
+                with app.app_context():
 
-                    sku_actions = summary_result.get("sku_actions") or {}
-                    sku_block = sku_actions.get(key) or {}
+                    summary_result = get_or_create_summary(
+                        user_id=int(user_id),
+                        country=country.lower(),
+                        marketplace_id=None,
+                        period="monthly",
+                        timeline=str(latest_month),
+                        year=int(latest_year),
+                        objective=objective_v2,
+                        target_sku=key,
+                        force_regenerate=True
+                    )
 
-                    recommendation = sku_block.get("recommendation")
-                    inventory_recommendation = sku_block.get("inventory_recommendation")
+                sku_actions = summary_result.get("sku_actions") or {}
+                sku_block = sku_actions.get(key) or {}
 
-                except Exception as e:
-                    print("Strategy engine failed:", e)
+                recommendation = sku_block.get("recommendation")
+                inventory_recommendation = sku_block.get("inventory_recommendation")
 
-                
+                performance_journey = sku_block.get("journey_summary") or []
+                inventory_journey = sku_block.get("inventory_journey_summary") or []
 
-                return key, {
-                    'sku': sku,
-                    'product_name': product_name,
-                    'insight': ai_text,
-                    'recommendation': recommendation,
-                    'inventory_recommendation': inventory_recommendation,
-                    'key_used': key,
-                    'is_global': is_global,
-                    'objective': objective_v2,
-
-                }
-            except OpenAIError as e:
-                # 🔴 CREDIT / BILLING / QUOTA ERROR
-                print("[AI BILLING ERROR]", e)
-
-                return key, {
-                    'sku': sku,
-                    'product_name': product_name,
-                    'insight': (
-                        "AI insights are temporarily unavailable. "
-                        "Please contact us at care@phormula.io."
-                    ),
-                    'key_used': key,
-                    'is_global': is_global
-                }
+                product_journey = performance_journey + inventory_journey
 
             except Exception as e:
-                # 🟡 NON-BILLING FAILURE
-                print("[AI ERROR] Insight generation failed:", e)
+                print("Strategy engine failed:", e)
 
-                return key, {
-                    'sku': sku,
-                    'product_name': product_name,
-                    'insight': (
-                        "AI insight could not be generated at the moment. "
-                        "Please try again later."
-                    ),
-                    'key_used': key,
-                    'is_global': is_global
-                }
+
+            return key, {
+                "sku": sku,
+                "product_name": product_name,
+                "product_journey": product_journey,
+                "recommendation": recommendation,
+                "inventory_recommendation": inventory_recommendation,
+                "key_used": key,
+                "is_global": is_global,
+                "objective": objective_v2
+            }
 
         insights = {}
         processed_count = 0

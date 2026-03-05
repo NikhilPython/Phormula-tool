@@ -202,6 +202,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     objective?: Record<string, any> | null;
     recommendation?: string;
     best_performance?: BestPerformance;
+    product_journey?: string[];
   };
 
   const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsightExtended>>({});
@@ -235,6 +236,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
               objective: parsed.objective ?? null,
               recommendation: parsed.recommendation,
               best_performance: parsed.best_performance,
+              product_journey: parsed.product_journey ?? [],
             },
           });
 
@@ -283,6 +285,9 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       const inventoryRec = json.inventory_recommendation || "";
       const objective = json.objective ?? null;
       const recommendation = json.recommendation || "";
+      const productJourney: string[] = Array.isArray(json.product_journey)
+  ? json.product_journey
+  : [];
 
       // Best performance from already fetched ProductwisePerformance data
       let bestPerformance: any = undefined;
@@ -308,6 +313,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
           objective,
           recommendation,
           best_performance: bestPerformance,
+          product_journey: productJourney,
         },
       });
 
@@ -324,6 +330,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
           objective,
           recommendation,
           best_performance: bestPerformance,
+          product_journey: productJourney,
 
           cachedAt: Date.now(),
         })

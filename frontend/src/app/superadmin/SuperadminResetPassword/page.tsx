@@ -317,7 +317,7 @@ export default function SuperadminResetPasswordPage() {
                 />
               </div>
               <button onClick={resendOtp} className="text-sm text-[#60a68e] mt-2 hover:opacity-80">
-                Didn't receive OTP? Resend
+                Didn&apos;t receive OTP? Resend
               </button>
             </div>
 

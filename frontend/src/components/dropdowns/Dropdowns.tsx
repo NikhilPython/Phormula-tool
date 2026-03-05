@@ -135,6 +135,7 @@ type AiSummaryResponse = {
 
   performance_trend?: PerformanceTrendPayload;
   performance_trend_metric?: "net_sales" | "units";
+   portfolio_recommendation?: string | null;
 };
 
 type AiPanelData = {
@@ -151,6 +152,7 @@ type AiPanelData = {
 
   // ✅ ADD THIS
   remainingSkusRecommendation?: string;
+  portfolioRecommendation?: string | null;
 };
 
 
@@ -1158,12 +1160,11 @@ const ProductInsightsSection = ({
   objective,
   recommendationsMap,
   nameToSkuMap,
-
-  // ✅ ADD THESE
   range,
   selectedYear,
   selectedQuarter,
   homeCurrency,
+
   countryName,
   drawerPeriodText,
   selectedMonth,
@@ -1174,10 +1175,9 @@ const ProductInsightsSection = ({
   nameToSkuMap?: Record<string, string>;
   drawerPeriodText?: string;
   selectedMonth?: string;
-
-  range: RangeType;                 // "monthly" | "quarterly" | "yearly" | ""
-  selectedYear: string;             // "2025"
-  selectedQuarter: Quarter | "";    // "Q1".."Q4" or ""
+  range: RangeType;
+  selectedYear: string;
+  selectedQuarter: Quarter | "";
   homeCurrency?: string;
   countryName: string;
 }) => {
@@ -1191,8 +1191,7 @@ const ProductInsightsSection = ({
   // If you later add metric toggle, keep this state (and include in deps)
   const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
 
-  // ✅ DO NOT early-return before hooks
-  const hasBlocks = (blocks?.length ?? 0) > 0;
+  const hasBlocks = blocks.length > 0; // ✅ compute instead of early return
 
   // top border colors (rotate)
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
@@ -1230,8 +1229,8 @@ const ProductInsightsSection = ({
           },
           body: JSON.stringify({
             country: countryName,
-            product_name: productKeyForApi,
-            time_range: "Yearly", // ✅ forced
+            product_name: selectedBlock.name,
+            time_range: "Yearly",
             year: Number(selectedYear),
             quarter: undefined,
             home_currency: homeCurrency,
@@ -1243,7 +1242,6 @@ const ProductInsightsSection = ({
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || "Failed to fetch product performance");
 
-        // pick a country series from response
         const pickSeries = (j: any) => {
           const d = j?.data;
           if (!d || typeof d !== "object") return null;
@@ -1251,18 +1249,16 @@ const ProductInsightsSection = ({
           const country = (countryName || "").toLowerCase();
           const keys = Object.keys(d);
 
-          // Country page
           if (country && country !== "global") {
             const match =
-              keys.find((k) => k.toLowerCase() === country) ||
-              keys.find((k) => k.toLowerCase().startsWith(country + "_")) ||
-              keys.find((k) => k.toLowerCase().startsWith(country));
+              keys.find(k => k.toLowerCase() === country) ||
+              keys.find(k => k.toLowerCase().startsWith(country + "_")) ||
+              keys.find(k => k.toLowerCase().startsWith(country));
 
             if (match) return d[match];
           }
 
-          // Global page fallback
-          const g = keys.find((k) => k.toLowerCase().startsWith("global"));
+          const g = keys.find(k => k.toLowerCase().startsWith("global"));
           return g ? d[g] : d[keys[0]];
         };
 
@@ -1271,9 +1267,11 @@ const ProductInsightsSection = ({
         setPerfData({
           rows: Array.isArray(rows)
             ? rows.map((r: any) => ({
-              x: r?.month ?? r?.label ?? "-",
-              y: perfMetric === "units" ? toNum(r?.quantity ?? r?.units ?? 0) : toNum(r?.net_sales ?? 0),
-            }))
+                x: r?.month ?? r?.label ?? "-",
+                y: perfMetric === "units"
+                  ? toNum(r?.quantity ?? r?.units ?? 0)
+                  : toNum(r?.net_sales ?? 0),
+              }))
             : [],
         });
       } catch (e: any) {
@@ -1286,16 +1284,18 @@ const ProductInsightsSection = ({
 
     return () => ac.abort();
   }, [
-    hasBlocks,
     selectedBlock,
     range,
     selectedYear,
     selectedQuarter,
     homeCurrency,
-    countryName,
     nameToSkuMap,
-    perfMetric, // ✅ because used inside setPerfData mapping
+    countryName,
+    perfMetric, // ✅ include, since you read it inside effect
   ]);
+
+  // ✅ NOW you can early return (after hooks)
+  if (!hasBlocks) return null;
 
   const openDrawer = (b: ProductInsightBlock) => {
     const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
@@ -1310,9 +1310,6 @@ const ProductInsightsSection = ({
     setSelectedRecObj(recObj);
     setSelectedBlock(b);
   };
-
-  // ✅ Safe early return AFTER hooks
-  if (!hasBlocks) return null;
 
   return (
     <div className="space-y-5">
@@ -1549,6 +1546,7 @@ type AiSingleInsightCardProps = {
   selectedQuarter: Quarter | "";
   homeCurrency?: string;
   countryName: string; // ✅ ADD
+  portfolioRecommendation?: string | null; // ✅ ADD
 };
 
 const formatSummaryPeriod = (text?: string) => {
@@ -1797,7 +1795,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   recommendationsMap,
   nameToSkuMap,
   countryName,
-
+  portfolioRecommendation,
   range,
   selectedYear,
   selectedQuarter,
@@ -1823,25 +1821,42 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
     narrativeInsights?.[0] ? formatSummaryPeriod(narrativeInsights[0]) : "";
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="w-full space-y-4">
-        {/* Narrative Summary */}
-        {narrativeInsights.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold">
-              {narrativeInsights[0]?.split("(")[0]?.trim()}
-              <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
-                {formatSummaryPeriod(narrativeInsights[0])}
-              </span>
-            </h2>
+    <div className="flex flex-col  gap-5">
+      <div className="w-full  space-y-4">
 
-            <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
-              {narrativeInsights.slice(1).map((line, i) => (
-                <p key={i}>{line}</p>
-              ))}
+        <div className="space-y-4">
+  {/* Narrative Summary */}
+  {narrativeInsights.length > 0 && (
+    <>
+      <div className="space-y-3">
+        <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold">
+          {narrativeInsights[0]?.split("(")[0]?.trim()}
+          <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
+            {formatSummaryPeriod(narrativeInsights[0])}
+          </span>
+        </h2>
+
+        <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+          {narrativeInsights.slice(1).map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </div>
+
+        {/* ✅ ADD THIS AT THE END */}
+        {portfolioRecommendation ? (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="text-xs font-semibold text-slate-700 mb-1">
+              Portfolio Recommendation
+            </div>
+            <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+              {portfolioRecommendation}
             </div>
           </div>
-        )}
+        ) : null}
+      </div>
+    </>
+  )}
+</div>
 
         {/* Product Insights */}
         <div className="w-full">
@@ -2385,6 +2400,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
         // ✅ NEW
         remainingSkusRecommendation,
+        portfolioRecommendation: data.portfolio_recommendation ?? null,
       });
 
 
@@ -4183,6 +4199,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               selectedQuarter={selectedQuarter}
               homeCurrency={globalHomeCurrency}
               countryName={initialCountryName} // ✅ ADD (ya countryName)
+              portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
             />
           </div>
         )}
@@ -4210,6 +4227,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               selectedQuarter={selectedQuarter}
               homeCurrency={globalHomeCurrency}
               countryName={initialCountryName} // ✅ ADD (ya countryName)
+              portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
             // ✅ ADD THIS
             />
           </div>
@@ -4238,6 +4256,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               selectedQuarter={selectedQuarter}
               homeCurrency={globalHomeCurrency}
               countryName={initialCountryName} // ✅ ADD (ya countryName)
+              portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
             />
           </div>
         )} */}

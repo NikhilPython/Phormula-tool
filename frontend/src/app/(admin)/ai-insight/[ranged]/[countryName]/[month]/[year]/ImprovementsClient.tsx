@@ -27,6 +27,7 @@ import 'intro.js/introjs.css';
 import DataTable, { ColumnDef, Row } from '@/components/ui/table/DataTable';
 import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
+import { AnimatePresence, motion } from "framer-motion";
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
@@ -97,6 +98,7 @@ interface SkuInsight {
 
   inventory_recommendation?: string;
   recommendation?: string;
+  product_journey?: string[]; // ✅ ADD THIS
 
   objective?: {
     growth_intent?: string;
@@ -169,6 +171,20 @@ const MonthsforBI: React.FC = () => {
   const [year2, setYear2] = useState<string>('');
   const [isMobile, setIsMobile] = useState(false);
 
+  const [is2xlUp, setIs2xlUp] = useState(false);
+
+useEffect(() => {
+  const check = () => {
+    setIsMobile(window.innerWidth < 768);
+    setIs2xlUp(window.innerWidth >= 1536);
+  };
+  check();
+  window.addEventListener("resize", check);
+  return () => window.removeEventListener("resize", check);
+}, []);
+
+const axisTickFontSize = is2xlUp ? 14 : 12;
+const axisNameFontSize = is2xlUp ? 14 : 12;
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -615,7 +631,7 @@ const MonthsforBI: React.FC = () => {
           data: x,
           axisLabel: {
             interval: 0,
-            fontSize: isMobile ? 10 : 14,
+            fontSize: axisTickFontSize,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -647,7 +663,7 @@ const MonthsforBI: React.FC = () => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
-            fontSize: isMobile ? 10 : 14,
+            fontSize: axisTickFontSize,
             formatter: (v: number) => `${Math.round(v).toLocaleString()}`
           }
         },
@@ -803,7 +819,7 @@ const MonthsforBI: React.FC = () => {
           data: x,
           axisLabel: {
             interval: 0,
-            fontSize: isMobile ? 10 : 14,
+            fontSize: axisTickFontSize,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -835,7 +851,7 @@ const MonthsforBI: React.FC = () => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
-            fontSize: isMobile ? 10 : 14,
+            fontSize: axisNameFontSize,
             formatter: (v: number) => `${Math.round(v).toLocaleString()}`
           }
         },
@@ -985,7 +1001,7 @@ const MonthsforBI: React.FC = () => {
           data: x,
           axisLabel: {
             interval: 0,
-            fontSize: isMobile ? 10 : 14,
+            fontSize: axisTickFontSize,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -1007,7 +1023,7 @@ const MonthsforBI: React.FC = () => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
-            fontSize: isMobile ? 10 : 14,
+            fontSize: axisTickFontSize,
             formatter: (v: number) => `${Math.round(v).toLocaleString()}`
           }
         }
@@ -1159,7 +1175,7 @@ const MonthsforBI: React.FC = () => {
           data: x,
           axisLabel: {
             interval: 0,
-            fontSize: isMobile ? 10 : 14,
+            fontSize: axisTickFontSize,
             margin: 20,
             align: 'center',
             formatter: (v: string, idx: number) => {
@@ -1181,7 +1197,7 @@ const MonthsforBI: React.FC = () => {
           nameLocation: 'middle',
           nameGap: 45,
           axisLabel: {
-            fontSize: isMobile ? 10 : 14,
+            fontSize: axisNameFontSize,
             formatter: (value: number) => {
               if (!value) return '0';
               return Number.isInteger(value)
@@ -3438,122 +3454,170 @@ const MonthsforBI: React.FC = () => {
 
 
 
-      {(() => {
-        if (!modalOpen || !selectedSku) return null;
+{(() => {
+  if (!modalOpen || !selectedSku) return null;
 
-        const insightData =
-          skuInsights[selectedSku as keyof typeof skuInsights] ||
-          getInsightByProductName(selectedSku as string)?.[1];
+  const insightData =
+    skuInsights[selectedSku as keyof typeof skuInsights] ||
+    getInsightByProductName(selectedSku as string)?.[1];
 
-        if (!insightData) return null;
+  if (!insightData) return null;
 
-        const objectiveObj = isObjectiveObj(insightData.objective)
-          ? insightData.objective
-          : undefined;
+  const objectiveObj = isObjectiveObj(insightData.objective)
+    ? insightData.objective
+    : undefined;
 
-        return (
-          <Drawer
-            anchor="right"
-            open={modalOpen}
-            onClose={() => setModalOpen(false)}
-            PaperProps={{
-              sx: {
-                width: { xs: '100vw', sm: '80vw', md: '60vw', lg: '50vw' },
-                maxWidth: 900,
-                padding: 2,
-              },
-            }}
+  // ✅ bullets helpers
+  const toBullets = (raw?: string) => normalizeBullets(raw);
+  const recoBullets = toBullets(insightData.recommendation);
+  const inventoryRecoBullets = toBullets(insightData.inventory_recommendation);
+
+  // ✅ NEW: product journey bullets (already array)
+  const journeyBullets = (insightData.product_journey || [])
+    .map((s) => String(s || "").trim())
+    .filter(Boolean);
+
+  return (
+    <AnimatePresence>
+      {modalOpen && (
+        <>
+          {/* overlay */}
+          <motion.div
+            className="fixed inset-0 z-[999999] bg-black/40"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setModalOpen(false)}
+          />
+
+          {/* drawer */}
+          <motion.aside
+            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-white shadow-2xl flex flex-col"
+            initial={{ x: 520 }}
+            animate={{ x: 0 }}
+            exit={{ x: 520 }}
+            transition={{ type: "tween", duration: 0.25 }}
           >
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 12,
-                height: '100%',
-              }}
-            >
-              {/* Header */}
+            {/* header */}
+            <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-slate-500">Detailed View</div>
 
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 8,
-                }}
-              >
-                <PageBreadcrumb
-                  variant="page"
-                  align="left"
-                  textSize="2xl"
-                  className='text-base sm:text-xl lg:text-lg 2xl:text-2xl'
-                  pageTitle={
-                    <>
-                      AI Insight for{" "}
-                      <span style={{ color: "#60a68e" }}>
-                        {insightData.product_name || selectedSku}
-                      </span>
-                    </>
-                  }
-                />
-
-                <IconButton
-                  size="small"
-                  onClick={() => setModalOpen(false)}
-                  aria-label="Close"
-                >
-                  x
-                </IconButton>
-              </div>
-
-              {/* Chart */}
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-                <Productinfoinpopup
-                  productname={insightData.product_name}
-                  countryName={countryName}   // ✅ PASS COUNTRY
-                />
-              </div>
-
-              {/* Insights text with bullets & colors */}
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: 'auto',
-                  marginTop: 8,
-                  paddingRight: 4,
-                }}
-              >
-
-                <div style={{ flex: 1, overflowY: "auto", marginTop: 8, paddingRight: 4 }}>
-                  <div style={{ marginTop: 4 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 10 }}>
-                      Objective
-                    </div>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
-                        gap: 12,
-                      }}
-                    >
-                      {pill("Growth Intent", objectiveObj?.growth_intent)}
-                      {pill("Inventory Clearance Priority", objectiveObj?.inventory_clearance_priority)}
-                      {pill("Profit Priority", objectiveObj?.profit_priority)}
-                    </div>
-                  </div>
-                  {bigBox("Recommendation", insightData.recommendation)}
-                  {bigBox("Inventory Recommendation", insightData.inventory_recommendation)}
-                  {renderBullets(insightData.insight)}
-                  
+                  {/* optional period badge */}
+                  <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700">
+                    {countryName ? String(countryName).toUpperCase() : "—"}
+                  </span>
                 </div>
 
-
+                <div className="text-lg font-semibold text-slate-900">
+                  {insightData.product_name || selectedSku}
+                </div>
               </div>
+
+              <button
+                onClick={() => setModalOpen(false)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                ✕
+              </button>
             </div>
-          </Drawer>
-        );
-      })()}
+
+            {/* content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {/* 1) Objective strip */}
+              {objectiveObj && (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-800">Objectives</div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-xs text-slate-500">Primary Focus</div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {objectiveObj?.growth_intent || "balanced"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-xs text-slate-500">Profit Strategy</div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {(objectiveObj?.profit_priority?.replaceAll("_", " ") || "protect growth")}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-xs text-slate-500">Inventory Dilution</div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {objectiveObj?.inventory_clearance_priority ? "Yes" : "No"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2) Recommendations */}
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-slate-800">Recommendations</div>
+
+                {recoBullets.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700">
+                      {recoBullets.map((pt, i) => (
+                        <li key={i}>{pt}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {inventoryRecoBullets.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700">
+                      {inventoryRecoBullets.map((pt, i) => (
+                        <li key={i}>{pt}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {!recoBullets.length && !inventoryRecoBullets.length && (
+                  <div className="text-xs text-slate-500">No recommendation available.</div>
+                )}
+              </div>
+
+              {/* 3) Chart */}
+              <div className="space-y-2">
+                <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 8 }}>
+                  <Productinfoinpopup
+                    productname={insightData.product_name}
+                    countryName={countryName}
+                  />
+                </div>
+              </div>
+
+              {/* 4) Product Journey ✅ NEW */}
+              {journeyBullets.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-800">Product Journey</div>
+
+                  <ul className="space-y-2 2xl:text-sm text-xs text-slate-700">
+                    {journeyBullets.map((j, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="text-slate-400 mt-[2px]">→</span>
+                        <span>{j}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
+  );
+})()}
     </>
   );
 };
