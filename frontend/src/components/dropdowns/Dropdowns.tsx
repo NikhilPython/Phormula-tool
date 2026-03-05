@@ -1601,12 +1601,9 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 }) => {
   if (loading) {
     return (
-      <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-8 flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 rounded-full border-2 border-slate-300 border-t-blue-500 animate-spin mx-auto"></div>
-          <p className="text-sm font-medium text-slate-600">Generating AI insights…</p>
-        </div>
-      </div>
+
+      <Loader fullscreen transparent />
+
     );
   }
 
