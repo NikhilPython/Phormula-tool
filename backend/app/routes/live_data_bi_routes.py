@@ -16,6 +16,7 @@ compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_f
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
+from app.utils.uk_time_series_utils import build_rolling_sku_series,build_remaining_skus_time_series
 
 
 # -----------------------------------------------------------------------------
@@ -811,6 +812,44 @@ def live_mtd_vs_previous():
             "total_cm2_profit": ads_monthly_totals.get("cm2_profit", 0),
         }
 
+        # -------------------------------------------------
+        # 🔥 BUILD SKU TIME SERIES (24-month history)
+        # -------------------------------------------------
+        sku_time_series = {}
+
+        for r in top_80_skus:
+            sku = r.get("sku")
+            if not sku:
+                continue
+
+            try:
+                sku_time_series[sku] = build_rolling_sku_series(
+                    user_id=user_id,
+                    country=country,
+                    sku=sku,
+                    anchor_year=anchor_year,
+                    anchor_month=anchor_month,
+                )
+            except Exception as e:
+                print("[WARN] Failed to build time series for", sku, e)
+
+        # -------------------------------------------------
+        # 🔥 BUILD REMAINING SKU TIME SERIES (Other SKUs)
+        # -------------------------------------------------
+        remaining_series = []
+
+        try:
+            remaining_series = build_remaining_skus_time_series(
+                user_id=user_id,
+                country=country,
+                focus_skus=[r.get("sku") for r in top_80_skus],
+                anchor_year=anchor_year,
+                anchor_month=anchor_month,
+                months=24,
+            )
+        except Exception as e:
+            print("[WARN] Remaining SKU series failed:", e)        
+
         
 
         # ---------------------------------------
@@ -822,7 +861,7 @@ def live_mtd_vs_previous():
                 analysis_insights=analysis,
                 objective_v2=user_objective,
                 focus_skus=[r.get("sku") for r in top_80_skus],
-                sku_time_series={},   # optional
+                sku_time_series=sku_time_series,
                 inventory_alerts=payload_ai.get("inventory_signals", {}),
                 sku_inventory_flags=sku_inventory_flags,
                 country=country,
@@ -830,7 +869,8 @@ def live_mtd_vs_previous():
                 sku_live_context=sku_live_context,
                 ads_monthly=ads_monthly,
                 remaining_skus_context={
-                    "aggregated_metrics": remaining_growth_row
+                    "aggregated_metrics": remaining_growth_row,
+                    "time_series": remaining_series
                 } if remaining_growth_row else {},
             )
 
