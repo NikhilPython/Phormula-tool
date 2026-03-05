@@ -4923,7 +4923,8 @@ export default function DashboardPage() {
                             />
                         </div>
 
-                        <div className="w-full flex-1 min-h-0 min-[1700px]:sticky min-[1700px]:top-6">
+
+                        <div className="w-full lg:sticky lg:top-4 2xl:top-6">
 
                             <SalesTargetCard
                                 data={targetData}
