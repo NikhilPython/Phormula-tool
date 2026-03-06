@@ -980,7 +980,7 @@ const Pnlforecast: React.FC = () => {
       )}
       {data && (
         <div>
-          <div className="overflow-x-auto rounded-sm">
+          <div className="overflow-x-auto rounded-xl shadow-sm bg-white p-4">
             <GroupedCollapsibleTables<RowData>
               rows={[
                 ...(normalizedProductRows || []),

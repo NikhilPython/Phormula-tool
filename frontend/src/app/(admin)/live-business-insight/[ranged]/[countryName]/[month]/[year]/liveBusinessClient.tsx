@@ -116,7 +116,14 @@ interface CategorizedGrowth {
 
 interface SkuInsight {
   product_name: string;
-  insight: string;
+  sku?: string;
+  insight?: string;
+
+  recommendation?: string | string[] | number;
+  product_journey?: string[] | string;
+  advertising?: string | string[];
+  inventory_recommendation?: string | string[] | number;
+
   [key: string]: any;
 }
 
@@ -2978,7 +2985,7 @@ const parseOtherSkusBlock = (raw: string) => {
 });
                     setRecDrawerOpen(true);
                   }}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-[#F8EDCE] hover:bg-slate-700 transition whitespace-nowrap"
                 >
                   Detailed View
                 </button>
@@ -3030,7 +3037,7 @@ const parseOtherSkusBlock = (raw: string) => {
   </div>
 )}
             </motion.div>
-          );
+          )
         })}
         {remainingSkusBlock?.trim() && (() => {
   const parsedOther = parseOtherSkusBlock(remainingSkusBlock);
@@ -3067,7 +3074,7 @@ const parseOtherSkusBlock = (raw: string) => {
             });
             setRecDrawerOpen(true);
           }}
-          className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition whitespace-nowrap"
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-[#F8EDCE] hover:bg-slate-700 transition whitespace-nowrap"
         >
           Detailed View
         </button>

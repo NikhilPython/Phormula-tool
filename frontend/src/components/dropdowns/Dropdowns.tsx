@@ -640,7 +640,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
             <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <div className="text-sm text-slate-500">Detailed View</div>
+                  <div className="text-sm text-yellow-200">Detailed View</div>
 
                   {drawerPeriodText ? (
                     <span className="text-[#5EA68E] font-semibold text-sm">
@@ -1341,7 +1341,7 @@ const ProductInsightsSection = ({
 
                 <button
                   onClick={() => openDrawer(b)}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-yellow-200 hover:bg-slate-700 transition"
                 >
                   Detailed View
                 </button>
@@ -4300,6 +4300,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   selectedQuarter={selectedQuarter}
                   homeCurrency={globalHomeCurrency}
                   countryName={initialCountryName}
+                  portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
                 />
               </>
             )}
