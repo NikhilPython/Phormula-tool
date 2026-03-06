@@ -68,7 +68,7 @@ export default function ChatbotWidget() {
   "
 >
               <div>
-                <p className="font-semibold text-base text-[#F8EDCE] ">Hi {userData?.company_name || "there"} </p>
+                <p className="font-semibold text-base text-[#F8EDCE] ">Hi {userData?.name || "there"} </p>
                 <p className="text-[11px] opacity-90">
                   Analytics Assistant
                 </p>

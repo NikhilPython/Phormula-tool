@@ -124,10 +124,24 @@ const resolveProductKey = (
 };
 
 
+
+
 const buildInsightsCacheKey = (
   identifier: string,
-  country: string
-) => `productwise_insights:${country}:${identifier.toLowerCase()}`;
+  country: string,
+  range: Range,
+  year: number | "",
+  quarter?: string,
+  month?: string,
+  currency?: string
+) => {
+  const safeYear = year || "na";
+  const safeQuarter = quarter || "na";
+  const safeMonth = month || "na";
+  const safeCurrency = currency || "na";
+
+  return `productwise_insights:${country}:${identifier.toLowerCase()}:${range}:${safeYear}:${safeQuarter}:${safeMonth}:${safeCurrency}`;
+};
 
 type BestPerfItem = { month: string; value: number };
 type BestPerformance = { sales?: BestPerfItem; units?: BestPerfItem; profit?: BestPerfItem };
@@ -144,6 +158,28 @@ const computeBestPerformance = (monthly: MonthDatum[] = []): BestPerformance | u
     units: { month: bestUnits.month, value: bestUnits.quantity },
     profit: { month: bestProfit.month, value: bestProfit.profit },
   };
+};
+
+const getBestPerformanceForCurrentView = ({
+  sourceData,
+  countryForApi,
+  isPreviewMode,
+  globalKey,
+}: {
+  sourceData: Record<string, any> | undefined;
+  countryForApi: string;
+  isPreviewMode: boolean;
+  globalKey: CountryKey;
+}): BestPerformance | undefined => {
+  if (!sourceData) return undefined;
+
+  const key =
+    countryForApi === "global"
+      ? globalKey
+      : (findCountryKeyFor(sourceData, countryForApi) as CountryKey | null);
+
+  const monthly: MonthDatum[] = key ? sourceData[key] || [] : [];
+  return computeBestPerformance(Array.isArray(monthly) ? monthly : []);
 };
 
 const findCountryKeyFor = (sourceData: Record<string, any>, target: string) => {
@@ -214,7 +250,15 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     if (!identifier) return;
 
     const countryForApi = (platformCountryName || "global").toLowerCase();
-    const cacheKey = buildInsightsCacheKey(identifier, countryForApi);
+    const cacheKey = buildInsightsCacheKey(
+  identifier,
+  countryForApi,
+  range,
+  selectedYear,
+  selectedQuarter,
+  selectedMonth,
+  homeCurrency
+);
 
     // 1️⃣ Open drawer immediately
     setIsDrawerOpen(true);
@@ -290,18 +334,14 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   : [];
 
       // Best performance from already fetched ProductwisePerformance data
-      let bestPerformance: any = undefined;
-      const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
+     const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
 
-      if (sourceData) {
-        const key =
-          countryForApi === "global"
-            ? globalKey
-            : (findCountryKeyFor(sourceData as any, countryForApi) as any);
-
-        const monthly: MonthDatum[] = key ? (sourceData as any)[key] : [];
-        bestPerformance = computeBestPerformance(Array.isArray(monthly) ? monthly : []);
-      }
+const bestPerformance = getBestPerformanceForCurrentView({
+  sourceData: sourceData as Record<string, any> | undefined,
+  countryForApi,
+  isPreviewMode,
+  globalKey,
+});
 
       setSkuInsights({
         [identifier]: {
@@ -343,6 +383,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       setInsightsLoading(false);
     }
   };
+
+  
 
   // NEW: active platform, default "global"
   const [activePlatform, setActivePlatform] = useState<PlatformId>("global");
@@ -497,6 +539,44 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
     return "";
   });
+
+  useEffect(() => {
+  if (!isDrawerOpen || !selectedSku) return;
+
+  const countryForApi = (platformCountryName || "global").toLowerCase();
+  const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
+
+  const freshBestPerformance = getBestPerformanceForCurrentView({
+    sourceData: sourceData as Record<string, any> | undefined,
+    countryForApi,
+    isPreviewMode,
+    globalKey,
+  });
+
+  setSkuInsights((prev) => {
+    const current = prev[selectedSku];
+    if (!current) return prev;
+
+    return {
+      ...prev,
+      [selectedSku]: {
+        ...current,
+        best_performance: freshBestPerformance,
+      },
+    };
+  });
+}, [
+  isDrawerOpen,
+  selectedSku,
+  data,
+  globalKey,
+  range,
+  selectedYear,
+  selectedQuarter,
+  selectedMonth,
+  platformCountryName,
+  isPreviewMode,
+]);
 
   const [selectedCountries, setSelectedCountries] = useState<
     Record<CountryKey, boolean>
@@ -1228,12 +1308,15 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
           />
 
           <InsightSideDrawer
-            open={isDrawerOpen}
-            selectedSku={selectedSku}
-            skuInsights={skuInsights}
-            onClose={() => setIsDrawerOpen(false)}
-            enableFeedback={false}
-          />
+  open={isDrawerOpen}
+  selectedSku={selectedSku}
+  skuInsights={skuInsights}
+  onClose={() => setIsDrawerOpen(false)}
+  enableFeedback={false}
+  selectedYear={selectedYear}
+  homeCurrency={homeCurrency}
+  drawerPeriodText={getHeadingPeriod()}
+/>
 
           {isDrawerOpen && insightsError && (
             <div className="fixed right-6 top-16 z-[9999] rounded bg-red-50 px-3 py-2 shadow text-sm text-red-700">

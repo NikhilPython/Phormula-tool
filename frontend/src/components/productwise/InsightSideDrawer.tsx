@@ -36,7 +36,6 @@ export interface InsightSideDrawerProps {
   getInsightByProductName?: (productName: string) => [string, SkuInsight] | null;
   onClose: () => void;
 
-  // Optional: feedback (kept as-is if you need later)
   enableFeedback?: boolean;
   fbType?: 'like' | 'dislike' | null;
   setFbType?: (v: 'like' | 'dislike' | null) => void;
@@ -46,10 +45,12 @@ export interface InsightSideDrawerProps {
   fbSuccess?: boolean;
   onSubmitFeedback?: () => void;
 
-  // ✅ add these props if you want to pass period/country like your other drawer
   countryName?: string;
   drawerPeriodText?: string;
   periodBadge?: string;
+
+  selectedYear?: number | "";
+  homeCurrency?: string;
 }
 
 const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
@@ -61,6 +62,8 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
   countryName,
   drawerPeriodText,
   periodBadge,
+  selectedYear,
+  homeCurrency,
 }) => {
   if (!open || !selectedSku) return null;
 
@@ -69,6 +72,74 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
     getInsightByProductName?.(selectedSku)?.[1];
 
   if (!insightData) return null;
+
+    const formatPerfMonth = (month?: string) => {
+    if (!month) return "-";
+
+    const fullNames = [
+      "january",
+      "february",
+      "march",
+      "april",
+      "may",
+      "june",
+      "july",
+      "august",
+      "september",
+      "october",
+      "november",
+      "december",
+    ];
+
+    const abbrs = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+
+    const lower = month.toLowerCase();
+    let idx = fullNames.indexOf(lower);
+
+    if (idx === -1) {
+      idx = fullNames.findIndex((m) => lower.startsWith(m.slice(0, 3)));
+    }
+
+    const shortMonth = idx >= 0 ? abbrs[idx] : month;
+    const shortYear =
+      selectedYear !== undefined && selectedYear !== ""
+        ? String(selectedYear).slice(-2)
+        : "";
+
+    return shortYear ? `${shortMonth}'${shortYear}` : shortMonth;
+  };
+
+  const getCurrencySymbol = (code?: string) => {
+    const c = (code || "").toUpperCase();
+    if (c === "USD") return "$";
+    if (c === "GBP") return "£";
+    if (c === "EUR") return "€";
+    if (c === "CAD") return "C$";
+    if (c === "INR") return "₹";
+    return "";
+  };
+
+  const formatPerfValue = (label: string, value?: number) => {
+    if (typeof value !== "number") return "-";
+
+    const lower = label.toLowerCase();
+    if (lower.includes("unit")) return value.toLocaleString();
+
+    return `${getCurrencySymbol(homeCurrency)}${value.toLocaleString()}`;
+  };
 
   const journeyBullets =
     Array.isArray(insightData.product_journey) ? insightData.product_journey : [];
@@ -139,10 +210,12 @@ const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
                     ].map((b, i) => (
                       <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                         <div className="text-xs text-slate-500">{b.label}</div>
-                        <div className="text-xs text-slate-500">{b.data?.month || "-"}</div>
-                        <div className="text-sm font-bold text-slate-900 mt-1">
-                          {typeof b.data?.value === "number" ? b.data.value.toLocaleString() : "-"}
-                        </div>
+<div className="text-xs text-slate-500">
+  {formatPerfMonth(b.data?.month)}
+</div>
+<div className="text-sm font-bold text-slate-900 mt-1">
+  {formatPerfValue(b.label, b.data?.value)}
+</div>
                       </div>
                     ))}
                   </div>
