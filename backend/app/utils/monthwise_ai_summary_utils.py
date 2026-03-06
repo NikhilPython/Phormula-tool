@@ -1175,6 +1175,8 @@ def run_prompt_1_analysis(ai_payload):
 def run_prompt_2_strategy(
     analysis_insights: dict,
     objective_v2: dict,
+    # sku_mom: dict,
+    # product_insights: dict, 
     focus_skus: list,
     sku_time_series: dict,
     inventory_alerts: dict,
@@ -1218,6 +1220,8 @@ def run_prompt_2_strategy(
     # -------------------------------------------------
     payload = {
         "analysis_insights": analysis_insights,
+        # "sku_mom": sku_mom,
+        # "product_insights": product_insights,
         "objective_v2": objective_v2,
         "focus_skus": focus_skus,
         "sku_time_series": sku_time_series,
@@ -1231,6 +1235,10 @@ def run_prompt_2_strategy(
         "remaining_skus_context": remaining_skus_context or {},
     }
 
+    # 🔍 DEBUG — SEE WHAT PROMPT 2 RECEIVES
+    print("\n================ PROMPT 2 INPUT ================")
+    print(json.dumps(payload, indent=2, default=str))
+    print("===============================================\n")
     # -------------------------------------------------
     # 🔐 SANITIZE before json.dumps
     # -------------------------------------------------
@@ -1731,6 +1739,425 @@ def render_month_end_summary(
     return "\n".join(lines)
 
 
+# def get_or_create_summary(
+#     user_id,
+#     country,
+#     marketplace_id,
+#     period,
+#     timeline,
+#     year,
+#     objective=None,
+#     target_sku: str | list | None = None,
+#     force_regenerate=False
+# ):
+
+    
+
+#     # ============================================================
+#     # LOAD OBJECTIVE FROM DB
+#     # ============================================================
+#     user_objective_row = UserObjective.query.filter_by(
+#         user_id=user_id,
+#         country=country
+#     ).first()
+
+#     if user_objective_row:
+#         objective_v2 = {
+#             "growth_intent": user_objective_row.growth_intent,
+#             "profit_priority": user_objective_row.profit_priority,
+#             "inventory_clearance_priority": user_objective_row.inventory_clearance_priority,
+#             "business_context": user_objective_row.business_context,
+#             "country": str(country).lower(),
+#             "time_horizon": "1_month"
+#         }
+#     else:
+#         objective_v2 = {
+#             "growth_intent": "balanced",
+#             "profit_priority": "protect_growth",
+#             "inventory_clearance_priority": False,
+#             "business_context": None,
+#             "country": str(country).lower(),
+#             "time_horizon": "1_month"
+#         }
+
+#     # ============================================================
+#     # PERIOD RESOLUTION
+#     # ============================================================
+#     user_selected = bool(period and timeline and year)
+
+#     if not user_selected:
+#         year, month = resolve_latest_available_month(user_id, country)
+#         timeline = str(month)
+#         period = "monthly"
+
+#     is_latest = is_latest_period(
+#         period, timeline, year,
+#         user_id=user_id,
+#         country=country
+#     )
+
+#     # 🔥 NEW CONTROL FLAGS
+#     allow_inventory = False
+#     allow_recommendations = False
+
+#     if period in ("monthly", "quarterly"):
+#         allow_inventory = is_latest
+#         allow_recommendations = is_latest
+
+#     elif period == "yearly":
+#         allow_inventory = is_latest
+#         allow_recommendations = False
+
+#     # 🔍 DEBUG
+#     print("IS LATEST:", is_latest)
+#     print("ALLOW RECOMMENDATIONS:", allow_recommendations)
+#     print("PERIOD:", period)
+#     print("TIMELINE:", timeline)
+#     print("YEAR:", year)    
+
+#     # ============================================================
+#     # CACHE CHECK
+#     # ============================================================
+#     cached = fetch_existing_summary(
+#         user_id, country, marketplace_id, period, timeline, year
+#     )
+
+#     if cached and not force_regenerate and not target_sku:
+#         return {
+#             "summary": cached.summary,
+#             "recommendations": (
+#                 json.loads(cached.recommendations)
+#                 if cached.recommendations else {}
+#             ),
+#             "source": "db",
+#             "scope": "portfolio",
+#             "objective": objective_v2
+#         }
+
+#     # ============================================================
+#     # CURRENT DATA
+#     # ============================================================
+#     df_current = fetch_precalc_table(user_id, country, period, timeline, year)
+#     df_current_detail, df_current_total = _split_total_row(df_current)
+
+#     sku_current = compute_sku_precalc(df_current_detail)
+#     top_5_skus = select_focus_skus_by_sales_mix(sku_current)
+
+#     # ============================================================
+#     # SINGLE SKU MODE
+#     # ============================================================
+#     single_sku_mode = False
+#     scope = "portfolio"
+
+#     if target_sku:
+#         single_sku_mode = True
+#         scope = "sku"
+
+#         if isinstance(target_sku, list):
+#             target_sku = target_sku[0]
+
+#         target_sku = str(target_sku).strip()
+
+#         if target_sku in sku_current:
+#             top_5_skus = [target_sku]
+#             sku_current = {target_sku: sku_current[target_sku]}
+#         else:
+#             return {
+#                 "summary": f"I couldn’t find SKU '{target_sku}' in the selected period.",
+#                 "recommendations": {},
+#                 "inventory_lost": 0.0,
+#                 "inventory_alerts": {},
+#                 "sku_current": {},
+#                 "sku_mom": {},
+#                 "sku_yoy": None,
+#                 "objective": objective_v2,
+#                 "sku_actions": {},
+#                 "scope": "sku",
+#                 "source": "no_data",
+#             }
+
+#     # ============================================================
+#     # ROLLING CONTEXT
+#     # ============================================================
+#     movement_context = {}
+#     rolling_extremes = {}
+#     yearly_temporal_signals = None
+#     analysis_anchor_year = None
+#     analysis_anchor_month = None
+#     rolling_series = []
+
+#     if not single_sku_mode:
+
+#         if period == "yearly":
+#             anchor = resolve_yearly_analysis_anchor(user_id, country, year)
+#             if anchor:
+#                 analysis_anchor_year, analysis_anchor_month = anchor
+#         else:
+#             analysis_anchor_year = year
+#             if period == "monthly":
+#                 analysis_anchor_month = int(timeline)
+#             elif period == "quarterly":
+#                 QUARTER_TO_MONTH = {"Q1": 3, "Q2": 6, "Q3": 9, "Q4": 12}
+#                 analysis_anchor_month = QUARTER_TO_MONTH.get(timeline)
+
+#         if analysis_anchor_year and analysis_anchor_month:
+#             rolling_series = build_rolling_monthly_series(
+#                 user_id=user_id,
+#                 country=country,
+#                 anchor_year=analysis_anchor_year,
+#                 anchor_month=analysis_anchor_month
+#             )
+
+#             movement_context = build_movement_context(rolling_series)
+#             rolling_extremes = extract_rolling_extremes(rolling_series)
+
+#             if period == "yearly":
+#                 yearly_temporal_signals = build_yearly_temporal_signals(rolling_series) or None
+
+
+                
+
+#     # ============================================================
+#     # INVENTORY
+#     # ============================================================
+
+#     lost_total_val = _total_value(df_current_total, "lost_total")
+#     inventory_lost = round(abs(lost_total_val), 2) if lost_total_val is not None else 0.0
+
+#     if single_sku_mode:
+#         inventory_lost = 0.0
+
+#     inventory_alerts = {}        # ✅ portfolio-level alerts (unchanged)
+#     sku_inventory_flags = {}     # ✅ new SKU-level alerts
+
+#     if allow_inventory:
+
+#         inventory_aged_df = fetch_inventory_aged_by_user(user_id)
+
+#         if not inventory_aged_df.empty:
+
+#             # 🔵 PORTFOLIO ALERTS (DO NOT CHANGE LOGIC)
+#             inventory_alerts = build_inventory_alerts(
+#                 inventory_aged_df,
+#                 user_id=user_id,
+#                 country=country
+#             )
+
+#             # 🟢 SKU-LEVEL FLAGS (NEW ADDITION)
+#             all_sku_flags = build_sku_inventory_flags(
+#                 inventory_aged_df,
+#                 user_id=user_id,
+#                 country=country
+#             )
+
+#             # Only pass Top 5 SKUs to strategy layer
+#             sku_inventory_flags = {
+#                 sku: all_sku_flags.get(sku)
+#                 for sku in top_5_skus
+#                 if sku in all_sku_flags
+#             }     
+
+#     # ============================================================
+#     # PREVIOUS PERIOD
+#     # ============================================================
+#     (p_period, p_timeline, p_year), _ = resolve_comparison(period, timeline, year)
+#     df_prev = fetch_precalc_table(user_id, country, p_period, p_timeline, p_year)
+#     df_prev_detail, df_prev_total = _split_total_row(df_prev)
+
+#     period_absolute_changes = {}
+#     period_pct_changes = None
+
+#     if not df_current_total.empty and not df_prev_total.empty:
+#         period_absolute_changes = compute_period_absolute_changes(
+#             df_current_total,
+#             df_prev_total
+#         )
+
+#         period_pct_changes = compute_period_pct_changes(
+#             df_current_total,
+#             df_prev_total
+#         )
+
+#     sku_prev = compute_sku_precalc(df_prev_detail)
+#     sku_mom = compare_sku_metrics(sku_current, sku_prev)
+
+#     remaining_agg = build_remaining_skus_aggregate(
+#     sku_current=sku_current,
+#     sku_prev=sku_prev,
+#     focus_skus=top_5_skus
+#     )
+
+#     # -------------------------------------------------
+#     # Remaining SKUs time series (for LLM journey)
+#     # -------------------------------------------------
+
+#     remaining_series = []
+
+#     if analysis_anchor_year and analysis_anchor_month:
+#         remaining_series = build_remaining_skus_time_series(
+#             user_id=user_id,
+#             country=country,
+#             focus_skus=top_5_skus,
+#             anchor_year=analysis_anchor_year,
+#             anchor_month=analysis_anchor_month,
+#             months=24
+#         )
+
+#     remaining_skus_context = {
+#         "aggregated_metrics": remaining_agg,
+#         "time_series": remaining_series
+#     }
+
+#     if single_sku_mode:
+#         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
+
+#     # ============================================================
+#     # PROMPT 1 (ANALYSIS)
+#     # ============================================================
+#     analysis_insights = {}
+#     analysis_raw = ""
+
+#     if not single_sku_mode:
+#         ai_payload = {
+#             "period": f"{period} {timeline} {year}",
+#             "period_label": period_label(period, timeline, year),
+#             "country": str(country).lower(),
+#             "period_absolute_changes": period_absolute_changes,
+#             "period_pct_changes": period_pct_changes,
+#             "inventory_lost": inventory_lost,
+#             "inventory_alerts": inventory_alerts,
+#             "sku_mom": sku_mom,
+#             "focus_skus": top_5_skus,
+#             "movement_context": movement_context,
+#             "rolling_extremes": rolling_extremes,
+#             "yearly_temporal_signals": yearly_temporal_signals,
+#             "scope": scope,
+#              # ✅ ADD THIS LINE
+#             "portfolio_time_series": rolling_series,
+#         }
+
+#         analysis_raw = run_prompt_1_analysis(ai_payload)
+
+#         try:
+#             analysis_insights = json.loads(analysis_raw)
+#         except Exception:
+#             print("\n❌ Prompt-1 JSON PARSE FAILED")
+#             analysis_insights = {}
+
+#     # ============================================================
+#     portfolio_level_narrative = analysis_insights.get("executive_summary_signals", {})
+
+#     # ============================================================
+#     # PROMPT 2 (ALWAYS CALLED)
+#     # ============================================================
+#     sku_actions = {}
+#     strategy_raw = ""
+
+#     if analysis_insights or single_sku_mode:
+
+#         sku_time_series = {}
+
+#         if analysis_anchor_year and analysis_anchor_month:
+#             for sku in top_5_skus:
+#                 sku_time_series[sku] = build_rolling_sku_series(
+#                     user_id=user_id,
+#                     country=country,
+#                     sku=sku,
+#                     anchor_year=analysis_anchor_year,
+#                     anchor_month=analysis_anchor_month
+#                 )
+
+#         strategy_raw = run_prompt_2_strategy(
+#             analysis_insights=analysis_insights,
+#             objective_v2=objective_v2,
+#             focus_skus=top_5_skus,
+#             sku_time_series=sku_time_series,
+#             inventory_alerts=inventory_alerts,
+#             country=str(country).lower(),
+#             sku_inventory_flags=sku_inventory_flags,
+#             remaining_skus_context=remaining_skus_context   # ✅ NEW
+#         )
+
+#         try:
+#             parsed = json.loads(strategy_raw)
+
+#             portfolio_recommendation = parsed.get("portfolio_recommendation", "")
+#             # Core SKU actions
+#             sku_actions = parsed.get("sku_actions") or {}
+
+#             # ✅ Capture consolidated recommendation for remaining SKUs
+#             remaining_skus_rec = parsed.get("remaining_skus_recommendation")
+#             if isinstance(remaining_skus_rec, str) and remaining_skus_rec.strip():
+#                 sku_actions["remaining_skus_recommendation"] = remaining_skus_rec
+
+#             remaining_journey = parsed.get("remaining_skus_journey_summary")
+#             if isinstance(remaining_journey, list) and remaining_journey:
+#                 sku_actions["remaining_skus_journey_summary"] = remaining_journey    
+
+#         except Exception:
+#             print("\n❌ Prompt-2 JSON PARSE FAILED")
+#             sku_actions = {}
+
+
+#     # 🔥 SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
+#     if not allow_recommendations:
+#         for sku in sku_actions:
+#             if "recommendation" in sku_actions[sku]:
+#                 sku_actions[sku]["recommendation"] = ""
+
+#     # final_text = strategy_raw if strategy_raw else analysis_raw
+
+#     final_text = render_month_end_summary(
+#     period=period,
+#     timeline=timeline,
+#     year=year,
+#     analysis_insights=analysis_insights,
+#     mom=None,
+#     sku_mom=sku_mom,
+#     focus_skus=top_5_skus,
+#     portfolio_recommendation=portfolio_recommendation,
+#     inventory_alerts=inventory_alerts if allow_inventory else {},
+#     inventory_lost=inventory_lost,
+#     currency_symbol="£" if country == "uk" else "$",
+#     strategy_actions=sku_actions,
+#     remaining_agg=remaining_agg,
+#     )
+
+
+#     if not single_sku_mode:
+#         save_summary_to_db({
+#             "user_id": user_id,
+#             "country": country,
+#             "marketplace_id": marketplace_id,
+#             "period": period,
+#             "timeline": timeline,
+#             "year": year,
+#             "summary": final_text,
+#             "recommendations": json.dumps(sku_actions or {}),
+#             "upsert": True
+#         })
+
+#     return {
+#         "summary": final_text,
+#         # "overall_month_summary": overall_month_summary,
+#         "portfolio_level_narrative": portfolio_level_narrative,
+#         "portfolio_recommendation": portfolio_recommendation,
+#         "recommendations": sku_actions if allow_recommendations else {},
+#         "inventory_lost": inventory_lost,
+#         "inventory_alerts": inventory_alerts if allow_inventory else {},
+#         "sku_current": sku_current,
+#         "sku_mom": sku_mom,
+#         "sku_yoy": None,
+#         "objective": objective_v2,
+#         "sku_actions": sku_actions,
+#         "scope": scope,
+#         "source": "ai",
+#     }
+
+
+
+
+
 def get_or_create_summary(
     user_id,
     country,
@@ -1869,7 +2296,7 @@ def get_or_create_summary(
             }
 
     # ============================================================
-    # ROLLING CONTEXT
+    # ROLLING CONTEXT (RUN FOR BOTH PORTFOLIO AND SINGLE SKU)
     # ============================================================
     movement_context = {}
     rolling_extremes = {}
@@ -1878,33 +2305,35 @@ def get_or_create_summary(
     analysis_anchor_month = None
     rolling_series = []
 
-    if not single_sku_mode:
+    if period == "yearly":
+        anchor = resolve_yearly_analysis_anchor(user_id, country, year)
+        if anchor:
+            analysis_anchor_year, analysis_anchor_month = anchor
+    else:
+        analysis_anchor_year = year
+
+        if period == "monthly":
+            analysis_anchor_month = int(timeline)
+
+        elif period == "quarterly":
+            QUARTER_TO_MONTH = {"Q1": 3, "Q2": 6, "Q3": 9, "Q4": 12}
+            analysis_anchor_month = QUARTER_TO_MONTH.get(timeline)
+
+    if analysis_anchor_year and analysis_anchor_month:
+
+        rolling_series = build_rolling_monthly_series(
+            user_id=user_id,
+            country=country,
+            anchor_year=analysis_anchor_year,
+            anchor_month=analysis_anchor_month
+        )
+
+        movement_context = build_movement_context(rolling_series)
+
+        rolling_extremes = extract_rolling_extremes(rolling_series)
 
         if period == "yearly":
-            anchor = resolve_yearly_analysis_anchor(user_id, country, year)
-            if anchor:
-                analysis_anchor_year, analysis_anchor_month = anchor
-        else:
-            analysis_anchor_year = year
-            if period == "monthly":
-                analysis_anchor_month = int(timeline)
-            elif period == "quarterly":
-                QUARTER_TO_MONTH = {"Q1": 3, "Q2": 6, "Q3": 9, "Q4": 12}
-                analysis_anchor_month = QUARTER_TO_MONTH.get(timeline)
-
-        if analysis_anchor_year and analysis_anchor_month:
-            rolling_series = build_rolling_monthly_series(
-                user_id=user_id,
-                country=country,
-                anchor_year=analysis_anchor_year,
-                anchor_month=analysis_anchor_month
-            )
-
-            movement_context = build_movement_context(rolling_series)
-            rolling_extremes = extract_rolling_extremes(rolling_series)
-
-            if period == "yearly":
-                yearly_temporal_signals = build_yearly_temporal_signals(rolling_series) or None
+            yearly_temporal_signals = build_yearly_temporal_signals(rolling_series) or None
 
 
                 
@@ -2061,6 +2490,8 @@ def get_or_create_summary(
 
         strategy_raw = run_prompt_2_strategy(
             analysis_insights=analysis_insights,
+            # sku_mom=sku_mom,
+            # product_insights=analysis_insights.get("product_insights", {}),  # ✅ ADD
             objective_v2=objective_v2,
             focus_skus=top_5_skus,
             sku_time_series=sku_time_series,
@@ -2069,6 +2500,10 @@ def get_or_create_summary(
             sku_inventory_flags=sku_inventory_flags,
             remaining_skus_context=remaining_skus_context   # ✅ NEW
         )
+        # # 🔍 DEBUG — SEE EXACT PROMPT-2 OUTPUT
+        # print("\n================ PROMPT 2 RAW OUTPUT ================")
+        # print(strategy_raw)
+        # print("=====================================================\n")
 
         try:
             parsed = json.loads(strategy_raw)
