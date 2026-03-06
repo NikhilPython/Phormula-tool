@@ -495,48 +495,92 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                         />
 
                         <div className="min-w-0 flex flex-col items-start">
-                          {/* line 1: Product name */}
-                          <div
-                            className={`truncate text-[10px] 2xl:text-xs ${isVisible ? "" : "line-through"
-                              }`}
-                            style={{ color: "#414042" }}
-                            title={slice.name}
-                          >
-                            {slice.name}
-                          </div>
+  {/* Mobile: force 3 uniform lines */}
+  <div className="block sm:hidden w-full text-[10px]" style={{ color: "#414042" }}>
+    {/* line 1 */}
+    <div
+      className={`${isVisible ? "" : "line-through"} break-words leading-[1.2]`}
+      title={slice.name}
+    >
+      {slice.name}
+    </div>
 
-                          {/* line 2: (value)(% share)(% change) */}
-                          <div
-                            className="text-[10px] 2xl:text-xs break-words"
-                            style={{ color: "#414042" }}
-                          >
-                            {currencySymbol}
-                            {value.toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}{" "}
-                            ({pct.toFixed(2)}%){" "}
-                            <span
-                              className={deltaClass}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 1,
-                              }}
-                            >
-                              (
-                              {delta == null ? (
-                                "—"
-                              ) : delta >= 0 ? (
-                                <DeltaUpIcon className="h-3 w-3" />
-                              ) : (
-                                <DeltaDownIcon className="h-3 w-3" />
-                              )}
-                              {delta == null ? "" : `${Math.abs(delta).toFixed(2)}%`}
-                              )
-                            </span>
-                          </div>
-                        </div>
+    {/* line 2 */}
+    <div className="leading-[1.2]">
+      {currencySymbol}
+      {value.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}
+    </div>
+
+    {/* line 3 */}
+    <div className="leading-[1.2]">
+      <span>({pct.toFixed(2)}%) </span>
+      <span
+        className={deltaClass}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 1,
+        }}
+      >
+        (
+        {delta == null ? (
+          "—"
+        ) : delta >= 0 ? (
+          <DeltaUpIcon className="h-3 w-3" />
+        ) : (
+          <DeltaDownIcon className="h-3 w-3" />
+        )}
+        {delta == null ? "" : `${Math.abs(delta).toFixed(2)}%`}
+        )
+      </span>
+    </div>
+  </div>
+
+  {/* Tablet/Desktop: keep existing 2-line layout */}
+  <div className="hidden sm:flex min-w-0 flex-col items-start">
+    <div
+      className={`truncate text-[10px] 2xl:text-xs ${isVisible ? "" : "line-through"}`}
+      style={{ color: "#414042" }}
+      title={slice.name}
+    >
+      {slice.name}
+    </div>
+
+    <div
+      className="text-[10px] 2xl:text-xs break-words"
+      style={{ color: "#414042" }}
+    >
+      {currencySymbol}
+      {value.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}{" "}
+      ({pct.toFixed(2)}%){" "}
+      <span
+        className={deltaClass}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 1,
+        }}
+      >
+        (
+        {delta == null ? (
+          "—"
+        ) : delta >= 0 ? (
+          <DeltaUpIcon className="h-3 w-3" />
+        ) : (
+          <DeltaDownIcon className="h-3 w-3" />
+        )}
+        {delta == null ? "" : `${Math.abs(delta).toFixed(2)}%`}
+        )
+      </span>
+    </div>
+  </div>
+</div>
                       </div>
                     </button>
                   );

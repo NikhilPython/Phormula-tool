@@ -791,7 +791,7 @@ function RangePicker({
 
         const rangeDays =
             end.getTime() >= start.getTime()
-                ? Math.round((end.getTime() - start.getTime()) / MS_PER_DAY) + 1 // ✅ inclusive
+                ? Math.round((end.getTime() - start.getTime()) / MS_PER_DAY) + 1
                 : 0;
 
         const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
@@ -803,11 +803,31 @@ function RangePicker({
     const [pendingStartDay, setPendingStartDay] = useState<number | null>(null);
     const [pendingEndDay, setPendingEndDay] = useState<number | null>(null);
 
+    // added: store real selected dates locally
+    const [pendingStartDate, setPendingStartDate] = useState<Date | null>(null);
+    const [pendingEndDate, setPendingEndDate] = useState<Date | null>(null);
+
     const [rangeCompletedPct, setRangeCompletedPct] = useState(0);
     const [rangeDays, setRangeDays] = useState(0);
     const [daysInMonth, setDaysInMonth] = useState(0);
 
     const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+    const formatRangeLabel = (startDate: Date | null, endDate: Date | null) => {
+        if (!startDate || !endDate) return "Select Date Range";
+
+        const startMonth = startDate.toLocaleString("en-US", { month: "short" });
+        const endMonth = endDate.toLocaleString("en-US", { month: "short" });
+
+        if (
+            startDate.getFullYear() === endDate.getFullYear() &&
+            startDate.getMonth() === endDate.getMonth()
+        ) {
+            return `${startMonth} ${startDate.getDate()}-${endDate.getDate()}`;
+        }
+
+        return `${startMonth} ${startDate.getDate()} - ${endMonth} ${endDate.getDate()}`;
+    };
 
     useEffect(() => {
         if (!showCalendar) return;
@@ -821,6 +841,8 @@ function RangePicker({
                 setCalendarRange([{ startDate: null, endDate: null, key: "selection" }]);
                 setPendingStartDay(null);
                 setPendingEndDay(null);
+                setPendingStartDate(null);
+                setPendingEndDate(null);
                 onCloseReset();
             }
         };
@@ -837,29 +859,18 @@ function RangePicker({
         return () => window.removeEventListener("keydown", onKey);
     }, [isMtdPlExpanded]);
 
-    // const handleCalendarChange = (ranges: any) => {
-    //     const range = ranges.selection;
-    //     setCalendarRange([range]);
-
-    //     if (range.startDate && range.endDate) {
-    //         setPendingStartDay(range.startDate.getDate());
-    //         setPendingEndDay(range.endDate.getDate());
-    //     } else {
-    //         setPendingStartDay(null);
-    //         setPendingEndDay(null);
-    //     }
-    // };
-
     const handleCalendarChange = (ranges: any) => {
         const range = ranges.selection;
         setCalendarRange([range]);
 
         if (range.startDate && range.endDate) {
-            // ✅ keep your existing day fields
             setPendingStartDay(range.startDate.getDate());
             setPendingEndDay(range.endDate.getDate());
 
-            // ✅ compute "10/28" style progress
+            // added
+            setPendingStartDate(range.startDate);
+            setPendingEndDate(range.endDate);
+
             const { rangeDays, daysInMonth, rangeCompletedPct } = calcRangeCompleted(
                 range.startDate,
                 range.endDate,
@@ -873,6 +884,8 @@ function RangePicker({
         } else {
             setPendingStartDay(null);
             setPendingEndDay(null);
+            setPendingStartDate(null);
+            setPendingEndDate(null);
 
             setRangeDays(0);
             setDaysInMonth(0);
@@ -889,6 +902,8 @@ function RangePicker({
         setCalendarRange([{ startDate: null, endDate: null, key: "selection" }]);
         setPendingStartDay(null);
         setPendingEndDay(null);
+        setPendingStartDate(null);
+        setPendingEndDate(null);
         onClear();
     };
 
@@ -896,12 +911,13 @@ function RangePicker({
         setCalendarRange([{ startDate: null, endDate: null, key: "selection" }]);
         setPendingStartDay(null);
         setPendingEndDay(null);
+        setPendingStartDate(null);
+        setPendingEndDate(null);
         setShowCalendar(false);
         onCloseReset();
     };
 
     return (
-        // ✅ attach the ref here
         <div ref={wrapperRef} className="relative">
             <button
                 type="button"
@@ -915,9 +931,7 @@ function RangePicker({
                 }}
             >
                 <FaCalendarAlt className="text-sm 2xl:text-md" />
-                {selectedStartDay && selectedEndDay
-                    ? `Day ${selectedStartDay} – ${selectedEndDay}`
-                    : "Select Date Range"}
+                {formatRangeLabel(pendingStartDate, pendingEndDate)}
             </button>
 
             {showCalendar && (
@@ -949,10 +963,10 @@ function RangePicker({
                     />
 
                     <style jsx global>{`
-            .rdrNextPrevButton {
-              display: none !important;
-            }
-          `}</style>
+                        .rdrNextPrevButton {
+                            display: none !important;
+                        }
+                    `}</style>
 
                     <div className="flex justify-between mt-2 gap-2">
                         <button

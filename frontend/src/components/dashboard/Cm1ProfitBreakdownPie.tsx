@@ -290,16 +290,20 @@ export default function Cm1ProfitBreakdownPie({
 
   }, [displayData]);
 
-  useEffect(() => {
-    const check = () => {
-      const w = window.innerWidth;
-      setIsLaptop(w >= 1024 && w < 1536);
-      setIsDesktop(w >= 1536);
-    };
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
+useEffect(() => {
+  const check = () => {
+    const w = window.innerWidth;
+
+    // laptop = 1700 and below
+    // desktop = above 1700
+    setIsLaptop(w <= 1700);
+    setIsDesktop(w > 1700);
+  };
+
+  check();
+  window.addEventListener("resize", check);
+  return () => window.removeEventListener("resize", check);
+}, []);
 
   const options = useMemo<ChartOptions<"pie">>(() => {
     return {
@@ -374,7 +378,13 @@ export default function Cm1ProfitBreakdownPie({
           <div className="relative w-full h-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch">
             {/* LEFT: PIE */}
             {/* <div className="w-full xl:flex-1 min-w-0 h-[260px] md:h-[320px] xl:h-[300px] 2xl:h-[460px]"> */}
-            <div className="w-full xl:flex-1 min-w-0 flex-1 min-h-[260px]">
+            {/* <div className="w-full xl:flex-1 min-w-0 flex-1 min-h-[260px] "> */}
+            <div
+  className="w-full xl:flex-1 min-w-0 flex-1"
+  style={{
+    minHeight: isDesktop ? 340 : 380,
+  }}
+>
               <Pie
                 ref={chartRef}
                 data={chartData}
@@ -476,7 +486,7 @@ export default function Cm1ProfitBreakdownPie({
 <div
   className="w-full xl:shrink-0 self-stretch flex justify-center xl:justify-start"
   style={{
-    width: isDesktop ? 260 : isLaptop ? 180 : "100%",
+    width: isDesktop ? 260 : isLaptop ? "100%" : "100%",
   }}
 >
   {/* This wrapper centers vertically */}

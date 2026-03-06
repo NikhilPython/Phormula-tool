@@ -436,7 +436,7 @@ export default function SalesTargetCard({
     <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
       {/* Legend */}
       <div className="mt-2 2xl:mt-2 flex items-center justify-center gap-6 text-[10px] 2xl:text-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2 w-[60px]">
           <span
             className="h-2.5 w-2.5 rounded-sm"
             style={{ backgroundColor: "#ED9F50" }}
@@ -444,7 +444,7 @@ export default function SalesTargetCard({
           <span className="text-charcoal-500">MTD Sale</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2 w-[60px]">
           <span
             className="h-2.5 w-2.5 rounded-sm"
             style={{ backgroundColor: "#5EA68E" }}
@@ -453,7 +453,7 @@ export default function SalesTargetCard({
           <span className="text-charcoal-500">{thisMonthLabel} Target</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2 w-[60px]">
           <span
             className="h-2.5 w-2.5 rounded-sm"
             style={{ backgroundColor: "#9ca3af" }}
@@ -461,7 +461,7 @@ export default function SalesTargetCard({
           <span className="text-charcoal-500">{prevLabel} Sale</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-center gap-2 w-[60px]">
           <span
             className="h-2.5 w-2.5 rounded-sm"
             style={{ backgroundColor: "#B75A5A" }}

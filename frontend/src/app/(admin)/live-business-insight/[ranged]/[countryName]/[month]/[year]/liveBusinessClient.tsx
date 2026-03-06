@@ -3045,7 +3045,7 @@ const parseOtherSkusBlock = (raw: string) => {
         "bg-white rounded-xl border border-[#D9D9D9] shadow-sm hover:shadow-md transition-shadow",
         "border-t-4",
         "p-3 space-y-3",
-        topBorderColors[Object.keys(recommendedActions).length % topBorderColors.length],
+        // topBorderColors[Object.keys(recommendedActions).length % topBorderColors.length],
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-3">
@@ -3145,62 +3145,104 @@ const parseOtherSkusBlock = (raw: string) => {
           <div>
             <div className="mt-4 rounded-xl border bg-white p-4 sm:p-5 p-5 shadow-sm">
 
-              <div className="flex flex-col 2xl:flex-row gap-4  xl:items-left xl:justify-between">
-                {/* <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" /> */}
-                <div className="flex flex-wrap items-baseline gap-2 font-bold ">
+          <div className="flex flex-col gap-4">
+  {/* MOBILE HEADER */}
+  <div className="flex items-center justify-between xl:hidden">
+    <PageBreadcrumb
+      pageTitle="SKU Analysis MTD"
+      variant="page"
+      align="left"
+    />
 
-                  <PageBreadcrumb
-                    pageTitle={`SKU Analysis MTD`}
-                    variant="page"
-                    align="left"
-                  />
+    <div className="flex items-center gap-2">
+      <AiButton
+        onClick={analyzeSkus}
+        disabled={
+          !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
+            (k) =>
+              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
+          )
+        }
+      >
+        {loadingInsight ? "Generating..." : "AI Insights"}
+      </AiButton>
 
-                </div>
+      <DownloadIconButton
+        onClick={() => {
+          if (!userData) {
+            setError("User profile not loaded yet. Please try again.");
+            return;
+          }
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-between">
-                  <SegmentedToggle<TabKey>
-                    value={activeTab}
-                    options={tabOptions}
-                    onChange={handleTabChange}
-                    className="bg-white"
-                    textSizeClass="text-xs 2xl:text-sm"
-                  />
+          const prevShortName = prevShort || "Prev";
+          const currShortName = currShort || "Curr";
+          const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
+          const allRows = getAllSkusForExport();
+          exportToExcel(allRows, file);
+        }}
+        className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+      />
+    </div>
+  </div>
 
+  {/* MOBILE TABS */}
+  <div className="xl:hidden">
+    <SegmentedToggle<TabKey>
+      value={activeTab}
+      options={tabOptions}
+      onChange={handleTabChange}
+      className="bg-white"
+      textSizeClass="text-xs 2xl:text-sm"
+    />
+  </div>
 
-                  <div className="flex gap-3">
+  {/* DESKTOP HEADER */}
+  <div className="hidden xl:flex xl:items-center xl:justify-between xl:gap-6">
+    <PageBreadcrumb
+      pageTitle="SKU Analysis MTD"
+      variant="page"
+      align="left"
+    />
 
+    <div className="flex items-center gap-3">
+      <SegmentedToggle<TabKey>
+        value={activeTab}
+        options={tabOptions}
+        onChange={handleTabChange}
+        className="bg-white"
+        textSizeClass="text-xs 2xl:text-sm"
+      />
 
-                    <AiButton onClick={analyzeSkus}
-                      disabled={
-                        !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
-                          (k) =>
-                            (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
-                        )
-                      } >  {loadingInsight ? "Generating..." : "AI Insights"}</AiButton>
+      <AiButton
+        onClick={analyzeSkus}
+        disabled={
+          !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
+            (k) =>
+              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
+          )
+        }
+      >
+        {loadingInsight ? "Generating..." : "AI Insights"}
+      </AiButton>
 
+      <DownloadIconButton
+        onClick={() => {
+          if (!userData) {
+            setError("User profile not loaded yet. Please try again.");
+            return;
+          }
 
-
-
-                    <DownloadIconButton
-                      onClick={() => {
-                        if (!userData) {
-                          // optionally show toast instead of return
-                          setError("User profile not loaded yet. Please try again.");
-                          return;
-                        }
-
-                        const prevShortName = prevShort || "Prev";
-                        const currShortName = currShort || "Curr";
-                        const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
-                        const allRows = getAllSkusForExport();
-                        exportToExcel(allRows, file);
-                      }}
-                      className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                    />
-
-                  </div>
-                </div>
-              </div>
+          const prevShortName = prevShort || "Prev";
+          const currShortName = currShort || "Curr";
+          const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
+          const allRows = getAllSkusForExport();
+          exportToExcel(allRows, file);
+        }}
+        className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+      />
+    </div>
+  </div>
+</div>
 
               {hasAnySkus ? (
                 <div className="pt-6">
