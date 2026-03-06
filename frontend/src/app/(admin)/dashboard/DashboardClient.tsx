@@ -4183,10 +4183,14 @@ export default function DashboardPage() {
             </div> */}
 
             {activeTab === "live" && (
-                <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-4 items-stretch scroll-mt-[80px] mt-2 md:mt-4">
-
-                    {/* LEFT COLUMN */}
-                    <div className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 lg:gap-4 2xl:gap-4 ${leftColumnHeightClass}`}>
+                <div
+    id="live-sales"
+    className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-stretch auto-rows-fr"
+  >
+    {/* LEFT COLUMN */}
+    <div
+      className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-full min-h-full ${leftColumnHeightClass ?? ""}`}
+    >
 
 
                         {/* GLOBAL CARD */}
@@ -4896,60 +4900,54 @@ export default function DashboardPage() {
                     </div>
 
                     {/* RIGHT COLUMN – Sales Target */}
-                    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex flex-col gap-4 h-full">
-                        <div className="w-full">
-                            <SalesTargetStatsCard
-                                regions={regions}
-                                value={targetRegion}
-                                onChange={setTargetRegion}
-                                hideTabs={isCountryMode}
-                                homeCurrency={displayCurrency}
-                                formatHomeK={formatDisplayK}
+                   <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-full min-h-full self-stretch">
+  <div className="h-full grid grid-rows-[auto_minmax(0,1fr)] gap-4">
+    {/* Top card = only as tall as content */}
+    <div className="w-full self-start">
+      <SalesTargetStatsCard
+        regions={regions}
+        value={targetRegion}
+        onChange={setTargetRegion}
+        hideTabs={isCountryMode}
+        homeCurrency={displayCurrency}
+        formatHomeK={formatDisplayK}
+        todayHome={targets_todayHome}
+        mtdHome={targets_mtdHome}
+        targetHome={stats_targetHome}
+        lastMonthTotalHome={targets_lastMonthTotalHome}
+        salesTrendPct={stats_salesTrendPct}
+        targetTrendPct={stats_targetTrendPct}
+        currentReimbursement={targets_reimbursement.current}
+        previousReimbursement={targets_reimbursement.previous}
+        biAlignedTotals={biAlignedTotalsHome}
+        biEnabled={biCardsReady}
+      />
+    </div>
 
-                                // ✅ Replace these:
-                                todayHome={targets_todayHome}
-                                mtdHome={targets_mtdHome}
-                                targetHome={stats_targetHome}
-                                lastMonthTotalHome={targets_lastMonthTotalHome}
-
-                                salesTrendPct={stats_salesTrendPct}
-                                targetTrendPct={stats_targetTrendPct}
-
-                                // ✅ Replace these:
-                                currentReimbursement={targets_reimbursement.current}
-                                previousReimbursement={targets_reimbursement.previous}
-                                biAlignedTotals={biAlignedTotalsHome}
-                                biEnabled={biCardsReady}
-                            />
-                        </div>
-
-
-                        <div className="w-full lg:sticky lg:top-4 2xl:top-6">
-
-                            <SalesTargetCard
-                                data={targetData}
-                                homeCurrency={displayCurrency}
-                                convertToHomeCurrency={identityConvert}
-                                formatHomeK={formatDisplayK}
-
-                                // ✅ Replace these:
-                                todaySales={targets_todayHome}                 // or keep todaySalesRaw if you want "today" not "range"
-                                targetHome={stats_targetHome}
-                                mtdHome={targets_mtdHome}
-                                lastMonthTotalHome={targets_lastMonthTotalHome}
-                                lastMonthToDateHome={targets_lastMonthToDateHome}
-
-                                currentReimbursement={targets_reimbursement.current}
-                                previousReimbursement={targets_reimbursement.previous}
-
-                                biAlignedTotals={biAlignedTotalsHome}
-                                biEnabled={biCardsReady}
-                                periodCompletedPct={rangeCompletedPct}
-                                periodCompletedLabel="Range"
-
-                            />
-                        </div>
-                    </aside>
+    {/* Bottom card = fills remaining height */}
+    <div className="w-full min-h-0">
+      <div className="h-full lg:sticky lg:top-4 2xl:top-6">
+        <SalesTargetCard
+          data={targetData}
+          homeCurrency={displayCurrency}
+          convertToHomeCurrency={identityConvert}
+          formatHomeK={formatDisplayK}
+          todaySales={targets_todayHome}
+          targetHome={stats_targetHome}
+          mtdHome={targets_mtdHome}
+          lastMonthTotalHome={targets_lastMonthTotalHome}
+          lastMonthToDateHome={targets_lastMonthToDateHome}
+          currentReimbursement={targets_reimbursement.current}
+          previousReimbursement={targets_reimbursement.previous}
+          biAlignedTotals={biAlignedTotalsHome}
+          biEnabled={biCardsReady}
+          periodCompletedPct={rangeCompletedPct}
+          periodCompletedLabel="Range"
+        />
+      </div>
+    </div>
+  </div>
+</aside>
                 </div >
 
             )}
