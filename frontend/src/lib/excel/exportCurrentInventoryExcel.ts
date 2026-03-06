@@ -480,407 +480,6 @@ const parseBase64 = (b64?: string | null) => {
 };
 
 
-
-
-
-// export async function exportInventoryReconExcel(params: {
-//   filename: string;
-//   titleLine: string;
-
-//   countryName: string;
-//   titleCountry: string;
-//   platformLabel?: string;
-
-//   // expects already formatted like Dec'25
-//   periodLabel: string;
-
-//   companyName: string;
-//   brandName: string;
-
-//   dataRows: Record<string, any>[];
-
-//   // base64 data url from chart (jpeg/png)
-//   chartBase64?: string | null;
-//   chartMetrics?: { name: string; value: number; pct: number }[] | null;
-
-// }) {
-//   const {
-//     filename,
-//     titleLine,
-//     titleCountry,
-//     platformLabel = "Amazon",
-//     periodLabel,
-//     companyName,
-//     brandName,
-//     dataRows,
-//     chartBase64 = null,
-//     chartMetrics = null,
-
-//   } = params;
-
-//   if (!dataRows?.length) return;
-
-//   const headers = Object.keys(dataRows[0] || {});
-//   const headerCount = headers.length || 1;
-
-//   // find S.No + Product Name col indexes (0-based)
-//   const snoCol0 = headers.findIndex((h) => String(h).toLowerCase().includes("s. no"));
-//   const productNameCol0 = headers.findIndex((h) =>
-//     String(h).toLowerCase().includes("product name")
-//   );
-
-//   const wb = new ExcelJS.Workbook();
-//   wb.creator = "Skinelements";
-//   wb.created = new Date();
-
-//   /* =========================
-//      Sheet 1: Inventory Recon
-//   ========================= */
-//   const ws1 = wb.addWorksheet(safeSheetName("Inventory Recon"), {
-//     views: [{ state: "frozen", xSplit: 0, ySplit: 7 }], // will adjust below after we know rows
-//   });
-
-//   // Top block rows (1-based rows/cols in ExcelJS)
-//   // Row 1: merged title
-//   ws1.mergeCells(1, 1, 1, headerCount);
-//   ws1.getCell(1, 1).value = titleLine || "";
-//   ws1.getCell(1, 1).font = { bold: true, size: 14 };
-//   ws1.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
-
-//   // Row 2: company left, brand right
-//   ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
-//   ws1.getCell(2, 1).alignment = { horizontal: "left" };
-
-//   ws1.getCell(2, headerCount).value = `${brandName || ""}`;
-//   ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
-//   ws1.getCell(2, headerCount).font = { bold: true };
-
-//   // Row 3-5: meta
-//   ws1.getCell(3, 1).value = `Country : ${titleCountry}`;
-//   ws1.getCell(4, 1).value = `Platform : ${platformLabel}`;
-//   ws1.getCell(5, 1).value = `Period : ${periodLabel}`;
-
-//   // Spacer row 6
-//   // Header row index in ExcelJS:
-//   const headerRowNumber = 7;
-
-//   // Column headers row
-//   const headerRow = ws1.getRow(headerRowNumber);
-//   headers.forEach((h, i) => {
-//     const cell = headerRow.getCell(i + 1);
-//     cell.value = h;
-//     cell.font = { bold: true, size: 11 };
-//     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-//   });
-//   headerRow.height = 18;
-
-//   // Data rows start at row 8
-//   const startDataRow = headerRowNumber + 1;
-
-//   dataRows.forEach((r, idx) => {
-//     const row = ws1.getRow(startDataRow + idx);
-//     headers.forEach((h, c0) => {
-//       const cell = row.getCell(c0 + 1);
-//       const v = r?.[h] ?? "";
-
-//       // Keep S.No as TEXT
-//       if (c0 === snoCol0) {
-//         cell.value = v === null || v === undefined ? "" : String(v);
-//         cell.numFmt = "@";
-//         cell.alignment = { horizontal: "center" };
-//         return;
-//       }
-
-//       // try number coercion
-//       const n = toNumberLoose(v);
-//       if (n !== null) {
-//         cell.value = n;
-//         cell.numFmt = "#,##0.00";
-//         cell.alignment = { horizontal: "center" };
-//       } else {
-//         cell.value = v;
-//         cell.alignment = { horizontal: "center" };
-//       }
-//     });
-//   });
-
-//   // Freeze below headers (top block + header row)
-//   ws1.views = [{ state: "frozen", xSplit: 0, ySplit: headerRowNumber }];
-
-//   // Column widths
-//   ws1.columns = headers.map((h) => ({
-//     width: Math.min(Math.max(String(h).length + 2, 12), 55),
-//   }));
-
-//   // Bold TOTAL / GRAND TOTAL rows based on Product Name col (match your old logic)
-//   if (productNameCol0 >= 0) {
-//     const totalCandidates = new Set(["total", "grand total"]);
-
-//     for (let i = 0; i < dataRows.length; i++) {
-//       const rowNum = startDataRow + i;
-//       const cellVal = String(ws1.getCell(rowNum, productNameCol0 + 1).value ?? "")
-//         .trim()
-//         .toLowerCase();
-
-//       if (totalCandidates.has(cellVal)) {
-//         const row = ws1.getRow(rowNum);
-//         row.eachCell((cell) => {
-//           cell.font = { ...(cell.font || {}), bold: true, size: 11 };
-//         });
-//       }
-//     }
-//   }
-
-//   /* =========================
-//      Sheet 2: Inventory Breakup (Image)
-//   ========================= */
-//   const ws2 = wb.addWorksheet(safeSheetName("Inventory Breakup"));
-
-//   ws2.getCell("A1").value = `Inventory Breakup - ${periodLabel}`;
-//   ws2.getCell("A1").font = { bold: true, size: 14 };
-
-//   ws2.getCell("A2").value = `Company Name : ${companyName || ""}`;
-//   ws2.getCell("A3").value = `Brand : ${brandName || ""}`;
-//   ws2.getCell("A4").value = `Country : ${titleCountry}`;
-//   ws2.getCell("A5").value = `Platform : ${platformLabel}`;
-
-//   ws2.getColumn(1).width = 45;
-
-//   const img = parseBase64(chartBase64);
-//   if (img) {
-//     const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
-
-//     const imageId = wb.addImage({
-//       base64: `data:${img.mime};base64,${img.base64}`,
-//       extension: ext as "png" | "jpeg",
-//     });
-
-//     // Put image starting near row 7 col 1 (A7), sized for visibility
-//     ws2.addImage(imageId, {
-//       tl: { col: 0, row: 6 }, // 0-based
-//     ext: { width: 1000, height: 520 },
-
-//     });
-//   } else {
-//     ws2.getCell("A7").value = "No chart image available.";
-//   }
-
-//   /* =========================
-//      Save (browser)
-//   ========================= */
-//   const buf = await wb.xlsx.writeBuffer();
-//   saveAs(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), filename);
-// }
-
-
-
-// export async function exportInventoryReconExcel(params: {
-//   filename: string;
-//   titleLine: string;
-
-//   countryName: string;
-//   titleCountry: string;
-//   platformLabel?: string;
-
-//   // expects already formatted like Dec'25
-//   periodLabel: string;
-
-//   companyName: string;
-//   brandName: string;
-
-//   dataRows: Record<string, any>[];
-
-//   // base64 data url from chart (jpeg/png)
-//   chartBase64?: string | null;
-
-//   // ✅ legend/metrics (name, units, pct 0..100)
-//   chartMetrics?: { name: string; value: number; pct: number }[] | null;
-// }) {
-//   const {
-//     filename,
-//     titleLine,
-//     titleCountry,
-//     platformLabel = "Amazon",
-//     periodLabel,
-//     companyName,
-//     brandName,
-//     dataRows,
-//     chartBase64 = null,
-//     chartMetrics = null,
-//   } = params;
-
-//   if (!dataRows?.length) return;
-
-//   const headers = Object.keys(dataRows[0] || {});
-//   const headerCount = headers.length || 1;
-
-//   // find S.No + Product Name col indexes (0-based)
-//   const snoCol0 = headers.findIndex((h) =>
-//     String(h).toLowerCase().includes("s. no")
-//   );
-//   const productNameCol0 = headers.findIndex((h) =>
-//     String(h).toLowerCase().includes("product name")
-//   );
-
-//   const wb = new ExcelJS.Workbook();
-//   wb.creator = "Skinelements";
-//   wb.created = new Date();
-
-//   /* =========================
-//      Sheet 1: Inventory Recon
-//   ========================= */
-//   const ws1 = wb.addWorksheet(safeSheetName("Inventory Recon"), {
-//     views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
-//   });
-
-//   // Row 1: merged title
-//   ws1.mergeCells(1, 1, 1, headerCount);
-//   ws1.getCell(1, 1).value = titleLine || "";
-//   ws1.getCell(1, 1).font = { bold: true, size: 14 };
-//   ws1.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
-
-//   // Row 2: company left, brand right
-//   ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
-//   ws1.getCell(2, 1).alignment = { horizontal: "left" };
-
-//   ws1.getCell(2, headerCount).value = `${brandName || ""}`;
-//   ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
-//   ws1.getCell(2, headerCount).font = { bold: true };
-
-//   // Row 3-5: meta
-//   ws1.getCell(3, 1).value = `Country : ${titleCountry}`;
-//   ws1.getCell(4, 1).value = `Platform : ${platformLabel}`;
-//   ws1.getCell(5, 1).value = `Period : ${periodLabel}`;
-
-//   // Header row index in ExcelJS:
-//   const headerRowNumber = 7;
-
-//   // Column headers row
-//   const headerRow = ws1.getRow(headerRowNumber);
-//   headers.forEach((h, i) => {
-//     const cell = headerRow.getCell(i + 1);
-//     cell.value = h;
-//     cell.font = { bold: true, size: 11 };
-//     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-//   });
-//   headerRow.height = 18;
-
-//   // Data rows start at row 8
-//   const startDataRow = headerRowNumber + 1;
-
-//   dataRows.forEach((r, idx) => {
-//     const row = ws1.getRow(startDataRow + idx);
-//     headers.forEach((h, c0) => {
-//       const cell = row.getCell(c0 + 1);
-//       const v = r?.[h] ?? "";
-
-//       // Keep S.No as TEXT
-//       if (c0 === snoCol0) {
-//         cell.value = v === null || v === undefined ? "" : String(v);
-//         cell.numFmt = "@";
-//         cell.alignment = { horizontal: "center" };
-//         return;
-//       }
-
-//       // try number coercion
-//       const n = toNumberLoose(v);
-//       if (n !== null) {
-//         cell.value = n;
-//         cell.numFmt = "#,##0.00";
-//         cell.alignment = { horizontal: "center" };
-//       } else {
-//         cell.value = v;
-//         cell.alignment = { horizontal: "center" };
-//       }
-//     });
-//   });
-
-//   // Freeze below headers (top block + header row)
-//   ws1.views = [{ state: "frozen", xSplit: 0, ySplit: headerRowNumber }];
-
-//   // Column widths
-//   ws1.columns = headers.map((h) => ({
-//     width: Math.min(Math.max(String(h).length + 2, 12), 55),
-//   }));
-
-//   // Bold TOTAL / GRAND TOTAL rows based on Product Name col
-//   if (productNameCol0 >= 0) {
-//     const totalCandidates = new Set(["total", "grand total"]);
-
-//     for (let i = 0; i < dataRows.length; i++) {
-//       const rowNum = startDataRow + i;
-//       const cellVal = String(ws1.getCell(rowNum, productNameCol0 + 1).value ?? "")
-//         .trim()
-//         .toLowerCase();
-
-//       if (totalCandidates.has(cellVal)) {
-//         const row = ws1.getRow(rowNum);
-//         row.eachCell((cell) => {
-//           cell.font = { ...(cell.font || {}), bold: true, size: 11 };
-//         });
-//       }
-//     }
-//   }
-
-//   /* =========================
-//      Sheet 2: Inventory Breakup (Image + Metrics Table)
-//   ========================= */
-//   const ws2 = wb.addWorksheet(safeSheetName("Inventory Breakup"));
-
-//   ws2.getCell("A1").value = `Inventory Breakup - ${periodLabel}`;
-//   ws2.getCell("A1").font = { bold: true, size: 14 };
-
-//   ws2.getCell("A2").value = `Company Name : ${companyName || ""}`;
-//   ws2.getCell("A3").value = `Brand : ${brandName || ""}`;
-//   ws2.getCell("A4").value = `Country : ${titleCountry}`;
-//   ws2.getCell("A5").value = `Platform : ${platformLabel}`;
-
-//   ws2.getColumn(1).width = 45;
-
-//   // ✅ add chart image
-//   const img = parseBase64(chartBase64);
-//   if (img) {
-//     const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
-
-//     const imageId = wb.addImage({
-//       base64: `data:${img.mime};base64,${img.base64}`,
-//       extension: ext as "png" | "jpeg",
-//     });
-
-//     // Put image starting near row 7 col 1 (A7)
-//     ws2.addImage(imageId, {
-//       tl: { col: 0, row: 6 }, // 0-based => A7
-//       ext: { width: 1400, height: 520 }, // keep as you had
-//     });
-//   } else {
-//     ws2.getCell("A7").value = "No chart image available.";
-//   }
-
-
-//   /* =========================
-//      Save (browser)
-//   ========================= */
-//   const buf = await wb.xlsx.writeBuffer();
-//   saveAs(
-//     new Blob([buf], {
-//       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-//     }),
-//     filename
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
 export async function exportInventoryReconExcel(params: {
   filename: string;
   titleLine: string;
@@ -1043,6 +642,372 @@ export async function exportInventoryReconExcel(params: {
   /* =========================
      Save
   ========================= */
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(
+    new Blob([buf], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    filename
+  );
+}
+
+
+export async function exportProductwiseTrendsExcel(params: {
+  filename: string;
+
+  // Header content (same structure as exportInventoryReconExcel)
+  titleLine: string;          // e.g. "Amazon UK - Productwise Trends - Jan'26"
+  titleCountry: string;       // "UK" | "US" | "Global"
+  platformLabel?: string;     // "Amazon"
+  periodLabel: string;        // "Jan'26"
+
+  companyName: string;
+  brandName: string;
+
+  currencyLabel?: string;     // e.g. "$" / "£" / "₹" (symbol)
+
+    // ✅ NEW: CountryCard-like tiles (Sheet 1)
+  countryCards?: Array<{
+    countryKey: string;
+    countryLabel: string;
+
+    totalSales: number;
+    totalUnits: number;
+    totalProfit: number;
+
+    avgMonthlySales: number;
+    avgSellingPrice: number;
+    cm1ProfitPct: number;
+
+    bestSalesMonth: string;
+    bestSalesValue: number;
+
+    bestUnitsMonth: string;
+    bestUnitsValue: number;
+
+    bestProfitMonth: string;
+    bestProfitValue: number;
+  }>;
+
+  // Optional: table data (Sheet 1)
+  table?: {
+    headers: string[];        // e.g. ["Month", "UK Net Sales", "Global Net Sales", ...]
+    rows: (string | number | null)[][]; // each row matches headers length
+  };
+
+  // Sheet 2 images (base64)
+  salesCm1ChartBase64?: string | null; // "data:image/png;base64,...." OR raw base64
+  unitsChartBase64?: string | null;    // "data:image/png;base64,...." OR raw base64
+
+  // Optional: image sizing
+  chartWidth?: number;        // default 1400
+  chartHeight?: number;       // default 520
+}) {
+  const {
+    filename,
+    titleLine,
+    titleCountry,
+    platformLabel = "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+      currencyLabel = "",
+    countryCards = [],
+    table,
+    salesCm1ChartBase64 = null,
+    unitsChartBase64 = null,
+    chartWidth = 900,
+    chartHeight = 360,
+  } = params;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Skinelements";
+  wb.created = new Date();
+
+  // -------------------------
+  // Sheet 1: Performance (Header + Optional Table)
+  // -------------------------
+  const ws1 = wb.addWorksheet(safeSheetName("Performance"));
+
+const headerCount = Math.max(13, table?.headers?.length || 0);
+
+const moneyFmt0 = `${currencyLabel || ""}#,##0`;
+const moneyFmt2 = `${currencyLabel || ""}#,##0.00`;
+const unitsFmt0 = `#,##0`;
+const pctFmt = `0.00"%"`;
+
+const setBoxBorder = (ws: ExcelJS.Worksheet, r1: number, c1: number, r2: number, c2: number) => {
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      ws.getCell(r, c).border = {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      };
+    }
+  }
+};
+
+const writeTile = (
+  ws: ExcelJS.Worksheet,
+  topRow: number,
+  leftCol: number,
+  title: string,
+  value: string | number,
+  numFmt?: string
+) => {
+  // each tile spans 2 columns x 2 rows
+  ws.mergeCells(topRow, leftCol, topRow, leftCol + 1);
+  ws.mergeCells(topRow + 1, leftCol, topRow + 1, leftCol + 1);
+
+  const t = ws.getCell(topRow, leftCol);
+  t.value = title;
+  t.font = { size: 10 };
+  t.alignment = { horizontal: "left", vertical: "middle" };
+
+  const v = ws.getCell(topRow + 1, leftCol);
+  v.value = value as any;
+  v.font = { bold: true, size: 12 };
+  v.alignment = { horizontal: "left", vertical: "middle" };
+  if (numFmt) v.numFmt = numFmt;
+
+  setBoxBorder(ws, topRow, leftCol, topRow + 1, leftCol + 1);
+};
+
+const SECTION_WIDTH = 6; // each section uses 6 columns (A-F or H-M)
+
+// Writes one Country block starting at startCol
+const writeCountrySection = (
+  cc: any,
+  topRow: number,
+  startCol: number
+) => {
+  // Country heading
+  ws1.mergeCells(topRow, startCol, topRow, startCol + SECTION_WIDTH - 1);
+  const h = ws1.getCell(topRow, startCol);
+  h.value = cc.countryLabel;
+  h.font = { bold: true, size: 12 };
+  h.alignment = { horizontal: "left", vertical: "middle" };
+
+  let r = topRow + 1;
+
+  // Row 1 tiles
+  writeTile(ws1, r, startCol + 0, "Net Sales", cc.totalSales, moneyFmt0);
+  writeTile(ws1, r, startCol + 2, "Units", cc.totalUnits, unitsFmt0);
+  writeTile(ws1, r, startCol + 4, "CM1 Profit", cc.totalProfit, moneyFmt0);
+  r += 3;
+
+  // Row 2 tiles
+  writeTile(ws1, r, startCol + 0, "Avg. Monthly Sales", cc.avgMonthlySales, moneyFmt0);
+  writeTile(ws1, r, startCol + 2, "Avg. Selling Price", cc.avgSellingPrice, moneyFmt2);
+
+  // cc.cm1ProfitPct is 0-100 → Excel needs 0-1
+  writeTile(ws1, r, startCol + 4, "CM1 Profit %", cc.cm1ProfitPct / 100, pctFmt);
+  r += 3;
+
+  // Best performance header
+  ws1.mergeCells(r, startCol, r, startCol + SECTION_WIDTH - 1);
+  const bp = ws1.getCell(r, startCol);
+  bp.value = "Best Performance";
+  bp.font = { bold: true, size: 11 };
+  bp.alignment = { horizontal: "left", vertical: "middle" };
+  r += 1;
+
+  // Best performance tiles
+  writeTile(ws1, r, startCol + 0, "Sales", `${cc.bestSalesMonth}  ${currencyLabel}${cc.bestSalesValue}`, undefined);
+  writeTile(ws1, r, startCol + 2, "Units", `${cc.bestUnitsMonth}  ${cc.bestUnitsValue}`, undefined);
+  writeTile(ws1, r, startCol + 4, "Profit", `${cc.bestProfitMonth}  ${currencyLabel}${cc.bestProfitValue}`, undefined);
+
+  // return next row cursor after this section
+  return topRow + 11;
+};
+
+  // Header block (same layout as exportInventoryReconExcel)
+  ws1.mergeCells(1, 1, 1, headerCount);
+  ws1.getCell(1, 1).value = titleLine || "";
+  ws1.getCell(1, 1).font = { bold: false };
+  ws1.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+  ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+  ws1.getCell(2, 1).alignment = { horizontal: "left" };
+
+  ws1.getCell(2, headerCount).value = `${brandName || ""}`;
+  ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
+  ws1.getCell(2, headerCount).font = { bold: true };
+
+  ws1.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
+  ws1.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
+  ws1.getCell(5, 1).value = `Currency : ${currencyLabel || ""}`;
+  ws1.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
+
+  const tableHeaderRowNumber = 7;
+
+// ---------- Sheet 1 content: Country tiles OR table ----------
+// ws1.columns = [
+//   { width: 18 }, { width: 18 }, // tile 1 (A,B)
+//   { width: 18 }, { width: 18 }, // tile 2 (C,D)
+//   { width: 18 }, { width: 18 }, // tile 3 (E,F)
+// ];
+
+ws1.columns = Array.from({ length: headerCount }, () => ({ width: 18 }));
+ws1.getColumn(7).width = 4; // column G spacer
+
+const startRow = 8; // first row below header block
+let rowCursorCards = startRow;
+
+// 1) If countryCards exists -> render tiles like CountryCard UI
+if (countryCards?.length) {
+  ws1.views = [{ state: "frozen", xSplit: 0, ySplit: tableHeaderRowNumber }];
+
+  for (let i = 0; i < countryCards.length; i += 2) {
+    const left = countryCards[i];
+    const right = countryCards[i + 1];
+
+    // Left section = A..F (startCol = 1)
+    const nextLeft = writeCountrySection(left, rowCursorCards, 1);
+
+    // Right section = H..M (startCol = 8) because G is spacer
+    let nextRight = rowCursorCards;
+    if (right) {
+      nextRight = writeCountrySection(right, rowCursorCards, 8);
+    }
+
+    // move down after the taller one
+    rowCursorCards = Math.max(nextLeft, nextRight) + 2;
+  }
+}
+// 2) else fallback to table export (your existing logic)
+else if (table?.headers?.length && table?.rows?.length) {
+  const hdrRow = ws1.getRow(tableHeaderRowNumber);
+
+  table.headers.forEach((h, i) => {
+    const cell = hdrRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { bold: true, size: 11 };
+    cell.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: true,
+    };
+  });
+  hdrRow.height = 18;
+
+  const startDataRow = tableHeaderRowNumber + 1;
+
+  table.rows.forEach((rowArr, ridx) => {
+    const row = ws1.getRow(startDataRow + ridx);
+    table.headers.forEach((_, c0) => {
+      const cell = row.getCell(c0 + 1);
+      const v = rowArr?.[c0] ?? "";
+
+      const n = toNumberLoose(v);
+      if (n !== null) {
+        cell.value = n;
+        cell.numFmt = "#,##0.00";
+        cell.alignment = { horizontal: "center" };
+      } else {
+        cell.value = v as any;
+        cell.alignment = { horizontal: "center" };
+      }
+    });
+  });
+
+  ws1.views = [{ state: "frozen", xSplit: 0, ySplit: tableHeaderRowNumber }];
+
+  ws1.columns = table.headers.map((h) => ({
+    width: Math.min(Math.max(String(h).length + 2, 12), 55),
+  }));
+}
+// 3) else no data
+else {
+  ws1.views = [{ state: "frozen", xSplit: 0, ySplit: tableHeaderRowNumber }];
+  ws1.getCell("A7").value = "No data provided.";
+}
+
+// -------------------------
+// Sheet 2: Trend Charts (Header + Labels + IMAGES)
+// -------------------------
+const ws2 = wb.addWorksheet(safeSheetName("Trend Charts"));
+
+const headerCount2 = 13; // keep consistent like Sheet 1 (or use headerCount)
+ws2.columns = Array.from({ length: headerCount2 }, () => ({ width: 18 }));
+
+// ---- Header block (same as Sheet 1) ----
+ws2.mergeCells(1, 1, 1, headerCount2);
+ws2.getCell(1, 1).value = titleLine || "";
+ws2.getCell(1, 1).font = { bold: false };
+ws2.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+ws2.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+ws2.getCell(2, 1).alignment = { horizontal: "left" };
+
+ws2.getCell(2, headerCount2).value = `${brandName || ""}`;
+ws2.getCell(2, headerCount2).alignment = { horizontal: "right" };
+ws2.getCell(2, headerCount2).font = { bold: true };
+
+ws2.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
+ws2.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
+ws2.getCell(5, 1).value = `Currency : ${currencyLabel || ""}`;
+ws2.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
+
+// Freeze header rows
+const CHARTS_HEADER_ROW = 7;
+ws2.views = [{ state: "frozen", xSplit: 0, ySplit: CHARTS_HEADER_ROW }];
+
+// Parse images
+const img1 = parseBase64(salesCm1ChartBase64);
+const img2 = parseBase64(unitsChartBase64);
+
+// Start AFTER header block
+let rowCursor = CHARTS_HEADER_ROW + 1; // row 8
+
+const addChartImage = (
+  img: { mime: string; base64: string } | null,
+  label: string
+) => {
+  // 1) label row above image
+  ws2.mergeCells(rowCursor, 1, rowCursor, headerCount2);
+  const labelCell = ws2.getCell(rowCursor, 1);
+  labelCell.value = label;
+  labelCell.font = { bold: true, size: 12 };
+  labelCell.alignment = { horizontal: "left", vertical: "middle" };
+  ws2.getRow(rowCursor).height = 18;
+
+  rowCursor += 1;
+
+  // 2) image OR fallback text
+  if (!img) {
+    ws2.mergeCells(rowCursor, 1, rowCursor, headerCount2);
+    ws2.getCell(rowCursor, 1).value = `No chart image available: ${label}`;
+    rowCursor += 3;
+    return;
+  }
+
+  const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
+
+  const imageId = wb.addImage({
+    base64: `data:${img.mime};base64,${img.base64}`,
+    extension: ext as "png" | "jpeg",
+  });
+
+  ws2.addImage(imageId, {
+    tl: { col: 0, row: rowCursor - 1 }, // exceljs uses 0-based row/col for anchors
+    ext: { width: chartWidth, height: chartHeight },
+  });
+
+  // 3) advance cursor below image (+ some spacing)
+  // This is a rough row estimate; tweak if needed
+  rowCursor += 24; // image height spacing
+  rowCursor += 2;  // extra gap between charts
+};
+
+addChartImage(img1, "Net Sales & CM1 Profit");
+addChartImage(img2, "Units");
+
+  // -------------------------
+  // Save
+  // -------------------------
   const buf = await wb.xlsx.writeBuffer();
   saveAs(
     new Blob([buf], {

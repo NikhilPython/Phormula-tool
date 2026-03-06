@@ -112,7 +112,7 @@ export default function SuperadminResetPasswordPage() {
         return;
       }
 
-      const response = await fetch("http://127.0.0.1:5000/superadmin_change_password", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin_change_password`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

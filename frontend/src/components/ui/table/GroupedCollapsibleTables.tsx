@@ -220,7 +220,7 @@ toggleGroupByColKey,
               key={c.key}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
             >
-              <div className="flex items-center justify-center gap-1">
+              <div className="flex items-center justify-center gap-1 ">
                 {c.label}
                 {c.tooltip ? c.tooltip : null}
               </div>
@@ -229,7 +229,7 @@ toggleGroupByColKey,
         </tr>
       </thead>
 
-      <tbody>
+      <tbody className="bg-white">
         {/* Optional sign row as FIRST BODY ROW (keeps header strictly 2 rows) */}
         {showSignRowInBody && (
           <tr className="bg-white font-bold text-center">
@@ -238,7 +238,7 @@ toggleGroupByColKey,
               return (
                 <td
                   key={c.key}
-                  className={`whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${sign?.className || ""
+                  className={` bg-inherit whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${sign?.className || ""
                     }`}
                 >
                   {sign?.text || ""}
@@ -253,11 +253,11 @@ toggleGroupByColKey,
           const rowClass = getRowClassName ? getRowClassName(row, idx) : "";
 
           return (
-            <tr key={rowKey} className={rowClass}>
+            <tr key={rowKey} className={rowClass || "bg-white"}>
               {visibleLeafCols.map((c) => (
                 <td
                   key={c.key}
-                  className={`whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${alignClass(
+                  className={`bg-inherit whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm ${alignClass(
                     c.align
                   )} ${c.tdClassName || ""}`}
                 >

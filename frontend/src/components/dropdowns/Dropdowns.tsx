@@ -135,6 +135,7 @@ type AiSummaryResponse = {
 
   performance_trend?: PerformanceTrendPayload;
   performance_trend_metric?: "net_sales" | "units";
+   portfolio_recommendation?: string | null;
 };
 
 type AiPanelData = {
@@ -151,6 +152,7 @@ type AiPanelData = {
 
   // ✅ ADD THIS
   remainingSkusRecommendation?: string;
+  portfolioRecommendation?: string | null;
 };
 
 
@@ -638,7 +640,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
             <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <div className="text-sm text-slate-500">Detailed View</div>
+                  <div className="text-sm text-yellow-200">Detailed View</div>
 
                   {drawerPeriodText ? (
                     <span className="text-[#5EA68E] font-semibold text-sm">
@@ -885,21 +887,285 @@ const ProductJourneyModal: React.FC<ProductJourneyModalProps> = ({
   );
 };
 
+// const ProductInsightsSection = ({
+//   blocks,
+//   objective,
+//   recommendationsMap,
+//   nameToSkuMap,
+
+//   // ✅ ADD THESE
+//   range,
+//   selectedYear,
+//   selectedQuarter,
+//   homeCurrency,
+//   countryName, // ✅ ADD
+//   drawerPeriodText,
+//   selectedMonth,
+// }: {
+//   blocks: ProductInsightBlock[];
+//   objective?: ObjectivePayload;
+//   recommendationsMap?: RecommendationsMap;
+//   nameToSkuMap?: Record<string, string>;
+//   drawerPeriodText?: string;
+//   selectedMonth?: string; // 👈 optional but useful
+
+//   // ✅ ADD TYPES
+//   range: RangeType;                 // "monthly" | "quarterly" | "yearly" | ""
+//   selectedYear: string;             // "2025"
+//   selectedQuarter: Quarter | "";     // "Q1".."Q4" or ""
+//   homeCurrency?: string;
+//   countryName: string; // ✅ ADD          // only global
+// }) => {
+//   const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
+//   const [selectedRecObj, setSelectedRecObj] = useState<any>(null);
+//   const [perfLoading, setPerfLoading] = useState(false);
+//   const [perfError, setPerfError] = useState<string | null>(null);
+//   const [perfData, setPerfData] = useState<any>(null);
+//   const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
+
+//   if (!blocks.length) return null;
+
+//   // top border colors (rotate)
+//   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
+
+//   const skuActions =
+//     (recommendationsMap as any)?.sku_actions ??
+//     (recommendationsMap as any)?.recommendations ??
+//     recommendationsMap ??
+//     {};
+
+//   useEffect(() => {
+//     if (!selectedBlock) return;
+//     if (selectedBlock.isOtherSkus) return; // ✅ skip chart API for Other SKUs
+
+//     const ac = new AbortController();
+
+//     (async () => {
+//       try {
+//         setPerfLoading(true);
+//         setPerfError(null);
+//         setPerfData(null);
+
+//         const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+//         if (!token) throw new Error("Missing token");
+
+//         const time_range = "Yearly";
+
+//         const quarterNum =
+//           range === "quarterly" && selectedQuarter
+//             ? String(["Q1", "Q2", "Q3", "Q4"].indexOf(selectedQuarter) + 1)
+//             : undefined;
+
+//         const productKeyForApi = selectedBlock.name; // ✅ Always product name
+//         console.log("API countryName:", countryName);
+//         console.log("API payload:", {
+//           country: countryName,
+//           product_name: productKeyForApi,
+//           time_range: "Yearly",
+//           year: Number(selectedYear),
+//           quarter: undefined,
+//           home_currency: homeCurrency,
+//         });
+
+//         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
+//           method: "POST",
+//           headers: {
+//             "Content-Type": "application/json",
+//             Authorization: `Bearer ${token}`,
+//           },
+//           body: JSON.stringify({
+//             country: countryName,
+//             product_name: productKeyForApi,   // "Passion Fruit"
+//             time_range: "Yearly",             // ✅ forced
+//             year: Number(selectedYear),
+//             quarter: undefined,               // (optional; can remove)
+//             home_currency: homeCurrency,
+//           }),
+//           cache: "no-store",
+//           signal: ac.signal,
+//         });
+
+//         const json = await res.json().catch(() => ({}));
+//         if (!res.ok) throw new Error(json?.error || "Failed to fetch product performance");
+
+//         // ✅ SHAPE FIX
+//         // pick a country series from response
+//         const pickSeries = (j: any) => {
+//           const d = j?.data;
+//           if (!d || typeof d !== "object") return null;
+
+//           const country = (countryName || "").toLowerCase(); // "uk"
+//           const keys = Object.keys(d);
+
+//           // UK page -> prefer uk / uk_usd / uk_gbp (jo bhi backend deta)
+//           if (country && country !== "global") {
+//             const match =
+//               keys.find(k => k.toLowerCase() === country) ||
+//               keys.find(k => k.toLowerCase().startsWith(country + "_")) || // uk_usd
+//               keys.find(k => k.toLowerCase().startsWith(country));         // fallback
+
+//             if (match) return d[match];
+//           }
+
+//           // Global page
+//           const g = keys.find(k => k.toLowerCase().startsWith("global"));
+//           return g ? d[g] : d[keys[0]];
+//         };
+
+//         const rows = pickSeries(json);
+
+//         setPerfData({
+//           rows: Array.isArray(rows)
+//             ? rows.map((r: any) => ({
+//               x: r?.month ?? r?.label ?? "-",
+//               y:
+//                 perfMetric === "units"
+//                   ? toNum(r?.quantity ?? r?.units ?? 0)
+//                   : toNum(r?.net_sales ?? 0),
+//             }))
+//             : [],
+//         });
+//       } catch (e: any) {
+//         if (e?.name === "AbortError") return;
+//         setPerfError(e?.message || "Failed to load product chart");
+//       } finally {
+//         setPerfLoading(false);
+//       }
+//     })();
+
+//     return () => ac.abort();
+//   }, [selectedBlock, range, selectedYear, selectedQuarter, homeCurrency, nameToSkuMap]);
+
+//   const openDrawer = (b: ProductInsightBlock) => {
+//     const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
+//     const skuKey = b.skuKey || mappedSku;
+
+//     const recObj =
+//       (skuKey && (skuActions as any)[skuKey]) ||
+//       (skuActions as any)[b.name] ||
+//       (skuActions as any)[b.name.trim()] ||
+//       null;
+
+//     setSelectedRecObj(recObj);
+//     setSelectedBlock(b);
+//   };
 
 
+//   return (
+//     <div className="space-y-5">
+//       <div>
+//         <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" textSize="2xl" />
+//       </div>
+
+//       <div className="grid grid-cols-3 gap-6">
+//         {blocks.map((b, idx) => {
+//           const borderColor = topBorderColors[idx % topBorderColors.length];
+
+//           return (
+//             <motion.div
+//               key={idx}
+//               initial={{ opacity: 0, y: 16 }}
+//               animate={{ opacity: 1, y: 0 }}
+//               transition={{ duration: 0.35, delay: idx * 0.06 }}
+//               className={[
+//                 "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+//                 "border-t-4", // ✅ top border like SS2
+
+//                 "p-3 space-y-3",
+//               ].join(" ")}
+//             >
+//               {/* Header */}
+//               <div className="flex items-start justify-between gap-3">
+//                 <div className="text-sm font-semibold text-slate-800">
+//                   {idx + 1}. {b.name}
+//                 </div>
+
+//                 <button
+//                   onClick={() => openDrawer(b)}
+//                   className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition"
+//                 >
+//                   Detailed View
+//                 </button>
+//               </div>
+
+//               {/* ✅ Metrics in BOXES (SS2 style) */}
+//               {b.metrics?.length > 0 && (
+//                 <div className="grid grid-cols-3 gap-2">
+//                   {b.metrics.map((m, i) => (
+//                     <div
+//                       key={i}
+//                       className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+//                     >
+//                       <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+//                         {m.label}
+//                       </div>
+//                       {(() => {
+//                         const { main, delta, deltaColor } = splitMetricValue(m.value);
+
+//                         return (
+//                           <div className="mt-1 flex items-baseline gap-1 min-w-0">
+//                             <span className="text-[10px] 2xl:text-xs font-bold text-slate-900 truncate">
+//                               {main}
+//                             </span>
+
+//                             {delta ? (
+//                               <span className={`text-[10px] 2xl:text-xs font-semibold shrink-0 ${deltaColor}`}>
+//                                 {delta}
+//                               </span>
+//                             ) : null}
+//                           </div>
+//                         );
+//                       })()}
+//                     </div>
+//                   ))}
+//                 </div>
+//               )}
+
+//               {/* short inline recommendation (optional, like your SS1) */}
+//               {b.recommendationBullets?.length > 0 && (
+//                 <p className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+//                   {b.recommendationBullets.join(" ")}
+//                 </p>
+//               )}
+//             </motion.div>
+//           );
+//         })}
+//       </div>
+
+//       {/* ✅ Right Drawer */}
+//       <RightProductDrawer
+//         open={!!selectedBlock}
+//         onClose={() => {
+//           setSelectedBlock(null);
+//           setSelectedRecObj(null);
+//         }}
+//         block={selectedBlock}
+//         objective={objective}
+//         recObj={selectedRecObj}
+//         countryName={countryName}
+
+//         // ✅ pass correct period
+//         range={range}
+//         year={selectedYear}
+//         month={range === "monthly" ? /* selectedMonth parent se pass karna hoga */ "" : ""}
+//         quarter={range === "quarterly" ? selectedQuarter : ""}
+//         drawerPeriodText={drawerPeriodText} // ✅ ADD
+//       />
+//     </div>
+//   );
+// };
 
 const ProductInsightsSection = ({
   blocks,
   objective,
   recommendationsMap,
   nameToSkuMap,
-
-  // ✅ ADD THESE
   range,
   selectedYear,
   selectedQuarter,
   homeCurrency,
-  countryName, // ✅ ADD
+
+  countryName,
   drawerPeriodText,
   selectedMonth,
 }: {
@@ -908,23 +1174,24 @@ const ProductInsightsSection = ({
   recommendationsMap?: RecommendationsMap;
   nameToSkuMap?: Record<string, string>;
   drawerPeriodText?: string;
-  selectedMonth?: string; // 👈 optional but useful
-
-  // ✅ ADD TYPES
-  range: RangeType;                 // "monthly" | "quarterly" | "yearly" | ""
-  selectedYear: string;             // "2025"
-  selectedQuarter: Quarter | "";     // "Q1".."Q4" or ""
+  selectedMonth?: string;
+  range: RangeType;
+  selectedYear: string;
+  selectedQuarter: Quarter | "";
   homeCurrency?: string;
-  countryName: string; // ✅ ADD          // only global
+  countryName: string;
 }) => {
   const [selectedBlock, setSelectedBlock] = useState<ProductInsightBlock | null>(null);
   const [selectedRecObj, setSelectedRecObj] = useState<any>(null);
+
   const [perfLoading, setPerfLoading] = useState(false);
   const [perfError, setPerfError] = useState<string | null>(null);
   const [perfData, setPerfData] = useState<any>(null);
+
+  // If you later add metric toggle, keep this state (and include in deps)
   const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
 
-  if (!blocks.length) return null;
+  const hasBlocks = blocks.length > 0; // ✅ compute instead of early return
 
   // top border colors (rotate)
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
@@ -936,8 +1203,10 @@ const ProductInsightsSection = ({
     {};
 
   useEffect(() => {
+    // ✅ guard inside effect
+    if (!hasBlocks) return;
     if (!selectedBlock) return;
-    if (selectedBlock.isOtherSkus) return; // ✅ skip chart API for Other SKUs
+    if (selectedBlock.isOtherSkus) return;
 
     const ac = new AbortController();
 
@@ -950,23 +1219,7 @@ const ProductInsightsSection = ({
         const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
         if (!token) throw new Error("Missing token");
 
-        const time_range = "Yearly";
-
-        const quarterNum =
-          range === "quarterly" && selectedQuarter
-            ? String(["Q1", "Q2", "Q3", "Q4"].indexOf(selectedQuarter) + 1)
-            : undefined;
-
         const productKeyForApi = selectedBlock.name; // ✅ Always product name
-        console.log("API countryName:", countryName);
-        console.log("API payload:", {
-          country: countryName,
-          product_name: productKeyForApi,
-          time_range: "Yearly",
-          year: Number(selectedYear),
-          quarter: undefined,
-          home_currency: homeCurrency,
-        });
 
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
           method: "POST",
@@ -976,10 +1229,10 @@ const ProductInsightsSection = ({
           },
           body: JSON.stringify({
             country: countryName,
-            product_name: productKeyForApi,   // "Passion Fruit"
-            time_range: "Yearly",             // ✅ forced
+            product_name: selectedBlock.name,
+            time_range: "Yearly",
             year: Number(selectedYear),
-            quarter: undefined,               // (optional; can remove)
+            quarter: undefined,
             home_currency: homeCurrency,
           }),
           cache: "no-store",
@@ -989,26 +1242,22 @@ const ProductInsightsSection = ({
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || "Failed to fetch product performance");
 
-        // ✅ SHAPE FIX
-        // pick a country series from response
         const pickSeries = (j: any) => {
           const d = j?.data;
           if (!d || typeof d !== "object") return null;
 
-          const country = (countryName || "").toLowerCase(); // "uk"
+          const country = (countryName || "").toLowerCase();
           const keys = Object.keys(d);
 
-          // UK page -> prefer uk / uk_usd / uk_gbp (jo bhi backend deta)
           if (country && country !== "global") {
             const match =
               keys.find(k => k.toLowerCase() === country) ||
-              keys.find(k => k.toLowerCase().startsWith(country + "_")) || // uk_usd
-              keys.find(k => k.toLowerCase().startsWith(country));         // fallback
+              keys.find(k => k.toLowerCase().startsWith(country + "_")) ||
+              keys.find(k => k.toLowerCase().startsWith(country));
 
             if (match) return d[match];
           }
 
-          // Global page
           const g = keys.find(k => k.toLowerCase().startsWith("global"));
           return g ? d[g] : d[keys[0]];
         };
@@ -1018,12 +1267,11 @@ const ProductInsightsSection = ({
         setPerfData({
           rows: Array.isArray(rows)
             ? rows.map((r: any) => ({
-              x: r?.month ?? r?.label ?? "-",
-              y:
-                perfMetric === "units"
+                x: r?.month ?? r?.label ?? "-",
+                y: perfMetric === "units"
                   ? toNum(r?.quantity ?? r?.units ?? 0)
                   : toNum(r?.net_sales ?? 0),
-            }))
+              }))
             : [],
         });
       } catch (e: any) {
@@ -1035,7 +1283,19 @@ const ProductInsightsSection = ({
     })();
 
     return () => ac.abort();
-  }, [selectedBlock, range, selectedYear, selectedQuarter, homeCurrency, nameToSkuMap]);
+  }, [
+    selectedBlock,
+    range,
+    selectedYear,
+    selectedQuarter,
+    homeCurrency,
+    nameToSkuMap,
+    countryName,
+    perfMetric, // ✅ include, since you read it inside effect
+  ]);
+
+  // ✅ NOW you can early return (after hooks)
+  if (!hasBlocks) return null;
 
   const openDrawer = (b: ProductInsightBlock) => {
     const mappedSku = nameToSkuMap?.[normalizeKey(b.name)];
@@ -1050,7 +1310,6 @@ const ProductInsightsSection = ({
     setSelectedRecObj(recObj);
     setSelectedBlock(b);
   };
-
 
   return (
     <div className="space-y-5">
@@ -1069,9 +1328,8 @@ const ProductInsightsSection = ({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: idx * 0.06 }}
               className={[
-                "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
-                "border-t-4", // ✅ top border like SS2
-
+                "bg-white rounded-xl  border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+                "border-t-4",
                 "p-3 space-y-3",
               ].join(" ")}
             >
@@ -1083,13 +1341,13 @@ const ProductInsightsSection = ({
 
                 <button
                   onClick={() => openDrawer(b)}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-yellow-200 hover:bg-slate-700 transition"
                 >
                   Detailed View
                 </button>
               </div>
 
-              {/* ✅ Metrics in BOXES (SS2 style) */}
+              {/* Metrics */}
               {b.metrics?.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {b.metrics.map((m, i) => (
@@ -1100,6 +1358,7 @@ const ProductInsightsSection = ({
                       <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
                         {m.label}
                       </div>
+
                       {(() => {
                         const { main, delta, deltaColor } = splitMetricValue(m.value);
 
@@ -1122,7 +1381,7 @@ const ProductInsightsSection = ({
                 </div>
               )}
 
-              {/* short inline recommendation (optional, like your SS1) */}
+              {/* Short inline recommendation */}
               {b.recommendationBullets?.length > 0 && (
                 <p className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
                   {b.recommendationBullets.join(" ")}
@@ -1133,7 +1392,7 @@ const ProductInsightsSection = ({
         })}
       </div>
 
-      {/* ✅ Right Drawer */}
+      {/* Right Drawer */}
       <RightProductDrawer
         open={!!selectedBlock}
         onClose={() => {
@@ -1144,13 +1403,11 @@ const ProductInsightsSection = ({
         objective={objective}
         recObj={selectedRecObj}
         countryName={countryName}
-
-        // ✅ pass correct period
         range={range}
         year={selectedYear}
-        month={range === "monthly" ? /* selectedMonth parent se pass karna hoga */ "" : ""}
+        month={range === "monthly" ? (selectedMonth ?? "") : ""}
         quarter={range === "quarterly" ? selectedQuarter : ""}
-        drawerPeriodText={drawerPeriodText} // ✅ ADD
+        drawerPeriodText={drawerPeriodText}
       />
     </div>
   );
@@ -1289,6 +1546,7 @@ type AiSingleInsightCardProps = {
   selectedQuarter: Quarter | "";
   homeCurrency?: string;
   countryName: string; // ✅ ADD
+  portfolioRecommendation?: string | null; // ✅ ADD
 };
 
 const formatSummaryPeriod = (text?: string) => {
@@ -1319,9 +1577,215 @@ const formatSummaryPeriod = (text?: string) => {
   return `(${formatPart(leftRaw)} vs ${formatPart(rightRaw)})`;
 };
 
+// const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
+//   loading,
+//   error,
+//   summaryBullets,
+//   recommendationBullets,
+//   skuInsightsBullets,
+//   inventoryBullets,
+//   remainingSkusRecommendation,
+//   objective,
+//   recommendationsMap,
+//   nameToSkuMap,
+//   countryName, // ✅ ADD
+
+//   // ✅ ADD
+//   range,
+//   selectedYear,
+//   selectedQuarter,
+//   homeCurrency,
+// }) => {
+//   if (loading) {
+//     return (
+//       <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-6">
+//         <div className="min-h-[420px] flex items-center justify-center">
+//           <Loader transparent />
+//         </div>
+//       </div>
+//     );
+//   }
+
+//   if (error) {
+//     return (
+//       <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
+//         <div className="flex items-center gap-2">
+//           <span className="text-lg">⚠️</span>
+//           <p className="font-semibold text-red-700">Unable to Generate Insights</p>
+//         </div>
+//         <p className="text-sm text-red-600">{error}</p>
+//       </div>
+//     );
+//   }
+
+//   if (
+//     !summaryBullets.length &&
+//     !recommendationBullets.length &&
+//     !skuInsightsBullets.length &&
+//     !inventoryBullets.length
+//   ) {
+//     return null;
+//   }
+
+
+
+
+
+//   const narrativeInsights = summaryBullets.filter(
+//     (l) => !l.includes(":")
+//   );
+
+//   const drawerPeriodText =
+//     narrativeInsights?.[0] ? formatSummaryPeriod(narrativeInsights[0]) : "";
+
+//   return (
+//     <div className="flex flex-col  gap-5">
+//       <div className="w-full  space-y-4">
+
+//         <div className="space-y-4">
+//           {/* Narrative Summary */}
+//           {narrativeInsights.length > 0 && (
+//             <>
+//               <div className="  space-y-3">
+//                 <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold">
+//                   {narrativeInsights[0]?.split("(")[0]?.trim()}
+//                   <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
+//                     {formatSummaryPeriod(narrativeInsights[0])}
+//                   </span>
+//                 </h2>
+
+//                 <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+//                   {narrativeInsights.slice(1).map((line, i) => (
+//                     <p key={i}>{line}</p>
+//                   ))}
+//                 </div>
+//               </div>
+//             </>
+//           )}
+//         </div>
+
+//         <div className="w-full">
+//           <div className="space-y-5 ">
+//             <ProductInsightsSection
+//               blocks={parseProductInsightsBlocks(skuInsightsBullets)}
+//               objective={objective}
+//               recommendationsMap={recommendationsMap}
+//               nameToSkuMap={nameToSkuMap}
+//               range={range}
+//               selectedYear={selectedYear}
+//               selectedQuarter={selectedQuarter}
+//               homeCurrency={homeCurrency}
+//               countryName={countryName}
+//               drawerPeriodText={drawerPeriodText}
+//             />
+
+
+//             {/* ✅ Remaining SKUs Recommendation */}
+
+//           </div>
+//         </div>
+
+//         {/* ================= INVENTORY SECTION ================= */}
+//         {inventoryBullets.length > 0 && (
+//           <div className="space-y-4">
+//             <div className="flex items-center gap-2">
+//               <span className="text-base 2xl:text-2xl font-bold text-slate-800">
+//                 Inventory Insights
+//               </span>
+//             </div>
+
+//             {(() => {
+//               // ✅ 1) separate "For detailed..." lines (no box)
+//               const detailLines = inventoryBullets.filter((b) =>
+//                 /for detailed/i.test(b)
+//               );
+
+//               // ✅ 2) main bullets that go inside boxes
+//               const mainLines = inventoryBullets.filter((b) => !/for detailed/i.test(b));
+
+//               return (
+//                 <>
+//                   <div className="grid grid-cols-2 gap-3">
+//                     {mainLines.map((b, i) => {
+//                       const raw = String(b || "").trim();
+
+//                       // ✅ Unfulfillable: extract value inside (...) and show right
+//                       const isUnfulfillable = /unfulfillable/i.test(raw);
+//                       if (isUnfulfillable) {
+//                         const match = raw.match(/\(([^)]+)\)/); // (0.02%)
+//                         const value = match?.[1]?.trim();
+//                         const label = raw.replace(/\([^)]+\)/, "").trim();
+
+//                         return (
+//                           <div
+//                             key={i}
+//                             className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
+//                           >
+//                             <span className="text-sm font-medium text-slate-700">
+//                               {label}
+//                             </span>
+
+//                             {value ? (
+//                               <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
+//                                 {value}
+//                               </span>
+//                             ) : null}
+//                           </div>
+//                         );
+//                       }
+
+//                       // ✅ Default behavior (keeps others same):
+//                       // if bullet has "Label: Value" -> show value on right
+//                       const colonIdx = raw.indexOf(":");
+//                       const hasColon = colonIdx > -1;
+
+//                       const left = hasColon ? raw.slice(0, colonIdx).trim() : raw;
+//                       const right = hasColon ? raw.slice(colonIdx + 1).trim() : "";
+
+//                       return (
+//                         <div
+//                           key={i}
+//                           className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
+//                         >
+//                           <span className="text-sm font-medium text-slate-700">
+//                             {left}
+//                           </span>
+
+//                           {right ? (
+//                             <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
+//                               {right}
+//                             </span>
+//                           ) : null}
+//                         </div>
+//                       );
+//                     })}
+//                   </div>
+
+//                   {/* ✅ detail lines as simple text, not a box */}
+//                   {detailLines.map((line, idx) => (
+//                     <p key={idx} className="text-xs text-slate-500 italic mt-2">
+//                       {line}
+//                     </p>
+//                   ))}
+//                 </>
+//               );
+//             })()}
+//           </div>
+//         )}
+
+//       </div>
+
+
+
+
+//     </div>
+
+//   );
+// };
+
 const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
-  loading,
-  error,
+  loading, // kept for prop compatibility but NOT used for UI
+  error,   // kept for prop compatibility but NOT used for UI
   summaryBullets,
   recommendationBullets,
   skuInsightsBullets,
@@ -1330,36 +1794,17 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   objective,
   recommendationsMap,
   nameToSkuMap,
-  countryName, // ✅ ADD
-
-  // ✅ ADD
+  countryName,
+  portfolioRecommendation,
   range,
   selectedYear,
   selectedQuarter,
   homeCurrency,
 }) => {
-  if (loading) {
-    return (
-      <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-8 flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 rounded-full border-2 border-slate-300 border-t-blue-500 animate-spin mx-auto"></div>
-          <p className="text-sm font-medium text-slate-600">Generating AI insights…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">⚠️</span>
-          <p className="font-semibold text-red-700">Unable to Generate Insights</p>
-        </div>
-        <p className="text-sm text-red-600">{error}</p>
-      </div>
-    );
-  }
+  // ✅ Parent handles loader + error now (so loader stays inside white container)
+  // If parent passes loading/error accidentally, just ignore it.
+  // if (loading) return null;
+  // if (error) return null;
 
   if (
     !summaryBullets.length &&
@@ -1370,13 +1815,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
     return null;
   }
 
-
-
-
-
-  const narrativeInsights = summaryBullets.filter(
-    (l) => !l.includes(":")
-  );
+  const narrativeInsights = summaryBullets.filter((l) => !l.includes(":"));
 
   const drawerPeriodText =
     narrativeInsights?.[0] ? formatSummaryPeriod(narrativeInsights[0]) : "";
@@ -1386,52 +1825,57 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
       <div className="w-full  space-y-4">
 
         <div className="space-y-4">
-          {/* Narrative Summary */}
-          {narrativeInsights.length > 0 && (
-            <>
-              <div className="  space-y-3">
-                <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold">
-                  {narrativeInsights[0]?.split("(")[0]?.trim()}
-                  <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
-                    {formatSummaryPeriod(narrativeInsights[0])}
-                  </span>
-                </h2>
+  {/* Narrative Summary */}
+  {narrativeInsights.length > 0 && (
+    <>
+      <div className="space-y-3">
+        <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold">
+          {narrativeInsights[0]?.split("(")[0]?.trim()}
+          <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
+            {formatSummaryPeriod(narrativeInsights[0])}
+          </span>
+        </h2>
 
-                <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
-                  {narrativeInsights.slice(1).map((line, i) => (
-                    <p key={i}>{line}</p>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
+        <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+          {narrativeInsights.slice(1).map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
         </div>
 
+        {/* ✅ ADD THIS AT THE END */}
+        {portfolioRecommendation ? (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="text-xs font-semibold text-slate-700 mb-1">
+              Portfolio Recommendation
+            </div>
+            <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+              {portfolioRecommendation}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </>
+  )}
+</div>
+
+        {/* Product Insights */}
         <div className="w-full">
-          <div className="space-y-5 ">
+          <div className="space-y-5">
             <ProductInsightsSection
               blocks={parseProductInsightsBlocks(skuInsightsBullets)}
               objective={objective}
               recommendationsMap={recommendationsMap}
               nameToSkuMap={nameToSkuMap}
-
-              // ✅ PASS THESE
               range={range}
               selectedYear={selectedYear}
               selectedQuarter={selectedQuarter}
               homeCurrency={homeCurrency}
-              countryName={countryName} // ✅ ADD
-              drawerPeriodText={drawerPeriodText}   // ✅ ADD THIS
+              countryName={countryName}
+              drawerPeriodText={drawerPeriodText}
             />
-
-
-            {/* ✅ Remaining SKUs Recommendation */}
-
           </div>
         </div>
 
-
-        {/* ================= INVENTORY SECTION ================= */}
         {/* ================= INVENTORY SECTION ================= */}
         {inventoryBullets.length > 0 && (
           <div className="space-y-4">
@@ -1442,12 +1886,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
             </div>
 
             {(() => {
-              // ✅ 1) separate "For detailed..." lines (no box)
-              const detailLines = inventoryBullets.filter((b) =>
-                /for detailed/i.test(b)
-              );
-
-              // ✅ 2) main bullets that go inside boxes
+              const detailLines = inventoryBullets.filter((b) => /for detailed/i.test(b));
               const mainLines = inventoryBullets.filter((b) => !/for detailed/i.test(b));
 
               return (
@@ -1456,10 +1895,9 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                     {mainLines.map((b, i) => {
                       const raw = String(b || "").trim();
 
-                      // ✅ Unfulfillable: extract value inside (...) and show right
                       const isUnfulfillable = /unfulfillable/i.test(raw);
                       if (isUnfulfillable) {
-                        const match = raw.match(/\(([^)]+)\)/); // (0.02%)
+                        const match = raw.match(/\(([^)]+)\)/);
                         const value = match?.[1]?.trim();
                         const label = raw.replace(/\([^)]+\)/, "").trim();
 
@@ -1468,10 +1906,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                             key={i}
                             className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
                           >
-                            <span className="text-sm font-medium text-slate-700">
-                              {label}
-                            </span>
-
+                            <span className="text-sm font-medium text-slate-700">{label}</span>
                             {value ? (
                               <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
                                 {value}
@@ -1481,8 +1916,6 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                         );
                       }
 
-                      // ✅ Default behavior (keeps others same):
-                      // if bullet has "Label: Value" -> show value on right
                       const colonIdx = raw.indexOf(":");
                       const hasColon = colonIdx > -1;
 
@@ -1494,10 +1927,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                           key={i}
                           className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
                         >
-                          <span className="text-sm font-medium text-slate-700">
-                            {left}
-                          </span>
-
+                          <span className="text-sm font-medium text-slate-700">{left}</span>
                           {right ? (
                             <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
                               {right}
@@ -1508,7 +1938,6 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                     })}
                   </div>
 
-                  {/* ✅ detail lines as simple text, not a box */}
                   {detailLines.map((line, idx) => (
                     <p key={idx} className="text-xs text-slate-500 italic mt-2">
                       {line}
@@ -1519,14 +1948,8 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
             })()}
           </div>
         )}
-
       </div>
-
-
-
-
     </div>
-
   );
 };
 
@@ -1977,6 +2400,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
         // ✅ NEW
         remainingSkusRecommendation,
+        portfolioRecommendation: data.portfolio_recommendation ?? null,
       });
 
 
@@ -3752,7 +4176,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         )}
 
         {/* ---------- TAB 2: BUSINESS SUMMARY ---------- */}
-        {activeTab === "businessSummary" && range === "monthly" && allDropdownsSelected && (
+        {/* {activeTab === "businessSummary" && range === "monthly" && allDropdownsSelected && (
 
           <div id="business-summary" className="scroll-mt-[80px] space-y-6 rounded-xl border border-slate-200 bg-white shadow-sm p-3">
 
@@ -3775,6 +4199,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               selectedQuarter={selectedQuarter}
               homeCurrency={globalHomeCurrency}
               countryName={initialCountryName} // ✅ ADD (ya countryName)
+              portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
             />
           </div>
         )}
@@ -3802,6 +4227,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               selectedQuarter={selectedQuarter}
               homeCurrency={globalHomeCurrency}
               countryName={initialCountryName} // ✅ ADD (ya countryName)
+              portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
             // ✅ ADD THIS
             />
           </div>
@@ -3830,7 +4256,54 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               selectedQuarter={selectedQuarter}
               homeCurrency={globalHomeCurrency}
               countryName={initialCountryName} // ✅ ADD (ya countryName)
+              portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
             />
+          </div>
+        )} */}
+
+        {activeTab === "businessSummary" && allDropdownsSelected && (
+          <div
+            id="business-summary"
+            className="scroll-mt-[80px] space-y-6 rounded-xl border border-slate-200 bg-white shadow-sm p-3"
+          >
+            {/* ✅ Loader INSIDE the white container */}
+            {aiPanelLoading ? (
+              <div className="min-h-[420px] flex items-center justify-center">
+                {/* IMPORTANT: force inline, not fullscreen */}
+                <Loader fullscreen={false} transparent />
+              </div>
+            ) : aiPanelError ? (
+              <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">⚠️</span>
+                  <p className="font-semibold text-red-700">Unable to Generate Insights</p>
+                </div>
+                <p className="text-sm text-red-600">{aiPanelError}</p>
+              </div>
+            ) : (
+              <>
+                {aiPanel?.objective && <MonthlyObjectiveStrip objective={aiPanel.objective} />}
+
+                <AiSingleInsightCard
+                  loading={false} // ✅ parent controls loader now
+                  error={null}    // ✅ parent controls error now
+                  summaryBullets={aiPanel?.summaryBullets ?? []}
+                  recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                  skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                  inventoryBullets={aiPanel?.inventoryBullets ?? []}
+                  recommendationsMap={aiPanel?.recommendationsMap}
+                  objective={aiPanel?.objective}
+                  remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+                  nameToSkuMap={nameToSkuMap}
+                  range={range}
+                  selectedYear={selectedYear}
+                  selectedQuarter={selectedQuarter}
+                  homeCurrency={globalHomeCurrency}
+                  countryName={initialCountryName}
+                  portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
+                />
+              </>
+            )}
           </div>
         )}
 

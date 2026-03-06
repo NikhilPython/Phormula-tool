@@ -116,7 +116,14 @@ interface CategorizedGrowth {
 
 interface SkuInsight {
   product_name: string;
-  insight: string;
+  sku?: string;
+  insight?: string;
+
+  recommendation?: string | string[] | number;
+  product_journey?: string[] | string;
+  advertising?: string | string[];
+  inventory_recommendation?: string | string[] | number;
+
   [key: string]: any;
 }
 
@@ -163,6 +170,8 @@ interface ApiResponse {
   overall_actions?: string[];
   recommended_actions_mtd?: Record<string, string>;
   remaining_skus_recommendation?: string;
+   remaining_skus_block?: string; // ✅ ADD
+   portfolio_recommendation?: string;
 }
 
 // =========================
@@ -277,6 +286,7 @@ export default function LiveBusinessClient({
   const [periods, setPeriods] = useState<ApiResponse['periods'] | null>(null);
   const [month2Label, setMonth2Label] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [portfolioRecommendation, setPortfolioRecommendation] = useState<string>("");
 
   // overall bullets from backend
   const [summaryText, setSummaryText] = useState<string>("");
@@ -284,7 +294,7 @@ export default function LiveBusinessClient({
 
   const [overallActions, setOverallActions] = useState<any[]>([]);
   const [recommendedActions, setRecommendedActions] = useState<Record<string, string>>({});
-  const [remainingSkusRecommendation, setRemainingSkusRecommendation] = useState<string>("");
+ const [remainingSkusBlock, setRemainingSkusBlock] = useState<string>("");
 
   const [insightDate, setInsightDate] = useState<string | null>(null);
 
@@ -297,6 +307,7 @@ export default function LiveBusinessClient({
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [adsRecommendation, setAdsRecommendation] = useState<string>("");
   const [inventorySummary, setInventorySummary] = useState<any>(null);
+  const [selectedSkuItem, setSelectedSkuItem] = useState<SkuItem | null>(null);
 
   // Feedback
   const [fbType, setFbType] = useState<'like' | 'dislike' | null>(null);
@@ -316,7 +327,9 @@ const [selectedRec, setSelectedRec] = useState<{
   metrics: { label: string; value: string; color?: string }[];
   journeyPoints: string[];
   recommendationPoints: string[];
-  actions: string[];
+  advertisingPoints?: string[];
+  inventoryPoints?: string[];
+  showChart?: boolean; // ✅ NEW
 } | null>(null);
 
   const isGlobalData = () => normalizedCountry === 'global';
@@ -333,85 +346,92 @@ const [selectedRec, setSelectedRec] = useState<{
   const prevPeriod = getMonthYearFromLabel(periods?.previous?.label);
   const currPeriod = getMonthYearFromLabel(periods?.current_mtd?.label);
 
-  const splitIntoPoints = (para: string) =>
+ const splitIntoPoints = (para: string) =>
   (para || "")
-    .split(/(?<=\.)\s+/)
+    .split(/(?<=\.)\s+/)   // sentence split
     .map((s) => s.trim())
     .filter(Boolean);
 
-const extractJourneyAndRecommendation = (text: string) => {
-  const journeyMatch = text?.match(
-    /Product\s*Journey\s*:\s*([\s\S]*?)(?=Recommendation\s*:|$)/i
-  );
-  const recommendationMatch = text?.match(/Recommendation\s*:\s*([\s\S]*)/i);
+const extractSections = (text: string) => {
+  const raw = (text || "").trim();
 
-  const journeyText = journeyMatch?.[1]?.trim() || "";
-  let recommendationText = recommendationMatch?.[1]?.trim() || "";
+  const getBlock = (label: string, nextLabels: string[]) => {
+    const next = nextLabels.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    const re = new RegExp(`${label}\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*(?:${next})\\s*:|$)`, "i");
+    const m = raw.match(re);
+    return (m?.[1] || "").trim();
+  };
 
-  // adsRecommendation ko recommendation ke saath attach (same as tumhara current)
-  if (adsRecommendation) recommendationText = `${recommendationText} ${adsRecommendation}`.trim();
+  const journeyText = getBlock("Product\\s*Journey", ["Recommendation", "Advertising", "Inventory"]);
+  const recText = getBlock("Recommendation", ["Advertising", "Inventory", "Product\\s*Journey"]);
+  const adsText = getBlock("Advertising", ["Inventory", "Recommendation", "Product\\s*Journey"]);
+  const invText = getBlock("Inventory", ["Advertising", "Recommendation", "Product\\s*Journey"]);
 
   return {
     journeyPoints: splitIntoPoints(journeyText),
-    recommendationPoints: splitIntoPoints(recommendationText),
+    recommendationPoints: splitIntoPoints(recText),
+    advertisingPoints: splitIntoPoints(adsText),
+    inventoryPoints: splitIntoPoints(invText),
   };
 };
 
-  const renderJourneyAndRecommendation = (text: string) => {
-    if (!text) return null;
 
-    const journeyMatch = text.match(
-      /Product\s*Journey\s*:\s*([\s\S]*?)(?=Recommendation\s*:|$)/i
-    );
 
-    const recommendationMatch = text.match(
-      /Recommendation\s*:\s*([\s\S]*)/i
-    );
+  const fmtPct = (v?: any) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
+};
 
-    const journeyText = journeyMatch?.[1]?.trim() || "";
-    let recommendationText = recommendationMatch?.[1]?.trim() || "";
+const buildMetricsForSku = (item: SkuItem) => {
+  const m: { label: string; value: string; color?: string }[] = [];
 
-    if (adsRecommendation) {
-      recommendationText += ` ${adsRecommendation}`;
-    }
+  const unit = (item as any)?.["Unit Growth"]?.value;
+  const asp = (item as any)?.["ASP Growth"]?.value;
+  const sales =
+    (item as any)?.["Sales Growth"]?.value ??
+    (item as any)?.["Net Sales Growth"]?.value;
+  const unitProfit = (item as any)?.["Profit Per Unit"]?.value;
+  const profitImpact = (item as any)?.["CM1 Profit Impact"]?.value;
 
-    const splitIntoPoints = (para: string) =>
-      para
-        .split(/(?<=\.)\s+/) // sentence split
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-    const journeyPoints = splitIntoPoints(journeyText);
-    const recommendationPoints = splitIntoPoints(recommendationText);
-
-    return (
-      <div className="space-y-4 text-sm text-charcoal-600">
-
-        {journeyPoints.length > 0 && (
-          <div>
-            <div className="font-bold mb-2">Product Journey</div>
-            <ol className="list-decimal pl-5 space-y-1">
-              {journeyPoints.map((point, idx) => (
-                <li key={idx}>{point}</li>
-              ))}
-            </ol>
-          </div>
-        )}
-
-        {recommendationPoints.length > 0 && (
-          <div>
-            <div className="font-bold mt-3 mb-2">Recommendation</div>
-            <ol className="list-decimal pl-5 space-y-1">
-              {recommendationPoints.map((point, idx) => (
-                <li key={idx}>{point}</li>
-              ))}
-            </ol>
-          </div>
-        )}
-
-      </div>
-    );
+  const push = (label: string, v: any) => {
+    if (v == null) return;
+    const pct = fmtPct(v);
+    const isNeg = String(pct).includes("-");
+    m.push({
+      label,
+      value: `(${pct})`,
+      color: isNeg ? "#FF5C5C" : "#5EA68E",
+    });
   };
+
+  push("Units", unit);
+  push("ASP", asp);
+  push("Net sales", sales);
+  push("CM1 profit per unit", unitProfit);
+  push("CM1 profit", profitImpact);
+
+  return m;
+};
+
+const buildSelectedRecFromInsight = (
+  item: SkuItem | null,
+  insightText: string,
+  productName: string
+) => {
+  const sections = extractSections(insightText || "");
+
+  return {
+    productName: productName || item?.product_name || "Details",
+    metrics: item ? buildMetricsForSku(item) : [],
+    journeyPoints: sections.journeyPoints,
+    recommendationPoints: sections.recommendationPoints,
+    advertisingPoints: sections.advertisingPoints,
+    inventoryPoints: sections.inventoryPoints,
+    showChart: true,
+  };
+};
 
 
 
@@ -598,7 +618,8 @@ const extractJourneyAndRecommendation = (text: string) => {
 
     setOverallActions(payload.overall_actions || []);
     setRecommendedActions(payload.recommended_actions_mtd || {});
-    setRemainingSkusRecommendation(payload.remaining_skus_recommendation || "");
+    setRemainingSkusBlock(payload.remaining_skus_block || payload.remaining_skus_recommendation || "");
+    setPortfolioRecommendation((payload as any).portfolio_recommendation || "");
 
     // these are in your type under objective_context
     setObjectiveContext(payload.objective_context || null);
@@ -630,6 +651,7 @@ const extractJourneyAndRecommendation = (text: string) => {
       if (saved.periods) setPeriods(saved.periods);
       if (saved.month2Label) setMonth2Label(saved.month2Label);
       if (saved.activeTab) setActiveTab(saved.activeTab);
+      if (saved.portfolioRecommendation) setPortfolioRecommendation(saved.portfolioRecommendation);
 
       if (saved.insightDate === todayKey) {
         if (saved.overallActions) setOverallActions(saved.overallActions);
@@ -704,11 +726,14 @@ const extractJourneyAndRecommendation = (text: string) => {
       const summaryBulletsFromApi = summaryObj?.metric_bullets || [];
       const adsRecommendation = res.data.ads_recommendation || "";
       const inventoryFromApi = res.data.inventory_summary || null;
-      const remainingRec = res.data.remaining_skus_recommendation || "";
+const remainingBlock =
+  res.data.remaining_skus_block || res.data.remaining_skus_recommendation || "";
 
       const actionsFromApi = res.data.overall_actions || [];
       const recommendedActionsFromApi = res.data.recommended_actions_mtd || {};
       const objectiveFromApi = res.data.objective_context || null;
+      const portfolioRecFromApi = (res.data as any).portfolio_recommendation || "";
+      setPortfolioRecommendation(portfolioRecFromApi);
       setObjectiveContext(objectiveFromApi);
 
       setSummaryText(summaryTextFromApi);
@@ -717,7 +742,7 @@ const extractJourneyAndRecommendation = (text: string) => {
       setRecommendedActions(recommendedActionsFromApi);
       setAdsRecommendation(adsRecommendation);
       setInventorySummary(inventoryFromApi);
-      setRemainingSkusRecommendation(remainingRec);
+      setRemainingSkusBlock(remainingBlock);
 
       let finalSummary = overallSummary;
       let finalActions = overallActions;
@@ -760,6 +785,7 @@ const extractJourneyAndRecommendation = (text: string) => {
         summaryText: summaryTextFromApi,
         insightDate: todayKey,
         objectiveContext: objectiveFromApi,
+        portfolioRecommendation: portfolioRecFromApi,
       });
     } catch (err: any) {
       console.error('live_mtd_bi error:', err?.response?.data || err.message);
@@ -1931,8 +1957,8 @@ const extractJourneyAndRecommendation = (text: string) => {
 
 
 
-  const parseRecommendedAction = (raw: string) => {
-  const lines = raw
+ const parseRecommendedAction = (raw: string) => {
+  const lines = (raw || "")
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
@@ -1940,18 +1966,17 @@ const extractJourneyAndRecommendation = (text: string) => {
   const productName = lines[0] || "";
 
   const metrics: { label: string; value: string; color?: string }[] = [];
-  const actions: string[] = [];
-  const insightLines: string[] = [];
-
   const metricRegex =
     /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit)\s*:\s*(.+)$/i;
+
+  // collect everything after metrics into one insightText
+  const insightParts: string[] = [];
 
   for (const line of lines.slice(1)) {
     const metricMatch = line.match(metricRegex);
     if (metricMatch) {
       const label = metricMatch[1];
       const value = metricMatch[2];
-
       metrics.push({
         label,
         value,
@@ -1959,25 +1984,64 @@ const extractJourneyAndRecommendation = (text: string) => {
       });
       continue;
     }
-
-    if (line.toLowerCase().startsWith("action:")) {
-      actions.push(line.replace(/action\s*:\s*/i, ""));
-      continue;
-    }
-
-    insightLines.push(line);
+    insightParts.push(line);
   }
 
-  const insightText = insightLines.join(" ").trim();
-  const { journeyPoints, recommendationPoints } = extractJourneyAndRecommendation(insightText);
+  const insightText = insightParts.join("\n").trim(); // keep newlines (important for sections)
+
+  const sections = extractSections(insightText);
 
   return {
     productName,
     metrics,
     insightText,
-    journeyPoints,
-    recommendationPoints,
-    actions,
+    journeyPoints: sections.journeyPoints,
+    recommendationPoints: sections.recommendationPoints,
+    advertisingPoints: sections.advertisingPoints,
+    inventoryPoints: sections.inventoryPoints,
+  };
+};
+
+const parseOtherSkusBlock = (raw: string) => {
+  const lines = (raw || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  // first line should be "Other SKUs"
+  const productName = lines[0] || "Other SKUs";
+
+  const metrics: { label: string; value: string; color?: string }[] = [];
+  const metricRegex =
+    /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit)\s*:\s*(.+)$/i;
+
+  const insightParts: string[] = [];
+
+  for (const line of lines.slice(1)) {
+    const metricMatch = line.match(metricRegex);
+    if (metricMatch) {
+      const label = metricMatch[1];
+      const value = metricMatch[2];
+      metrics.push({
+        label,
+        value,
+        color: value.includes("-") ? "#FF5C5C" : "#5EA68E",
+      });
+      continue;
+    }
+    insightParts.push(line);
+  }
+
+  const insightText = insightParts.join("\n").trim();
+  const sections = extractSections(insightText);
+
+  return {
+    productName,
+    metrics,
+    journeyPoints: sections.journeyPoints,
+    recommendationPoints: sections.recommendationPoints,
+    advertisingPoints: sections.advertisingPoints,
+    inventoryPoints: sections.inventoryPoints,
   };
 };
 
@@ -2309,12 +2373,27 @@ const extractJourneyAndRecommendation = (text: string) => {
         <button
           className="font-semibold underline"
           onClick={() => {
-            setSelectedSku(entry[0]);
-            setModalOpen(true);
-            setFbType(null);
-            setFbText('');
-            setFbSuccess(false);
-          }}
+  setFbType(null);
+  setFbText('');
+  setFbSuccess(false);
+
+  setSelectedSku(entry[0]);      // optional (agar feedback etc chahiye)
+  setSelectedSkuItem(item);      // ✅ store clicked row
+
+  const insightData =
+    skuInsights[entry[0] as keyof typeof skuInsights] ||
+    getInsightByProductName(item.product_name)?.[1];
+
+  const insightText = insightData?.insight || "";
+  const prodName = insightData?.product_name || item.product_name || "";
+
+  // ✅ Open SAME "Detailed View" drawer
+  setSelectedRec(buildSelectedRecFromInsight(item, insightText, prodName));
+  setRecDrawerOpen(true);
+
+  // ❌ do NOT open old AI drawer
+  // setModalOpen(true);
+}}
         >
           View Insights
         </button>
@@ -2832,25 +2911,36 @@ const extractJourneyAndRecommendation = (text: string) => {
   )}
 
   {/* 2) Business Summary */}
-  {(summaryText || overallSummary.length > 0) && (
-    <div className="bg-white border border-[#D9D9D9] rounded-xl sm:p-5 shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
-      <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
+{(summaryText || overallSummary.length > 0 || portfolioRecommendation) && (
+  <div className="bg-white border border-[#D9D9D9] rounded-xl sm:p-5 shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
+    <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
 
-      {summaryMetricPoints.length > 0 && (
-        <ul className="list-disc pl-5 space-y-1 pt-2">
-          {summaryMetricPoints.map((line, idx) => (
-            <li key={idx}>{formatBulletLine(line)}</li>
-          ))}
-        </ul>
-      )}
+    {summaryMetricPoints.length > 0 && (
+      <ul className="list-disc pl-5 space-y-1 pt-2">
+        {summaryMetricPoints.map((line, idx) => (
+          <li key={idx}>{formatBulletLine(line)}</li>
+        ))}
+      </ul>
+    )}
 
-      {summaryText && (
-        <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
-          {summaryText}
+    {summaryText && (
+      <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 italic border-l-2 border-slate-300 pl-3">
+        {summaryText}
+      </div>
+    )}
+
+    {portfolioRecommendation && (
+      <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
+        <div className="text-xs font-semibold text-slate-700 mb-1">
+          Portfolio Recommendation
         </div>
-      )}
-    </div>
-  )}
+        <div className="text-xs 2xl:text-sm text-charcoal-600 leading-relaxed">
+          {portfolioRecommendation}
+        </div>
+      </div>
+    )}
+  </div>
+)}
 
   {/* 3) Recommended Actions (cards) */}
   {recommendedActions && Object.keys(recommendedActions).length > 0 && (
@@ -2860,7 +2950,7 @@ const extractJourneyAndRecommendation = (text: string) => {
       <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {Object.entries(recommendedActions).map(([_, text], idx) => {
           const parsed = parseRecommendedAction(text);
-          const { recommendationPoints } = extractJourneyAndRecommendation(parsed.insightText || "");
+          const recommendationPoints = parsed.recommendationPoints; // ✅ FIX
 
           const borderColor = topBorderColors[idx % topBorderColors.length];
 
@@ -2885,15 +2975,17 @@ const extractJourneyAndRecommendation = (text: string) => {
                   type="button"
                   onClick={() => {
                     setSelectedRec({
-                      productName: parsed.productName,
-                      metrics: parsed.metrics,
-                      journeyPoints: parsed.journeyPoints,
-                      recommendationPoints: parsed.recommendationPoints,
-                      actions: parsed.actions || [],
-                    });
+  productName: parsed.productName,
+  metrics: parsed.metrics,
+  journeyPoints: parsed.journeyPoints,
+  recommendationPoints: parsed.recommendationPoints,
+  advertisingPoints: parsed.advertisingPoints,
+  inventoryPoints: parsed.inventoryPoints,
+  showChart: true,
+});
                     setRecDrawerOpen(true);
                   }}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-700 transition whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-[#F8EDCE] hover:bg-slate-700 transition whitespace-nowrap"
                 >
                   Detailed View
                 </button>
@@ -2945,8 +3037,90 @@ const extractJourneyAndRecommendation = (text: string) => {
   </div>
 )}
             </motion.div>
-          );
+          )
         })}
+        {remainingSkusBlock?.trim() && (() => {
+  const parsedOther = parseOtherSkusBlock(remainingSkusBlock);
+
+  return (
+    <motion.div
+      key="other-skus-card"
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.06 * Object.keys(recommendedActions).length }}
+      className={[
+        "bg-white rounded-xl border border-[#D9D9D9] shadow-sm hover:shadow-md transition-shadow",
+        "border-t-4",
+        "p-3 space-y-3",
+        // topBorderColors[Object.keys(recommendedActions).length % topBorderColors.length],
+      ].join(" ")}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-sm font-semibold text-slate-800 line-clamp-2">
+          {Object.keys(recommendedActions).length + 1}. {parsedOther.productName}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedRec({
+              productName: parsedOther.productName,
+              metrics: parsedOther.metrics,                // ✅ NOW SHOW METRICS
+              journeyPoints: parsedOther.journeyPoints,    // ✅ BACKEND JOURNEY
+              recommendationPoints: parsedOther.recommendationPoints, // ✅ BACKEND RECO
+              advertisingPoints: parsedOther.advertisingPoints,
+              inventoryPoints: parsedOther.inventoryPoints,
+              showChart: false, // ✅ other skus me chart nahi
+            });
+            setRecDrawerOpen(true);
+          }}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-[#F8EDCE] hover:bg-slate-700 transition whitespace-nowrap"
+        >
+          Detailed View
+        </button>
+      </div>
+
+      {/* ✅ Metrics preview (same UI as other cards) */}
+      {parsedOther.metrics?.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {parsedOther.metrics.map((m, i) => (
+            <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0">
+              <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
+                {m.label}
+              </div>
+
+              <div className="mt-1 flex items-baseline gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
+                {(() => {
+                  const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
+                  const mainValue = match?.[1]?.trim() || m.value;
+                  const percentPart = match?.[2] || "";
+                  const isNegative = percentPart.includes("-");
+                  const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
+
+                  return (
+                    <>
+                      <span className="text-slate-900 truncate">{mainValue}</span>
+                      {percentPart && <span style={{ color: percentColor }}>{percentPart}</span>}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ✅ Recommendation preview line */}
+      <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+        <div className="line-clamp-2">
+          {parsedOther.recommendationPoints?.[0] ||
+            remainingSkusBlock.split("\n").filter(Boolean)[0] ||
+            "—"}
+        </div>
+      </div>
+    </motion.div>
+  );
+})()}
       </div>
     </div>
   )}
@@ -2978,62 +3152,104 @@ const extractJourneyAndRecommendation = (text: string) => {
           <div>
             <div className="mt-4 rounded-xl border bg-white p-4 sm:p-5 p-5 shadow-sm">
 
-              <div className="flex flex-col 2xl:flex-row gap-4  xl:items-left xl:justify-between">
-                {/* <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" /> */}
-                <div className="flex flex-wrap items-baseline gap-2 font-bold ">
+          <div className="flex flex-col gap-4">
+  {/* MOBILE HEADER */}
+  <div className="flex items-center justify-between xl:hidden">
+    <PageBreadcrumb
+      pageTitle="SKU Analysis MTD"
+      variant="page"
+      align="left"
+    />
 
-                  <PageBreadcrumb
-                    pageTitle={`SKU Analysis MTD`}
-                    variant="page"
-                    align="left"
-                  />
+    <div className="flex items-center gap-2">
+      <AiButton
+        onClick={analyzeSkus}
+        disabled={
+          !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
+            (k) =>
+              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
+          )
+        }
+      >
+        {loadingInsight ? "Generating..." : "AI Insights"}
+      </AiButton>
 
-                </div>
+      <DownloadIconButton
+        onClick={() => {
+          if (!userData) {
+            setError("User profile not loaded yet. Please try again.");
+            return;
+          }
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-between">
-                  <SegmentedToggle<TabKey>
-                    value={activeTab}
-                    options={tabOptions}
-                    onChange={handleTabChange}
-                    className="bg-white"
-                    textSizeClass="text-xs 2xl:text-sm"
-                  />
+          const prevShortName = prevShort || "Prev";
+          const currShortName = currShort || "Curr";
+          const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
+          const allRows = getAllSkusForExport();
+          exportToExcel(allRows, file);
+        }}
+        className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+      />
+    </div>
+  </div>
 
+  {/* MOBILE TABS */}
+  <div className="xl:hidden">
+    <SegmentedToggle<TabKey>
+      value={activeTab}
+      options={tabOptions}
+      onChange={handleTabChange}
+      className="bg-white"
+      textSizeClass="text-xs 2xl:text-sm"
+    />
+  </div>
 
-                  <div className="flex gap-3">
+  {/* DESKTOP HEADER */}
+  <div className="hidden xl:flex xl:items-center xl:justify-between xl:gap-6">
+    <PageBreadcrumb
+      pageTitle="SKU Analysis MTD"
+      variant="page"
+      align="left"
+    />
 
+    <div className="flex items-center gap-3">
+      <SegmentedToggle<TabKey>
+        value={activeTab}
+        options={tabOptions}
+        onChange={handleTabChange}
+        className="bg-white"
+        textSizeClass="text-xs 2xl:text-sm"
+      />
 
-                    <AiButton onClick={analyzeSkus}
-                      disabled={
-                        !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
-                          (k) =>
-                            (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
-                        )
-                      } >  {loadingInsight ? "Generating..." : "AI Insights"}</AiButton>
+      <AiButton
+        onClick={analyzeSkus}
+        disabled={
+          !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
+            (k) =>
+              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
+          )
+        }
+      >
+        {loadingInsight ? "Generating..." : "AI Insights"}
+      </AiButton>
 
+      <DownloadIconButton
+        onClick={() => {
+          if (!userData) {
+            setError("User profile not loaded yet. Please try again.");
+            return;
+          }
 
-
-
-                    <DownloadIconButton
-                      onClick={() => {
-                        if (!userData) {
-                          // optionally show toast instead of return
-                          setError("User profile not loaded yet. Please try again.");
-                          return;
-                        }
-
-                        const prevShortName = prevShort || "Prev";
-                        const currShortName = currShort || "Curr";
-                        const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
-                        const allRows = getAllSkusForExport();
-                        exportToExcel(allRows, file);
-                      }}
-                      className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                    />
-
-                  </div>
-                </div>
-              </div>
+          const prevShortName = prevShort || "Prev";
+          const currShortName = currShort || "Curr";
+          const file = `AllSKUs-${prevShortName}vs${currShortName}.xlsx`;
+          const allRows = getAllSkusForExport();
+          exportToExcel(allRows, file);
+        }}
+        className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+      />
+    </div>
+  </div>
+</div>
 
               {hasAnySkus ? (
                 <div className="pt-6">
@@ -3176,86 +3392,52 @@ const extractJourneyAndRecommendation = (text: string) => {
       </div>
 
       {/* 3) Recommendation */}
+{/* 3) Recommendation */}
 <div className="">
   <div className="text-sm font-semibold text-charcoal-700 mb-3">
     Recommendation
   </div>
 
   {selectedRec?.recommendationPoints?.length ? (
-    <div className="space-y-4 text-xs 2xl:text-sm text-charcoal-600">
-
-      {(() => {
-        const general: string[] = [];
-        const advertising: string[] = [];
-        const inventory: string[] = [];
-
-        selectedRec.recommendationPoints.forEach((p) => {
-          const lower = p.toLowerCase();
-          if (lower.includes("advertising")) advertising.push(p);
-          else if (lower.includes("inventory")) inventory.push(p);
-          else general.push(p);
-        });
-
-        return (
-          <>
-            {/* General Actions */}
-            {general.length > 0 && (
-              <div>
-               <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
-                <ul className="list-disc pl-5 space-y-1">
-                  {general.map((p, i) => <li key={i}>{p}</li>)}
-                </ul>
-              </div>
-            )}
-
-            {/* Advertising */}
-            {advertising.length > 0 && (
-              <div>
-                <div className="text-xs font-semibold text-purple-900 mb-1 flex items-center gap-1">
-      📢 Advertising
-    </div>
-                <ul className="list-disc pl-5 space-y-1">
-                  {advertising.map((p, i) => (
-                    <li key={i}>{p.replace(/advertising\s*:\s*/i, "")}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Inventory */}
-            {inventory.length > 0 && (
-              <div>
-                <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
-                <ul className="list-disc pl-5 space-y-1">
-                  {inventory.map((p, i) => (
-                    <li key={i}>{p.replace(/inventory\s*:\s*/i, "")}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </>
-        );
-      })()}
+    <div>
+      <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
+      <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
+        {selectedRec.recommendationPoints.map((p, i) => <li key={i}>{p}</li>)}
+      </ul>
     </div>
   ) : (
     <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
   )}
+
+  {selectedRec?.advertisingPoints?.length ? (
+    <div className="mt-4">
+      <div className="text-xs font-semibold text-purple-900 mb-1">📢 Advertising</div>
+      <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
+        {selectedRec.advertisingPoints.map((p, i) => <li key={i}>{p}</li>)}
+      </ul>
+    </div>
+  ) : null}
+
+  {selectedRec?.inventoryPoints?.length ? (
+    <div className="mt-4">
+      <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
+      <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
+        {selectedRec.inventoryPoints.map((p, i) => <li key={i}>{p}</li>)}
+      </ul>
+    </div>
+  ) : null}
 </div>
 
 {/* 3.5) Product Chart (same as AI drawer) */}
-{selectedRec?.productName && (
-  
-    
-
-    <div className="w-full overflow-hidden rounded-lg border border-slate-200 p-3 bg-white">
-      {/* same functionality as other drawer */}
-      <div className="w-full">
-        <Productinfoinpopup
-          productname={selectedRec.productName}
-          countryName={countryName}
-        />
-      </div>
+{selectedRec?.showChart && selectedRec?.productName && (
+  <div className="w-full overflow-hidden rounded-lg border border-slate-200 p-3 bg-white">
+    <div className="w-full">
+      <Productinfoinpopup
+        productname={selectedRec.productName}
+        countryName={countryName}
+      />
     </div>
+  </div>
 )}
 
       {/* 4) Product Journey */}
@@ -3291,64 +3473,6 @@ const extractJourneyAndRecommendation = (text: string) => {
     </div>
   </div>
 </Drawer>
-
-      {(() => {
-        if (!modalOpen || !selectedSku) return null;
-
-        const insightData =
-          skuInsights[selectedSku as keyof typeof skuInsights] ||
-          getInsightByProductName(selectedSku as string)?.[1];
-
-        if (!insightData) return null;
-
-        return (
-          <Drawer
-            anchor="right"
-            open={modalOpen}
-            onClose={() => setModalOpen(false)}
-            PaperProps={{
-              sx: {
-                width: { xs: '100vw', sm: '80vw', md: '60vw', lg: '50vw' },
-                maxWidth: 900,
-                padding: 2,
-              },
-            }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 8,
-                }}
-              >
-                <h2 style={{ margin: 0, fontSize: 18 }}>
-                  AI Insight for{' '}
-                  <span style={{ color: '#60a68e' }}>
-                    {insightData.product_name || selectedSku}
-                  </span>
-                </h2>
-
-                <IconButton size="small" onClick={() => setModalOpen(false)} aria-label="Close">
-                  x
-                </IconButton>
-              </div>
-
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-                <Productinfoinpopup
-                  productname={insightData.product_name}
-                  countryName={countryName}   // ✅ PASS COUNTRY
-                />
-              </div>
-
-              <div style={{ flex: 1, overflowY: 'auto', marginTop: 8, paddingRight: 4 }}>
-                {renderFormattedInsight(insightData.insight)}
-              </div>
-            </div>
-          </Drawer>
-        );
-      })()}
     </>
   );
 };

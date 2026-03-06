@@ -64,7 +64,7 @@ export default function SuperAdminDashboardPage() {
         }
 
         const response = await fetch(
-          "http://127.0.0.1:5000/superadmin/dashboard?authenticated_user=superadmin",
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard?authenticated_user=superadmin`,
           {
             method: "GET",
             headers: {
@@ -114,7 +114,7 @@ export default function SuperAdminDashboardPage() {
     try {
       if (token) {
         await toast.promise(
-          fetch("http://127.0.0.1:5000/superadmin_logout", {
+          fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin_logout`, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` },
           }),
@@ -151,7 +151,7 @@ export default function SuperAdminDashboardPage() {
       }
 
       const response = await fetch(
-        `http://127.0.0.1:5000/superadmin/dashboard?email=${encodeURIComponent(emailInput)}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard?email=${encodeURIComponent(emailInput)}`,
         {
           method: "GET",
           headers: {

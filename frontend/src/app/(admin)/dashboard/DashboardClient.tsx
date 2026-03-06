@@ -791,7 +791,7 @@ function RangePicker({
 
         const rangeDays =
             end.getTime() >= start.getTime()
-                ? Math.round((end.getTime() - start.getTime()) / MS_PER_DAY) + 1 // ✅ inclusive
+                ? Math.round((end.getTime() - start.getTime()) / MS_PER_DAY) + 1
                 : 0;
 
         const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
@@ -803,11 +803,31 @@ function RangePicker({
     const [pendingStartDay, setPendingStartDay] = useState<number | null>(null);
     const [pendingEndDay, setPendingEndDay] = useState<number | null>(null);
 
+    // added: store real selected dates locally
+    const [pendingStartDate, setPendingStartDate] = useState<Date | null>(null);
+    const [pendingEndDate, setPendingEndDate] = useState<Date | null>(null);
+
     const [rangeCompletedPct, setRangeCompletedPct] = useState(0);
     const [rangeDays, setRangeDays] = useState(0);
     const [daysInMonth, setDaysInMonth] = useState(0);
 
     const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+    const formatRangeLabel = (startDate: Date | null, endDate: Date | null) => {
+        if (!startDate || !endDate) return "Select Date Range";
+
+        const startMonth = startDate.toLocaleString("en-US", { month: "short" });
+        const endMonth = endDate.toLocaleString("en-US", { month: "short" });
+
+        if (
+            startDate.getFullYear() === endDate.getFullYear() &&
+            startDate.getMonth() === endDate.getMonth()
+        ) {
+            return `${startMonth} ${startDate.getDate()}-${endDate.getDate()}`;
+        }
+
+        return `${startMonth} ${startDate.getDate()} - ${endMonth} ${endDate.getDate()}`;
+    };
 
     useEffect(() => {
         if (!showCalendar) return;
@@ -821,6 +841,8 @@ function RangePicker({
                 setCalendarRange([{ startDate: null, endDate: null, key: "selection" }]);
                 setPendingStartDay(null);
                 setPendingEndDay(null);
+                setPendingStartDate(null);
+                setPendingEndDate(null);
                 onCloseReset();
             }
         };
@@ -837,29 +859,18 @@ function RangePicker({
         return () => window.removeEventListener("keydown", onKey);
     }, [isMtdPlExpanded]);
 
-    // const handleCalendarChange = (ranges: any) => {
-    //     const range = ranges.selection;
-    //     setCalendarRange([range]);
-
-    //     if (range.startDate && range.endDate) {
-    //         setPendingStartDay(range.startDate.getDate());
-    //         setPendingEndDay(range.endDate.getDate());
-    //     } else {
-    //         setPendingStartDay(null);
-    //         setPendingEndDay(null);
-    //     }
-    // };
-
     const handleCalendarChange = (ranges: any) => {
         const range = ranges.selection;
         setCalendarRange([range]);
 
         if (range.startDate && range.endDate) {
-            // ✅ keep your existing day fields
             setPendingStartDay(range.startDate.getDate());
             setPendingEndDay(range.endDate.getDate());
 
-            // ✅ compute "10/28" style progress
+            // added
+            setPendingStartDate(range.startDate);
+            setPendingEndDate(range.endDate);
+
             const { rangeDays, daysInMonth, rangeCompletedPct } = calcRangeCompleted(
                 range.startDate,
                 range.endDate,
@@ -873,6 +884,8 @@ function RangePicker({
         } else {
             setPendingStartDay(null);
             setPendingEndDay(null);
+            setPendingStartDate(null);
+            setPendingEndDate(null);
 
             setRangeDays(0);
             setDaysInMonth(0);
@@ -889,6 +902,8 @@ function RangePicker({
         setCalendarRange([{ startDate: null, endDate: null, key: "selection" }]);
         setPendingStartDay(null);
         setPendingEndDay(null);
+        setPendingStartDate(null);
+        setPendingEndDate(null);
         onClear();
     };
 
@@ -896,12 +911,13 @@ function RangePicker({
         setCalendarRange([{ startDate: null, endDate: null, key: "selection" }]);
         setPendingStartDay(null);
         setPendingEndDay(null);
+        setPendingStartDate(null);
+        setPendingEndDate(null);
         setShowCalendar(false);
         onCloseReset();
     };
 
     return (
-        // ✅ attach the ref here
         <div ref={wrapperRef} className="relative">
             <button
                 type="button"
@@ -915,9 +931,7 @@ function RangePicker({
                 }}
             >
                 <FaCalendarAlt className="text-sm 2xl:text-md" />
-                {selectedStartDay && selectedEndDay
-                    ? `Day ${selectedStartDay} – ${selectedEndDay}`
-                    : "Select Date Range"}
+                {formatRangeLabel(pendingStartDate, pendingEndDate)}
             </button>
 
             {showCalendar && (
@@ -949,10 +963,10 @@ function RangePicker({
                     />
 
                     <style jsx global>{`
-            .rdrNextPrevButton {
-              display: none !important;
-            }
-          `}</style>
+                        .rdrNextPrevButton {
+                            display: none !important;
+                        }
+                    `}</style>
 
                     <div className="flex justify-between mt-2 gap-2">
                         <button
@@ -3223,7 +3237,7 @@ export default function DashboardPage() {
             //         Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
             //     </>
             // ), 
-            
+
             label: "Net Sales",
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
             align: "center" as const
@@ -3736,10 +3750,11 @@ export default function DashboardPage() {
             item.sku === "GRAND_TOTAL"
     );
 
+    console.log("Grand Total Row:", grandTotalRow);
 
+    const ads_spend = grandTotalRow?.ads_spend ?? 0;
     const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
     const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
-
 
 
     const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
@@ -3749,15 +3764,16 @@ export default function DashboardPage() {
     const dealVouchers = grandTotalRow?.dealsvouchar_ads ?? 0;
 
 
-    const adsSpendTotal = Math.abs(
-        toNumber(sponsoredProductsSpend + sponsoredBrandSpend)
-    );
-    const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
-
-
     const costOfAds = Math.abs(
         toNumber(sponsoredBrandSpend - dealVouchers)
     );
+
+    const adsSpendTotal = Math.abs(
+        toNumber(ads_spend + costOfAds)
+    );
+
+
+    const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
 
 
 
@@ -3790,11 +3806,6 @@ export default function DashboardPage() {
         const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
     }, [reimbursementForSummary, plSummaryTotals.net_sales, stats_mtdHome]);
-
-
-    console.log("cm2Profit ", cm2Profit)
-    console.log("adsSpend ", adsSpendTotal)
-    console.log("cm2Margins ", cm2MarginPctForSummary)
 
 
     const { todayDay: statsTodayDay } = getISTDayInfo();
@@ -4186,10 +4197,15 @@ export default function DashboardPage() {
             </div> */}
 
             {activeTab === "live" && (
-                <div id="live-sales" className="grid grid-cols-12 gap-4 lg:gap-4 2xl:gap-4 items-stretch scroll-mt-[80px] mt-2 md:mt-4">
+                <div
+    id="live-sales"
+    className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-stretch auto-rows-fr"
+  >
+    {/* LEFT COLUMN */}
+    <div
+      className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-full min-h-full ${leftColumnHeightClass ?? ""}`}
+    >
 
-                    {/* LEFT COLUMN */}
-                    <div className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 lg:gap-4 2xl:gap-4 ${leftColumnHeightClass}`}>
 
                         {/* GLOBAL CARD */}
                         {!isCountryMode && hasGlobalCard && (
@@ -4898,59 +4914,54 @@ export default function DashboardPage() {
                     </div>
 
                     {/* RIGHT COLUMN – Sales Target */}
-                    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex flex-col gap-4 lg:gap-4 2xl:gap-4 h-full">
-                        <div className="w-full">
-                            <SalesTargetStatsCard
-                                regions={regions}
-                                value={targetRegion}
-                                onChange={setTargetRegion}
-                                hideTabs={isCountryMode}
-                                homeCurrency={displayCurrency}
-                                formatHomeK={formatDisplayK}
+                   <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-full min-h-full self-stretch">
+  <div className="h-full grid grid-rows-[auto_minmax(0,1fr)] gap-4">
+    {/* Top card = only as tall as content */}
+    <div className="w-full self-start">
+      <SalesTargetStatsCard
+        regions={regions}
+        value={targetRegion}
+        onChange={setTargetRegion}
+        hideTabs={isCountryMode}
+        homeCurrency={displayCurrency}
+        formatHomeK={formatDisplayK}
+        todayHome={targets_todayHome}
+        mtdHome={targets_mtdHome}
+        targetHome={stats_targetHome}
+        lastMonthTotalHome={targets_lastMonthTotalHome}
+        salesTrendPct={stats_salesTrendPct}
+        targetTrendPct={stats_targetTrendPct}
+        currentReimbursement={targets_reimbursement.current}
+        previousReimbursement={targets_reimbursement.previous}
+        biAlignedTotals={biAlignedTotalsHome}
+        biEnabled={biCardsReady}
+      />
+    </div>
 
-                                // ✅ Replace these:
-                                todayHome={targets_todayHome}
-                                mtdHome={targets_mtdHome}
-                                targetHome={stats_targetHome}
-                                lastMonthTotalHome={targets_lastMonthTotalHome}
-
-                                salesTrendPct={stats_salesTrendPct}
-                                targetTrendPct={stats_targetTrendPct}
-
-                                // ✅ Replace these:
-                                currentReimbursement={targets_reimbursement.current}
-                                previousReimbursement={targets_reimbursement.previous}
-                                biAlignedTotals={biAlignedTotalsHome}
-                                biEnabled={biCardsReady}
-                            />
-                        </div>
-
-                        <div className="w-full lg:sticky lg:top-4 2xl:top-6">
-
-                            <SalesTargetCard
-                                data={targetData}
-                                homeCurrency={displayCurrency}
-                                convertToHomeCurrency={identityConvert}
-                                formatHomeK={formatDisplayK}
-
-                                // ✅ Replace these:
-                                todaySales={targets_todayHome}                 // or keep todaySalesRaw if you want "today" not "range"
-                                targetHome={stats_targetHome}
-                                mtdHome={targets_mtdHome}
-                                lastMonthTotalHome={targets_lastMonthTotalHome}
-                                lastMonthToDateHome={targets_lastMonthToDateHome}
-
-                                currentReimbursement={targets_reimbursement.current}
-                                previousReimbursement={targets_reimbursement.previous}
-
-                                biAlignedTotals={biAlignedTotalsHome}
-                                biEnabled={biCardsReady}
-                                periodCompletedPct={rangeCompletedPct}
-                                periodCompletedLabel="Range"
-
-                            />
-                        </div>
-                    </aside>
+    {/* Bottom card = fills remaining height */}
+    <div className="w-full min-h-0">
+      <div className="h-full lg:sticky lg:top-4 2xl:top-6">
+        <SalesTargetCard
+          data={targetData}
+          homeCurrency={displayCurrency}
+          convertToHomeCurrency={identityConvert}
+          formatHomeK={formatDisplayK}
+          todaySales={targets_todayHome}
+          targetHome={stats_targetHome}
+          mtdHome={targets_mtdHome}
+          lastMonthTotalHome={targets_lastMonthTotalHome}
+          lastMonthToDateHome={targets_lastMonthToDateHome}
+          currentReimbursement={targets_reimbursement.current}
+          previousReimbursement={targets_reimbursement.previous}
+          biAlignedTotals={biAlignedTotalsHome}
+          biEnabled={biCardsReady}
+          periodCompletedPct={rangeCompletedPct}
+          periodCompletedLabel="Range"
+        />
+      </div>
+    </div>
+  </div>
+</aside>
                 </div >
 
             )}
@@ -4978,47 +4989,6 @@ export default function DashboardPage() {
                 )
             }
 
-
-
-            {/* ✅ Global-only Performance Trend BELOW top section */}
-            {/* {
-                platform === "global" && showLiveBI && (
-                    // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
-                    <div
-                        id="targets-action-items"
-                        className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
-                    >
-                        <div className="w-full max-w-full min-w-0">
-                            <LiveBiLineGraph
-                                dailySeries={biDailySeriesHome}
-                                periods={biPeriods}
-                                loading={biLoading}
-                                error={biError}
-                                selectedStartDay={selectedStartDay}
-                                selectedEndDay={selectedEndDay}
-                                currencySymbol={currencySymbol}
-                            />
-                        </div>
-                    </div>
-                )
-            } */}
-
-            {/* 
-            <div id="targets-action-items" className="w-full overflow-x-hidden scroll-mt-[80px]">
-                {showLiveBI && liveBiPayload && (
-                    <LiveBusinessClient
-                        countryName={countryName}
-                        ranged="MTD"
-                        month={(currMonthName || "").toLowerCase()}
-                        year={String(currYear)}
-                        initialData={liveBiPayload}
-                        disableAutoFetch
-                        onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
-                    />
-                )}
-            </div> */}
-
-
             {activeTab === "summary" && (
                 <div className="w-full overflow-x-hidden">
                     {showLiveBI && liveBiPayload && (
@@ -5035,154 +5005,6 @@ export default function DashboardPage() {
                 </div>
             )}
 
-
-
-            {/* Lower P&L Graph and Inventory */}
-            {/* { hasAnyGraphData && ( */}
-            {/* {activeTab === "mtd_pl" && hasAnyGraphData && (
-                <>
-                    <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
-                        <div
-                            className={[
-                                "grid grid-cols-1 gap-4 items-stretch",
-                                isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
-                            ].join(" ")}
-                        >
-                            <div className="rounded-2xl border bg-white p-5 shadow-sm min-w-0">
-                                <div className="md:mb-3 flex items-center justify-between">
-                                    <div className="text-sm text-charcoal-500">
-                                        <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
-                                            <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-3">
-                                        
-                                        {!isCountryMode && (
-                                            <>
-                                                <SegmentedToggle<RegionKey>
-                                                    value={graphRegion}
-                                                    options={graphRegions.map((r) => ({ value: r }))}
-                                                    onChange={setGraphRegion}
-                                                />
-                                                
-                                            </>
-                                        )}
-                                        <span className="relative group shrink-0">
-                                            <button
-                                                type="button"
-                                                className="
-      rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md
-    "
-                                                onClick={() => setIsMtdPlExpanded((s) => !s)}
-                                                aria-label={isMtdPlExpanded ? "Collapse chart" : "Expand chart"}
-                                            >
-                                                {isMtdPlExpanded ? (
-                                                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                                                ) : (
-                                                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                                                )}
-                                            </button>
-
-                                          
-                                            <span
-                                                className="
-      pointer-events-none
-      absolute
-      left-1/2
-      -translate-x-1/2
-      -top-9
-      z-50
-      whitespace-nowrap
-      rounded-md
-      border
-      border-gray-200
-      bg-white
-      px-2
-      py-1
-      text-[11px]
-      font-medium
-      text-[#414042]
-      shadow-sm
-      opacity-0
-      transition-opacity
-      duration-150
-      group-hover:opacity-100
-    "
-                                            >
-                                                {isMtdPlExpanded ? "Collapse" : "Expand"}
-                                                <span
-                                                    className="
-        absolute
-        left-1/2
-        top-full
-        h-2
-        w-2
-        -translate-x-1/2
-        -translate-y-1/2
-        rotate-45
-        border-r
-        border-b
-        border-gray-200
-        bg-white
-      "
-                                                />
-                                            </span>
-                                        </span>
-
-
-                                    </div>
-                                </div>
-
-
-                                <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
-                                    <div className="w-full max-w-full min-w-0 h-full">
-                                        <DashboardBargraphCard
-                                            countryName={countryNameForGraph}
-                                            formattedMonthYear={formattedMonthYear}
-                                            currencySymbol={currencySymbol}
-                                            labels={labels}
-                                            values={valuesPatched}
-                                            prevValues={prevValues}
-                                            expanded={isMtdPlExpanded}
-                                            colors={colors}
-                                            loading={loading}
-                                            allValuesZero={allValuesZero}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {!isMtdPlExpanded && (
-                                <div className="min-w-0 h-full flex flex-col">
-                                    <Cm1ProfitBreakdownPie
-                                        title="CM1 Profit Breakdown"
-                                        data={cm1ProfitPieData}
-                                        currency={displayCurrency}
-                                        height={320}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-
-
-                </>
-            )
-            } */}
 
             {activeTab === "productwise" && (
                 <>
@@ -5436,15 +5258,11 @@ export default function DashboardPage() {
                             </div>
                         )}
 
-
-
-
-
                     </div>
                     <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
                         <div
                             className={[
-                                "grid grid-cols-1 gap-4 items-stretch",
+                                "grid grid-cols-1 gap-4 items-start min-[1700px]:items-stretch",
                                 isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
                             ].join(" ")}
                         >

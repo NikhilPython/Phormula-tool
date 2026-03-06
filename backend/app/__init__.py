@@ -62,7 +62,6 @@ def create_app():
     from app.routes.admin_routes import admin_bp
     from app.routes.admin_dashboard_routes import admin_dashboard_bp
     from app.routes.superadmin_dashboard_routes import superadmin_dashboard_bp
-    from app.routes.improvement_routes import improvement_bp
     from app.routes.business_intelligence import business_intelligence_bp
     from app.routes.shopify_routes import shopify_bp
     from app.routes.pie_chart_routes import pie_chart_bp
@@ -77,10 +76,8 @@ def create_app():
     from app.routes.inventory_routes import inventory_bp
     from app.routes.conversion_rate_routes import conversion_bp
     from app.routes.amazon_sales_api_routes import amazon_sales_api_bp
-    # from app.routes.amazon_live_api_routes import amazon_live_api_bp
     from app.routes.live_data_bi_routes import live_data_bi_bp
     from app.routes.monthwise_ai_summary_routes import summary_bp
-    from app.routes.monthwise_ai_summary_routes import objective_bp
     from app.routes.advertisement_api_routes import advertisement_api_routes_bp
     from app.routes.member_auth import member_auth_bp
     from app.routes.inventory_breakup_routes import inventory_breakup_bp 
@@ -100,7 +97,6 @@ def create_app():
     app.register_blueprint(superadmin_dashboard_bp)
     app.register_blueprint(business_intelligence_bp)
     app.register_blueprint(shopify_bp)
-    app.register_blueprint(improvement_bp)
     app.register_blueprint(add_member_bp)
     app.register_blueprint(amazon_api_bp)
     app.register_blueprint(skuwise_bp)
@@ -111,10 +107,8 @@ def create_app():
     app.register_blueprint(inventory_bp)
     app.register_blueprint(conversion_bp)
     app.register_blueprint(amazon_sales_api_bp)
-    # app.register_blueprint(amazon_live_api_bp)
     app.register_blueprint(live_data_bi_bp)
     app.register_blueprint(summary_bp)
-    app.register_blueprint(objective_bp)
     app.register_blueprint(advertisement_api_routes_bp)
     app.register_blueprint(member_auth_bp)
     app.register_blueprint(inventory_breakup_bp)

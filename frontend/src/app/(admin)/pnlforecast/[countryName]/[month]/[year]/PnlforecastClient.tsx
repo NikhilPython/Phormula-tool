@@ -14,6 +14,7 @@ import { IoDownload } from "react-icons/io5";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import { useRef } from "react";
+import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 
 
 
@@ -954,13 +955,8 @@ const Pnlforecast: React.FC = () => {
         <button
           onClick={() => exportTableToExcel()}
           disabled={isDemoMode}
-          className={`bg-white border border-[#8B8585] px-1 rounded-sm ${isDemoMode ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-          style={{
-            boxShadow: "0px 4px 4px 0px #00000040",
-          }}
         >
-          <IoDownload size={27} />
+          <DownloadIconButton />
         </button>
       </div>
 
@@ -971,7 +967,7 @@ const Pnlforecast: React.FC = () => {
       )}
 
       {data && chartData.length > 0 && (
-        <div className='border border-[#414042] rounded-sm bg-white'>
+        <div className=' rounded-xl shadow-sm bg-white p-4'>
           <PnlForecastChart
             ref={chartRef}
             chartData={chartData}
@@ -984,7 +980,7 @@ const Pnlforecast: React.FC = () => {
       )}
       {data && (
         <div>
-          <div className="overflow-x-auto rounded-sm">
+          <div className="overflow-x-auto rounded-xl shadow-sm bg-white p-4">
             <GroupedCollapsibleTables<RowData>
               rows={[
                 ...(normalizedProductRows || []),

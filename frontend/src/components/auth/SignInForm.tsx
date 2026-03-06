@@ -59,6 +59,24 @@ export default function SignInForm() {
     router.replace(`/live-dashboard/${country}/${currentMonth}/${currentYear}`);
   };
 
+  const fetchCurrencyRate = async (token: string) => {
+  try {
+    await fetch(`${API_BASE}/currency-rate`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        auto_seed_current_month: true,
+        seed_only: true,
+      }),
+    });
+  } catch (error) {
+    console.warn("Currency rate fetch failed:", error);
+  }
+};
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
@@ -103,6 +121,7 @@ export default function SignInForm() {
 
       // Save token
       dispatch(setCredentials({ token: result.token }));
+      await fetchCurrencyRate(result.token);
 
       // Remember Me
       if (isChecked) {

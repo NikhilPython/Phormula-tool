@@ -1,51 +1,42 @@
 'use client';
 
 import React from 'react';
-import Drawer from '@mui/material/Drawer';
-import IconButton from '@mui/material/IconButton';
-import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
+import { AnimatePresence, motion } from "framer-motion";
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
 import PageBreadcrumb from '../common/PageBreadCrumb';
 
-// =========================
-// Types (same as your page)
-// =========================
+// --- types same as yours ---
 export interface BestPerfItem {
   month: string;
   value: number;
 }
-
 export interface BestPerformance {
   sales?: BestPerfItem;
   units?: BestPerfItem;
   profit?: BestPerfItem;
 }
-
 export interface SkuInsight {
   product_name: string;
   insight: string;
-
   inventory_recommendation?: string;
   objective?: Record<string, any> | null;
   recommendation?: string;
   best_performance?: BestPerformance;
 
+  // ✅ add explicit (optional but recommended)
+  product_journey?: string[];
+
   [key: string]: any;
 }
-
 
 export interface InsightSideDrawerProps {
   open: boolean;
   selectedSku: string | null;
-
   skuInsights: Record<string, SkuInsight>;
-
-  /** Your existing lookup (exact + global partial fallback etc.) */
   getInsightByProductName?: (productName: string) => [string, SkuInsight] | null;
-
   onClose: () => void;
 
-  // Optional: feedback UI (hook to your existing submit flow)
+  // Optional: feedback (kept as-is if you need later)
   enableFeedback?: boolean;
   fbType?: 'like' | 'dislike' | null;
   setFbType?: (v: 'like' | 'dislike' | null) => void;
@@ -54,536 +45,186 @@ export interface InsightSideDrawerProps {
   fbSubmitting?: boolean;
   fbSuccess?: boolean;
   onSubmitFeedback?: () => void;
+
+  // ✅ add these props if you want to pass period/country like your other drawer
+  countryName?: string;
+  drawerPeriodText?: string;
+  periodBadge?: string;
 }
 
-// =========================
-// Helpers (copied from your page)
-// =========================
-const highlightInsightText = (text: string) => {
-  const greenWords = ['profit', 'profits', 'increase', 'growth', 'improvement', 'gain', 'gains', 'up', 'higher'];
-  const redWords = ['loss', 'losses', 'decrease', 'decline', 'drop', 'down', 'lower'];
-
-  const regex = new RegExp(`\\b(${[...greenWords, ...redWords].join('|')})\\b`, 'gi');
-  const parts = text.split(regex);
-
-  return parts.map((part, idx) => {
-    const lower = part.toLowerCase();
-    if (greenWords.includes(lower)) return <span key={idx} style={{ color: '#5EA68E', fontWeight: 600 }}>{part}</span>;
-    if (redWords.includes(lower)) return <span key={idx} style={{ color: '#FF5C5C', fontWeight: 600 }}>{part}</span>;
-    return <span key={idx}>{part}</span>;
-  });
-};
-
-const renderFormattedInsight = (
-  raw: string,
-  feedback?: {
-    enable?: boolean;
-    fbType?: 'like' | 'dislike' | null;
-    setFbType?: (v: 'like' | 'dislike' | null) => void;
-    fbText?: string;
-    setFbText?: (v: string) => void;
-    fbSubmitting?: boolean;
-    fbSuccess?: boolean;
-    onSubmit?: () => void;
-  }
-) => {
-  if (!raw) return null;
-
-const lines = raw
-  .split(/\r?\n/)
-  .map((l) => l.trim())
-  .filter(Boolean)
-  .map((l) => l.replace(/^[-•–]\s*/, '')); // remove leading dash
-
-// 🔥 If content is simple dash-style bullet list, render clean bullets
-const isSimpleBulletList = raw.trim().startsWith('-');
-
-if (isSimpleBulletList) {
-  return (
-    <ul
-      style={{
-        paddingLeft: 18,
-        listStyle: 'disc',
-        display: 'grid',
-        gap: 12,
-      }}
-    >
-      {lines.map((line, i) => (
-        <li
-          key={i}
-          style={{
-            fontSize: 14,
-            lineHeight: 1.7,
-            color: '#374151',
-          }}
-        >
-          {highlightInsightText(line)}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-
-
-  const SECTION_ORDER = [
-    'Details',
-    'Observations',
-    'Improvements',
-    'Unit Growth',
-    'ASP',
-    'Sales',
-    'Profit',
-    'Unit Profitability',
-    'Summary',
-  ];
-
-  const LIST_SECTIONS = new Set([
-    'Observations',
-    'Improvements',
-    'Unit Growth',
-    'ASP',
-    'Sales',
-    'Profit',
-    'Unit Profitability',
-  ]);
-
-  const headingOf = (line: string): string | null => {
-    const m =
-      line.match(/^details\s+for/i) ? ['Details'] :
-        line.match(/^(observations)\s*:?\s*$/i) ? ['Observations'] :
-          line.match(/^(improvements)\s*:?\s*$/i) ? ['Improvements'] :
-            line.match(/^(unit\s+growth)\s*:?\s*$/i) ? ['Unit Growth'] :
-              line.match(/^(asp)\s*:?\s*$/i) ? ['ASP'] :
-                line.match(/^(sales)\s*:?\s*$/i) ? ['Sales'] :
-                  line.match(/^(profit)\s*:?\s*$/i) ? ['Profit'] :
-                    line.match(/^(unit\s+profitability)\s*:?\s*$/i) ? ['Unit Profitability'] :
-                      line.match(/^(summary)\s*:?\s*$/i) ? ['Summary'] :
-                        null;
-    return m ? m[0] : null;
-  };
-
-  const sections: Record<string, string[]> = {};
-  let current: string | null = null;
-
-  for (const line of lines) {
-    const hd = headingOf(line);
-    if (hd) {
-      current = hd;
-      if (!sections[current]) sections[current] = [];
-      if (current === 'Details') sections[current].push(line);
-      continue;
-    }
-    if (!current) current = 'Details';
-    if (!sections[current]) sections[current] = [];
-
-    const isLabel = !!line.match(
-      /^(observations|improvements|unit\s+growth|asp|sales|profit|unit\s+profitability|summary)\s*:?\s*$/i
-    );
-    if (isLabel) continue;
-
-    sections[current].push(line);
-  }
-
-  const clean = (s: string) =>
-    s.replace(/^[•\-\u2013\u2014]\s+/, '').replace(/^\d+\.\s+/, '');
-
-  return SECTION_ORDER.filter((sec) => sections[sec]?.length).map((sec, idx) => {
-    const content = sections[sec];
-    const isList = LIST_SECTIONS.has(sec);
-
-    return (
-      <div key={idx} style={{ marginBottom: 12 }}>
-        {(isList || sec === 'Summary') && (
-          <strong className="block mb-1.5 text-xs 2xl:text-sm text-charcoal-500 font-bold">
-            {sec}
-          </strong>
-        )}
-
-        {isList ? (
-         <ul
-  className="text-xs 2xl:text-sm text-charcoal-500"
-  style={{
-    margin: "10px 0 14px 0",
-    paddingLeft: 18,     // controls left indent (reduce if too much)
-    listStyle: "disc",
-    display: "grid",
-    gap: 10,             // space between bullet points
-  }}
->
-
-            {content.map((line, i) => {
-              const trimmed = clean(line);
-
-              const isSubHeading =
-                /^[A-Za-z][A-Za-z\s\/]+:?$/i.test(trimmed) &&
-                !trimmed.match(/\d|%|,/) &&
-                trimmed.split(/\s+/).length <= 5;
-
-              if (isSubHeading) {
-                const label = trimmed.replace(/:$/, '').trim();
-                return (
-                  <li key={i} className="text-xs 2xl:text-sm text-charcoal-500" style={{ listStyle: 'none', marginTop: 10, marginBottom: 4 }}>
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        // fontSize: 14,
-                        color: '#374151',
-                        borderLeft: '3px solid #60a68e',
-                        paddingLeft: 8,
-                      }}
-                    >
-                      {label}
-                    </span>
-                  </li>
-                );
-              }
-
-              return (
-               <li
-  key={i}
-  className="text-xs 2xl:text-sm text-charcoal-500"
-  style={{
-    lineHeight: 1.7,
-    paddingLeft: 2,      // makes text align nicer after bulletconst lines = raw
-  }}
->
-
-                  {highlightInsightText(trimmed)}
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <div>
-            {content.map((line, i) => (
-              <p key={i} className="text-xs 2xl:text-sm text-charcoal-500" style={{ margin: '4px 0', lineHeight: 1.6}}>
-                {highlightInsightText(line)}
-              </p>
-            ))}
-          </div>
-        )}
-
-        {/* Optional feedback UI exactly like your Summary block */}
-        {sec === 'Summary' && feedback?.enable && feedback?.setFbType && feedback?.setFbText && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => feedback.setFbType?.('like')}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: feedback.fbType === 'like' ? 1 : 0.6 }}
-                title="Like"
-              >
-                <FaThumbsUp size={18} />
-              </button>
-              <button
-                type="button"
-                onClick={() => feedback.setFbType?.('dislike')}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: feedback.fbType === 'dislike' ? 1 : 0.6 }}
-                title="Dislike"
-              >
-                <FaThumbsDown size={18} />
-              </button>
-            </div>
-
-            <div
-              style={{
-                marginTop: 10,
-                backgroundColor: '#f1f1f1',
-                padding: '10px 12px',
-                borderRadius: 8,
-                display: 'flex',
-                gap: 10,
-                alignItems: 'center',
-              }}
-            >
-              <input
-                type="text"
-                placeholder="Add a Comment......"
-                value={feedback.fbText ?? ''}
-                onChange={(e) => feedback.setFbText?.(e.target.value)}
-                style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent' }}
-              />
-              <button
-                type="button"
-                onClick={feedback.onSubmit}
-                disabled={!!feedback.fbSubmitting}
-                style={{
-                  whiteSpace: 'nowrap',
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  backgroundColor: '#2c3e50',
-                  color: '#f8edcf',
-                  fontWeight: 'bold',
-                  boxShadow: '0 3px 6px rgba(0,0,0,.15)',
-                }}
-              >
-                {feedback.fbSubmitting ? 'Submitting...' : 'Submit'}
-              </button>
-            </div>
-
-            {feedback.fbSuccess && (
-              <div style={{ color: '#2e7d32', fontWeight: 600, marginTop: 6 }}>
-                Feedback submitted!
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  });
-};
-
-// =========================
-// Component
-// =========================
 const InsightSideDrawer: React.FC<InsightSideDrawerProps> = ({
   open,
   selectedSku,
   skuInsights,
   getInsightByProductName,
   onClose,
-
-  enableFeedback = false,
-  fbType,
-  setFbType,
-  fbText,
-  setFbText,
-  fbSubmitting,
-  fbSuccess,
-  onSubmitFeedback,
+  countryName,
+  drawerPeriodText,
+  periodBadge,
 }) => {
   if (!open || !selectedSku) return null;
 
   const insightData =
-  skuInsights[selectedSku as keyof typeof skuInsights] ||
-  getInsightByProductName?.(selectedSku)?.[1];
-
+    skuInsights[selectedSku as keyof typeof skuInsights] ||
+    getInsightByProductName?.(selectedSku)?.[1];
 
   if (!insightData) return null;
 
+  const journeyBullets =
+    Array.isArray(insightData.product_journey) ? insightData.product_journey : [];
+
   return (
-    <Drawer
-      anchor="right"
-      open={open}
-      onClose={onClose}
-      PaperProps={{
-        sx: {
-          width: { xs: '100vw', sm: '80vw', md: '60vw', lg: '50vw' },
-          maxWidth: 900,
-          padding: 2,
-        },
-      }}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%' }}>
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 8,
-          }}
-        >
-          <PageBreadcrumb
-            variant="page"
-            align="left"
-            textSize="2xl"
-            pageTitle={
-              <>
-                AI Insight for{" "}
-                <span style={{ color: "#60a68e" }}>
-                  {insightData.product_name || selectedSku}
-                </span>
-              </>
-            }
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* overlay */}
+          <motion.div
+            className="fixed h-full inset-0 z-[999999] bg-black/40"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
           />
 
-          <IconButton size="small" onClick={onClose} aria-label="Close">
-            ×
-          </IconButton>
-        </div>
+          {/* drawer */}
+          <motion.aside
+            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-white shadow-2xl flex flex-col"
+            initial={{ x: 520 }}
+            animate={{ x: 0 }}
+            exit={{ x: 520 }}
+            transition={{ type: "tween", duration: 0.25 }}
+          >
+            {/* header */}
+            <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-slate-500">AI Insight</div>
 
+                  {drawerPeriodText ? (
+                    <span className="text-[#5EA68E] font-semibold text-sm">
+                      {drawerPeriodText}
+                    </span>
+                  ) : periodBadge ? (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700">
+                      {periodBadge}
+                    </span>
+                  ) : null}
+                </div>
 
+                <div className="text-lg font-semibold text-slate-900">
+                  {insightData.product_name || selectedSku}
+                </div>
+              </div>
 
-        {/* Insight */}
-<div style={{ flex: 1, overflowY: 'auto', marginTop: 8, paddingRight: 4 }}>
-  <div
-    style={{
-      background: "#F9FAFB",
-      border: "1px solid #E5E7EB",
-      borderRadius: 16,
-      padding: 16,
-      display: "flex",
-      flexDirection: "column",
-      gap: 12,
-    }}
-  >
-    {/* ✅ Best Performance */}
-    {insightData.best_performance && (
-      <div>
-        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: "#111827" }}>
-          Best Performance
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-          <div style={{ border: "1px solid #E5E7EB", borderRadius: 14, padding: 12, background: "#fff" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>Sales</div>
-            <div style={{ fontSize: 12, color: "#6B7280" }}>{insightData.best_performance.sales?.month || "-"}</div>
-            <div style={{ marginTop: 6, fontWeight: 800, color: "#111827" }}>
-              {insightData.best_performance.sales?.value?.toLocaleString?.() ?? "-"}
+              <button
+                onClick={onClose}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                ✕
+              </button>
             </div>
-          </div>
 
-          <div style={{ border: "1px solid #E5E7EB", borderRadius: 14, padding: 12, background: "#fff" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>Units</div>
-            <div style={{ fontSize: 12, color: "#6B7280" }}>{insightData.best_performance.units?.month || "-"}</div>
-            <div style={{ marginTop: 6, fontWeight: 800, color: "#111827" }}>
-              {insightData.best_performance.units?.value?.toLocaleString?.() ?? "-"}
+            {/* content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+              {/* 1) Best performance */}
+              {insightData.best_performance && (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-800">Best Performance</div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {[
+                      { label: "Sales", data: insightData.best_performance.sales },
+                      { label: "Units", data: insightData.best_performance.units },
+                      { label: "Profit", data: insightData.best_performance.profit },
+                    ].map((b, i) => (
+                      <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        <div className="text-xs text-slate-500">{b.label}</div>
+                        <div className="text-xs text-slate-500">{b.data?.month || "-"}</div>
+                        <div className="text-sm font-bold text-slate-900 mt-1">
+                          {typeof b.data?.value === "number" ? b.data.value.toLocaleString() : "-"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 2) Objective strip */}
+              {insightData.objective && (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-800">Objectives</div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-xs text-slate-500">Primary Focus</div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {insightData.objective?.growth_intent || "balanced"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-xs text-slate-500">Profit Strategy</div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {(insightData.objective?.profit_priority?.replaceAll("_", " ") || "protect growth")}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="text-xs text-slate-500">Inventory Dilution</div>
+                      <div className="text-sm font-bold text-slate-800 mt-1">
+                        {insightData.objective?.inventory_clearance_priority ? "Yes" : "No"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 3) Recommendations */}
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-slate-800">Recommendations</div>
+
+                {!!insightData.recommendation ? (
+                  <div>
+                    <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700">
+                      <li>{insightData.recommendation}</li>
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500">No recommendation available.</div>
+                )}
+
+                {!!insightData.inventory_recommendation && (
+                  <div>
+                    <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700">
+                      <li>{insightData.inventory_recommendation}</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+              
+
+              {/* 5) Product Journey ✅ FIXED */}
+              {journeyBullets.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-slate-800">Product Journey</div>
+
+                  <ul className="space-y-2 text-xs text-slate-700">
+                    {journeyBullets.map((j: string, i: number) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="text-slate-400 mt-[2px]">→</span>
+                        <span>{j}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-          </div>
-
-          <div style={{ border: "1px solid #E5E7EB", borderRadius: 14, padding: 12, background: "#fff" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#111827" }}>Profit</div>
-            <div style={{ fontSize: 12, color: "#6B7280" }}>{insightData.best_performance.profit?.month || "-"}</div>
-            <div style={{ marginTop: 6, fontWeight: 800, color: "#111827" }}>
-              {insightData.best_performance.profit?.value?.toLocaleString?.() ?? "-"}
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
-
-    
-{/* ✅ Objective (Styled UI version) */}
-{insightData.objective && (
-  <div>
-    <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: "#111827" }}>
-      Objective
-    </div>
-
-    <div
-       className='flex  justify-between gap-4 w-full'
-    >
-      {/* Growth Intent */}
-      {insightData.objective.growth_intent && (
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #E5E7EB",
-            borderRadius: 12,
-            padding: 12,
-            width: "100%",
-          }}
-        >
-          <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>
-            Growth Intent
-          </div>
-          <div style={{ fontWeight: 600, color: "#111827" }}>
-            {insightData.objective.growth_intent}
-          </div>
-        </div>
+          </motion.aside>
+        </>
       )}
-
-      {/* Inventory Clearance Priority */}
-      {typeof insightData.objective.inventory_clearance_priority !== "undefined" && (
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #E5E7EB",
-            borderRadius: 12,
-            padding: 12,
-            width: "100%",
-          }}
-        >
-          <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>
-            Inventory Clearance Priority
-          </div>
-          <div style={{ fontWeight: 600, color: "#111827" }}>
-            {insightData.objective.inventory_clearance_priority ? "High Priority" : "No"}
-          </div>
-        </div>
-      )}
-
-      {/* Profit Priority */}
-      {insightData.objective.profit_priority && (
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #E5E7EB",
-            borderRadius: 12,
-            padding: 12,
-            width: "100%",
-          }}
-        >
-          <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4 }}>
-            Profit Priority
-          </div>
-          <div style={{ fontWeight: 600, color: "#111827" }}>
-            {insightData.objective.profit_priority}
-          </div>
-        </div>
-      )}
-    </div>
-  </div>
-)}
-
- <div>
-  <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 10, color: "#111827" }}>
-         Product Journey
-        </div>
-      {renderFormattedInsight(insightData.insight, {
-        enable: enableFeedback,
-        fbType,
-        setFbType,
-        fbText,
-        setFbText,
-        fbSubmitting,
-        fbSuccess,
-        onSubmit: onSubmitFeedback,
-      })}
-    </div>
-
-        {/* ✅ Recommendation */}
-    {!!insightData.recommendation && (
-      <div>
-        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6, color: "#111827" }}>
-          Recommendation
-        </div>
-        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 12 }}>
-          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "#374151" }}>
-            {insightData.recommendation}
-          </p>
-        </div>
-      </div>
-    )}
-
-    {/* ✅ Inventory Recommendation */}
-    {!!insightData.inventory_recommendation && (
-      <div>
-        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 6, color: "#111827" }}>
-          Inventory Recommendation
-        </div>
-        <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, padding: 12 }}>
-          <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: "#374151" }}>
-            {insightData.inventory_recommendation}
-          </p>
-        </div>
-      </div>
-    )}
-
-
-
-    {/* ✅ Existing AI Insight (bullets) */}
-   
-  </div>
-</div>
-
-
-      </div>
-    </Drawer>
+    </AnimatePresence>
   );
 };
 

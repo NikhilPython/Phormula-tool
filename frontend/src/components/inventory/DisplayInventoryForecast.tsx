@@ -15,6 +15,7 @@ import {
   Legend,
 } from 'chart.js';
 import { IoDownload } from "react-icons/io5";
+import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -340,7 +341,7 @@ const chartOptions = useMemo(
     scales: {
       x: {
         title: {
-          display: true,
+          display: false,
           text: 'Months',
           font: { size: 12 }, // ✅ mobile label size
         },
@@ -594,7 +595,8 @@ const chartOptions = useMemo(
 
   return (
     <div>
-      <h3 className="2xl:text-2xl text-[18px] font-bold text-[#414042]">
+      <div className='flex justify-between items-center gap-4'>
+<h3 className="2xl:text-2xl text-[18px] font-bold text-[#414042]">
         Forecasted Data -{' '}
         {monthRange && (
           <span className="text-[#5EA68E]">
@@ -602,14 +604,23 @@ const chartOptions = useMemo(
           </span>
         )}
       </h3>
+       <button
+        onClick={handleDownload}
+        disabled={demoMode}
+      >
+        <DownloadIconButton  />
+      </button>
+
+      </div>
+      
 
       {/* Chart: Top 5 SKUs + Total */}
-      <div className=" p-4 border border-[#000000] rounded-lg mt-5">
-        
-        <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center">
+      <div className="flex flex-col gap-6 mt-5 ">
+        <div className=" p-4 shadow-sm rounded-lg bg-white">
+ <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center ">
   {/* Left: Title + subtitle */}
   <div className="text-left">
-    <h2 className="text-base sm:text-lg md:text-2xl text-[#414042] font-semibold leading-snug">
+    <h2 className="2xl:text-2xl text-[18px] text-[#414042] font-semibold leading-snug">
       Top 5 SKUs Inventory Trend
     </h2>
     <p className="text-[11px] sm:text-xs md:text-sm leading-snug">
@@ -633,15 +644,7 @@ const chartOptions = useMemo(
 
     {/* Actions */}
     <div className="flex items-center justify-end gap-3">
-      <button
-        onClick={handleDownload}
-        disabled={demoMode}
-        className={`bg-white border border-[#8B8585] px-1 rounded-sm ${
-          demoMode ? 'opacity-50 cursor-not-allowed' : ''
-        }`}
-      >
-        <IoDownload size={24} className="md:w-[27px] md:h-[27px]" />
-      </button>
+     
 
       <button
         onClick={handleDownload}
@@ -657,8 +660,10 @@ const chartOptions = useMemo(
  <Line ref={chartRef} data={chartData} options={chartOptions} plugins={[forecastPlugin]} />
      
        </div>
-       
-<h2 className='2xl:text-2xl text-[18px] font-bold text-[#414042]'>Detailed Forecast Data (All SKUs)</h2>
+        </div>
+        
+      <div className=" p-4 shadow-sm rounded-lg bg-white">
+        <h2 className='2xl:text-2xl text-[18px] font-bold text-[#414042]'>Detailed Forecast Data (All SKUs)</h2>
       {/* Table with two-row header and totals row */}
    <div className="overflow-x-auto mt-6">
   <table className="min-w-full 2xl:text-sm text-xs border border-[#e1e5ea] rounded-lg text-[#414042]">
@@ -726,6 +731,9 @@ const chartOptions = useMemo(
     </tbody>
   </table>
 </div>
+        </div> 
+       
+
  </div>
 
       

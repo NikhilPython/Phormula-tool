@@ -47,9 +47,19 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
 
   // Responsive font sizes (mobile vs desktop)
   const [isMobile, setIsMobile] = useState(false);
+  const [is2xlUp, setIs2xlUp] = useState(false);
+
+useEffect(() => {
+  const onResize = () => setIs2xlUp(window.innerWidth >= 1536);
+  onResize();
+  window.addEventListener("resize", onResize);
+  return () => window.removeEventListener("resize", onResize);
+}, []);
+
+const tickFontSize = is2xlUp ? 16 : 14;
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const handleResize = () => setIsMobile(window.innerWidth < 1536);
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -57,13 +67,33 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
 
   const axisFontSize = isMobile ? 12 : 16;
 
-  const labels = chartData.map(item => {
-    let suffix = '';
-    if (item.isForecast) suffix = ' ';
-    else if (item.isHistorical) suffix = '';
-    else suffix = ' '; // Current & Forecast (as your original logic)
-    return `${item.month}${suffix}`;
-  });
+  const shortMonth = (m: string) => {
+  const map: Record<string, string> = {
+    january: "Jan",
+    february: "Feb",
+    march: "Mar",
+    april: "Apr",
+    may: "May",
+    june: "Jun",
+    july: "Jul",
+    august: "Aug",
+    september: "Sep",
+    october: "Oct",
+    november: "Nov",
+    december: "Dec",
+  };
+
+  const key = (m || "").trim().toLowerCase();
+  return map[key] || (m ? m.slice(0, 3) : "");
+};
+
+const labels = chartData.map((item) => {
+  let suffix = "";
+  if (item.isForecast) suffix = " ";
+  else if (item.isHistorical) suffix = "";
+  else suffix = " ";
+  return `${shortMonth(item.month)}${suffix}`;
+});
 
   type DataKey = keyof ChartDataItem;
 
@@ -162,30 +192,32 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
       }
     },
     scales: {
-      x: {
-        title: {
-          display: true,
-          text: 'Months',
-          font: { size: axisFontSize },
-        },
-        ticks: {
-          font: { size: axisFontSize },
-        },
+  x: {
+    title: {
+      display: false,
+      text: "Months",
+      font: { size: axisFontSize }, // title as-is
+    },
+    ticks: {
+      font: { size: tickFontSize }, // ✅ labels/ticks
+    },
+  },
+  y: {
+    title: {
+      display: true,
+      text: `Amount (${currencySymbol})`,
+      font: { size: axisFontSize }, // title as-is
+    },
+    ticks: {
+      font: { size: tickFontSize }, // ✅ labels/ticks
+      callback: function (tickValue: string | number) {
+        return typeof tickValue === "number"
+          ? tickValue.toLocaleString()
+          : tickValue;
       },
-      y: {
-        title: {
-          display: true,
-          text: `Amount (${currencySymbol})`,
-          font: { size: axisFontSize },
-        },
-        ticks: {
-          font: { size: axisFontSize },
-          callback: function (tickValue: string | number) {
-            return typeof tickValue === 'number' ? tickValue.toLocaleString() : tickValue;
-          }
-        }
-      }
-    }
+    },
+  },
+}
   };
 
   // ✅ FIX: remove old forecastTransitionIndex logic and use forecastStartIndex for background too
@@ -207,95 +239,28 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
 
   return (
    <div className="chart-container" >
-       <style>{`
-.checkbox-group {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: space-between;
-        align-items: center;
-        width: 30%;
-        gap: 0.4vh;
-      }
-
- .checkbox-group label {
-  font-size: 16px;          /* ✅ desktop default */
-  font-weight: 600;
-  text-decoration-thickness: 1.2px;
+      <style>{`
+/* =========================
+   TOPBAR LAYOUT
+   ========================= */
+.topbar {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  white-space: nowrap;
+  gap: 16px;
 }
 
-
-  input[type="checkbox"] {
-    appearance: none;
-    width: 0.7vw; /* Smaller box */
-    height: 0.7vw;
-    background-color: #ff5c5c;
-    position: relative;
-    cursor: pointer;
-    border-radius: 2px;
-  }
-
-  input[type="checkbox"]:checked::before {
-    content: '✓';
-    font-size: 0.6vw; /* Smaller checkmark */
-    font-weight: bold;
-    color: white;
-    position: absolute;
-    left: 0.1vw;
-    top: -0.05vw;
-  }
-
-
-.checkbox-label.sales {
-  color: #414042;
-}
-.checkbox-label.sales input[type="checkbox"] {
-  background-color: #75BBDA;
-}
-
-// .checkbox-label.cogs {
-//    color: #414042;
-// }
-
-
-.checkbox-label.ad {
-  color: #414042;
-}
-.checkbox-label.ad input[type="checkbox"] {
-  background-color: #C49466;
-}
-
-.checkbox-label.cm1 {
-  color: #414042;
-}
-.checkbox-label.cm1 input[type="checkbox"] {
-  background-color: #7B9A6d;
-}
-
-.checkbox-label.cm2 {
-   color: #414042;
-}
-.checkbox-label.cm2 input[type="checkbox"] {
-  background-color: #B8C78C;
-}
-
-/* Add this CSS to your stylesheet */
-
-/* Forecast Legend Styles */
+/* =========================
+   FORECAST LEGEND
+   ========================= */
 .forecast-legend {
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 24px;
   padding: 16px 20px;
-  // background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  // border: 1px solid #dee2e6;
   border-radius: 12px;
-  // box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
- font-family: 'Lato', sans-serif;
+  font-family: 'Lato', sans-serif;
   position: relative;
   overflow: hidden;
 }
@@ -307,7 +272,6 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
   left: 0;
   width: 4px;
   height: 100%;
-  // background: linear-gradient(to bottom, #007bff, #0056b3);
   border-radius: 0 4px 4px 0;
 }
 
@@ -315,10 +279,11 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 14px;
   font-weight: 500;
   color: #414042;
-  transition: all 0.2s ease;
+
+  /* ✅ below 2xl default */
+  font-size: 14px;
 }
 
 .forecast-legend-item:hover {
@@ -326,7 +291,6 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
   transform: translateY(-1px);
 }
 
-/* Solid line for historical data */
 .solid-line {
   width: 40px;
   height: 3px;
@@ -334,7 +298,6 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
   border-radius: 2px;
 }
 
-/* Dotted line for forecast data */
 .dotted-line {
   width: 40px;
   height: 3px;
@@ -362,143 +325,141 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(({ chartData, cu
   box-shadow: 0 0 0 2px white, 0 1px 3px #414042;
 }
 
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-}
-
-/* checkbox group desktop */
+/* =========================
+   CHECKBOX GROUP (NO DUPLICATES)
+   ========================= */
 .checkbox-group {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
-  width: auto;          /* ✅ remove fixed 30% */
+  width: auto;
   gap: 10px;
 }
 
-/* checkbox label desktop */
 .checkbox-group label {
-  font-size: 16px;
-  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 10px;
   white-space: nowrap;
+  font-weight: 600;
+  color: #414042;
+
+  /* ✅ below 2xl default */
+  font-size: 14px;
 }
 
-/* checkbox size desktop */
-input[type="checkbox"] {
+/* checkbox base */
+.checkbox-group input[type="checkbox"] {
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 14px;     /* ✅ below 2xl */
+  height: 14px;
   position: relative;
   cursor: pointer;
   border-radius: 3px;
 }
 
-/* checkmark desktop */
-input[type="checkbox"]:checked::before {
+/* checkmark base */
+.checkbox-group input[type="checkbox"]:checked::before {
   content: '✓';
-  font-size: 12px;
+  font-size: 11px; /* ✅ below 2xl */
   font-weight: 900;
   color: white;
   position: absolute;
-  left: 3px;
+  left: 2.5px;
   top: -2px;
 }
 
-/* ✅ MOBILE: stack legend + checkbox, make checkbox bigger */
+/* per-series checkbox colors */
+.checkbox-label.sales { color: #414042; }
+.checkbox-label.sales input[type="checkbox"] { background-color: #75BBDA; }
+
+.checkbox-label.ad { color: #414042; }
+.checkbox-label.ad input[type="checkbox"] { background-color: #C49466; }
+
+.checkbox-label.cm1 { color: #414042; }
+.checkbox-label.cm1 input[type="checkbox"] { background-color: #7B9A6d; }
+
+.checkbox-label.cm2 { color: #414042; }
+.checkbox-label.cm2 input[type="checkbox"] { background-color: #B8C78C; }
+
+/* =========================
+   ✅ 2XL UP (>=1536px)
+   ========================= */
+@media (min-width: 1536px) {
+  .checkbox-group label {
+    font-size: 16px;
+  }
+
+  .forecast-legend-item {
+    font-size: 16px;
+  }
+
+  .checkbox-group input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+  }
+
+  .checkbox-group input[type="checkbox"]:checked::before {
+    font-size: 12px;
+    left: 3px;
+    top: -2px;
+  }
+}
+
+/* =========================
+   ✅ MOBILE (<=768px)
+   ========================= */
 @media (max-width: 768px) {
   .topbar {
-    flex-direction: column;      /* ✅ flex-col */
+    flex-direction: column;
     align-items: flex-start;
   }
 
   .forecast-legend {
-    flex-direction: column;      /* ✅ legend items one below another */
+    flex-direction: column;
     align-items: flex-start;
     gap: 10px;
     padding: 12px 0;
   }
 
   .forecast-legend-item {
-    font-size: 12px;             /* ✅ you wanted 12px on mobile */
+    font-size: 12px;
   }
 
   .checkbox-group {
     width: 100%;
-    justify-content: flex-start; /* ✅ start from left */
+    justify-content: flex-start;
     gap: 12px;
   }
 
   .checkbox-group label {
-    font-size: 12px;             /* ✅ mobile labels 12px */
+    font-size: 12px;
     gap: 10px;
   }
 
-  input[type="checkbox"] {
-    width: 18px;                 /* ✅ bigger checkbox on mobile */
+  .checkbox-group input[type="checkbox"] {
+    width: 18px;
     height: 18px;
     border-radius: 4px;
   }
 
-  input[type="checkbox"]:checked::before {
+  .checkbox-group input[type="checkbox"]:checked::before {
     font-size: 14px;
     left: 4px;
     top: -3px;
   }
-}
 
-
-/* Animations */
-// @keyframes dotted-pulse {
-//   0%, 100% { opacity: 0.7; }
-//   50% { opacity: 1; }
-// }
-
-// @keyframes forecast-blink {
-//   0%, 100% { transform: translateY(-50%) scale(1); opacity: 0.8; }
-//   50% { transform: translateY(-50%) scale(1.1); opacity: 1; }
-// }
-
-/* Responsive design for smaller screens */
-@media (max-width: 768px) {
-  .forecast-legend {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-    padding: 16px;
-  }
-  
-  .forecast-legend-item {
-    font-size: 13px;
-  }
-
-  .checkbox-group label {
-    font-size: 12px;        /* ✅ mobile */
-    gap: 6px;
-  }
-
-  .forecast-legend-item {
-    font-size: 12px;        /* ✅ mobile legend text */
-  }
-  
   .solid-line,
   .dotted-line {
     width: 32px;
     height: 2px;
   }
 }
-
-
-
-      `}</style>
+`}</style>
 
 <br/>
-<div className="topbar mx-5">
+<div className="topbar ">
    <div className="forecast-legend">
         <div className="forecast-legend-item">
           <div className="solid-line"></div>

@@ -9,13 +9,14 @@ import {
   getCountryColor,
   normalizeCountryKey,
 } from "./productwiseHelpers";
-
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import SegmentedToggle from "../ui/SegmentedToggle";
 import ProductSearchDropdown from "@/components/products/ProductSearchDropdown";
 import { AiButton } from "../ui/button/AiButton";
 import PageBreadcrumb from "../common/PageBreadCrumb";
+import { Chart as ChartJSCore } from "chart.js";
+import { exportProductwiseTrendsExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 
 const Line = dynamic(() => import("react-chartjs-2").then((m) => m.Line), {
   ssr: false,
@@ -23,9 +24,56 @@ const Line = dynamic(() => import("react-chartjs-2").then((m) => m.Line), {
 
 type TrendTab = "sales_cm1" | "units";
 
+// interface TrendChartSectionProps {
+//   productname: string;
+//   title: string; // e.g. Year'25, Q1'25, etc.
+//   chartDataList: any[];
+//   chartOptions: any;
+//   nonEmptyCountriesFromApi: CountryKey[];
+//   selectedCountries: Record<CountryKey, boolean>;
+//   onToggleCountry: (country: CountryKey) => void;
+//   authToken: string | null;
+//   onProductSelect: (productName: string) => void;
+//   onViewBusinessInsights?: () => void;
+//   insightsLoading?: boolean;
+//   isPreviewMode?: boolean
+// }
+
+type ExportMeta = {
+  titleLine: string;
+  titleCountry: string;
+  platformLabel?: string;
+  periodLabel: string;
+  companyName: string;
+  brandName: string;
+  currencyLabel?: string; // "$" / "£" / "₹"
+};
+
+type ExportCountryCard = {
+  countryKey: string;
+  countryLabel: string;
+
+  totalSales: number;
+  totalUnits: number;
+  totalProfit: number;
+
+  avgMonthlySales: number;
+  avgSellingPrice: number;
+  cm1ProfitPct: number;
+
+  bestSalesMonth: string;
+  bestSalesValue: number;
+
+  bestUnitsMonth: string;
+  bestUnitsValue: number;
+
+  bestProfitMonth: string;
+  bestProfitValue: number;
+};
+
 interface TrendChartSectionProps {
   productname: string;
-  title: string; // e.g. Year'25, Q1'25, etc.
+  title: string;
   chartDataList: any[];
   chartOptions: any;
   nonEmptyCountriesFromApi: CountryKey[];
@@ -34,10 +82,13 @@ interface TrendChartSectionProps {
   authToken: string | null;
   onProductSelect: (productName: string) => void;
 
-  // ✅ AI insights hook (optional)
   onViewBusinessInsights?: () => void;
   insightsLoading?: boolean;
-  isPreviewMode?: boolean
+  isPreviewMode?: boolean;
+
+  // ✅ NEW props coming from ProductwisePerformance
+  exportMeta?: ExportMeta;
+  exportCountryCards?: ExportCountryCard[];
 }
 
 const TrendChartSection: React.FC<TrendChartSectionProps> = ({
@@ -51,7 +102,11 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
   authToken,
   onProductSelect,
   onViewBusinessInsights,
-  isPreviewMode
+  isPreviewMode,
+
+  // ✅ add these
+  exportMeta,
+  exportCountryCards,
 }) => {
   const [activeTab, setActiveTab] = useState<TrendTab>("sales_cm1");
 
@@ -159,90 +214,254 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
     }
   };
 
-  // ---------- DOWNLOAD: Excel + chart image ----------
-  const handleDownload = async () => {
-    try {
-      if (!processedChartData) return;
+  const buildChartDataForTab = (tab: TrendTab) => {
+    if (!chartDataList) return null;
 
-      // 1) Get chart image as data URL
-      let imageDataUrl: string | undefined;
-      const chart = chartRef.current;
+    const styleDatasetsByLabel = (datasets: any[] = []) =>
+      datasets.map((ds: any) => {
+        const label = (ds.label || "").toString().toLowerCase();
+        const isCm1OrProfit =
+          label.includes("cm1") ||
+          label.includes("cm 1") ||
+          label.includes("cm-1") ||
+          label.includes("profit");
 
-      if (chart) {
-        if (typeof chart.toBase64Image === "function") {
-          imageDataUrl = chart.toBase64Image();
-        } else if (chart.canvas && chart.canvas.toDataURL) {
-          imageDataUrl = chart.canvas.toDataURL("image/png");
-        }
-      }
-
-      // 2) Create Excel workbook
-      const workbook = new ExcelJS.Workbook();
-      const sheet = workbook.addWorksheet("Performance");
-
-      sheet.mergeCells("A1", "E1");
-      const titleCell = sheet.getCell("A1");
-      titleCell.value = `${getTitleByTab()} `;
-      titleCell.font = { bold: true, size: 14 };
-      titleCell.alignment = { vertical: "middle", horizontal: "center" };
-      sheet.getRow(1).height = 24;
-
-      let currentRow = 3;
-
-      // 3) Add chart image if we have it
-      if (imageDataUrl) {
-        const base64 = imageDataUrl.replace(
-          /^data:image\/(png|jpe?g);base64,/,
-          ""
-        );
-
-        const imgId = workbook.addImage({
-          base64,
-          extension: "png",
-        });
-
-        sheet.addImage(imgId, {
-          tl: { col: 0, row: currentRow - 1 },
-          ext: { width: 900, height: 400 },
-        });
-
-        currentRow += 22;
-      }
-
-      // 4) Dump data table under the image
-      const labels: string[] = (processedChartData as any).labels || [];
-      const datasets: any[] = (processedChartData as any).datasets || [];
-
-      if (labels.length && datasets.length) {
-        const headerRowValues = ["Month", ...datasets.map((d) => d.label)];
-        const headerRow = sheet.getRow(currentRow);
-        headerRow.values = headerRowValues;
-        headerRow.font = { bold: true };
-        headerRow.alignment = { horizontal: "center" };
-        currentRow += 1;
-
-        labels.forEach((label, idx) => {
-          const row = sheet.getRow(currentRow);
-          row.values = [label, ...datasets.map((d) => d.data?.[idx] ?? null)];
-          currentRow += 1;
-        });
-
-        sheet.columns.forEach((col) => {
-          if (!col.width || col.width < 12) col.width = 12;
-        });
-      }
-
-      // 5) Save workbook
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        return {
+          ...ds,
+          fill: false,
+          borderDash: isCm1OrProfit ? [6, 6] : [],
+          tension: 0.35,
+        };
       });
 
-      const filename = `${productname}-${getTitleByTab()}.xlsx`;
-      saveAs(blob, filename);
+    if (tab === "sales_cm1") {
+      const netSalesData = chartDataList[0];
+      const cm1Data = chartDataList[2];
+
+      if (!netSalesData) return null;
+
+      if (!cm1Data) {
+        return {
+          ...netSalesData,
+          datasets: styleDatasetsByLabel(netSalesData.datasets || []),
+        };
+      }
+
+      const labels = netSalesData.labels;
+
+      const netSalesDatasets = styleDatasetsByLabel(netSalesData.datasets || []);
+      const cm1Datasets = (cm1Data.datasets || []).map((ds: any) => ({
+        ...ds,
+        fill: false,
+        borderDash: [6, 6],
+        tension: 0.35,
+      }));
+
+      return {
+        ...netSalesData,
+        labels,
+        datasets: [...netSalesDatasets, ...cm1Datasets],
+      };
+    }
+
+    if (tab === "units") {
+      const unitsData = chartDataList[1];
+      if (!unitsData) return null;
+
+      return {
+        ...unitsData,
+        datasets: styleDatasetsByLabel(unitsData.datasets || []),
+      };
+    }
+
+    return null;
+  };
+
+  const getTitleByTabLocal = (tab: TrendTab) =>
+    tab === "sales_cm1" ? "Net Sales + CM1 Profit Trend" : "Units Trend";
+
+
+  const renderChartToImage = async (data: any, options: any, w = 900, h = 360) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    const chart = new ChartJSCore(ctx as any, {
+      type: "line",
+      data,
+      options: {
+        ...options,
+        responsive: false,
+        animation: false,
+      },
+    });
+
+    chart.update();
+
+    // ✅ IMPORTANT: put WHITE BEHIND what Chart.js already drew
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-over";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+
+    // ✅ Export JPEG (no transparency issues in Excel)
+    const imageDataUrl = canvas.toDataURL("image/jpeg", 1.0);
+
+    chart.destroy();
+    return imageDataUrl;
+  };
+  // ---------- DOWNLOAD: Excel + chart image ----------
+  // const handleDownload = async () => {
+  //   try {
+  //     if (!chartDataList) return;
+
+  //     // Build both tabs' datasets (does NOT depend on activeTab)
+  //     const salesCm1Data = buildChartDataForTab("sales_cm1");
+  //     const unitsData = buildChartDataForTab("units");
+  //     if (!salesCm1Data && !unitsData) return;
+
+  //     // Use the same options you already pass to the visible chart
+  //     const opts = processedChartOptions;
+
+  //     // Render both charts to base64 images offscreen
+  //     const [salesImg, unitsImg] = await Promise.all([
+  //       salesCm1Data ? renderChartToImage(salesCm1Data, opts) : Promise.resolve(null),
+  //       unitsData ? renderChartToImage(unitsData, opts) : Promise.resolve(null),
+  //     ]);
+
+  //     // Create Excel workbook
+  //     const workbook = new ExcelJS.Workbook();
+
+  //     // Sheet 1: Data (optional - keep your current table export here if you want)
+  //     const dataSheet = workbook.addWorksheet("Data");
+  //     dataSheet.getCell("A1").value = `${productname} - ${title}`;
+  //     dataSheet.getCell("A1").font = { bold: true, size: 14 };
+  //     dataSheet.getRow(1).height = 22;
+
+  //     // If you want: keep your existing "dump data table" logic here
+  //     // (you can dump BOTH tables or just the active one)
+
+  //     // Sheet 2: Charts (what you asked)
+  //     const chartsSheet = workbook.addWorksheet("Charts");
+
+  //     chartsSheet.mergeCells("A1", "H1");
+  //     chartsSheet.getCell("A1").value = `${productname} - ${title} (Charts)`;
+  //     chartsSheet.getCell("A1").font = { bold: true, size: 14 };
+  //     chartsSheet.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
+  //     chartsSheet.getRow(1).height = 24;
+
+  //     let rowCursor = 3;
+
+  //     const addChartBlock = (heading: string, imageDataUrl: string | null) => {
+  //       chartsSheet.mergeCells(`A${rowCursor}`, `H${rowCursor}`);
+  //       chartsSheet.getCell(`A${rowCursor}`).value = heading;
+  //       chartsSheet.getCell(`A${rowCursor}`).font = { bold: true, size: 12 };
+  //       chartsSheet.getCell(`A${rowCursor}`).alignment = { horizontal: "left" };
+  //       rowCursor += 1;
+
+  //       if (!imageDataUrl) {
+  //         chartsSheet.mergeCells(`A${rowCursor}`, `H${rowCursor}`);
+  //         chartsSheet.getCell(`A${rowCursor}`).value = "Chart not available";
+  //         rowCursor += 2;
+  //         return;
+  //       }
+
+  //       const base64 = imageDataUrl.replace(/^data:image\/(png|jpe?g);base64,/, "");
+  //       const imgId = workbook.addImage({ base64, extension: "png" });
+
+  //       // Insert image
+  //       chartsSheet.addImage(imgId, {
+  //         tl: { col: 0, row: rowCursor - 1 },
+  //         ext: { width: 1000, height: 420 },
+  //       });
+
+  //       // Advance cursor (roughly matches image height)
+  //       rowCursor += 24;
+  //     };
+
+  //     addChartBlock(getTitleByTabLocal("sales_cm1"), salesImg);
+  //     addChartBlock(getTitleByTabLocal("units"), unitsImg);
+
+  //     // A little formatting
+  //     chartsSheet.columns.forEach((col) => {
+  //       if (!col.width || col.width < 14) col.width = 14;
+  //     });
+
+  //     // Save workbook
+  //     const buffer = await workbook.xlsx.writeBuffer();
+  //     const blob = new Blob([buffer], {
+  //       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  //     });
+
+  //     const filename = `${productname}-${title}-charts.xlsx`;
+  //     saveAs(blob, filename);
+  //   } catch (err) {
+  //     console.error("Failed to export Excel with both charts", err);
+  //   }
+  // };
+
+  const handleDownload = async () => {
+    try {
+      if (!chartDataList) return;
+
+      // Build both tabs' datasets (does NOT depend on activeTab)
+      const salesCm1Data = buildChartDataForTab("sales_cm1");
+      const unitsData = buildChartDataForTab("units");
+      if (!salesCm1Data && !unitsData) return;
+
+      const opts = processedChartOptions;
+
+      const EXPORT_W = 900;
+      const EXPORT_H = 360;
+
+      const [salesImg, unitsImg] = await Promise.all([
+        salesCm1Data ? renderChartToImage(salesCm1Data, opts, EXPORT_W, EXPORT_H) : Promise.resolve(null),
+        unitsData ? renderChartToImage(unitsData, opts, EXPORT_W, EXPORT_H) : Promise.resolve(null),
+      ]);
+      // Optional table data (Sheet 1)
+      // We'll export table for CURRENT active tab (processedChartData)
+      const labels: string[] = (processedChartData as any)?.labels || [];
+      const datasets: any[] = (processedChartData as any)?.datasets || [];
+
+      const table =
+        labels.length && datasets.length
+          ? {
+            headers: ["Month", ...datasets.map((d) => d.label)],
+            rows: labels.map((m, i) => [
+              m,
+              ...datasets.map((d) => d.data?.[i] ?? null),
+            ]),
+          }
+          : undefined;
+
+      await exportProductwiseTrendsExcel({
+        filename: `${productname}-${title}.xlsx`,
+
+        // Header block (from parent)
+        titleLine: exportMeta?.titleLine || `${productname} - ${title}`,
+        titleCountry: exportMeta?.titleCountry || "Global",
+        platformLabel: exportMeta?.platformLabel || "Amazon",
+        periodLabel: exportMeta?.periodLabel || title,
+        companyName: exportMeta?.companyName || "",
+        brandName: exportMeta?.brandName || "",
+        currencyLabel: exportMeta?.currencyLabel || "",
+
+        // ✅ NEW: cards data for Sheet 1 (you must support this in helper)
+        countryCards: exportCountryCards || [],
+
+        // Sheet 2 images
+        salesCm1ChartBase64: salesImg,
+        unitsChartBase64: unitsImg,
+
+        chartWidth: EXPORT_W,
+        chartHeight: EXPORT_H,
+      });
     } catch (err) {
-      console.error("Failed to export Excel + chart image", err);
+      console.error("Failed to export Excel with header + both charts", err);
     }
   };
 
