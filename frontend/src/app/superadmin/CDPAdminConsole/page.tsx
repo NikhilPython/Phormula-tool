@@ -133,6 +133,10 @@ export default function CDPAdminConsolePage() {
 
   const handleForgotPassword = () => router.push("/superadmin/SuperadminResetPassword");
 
+  const handleSetupRedirect = () => {
+  router.push("/superadmin/SuperAdminSetup");
+};
+
   return (
     <div className="min-h-[100svh] flex items-center justify-center px-4 py-6 sm:px-6 lg:px-8 font-sans bg-[#5EA68E]">
       <div className="w-full max-w-sm sm:max-w-md md:max-w-lg rounded-2xl bg-white/95 shadow-2xl backdrop-blur px-6 py-7 sm:px-8 sm:py-9 md:px-10 md:py-10">
@@ -242,6 +246,15 @@ export default function CDPAdminConsolePage() {
             Forgot your password?
           </button>
         </div>
+        <div className="text-center mt-4">
+  <button
+    type="button"
+    onClick={handleSetupRedirect}
+    className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-lg bg-gray-700 hover:bg-gray-800 transition"
+  >
+    Setup SuperAdmin
+  </button>
+</div>
       </div>
     </div>
   );
