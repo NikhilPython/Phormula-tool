@@ -13,9 +13,10 @@ import {
   setAuthError,
   setAuthLoading,
   setCredentials,
-  setUser,clearAuthError, 
+  setUser,
+  clearAuthError,
 } from "@/lib/features/auth/authSlice";
-import { useLoginMutation, useMemberLoginMutation } from "@/lib/api/authApi"; // ✅
+import { useLoginMutation, useMemberLoginMutation } from "@/lib/api/authApi";
 import { API_BASE } from "@/config/env";
 import ForgotPasswordModal from "./ForgotPasswordModal";
 import { auth, googleProvider } from "@/lib/firebase/firebase";
@@ -40,7 +41,7 @@ export default function SignInForm() {
 
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
   const [memberLogin, { isLoading: isMemberLoggingIn }] =
-    useMemberLoginMutation(); // ✅
+    useMemberLoginMutation();
 
   useEffect(() => {
     const savedEmail = localStorage.getItem("email") || "";
@@ -59,32 +60,9 @@ export default function SignInForm() {
     router.replace(`/live-dashboard/${country}/${currentMonth}/${currentYear}`);
   };
 
-  const fetchCurrencyRate = async (token: string) => {
-  try {
-    await fetch(`${API_BASE}/currency-rate`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        auto_seed_current_month: true,
-        seed_only: true,
-      }),
-    });
-  } catch (error) {
-    console.warn("Currency rate fetch failed:", error);
-  }
-};
-
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      status === "loading" ||
-      isLoggingIn ||
-      isMemberLoggingIn
-    )
-      return;
+    if (status === "loading" || isLoggingIn || isMemberLoggingIn) return;
 
     dispatch(setAuthLoading());
     dispatch(clearAuthError());
@@ -92,38 +70,33 @@ export default function SignInForm() {
     const cleanEmail = email.trim().toLowerCase();
 
     try {
-      // ✅ 1) Try CLIENT login first
       let result: any;
       let loginType: "client" | "member" = "client";
 
       try {
         result = await login({ email: cleanEmail, password }).unwrap();
         loginType = "client";
-     } catch (clientErr: any) {
-  setIsFallbacking(true);
-  dispatch(clearAuthError()); // ✅ clear anything
+      } catch (clientErr: any) {
+        setIsFallbacking(true);
+        dispatch(clearAuthError());
 
-  try {
-    result = await memberLogin({ email: cleanEmail, password }).unwrap();
-    loginType = "member";
-  } catch (memberErr: any) {
-    // ✅ BOTH failed -> now show error
-    const msg =
-      memberErr?.data?.message ||
-      memberErr?.error ||
-      "Login failed. Please try again.";
-    dispatch(setAuthError(msg));
-    return; // ✅ stop
-  } finally {
-    setIsFallbacking(false);
-  }
-}
+        try {
+          result = await memberLogin({ email: cleanEmail, password }).unwrap();
+          loginType = "member";
+        } catch (memberErr: any) {
+          const msg =
+            memberErr?.data?.message ||
+            memberErr?.error ||
+            "Login failed. Please try again.";
+          dispatch(setAuthError(msg));
+          return;
+        } finally {
+          setIsFallbacking(false);
+        }
+      }
 
-      // Save token
       dispatch(setCredentials({ token: result.token }));
-      await fetchCurrencyRate(result.token);
 
-      // Remember Me
       if (isChecked) {
         localStorage.setItem("email", cleanEmail);
         localStorage.setItem("password", password);
@@ -132,7 +105,6 @@ export default function SignInForm() {
         localStorage.removeItem("password");
       }
 
-      // ✅ CLIENT FLOW
       if (loginType === "client") {
         const me = await fetch(`${API_BASE}/get_user_data`, {
           method: "GET",
@@ -161,8 +133,6 @@ export default function SignInForm() {
         return;
       }
 
-      // ✅ MEMBER FLOW (no /get_user_data call)
-      // backend member_login already returns modules/marketplaces/countries
       dispatch(
         setUser({
           email: cleanEmail,
@@ -176,13 +146,12 @@ export default function SignInForm() {
       );
 
       const memberCountry =
-  Array.isArray(result?.countries) && result.countries.length > 0
-    ? String(result.countries[0]).trim().toLowerCase()
-    : "global";
+        Array.isArray(result?.countries) && result.countries.length > 0
+          ? String(result.countries[0]).trim().toLowerCase()
+          : "global";
 
-routeToDashboard(memberCountry);
+      routeToDashboard(memberCountry);
     } catch (err: any) {
-      // ✅ nicer error msg
       const msg =
         err?.status === 403
           ? "Please verify your email first."
@@ -191,7 +160,6 @@ routeToDashboard(memberCountry);
     }
   };
 
-  // ✅ Google login stays client-only (optional)
   const onGoogleSignIn = async () => {
     if (status === "loading" || isLoggingIn) return;
 
@@ -214,7 +182,9 @@ routeToDashboard(memberCountry);
       const me = await fetch(`${API_BASE}/get_user_data`, {
         method: "GET",
         headers: { Authorization: `Bearer ${data.token}` },
-      }).then((r) => r.json()).catch(() => null);
+      })
+        .then((r) => r.json())
+        .catch(() => null);
 
       if (me) dispatch(setUser({ ...me, is_member: false }));
 
@@ -319,12 +289,12 @@ routeToDashboard(memberCountry);
                 </button>
               </div>
 
-             {error &&
-  !(status === "loading" || isLoggingIn || isMemberLoggingIn || isFallbacking) && (
-    <p className="text-sm text-red-500 -mt-2" aria-live="polite">
-      {error}
-    </p>
-)}
+              {error &&
+                !(status === "loading" || isLoggingIn || isMemberLoggingIn || isFallbacking) && (
+                  <p className="text-sm text-red-500 -mt-2" aria-live="polite">
+                    {error}
+                  </p>
+                )}
 
               <div>
                 <Button
@@ -362,15 +332,11 @@ routeToDashboard(memberCountry);
           <div className="mt-5 max-w-fit mx-auto">
             <p className="text-base font-normal text-center text-gray-700 dark:text-gray-400 sm:text-start">
               Don&apos;t have an account ?{" "}
-              <Link
-                href="/signup"
-                className="text-blue-700"
-              >
+              <Link href="/signup" className="text-blue-700">
                 Sign Up
               </Link>
             </p>
           </div>
-
 
           {showForgotModal && (
             <ForgotPasswordModal onClose={() => setShowForgotModal(false)} />
