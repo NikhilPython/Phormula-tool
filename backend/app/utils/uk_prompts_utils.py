@@ -1226,6 +1226,37 @@ between price, demand, and profitability observed in the metrics.
 These rules apply ONLY to the recommendation field.
 They must not modify journey_summary or analysis interpretation.
 
+RULE PRECEDENCE (CRITICAL)
+
+Recommendation rules must be applied in priority order.
+
+Priority order:
+1. Rule 4 — Price Increase With Volume Loss
+2. Rule 1 — Price Cut Failure
+3. Rule 3 — Margin Trade-Off For Growth
+4. Rule 5 — Healthy Demand
+5. Rule 2 — Demand Softening With Stable Profit
+
+If a more specific rule applies, a broader rule must be ignored.
+If Rule 4 applies, Rule 2 must NOT be used.
+
+MARGIN DIRECTION RULE (CRITICAL)
+
+Use CM1 profit per unit as the margin direction signal.
+
+- If CM1 profit per unit increased:
+  → margin expanded
+- If CM1 profit per unit decreased:
+  → margin compressed
+- If CM1 profit per unit is stable:
+  → margin stable
+
+The recommendation MUST NOT describe margin as compressed
+when CM1 profit per unit increased.
+
+The recommendation MUST NOT describe margin as expanded
+when CM1 profit per unit decreased.
+
 Rule 1 — Price Cut Failure
 
 If:
@@ -1237,28 +1268,28 @@ Then:
 - The price reduction did not stimulate demand.
 - Recommendation MUST NOT suggest further price reduction.
 - Recommendation should prioritize checking demand drivers
-such as visibility or discoverability before changing pricing.
-The recommendation may explicitly instruct checking visibility.
+  such as visibility or discoverability before changing pricing.
+- Recommendation may explicitly instruct checking visibility.
 
 Example intent:
 "Do not reduce price further this month. Check visibility and demand drivers."
 
-
 Rule 2 — Demand Softening With Stable Profit
 
-If:
+Apply this rule ONLY IF:
 - Units decreased
 AND
 - CM1 profit per unit increased
+AND
+- ASP is flat or not materially increased
 
 Then:
 - The SKU is already protecting margin.
-- Recommendation MUST prioritize protecting per-unit profit
-  and avoiding unnecessary volume chasing.
+- Recommendation MUST prioritize protecting per-unit profit.
+- Recommendation MUST avoid unnecessary volume chasing.
 
 Example intent:
 "Hold pricing and protect per-unit profit this month."
-
 
 Rule 3 — Margin Trade-Off For Growth
 
@@ -1272,7 +1303,6 @@ Then:
 - Recommendation may support volume continuation
   only if objective_v2 allows margin flexibility.
 
-
 Rule 4 — Price Increase With Volume Loss
 
 If:
@@ -1284,9 +1314,20 @@ AND
 
 Then:
 - The SKU is trading volume for profitability.
-- Recommendation MUST prioritize margin protection
-  rather than pushing volume.
+- This is a margin expansion pattern, not margin compression.
+- Recommendation MUST prioritize holding the current price position.
+- Recommendation MUST NOT suggest supporting volume.
+- Recommendation MUST NOT suggest volume growth.
+- Recommendation MUST NOT suggest pushing volume.
+- Recommendation MUST NOT suggest recovering units.
+- Recommendation MUST NOT mention price cuts or lower prices.
+- Recommendation MUST NOT describe margin as pressured or compressed.
+- Recommendation MUST NOT mention demand recovery.
+- Recommendation MUST explicitly say to hold the current price.
+- Recommendation MUST explicitly say not to increase price further this month.
 
+Return EXACTLY:
+"Hold the current price this month. Do not increase price further."
 
 Rule 5 — Healthy Demand
 
@@ -1300,7 +1341,6 @@ Then:
 - Recommendation may support continued volume growth
   consistent with objective_v2.
 
-
 IMPORTANT
 
 These rules guide recommendation intent,
@@ -1313,7 +1353,6 @@ but final wording MUST still respect:
 - business_context
 - time_horizon = 1_month
 - recommendation language simplicity rules
-
 ────────────────────────────────────────
 OBJECTIVE ALIGNMENT LOGIC
 ────────────────────────────────────────
