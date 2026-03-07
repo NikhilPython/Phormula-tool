@@ -28,6 +28,8 @@ import DataTable, { ColumnDef, Row } from '@/components/ui/table/DataTable';
 import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { AnimatePresence, motion } from "framer-motion";
+import { AiButton } from '@/components/ui/button/AiButton';
+import SegmentedToggle from '@/components/ui/SegmentedToggle';
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
@@ -2283,7 +2285,7 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
           },
         },
         scales: {
-          x: { title: { display: true, text: "Month" } },
+          x: { title: { display: false, text: "Month" } },
           y: { title: { display: true, text: `Amount (${currency})` } },
         },
       },
@@ -2827,6 +2829,21 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
     }
   }, [year1, year2, month1, month2]);
 
+  //   const [activeTab, setActiveTab] = useState<
+  //   'all_skus' | 'top_80_skus' | 'new_or_reviving_skus' | 'other_skus'
+  // >('all_skus');
+
+  const tabOptions = useMemo(
+    () => [
+      { value: "all_skus" as const, label: "All SKUs" },
+      { value: "top_80_skus" as const, label: "Top 80% SKUs" },
+      { value: "new_or_reviving_skus" as const, label: "New/Reviving SKUs" },
+      { value: "other_skus" as const, label: "Other SKUs" },
+    ],
+    []
+  );
+
+   const handleTabChange = (val: TabKey) => setActiveTab(val);
 
   return (
     <>
@@ -3174,7 +3191,7 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
 
         {error && <p style={{ color: 'red' }}>{error}</p>}
 
-        <div className="mt-4 mb-3 rounded-xl border border-gray-200  p-3 w-full bg-white">
+        <div className="mt-4 mb-3 rounded-xl border border-gray-200 p-4 w-full bg-white">
           <div className="2xl:text-2xl text-[18px] font-bold text-[#414042]">Profitability</div>
 
           {/* Center labels like GraphPage */}
@@ -3233,28 +3250,28 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
 
 
         {/* ✅ ONE BOX */}
-        <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-3">
+        <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-4">
 
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
             <div>
-              <div className="2xl:text-2xl text-[18px] font-bold text-[#414042]">Units Sold</div>
+              <PageBreadcrumb pageTitle="Units Sold" variant="page" align="left" textSize="2xl" />
               <div ref={unitsChartRef} className="h-[320px] w-full" />
             </div>
 
             <div>
-              <div className="2xl:text-2xl text-[18px] font-bold text-[#414042]">Net Sales</div>
+              <PageBreadcrumb pageTitle="Units Sold" variant="page" align="left" textSize="2xl" />
               <div ref={chartRef} className="h-[320px] w-full" />
             </div>
 
 
             {/* Row 2: Profit */}
             <div className="mt-3">
-              <div className="2xl:text-2xl text-[18px] font-bold text-[#414042]">CM1 Profit</div>
+              <PageBreadcrumb pageTitle="CM1 Profit" variant="page" align="left" textSize="2xl" />
               <div ref={profitChartRef} className="h-[320px] w-full" />
             </div>
 
             <div className="mt-3">
-              <div className="2xl:text-2xl text-[18px] font-bold text-[#414042]">Average Selling Price</div>
+              <PageBreadcrumb pageTitle="Average Selling Price" variant="page" align="left" textSize="2xl" />
               <div ref={aspChartRef} className="h-[320px] w-full" />
             </div>
           </div>
@@ -3281,175 +3298,208 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
 
 
         {/* Table + actions */}
-        {(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).some(
-          (k) => (categorizedGrowth[k] || []).length > 0
-        ) && (
-            <div className='border border-gray-200 rounded-xl p-4 mt-6 w-full bg-white'>
-              <div className='flex xl:flex-row flex-col lg:justify-between justify-start xl:items-center items-start '>
-                <div className='flex 2xl:flex-row flex-col justify-between  2xl:items-center  items-start w-full xl:gap-0 gap-3'>
-                  <h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] text-nowrap">SKU Analysis MTD</h2>
-                  <div className='flex flex-col md:flex-row 2xl:justify-end justify-between 2xl:gap-3 mt-2 2xl:mt-0 w-full'>
+{/* Table + actions */}
+{(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).some(
+  (k) => (categorizedGrowth[k] || []).length > 0
+) && (
+  <div className="mt-4 rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
+    <div className="flex flex-col gap-4 min-w-0">
+      {/* MOBILE HEADER */}
+      <div className="flex items-center justify-between gap-2 xl:hidden min-w-0">
+        <PageBreadcrumb
+          pageTitle="SKU Analysis MTD"
+          variant="page"
+          align="left"
+        />
 
-                    <div
-                      className="
-    inline-flex
-    p-1 gap-2
-    overflow-x-auto
-    whitespace-nowrap
-    scroll-smooth
-    no-scrollbar
-  "
-                      style={{
-                        border: "1px solid #D9D9D9E5",
-                        borderRadius: 8,
-                      }}
-                    >
-                      {(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).map(key => {
-                        const isActive = activeTab === key
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={analyzeSkus}
+            disabled={
+              isPreviewMode ||
+              !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
+                (k) =>
+                  (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
+              )
+            }
+            className="
+              bg-custom-effect shin text-[#F8EDCE]
+              h-9 min-w-[120px] px-4
+              rounded-sm
+              inline-flex items-center justify-center gap-1
+              whitespace-nowrap
+              text-xs 2xl:text-sm
+              transition-all duration-200 ease-out
+              hover:-translate-y-[2px]
+              hover:shadow-lg
+              active:translate-y-0
+              active:shadow-md
+              disabled:opacity-50
+              disabled:cursor-not-allowed
+              disabled:transform-none
+              disabled:shadow-none
+            "
+            style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
+          >
+            <BsStars
+              className="shrink-0"
+              style={{ fontSize: "12px", color: "#F8EDCE" }}
+            />
+            {loadingInsight ? "Generating..." : "AI Insights"}
+          </button>
 
-                        return (
-                          <button
-                            key={key}
-                            onClick={() => setActiveTab(key)}
-                            className={`
-  shrink-0
-  md:text-sm text-xs
-  px-3 py-[3px]
-  rounded-[5px]
-  transition-colors duration-200
-  whitespace-nowrap py-1
-  ${isActive
-                                ? 'bg-[#5EA68E80] font-semibold'
-                                : 'bg-white hover:bg-[#5EA68E33] font-normal'
-                              }
-`}
-                            style={{
-                              color: '#414042',
-                              border: 'none'
-                            }}
-                          >
-                            {getTabLabel(key)}
-                          </button>
-                        )
-                      })}
-                    </div>
+          <DownloadIconButton
+            disabled={isPreviewMode}
+            onClick={() => {
+              const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
+              const allRows = getAllSkusForExport();
+              exportToExcel(allRows, file);
+            }}
+            className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+          />
+        </div>
+      </div>
 
+      {/* MOBILE TABS */}
+      <div className="xl:hidden w-full min-w-0 overflow-hidden">
+        <div className="w-full max-w-full overflow-x-auto overflow-y-hidden no-scrollbar">
+          <div className="inline-flex min-w-max">
+            <SegmentedToggle<TabKey>
+              value={activeTab}
+              options={tabOptions}
+              onChange={handleTabChange}
+              className="bg-white"
+              textSizeClass="text-xs 2xl:text-sm"
+            />
+          </div>
+        </div>
+      </div>
 
+      {/* DESKTOP HEADER */}
+      <div className="hidden xl:flex xl:items-center xl:justify-between xl:gap-6 min-w-0">
+        <PageBreadcrumb
+          pageTitle="SKU Analysis MTD"
+          variant="page"
+          align="left"
+        />
 
-                    <div className='flex gap-3 mt-3 sm:mt-0'>
-                      <button
-                        onClick={analyzeSkus}
-                        disabled={
-                          isPreviewMode ||
-                          !['top_80_skus', 'new_or_reviving_skus', 'other_skus'].some(
-                            (k) =>
-                              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
-                          )
-                        }
-                        className="
-    bg-custom-effect shin text-[#F8EDCE]
-    rounded-sm xl:px-4 px-3
-    text-nowrap flex items-center gap-1 justify-end 
-2xl:text-sm text-xs
-    transition-all duration-200 ease-out
-    hover:-translate-y-[2px]
-    hover:shadow-lg
-    active:translate-y-0
-    active:shadow-md
-
-    disabled:opacity-50
-    disabled:cursor-not-allowed
-    disabled:transform-none
-    disabled:shadow-none
-  "
-                        style={{
-                          boxShadow: "0px 4px 4px 0px #00000040",
-                        }}
-                      >
-                        <BsStars
-                          style={{
-                            fontSize: "12px",
-                            color: "#F8EDCE",
-                          }}
-                        />
-                        {loadingInsight ? "Generating..." : "AI Insights"}
-                      </button>
-                      <DownloadIconButton disabled={isPreviewMode} onClick={() => {
-                        const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
-                        const allRows = getAllSkusForExport();
-                        exportToExcel(allRows, file);
-                      }} />
-
-                    </div>
-
-                  </div>
-                </div>
-
-
-              </div>
-
-              <div className="table-wrapper pt-4">
-
-                <div className="pt-4">
-                  <DataTable<TableRow>
-                    columns={columns}
-                    data={buildTableRows}
-                    stickyHeader
-                    zebra
-                    paginate
-                    pageSize={10}
-                    maxHeight="60vh"
-                    loading={false}
-                    headerMaxWidth={140}
-                    rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-bold" : "")}
-                  />
-                </div>
-
-
-              </div>
-              < div className='flex justify-center mt-2'>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 14,
-                    flexWrap: 'wrap',
-
-                    color: '#414042',
-                    marginTop: 6,
-                  }}
-                  className='sm:text-sm text-xs'
-                >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#5EA68E', fontWeight: 700 }}>
-                      <FaArrowUp size={12} /> High growth
-                    </span>
-                  </span>
-
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#FF5C5C', fontWeight: 700 }}>
-                      <FaArrowDown size={12} /> Negative growth
-                    </span>
-                  </span>
-
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontWeight: 700,
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <span style={{ color: '#414042', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <FaArrowUp size={12} /> + / <FaArrowDown size={12} /> -
-                    </span>
-                    Low growth
-                  </span>
-                </div>
+        <div className="flex items-center gap-3 min-w-0 flex-1 justify-end">
+          <div className="min-w-0 max-w-full overflow-hidden">
+            <div className="max-w-full overflow-x-auto overflow-y-hidden no-scrollbar">
+              <div className="inline-flex min-w-max">
+                <SegmentedToggle<TabKey>
+                  value={activeTab}
+                  options={tabOptions}
+                  onChange={handleTabChange}
+                  className="bg-white"
+                  textSizeClass="text-xs 2xl:text-sm"
+                />
               </div>
             </div>
-          )}
+          </div>
+
+          <button
+            onClick={analyzeSkus}
+            disabled={
+              isPreviewMode ||
+              !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
+                (k) =>
+                  (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
+              )
+            }
+            className="
+              bg-custom-effect shin text-[#F8EDCE]
+              h-9 min-w-[120px] px-4
+              rounded-sm
+              inline-flex items-center justify-center gap-1
+              whitespace-nowrap
+              text-xs 2xl:text-sm
+              shrink-0
+              transition-all duration-200 ease-out
+              hover:-translate-y-[2px]
+              hover:shadow-lg
+              active:translate-y-0
+              active:shadow-md
+              disabled:opacity-50
+              disabled:cursor-not-allowed
+              disabled:transform-none
+              disabled:shadow-none
+            "
+            style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
+          >
+            <BsStars
+              className="shrink-0"
+              style={{ fontSize: "12px", color: "#F8EDCE" }}
+            />
+            {loadingInsight ? "Generating..." : "AI Insights"}
+          </button>
+
+          <DownloadIconButton
+            disabled={isPreviewMode}
+            onClick={() => {
+              const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
+              const allRows = getAllSkusForExport();
+              exportToExcel(allRows, file);
+            }}
+            className="shrink-0 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div className="pt-6">
+      <DataTable<TableRow>
+        columns={columns}
+        data={buildTableRows}
+        stickyHeader
+        zebra
+        paginate
+        pageSize={10}
+        maxHeight="60vh"
+        loading={false}
+        headerMaxWidth={140}
+        rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-bold" : "")}
+      />
+    </div>
+
+    <div className="flex justify-center mt-2">
+      <div
+        className="
+          grid grid-cols-2 gap-x-6 gap-y-2
+          sm:grid-cols-4
+          lg:flex lg:items-center lg:gap-10 lg:flex-wrap
+          text-xs 2xl:text-sm text-[#414042] mt-1
+          justify-items-start
+        "
+      >
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center gap-2 text-[#5EA68E] font-bold">
+            <FaArrowUp className="text-[10px] 2xl:text-xs" /> High growth
+          </span>
+        </span>
+
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center gap-2 text-[#FF5C5C] font-bold">
+            <FaArrowDown className="text-[10px] 2xl:text-xs" /> Negative growth
+          </span>
+        </span>
+
+        <span className="inline-flex items-center gap-2 font-bold whitespace-nowrap">
+          <span className="text-[#414042] inline-flex items-center gap-1">
+            <FaArrowUp className="text-[10px] 2xl:text-xs" /> + /
+            <FaArrowDown className="text-[10px] 2xl:text-xs" /> -
+          </span>
+          Low growth
+        </span>
+
+        <span className="inline-flex items-center gap-2 font-bold">
+          <span className="text-sm 2xl:text-base leading-none">-</span>
+          Past data for SKU is not available
+        </span>
+      </div>
+    </div>
+  </div>
+)}
       </div>
 
 

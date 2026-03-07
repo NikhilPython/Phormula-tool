@@ -495,20 +495,21 @@ export async function exportInventoryReconExcel(params: {
 
   dataRows: Record<string, any>[];
 
-  chartBase64?: string | null;
-  chartMetrics?: { name: string; value: number; pct: number }[] | null; // (unused now)
+  breakupChartBase64?: string | null;
+ageingChartBase64?: string | null;// (unused now)
 }) {
-  const {
-    filename,
-    titleLine,
-    titleCountry,
-    platformLabel = "Amazon",
-    periodLabel,
-    companyName,
-    brandName,
-    dataRows,
-    chartBase64 = null,
-  } = params;
+const {
+  filename,
+  titleLine,
+  titleCountry,
+  platformLabel = "Amazon",
+  periodLabel,
+  companyName,
+  brandName,
+  dataRows,
+  breakupChartBase64 = null,
+  ageingChartBase64 = null,
+} = params;
 
   if (!dataRows?.length) return;
 
@@ -617,27 +618,57 @@ export async function exportInventoryReconExcel(params: {
   }
 
   /* =========================
-     Sheet 2: Inventory Breakup (ONLY IMAGE)
-  ========================= */
-  const ws2 = wb.addWorksheet(safeSheetName("Inventory Breakup"));
+   Sheet 2: Inventory Charts
+========================= */
+const ws2 = wb.addWorksheet(safeSheetName("Inventory Charts"));
 
-  const img = parseBase64(chartBase64);
-  if (img) {
-    const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
+ws2.getCell("A1").value = titleLine || "";
+ws2.getCell("A1").font = { bold: false };
+ws2.getCell("A2").value = `Company Name : ${companyName || ""}`;
+ws2.getCell("N2").value = `${brandName || ""}`;
+ws2.getCell("N2").alignment = { horizontal: "right" };
+ws2.getCell("N2").font = { bold: true };
+ws2.getCell("A3").value = `Country : ${titleCountry}`;
+ws2.getCell("A4").value = `Platform : ${platformLabel}`;
+ws2.getCell("A5").value = `Period : ${periodLabel}`;
 
-    const imageId = wb.addImage({
-      base64: `data:${img.mime};base64,${img.base64}`,
-      extension: ext as "png" | "jpeg",
-    });
+const breakupImg = parseBase64(breakupChartBase64);
+const ageingImg = parseBase64(ageingChartBase64);
 
-    // ✅ Place image at A1 (no headings)
-    ws2.addImage(imageId, {
-      tl: { col: 0, row: 0 },
-      ext: { width: 1400, height: 520 },
-    });
-  } else {
-    ws2.getCell("A1").value = "No chart image available.";
+let rowCursor = 7;
+
+const addImageBlock = (
+  label: string,
+  img: { mime: string; base64: string } | null
+) => {
+  ws2.getCell(`A${rowCursor}`).value = label;
+  ws2.getCell(`A${rowCursor}`).font = { bold: true, size: 12 };
+  rowCursor += 1;
+
+  if (!img) {
+    ws2.getCell(`A${rowCursor}`).value = `No chart image available: ${label}`;
+    rowCursor += 3;
+    return;
   }
+
+  const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
+
+  const imageId = wb.addImage({
+    base64: `data:${img.mime};base64,${img.base64}`,
+    extension: ext as "png" | "jpeg",
+  });
+
+  ws2.addImage(imageId, {
+    tl: { col: 0, row: rowCursor - 1 },
+    ext: { width: 1400, height: 520 },
+  });
+
+  rowCursor += 26;
+};
+
+addImageBlock("Inventory Breakup", breakupImg);
+rowCursor += 2;
+addImageBlock("Inventory Ageing", ageingImg);
 
   /* =========================
      Save
@@ -1016,3 +1047,490 @@ addChartImage(img2, "Units");
     filename
   );
 }
+
+export async function exportInventoryForecastViewExcel(params: {
+  filename: string;
+  countryName: string;
+  month: string;
+  year: string;
+
+  soldLabels: string[];
+  forecastLabels: string[];
+
+  tableRows: Array<{
+    sNo: number;
+    product: string;
+    sku: string;
+    sold1: any;
+    sold2: any;
+    sold3: any;
+    f1: any;
+    f2: any;
+    f3: any;
+  }>;
+
+  totalsRow: {
+    sold1: any;
+    sold2: any;
+    sold3: any;
+    f1: any;
+    f2: any;
+    f3: any;
+  };
+
+  chartImageBase64?: string | null;
+
+  titleLine?: string;
+  titleCountry?: string;
+  platformLabel?: string;
+  periodLabel?: string;
+  companyName?: string;
+  brandName?: string;
+}) {
+  const {
+    filename,
+    soldLabels,
+    forecastLabels,
+    tableRows,
+    totalsRow,
+    chartImageBase64,
+    titleLine = "Inventory Forecast View",
+    titleCountry = "",
+    platformLabel = "Amazon",
+    periodLabel = "",
+    companyName = "",
+    brandName = "",
+  } = params;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = companyName || "Skinelements";
+  workbook.created = new Date();
+
+  const base64DataUrlToArrayBuffer = (dataUrl: string): ArrayBuffer => {
+    const base64 = dataUrl.split(",")[1];
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  };
+
+  const thinGrayBorder = {
+    top: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    bottom: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    left: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    right: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+  };
+
+  const lightGrayFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFE6E6E6" },
+  };
+
+  const whiteFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFFFFFFF" },
+  };
+
+  const header1 = [
+    "S.No",
+    "Product Name",
+    "SKU",
+    "Last 3 Months",
+    "",
+    "",
+    "Forecasted Months",
+    "",
+    "",
+  ];
+
+  const header2 = [
+    "",
+    "",
+    "",
+    soldLabels[0] || "",
+    soldLabels[1] || "",
+    soldLabels[2] || "",
+    forecastLabels[0] || "",
+    forecastLabels[1] || "",
+    forecastLabels[2] || "",
+  ];
+
+  const rows = tableRows.map((r) => [
+    r.sNo,
+    r.product,
+    r.sku,
+    r.sold1,
+    r.sold2,
+    r.sold3,
+    r.f1,
+    r.f2,
+    r.f3,
+  ]);
+
+  const totalsExcelRow = [
+    "",
+    "Total",
+    "",
+    totalsRow.sold1,
+    totalsRow.sold2,
+    totalsRow.sold3,
+    totalsRow.f1,
+    totalsRow.f2,
+    totalsRow.f3,
+  ];
+
+  const tableData = [header1, header2, ...rows, totalsExcelRow];
+  const sheetHeaderCount = 9;
+
+  const applyExcelHeader = (sheet: ExcelJS.Worksheet, headerCount: number) => {
+    sheet.mergeCells(1, 1, 1, headerCount);
+    sheet.getCell(1, 1).value = titleLine;
+    sheet.getCell(1, 1).font = { bold: false, size: 11 };
+    sheet.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+    sheet.getCell(2, 1).value = `Company Name : ${companyName}`;
+    sheet.getCell(2, 1).alignment = { horizontal: "left" };
+
+    sheet.getCell(2, headerCount).value = brandName;
+    sheet.getCell(2, headerCount).alignment = { horizontal: "right" };
+    sheet.getCell(2, headerCount).font = { bold: true };
+
+    sheet.getCell(3, 1).value = `Country : ${titleCountry}`;
+    sheet.getCell(4, 1).value = `Platform : ${platformLabel}`;
+    sheet.getCell(5, 1).value = `Period : ${periodLabel}`;
+  };
+
+  /* =========================
+     Sheet 1: Forecast Table
+  ========================= */
+  const ws1 = workbook.addWorksheet("Forecast Table", {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
+  });
+
+  applyExcelHeader(ws1, sheetHeaderCount);
+
+  const tableStartRow = 7;
+
+  tableData.forEach((row, idx) => {
+    ws1.getRow(tableStartRow + idx).values = row;
+  });
+
+  ws1.mergeCells(tableStartRow, 4, tableStartRow, 6);
+  ws1.mergeCells(tableStartRow, 7, tableStartRow, 9);
+  ws1.mergeCells(tableStartRow, 1, tableStartRow + 1, 1);
+  ws1.mergeCells(tableStartRow, 2, tableStartRow + 1, 2);
+  ws1.mergeCells(tableStartRow, 3, tableStartRow + 1, 3);
+
+  const headerRow1 = ws1.getRow(tableStartRow);
+  const headerRow2 = ws1.getRow(tableStartRow + 1);
+
+  // Row 1: white header like screenshot
+  headerRow1.eachCell((cell) => {
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+    cell.fill = whiteFill;
+    cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+    cell.border = thinGrayBorder;
+  });
+
+  // Row 2: light gray month row
+  headerRow2.eachCell((cell) => {
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+    cell.fill = whiteFill;
+    cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+    cell.border = thinGrayBorder;
+  });
+
+  // Body rows
+  // Body rows (WHITE background)
+for (let r = tableStartRow + 2; r < tableStartRow + tableData.length; r++) {
+  const row = ws1.getRow(r);
+  row.eachCell((cell, colNumber) => {
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: colNumber === 2 ? "left" : "center",
+    };
+    cell.fill = whiteFill;
+    cell.font = { size: 11, color: { argb: "FF000000" } };
+    cell.border = thinGrayBorder;
+  });
+}
+
+  // Total row
+  const totalRowNumber = tableStartRow + tableData.length - 1;
+  ws1.getRow(totalRowNumber).eachCell((cell, colNumber) => {
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: colNumber === 2 ? "left" : "center",
+    };
+    cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+   cell.fill = whiteFill;
+    cell.border = thinGrayBorder;
+  });
+
+  // Column widths
+  ws1.columns = [
+    { width: 10 },
+    { width: 28 },
+    { width: 18 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 16 },
+    { width: 16 },
+    { width: 16 },
+  ];
+
+  /* =========================
+     Sheet 2: Forecast Graph
+  ========================= */
+  const ws2 = workbook.addWorksheet("Forecast Graph");
+  ws2.columns = Array.from({ length: sheetHeaderCount }, () => ({ width: 18 }));
+
+  applyExcelHeader(ws2, sheetHeaderCount);
+
+  if (chartImageBase64) {
+    const buffer = base64DataUrlToArrayBuffer(chartImageBase64);
+    const imageId = workbook.addImage({
+      buffer,
+      extension: "png",
+    });
+
+    ws2.addImage(imageId, {
+      tl: { col: 0, row: 6 },
+      ext: { width: 1200, height: 520 },
+    });
+  } else {
+    ws2.getCell("A7").value = "No chart image available.";
+  }
+
+  const xlsxBuffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([xlsxBuffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+
+  saveAs(blob, filename);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function exportPnLForecastExcel(params: {
+  filename: string;
+
+  titleLine?: string;
+  titleCountry?: string;
+  platformLabel?: string;
+  periodLabel?: string;
+
+  companyName?: string;
+  brandName?: string;
+
+  productRows: Array<Record<string, any>>;
+  summaryRows?: Array<Record<string, any>>;
+
+  chartImageBase64?: string | null;
+}) {
+  const {
+    filename,
+    titleLine = "P&L Forecast",
+    titleCountry = "",
+    platformLabel = "Amazon",
+    periodLabel = "",
+    companyName = "",
+    brandName = "",
+    productRows,
+    summaryRows = [],
+    chartImageBase64 = null,
+  } = params;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = companyName || "Skinelements";
+  workbook.created = new Date();
+
+  const base64DataUrlToArrayBuffer = (dataUrl: string): ArrayBuffer => {
+    const base64 = dataUrl.split(",")[1];
+    const binary = atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  };
+
+  const thinGrayBorder = {
+    top: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    bottom: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    left: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    right: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+  };
+
+  const whiteFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFFFFFFF" },
+  };
+
+  const lightGrayFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFEFEFEF" },
+  };
+
+  const applyExcelHeader = (sheet: ExcelJS.Worksheet, headerCount: number) => {
+    sheet.mergeCells(1, 1, 1, headerCount);
+    sheet.getCell(1, 1).value = titleLine;
+    sheet.getCell(1, 1).font = { bold: false, size: 11 };
+    sheet.getCell(1, 1).alignment = { horizontal: "left", vertical: "middle" };
+
+    sheet.getCell(2, 1).value = `Company Name : ${companyName}`;
+    sheet.getCell(2, 1).alignment = { horizontal: "left" };
+
+    sheet.getCell(2, headerCount).value = brandName;
+    sheet.getCell(2, headerCount).alignment = { horizontal: "right" };
+    sheet.getCell(2, headerCount).font = { bold: true };
+
+    sheet.getCell(3, 1).value = `Country : ${titleCountry}`;
+    sheet.getCell(4, 1).value = `Platform : ${platformLabel}`;
+    sheet.getCell(5, 1).value = `Period : ${periodLabel}`;
+  };
+
+  const headers = [
+    "Product Name",
+    "SKU",
+    "Sales M1",
+    "CM1 M1",
+    "Sales M2",
+    "CM1 M2",
+    "Sales M3",
+    "CM1 M3",
+    "Sales Total",
+    "CM1 Total",
+  ];
+
+  const tableRows = [
+    ...(productRows || []),
+    ...(summaryRows || []),
+  ].map((r) => [
+    r.product_name ?? "",
+    r.sku ?? "",
+    r.Total_Sales_1st ?? "",
+    r.profit_1st ?? "",
+    r.Total_Sales_2nd ?? "",
+    r.profit_2nd ?? "",
+    r.Total_Sales_3rd ?? "",
+    r.profit_3rd ?? "",
+    r.Total_Sales_sum ?? "",
+    r.profit_sum ?? "",
+  ]);
+
+  /* =========================
+     Sheet 1: P&L Forecast Table
+  ========================= */
+  const ws1 = workbook.addWorksheet("P&L Forecast", {
+    views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
+  });
+
+  const headerCount = headers.length;
+  applyExcelHeader(ws1, headerCount);
+
+  const tableStartRow = 7;
+
+  ws1.getRow(tableStartRow).values = headers;
+  ws1.getRow(tableStartRow).height = 18;
+
+  ws1.getRow(tableStartRow).eachCell((cell) => {
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+    cell.fill = whiteFill;
+    cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+    cell.border = thinGrayBorder;
+  });
+
+  tableRows.forEach((row, idx) => {
+    const excelRow = ws1.getRow(tableStartRow + 1 + idx);
+    excelRow.values = row;
+
+    const isTotalRow = String(row[0]).trim().toLowerCase() === "total";
+
+    excelRow.eachCell((cell, colNumber) => {
+      const isNumberValue = typeof cell.value === "number";
+      const numeric =
+        typeof cell.value === "string" && cell.value !== "" && !isNaN(Number(cell.value));
+
+      if (isNumberValue || numeric) {
+        cell.value = Number(cell.value);
+        cell.numFmt = "#,##0.00";
+      }
+
+      cell.alignment = {
+        vertical: "middle",
+        horizontal: colNumber === 1 ? "left" : "center",
+      };
+      cell.fill = isTotalRow ? lightGrayFill : whiteFill;
+      cell.font = {
+        bold: isTotalRow,
+        size: 11,
+        color: { argb: "FF000000" },
+      };
+      cell.border = thinGrayBorder;
+    });
+  });
+
+  ws1.columns = [
+    { width: 28 },
+    { width: 18 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 16 },
+    { width: 16 },
+  ];
+
+  /* =========================
+     Sheet 2: P&L Chart
+  ========================= */
+  const ws2 = workbook.addWorksheet("P&L Chart");
+  ws2.columns = Array.from({ length: headerCount }, () => ({ width: 18 }));
+
+  applyExcelHeader(ws2, headerCount);
+
+  if (chartImageBase64) {
+    const buffer = base64DataUrlToArrayBuffer(chartImageBase64);
+    const imageId = workbook.addImage({
+      buffer,
+      extension: "png",
+    });
+
+    ws2.addImage(imageId, {
+      tl: { col: 0, row: 6 },
+      ext: { width: 1200, height: 520 },
+    });
+  } else {
+    ws2.getCell("A7").value = "No chart image available.";
+  }
+
+  const xlsxBuffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([xlsxBuffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+
+  saveAs(blob, filename);
+}
+

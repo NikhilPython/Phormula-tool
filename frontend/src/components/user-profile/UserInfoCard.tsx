@@ -1494,29 +1494,37 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       />
 
                       {/* Business Context */}
-                      <InfoItem
-                        label="Business Context"
-                        value={
-                          isObjectiveEditMode ? (
-                            <Input
-                              type="text"
-                              value={objectiveDraft.business_context || ""}
-                              onChange={(e) =>
-                                setObjectiveDraft((prev) => ({
-                                  ...prev,
-                                  business_context: e.target.value,
-                                }))
-                              }
-                            />
-                          ) : objective.business_context ? (
-                            <p className="line-clamp-1 text-sm text-gray-800 dark:text-white/90">
-                              {objective.business_context}
-                            </p>
-                          ) : (
-                            "-"
-                          )
-                        }
-                      />
+                      <div className="col-span-2">
+  <InfoItem
+    label="Business Context"
+    value={
+      isObjectiveEditMode ? (
+        <div className="w-full">
+          <textarea
+            rows={4}
+            maxLength={250}
+            value={objectiveDraft.business_context || ""}
+            onChange={(e) =>
+              setObjectiveDraft((prev) => ({
+                ...prev,
+                business_context: e.target.value,
+              }))
+            }
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 resize-none"
+            placeholder="Describe your business context..."
+          />
+          <p className="mt-1 text-xs text-gray-500">Max 250 characters</p>
+        </div>
+      ) : objective.business_context ? (
+        <p className="text-sm text-gray-800 dark:text-white/90 whitespace-pre-wrap">
+          {objective.business_context}
+        </p>
+      ) : (
+        "-"
+      )
+    }
+  />
+</div>
                     </div>
                   </InfoCard>
                 </div>

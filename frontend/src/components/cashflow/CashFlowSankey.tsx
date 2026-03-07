@@ -12,6 +12,8 @@ import {
   FaWallet,
   FaArrowRotateRight,
 } from "react-icons/fa6";
+import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
+
 
 /* ================= TYPES ================= */
 
@@ -365,103 +367,78 @@ const CashFlowSankey: React.FC<Props> = ({
   return (
     <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  {cards.map((c) => {
+    const p = getChangePercent(c.value, c.prev);
 
-        {cards.map((c) => {
-          const p = getChangePercent(c.value, c.prev);
-          const isNegative = Number(p) < 0;
+    const currentValue =
+      c.label === "Units" ? (
+        formatInteger(c.value)
+      ) : c.isDiscount ? (
+        <>
+          {currency}
+          {formatNumber(Math.abs(c.value || 0))}
+          <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
+            (
+            {(((Math.abs(c.value || 0)) / (data.gross_sales || 1)) * 100).toFixed(2)}
+            %)
+          </span>
+        </>
+      ) : (
+        <>
+          {c.isCurrency ? currency : ""}
+          {formatNumber(c.value)}
+          {perUnitCards.includes(c.label) && (
+            <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
+              ({currency}
+              {getPerUnitValue(c.value, data.quantity_total)} / Unit)
+            </span>
+          )}
+        </>
+      );
 
-          return (
-            <div
-              key={c.label}
-              className={`rounded-2xl border ${c.border} ${c.bg} shadow-sm xl:px-4 px-2 py-3`}
-            >
-              <div className="2xl:text-xs text-[10px] text-charcoal-500 mb-1">{c.label}</div>
+    const previousValueText = !hasPrevious
+      ? c.label === "Units"
+        ? "-"
+        : `${currency}-`
+      : c.label === "Units"
+      ? formatInteger(c.prev)
+      : c.isDiscount
+      ? `${currency}${formatNumber(Math.abs(c.prev || 0))}`
+      : `${c.isCurrency ? currency : ""}${formatNumber(c.prev)}${
+          perUnitCards.includes(c.label)
+            ? ` (${currency}${getPerUnitValue(
+                c.prev,
+                previous_summary?.quantity_total
+              )} / Unit)`
+            : ""
+        }`;
 
-              <div className="2xl:text-lg text-sm font-semibold text-charcoal-700">
-                {c.label === "Units" ? (
-                  formatInteger(c.value)
-                ) : c.isDiscount ? (
-                  <>
-                    {currency}
-                    {formatNumber(Math.abs(c.value || 0))}
-                    <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-                      (
-                      {(
-                        ((Math.abs(c.value || 0)) / (data.gross_sales || 1)) *
-                        100
-                      ).toFixed(2)}
-                      %)
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    {c.isCurrency ? currency : ""}
-                    {formatNumber(c.value)}
+    const comparisons = [
+      {
+        label: `${formatPrevLabel(previousLabel || "Previous")}`,
+        valueText: previousValueText,
+        deltaText: hasPrevious && p ? `${Number(p) < 0 ? "▼" : "▲"} ${Math.abs(Number(p))}%` : "-",
+        deltaClassName:
+          hasPrevious && p
+            ? Number(p) < 0
+              ? "text-red-600"
+              : "text-green-600"
+            : "text-gray-400",
+      },
+    ];
 
-                    {perUnitCards.includes(c.label) && (
-                      <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-                        ({currency}
-                        {getPerUnitValue(
-                          c.value,
-                          data.quantity_total
-                        )}{" "}
-                        / Unit)
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div className="flex justify-between items-end 2xl:text-xs text-[10px] mt-2">
-                <div className="flex flex-col">
-                  <span className="text-charcoal-400">
-                    {formatPrevLabel(previousLabel || "Previous")}:
-                  </span>
-
-                  <span className="font-semibold text-charcoal-700">
-                    {!hasPrevious ? (
-                      c.label === "Units" ? "-" : `${currency}-`
-                    ) : c.label === "Units" ? (
-                      formatInteger(c.prev)
-                    ) : c.isDiscount ? (
-                      <>
-                        {currency}
-                        {formatNumber(Math.abs(c.prev || 0))}
-                      </>
-                    ) : (
-                      <>
-                        {c.isCurrency ? currency : ""}
-                        {formatNumber(c.prev)}
-                        {perUnitCards.includes(c.label) && (
-                          <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-                            ({currency}
-                            {getPerUnitValue(
-                              c.prev,
-                              previous_summary?.quantity_total
-                            )}{" "}
-                            / Unit)
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </span>
-                </div>
-
-                {/* % change sirf tab jab previous data ho */}
-                {hasPrevious && p && (
-                  <span
-                    className={`text-nowrap font-bold ${Number(p) < 0 ? "text-red-600" : "text-green-600"
-                      }`}
-                  >
-                    {Number(p) < 0 ? "▼" : "▲"} {Math.abs(Number(p))}%
-                  </span>
-                )}
-              </div>
-
-            </div>
-          );
-        })}
-      </div>
+    return (
+      <SummaryMetricCard
+        key={c.label}
+        title={c.label}
+        value={currentValue}
+        className={`border ${c.border} ${c.bg} xl:px-4 px-2 py-3`}
+        valueClassName="text-charcoal-700"
+        comparisons={comparisons}
+      />
+    );
+  })}
+</div>
       <div className="rounded-xl border shadow bg-white p-4">
 
 

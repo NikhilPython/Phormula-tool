@@ -12,6 +12,7 @@ import {
     TooltipItem,
 } from "chart.js";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import "@/lib/chartSetup";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 

@@ -22,6 +22,51 @@ import {
 } from "chart.js";
 import CashFlowSankey from "@/components/cashflow/CashFlowSankey";
 
+const hoverPopPlugin = {
+  id: "hoverPopPlugin",
+  afterDatasetsDraw(chart: any) {
+    const active = chart.getActiveElements?.() || [];
+    if (!active.length) return;
+
+    const { datasetIndex, index } = active[0];
+    const meta = chart.getDatasetMeta(datasetIndex);
+    const element = meta?.data?.[index];
+    if (!element) return;
+
+    // only for bar charts
+    if (meta?.type !== "bar") return;
+
+    const ctx = chart.ctx;
+
+    const props = element.getProps(
+      ["x", "y", "base", "width", "height"],
+      true
+    );
+
+    const x = props.x;
+    const y = props.y;
+    const base = props.base;
+    const w = props.width;
+
+    // horizontal scale only
+    const popW = w * 1.18;
+    const left = x - popW / 2;
+    const top = Math.min(y, base);
+    const height = Math.abs(base - y);
+
+    ctx.save();
+
+    const bg = chart.data.datasets?.[datasetIndex]?.backgroundColor;
+    const fill = Array.isArray(bg) ? bg[index] : bg || "rgba(0,0,0,0.2)";
+
+    // keep same color, just widen
+    ctx.fillStyle = fill as any;
+    ctx.fillRect(left, top, popW, height);
+
+    ctx.restore();
+  },
+};
+
 ChartJS.register(
   BarElement,
   CategoryScale,
@@ -32,6 +77,8 @@ ChartJS.register(
   PointElement,
   ChartTitle
 );
+
+ChartJS.register(hoverPopPlugin);
 
 const Line = dynamic(() => import("react-chartjs-2").then((m) => m.Line), {
   ssr: false,
@@ -505,17 +552,16 @@ const CashFlowPage: React.FC = () => {
 
 
 
-
-  // chart helpers
+    // chart helpers
   const viewportWidth =
     typeof window !== "undefined" ? window.innerWidth : 1200;
+
+const isSmallScreen = viewportWidth < 1024; // mobile + tablet
+const isMobile = viewportWidth < 640;
+
+const xAxisTickFontSize = isMobile ? 9 : isSmallScreen ? 10 : 12;
+  const yAxisFontSize = 12;
   const barWidthInPixels = Math.max(viewportWidth * 0.05, 40);
-
-  const isMobile = viewportWidth < 640;
-
-  const axisFontSize = isMobile ? 10 : 14;
-  const axisTitleFontSize = isMobile ? 11 : 16;
-
 
   const getLineChartData = () => {
     let labels: string[] = [];
@@ -538,7 +584,7 @@ const CashFlowPage: React.FC = () => {
 
         datasets.push({
           label: labelMap[key],
-          data: ds, // ✅ month-wise real data
+          data: ds,
           borderColor: colorMapping[labelMap[key]],
           backgroundColor: `${colorMapping[labelMap[key]]}20`,
           borderWidth: 2,
@@ -548,18 +594,20 @@ const CashFlowPage: React.FC = () => {
           pointHoverRadius: 4,
         });
       });
-    }
-
-    else if (periodType === "yearly") {
+    } else if (periodType === "yearly") {
       labels = monthsList;
+
       columnsToDisplay2.forEach((key) => {
         if (!selectedGraphs[key]) return;
+
         const ds = monthsList.map((m) => {
           const md = allYearlyData[m];
           const val = md?.[key] ?? 0;
           return Math.abs(Number(val));
         });
+
         const label = labelMap[key];
+
         datasets.push({
           label,
           data: ds,
@@ -578,38 +626,35 @@ const CashFlowPage: React.FC = () => {
   };
 
   const getFilteredBarChartData = () => {
-    const filteredKeys = columnsToDisplay2.filter((k) => selectedGraphs[k]);
-    return {
-      labels: filteredKeys.map((k) => labelMap[k]),
-      datasets: [
-        {
-          label: "Amount",
-          data: filteredKeys.map((k) =>
-            Math.abs(Number(getSafeValue(k)))
-          ),
-          backgroundColor: filteredKeys.map(
-            (k) => colorMapping[labelMap[k]] || "#999"
-          ),
-          borderColor: filteredKeys.map(
-            (k) => colorMapping[labelMap[k]] || "#666"
-          ),
-          borderWidth: 1,
-          maxBarThickness: barWidthInPixels,
-        },
-      ],
-    };
+  const filteredKeys = columnsToDisplay2.filter((k) => selectedGraphs[k]);
+
+  return {
+    labels: filteredKeys.map((k) => labelMap[k]),
+    datasets: [
+      {
+        label: "Amount",
+        data: filteredKeys.map((k) => Math.abs(Number(getSafeValue(k)))),
+        backgroundColor: filteredKeys.map(
+          (k) => colorMapping[labelMap[k]] || "#999"
+        ),
+        borderColor: filteredKeys.map(
+          (k) => colorMapping[labelMap[k]] || "#666"
+        ),
+        borderWidth: 1,
+        maxBarThickness: barWidthInPixels,
+
+        // keep same color on hover
+        hoverBackgroundColor: filteredKeys.map(
+          (k) => colorMapping[labelMap[k]] || "#999"
+        ),
+        hoverBorderColor: filteredKeys.map(
+          (k) => colorMapping[labelMap[k]] || "#666"
+        ),
+        hoverBorderWidth: 1,
+      },
+    ],
   };
-
-
-
-  const xAxisTitle =
-    periodType === "monthly"
-      ? `${month} ${year}`
-      : periodType === "quarterly"
-        ? `${selectedQuarter} (${(quarterMapping[selectedQuarter] || []).join(
-          ", "
-        )}) ${year}`
-        : `${year}`;
+};
 
   const barChartOptions = {
     responsive: true,
@@ -627,17 +672,41 @@ const CashFlowPage: React.FC = () => {
     },
     scales: {
       x: {
-        title: { display: true, text: xAxisTitle, font: { size: axisTitleFontSize }, },
-        ticks: {
-          font: { size: axisFontSize },        // 👈 ADD
-        },
-        offset: true,
-      },
+  title: {
+    display: false,
+  },
+  ticks: {
+    font: { size: xAxisTickFontSize },
+    maxRotation: 0,
+    minRotation: 0,
+    autoSkip: false,
+    callback: function (_value: any, index: number) {
+      const label = this.getLabelForValue(index);
+
+      if (typeof label !== "string") return label;
+
+      if (isSmallScreen) {
+        const words = label.split(" ");
+
+        if (words.length >= 2) {
+          return [words[0], words.slice(1).join(" ")];
+        }
+      }
+
+      return label;
+    },
+  },
+  offset: true,
+},
       y: {
         beginAtZero: true,
-        title: { display: true, text: `Amount (${currencySymbol})`, font: { size: axisTitleFontSize }, },
+        title: {
+          display: true,
+          text: `Amount (${currencySymbol})`,
+          font: { size: yAxisFontSize },
+        },
         ticks: {
-          font: { size: axisFontSize },
+          font: { size: yAxisFontSize },
           callback: (value: any) =>
             `${currencySymbol}${Number(value).toLocaleString()}`,
         },
@@ -649,15 +718,13 @@ const CashFlowPage: React.FC = () => {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { display: false, position: "top" as const },
+      legend: { display: false },
       tooltip: {
         callbacks: {
           label: (tooltipItem: any) =>
             `${tooltipItem.dataset.label}: ${currencySymbol}${Number(
               tooltipItem.raw
             ).toLocaleString()}`,
-
-          // 🟢 color square in tooltip = line color
           labelColor: (context: any) => {
             const color = context.dataset.borderColor;
             return {
@@ -665,26 +732,46 @@ const CashFlowPage: React.FC = () => {
               backgroundColor: color,
             };
           },
-
           labelTextColor: () => "#414042",
-
         },
       },
     },
     scales: {
       x: {
-        title: {
-          display: true,
-          text:
-            periodType === "quarterly"
-              ? `${selectedQuarter} ${year}`
-              : "Months",
-        },
-      },
+  title: {
+    display: false,
+  },
+  ticks: {
+    font: { size: xAxisTickFontSize },
+    maxRotation: 0,
+    minRotation: 0,
+    autoSkip: false,
+    callback: function (_value: any, index: number) {
+      const label = this.getLabelForValue(index);
+
+      if (typeof label !== "string") return label;
+
+      if (isSmallScreen) {
+        const words = label.split(" ");
+
+        if (words.length >= 2) {
+          return [words[0], words.slice(1).join(" ")];
+        }
+      }
+
+      return label;
+    },
+  },
+},
       y: {
         beginAtZero: true,
-        title: { display: true, text: `Amount (${currencySymbol})` },
+        title: {
+          display: true,
+          text: `Amount (${currencySymbol})`,
+          font: { size: yAxisFontSize },
+        },
         ticks: {
+          font: { size: yAxisFontSize },
           callback: (value: any) =>
             `${currencySymbol}${Number(value).toLocaleString()}`,
         },
@@ -692,13 +779,6 @@ const CashFlowPage: React.FC = () => {
     },
     interaction: { mode: "index" as const, intersect: false },
   } as const;
-
-  // exports
-
-
-
-
-
 
   const metrics = columnsToDisplay2.map((key) => ({
     name: key,
@@ -893,69 +973,10 @@ const CashFlowPage: React.FC = () => {
 
             {/* Chart Section */}
             <div className="mt-6 rounded-xl bg-white p-4 shadow border">
-              <div
-                className={[
-                  "my-3 sm:my-4",
-                  "flex flex-wrap items-center justify-center",
-                  "gap-3 sm:gap-4 md:gap-5",
-                  "w-full mx-auto",
-                  allValuesZero ? "opacity-30" : "opacity-100",
-                  "transition-opacity duration-300",
-                ].join(" ")}
-              >
-                {metrics.map(({ name, label, color }) => {
-                  const isChecked = !!selectedGraphs[name];
-
-                  return (
-                    <label
-                      key={name}
-                      className={[
-                        "shrink-0",
-                        "flex items-center gap-1 sm:gap-1.5",
-                        "font-semibold select-none whitespace-nowrap",
-                        "text-[9px] sm:text-[10px] md:text-[11px] lg:text-xs xl:text-sm",
-                        "text-charcoal-500",
-                        isChecked ? "opacity-100" : "opacity-40",
-                        allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
-                      ].join(" ")}
-                    >
-                      <span
-                        className="
-            flex items-center justify-center
-            h-3 w-3 sm:h-3.5 sm:w-3.5
-            rounded-sm border transition
-          "
-                        style={{
-                          borderColor: color,
-                          backgroundColor: isChecked ? color : "white",
-                          opacity: allValuesZero ? 0.6 : 1,
-                        }}
-                        onClick={() => !allValuesZero && toggleMetric(name)}
-                      >
-                        {isChecked && (
-                          <svg
-                            viewBox="0 0 24 24"
-                            width="14"
-                            height="14"
-                            className="text-white"
-                          >
-                            <path
-                              fill="currentColor"
-                              d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
-                            />
-                          </svg>
-                        )}
-                      </span>
-
-                      {/* same as GraphPage: capitalized label, not all-caps */}
-                      <span className="capitalize">{label}</span>
-                    </label>
-                  );
-                })}
-              </div>
 
 
               <div className="h-[50vh] sm:h-[40vw] max-h-[560px]">
+              {/* <div className="h-[280px] sm:h-[320px] md:h-[360px]"> */}
                 {periodType === "monthly" ? (
                   <Bar
                     ref={chartRef}

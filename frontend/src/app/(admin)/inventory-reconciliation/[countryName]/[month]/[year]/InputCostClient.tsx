@@ -22,8 +22,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import InventoryPieCard from "@/components/inventory/InventoryPieCard";
-
+import InventoryPieCard, { InventoryPieCardHandle } from "@/components/inventory/InventoryPieCard";
 /* ================= TYPES ================= */
 interface Params {
   params: Promise<{
@@ -288,6 +287,9 @@ export default function InventoryReconciliationPage({ params }: Params) {
   }, []);
 
   const countryName = decodeURIComponent(countryNameRaw ?? '').toLowerCase();
+
+  const breakupPieRef = useRef<InventoryPieCardHandle | null>(null);
+const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
 
   const monthParam = normalizeMonth(decodeURIComponent(monthRaw ?? ""));
   const yearParam = normalizeYear(decodeURIComponent(yearRaw ?? ""));
@@ -1404,51 +1406,39 @@ if (colKey === "inventory_coverage_ratio") {
   }, [rows, getExpandedExportCols, getValue]);
 
   const handleDownloadXLSX = async () => {
-    const dataRows = buildReconExportDataRows();
-    if (!dataRows.length) return;
+  const dataRows = buildReconExportDataRows();
+  if (!dataRows.length) return;
 
-    const periodLabel =
-      range === "monthly"
-        ? formatPeriodLabel(selectedMonth, selectedYear)
-        : range === "quarterly"
-          ? formatQuarterLabel(selectedQuarter, selectedYear)
-          : selectedYear;
+  const periodLabel =
+    range === "monthly"
+      ? formatPeriodLabel(selectedMonth, selectedYear)
+      : range === "quarterly"
+      ? formatQuarterLabel(selectedQuarter, selectedYear)
+      : selectedYear;
 
+  const breakupChartBase64 = breakupPieRef.current?.getExportImage() || null;
+  const ageingChartBase64 = ageingPieRef.current?.getExportImage() || null;
 
-    // ✅ force pie to regenerate a fresh composed image (pie + legend metrics)
-    setExportTick((t) => t + 1);
+  const filenameBase = buildReconFilename(range, {
+    month: selectedMonth,
+    quarter: selectedQuarter,
+    year: selectedYear,
+  });
 
-    // wait 2 frames so chart canvas + composed export canvas are up-to-date
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
-
-    if (!pieBase64Ref.current) {
-      setModalMessage("Pie export image not ready. Please click Download again.");
-      setShowModal(true);
-      return;
-    }
-
-    const filenameBase = buildReconFilename(range, {
-      month: selectedMonth,
-      quarter: selectedQuarter,
-      year: selectedYear,
-    });
-
-    exportInventoryReconExcel({
-      filename: `${filenameBase}.xlsx`,
-      titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
-      countryName,
-      titleCountry: countryName?.toUpperCase(),
-      platformLabel: "Amazon",
-      periodLabel,
-      companyName,
-      brandName,
-      dataRows,
-      chartBase64: pieBase64Ref.current,
-    });
-
-  };
-
+  await exportInventoryReconExcel({
+    filename: `${filenameBase}.xlsx`,
+    titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
+    countryName,
+    titleCountry: countryName?.toUpperCase(),
+    platformLabel: "Amazon",
+    periodLabel,
+    companyName,
+    brandName,
+    dataRows,
+    breakupChartBase64,
+    ageingChartBase64,
+  });
+};
 
   if (pageLoading) {
     return (
@@ -1563,8 +1553,9 @@ if (colKey === "inventory_coverage_ratio") {
       </div>
 
             {/* ✅ Pie charts row */}
-     <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
   <InventoryPieCard
+    ref={breakupPieRef}
     title="Inventory Breakup"
     data={breakupPie}
     loading={pieLoading}
@@ -1572,6 +1563,7 @@ if (colKey === "inventory_coverage_ratio") {
   />
 
   <InventoryPieCard
+    ref={ageingPieRef}
     title="Inventory Ageing"
     data={ageingPie}
     loading={pieLoading}

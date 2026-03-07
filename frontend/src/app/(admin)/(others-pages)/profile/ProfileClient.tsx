@@ -9,6 +9,7 @@ import AddMemberModal from "@/components/header/AddMemberModal";
 import ViewMemberDrawer from "@/components/header/ViewMemberDrawer";
 import EditMemberModal from "@/components/header/EditMemberModal";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
+import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataTable";
 
 // function TabButton({
 //   active,
@@ -26,6 +27,14 @@ import SegmentedToggle from "@/components/ui/SegmentedToggle";
 //       onClick={onClick}>{children}</Button>
 //   );
 // }
+
+type TeamMemberRow = Row & {
+  member: React.ReactNode;
+  country: React.ReactNode;
+  sectionAccess: React.ReactNode;
+  addedOn: React.ReactNode;
+  actions: React.ReactNode;
+};
 
 export default function ProfileClient() {
   const [tab, setTab] = React.useState<"personal" | "objectives" | "teamMembers">("personal");
@@ -121,6 +130,151 @@ export default function ProfileClient() {
     }
   }, [isMember, tab]);
 
+  const memberColumns = React.useMemo<ColumnDef<TeamMemberRow>[]>(
+  () => [
+    {
+      key: "sno",
+      header: "S.No.",
+      width: "90px",
+      cellClassName: "text-center",
+      headerClassName: "text-center",
+    },
+    {
+      key: "member",
+      header: "Member",
+      width: "320px",
+      cellClassName: "text-center",
+      headerClassName: "text-center",
+    },
+    {
+      key: "country",
+      header: "Country",
+      width: "140px",
+      cellClassName: "text-center",
+      headerClassName: "text-center",
+    },
+    {
+      key: "sectionAccess",
+      header: "Section Access",
+      width: "260px",
+      cellClassName: "text-center",
+      headerClassName: "text-center",
+    },
+    {
+      key: "addedOn",
+      header: "Added on",
+      width: "160px",
+      cellClassName: "text-center",
+      headerClassName: "text-center",
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      width: "140px",
+      cellClassName: "text-center",
+      headerClassName: "text-center",
+    },
+  ],
+  []
+);
+
+const memberRows = React.useMemo<TeamMemberRow[]>(() => {
+  return filteredMembers.map((m, idx) => {
+    const name = String(m?.member_name || "-");
+    const email = String(m?.email || "-");
+    const countries = Array.isArray(m?.countries) ? m.countries : [];
+    const modules = Array.isArray(m?.modules) ? m.modules : [];
+    const createdAt = m?.created_at ? new Date(m.created_at) : null;
+
+    const showModules = modules.slice(0, 2);
+    const extraCount = Math.max(0, modules.length - showModules.length);
+
+    const initials = name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((x: string) => x[0]?.toUpperCase())
+      .join("");
+
+    return {
+      sno: idx + 1,
+      member: (
+        <div className="flex items-center gap-3 min-w-0 justify-center">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
+            {initials || "?"}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate font-semibold text-slate-800">{name}</div>
+            <div className="truncate text-xs text-gray-500">{email}</div>
+          </div>
+        </div>
+      ),
+      country: <span className="text-slate-700">{countries?.[0] || "-"}</span>,
+      sectionAccess: (
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {showModules.map((mod: string) => (
+            <span
+              key={mod}
+              className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700"
+            >
+              {mod.replaceAll("_", " ")}
+            </span>
+          ))}
+          {extraCount > 0 && (
+            <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-600">
+              +{extraCount}
+            </span>
+          )}
+        </div>
+      ),
+      addedOn: (
+        <span className="text-slate-700">
+          {createdAt
+            ? createdAt.toLocaleDateString("en-GB", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              })
+            : "-"}
+        </span>
+      ),
+      actions: (
+        <div className="flex justify-center gap-2">
+          <button
+            onClick={() => {
+              setSelectedMember(m);
+              setIsViewOpen(true);
+            }}
+            className="h-7 w-7 rounded-md border border-gray-200 text-xs hover:bg-gray-50"
+            type="button"
+          >
+            👁️
+          </button>
+
+          <button
+            onClick={() => {
+              setSelectedMember(m);
+              setIsEditOpen(true);
+            }}
+            className="h-7 w-7 rounded-md border border-gray-200 text-xs hover:bg-gray-50"
+            type="button"
+          >
+            ✏️
+          </button>
+
+          <button
+            onClick={() => handleDelete(m)}
+            className="h-7 w-7 rounded-md border border-red-200 text-xs hover:bg-red-50"
+            type="button"
+          >
+            🗑️
+          </button>
+        </div>
+      ),
+    };
+  });
+}, [filteredMembers]);
+
   return (
     <div>
       <div className="rounded-2xl">
@@ -204,130 +358,41 @@ export default function ProfileClient() {
         </div>
         {tab === "teamMembers" && isMember === false && (
           <div className="space-y-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <input
-                className="w-full max-w-[320px] rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
-                placeholder="Search by name or email..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  {/* Search */}
+  <input
+    className="h-10 sm:h-11 w-full sm:max-w-[380px] rounded-md border border-gray-200 bg-white px-3 text-sm"
+    placeholder="Search by name or email..."
+    value={search}
+    onChange={(e) => setSearch(e.target.value)}
+  />
 
-              <Button variant="primary" size="sm" onClick={() => setIsAddMemberOpen(true)}>
-                + Add Member
-              </Button>
-            </div>
+  {/* Add Member Button */}
+  <Button
+    variant="primary"
+    size="sm"
+    onClick={() => setIsAddMemberOpen(true)}
+  >
+    + Add Member
+  </Button>
+</div>
 
             {membersLoading ? (
               <div className="text-sm text-gray-500">Loading members…</div>
             ) : membersError ? (
               <div className="text-sm text-red-600">{membersError}</div>
             ) : (
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <div className="grid grid-cols-12 gap-2 px-4 py-3 text-xs font-semibold text-gray-500 border-b">
-                  <div className="col-span-4">Member</div>
-                  <div className="col-span-2">Country</div>
-                  <div className="col-span-3">Section Access</div>
-                  <div className="col-span-2">Added on</div>
-                  <div className="col-span-1 text-right">Actions</div>
-                </div>
-
-                {filteredMembers.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-gray-500">No members found.</div>
-                ) : (
-                  filteredMembers.map((m, idx) => {
-                    const name = String(m?.member_name || "-");
-                    const email = String(m?.email || "-");
-                    const countries = Array.isArray(m?.countries) ? m.countries : [];
-                    const modules = Array.isArray(m?.modules) ? m.modules : [];
-                    const createdAt = m?.created_at ? new Date(m.created_at) : null;
-
-                    const showModules = modules.slice(0, 2);
-                    const extraCount = Math.max(0, modules.length - showModules.length);
-
-                    const initials = name
-                      .split(" ")
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .map((x: string) => x[0]?.toUpperCase())
-                      .join("");
-
-                    return (
-                      <div
-                        key={m?.id ?? idx}
-                        className="grid grid-cols-12 gap-2 px-4 py-3 text-sm border-b last:border-b-0 items-center"
-                      >
-                        {/* Member */}
-                        <div className="col-span-4 flex items-center gap-3 min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600">
-                            {initials || "?"}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-semibold text-slate-800 truncate">{name}</div>
-                            <div className="text-xs text-gray-500 truncate">{email}</div>
-                          </div>
-                        </div>
-
-                        {/* Country */}
-                        <div className="col-span-2 text-slate-700">
-                          {countries?.[0] || "-"}
-                        </div>
-
-                        {/* Section Access */}
-                        <div className="col-span-3 flex items-center gap-2 flex-wrap">
-                          {showModules.map((mod: string) => (
-                            <span
-                              key={mod}
-                              className="text-[10px] px-2 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700"
-                            >
-                              {mod.replaceAll("_", " ")}
-                            </span>
-                          ))}
-                          {extraCount > 0 && (
-                            <span className="text-[10px] px-2 py-1 rounded-full border border-gray-200 bg-gray-50 text-gray-600">
-                              +{extraCount}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Added on */}
-                        <div className="col-span-2 text-slate-700">
-                          {createdAt ? createdAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="col-span-1 flex justify-end gap-2">
-                          <button
-                            onClick={() => {
-                              setSelectedMember(m);
-                              setIsViewOpen(true);
-                            }}
-                            className="w-7 h-7 rounded-md border border-gray-200 hover:bg-gray-50 text-xs"
-                          >
-                            👁️
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              setSelectedMember(m);
-                              setIsEditOpen(true);
-                            }}
-                            className="w-7 h-7 rounded-md border border-gray-200 hover:bg-gray-50 text-xs"
-                          >
-                            ✏️
-                          </button>
-
-                          <button
-                            onClick={() => handleDelete(m)}
-                            className="w-7 h-7 rounded-md border border-red-200 hover:bg-red-50 text-xs"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+              <DataTable<TeamMemberRow>
+  columns={memberColumns}
+  data={memberRows}
+  paginate={memberRows.length > 10}
+  pageSize={10}
+  scrollY={false}
+  stickyHeader={false}
+  emptyMessage="No members found."
+  className="rounded-xl"
+  tableClassName="min-w-[900px]"
+/>
             )}
 
             <AddMemberModal

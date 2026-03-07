@@ -1,22 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { useParams, useRouter } from 'next/navigation';
 import './Styles.css';
 import PnlForecastChart from '@/components/pnlforecast/PnlForecastChart';
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import GroupedCollapsibleTables, {
   ColGroup,
   LeafCol,
 } from "@/components/ui/table/GroupedCollapsibleTables";
-import { IoDownload } from "react-icons/io5";
-import ExcelJS from "exceljs";
-import { saveAs } from "file-saver";
-import { useRef } from "react";
+import { exportPnLForecastExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
-
-
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import { useGetUserDataQuery } from '@/lib/api/profileApi';
 
 type RowData = {
   sku?: string;
@@ -36,7 +32,6 @@ type ChartDataItem = {
   isForecast?: boolean;
   isHistorical?: boolean;
 };
-
 
 type SelectedGraphs = Record<string, boolean>;
 
@@ -58,8 +53,6 @@ const getCurrencySymbol = (country: string): string => {
   }
 };
 
-
-
 const formatNumber = (val: any): string => {
   if (val === null || val === undefined || val === '' || isNaN(Number(val))) return 'N/A';
   return Math.abs(Number(val)).toLocaleString(undefined, {
@@ -77,7 +70,6 @@ const getPreviousMonthYear = (month: string, year: string) => {
     year: date.getFullYear().toString(),
   };
 };
-
 
 const formatPercent = (val: any): string => {
   if (val === null || val === undefined || val === '' || isNaN(Number(val))) return '';
@@ -124,13 +116,23 @@ const Pnlforecast: React.FC = () => {
     urlMonth?.toUpperCase() === "NA" &&
     urlYear?.toUpperCase() === "NA";
 
-  const effectiveCountry = isDemoMode
-    ? "global"
-    : countryName;
+      const { data: userData } = useGetUserDataQuery();
 
-  // ✅ currency now follows effectiveCountry
+  const companyName =
+    (userData as any)?.companyName ||
+    (userData as any)?.company_name ||
+    (userData as any)?.company ||
+    "";
+
+  const brandName =
+    (userData as any)?.brandName ||
+    (userData as any)?.brand_name ||
+    (userData as any)?.brand ||
+    "";
+
+
+  const effectiveCountry = isDemoMode ? "global" : countryName;
   const currencySymbol = getCurrencySymbol(effectiveCountry);
-
   const { month, year } = getPreviousMonthYear(urlMonth, urlYear);
 
   const [data, setData] = useState<RowData[] | null>(null);
@@ -139,95 +141,68 @@ const Pnlforecast: React.FC = () => {
   const [chartData, setChartData] = useState<ChartDataItem[]>([]);
 
   const [showCm1, setshowCm1] = useState<boolean>(false);
-
   const [LosSalesUnits, setLosSalesUnits] = useState<boolean>(false);
-
-
-
-
-
 
   const DUMMY_PNL_ROWS: RowData[] = [
     {
       sku: "SKU-DEMO-1",
       product_name: "Demo Product A",
-
-      // ✅ Units
       units_1st: 120,
       units_2nd: 140,
       units_3rd: 160,
       units_sum: 420,
-
-      // ✅ Sales & CM1
       Total_Sales_1st: 15000,
       profit_1st: 4200,
       profit_percentage_1st: 28,
-
       Total_Sales_2nd: 18000,
       profit_2nd: 5200,
       profit_percentage_2nd: 29,
-
       Total_Sales_3rd: 21000,
       profit_3rd: 6100,
       profit_percentage_3rd: 29,
-
-      // ✅ 3-month total
       Total_Sales_sum: 54000,
       profit_sum: 15500,
     },
     {
       sku: "SKU-DEMO-2",
       product_name: "Demo Product B",
-
       units_1st: 220,
       units_2nd: 250,
       units_3rd: 280,
       units_sum: 750,
-
       Total_Sales_1st: 30000,
       profit_1st: 7800,
       profit_percentage_1st: 26,
-
       Total_Sales_2nd: 34000,
       profit_2nd: 9300,
       profit_percentage_2nd: 27,
-
       Total_Sales_3rd: 39000,
       profit_3rd: 10900,
       profit_percentage_3rd: 28,
-
       Total_Sales_sum: 103000,
       profit_sum: 28000,
     },
     {
       sku: "Total",
       product_name: "Total",
-
       units_1st: 340,
       units_2nd: 390,
       units_3rd: 440,
       units_sum: 1170,
-
       Total_Sales_1st: 45000,
       profit_1st: 12000,
       profit_percentage_1st: 26.6,
-
       Total_Sales_2nd: 52000,
       profit_2nd: 14500,
       profit_percentage_2nd: 27.8,
-
       Total_Sales_3rd: 60000,
       profit_3rd: 17000,
       profit_percentage_3rd: 28.3,
-
       Total_Sales_sum: 157000,
       profit_sum: 43500,
       profit_percentage_sum: 27.7,
     },
   ];
-
-
-
 
   const DUMMY_PNL_CHART: ChartDataItem[] = [
     {
@@ -263,8 +238,6 @@ const Pnlforecast: React.FC = () => {
       isForecast: true,
     },
   ];
-
-
 
   const chartRef = useRef<any>(null);
 
@@ -334,7 +307,6 @@ const Pnlforecast: React.FC = () => {
     return exportCanvas.toDataURL("image/png");
   };
 
-
   const [selectedGraphs, setSelectedGraphs] = useState<SelectedGraphs>({
     SALES: true,
     COGS: true,
@@ -343,6 +315,7 @@ const Pnlforecast: React.FC = () => {
     'CM1 PROFIT': true,
     'CM2 PROFIT': true,
   });
+
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, checked } = e.target;
     setSelectedGraphs((prev) => ({ ...prev, [name]: checked }));
@@ -377,6 +350,7 @@ const Pnlforecast: React.FC = () => {
       const now = new Date();
       let date = new Date(now.getFullYear(), now.getMonth(), 1);
       date.setMonth(date.getMonth() - 6);
+
       for (let i = 0; i < 6; i++) {
         const monthName = date.toLocaleString('default', { month: 'long' });
         const yearValue = date.getFullYear();
@@ -459,13 +433,12 @@ const Pnlforecast: React.FC = () => {
   };
 
   useEffect(() => {
-    // 🧪 DEMO MODE: month=NA & year=NA
     if (isDemoMode) {
       setData(DUMMY_PNL_ROWS);
       setChartData(DUMMY_PNL_CHART);
       setLoading(false);
       setError(null);
-      return; // ⛔ API CALL SKIP
+      return;
     }
 
     const fetchForecastData = async () => {
@@ -498,9 +471,7 @@ const Pnlforecast: React.FC = () => {
 
         if (!response.ok) {
           if (response.status === 404) {
-            setError(
-              "You need to load Inventory forecast first to load PnL forecast"
-            );
+            setError("You need to load Inventory forecast first to load PnL forecast");
           } else {
             setError(`Error fetching data: ${response.statusText}`);
           }
@@ -555,7 +526,6 @@ const Pnlforecast: React.FC = () => {
     fetchForecastData();
   }, [countryName, month, year, isDemoMode]);
 
-
   useEffect(() => {
     if (data && data.length > 0) {
       uploadTableToBackend();
@@ -577,16 +547,19 @@ const Pnlforecast: React.FC = () => {
   const uploadTableToBackend = async () => {
     const table = document.querySelector('.tablec') as HTMLTableElement | null;
     if (!table) return;
+
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.table_to_sheet(table, { raw: true });
     XLSX.utils.book_append_sheet(workbook, worksheet, 'P&L Forecast');
     const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
     const excelBlob = new Blob([excelBuffer], { type: 'application/octet-stream' });
+
     const formData = new FormData();
     formData.append('file', excelBlob, 'PNL_Forecast.xlsx');
     formData.append('month', month);
     formData.append('year', year);
     formData.append('country', countryName);
+
     try {
       await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/save_pnl_forecast`, {
         method: 'POST',
@@ -596,87 +569,23 @@ const Pnlforecast: React.FC = () => {
     } catch { }
   };
 
-  const exportTableToExcel = async () => {
-    const workbook = new ExcelJS.Workbook();
+  const handleDownload = async () => {
+  const dataUrl = getChartPngWithWhiteBg();
 
-    /* =====================
-       SHEET 1: P&L TABLE
-       ===================== */
-    const tableSheet = workbook.addWorksheet("P&L Forecast");
-
-    tableSheet.addRow([
-      "Product Name",
-      "SKU",
-      "Sales M1",
-      "CM1 M1",
-      "Sales M2",
-      "CM1 M2",
-      "Sales M3",
-      "CM1 M3",
-      "Sales Total",
-      "CM1 Total",
-    ]).font = { bold: true };
-
-    const rows = [
-      ...(productRows || []),
-      ...summaryAsRows,
-    ];
-
-    rows.forEach(r => {
-      tableSheet.addRow([
-        r.product_name,
-        r.sku,
-        r.Total_Sales_1st,
-        r.profit_1st,
-        r.Total_Sales_2nd,
-        r.profit_2nd,
-        r.Total_Sales_3rd,
-        r.profit_3rd,
-        r.Total_Sales_sum,
-        r.profit_sum,
-      ]);
-    });
-
-    tableSheet.columns.forEach(col => col.width = 18);
-
-    /* =====================
-       SHEET 2: CHART IMAGE
-       ===================== */
-    const chartSheet = workbook.addWorksheet("P&L Chart");
-
-    const dataUrl = getChartPngWithWhiteBg();
-    if (dataUrl) {
-      const base64 = dataUrl.split(",")[1];
-      const binary = atob(base64);
-      const buffer = new ArrayBuffer(binary.length);
-      const view = new Uint8Array(buffer);
-
-      for (let i = 0; i < binary.length; i++) {
-        view[i] = binary.charCodeAt(i);
-      }
-      const imageId = workbook.addImage({
-        buffer,
-        extension: "png",
-      });
-
-      chartSheet.addImage(imageId, "A1:J25");
-    }
-
-    /* =====================
-       DOWNLOAD
-       ===================== */
-    const buf = await workbook.xlsx.writeBuffer();
-    saveAs(
-      new Blob([buf], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      }),
-      "PNL_Forecast_With_Chart.xlsx"
-    );
-  };
-
-
-
-
+  await exportPnLForecastExcel({
+    filename: "PNL_Forecast_With_Chart.xlsx",
+    titleLine: `P&L Forecast - ${effectiveCountry.toUpperCase()} (${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)})`,
+    titleCountry: effectiveCountry.toUpperCase(),
+    platformLabel: "Amazon",
+    periodLabel: `${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
+    companyName,
+    brandName,
+    productRows: productRows || [],
+    summaryRows: summaryAsRows || [],
+    chartImageBase64: dataUrl,
+  });
+};
+  
   const monthGroup = (
     id: string,
     label: string,
@@ -699,8 +608,6 @@ const Pnlforecast: React.FC = () => {
     ],
   });
 
-
-
   const leftCols: LeafCol<RowData>[] = [
     {
       key: "sr_no",
@@ -721,7 +628,6 @@ const Pnlforecast: React.FC = () => {
       align: "center",
     },
   ];
-
 
   const groups: ColGroup<RowData>[] = [
     monthGroup(
@@ -759,50 +665,13 @@ const Pnlforecast: React.FC = () => {
   ];
 
   const DUMMY_SUMMARY_ROWS = [
-    {
-      label: "Cost of Advertisement",
-      m1: 3500,
-      m2: 4200,
-      m3: 4800,
-      sum: 12500,
-    },
-    {
-      label: "Platform Fees",
-      m1: 2800,
-      m2: 3200,
-      m3: 3600,
-      sum: 9600,
-    },
-    {
-      label: "Other Expenses",
-      m1: 6300,
-      m2: 7400,
-      m3: 8400,
-      sum: 22100,
-    },
-    {
-      label: "CM2 Profit/Loss",
-      m1: 5700,
-      m2: 7100,
-      m3: 8600,
-      sum: 21400,
-    },
-    {
-      label: "Net Reimbursement (Projected)",
-      m1: 900,
-      m2: 1100,
-      m3: 1300,
-      sum: 3300,
-    },
-    {
-      label: "Reimbursement vs CM2 Margins",
-      m1: 16.5,
-      m2: 15.4,
-      m3: 15.1,
-      sum: 15.7,
-    },
+    { label: "Cost of Advertisement", m1: 3500, m2: 4200, m3: 4800, sum: 12500 },
+    { label: "Platform Fees", m1: 2800, m2: 3200, m3: 3600, sum: 9600 },
+    { label: "Other Expenses", m1: 6300, m2: 7400, m3: 8400, sum: 22100 },
+    { label: "CM2 Profit/Loss", m1: 5700, m2: 7100, m3: 8600, sum: 21400 },
+    { label: "Net Reimbursement (Projected)", m1: 900, m2: 1100, m3: 1300, sum: 3300 },
+    { label: "Reimbursement vs CM2 Margins", m1: 16.5, m2: 15.4, m3: 15.1, sum: 15.7 },
   ];
-
 
   const summaryRows = isDemoMode
     ? DUMMY_SUMMARY_ROWS
@@ -859,8 +728,6 @@ const Pnlforecast: React.FC = () => {
       },
     ];
 
-
-
   const productRows = data?.filter(
     (row) =>
       row.sku &&
@@ -903,26 +770,18 @@ const Pnlforecast: React.FC = () => {
   const summaryAsRows: RowData[] = summaryRows.map(r => ({
     product_name: r.label,
     sku: "",
-
-    // Month 1
     forecast_1st: "",
     Total_Sales_1st: r.m1 ?? "",
     profit_1st: "",
     profit_percentage_1st: "",
-
-    // Month 2
     forecast_2nd: "",
     Total_Sales_2nd: r.m2 ?? "",
     profit_2nd: "",
     profit_percentage_2nd: "",
-
-    // Month 3
     forecast_3rd: "",
     Total_Sales_3rd: r.m3 ?? "",
     profit_3rd: "",
     profit_percentage_3rd: "",
-
-    // Sum
     forecast_sum: "",
     Total_Sales_sum: r.sum ?? "",
     profit_sum: "",
@@ -934,101 +793,135 @@ const Pnlforecast: React.FC = () => {
     sku: r.sku === "Total" ? "" : r.sku,
   }));
 
-
-
-
-
-
   return (
-    <div className='flex flex-col gap-8'>
-      <div className='flex justify-between'>
-        <h2 style={{ marginBottom: 10, color: '#414042' }} className='2xl:text-2xl text-lg text-[#414042] font-bold'>
-          P&amp;L Forecast -{' '}
-          <span style={{ color: '#60a68e' }}>
-            {effectiveCountry.toUpperCase()} (
-            {formatMonthYear(currentMonth, currentYear)} to
-            {formatMonthYear(nextToNextMonth, nextToNextMonthYear)}
-            )
-          </span>
-
-        </h2>
-        <button
-          onClick={() => exportTableToExcel()}
-          disabled={isDemoMode}
-        >
-          <DownloadIconButton />
-        </button>
+    <div className="flex flex-col gap-6">
+      <div className="flex justify-between items-center gap-4">
+        <div className="flex items-baseline gap-2">
+          <PageBreadcrumb
+            pageTitle={
+              <>
+                P&amp;L Forecast -{" "}
+                <span className="text-green-500">
+                  {effectiveCountry.toUpperCase()} (
+                  {formatMonthYear(currentMonth, currentYear)} to{" "}
+                  {formatMonthYear(nextToNextMonth, nextToNextMonthYear)})
+                </span>
+              </>
+            }
+            variant="page"
+            align="left"
+            textSize="2xl"
+          />
+        </div>
       </div>
 
+      {loading && (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 text-sm text-gray-500">
+          Loading...
+        </div>
+      )}
 
-      {loading && <div className="loading">Loading...</div>}
       {error && !isDemoMode && (
-        <div className="error">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 shadow-sm p-4 text-sm text-red-600">
+          {error}
+        </div>
       )}
 
       {data && chartData.length > 0 && (
-        <div className=' rounded-xl shadow-sm bg-white p-4'>
-          <PnlForecastChart
-            ref={chartRef}
-            chartData={chartData}
-            currencySymbol={currencySymbol}
-            selectedGraphs={selectedGraphs}
-            handleCheckboxChange={handleCheckboxChange}
-          />
+  <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between w-full gap-3">
+        <div className="flex flex-col leading-tight">
+          <div className="flex items-baseline gap-2">
+            <PageBreadcrumb
+              pageTitle="P&L Forecast Trend"
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+          </div>
+          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+            Historical data vs forecasted trends
+          </p>
         </div>
 
-      )}
+        <div className="flex items-center gap-3">
+          <DownloadIconButton
+            onClick={handleDownload}
+            disabled={isDemoMode}
+          />
+        </div>
+      </div>
+
+      <div className="mt-2">
+        <PnlForecastChart
+          ref={chartRef}
+          chartData={chartData}
+          currencySymbol={currencySymbol}
+          selectedGraphs={selectedGraphs}
+          handleCheckboxChange={handleCheckboxChange}
+        />
+      </div>
+    </div>
+  </div>
+)}
+
       {data && (
-        <div>
-          <div className="overflow-x-auto rounded-xl shadow-sm bg-white p-4">
-            <GroupedCollapsibleTables<RowData>
-              rows={[
-                ...(normalizedProductRows || []),
-                ...summaryAsRows,
-              ]}
-              getRowKey={(r, idx) =>
-                r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
-              }
-              leftCols={leftCols}
-              groups={groups}
-              singleCols={[]}
-              getValue={(row, key, rowIndex) => {
-                if (key === "sr_no") {
-                  // ❌ No serial number for Total & Summary rows
-                  if (
-                    row.product_name === "Total" ||
-                    summaryRows.some(s => s.label === row.product_name)
-                  ) {
-                    return "";
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+          <PageBreadcrumb
+            pageTitle="Detailed P&L Forecast Data"
+            variant="page"
+            align="left"
+            textSize="2xl"
+          />
+
+          <div className="mt-4 w-full overflow-x-auto">
+            <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
+              <div className="w-full text-xs 2xl:text-sm text-[#414042]">
+                <GroupedCollapsibleTables<RowData>
+                  rows={[
+                    ...(normalizedProductRows || []),
+                    ...summaryAsRows,
+                  ]}
+                  getRowKey={(r, idx) =>
+                    r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
                   }
+                  leftCols={leftCols}
+                  groups={groups}
+                  singleCols={[]}
+                  getValue={(row, key, rowIndex) => {
+                    if (key === "sr_no") {
+                      if (
+                        row.product_name === "Total" ||
+                        summaryRows.some(s => s.label === row.product_name)
+                      ) {
+                        return "";
+                      }
 
-                  // ✅ Count ONLY product rows
-                  const productIndex = normalizedProductRows?.findIndex(
-                    r => r === row
-                  );
+                      const productIndex = normalizedProductRows?.findIndex(
+                        r => r === row
+                      );
 
-                  return productIndex !== undefined && productIndex >= 0
-                    ? productIndex + 1
-                    : "";
-                }
+                      return productIndex !== undefined && productIndex >= 0
+                        ? productIndex + 1
+                        : "";
+                    }
 
-                return formatCellValue(key, row[key]);
-              }}
-
-              getRowClassName={(row) => {
-                if (row.product_name === "Total") {
-                  return "bg-[#D9D9D9]/90 font-bold ";
-                }
-                if (summaryRows.some(s => s.label === row.product_name)) {
-                  return "bg-[#ffffff]";
-                }
-                return "";
-              }}
-            />
-
+                    return formatCellValue(key, row[key]);
+                  }}
+                  getRowClassName={(row) => {
+                    if (row.product_name === "Total") {
+                      return "bg-[#EFEFEF] font-semibold";
+                    }
+                    if (summaryRows.some(s => s.label === row.product_name)) {
+                      return "bg-white";
+                    }
+                    return "bg-white";
+                  }}
+                />
+              </div>
+            </div>
           </div>
-
-          <br />
         </div>
       )}
     </div>
