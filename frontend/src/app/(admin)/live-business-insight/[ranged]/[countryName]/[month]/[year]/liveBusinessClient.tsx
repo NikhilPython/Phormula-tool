@@ -320,7 +320,7 @@ export default function LiveBusinessClient({
     profit_priority?: string;
   } | null>(null);
 
-  const [pageLoading, setPageLoading] = useState<boolean>(false);
+  const [pageLoading, setPageLoading] = useState<boolean>(true);
   const [recDrawerOpen, setRecDrawerOpen] = useState(false);
 const [selectedRec, setSelectedRec] = useState<{
   productName: string;
@@ -637,6 +637,15 @@ const buildSelectedRecFromInsight = (
     
     // setPageLoading(false);
   };
+
+
+  useEffect(() => {
+  // If data already passed from parent
+  if (initialData) {
+    hydrateFromPayload(initialData);
+    setPageLoading(false);
+  }
+}, [initialData]);
 
   // =========================
   // Initial load (cached + live)
@@ -2887,10 +2896,10 @@ const parseOtherSkusBlock = (raw: string) => {
       `}</style>
 
       {pageLoading ? (
-        <div className="py-6">
-          <Loader label="Loading BI…" />
-        </div>
-      ) : (
+  <div className="flex flex-col items-center justify-center py-12 text-center">
+    <Loader fullscreen transparent />
+  </div>
+) : (
         <div className="mt-2 md:mt-4 flex flex-col ">
           {error && <p style={{ color: 'red' }}>{error}</p>}
 

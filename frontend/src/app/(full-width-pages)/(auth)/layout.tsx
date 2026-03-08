@@ -72,9 +72,9 @@ if (
           </Link>
 
           {/* Heading */}
-          <div className="flex flex-col 2xl:gap-12 gap-8 mt-8 2xl:mt-10">
+          <div className="flex flex-col min-[1700px]:gap-12 gap-8 mt-8 min-[1700px]:mt-20">
             {/* Heading */}
-            <h1 className="text-[#414042] text-xl sm:text-xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-medium leading-tight text-right xl:pr-12">
+            <h1 className="text-[#414042] text-xl sm:text-xl lg:text-4xl xl:text-5xl min-[1700px]:text-6xl font-medium leading-tight text-right xl:pr-12">
               Built for Founders,
               <br />
               Powered by <span className="text-[#F8EDCE]">Insight</span>
@@ -88,7 +88,7 @@ if (
                 alt="Performance Analysis dashboard"
                  width={700}
                 height={500}
-                className="object-contain min-[1700px]-w-[800px]  min-[1700px]-h-[600px] 2xl:w-[600px]  xl:w-[450px] w-[400px]"
+                className="object-contain min-[1700px]:w-[800px]  min-[1700px]-h-[600px] 2xl:w-[600px]  xl:w-[450px] w-[400px]"
                 priority
               />
             </div>
@@ -114,9 +114,9 @@ if (
           </Link>
 
           {/* Heading */}
-          <div className="flex flex-col 2xl:gap-12 gap-10 mt-4 2xl:mt-10">
+          <div className="flex flex-col min-[1700px]:gap-12 gap-10 mt-4 min-[1700px]:mt-10">
             {/* Heading */}
-            <h1 className="text-[#414042] text-xl sm:text-xl lg:text-4xl xl:text-[42px] 2xl:text-6xl font-medium leading-tight text-right xl:pr-12">
+            <h1 className="text-[#414042] text-xl sm:text-xl lg:text-4xl xl:text-5xl min-[1700px]:text-6xl font-medium leading-tight text-right xl:pr-12">
              Control Expenses with
               <br className="" />
               <span className="text-[#F8EDCE] px-1">Auto Marketplace Recons</span>
@@ -131,7 +131,7 @@ if (
                 alt="Performance Analysis dashboard"
                 width={700}
                 height={500}
-                className="object-contain 2xl:w-[800px] 2xl:h-[600px] xl:w-[500px] w-[400px]"
+                 className="object-contain min-[1700px]:w-[800px]  min-[1700px]-h-[600px] 2xl:w-[600px]  xl:w-[450px] w-[400px]"
                 priority
               />
             </div>
@@ -157,11 +157,11 @@ if (
           </Link>
 
           {/* Heading */}
-          <div className="flex flex-col 2xl:gap-12 gap-10 mt-4 2xl:mt-10">
+          <div className="flex flex-col min-[1700px]:gap-12 gap-10 mt-4 min-[1700px]:mt-10">
             {/* Heading */}
-            <h1 className="text-[#414042] text-xl sm:text-xl lg:text-[42px] xl:text-[42px] 2xl:text-6xl font-medium leading-tight text-right pr-12">
-             CXO’s tool for&nbsp; 
-              <span className="text-[#F8EDCE]">Faster<br/> Decisions</span>
+            <h1 className="text-[#414042] text-xl sm:text-xl lg:text-4xl xl:text-5xl min-[1700px]:text-6xl font-medium leading-tight text-right pr-12">
+             CXO’s tool for&nbsp;<br/> 
+              <span className="text-[#F8EDCE]">Faster Decisions</span>
             </h1>
          
 
@@ -173,8 +173,8 @@ if (
                 alt="Performance Analysis dashboard"
                  width={700}
                 height={500}
-                className="object-contain 2xl:w-[800px] 2xl:h-[600px] xl:w-[500px] w-[400px]"
-                priority
+                 className="object-contain min-[1700px]:w-[800px]  min-[1700px]-h-[600px] 2xl:w-[600px]  xl:w-[450px] w-[400px]"
+                 priority
               />
             </div>
           </div>
@@ -199,9 +199,9 @@ if (
           </Link>
 
           {/* Heading */}
-          <div className="flex flex-col 2xl:gap-12 gap-10 mt-4 2xl:mt-10">
+          <div className="flex flex-col min-[1700px]:gap-12 gap-10 mt-4 min-[1700px]:mt-10">
             {/* Heading */}
-            <h1 className="text-[#414042] text-xl sm:text-xl lg:text-[42px] xl:text-5xl 2xl:text-6xl font-medium leading-tight text-right pr-10">
+            <h1 className="text-[#414042] text-xl sm:text-xl lg:text-4xl xl:text-5xl min-[1700px]:text-6xl font-medium leading-tight text-right pr-10">
              See. <span className="text-[#F8EDCE]">Forecast. </span>Win.
             </h1>
          
@@ -212,7 +212,7 @@ if (
                 alt="Performance Analysis dashboard"
                 width={700}
                 height={500}
-                className="object-contain 2xl:w-[800px] 2xl:h-[600px] xl:w-[500px] w-[400px]"
+               className="object-contain min-[1700px]:w-[800px]  min-[1700px]-h-[600px] 2xl:w-[600px]  xl:w-[450px] w-[400px]"
                 priority
               />
           </div>

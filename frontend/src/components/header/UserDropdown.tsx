@@ -177,19 +177,18 @@ export default function UserDropdown() {
           </li>
 
           {/* ✅ NEW: Add Members */}
-         {/* ✅ Add Members (only owner) */}
 {!isMember && (
   <li>
-    <button
-      type="button"
-      onClick={() => {
+    <DropdownItem
+      onItemClick={() => {
         closeDropdown();
         setIsAddMemberOpen(true);
       }}
-      className=" flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300 "
+      tag="button"
+      className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300 w-full text-left"
     >
       Add Members
-    </button>
+    </DropdownItem>
   </li>
 )}
         </ul>
