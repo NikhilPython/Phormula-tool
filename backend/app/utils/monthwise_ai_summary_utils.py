@@ -379,9 +379,9 @@ def build_rolling_sku_series(
         series.append({
             "year": y,
             "month": m,
-            "units": safe_num(row["total_quantity"].iloc[0]),
-            "asp": safe_num(row["asp"].iloc[0]),
-            "cm1_profit": safe_num(row["profit"].iloc[0]),
+            "units": float(safe_num(row["total_quantity"].iloc[0]).iloc[0]),
+            "asp": round(float(safe_num(row["asp"].iloc[0]).iloc[0]), 2),
+            "cm1_profit": float(safe_num(row["profit"].iloc[0]).iloc[0]),
         })
 
     return series
@@ -1179,6 +1179,7 @@ def run_prompt_2_strategy(
     sku_time_series: dict,
     inventory_alerts: dict,
     country: str,
+    sku_mom: dict | None = None,
 
     # ✅ NEW (ads context)
     sku_ads_context: list | None = None,
@@ -1228,11 +1229,12 @@ def run_prompt_2_strategy(
         "ads_monthly": ads_monthly or {},
         "sku_live_context": sku_live_context or [],
         "remaining_skus_context": remaining_skus_context or {},
+        "sku_mom": sku_mom or {},
     }
 
     # 🔍 DEBUG — SEE WHAT PROMPT 2 RECEIVES
     print("\n================ PROMPT 2 INPUT ================")
-    print(json.dumps(payload, indent=2, default=str))
+    print(json.dumps(_make_json_safe(payload), indent=2))
     print("===============================================\n")
     # -------------------------------------------------
     # 🔐 SANITIZE before json.dumps
@@ -2060,8 +2062,7 @@ def get_or_create_summary(
 
         strategy_raw = run_prompt_2_strategy(
             analysis_insights=analysis_insights,
-            # sku_mom=sku_mom,
-            # product_insights=analysis_insights.get("product_insights", {}),  # ✅ ADD
+            sku_mom=sku_mom,
             objective_v2=objective_v2,
             focus_skus=top_5_skus,
             sku_time_series=sku_time_series,
