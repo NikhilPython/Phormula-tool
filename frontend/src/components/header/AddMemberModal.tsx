@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
+import { IoInformationCircleOutline } from "react-icons/io5";
 
 const MODULE_OPTIONS = [
   "LIVE_DASHBOARD",
@@ -39,7 +40,6 @@ function ChipsMultiSelect({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
-  
 
   const toggle = (opt: string) => {
     if (value.includes(opt)) onChange(value.filter((v) => v !== opt));
@@ -125,7 +125,7 @@ export default function AddMemberModal({
   isOpen: boolean;
   onClose: () => void;
   token?: string;
-  onSuccess?: () => void; // ✅ so ProfileClient refresh kar sake
+  onSuccess?: () => void;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -137,10 +137,10 @@ export default function AddMemberModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
+
   const { data: userData } = useGetUserDataQuery();
 
-const ownerEmail =
-  (userData as any)?.owner_email?.toLowerCase?.() || "";
+  const ownerEmail = (userData as any)?.owner_email?.toLowerCase?.() || "";
 
   useEffect(() => {
     if (!isOpen) {
@@ -161,19 +161,17 @@ const ownerEmail =
     return country ? COUNTRY_TO_MARKETPLACES[country] || [] : [];
   }, [country]);
 
-const isSelfAdd =
-  ownerEmail &&
-  email.trim().toLowerCase() === ownerEmail;
+  const isSelfAdd = ownerEmail && email.trim().toLowerCase() === ownerEmail;
 
-const canSubmit =
-  name.trim() &&
-  email.trim() &&
-  password.length >= 6 &&
-  password === confirmPassword &&
-  marketplaces.length > 0 &&
-  modules.length > 0 &&
-  !loading &&
-  !isSelfAdd;
+  const canSubmit =
+    name.trim() &&
+    email.trim() &&
+    password.length >= 6 &&
+    password === confirmPassword &&
+    marketplaces.length > 0 &&
+    modules.length > 0 &&
+    !loading &&
+    !isSelfAdd;
 
   const handleSave = async () => {
     setSuccess("");
@@ -181,16 +179,19 @@ const canSubmit =
 
     if (!name.trim()) return setError("Name is required");
     if (!email.trim()) return setError("Email is required");
-    if (
-  ownerEmail &&
-  email.trim().toLowerCase() === ownerEmail
-) {
-  return setError("You cannot add yourself as a member.");
-}
+    if (ownerEmail && email.trim().toLowerCase() === ownerEmail) {
+      return setError("You cannot add yourself as a member.");
+    }
     if (!country) return setError("Country is required");
-    if (password.length < 6) return setError("Password must be at least 6 characters");
-    if (password !== confirmPassword) return setError("Password and Confirm Password must match");
-    if (modules.length === 0) return setError("Please select at least one Section Access");
+    if (password.length < 6) {
+      return setError("Password must be at least 6 characters");
+    }
+    if (password !== confirmPassword) {
+      return setError("Password and Confirm Password must match");
+    }
+    if (modules.length === 0) {
+      return setError("Please select at least one Section Access");
+    }
 
     const payload = {
       member_name: name.trim(),
@@ -204,7 +205,8 @@ const canSubmit =
     try {
       setLoading(true);
 
-      const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "";
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "";
       const res = await fetch(`${baseUrl}/add_member`, {
         method: "POST",
         headers: {
@@ -222,12 +224,11 @@ const canSubmit =
       }
 
       setSuccess("✅ Member added successfully. Access has been granted.");
-onSuccess?.(); // list refresh
+      onSuccess?.();
 
-// 1.2 sec baad close
-setTimeout(() => {
-  onClose();
-}, 1200);
+      setTimeout(() => {
+        onClose();
+      }, 1200);
     } catch (e: any) {
       setError(e?.message || "Something went wrong");
     } finally {
@@ -272,35 +273,9 @@ setTimeout(() => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
-              {ownerEmail &&
-  email.trim().toLowerCase() === ownerEmail && (
-    <p className="mt-1 text-xs text-red-600">
-      You cannot add yourself as a member.
-    </p>
-  )}
-            </div>
-
-            {/* Country */}
-            <div>
-              <label className="text-sm text-gray-700 dark:text-gray-200">
-                Country *
-              </label>
-              <select
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-              >
-                <option value="">Select Country</option>
-                {COUNTRY_OPTIONS.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-
-              {country && (
-                <p className="mt-1 text-xs text-gray-500">
-                  Marketplaces: {marketplaces.join(", ")}
+              {ownerEmail && email.trim().toLowerCase() === ownerEmail && (
+                <p className="mt-1 text-xs text-red-600">
+                  You cannot add yourself as a member.
                 </p>
               )}
             </div>
@@ -333,26 +308,33 @@ setTimeout(() => {
               />
             </div>
 
-            {/* Section Access */}
-            <div className="md:col-span-2">
+            {/* Country */}
+            <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Section Access *
+                Country *
               </label>
-              <div className="mt-1">
-                <ChipsMultiSelect
-                  options={MODULE_OPTIONS}
-                  value={modules}
-                  onChange={setModules}
-                />
-              </div>
+              <select
+                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+              >
+                <option value="">Select Country</option>
+                {COUNTRY_OPTIONS.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
 
-              <div className="mt-3 rounded-lg bg-yellow-50 dark:bg-white/5 border border-yellow-100 dark:border-gray-800 px-3 py-2 text-xs text-gray-700 dark:text-gray-200">
-                ℹ️ Members can only view the sections you grant access to. You can update permissions anytime.
-              </div>
+              {country && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Marketplaces: {marketplaces.join(", ")}
+                </p>
+              )}
             </div>
 
             {/* Role */}
-            <div className="md:col-span-2">
+            <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
                 Role
               </label>
@@ -368,15 +350,39 @@ setTimeout(() => {
                 ))}
               </select>
             </div>
+
+            
+
+            {/* Section Access */}
+            <div className="md:col-span-2">
+              <label className="text-sm text-gray-700 dark:text-gray-200">
+                Section Access *
+              </label>
+              <div className="mt-1">
+                <ChipsMultiSelect
+                  options={MODULE_OPTIONS}
+                  value={modules}
+                  onChange={setModules}
+                />
+              </div>
+            </div>
           </div>
 
           {success && (
-  <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-    {success}
-  </div>
-)}
+            <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+              {success}
+            </div>
+          )}
 
           {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
+
+         <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#FDD36F4D] dark:bg-white/5 border border-yellow-100 dark:border-gray-800 px-3 py-2 text-xs text-gray-700 dark:text-gray-200">
+  <IoInformationCircleOutline className="text-charcoal-500 text-base flex-shrink-0" />
+
+  <span>
+    Members can only view the sections you grant access to. You can update permissions anytime.
+  </span>
+</div>
 
           <div className="mt-6 flex justify-end gap-3">
             <button

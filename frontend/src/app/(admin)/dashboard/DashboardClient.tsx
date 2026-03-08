@@ -1118,7 +1118,7 @@ export default function DashboardPage() {
     const [invRows, setInvRows] = useState<InventoryRow[]>([]);
     const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlertRecord>({});
     const [activeTab, setActiveTab] = useState<TopTab>("live");
-
+const [summaryLoading, setSummaryLoading] = useState(true);
     const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
         () => new Set()
     );
@@ -1281,6 +1281,14 @@ export default function DashboardPage() {
             setMonthlySpLoading(false);
         }
     }, [platform]);
+
+
+
+useEffect(() => {
+    if (activeTab === "summary") {
+        setSummaryLoading(true);
+    }
+}, [activeTab]);
 
 
     useEffect(() => {
@@ -1451,7 +1459,14 @@ export default function DashboardPage() {
     //   });
     // }, [gbpToUsd, inrToUsd, cadToUsd, displayCurrency]);
 
+    useEffect(() => {
+    if (activeTab !== "summary") return;
 
+    // when BI payload is ready, hide loader
+    if (liveBiPayload) {
+        setSummaryLoading(false);
+    }
+}, [activeTab, liveBiPayload]);
 
     useEffect(() => {
         fetchFxRates();
@@ -2278,20 +2293,37 @@ export default function DashboardPage() {
         return () => clearTimeout(timer);
     }, [biStatus, fetchBiSeries, selectedStartDay, selectedEndDay]);
 
-    const fetchLiveBiPayload = useCallback(
-        async ({
-            startDay = selectedStartDay,
-            endDay = selectedEndDay,
-            generateInsights = false,
-        }: FetchLiveBiPayloadArgs = {}) => {
-            // toggle AI insights flag
-            aiRequestedRef.current = !!generateInsights;
+    // const fetchLiveBiPayload = useCallback(
+    //     async ({
+    //         startDay = selectedStartDay,
+    //         endDay = selectedEndDay,
+    //         generateInsights = false,
+    //     }: FetchLiveBiPayloadArgs = {}) => {
+    //         // toggle AI insights flag
+    //         aiRequestedRef.current = !!generateInsights;
 
-            // fetch using provided range (or current state range by default)
-            await fetchBiSeries(startDay, endDay);
-        },
-        [fetchBiSeries, selectedStartDay, selectedEndDay]
-    );
+    //         // fetch using provided range (or current state range by default)
+    //         await fetchBiSeries(startDay, endDay);
+    //     },
+    //     [fetchBiSeries, selectedStartDay, selectedEndDay]
+    // );
+
+    const fetchLiveBiPayload = useCallback(
+    async ({
+        startDay = selectedStartDay,
+        endDay = selectedEndDay,
+        generateInsights = false,
+    }: FetchLiveBiPayloadArgs = {}) => {
+        setSummaryLoading(true);
+
+        // toggle AI insights flag
+        aiRequestedRef.current = !!generateInsights;
+
+        // fetch using provided range (or current state range by default)
+        await fetchBiSeries(startDay, endDay);
+    },
+    [fetchBiSeries, selectedStartDay, selectedEndDay]
+);
 
     useEffect(() => {
         if (!showLiveBI) return;
@@ -4989,7 +5021,8 @@ export default function DashboardPage() {
                 )
             }
 
-            {activeTab === "summary" && (
+
+            {/* {activeTab === "summary" && (
                 <div className="w-full overflow-x-hidden">
                     {showLiveBI && liveBiPayload && (
                         <LiveBusinessClient
@@ -5003,8 +5036,29 @@ export default function DashboardPage() {
                         />
                     )}
                 </div>
-            )}
+            )} */}
 
+{activeTab === "summary" && (
+    <div className="w-full overflow-x-hidden">
+        {summaryLoading || !liveBiPayload ? (
+            <div className="flex min-h-[300px] items-center justify-center py-12 text-center">
+                <Loader />
+            </div>
+        ) : (
+            showLiveBI && (
+                <LiveBusinessClient
+                    countryName={countryName}
+                    ranged="MTD"
+                    month={(currMonthName || "").toLowerCase()}
+                    year={String(currYear)}
+                    initialData={liveBiPayload}
+                    disableAutoFetch
+                    onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
+                />
+            )
+        )}
+    </div>
+)}
 
             {activeTab === "productwise" && (
                 <>

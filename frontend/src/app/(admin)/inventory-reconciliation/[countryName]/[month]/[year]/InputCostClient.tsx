@@ -308,14 +308,31 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
   }, [pieMetrics]);
 
   /* ================= FILTER STATE ================= */
-  const now = new Date();
+   const now = new Date();
+
+  // ✅ historic page should default to previous month, not current month
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const defaultMonth = months[prevDate.getMonth()];
+  const defaultYear = String(prevDate.getFullYear());
+
   const currentMonth = months[now.getMonth()];
   const currentYear = String(now.getFullYear());
 
+  // ✅ if route params point to current month/year, force previous month/year
+  const resolvedMonth =
+    monthParam === currentMonth && yearParam === currentYear
+      ? defaultMonth
+      : monthParam || defaultMonth;
+
+  const resolvedYear =
+    monthParam === currentMonth && yearParam === currentYear
+      ? defaultYear
+      : yearParam || defaultYear;
+
   const [range, setRange] = useState<Range>("monthly");
-  const [selectedMonth, setSelectedMonth] = useState<string>(monthParam || currentMonth);
+  const [selectedMonth, setSelectedMonth] = useState<string>(resolvedMonth);
   const [selectedQuarter, setSelectedQuarter] = useState<string>("Q1");
-  const [selectedYear, setSelectedYear] = useState<string>(yearParam || currentYear);
+  const [selectedYear, setSelectedYear] = useState<string>(resolvedYear);
   const [exportTick, setExportTick] = useState(0);
 
   const isNA =
@@ -323,8 +340,6 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
     yearParam?.toLowerCase() === "na";
 
   const hasValidPeriod = !isNA;
-
-
 
   // ✅ IMPORTANT: sync state with URL params AFTER state exists
   useEffect(() => {
@@ -334,13 +349,24 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
       return;
     }
 
-    if (monthParam) setSelectedMonth(monthParam);
-    if (yearParam) setSelectedYear(yearParam);
-  }, [monthParam, yearParam, isNA]);
+    if (monthParam === currentMonth && yearParam === currentYear) {
+      setSelectedMonth(defaultMonth);
+      setSelectedYear(defaultYear);
+      return;
+    }
 
+    setSelectedMonth(monthParam || defaultMonth);
+    setSelectedYear(yearParam || defaultYear);
+  }, [
+    monthParam,
+    yearParam,
+    isNA,
+    currentMonth,
+    currentYear,
+    defaultMonth,
+    defaultYear,
+  ]);
   
-
-
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
   // ✅ 1) Amazon → DB seed route (run ONCE only per year)
