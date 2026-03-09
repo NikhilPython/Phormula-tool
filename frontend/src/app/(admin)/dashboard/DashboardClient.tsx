@@ -5321,7 +5321,7 @@ useEffect(() => {
                             ].join(" ")}
                         >
                             <div className="rounded-xl border bg-white p-5 shadow-sm min-w-0">
-                                <div className="md:mb-3 flex items-center justify-between">
+                                <div className="2xl:mb-3 flex items-center justify-between">
                                     <div className="text-sm text-charcoal-500">
                                         <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
                                             <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />

@@ -29,10 +29,10 @@ import { useAppSelector } from "@/lib/hooks"; // ✅ add
 type NavSubItem = {
   name: string;
   path:
-    | string
-    | ((
-        params: { ranged: string; countryName: string; month: string; year: string }
-      ) => string);
+  | string
+  | ((
+    params: { ranged: string; countryName: string; month: string; year: string }
+  ) => string);
   onClick?: () => void | Promise<void>;
 };
 
@@ -61,27 +61,27 @@ const AppSidebar: React.FC = () => {
   // ✅ Auth info (client vs member)
   const authUser = useAppSelector((s: any) => s.auth.user);
   const token = useAppSelector((s: any) => s.auth.token);
- // ✅ token payload read (refresh pe user null hota hai)
-const getJwtPayload = (jwt?: string | null) => {
-  try {
-    if (!jwt) return null;
-    const payloadPart = jwt.split(".")[1];
-    if (!payloadPart) return null;
-    const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(base64));
-  } catch {
-    return null;
-  }
-};
+  // ✅ token payload read (refresh pe user null hota hai)
+  const getJwtPayload = (jwt?: string | null) => {
+    try {
+      if (!jwt) return null;
+      const payloadPart = jwt.split(".")[1];
+      if (!payloadPart) return null;
+      const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+      return JSON.parse(atob(base64));
+    } catch {
+      return null;
+    }
+  };
 
-const tokenPayload = React.useMemo(() => getJwtPayload(token), [token]);
+  const tokenPayload = React.useMemo(() => getJwtPayload(token), [token]);
 
-// ✅ member detect: store OR token
-const isMember = !!authUser?.is_member || tokenPayload?.is_member === true;
+  // ✅ member detect: store OR token
+  const isMember = !!authUser?.is_member || tokenPayload?.is_member === true;
 
-// ✅ modules: store OR token
-const allowedModules: string[] =
-  authUser?.modules || tokenPayload?.modules || [];
+  // ✅ modules: store OR token
+  const allowedModules: string[] =
+    authUser?.modules || tokenPayload?.modules || [];
 
   // ✅ Skip client-only user-data call for members (prevents 500 spam)
   const { data: user } = useGetUserDataQuery(undefined, {
@@ -185,8 +185,8 @@ const allowedModules: string[] =
       return payload?.user_id != null
         ? String(payload.user_id)
         : payload?.owner_user_id != null
-        ? String(payload.owner_user_id)
-        : null;
+          ? String(payload.owner_user_id)
+          : null;
     } catch {
       return null;
     }
@@ -249,7 +249,7 @@ const allowedModules: string[] =
             year = String(parsed.year);
           }
         }
-      } catch {}
+      } catch { }
     }
     return { ranged, month, year };
   });
@@ -576,22 +576,22 @@ const allowedModules: string[] =
           name: "Live Sales",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#live-sales`,
         },
-        {
-          name: "Targets and Action Items",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#targets-action-items`,
-        },
-        {
-          name: "MTD P&L",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#mtd-pl`,
-        },
-        {
-          name: "P&L Productwise Breakdown",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
-        },
-        {
-          name: "Current Inventory",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
-        },
+        // {
+        //   name: "Targets and Action Items",
+        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#targets-action-items`,
+        // },
+        // {
+        //   name: "MTD P&L",
+        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#mtd-pl`,
+        // },
+        // {
+        //   name: "P&L Productwise Breakdown",
+        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
+        // },
+        // {
+        //   name: "Current Inventory",
+        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
+        // },
       ],
     },
 
@@ -605,15 +605,15 @@ const allowedModules: string[] =
           path: ({ ranged, countryName, month, year }) =>
             `/pnl-dashboard/${ranged}/${countryName}/${month}/${year}`,
         },
-        {
-          name: "Business Summary",
-          path: ({ ranged, countryName, month, year }) =>
-            `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
-              countryName
-            )}/${encodeURIComponent(month)}/${encodeURIComponent(
-              year
-            )}#business-summary`,
-        },
+        // {
+        //   name: "Business Summary",
+        //   path: ({ ranged, countryName, month, year }) =>
+        //     `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
+        //       countryName
+        //     )}/${encodeURIComponent(month)}/${encodeURIComponent(
+        //       year
+        //     )}#business-summary`,
+        // },
         {
           name: "Cash Flow",
           path: ({ countryName, month, year }) =>
@@ -749,10 +749,9 @@ const allowedModules: string[] =
     <aside
       className={`fixed mt-16 flex flex-col lg:mt-0 top-0 left-0 bg-white text-gray-900 h-screen overflow-y-auto transition-all duration-300 ease-in-out z-[1100]
         px-3 sm:px-4 lg:px-3 xl:px-4
-        ${
-          isMobileOpen
-            ? "w-full"
-            : showText
+        ${isMobileOpen
+          ? "w-full"
+          : showText
             ? "w-[clamp(155px,13vw,210px)] xl:w-[clamp(180px,16vw,250px)]"
             : "w-[56px] sm:w-[64px] xl:w-[72px]"
         }
@@ -839,9 +838,8 @@ const allowedModules: string[] =
 
                     {showText && (
                       <FaChevronDown
-                        className={`h-3 w-3 sm:h-3.5 sm:w-3.5 transition-transform duration-200 ${
-                          openSections[section.key] ? "rotate-0" : "rotate-90"
-                        }`}
+                        className={`h-3 w-3 sm:h-3.5 sm:w-3.5 transition-transform duration-200 ${openSections[section.key] ? "rotate-0" : "rotate-90"
+                          }`}
                       />
                     )}
                   </button>
@@ -870,10 +868,9 @@ const allowedModules: string[] =
                             }}
                             className={`block rounded transition-colors
                               ${padItem} ${textMain} text-gray-700 hover:bg-[#5EA68E]/15
-                              ${
-                                isActive(subItem.path as any)
-                                  ? "bg-[#5EA68E]/20 text-[#5EA68E] font-medium"
-                                  : ""
+                              ${isActive(subItem.path as any)
+                                ? "bg-[#5EA68E]/20 text-[#5EA68E] font-medium"
+                                : ""
                               }`}
                           >
                             {subItem.name}

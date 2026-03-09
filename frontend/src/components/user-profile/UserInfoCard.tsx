@@ -897,7 +897,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                     )
                   }
                 >
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {/* Company Name */}
                     <InfoItem
                       label="Company Name"
@@ -1000,31 +1000,28 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                     />
 
                     {/* ✅ Address (full width) */}
-                    <div className="sm:col-span-4">
+                    <div className="sm:col-span-2 lg:col-span-3">
                       <InfoItem
                         label="Address"
                         value={
                           isCompanyEditMode ? (
                             <div className="grid grid-cols-1 gap-3">
-                              <Input
-                                type="text"
-                                placeholder="Building No."
-                                value={form.address_building}
-                                onChange={handleInput("address_building")}
-                              />
-                              <Input
-                                type="text"
-                                placeholder="City"
-                                value={form.address_city}
-                                onChange={handleInput("address_city")}
-                              />
-                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <Input
                                   type="text"
-                                  placeholder="Country/Region"
-                                  value={form.address_country}
-                                  onChange={handleInput("address_country")}
+                                  placeholder="Building No."
+                                  value={form.address_building}
+                                  onChange={handleInput("address_building")}
                                 />
+                                <Input
+                                  type="text"
+                                  placeholder="City"
+                                  value={form.address_city}
+                                  onChange={handleInput("address_city")}
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                                 <Input
                                   type="text"
                                   placeholder="State"
@@ -1036,6 +1033,12 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                                   placeholder="Zipcode"
                                   value={form.address_zipcode}
                                   onChange={handleInput("address_zipcode")}
+                                />
+                                <Input
+                                  type="text"
+                                  placeholder="Country/Region"
+                                  value={form.address_country}
+                                  onChange={handleInput("address_country")}
                                 />
                               </div>
                             </div>
@@ -1495,36 +1498,36 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
                       {/* Business Context */}
                       <div className="col-span-2">
-  <InfoItem
-    label="Business Context"
-    value={
-      isObjectiveEditMode ? (
-        <div className="w-full">
-          <textarea
-            rows={4}
-            maxLength={250}
-            value={objectiveDraft.business_context || ""}
-            onChange={(e) =>
-              setObjectiveDraft((prev) => ({
-                ...prev,
-                business_context: e.target.value,
-              }))
-            }
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 resize-none"
-            placeholder="Describe your business context..."
-          />
-          <p className="mt-1 text-xs text-gray-500">Max 250 characters</p>
-        </div>
-      ) : objective.business_context ? (
-        <p className="text-sm text-gray-800 dark:text-white/90 whitespace-pre-wrap">
-          {objective.business_context}
-        </p>
-      ) : (
-        "-"
-      )
-    }
-  />
-</div>
+                        <InfoItem
+                          label="Business Context"
+                          value={
+                            isObjectiveEditMode ? (
+                              <div className="w-full">
+                                <textarea
+                                  rows={4}
+                                  maxLength={250}
+                                  value={objectiveDraft.business_context || ""}
+                                  onChange={(e) =>
+                                    setObjectiveDraft((prev) => ({
+                                      ...prev,
+                                      business_context: e.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 resize-none"
+                                  placeholder="Describe your business context..."
+                                />
+                                <p className="mt-1 text-xs text-gray-500">Max 250 characters</p>
+                              </div>
+                            ) : objective.business_context ? (
+                              <p className="text-sm text-gray-800 dark:text-white/90 whitespace-pre-wrap">
+                                {objective.business_context}
+                              </p>
+                            ) : (
+                              "-"
+                            )
+                          }
+                        />
+                      </div>
                     </div>
                   </InfoCard>
                 </div>

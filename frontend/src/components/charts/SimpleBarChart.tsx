@@ -520,8 +520,8 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
 
     layout: {
       padding: {
-        top: 20,
-        bottom: 30,
+        top: 5,
+        bottom: 10,
       },
     },
 

@@ -3148,7 +3148,7 @@ const parseOtherSkusBlock = (raw: string) => {
       )}
 
       {inventorySummary?.summary_text && (
-        <div className="mt-3 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-orange-400 pl-3">
+        <div className="mt-3 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-green-500 pl-3">
           {inventorySummary.summary_text}
         </div>
       )}

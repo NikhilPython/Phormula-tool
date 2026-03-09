@@ -58,7 +58,7 @@ const DashboardBargraphCard: React.FC<DashboardBargraphCardProps> = ({
             : "opacity-100"
         }
       >
-        <div className="mt-4 w-full h-[46vh] sm:h-[48vh] md:h-[50vh] 
+        <div className="w-full h-[46vh] sm:h-[48vh] md:h-[50vh] 
                 transition-opacity duration-300
                 text-[10px] 2xl:text-xs">
           {loading ? (
