@@ -552,14 +552,14 @@ const CashFlowPage: React.FC = () => {
 
 
 
-    // chart helpers
+  // chart helpers
   const viewportWidth =
     typeof window !== "undefined" ? window.innerWidth : 1200;
 
-const isSmallScreen = viewportWidth < 1024; // mobile + tablet
-const isMobile = viewportWidth < 640;
+  const isSmallScreen = viewportWidth < 1024; // mobile + tablet
+  const isMobile = viewportWidth < 640;
 
-const xAxisTickFontSize = isMobile ? 9 : isSmallScreen ? 10 : 12;
+  const xAxisTickFontSize = isMobile ? 9 : isSmallScreen ? 10 : 12;
   const yAxisFontSize = 12;
   const barWidthInPixels = Math.max(viewportWidth * 0.05, 40);
 
@@ -626,35 +626,35 @@ const xAxisTickFontSize = isMobile ? 9 : isSmallScreen ? 10 : 12;
   };
 
   const getFilteredBarChartData = () => {
-  const filteredKeys = columnsToDisplay2.filter((k) => selectedGraphs[k]);
+    const filteredKeys = columnsToDisplay2.filter((k) => selectedGraphs[k]);
 
-  return {
-    labels: filteredKeys.map((k) => labelMap[k]),
-    datasets: [
-      {
-        label: "Amount",
-        data: filteredKeys.map((k) => Math.abs(Number(getSafeValue(k)))),
-        backgroundColor: filteredKeys.map(
-          (k) => colorMapping[labelMap[k]] || "#999"
-        ),
-        borderColor: filteredKeys.map(
-          (k) => colorMapping[labelMap[k]] || "#666"
-        ),
-        borderWidth: 1,
-        maxBarThickness: barWidthInPixels,
+    return {
+      labels: filteredKeys.map((k) => labelMap[k]),
+      datasets: [
+        {
+          label: "Amount",
+          data: filteredKeys.map((k) => Math.abs(Number(getSafeValue(k)))),
+          backgroundColor: filteredKeys.map(
+            (k) => colorMapping[labelMap[k]] || "#999"
+          ),
+          borderColor: filteredKeys.map(
+            (k) => colorMapping[labelMap[k]] || "#666"
+          ),
+          borderWidth: 1,
+          maxBarThickness: barWidthInPixels,
 
-        // keep same color on hover
-        hoverBackgroundColor: filteredKeys.map(
-          (k) => colorMapping[labelMap[k]] || "#999"
-        ),
-        hoverBorderColor: filteredKeys.map(
-          (k) => colorMapping[labelMap[k]] || "#666"
-        ),
-        hoverBorderWidth: 1,
-      },
-    ],
+          // keep same color on hover
+          hoverBackgroundColor: filteredKeys.map(
+            (k) => colorMapping[labelMap[k]] || "#999"
+          ),
+          hoverBorderColor: filteredKeys.map(
+            (k) => colorMapping[labelMap[k]] || "#666"
+          ),
+          hoverBorderWidth: 1,
+        },
+      ],
+    };
   };
-};
 
   const barChartOptions = {
     responsive: true,
@@ -672,32 +672,38 @@ const xAxisTickFontSize = isMobile ? 9 : isSmallScreen ? 10 : 12;
     },
     scales: {
       x: {
-  title: {
-    display: false,
-  },
-  ticks: {
-    font: { size: xAxisTickFontSize },
-    maxRotation: 0,
-    minRotation: 0,
-    autoSkip: false,
-    callback: function (_value: any, index: number) {
-      const label = this.getLabelForValue(index);
+        title: {
+          display: false,
+        },
+        ticks: {
+          font: { size: xAxisTickFontSize },
+          maxRotation: 0,
+          minRotation: 0,
+          autoSkip: false,
+          callback: function (
+            this: any,
+            _value: unknown,
+            index: number
+          ): string | string[] | number {
+            const label = this.chart.data.labels?.[index];
 
-      if (typeof label !== "string") return label;
+            if (typeof label !== "string") {
+              return typeof label === "number" ? label : "";
+            }
 
-      if (isSmallScreen) {
-        const words = label.split(" ");
+            if (isSmallScreen) {
+              const words = label.split(" ");
 
-        if (words.length >= 2) {
-          return [words[0], words.slice(1).join(" ")];
-        }
-      }
+              if (words.length >= 2) {
+                return [words[0], words.slice(1).join(" ")];
+              }
+            }
 
-      return label;
-    },
-  },
-  offset: true,
-},
+            return label;
+          },
+        },
+        offset: true,
+      },
       y: {
         beginAtZero: true,
         title: {
@@ -738,31 +744,31 @@ const xAxisTickFontSize = isMobile ? 9 : isSmallScreen ? 10 : 12;
     },
     scales: {
       x: {
-  title: {
-    display: false,
-  },
-  ticks: {
-    font: { size: xAxisTickFontSize },
-    maxRotation: 0,
-    minRotation: 0,
-    autoSkip: false,
-    callback: function (_value: any, index: number) {
-      const label = this.getLabelForValue(index);
+        title: {
+          display: false,
+        },
+        ticks: {
+          font: { size: xAxisTickFontSize },
+          maxRotation: 0,
+          minRotation: 0,
+          autoSkip: false,
+          callback: function (this: any, _value: any, index: number): string | string[] | number {
+            const label = this.chart.data.labels?.[index];
 
-      if (typeof label !== "string") return label;
+            if (typeof label !== "string") return label;
 
-      if (isSmallScreen) {
-        const words = label.split(" ");
+            if (isSmallScreen) {
+              const words = label.split(" ");
 
-        if (words.length >= 2) {
-          return [words[0], words.slice(1).join(" ")];
-        }
-      }
+              if (words.length >= 2) {
+                return [words[0], words.slice(1).join(" ")];
+              }
+            }
 
-      return label;
-    },
-  },
-},
+            return label;
+          },
+        },
+      },
       y: {
         beginAtZero: true,
         title: {
@@ -976,7 +982,7 @@ const xAxisTickFontSize = isMobile ? 9 : isSmallScreen ? 10 : 12;
 
 
               <div className="h-[50vh] sm:h-[40vw] max-h-[560px]">
-              {/* <div className="h-[280px] sm:h-[320px] md:h-[360px]"> */}
+                {/* <div className="h-[280px] sm:h-[320px] md:h-[360px]"> */}
                 {periodType === "monthly" ? (
                   <Bar
                     ref={chartRef}

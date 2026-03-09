@@ -490,7 +490,7 @@
 //         ))}
 //       </div>
 // </div>
-     
+
 
 //      <div
 //   style={{
@@ -611,34 +611,34 @@ const PnlForecastChart = forwardRef<any, PnlForecastChartProps>(
       return monthShort;
     };
 
-   const formatMonthYear = (m: string) => {
-  if (!m) return "";
+    const formatMonthYear = (m: string) => {
+      if (!m) return "";
 
-  const parts = m.split(" ");
-  const month = parts[0];
-  const year = parts[1];
+      const parts = m.split(" ");
+      const month = parts[0];
+      const year = parts[1];
 
-  const monthMap: Record<string, string> = {
-    January: "Jan",
-    February: "Feb",
-    March: "Mar",
-    April: "Apr",
-    May: "May",
-    June: "Jun",
-    July: "Jul",
-    August: "Aug",
-    September: "Sep",
-    October: "Oct",
-    November: "Nov",
-    December: "Dec",
-  };
+      const monthMap: Record<string, string> = {
+        January: "Jan",
+        February: "Feb",
+        March: "Mar",
+        April: "Apr",
+        May: "May",
+        June: "Jun",
+        July: "Jul",
+        August: "Aug",
+        September: "Sep",
+        October: "Oct",
+        November: "Nov",
+        December: "Dec",
+      };
 
-  const shortMonth = monthMap[month] || month.slice(0, 3);
+      const shortMonth = monthMap[month] || month.slice(0, 3);
 
-  return `${shortMonth} '${year?.slice(-2)}`;
-};
+      return `${shortMonth} '${year?.slice(-2)}`;
+    };
 
-const labels = chartData.map((item) => formatMonthYear(item.month));
+    const labels = chartData.map((item) => formatMonthYear(item.month));
 
     type DataKey = keyof ChartDataItem;
 
@@ -648,31 +648,31 @@ const labels = chartData.map((item) => formatMonthYear(item.month));
       borderColor: string;
       backgroundColor: string;
     }[] = [
-      {
-        key: 'SALES',
-        label: 'Sales',
-        borderColor: '#75BBDA',
-        backgroundColor: '#75BBDA',
-      },
-      {
-        key: 'CM1 PROFIT',
-        label: 'CM1 Profit',
-        borderColor: '#7B9A6D',
-        backgroundColor: '#7B9A6D',
-      },
-      {
-        key: 'ADVERTISING COSTS',
-        label: 'Advertising Costs',
-        borderColor: '#C49466',
-        backgroundColor: '#C49466',
-      },
-      {
-        key: 'CM2 PROFIT',
-        label: 'CM2 Profit',
-        borderColor: '#B8C78C',
-        backgroundColor: '#B8C78C',
-      },
-    ];
+        {
+          key: 'SALES',
+          label: 'Sales',
+          borderColor: '#75BBDA',
+          backgroundColor: '#75BBDA',
+        },
+        {
+          key: 'CM1 PROFIT',
+          label: 'CM1 Profit',
+          borderColor: '#7B9A6D',
+          backgroundColor: '#7B9A6D',
+        },
+        {
+          key: 'ADVERTISING COSTS',
+          label: 'Advertising Costs',
+          borderColor: '#C49466',
+          backgroundColor: '#C49466',
+        },
+        {
+          key: 'CM2 PROFIT',
+          label: 'CM2 Profit',
+          borderColor: '#B8C78C',
+          backgroundColor: '#B8C78C',
+        },
+      ];
 
     const datasets = datasetDefs
       .filter((dataset) => selectedGraphs[dataset.key])
@@ -740,8 +740,8 @@ const labels = chartData.map((item) => formatMonthYear(item.month));
               size: 12,
             },
           },
-          grid: {
-            drawBorder: false,
+          border: {
+            display: false,
           },
         },
         y: {
@@ -763,8 +763,8 @@ const labels = chartData.map((item) => formatMonthYear(item.month));
                 : tickValue;
             },
           },
-          grid: {
-            drawBorder: false,
+          border: {
+            display: false,
           },
         },
       },

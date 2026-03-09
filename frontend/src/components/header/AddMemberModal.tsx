@@ -11,8 +11,13 @@ const MODULE_OPTIONS = [
   "INVENTORY_PLANNING",
 ];
 
-const ROLE_OPTIONS = ["MARKETING", "ACCOUNTED", "INVENTORY"] as const;
-type RoleOption = (typeof ROLE_OPTIONS)[number];
+const ROLE_OPTIONS = [
+  { label: "Marketing", value: "MARKETING" },
+  { label: "Accounted", value: "ACCOUNTED" },
+  { label: "Inventory", value: "INVENTORY" },
+] as const;
+
+type RoleOption = (typeof ROLE_OPTIONS)[number]["value"];
 
 const COUNTRY_OPTIONS = [
   { label: "United States", value: "US" },
@@ -27,6 +32,12 @@ const COUNTRY_TO_MARKETPLACES: Record<string, string[]> = {
   CA: ["A2EUQ1WTGCTBG2"],
   DE: ["A1PA6795UKMFR9"],
 };
+
+const formatLabel = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
 function ChipsMultiSelect({
   options,
@@ -48,6 +59,8 @@ function ChipsMultiSelect({
 
   const remove = (opt: string) => onChange(value.filter((v) => v !== opt));
 
+
+
   return (
     <div className="relative">
       <div
@@ -63,7 +76,7 @@ function ChipsMultiSelect({
               className="inline-flex items-center gap-2 rounded-full bg-gray-100 dark:bg-white/5 px-3 py-1 text-xs text-gray-700 dark:text-gray-200"
               onClick={(e) => e.stopPropagation()}
             >
-              {v}
+            {formatLabel(v)}
               <button
                 type="button"
                 className="text-gray-500 hover:text-gray-800 dark:hover:text-white"
@@ -93,7 +106,7 @@ function ChipsMultiSelect({
                   className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 text-left"
                 >
                   <span className="text-sm text-gray-700 dark:text-gray-200">
-                    {opt}
+                    {formatLabel(opt)}
                   </span>
                   <span className="text-sm">{checked ? "✅" : ""}</span>
                 </button>
@@ -252,11 +265,11 @@ export default function AddMemberModal({
             {/* Name */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Name *
+                Name <span className="text-red-500">*</span>
               </label>
               <input
                 className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
-                placeholder="John Doe"
+                placeholder="Member Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -265,7 +278,7 @@ export default function AddMemberModal({
             {/* Email */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Email Address *
+                Email Address <span className="text-red-500">*</span>
               </label>
               <input
                 className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
@@ -283,7 +296,7 @@ export default function AddMemberModal({
             {/* Password */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Password *
+                 Password <span className="text-red-500">*</span>
               </label>
               <input
                 type="password"
@@ -297,7 +310,7 @@ export default function AddMemberModal({
             {/* Confirm Password */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Confirm Password *
+                Confirm Password <span className="text-red-500">*</span>
               </label>
               <input
                 type="password"
@@ -311,7 +324,7 @@ export default function AddMemberModal({
             {/* Country */}
             <div>
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Country *
+               Country <span className="text-red-500">*</span>
               </label>
               <select
                 className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
@@ -344,19 +357,19 @@ export default function AddMemberModal({
                 onChange={(e) => setRole(e.target.value as RoleOption)}
               >
                 {ROLE_OPTIONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
+                  <option key={r.value} value={r.value}>
+                    {r.label}
                   </option>
                 ))}
               </select>
             </div>
 
-            
+
 
             {/* Section Access */}
             <div className="md:col-span-2">
               <label className="text-sm text-gray-700 dark:text-gray-200">
-                Section Access *
+            Section Access <span className="text-red-500">*</span>
               </label>
               <div className="mt-1">
                 <ChipsMultiSelect
@@ -376,13 +389,13 @@ export default function AddMemberModal({
 
           {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
 
-         <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#FDD36F4D] dark:bg-white/5 border border-yellow-100 dark:border-gray-800 px-3 py-2 text-xs text-gray-700 dark:text-gray-200">
-  <IoInformationCircleOutline className="text-charcoal-500 text-base flex-shrink-0" />
+          <div className="mt-4 flex items-start gap-2 rounded-lg bg-[#FDD36F4D] dark:bg-white/5 border border-yellow-100 dark:border-gray-800 px-3 py-2 text-xs text-gray-700 dark:text-gray-200">
+            <IoInformationCircleOutline className="text-charcoal-500 text-base flex-shrink-0" />
 
-  <span>
-    Members can only view the sections you grant access to. You can update permissions anytime.
-  </span>
-</div>
+            <span>
+              Members can only view the sections you grant access to. You can update permissions anytime.
+            </span>
+          </div>
 
           <div className="mt-6 flex justify-end gap-3">
             <button

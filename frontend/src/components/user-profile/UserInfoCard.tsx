@@ -835,7 +835,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                     )
                   }
                 >
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                 <div className="grid grid-cols-2 gap-4">
                     {/* Name */}
                     <InfoItem
                       label="Name"
@@ -852,7 +852,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       }
                     />
 
-                    {/* Email (read only always) */}
+                    {/* Email */}
                     <InfoItem label="Email" value={show(form.email)} />
 
                     {/* Phone */}
@@ -870,6 +870,29 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                         )
                       }
                     />
+
+                    {/* Reset Password */}
+                    <div className="">
+                      <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+                        Reset Password
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={handleForgotPassword}
+                        disabled={isSending}
+                        className={`text-sm font-medium ${isSuccess
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-blue-600 hover:underline dark:text-blue-400"
+                          } ${isSending ? "cursor-not-allowed opacity-60" : ""}`}
+                      >
+                        {isSending
+                          ? "Sending..."
+                          : isSuccess
+                            ? "Email sent for password reset"
+                            : "Click here to change password"}
+                      </button>
+                    </div>
                   </div>
                 </InfoCard>
 
@@ -1127,58 +1150,58 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
               <>
                 {/* LEFT: Integrations */}
                 <div className="lg:col-span-1 h-full">
-                  <InfoCard
-                    title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
-                  >
-                    {(() => {
-                      const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
-                        platformIsConnected(p.id, connected)
-                      );
+            <InfoCard
+  title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
+>
+  {(() => {
+    const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
+      platformIsConnected(p.id, connected)
+    );
 
-                      if (connectedPlatforms.length === 0) {
-                        return (
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            No platforms connected yet.
-                          </p>
-                        );
-                      }
+    if (connectedPlatforms.length === 0) {
+      return (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          No platforms connected yet.
+        </p>
+      );
+    }
 
-                      return (
-                        <>
-                          <div className="space-y-3">
-                            {connectedPlatforms.map((p) => {
-                              const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
+    return (
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4 flex-wrap">
+          {connectedPlatforms.map((p) => {
+            const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
 
-                              return (
-                                <div key={p.id} className="flex items-center gap-3">
-                                  {meta.countryCode && (
-                                    <ReactCountryFlag
-                                      svg
-                                      countryCode={meta.countryCode as any}
-                                      className="text-[22px] leading-none"
-                                      aria-label={meta.label}
-                                    />
-                                  )}
+            return (
+              <div key={p.id} className="flex items-center gap-3">
+                {meta.countryCode && (
+                  <ReactCountryFlag
+                    svg
+                    countryCode={meta.countryCode as any}
+                    className="text-[22px] leading-none"
+                    aria-label={meta.label}
+                  />
+                )}
 
-                                  <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                                    {meta.label}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
+                <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                  {meta.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
 
-                          <Link
-                            href=""
-                            className="mt-4 inline-flex items-center gap-2 whitespace-nowrap border-b border-transparent text-sm font-semibold text-green-500 hover:border-green-500 dark:text-emerald-400 dark:hover:border-emerald-400"
-                          >
-                            <FaPlus size={12} />
-                            <span>Integrate more marketplaces</span>
-                          </Link>
-                        </>
-                      );
-                    })()}
-                  </InfoCard>
+        <Link
+          href=""
+          className="inline-flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-green-500 hover:underline dark:text-emerald-400"
+        >
+          <FaPlus size={12} />
+          <span>Integrate more marketplaces</span>
+        </Link>
+      </div>
+    );
+  })()}
+</InfoCard>
                 </div>
 
                 {/* RIGHT: Product & Inventory Controls */}
