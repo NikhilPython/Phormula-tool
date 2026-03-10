@@ -26,6 +26,7 @@
     "apexcharts": "^4.3.0",
     "autoprefixer": "^10.4.20",
     "axios": "^1.13.2",
+    "chartjs-plugin-zoom": "^2.2.0",
     "clsx": "^2.1.1",
     "echarts-for-react": "^3.0.5",
     "exceljs": "^4.4.0",
