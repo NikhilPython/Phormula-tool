@@ -244,7 +244,7 @@ export default function AgeingInventorySection() {
               <tr>
                 {/* Serial number column */}
                 <th className="px-3 py-2 text-center text-sm font-semibold border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
-                  Sno.
+                 S.No.
                 </th>
 
                 {AGED_COLUMNS.map((col) => (

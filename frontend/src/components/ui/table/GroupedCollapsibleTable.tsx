@@ -122,7 +122,7 @@ export default function GroupedCollapsibleTable<RowT>({
   onVisibleColCountChange,
   tableClassName = "min-w-[800px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
-  headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
+  headerRow2ClassName = "bg-[#EFEFEF] text-charcoal-500",
   summary
 }: Props<RowT>) {
   /* ---------------- State ---------------- */

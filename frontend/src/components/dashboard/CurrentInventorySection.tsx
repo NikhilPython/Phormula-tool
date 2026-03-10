@@ -632,7 +632,7 @@ export default function CurrentInventorySection({
     const responsiveWidth = "w-20 lg:min-w-fit";
 
     return [
-      { key: "sno", header: "Sno.", width: "w-[60px]", cellClassName: "text-center" },
+      { key: "sno", header: "S.No.", width: "w-[60px]", cellClassName: "text-center" },
       {
         key: "productName",
         header: "Product Name",

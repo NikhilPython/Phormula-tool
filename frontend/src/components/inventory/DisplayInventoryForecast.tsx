@@ -298,12 +298,12 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
       },
       scales: {
         x: {
-          title: { display: false, text: 'Months', font: { size: 10 } },
-          ticks: { font: { size: 10 } },
+          title: { display: false, text: 'Months', font: { size: 12 } },
+          ticks: { font: { size: 12 } },
         },
         y: {
-          title: { display: true, text: 'Units', font: { size: 10 } },
-          ticks: { font: { size: 10 } },
+          title: { display: true, text: 'Units', font: { size: 12 } },
+          ticks: { font: { size: 12 } },
           beginAtZero: true,
         },
       },
@@ -608,12 +608,12 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   <tr>
    
     {/* Dynamic month labels */}
-    <th className="p-2 border border-gray-300 bg-[#D9D9D9]">{soldLabels[0] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#D9D9D9]">{soldLabels[1] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#D9D9D9]">{soldLabels[2] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#D9D9D9]">{forecastLabels[0] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#D9D9D9]">{forecastLabels[1] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#D9D9D9]">{forecastLabels[2] || ''}</th>
+    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{soldLabels[0] || ''}</th>
+    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{soldLabels[1] || ''}</th>
+    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{soldLabels[2] || ''}</th>
+    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{forecastLabels[0] || ''}</th>
+    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{forecastLabels[1] || ''}</th>
+    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{forecastLabels[2] || ''}</th>
   </tr>
 </thead>
 

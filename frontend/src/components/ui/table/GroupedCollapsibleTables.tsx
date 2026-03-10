@@ -74,7 +74,7 @@ export default function GroupedCollapsibleTables<RowT>({
 toggleGroupByColKey,
   tableClassName = "min-w-[800px] w-full table-auto border-collapse text-[#414042]",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
-  headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
+  headerRow2ClassName = "bg-[#EFEFEF] text-charcoal-500",
 }: Props<RowT>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};

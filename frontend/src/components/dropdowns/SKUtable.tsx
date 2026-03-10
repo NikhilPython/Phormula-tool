@@ -515,7 +515,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
-      { key: "sno", label: "Sno.", align: "center" },
+      { key: "sno", label: "S.No.", align: "center" },
       { key: "product_name", label: "Product Name", align: "left" },
 
     ],
