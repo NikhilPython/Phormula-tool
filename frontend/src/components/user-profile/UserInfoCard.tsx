@@ -835,7 +835,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                     )
                   }
                 >
-                 <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     {/* Name */}
                     <InfoItem
                       label="Name"
@@ -882,8 +882,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                         onClick={handleForgotPassword}
                         disabled={isSending}
                         className={`text-sm font-medium ${isSuccess
-                            ? "text-green-600 dark:text-green-400"
-                            : "text-blue-600 hover:underline dark:text-blue-400"
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-blue-600 hover:underline dark:text-blue-400"
                           } ${isSending ? "cursor-not-allowed opacity-60" : ""}`}
                       >
                         {isSending
@@ -1150,58 +1150,58 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
               <>
                 {/* LEFT: Integrations */}
                 <div className="lg:col-span-1 h-full">
-            <InfoCard
-  title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
->
-  {(() => {
-    const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
-      platformIsConnected(p.id, connected)
-    );
+                  <InfoCard
+                    title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
+                  >
+                    {(() => {
+                      const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
+                        platformIsConnected(p.id, connected)
+                      );
 
-    if (connectedPlatforms.length === 0) {
-      return (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          No platforms connected yet.
-        </p>
-      );
-    }
+                      if (connectedPlatforms.length === 0) {
+                        return (
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            No platforms connected yet.
+                          </p>
+                        );
+                      }
 
-    return (
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-4 flex-wrap">
-          {connectedPlatforms.map((p) => {
-            const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
+                      return (
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                          <div className="flex items-center gap-4 flex-wrap">
+                            {connectedPlatforms.map((p) => {
+                              const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
 
-            return (
-              <div key={p.id} className="flex items-center gap-3">
-                {meta.countryCode && (
-                  <ReactCountryFlag
-                    svg
-                    countryCode={meta.countryCode as any}
-                    className="text-[22px] leading-none"
-                    aria-label={meta.label}
-                  />
-                )}
+                              return (
+                                <div key={p.id} className="flex items-center gap-3">
+                                  {meta.countryCode && (
+                                    <ReactCountryFlag
+                                      svg
+                                      countryCode={meta.countryCode as any}
+                                      className="text-[22px] leading-none"
+                                      aria-label={meta.label}
+                                    />
+                                  )}
 
-                <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                  {meta.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+                                  <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                                    {meta.label}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
 
-        <Link
-          href=""
-          className="inline-flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-green-500 hover:underline dark:text-emerald-400"
-        >
-          <FaPlus size={12} />
-          <span>Integrate more marketplaces</span>
-        </Link>
-      </div>
-    );
-  })()}
-</InfoCard>
+                          <Link
+                            href=""
+                            className="inline-flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-green-500 hover:underline dark:text-emerald-400"
+                          >
+                            <FaPlus size={12} />
+                            <span>Integrate more marketplaces</span>
+                          </Link>
+                        </div>
+                      );
+                    })()}
+                  </InfoCard>
                 </div>
 
                 {/* RIGHT: Product & Inventory Controls */}
@@ -1521,35 +1521,36 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
                       {/* Business Context */}
                       <div className="col-span-2">
-                        <InfoItem
-                          label="Business Context"
-                          value={
-                            isObjectiveEditMode ? (
-                              <div className="w-full">
-                                <textarea
-                                  rows={4}
-                                  maxLength={250}
-                                  value={objectiveDraft.business_context || ""}
-                                  onChange={(e) =>
-                                    setObjectiveDraft((prev) => ({
-                                      ...prev,
-                                      business_context: e.target.value,
-                                    }))
-                                  }
-                                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 resize-none"
-                                  placeholder="Describe your business context..."
-                                />
-                                <p className="mt-1 text-xs text-gray-500">Max 250 characters</p>
-                              </div>
-                            ) : objective.business_context ? (
-                              <p className="text-sm text-gray-800 dark:text-white/90 whitespace-pre-wrap">
-                                {objective.business_context}
-                              </p>
-                            ) : (
-                              "-"
-                            )
-                          }
-                        />
+                        <div className="mb-1 flex items-center justify-between">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Business Context</p>
+                          {isObjectiveEditMode && (
+                            <p className="text-xs text-gray-500">
+                              Max 250 characters
+                            </p>
+                          )}
+                        </div>
+
+                        {isObjectiveEditMode ? (
+                          <textarea
+                            rows={4}
+                            maxLength={250}
+                            value={objectiveDraft.business_context || ""}
+                            onChange={(e) =>
+                              setObjectiveDraft((prev) => ({
+                                ...prev,
+                                business_context: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 resize-none"
+                            placeholder="Describe your business context..."
+                          />
+                        ) : objective.business_context ? (
+                          <p className="text-sm text-gray-800 dark:text-white/90 whitespace-pre-wrap">
+                            {objective.business_context}
+                          </p>
+                        ) : (
+                          <p className="text-sm font-medium text-gray-800 dark:text-white/90">-</p>
+                        )}
                       </div>
                     </div>
                   </InfoCard>
