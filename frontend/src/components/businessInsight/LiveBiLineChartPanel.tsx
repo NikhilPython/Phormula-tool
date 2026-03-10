@@ -31,11 +31,11 @@ type PeriodInfo = {
 type Props = {
   dailySeries: DailySeries | null;
   periods?:
-    | {
-        previous?: PeriodInfo;
-        current_mtd?: PeriodInfo;
-      }
-    | null;
+  | {
+    previous?: PeriodInfo;
+    current_mtd?: PeriodInfo;
+  }
+  | null;
   loading?: boolean;
   error?: string | null;
 
@@ -171,7 +171,7 @@ const LiveLineChart: React.FC<{
   const yAxisName =
     metric === "net_sales"
       ? currencySymbol
-        ? `Sales (${currencySymbol})`
+        ? `(${currencySymbol})`
         : "Sales"
       : "Units (in nos.)";
 
@@ -261,8 +261,25 @@ const LiveLineChart: React.FC<{
         boundaryGap: false,
         nameLocation: "middle",
         nameGap: xNameGap,
-        axisLabel: { fontSize: axisFontSize },
-        nameTextStyle: { fontSize: axisNameFontSize },
+        axisLine: {
+          lineStyle: {
+            color: "#D1D5DB",
+            width: 1,
+          },
+        },
+        axisTick: {
+          lineStyle: {
+            color: "#D1D5DB",
+          },
+        },
+        axisLabel: {
+          fontSize: axisFontSize,
+          color: "#6B7280",
+        },
+        nameTextStyle: {
+          fontSize: axisNameFontSize,
+          color: "#6B7280",
+        },
       },
 
       yAxis: {
@@ -270,8 +287,30 @@ const LiveLineChart: React.FC<{
         name: yAxisName,
         nameLocation: "middle",
         nameGap: yNameGap,
-        axisLabel: { fontSize: axisFontSize },
-        nameTextStyle: { fontSize: axisNameFontSize },
+        axisLine: {
+          lineStyle: {
+            color: "#D1D5DB",
+            width: 1,
+          },
+        },
+        axisTick: {
+          lineStyle: {
+            color: "#D1D5DB",
+          },
+        },
+        axisLabel: {
+          fontSize: axisFontSize,
+          color: "#6B7280",
+        },
+        nameTextStyle: {
+          fontSize: axisNameFontSize,
+          color: "#6B7280",
+        },
+        splitLine: {
+          lineStyle: {
+            color: "#E5E7EB",
+          },
+        },
       },
 
       series: [
@@ -339,7 +378,7 @@ const LiveLineChart: React.FC<{
     const ro = new ResizeObserver(() => {
       try {
         echartsInstanceRef.current?.resize();
-      } catch {}
+      } catch { }
     });
 
     ro.observe(el);
@@ -360,7 +399,7 @@ const LiveLineChart: React.FC<{
             echartsInstanceRef.current = instance as EChartsType;
             try {
               instance.resize();
-            } catch {}
+            } catch { }
           }}
         />
       )}

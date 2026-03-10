@@ -1247,7 +1247,19 @@ const LiveLineChart: React.FC<{
       boundaryGap: false,
       nameLocation: "middle",
       nameGap: 25,
+      axisLine: {
+        lineStyle: {
+          color: "#D1D5DB", 
+          width: 1,
+        },
+      },
+      axisTick: {
+        lineStyle: {
+          color: "#D1D5DB",
+        },
+      },
       axisLabel: {
+        color: "#6B7280", 
         formatter: (value: string) => {
           if (isPadX(value)) return "";
 
@@ -1264,9 +1276,26 @@ const LiveLineChart: React.FC<{
       type: "value",
       name: yAxisName,
       nameLocation: "middle",
-      nameGap: 16,
-      nameTextStyle: { padding: [0, 0, 0, 0] },
-      axisLabel: { margin: 4 },
+      nameGap: 8,
+      nameTextStyle: {
+        color: "#6B7280",
+        padding: [0, 0, 0, 0],
+      },
+      axisLine: {
+        lineStyle: {
+          color: "#D1D5DB",
+          width: 1,
+        },
+      },
+      axisLabel: {
+        margin: 2,
+        color: "#6B7280",
+      },
+      splitLine: {
+        lineStyle: {
+          color: "#E5E7EB",
+        },
+      },
     },
 
     series: series.map((ser) => {
@@ -1308,7 +1337,7 @@ const LiveLineChart: React.FC<{
           itemStyle: {
             color: lineColor,
           },
-          symbolSize:11, // 👈 bigger circle on hover
+          symbolSize: 11, // 👈 bigger circle on hover
         },
 
 

@@ -47,7 +47,7 @@ import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/Grouped
 import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import * as XLSX from "xlsx-js-style";
-import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData"; // wherever you put it
+import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData"; 
 import Alert from "@/components/ui/alert/Alert";
 import { ApiResponse } from "@/components/businessInsight/types";
 

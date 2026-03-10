@@ -1448,6 +1448,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
                     grid: { display: false },
                     border: { display: false },
                     ticks: {
+                      color: "#6B7280",
                       minRotation: 0,
                       maxRotation: 0,
                       autoSkip: formattedLabels.length > 6,
@@ -1456,10 +1457,20 @@ const GraphPage: React.FC<GraphPageProps> = ({
                     },
                   },
                   y: {
-                    title: { display: true, text: `(${currencySymbol})` },
+                    title: {
+                      display: true,
+                      text: `(${currencySymbol})`,
+                      color: "#6B7280",
+                    },
                     min: minY,
-                    ticks: { padding: 0 },
+                    ticks: {
+                      padding: 0,
+                      color: "#6B7280",
+                    },
                     border: { display: false },
+                    grid: {
+                      color: "#E5E7EB",
+                    },
                   },
                 },
               }}

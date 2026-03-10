@@ -635,7 +635,7 @@ export default function SalesTargetCard({
       </div>
 
       {/* Reimbursement Section */}
-      <div className=" min-[1700px]:mt-3 px-3 py-2 min-[1700px]:py-3 ">
+      <div className=" max-[1700px]:mt-3 px-3 py-2 max-[1700px]:py-3 2xl:py-1.5">
         <div className="flex items-center justify-center gap-2">
           <div className="text-[10px] 2xl:text-xs text-charcoal-500">
             Monthly Reimbursement

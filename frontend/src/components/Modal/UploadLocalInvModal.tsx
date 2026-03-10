@@ -64,7 +64,7 @@ export default function UploadLocalInvModal({
     try {
       setLoading(true);
       const formData = new FormData();
-      formData.append('warehouse_balance', file);
+      
       formData.append('month', selectedMonth);
       formData.append('year', selectedYear);
       formData.append('country', countryName);
