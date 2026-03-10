@@ -592,6 +592,8 @@ type RightProductDrawerProps = {
   drawerPeriodText?: string;
 };
 
+
+
 const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   open,
   onClose,
@@ -640,7 +642,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
             <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <div className="text-sm text-yellow-200">Detailed View</div>
+                  <div className="text-sm text-slate-500">Detailed View</div>
 
                   {drawerPeriodText ? (
                     <span className="text-[#5EA68E] font-semibold text-sm">
@@ -673,21 +675,21 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                       <div className="text-xs text-slate-500">Primary Focus</div>
                       <div className="text-sm font-bold text-slate-800 mt-1">
-                        {objective?.growth_intent || "balanced"}
+                         {capitalizeFirst(objective?.growth_intent || "balanced")}
                       </div>
                     </div>
 
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                       <div className="text-xs text-slate-500">Profit Strategy</div>
                       <div className="text-sm font-bold text-slate-800 mt-1">
-                        {(objective?.profit_priority?.replaceAll("_", " ") || "protect growth")}
+                         {capitalizeFirst(objective?.profit_priority?.replaceAll("_", " ") || "protect growth")}
                       </div>
                     </div>
 
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                       <div className="text-xs text-slate-500">Inventory Dilution</div>
                       <div className="text-sm font-bold text-slate-800 mt-1">
-                        {objective?.inventory_clearance_priority ? "Yes" : "No"}
+                        {capitalizeFirst(objective?.inventory_clearance_priority ? "Yes" : "No")}
                       </div>
                     </div>
                   </div>
@@ -1413,6 +1415,11 @@ const ProductInsightsSection = ({
   );
 };
 
+const capitalizeFirst = (text?: string) => {
+  if (!text) return "";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
 const MonthlyObjectiveStrip = ({
   objective,
 }: {
@@ -1459,7 +1466,7 @@ const MonthlyObjectiveStrip = ({
 
 
   return (
-    <div className="w-full rounded-xl bg-[#ffffff]  ">
+    <div className="w-full rounded-xl bg-[#ffffff] p-3 shadow-sm ">
 
       {/* Title */}
       <div className=" pb-3 ">
@@ -1472,20 +1479,20 @@ const MonthlyObjectiveStrip = ({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5  rounded-sm">
 
         <Item
-          label="Primary Focus"
-          value={objective?.growth_intent || "Growth"}
-          icon={<TrendingUp size={16} />}
-          topColor="#3A8EA4"
-          iconBg="#E0F2F1"
-        />
+  label="Primary Focus"
+  value={capitalizeFirst(objective?.growth_intent) || "Growth"}
+  icon={<TrendingUp size={16} />}
+  topColor="#3A8EA4"
+  iconBg="#E0F2F1"
+/>
 
         <Item
-          label="Profit Strategy"
-          value={objective?.profit_priority?.replaceAll("_", " ") || "Profit"}
-          icon={<DollarSign size={16} />}
-          topColor="#ED9F50"
-          iconBg="#FFF3E0"
-        />
+  label="Profit Strategy"
+  value={capitalizeFirst(objective?.profit_priority?.replaceAll("_", " ")) || "Profit"}
+  icon={<DollarSign size={16} />}
+  topColor="#ED9F50"
+  iconBg="#FFF3E0"
+/>
 
         <Item
           label="Inventory Dilution"
@@ -1824,7 +1831,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
     <div className="flex flex-col  gap-5">
       <div className="w-full  space-y-4">
 
-        <div className="space-y-4">
+        <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-3">
   {/* Narrative Summary */}
   {narrativeInsights.length > 0 && (
     <>
@@ -1859,7 +1866,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 </div>
 
         {/* Product Insights */}
-        <div className="w-full">
+        <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-3">
           <div className="space-y-5">
             <ProductInsightsSection
               blocks={parseProductInsightsBlocks(skuInsightsBullets)}
@@ -1878,7 +1885,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
         {/* ================= INVENTORY SECTION ================= */}
         {inventoryBullets.length > 0 && (
-          <div className="space-y-4">
+          <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-3">
             <div className="flex items-center gap-2">
               <span className="text-base 2xl:text-2xl font-bold text-slate-800">
                 Inventory Insights
@@ -4264,7 +4271,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         {activeTab === "businessSummary" && allDropdownsSelected && (
           <div
             id="business-summary"
-            className="scroll-mt-[80px] space-y-6 rounded-xl border border-slate-200 bg-white shadow-sm p-3"
+            className="scroll-mt-[80px] space-y-6 "
           >
             {/* ✅ Loader INSIDE the white container */}
             {aiPanelLoading ? (
