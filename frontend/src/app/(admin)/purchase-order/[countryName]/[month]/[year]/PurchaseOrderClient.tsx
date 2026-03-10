@@ -52,7 +52,7 @@ export default function PurchaseOrderPage() {
             'Total Dispatches',
             'Current Inventory - Local Warehouse',
             'PO Already Raised',
-            'PO to Be raised',
+            'PO to be raised',
             'Cost per Unit (in INR)',
             'PO Cost (in INR)',
           ]
@@ -66,7 +66,7 @@ export default function PurchaseOrderPage() {
             'Total Dispatches',
             'Current Inventory - Local Warehouse',
             'PO Already Raised',
-            'PO to Be raised',
+            'PO to be raised',
             'Cost per Unit (in INR)',
             'PO Cost (in INR)',
           ],
