@@ -589,11 +589,11 @@ type RightProductDrawerProps = {
 };
 
 const metricColors = [
-  "border-t-[#FDD36F]",
-  "border-t-[#75BBDA]",
-  "border-t-[#B75A5A]",
-  "border-t-[#7B9A6D]",
-  "border-t-[#2DA49A]",
+  "border border-[#FDD36F] border-t-[#FDD36F]",
+  "border border-[#75BBDA] border-t-[#75BBDA]",
+  "border border-[#B75A5A] border-t-[#B75A5A]",
+  "border border-[#7B9A6D] border-t-[#7B9A6D]",
+  "border border-[#2DA49A] border-t-[#2DA49A]",
 ];
 
 const metricOrder = [
@@ -699,7 +699,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     {sortedMetrics.map((m, i) => (
                       <div
                         key={i}
-                        className={`rounded-lg border border-t-4 ${metricColors[i % metricColors.length]} bg-slate-50 px-3 py-2`}
+                        className={`rounded-lg border border-t-4 ${metricColors[i % metricColors.length]} px-3 py-2`}
                       >
                         <div className="text-[10px] text-charcoal-400 2xl:text-xs">
                           {m.label
@@ -1178,122 +1178,189 @@ const capitalizeFirst = (text?: string) => {
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
 
+// const MonthlyObjectiveStrip = ({
+//   objective,
+// }: {
+//   objective?: ObjectivePayload;
+// }) => {
+//   const Item = ({
+//     label,
+//     value,
+//     icon,
+//     topColor,
+//     iconBg,
+//     iconColor,
+//     valueClass = "text-slate-800",
+//   }: {
+//     label: string;
+//     value: string;
+//     icon: React.ReactNode;
+//     topColor: string;
+//     iconBg: string;
+//     iconColor?: string;
+//     valueClass?: string;
+//   }) => (
+//     <div className="relative flex flex-col justify-center px-6 py-4 bg-white border border-slate-200 rounded-xl">
+
+//       {/* Top Color Bar */}
+//       <div
+//         className="absolute top-0 left-0 w-full h-1"
+//       />
+
+//       <div className="flex items-center gap-3">
+
+       
+
+
+//         <div className="flex flex-col">
+//           <span className="text-xs text-slate-500">{label}</span>
+//           <span className={`text-sm font-semibold ${valueClass}`}>
+//             {value}
+//           </span>
+//         </div>
+//       </div>
+//     </div>
+//   );
+
+
+//   return (
+//     <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 mt-4">
+
+//       {/* Title */}
+//       <div className="mb-2">
+//         <PageBreadcrumb
+//           pageTitle=" Monthly Objectives & Targets"
+//           variant="page"
+//           textSize="2xl"
+//           align="left"
+//         />
+//       </div>
+
+//       {/* Strip Grid */}
+//       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5  rounded-sm">
+
+//         <Item
+//           label="Growth"
+//           value={capitalizeFirst(objective?.growth_intent) || "Growth"}
+//           icon={<TrendingUp size={16} />}
+//           topColor="#3A8EA4"
+//           iconBg="#E0F2F1"
+//         />
+
+//         <Item
+//           label="Profit"
+//           value={capitalizeFirst(objective?.profit_priority?.replaceAll("_", " ")) || "Profit"}
+//           icon={<DollarSign size={16} />}
+//           topColor="#ED9F50"
+//           iconBg="#FFF3E0"
+//         />
+
+//         <Item
+//           label="Inventory Dilution"
+//           value={objective?.inventory_clearance_priority ? "Yes" : "No"}
+//           icon={<Package size={16} />}
+//           topColor="#C0BFC1"
+//           iconBg="#F3F4F6"
+//         />
+
+//         <Item
+//           label="Target Set"
+//           value="$140K"
+//           icon={<Target size={16} />}
+//           topColor="#5EA68E"
+//           iconBg="#E6F4EA"
+//         />
+
+//         <Item
+//           label="Shortfall"
+//           value="-$3.6K"
+//           icon={<AlertCircle size={16} />}
+//           topColor="#B75A5A"
+//           iconBg="#FDECEA"
+//           valueClass="text-red-600"
+//         />
+
+//         <Item
+//           label="Cash Flow"
+//           value="$130K"
+//           icon={<Wallet size={16} />}
+//           topColor="#75BBDA"
+//           iconBg="#E3F2FD"
+//         />
+
+
+//       </div>
+//     </div>
+//   );
+// };
+
 const MonthlyObjectiveStrip = ({
   objective,
+  className = "",
 }: {
   objective?: ObjectivePayload;
+  className?: string;
 }) => {
+  const growth =
+    objective?.growth_intent?.replaceAll("_", " ") || "Not Defined";
+
+  const profit =
+    objective?.profit_priority?.replaceAll("_", " ") || "Not Defined";
+
+  const inventory =
+    typeof objective?.inventory_clearance_priority === "boolean"
+      ? objective.inventory_clearance_priority
+        ? "Yes"
+        : "No"
+      : "Not Defined";
+
+  const targetSet = "$140K";
+  const shortfall = "-$3.6K";
+  const cashFlow = "$130K";
+
   const Item = ({
     label,
     value,
-    icon,
-    topColor,
-    iconBg,
-    iconColor,
-    valueClass = "text-slate-800",
+    valueClass = "text-charcoal-500",
   }: {
     label: string;
     value: string;
-    icon: React.ReactNode;
-    topColor: string;
-    iconBg: string;
-    iconColor?: string;
     valueClass?: string;
   }) => (
-    <div className="relative flex flex-col justify-center px-6 py-4 bg-white border border-slate-200 rounded-xl">
-
-      {/* Top Color Bar */}
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <div className="2xl:text-xs text-[10px] text-charcoal-500">
+        {label}
+      </div>
       <div
-        className="absolute top-0 left-0 w-full h-1"
-      />
-
-      <div className="flex items-center gap-3">
-
-        {/* Icon with independent background */}
-
-
-        <div className="flex flex-col">
-          <span className="text-xs text-slate-500">{label}</span>
-          <span className={`text-sm font-semibold ${valueClass}`}>
-            {value}
-          </span>
-        </div>
+        className={`mt-1 text-sm 2xl:text-lg font-semibold capitalize ${valueClass}`}
+      >
+        {value}
       </div>
     </div>
   );
 
-
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 mt-4">
-
-      {/* Title */}
+    <div className={`rounded-xl border border-slate-200 bg-white shadow-sm p-4 mt-4 ${className}`}>
       <div className="mb-2">
         <PageBreadcrumb
-          pageTitle=" Monthly Objectives & Targets"
+          pageTitle="Monthly Objectives & Targets"
           variant="page"
           textSize="2xl"
           align="left"
         />
       </div>
 
-      {/* Strip Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5  rounded-sm">
-
-        <Item
-          label="Growth"
-          value={capitalizeFirst(objective?.growth_intent) || "Growth"}
-          icon={<TrendingUp size={16} />}
-          topColor="#3A8EA4"
-          iconBg="#E0F2F1"
-        />
-
-        <Item
-          label="Profit"
-          value={capitalizeFirst(objective?.profit_priority?.replaceAll("_", " ")) || "Profit"}
-          icon={<DollarSign size={16} />}
-          topColor="#ED9F50"
-          iconBg="#FFF3E0"
-        />
-
-        <Item
-          label="Inventory Dilution"
-          value={objective?.inventory_clearance_priority ? "Yes" : "No"}
-          icon={<Package size={16} />}
-          topColor="#C0BFC1"
-          iconBg="#F3F4F6"
-        />
-
-        <Item
-          label="Target Set"
-          value="$140K"
-          icon={<Target size={16} />}
-          topColor="#5EA68E"
-          iconBg="#E6F4EA"
-        />
-
-        <Item
-          label="Shortfall"
-          value="-$3.6K"
-          icon={<AlertCircle size={16} />}
-          topColor="#B75A5A"
-          iconBg="#FDECEA"
-          valueClass="text-red-600"
-        />
-
-        <Item
-          label="Cash Flow"
-          value="$130K"
-          icon={<Wallet size={16} />}
-          topColor="#75BBDA"
-          iconBg="#E3F2FD"
-        />
-
-
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5">
+        <Item label="Growth" value={growth} />
+        <Item label="Profit" value={profit} />
+        <Item label="Inventory Dilution" value={inventory} />
+        <Item label="Target Set" value={targetSet} />
+        <Item label="Shortfall" value={shortfall} valueClass="text-red-600" />
+        <Item label="Cash Flow" value={cashFlow} />
       </div>
     </div>
   );
 };
-
 
 type AiSingleInsightCardProps = {
   loading: boolean;
@@ -1382,7 +1449,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
     <div className="flex flex-col gap-5">
       <div className="w-full space-y-4">
 
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+        <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
           {/* Narrative Summary */}
           {narrativeInsights.length > 0 && (
             <>
@@ -1417,7 +1484,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
         </div>
 
         {/* Product Insights */}
-        <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+        <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
           <div className="space-y-5">
             <ProductInsightsSection
               blocks={parseProductInsightsBlocks(skuInsightsBullets)}
@@ -1436,7 +1503,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
         {/* ================= INVENTORY SECTION ================= */}
         {inventoryBullets.length > 0 && (
-          <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+          <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <div className="flex items-center gap-2">
               <span className="text-base 2xl:text-2xl font-bold text-slate-800">
                 Inventory Insights

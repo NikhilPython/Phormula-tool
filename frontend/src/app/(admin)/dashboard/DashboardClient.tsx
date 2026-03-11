@@ -4121,7 +4121,7 @@ export default function DashboardPage() {
 
     const HASH_TO_TAB: Record<string, TopTab> = {
         "live-sales": "live",
-        "targets-action-items": "summary",
+        "ai-insights": "summary",
         "mtd-pl": "productwise",
         "pnl-mtd": "productwise",
         "current-inventory": "inventory",
@@ -5081,7 +5081,7 @@ export default function DashboardPage() {
                 platform === "global" && showLiveBI && (
                     // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
                     <div
-                        id="targets-action-items"
+                        id="ai-insights"
                         className="mt-6 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
                     >
                         <div className="w-full max-w-full min-w-0">

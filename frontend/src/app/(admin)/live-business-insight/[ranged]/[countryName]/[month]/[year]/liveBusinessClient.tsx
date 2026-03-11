@@ -2860,8 +2860,8 @@ export default function LiveBusinessClient({
 
     const Card = ({ label, value }: { label: string; value: string }) => (
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-        <div className="2xl:text-sm text-xs text-[#7A7A7A]">{label}</div>
-        <div className="mt-1 2xl:text-sm text-xs font-semibold text-[#0F172A] capitalize">
+        <div className="2xl:text-xs text-[10px] text-charcoal-500">{label}</div>
+        <div className="mt-1 text-sm 2xl:text-lg font-semibold text-charcoal-500 capitalize">
           {value}
         </div>
       </div>
@@ -2913,16 +2913,15 @@ export default function LiveBusinessClient({
 
                 {/* 1) Monthly Objective */}
                 {objectiveContext && (
-                  <div className="bg-white border border-[#D9D9D9] rounded-xl sm:p-5 shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+                  <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full">
                     <PageBreadcrumb pageTitle="Monthly Objective" variant="page" align="left" />
-
                     <ObjectiveCards objective={objectiveContext} className="mt-3" />
                   </div>
                 )}
 
                 {/* 2) Business Summary */}
                 {(summaryText || overallSummary.length > 0 || portfolioRecommendation) && (
-                  <div className="bg-white border border-[#D9D9D9] rounded-xl sm:p-5 shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
+                  <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-500 w-full">
                     <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
 
                     {summaryText && (
@@ -2933,10 +2932,10 @@ export default function LiveBusinessClient({
 
                     {portfolioRecommendation && (
                       <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
-                        <div className="text-xs font-semibold text-slate-700 mb-1">
+                        <div className="2xl:text-xs text-[10px] font-semibold text-charcoal-500 mb-1">
                           Portfolio Recommendation
                         </div>
-                        <div className="text-xs 2xl:text-sm text-charcoal-600 leading-relaxed">
+                        <div className="2xl:text-sm text-xs text-charcoal-600 leading-relaxed">
                           {portfolioRecommendation}
                         </div>
                       </div>
@@ -2946,7 +2945,7 @@ export default function LiveBusinessClient({
 
                 {/* 3) Recommended Actions (cards) */}
                 {recommendedActions && Object.keys(recommendedActions).length > 0 && (
-                  <div className="bg-white border border-[#D9D9D9] rounded-xl sm:p-5 shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
+                  <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full">
                     <PageBreadcrumb pageTitle="Recommended Actions (MTD)" variant="page" align="left" />
 
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -3152,7 +3151,7 @@ export default function LiveBusinessClient({
             )}
 
           <div>
-            <div className="mt-4 rounded-xl border bg-white p-4 sm:p-5 p-5 shadow-sm">
+            <div className="mt-4 rounded-xl border bg-white p-4 shadow-sm">
 
               <div className="flex flex-col gap-4">
                 {/* MOBILE HEADER */}

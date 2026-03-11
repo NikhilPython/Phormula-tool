@@ -517,7 +517,7 @@ const AppSidebar: React.FC = () => {
         },
         {
           name: "AI Insights",
-          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#targets-action-items`,
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#ai-insights`,
         },
         // {
         //   name: "MTD P&L",
