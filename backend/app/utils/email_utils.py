@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 from app import db
 from app.models.user_models import Email
+import html
 
 
 db_url = os.getenv("DATABASE_URL")
@@ -495,347 +496,6 @@ def parse_actions_to_cards(actions: list) -> list:
     return cards
 
 
-# ================== MAIN EMAIL ==================
-
-
-# def send_live_bi_email(
-#     to_email,
-#     overall_summary,
-#     country,
-#     prev_label,
-#     curr_label,
-#     deep_link_token=None,
-#     overall_actions=None,   # ✅ bullets (strings)
-#     sku_actions=None,       # ✅ structured list of dicts for cards
-# ):
-#     if not to_email:
-#         print("[WARN] No email provided.")
-#         return
-
-#     subject = f"[Phormula] Live MTD Business Insights - {country.upper()} ({curr_label})"
-
-#     summary_html = "".join(f"<li>{s}</li>" for s in (overall_summary or []))
-
-#     # ✅ If structured SKU actions exist, render cards.
-#     # If only overall_actions (list[str] with multi-line bullets) exist, parse them into cards
-#     # so the email shows the same SKU-wise card UI as the frontend.
-#     sku_section_html = ""
-#     if sku_actions:
-#         sku_section_html = "".join(
-#     render_sku_card(sku, idx)
-#     for idx, sku in enumerate(sku_actions)
-# )
-#     elif overall_actions:
-#         parsed_cards = parse_actions_to_cards(overall_actions)
-#         if parsed_cards:
-#             sku_section_html = "".join(
-#                 render_sku_card(sku, idx)
-#                 for idx, sku in enumerate(parsed_cards)
-#             )
-#         else:
-#             # fallback: plain bullets (should be rare)
-#             sku_section_html = f"""
-#             <ul style="font-size:14px; color:#555;">
-#               {''.join(f"<li>{a}</li>" for a in overall_actions)}
-#             </ul>
-#             """
-#     else:
-#         sku_section_html = """
-#         <p style="font-size:13px; color:#777;">
-#           No SKU-wise actions available for this run.
-#         </p>
-#         """
-
-#     deep_link_html = ""
-#     if deep_link_token:
-#         dashboard_url = f"https://app.phormula.io/live-bi?token={deep_link_token}&country={country}"
-#         deep_link_html = f"""
-#         <p style="text-align:center; margin-top:24px;">
-#           <a href="{dashboard_url}"
-#              style="display:inline-block; background:#37455F; color:#f8edcf;
-#                     padding:10px 24px; text-decoration:none; border-radius:8px;
-#                     font-size:14px;">
-#             Open Live BI Dashboard
-#           </a>
-#         </p>
-#         """
-
-#     html_body = f"""
-#     <html>
-#     <body style="font-family:Lato,Arial,sans-serif; background:#f4f4f4; padding:20px;">
-#       <div style="max-width:700px; margin:auto; background:#fff;
-#                   padding:24px; border-radius:10px; border:2px solid #5EA68E;">
-
-#         <img src="https://i.postimg.cc/43T3k86Z/logo.png"
-#              style="width:180px; display:block; margin:0 auto 16px;" />
-
-#         <h2 style="text-align:center; color:#37455F;">
-#           Live MTD vs Previous Period – Business Insights
-#         </h2>
-
-#        <div style="text-align:center; margin-bottom:16px;">
-#   <div style="
-#     font-size:18px;
-#     font-weight:700;
-#     color:#37455F;
-#     background:#EAF3F0;
-#     display:inline-block;
-#     padding:6px 16px;
-#     border-radius:20px;
-#     margin-bottom:8px;
-#   ">
-#      Country: {country.upper()}
-#   </div>
-
-#   <div style="margin-top:10px;">
-#     <span style="
-#       font-size:14px;
-#       font-weight:600;
-#       color:#37455F;
-#       background:#F3F4F6;
-#       padding:4px 10px;
-#       border-radius:12px;
-#       margin-right:6px;
-#       display:inline-block;
-#     ">
-#       Previous: {prev_label}
-#     </span>
-
-#     <span style="
-#       font-size:14px;
-#       font-weight:600;
-#       color:#ffffff;
-#       background:#37455F;
-#       padding:4px 10px;
-#       border-radius:12px;
-#       display:inline-block;
-#     ">
-#       Current: {curr_label}
-#     </span>
-#   </div>
-# </div>
-
-
-#         <hr style="margin:20px 0; border:none; border-top:1px solid #eee;" />
-
-#         <h3 style="color:#37455F; display:flex; align-items:center;">
-#   📊 <span style="margin-left:8px;">Overall Summary</span>
-# </h3>
-#         <ul style="font-size:14px; color:#555;">
-#           {summary_html}
-#         </ul>
-
-#         <h3 style="color:#37455F; margin-top:28px;">
-#           🎯 Actions
-#         </h3>
-
-#         {sku_section_html}
-
-#         {deep_link_html}
-
-#         <p style="font-size:12px; color:#999; margin-top:24px;">
-#           This email was auto-generated from Live BI.
-#         </p>
-#         <p style="font-size:12px; color:#999;">
-#           Support: <a href="mailto:care@phormula.io">care@phormula.io</a>
-#         </p>
-#       </div>
-#     </body>
-#     </html>
-#     """
-
-#     msg = Message(
-#         subject,
-#         sender=("Phormula Care Team", "care@phormula.io"),
-#         recipients=[to_email],
-#     )
-#     msg.html = html_body
-
-#     try:
-#         mail.send(msg)
-#         print(f"[INFO] Live BI email sent to {to_email}")
-#     except Exception as e:
-#         print(f"[ERROR] Email send failed: {e}")
-# def send_live_bi_email(
-#     to_email,
-#     overall_summary,
-#     country,
-#     prev_label,
-#     curr_label,
-#     deep_link_token=None,
-#     overall_actions=None,   # ✅ bullets (strings)
-#     sku_actions=None,       # ✅ dict: { sku -> rendered_text }
-# ):
-#     if not to_email:
-#         print("[WARN] No email provided.")
-#         return
-
-#     subject = f"[Phormula] Live MTD Business Insights - {country.upper()} ({curr_label})"
-
-#     # ✅ FIX 1: overall_summary is a dict → use metric_bullets
-#     summary_html = "".join(
-#         f"<li>{s}</li>"
-#         for s in (overall_summary or {}).get("metric_bullets", [])
-#     )
-
-#     # --------------------------------------------------
-#     # SKU ACTIONS SECTION
-#     # --------------------------------------------------
-#     sku_section_html = ""
-
-#     # ✅ FIX 2: sku_actions is a dict {sku -> text}, not a list
-#     if sku_actions:
-#         sku_section_html = "".join(
-#             render_sku_card(
-#                 {
-#                     "sku": sku_key,
-#                     "product": sku_key,  # ✅ fallback product label
-#                     "action_text": action_text,
-#                 },
-#                 idx,
-#             )
-#             for idx, (sku_key, action_text) in enumerate(sku_actions.items())
-#         )
-
-
-#     elif overall_actions:
-#         parsed_cards = parse_actions_to_cards(overall_actions)
-#         if parsed_cards:
-#             sku_section_html = "".join(
-#                 render_sku_card(card, idx)
-#                 for idx, card in enumerate(parsed_cards)
-#             )
-#         else:
-#             # fallback: plain bullets (should be rare)
-#             sku_section_html = f"""
-#             <ul style="font-size:14px; color:#555;">
-#               {''.join(f"<li>{a}</li>" for a in overall_actions)}
-#             </ul>
-#             """
-#     else:
-#         sku_section_html = """
-#         <p style="font-size:13px; color:#777;">
-#           No SKU-wise actions available for this run.
-#         </p>
-#         """
-
-#     # --------------------------------------------------
-#     # DEEP LINK
-#     # --------------------------------------------------
-#     deep_link_html = ""
-#     if deep_link_token:
-#         dashboard_url = f"https://app.phormula.io/live-bi?token={deep_link_token}&country={country}"
-#         deep_link_html = f"""
-#         <p style="text-align:center; margin-top:24px;">
-#           <a href="{dashboard_url}"
-#              style="display:inline-block; background:#37455F; color:#f8edcf;
-#                     padding:10px 24px; text-decoration:none; border-radius:8px;
-#                     font-size:14px;">
-#             Open Live BI Dashboard
-#           </a>
-#         </p>
-#         """
-
-#     # --------------------------------------------------
-#     # EMAIL BODY
-#     # --------------------------------------------------
-#     html_body = f"""
-#     <html>
-#     <body style="font-family:Lato,Arial,sans-serif; background:#f4f4f4; padding:20px;">
-#       <div style="max-width:700px; margin:auto; background:#fff;
-#                   padding:24px; border-radius:10px; border:2px solid #5EA68E;">
-
-#         <img src="https://i.postimg.cc/43T3k86Z/logo.png"
-#              style="width:180px; display:block; margin:0 auto 16px;" />
-
-#         <h2 style="text-align:center; color:#37455F;">
-#           Live MTD vs Previous Period – Business Insights
-#         </h2>
-
-#        <div style="text-align:center; margin-bottom:16px;">
-#   <div style="
-#     font-size:18px;
-#     font-weight:700;
-#     color:#37455F;
-#     background:#EAF3F0;
-#     display:inline-block;
-#     padding:6px 16px;
-#     border-radius:20px;
-#     margin-bottom:8px;
-#   ">
-#      Country: {country.upper()}
-#   </div>
-
-#   <div style="margin-top:10px;">
-#     <span style="
-#       font-size:14px;
-#       font-weight:600;
-#       color:#37455F;
-#       background:#F3F4F6;
-#       padding:4px 10px;
-#       border-radius:12px;
-#       margin-right:6px;
-#       display:inline-block;
-#     ">
-#       Previous: {prev_label}
-#     </span>
-
-#     <span style="
-#       font-size:14px;
-#       font-weight:600;
-#       color:#ffffff;
-#       background:#37455F;
-#       padding:4px 10px;
-#       border-radius:12px;
-#       display:inline-block;
-#     ">
-#       Current: {curr_label}
-#     </span>
-#   </div>
-# </div>
-
-#         <hr style="margin:20px 0; border:none; border-top:1px solid #eee;" />
-
-#         <h3 style="color:#37455F; display:flex; align-items:center;">
-#           📊 <span style="margin-left:8px;">Overall Summary</span>
-#         </h3>
-
-#         <ul style="font-size:14px; color:#555;">
-#           {summary_html}
-#         </ul>
-
-#         <h3 style="color:#37455F; margin-top:28px;">
-#           🎯 Actions
-#         </h3>
-
-#         {sku_section_html}
-
-#         {deep_link_html}
-
-#         <p style="font-size:12px; color:#999; margin-top:24px;">
-#           This email was auto-generated from Live BI.
-#         </p>
-#         <p style="font-size:12px; color:#999;">
-#           Support: <a href="mailto:care@phormula.io">care@phormula.io</a>
-#         </p>
-#       </div>
-#     </body>
-#     </html>
-#     """
-
-#     msg = Message(
-#         subject,
-#         sender=("Phormula Care Team", "care@phormula.io"),
-#         recipients=[to_email],
-#     )
-#     msg.html = html_body
-
-#     try:
-#         mail.send(msg)
-#         print(f"[INFO] Live BI email sent to {to_email}")
-#     except Exception as e:
-#         print(f"[ERROR] Email send failed: {e}")
-
 
 def send_live_bi_email(
     to_email,
@@ -860,7 +520,7 @@ def send_live_bi_email(
     # Overall summary bullets
     # ---------------------------
     metric_bullets = (overall_summary or {}).get("metric_bullets", []) or []
-    summary_html = "".join(f"<li>{s}</li>" for s in metric_bullets)
+    summary_html = "".join(f"<li>{html.escape(str(s))}</li>" for s in metric_bullets)
 
     # ---------------------------
     # Helpers
@@ -872,24 +532,257 @@ def send_live_bi_email(
             return sku_to_product.get(sku) or sku
         return sku
 
-    def render_simple_action_card(sku: str, action_text: str) -> str:
-        # action_text may already contain HTML from render_live_recommended_action
-        # If it is plain text, it will still render fine.
-        product = safe_product_name(sku)
-        action_text = action_text or ""
+    def _strip_html_tags(text: str) -> str:
+        if not text:
+            return ""
+        text = re.sub(r"<br\s*/?>", "\n", str(text), flags=re.I)
+        text = re.sub(r"</p\s*>", "\n", text, flags=re.I)
+        text = re.sub(r"</div\s*>", "\n", text, flags=re.I)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = html.unescape(text)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n\s+", "\n", text)
+        text = re.sub(r"\n{2,}", "\n", text)
+        return text.strip()   
+
+    def _email_safe_text(text: str) -> str:
+        if not text:
+            return ""
+        return html.escape(str(text)).replace("\n", "<br>")
+
+    def parse_sku_action_text(action_text: str) -> dict:
+        raw = _strip_html_tags(action_text)
+
+        if not raw:
+            return {
+                "product_name": "",
+                "metrics": [],
+                "journey_points": [],
+                "recommendation": "",
+                "advertising": "",
+                "inventory": "",
+            }
+
+        text = re.sub(r"\s+", " ", raw).strip()
+
+        # -------- Product name --------
+        # example: "Classic ASP: £5.06 (+42.65%) Units: ..."
+        product_name = ""
+        m = re.match(r"^(.*?)(?=\s+ASP:)", text, flags=re.I)
+        if m:
+            product_name = m.group(1).strip(" :-")
+        else:
+            # fallback if no product before ASP
+            product_name = ""
+
+        # -------- Metrics --------
+        metrics = []
+
+        metric_patterns = [
+            ("ASP", r"ASP:\s*(.*?)(?=\s+Units:|\s+Net sales:|\s+CM1 profit:|\s+CM1 profit per unit:|\s+Product Journey:|$)"),
+            ("Units", r"Units:\s*(.*?)(?=\s+Net sales:|\s+CM1 profit:|\s+CM1 profit per unit:|\s+Product Journey:|$)"),
+            ("Net sales", r"Net sales:\s*(.*?)(?=\s+CM1 profit:|\s+CM1 profit per unit:|\s+Product Journey:|$)"),
+            ("CM1 profit", r"CM1 profit:\s*(.*?)(?=\s+CM1 profit per unit:|\s+Product Journey:|$)"),
+            ("CM1 profit per unit", r"CM1 profit per unit:\s*(.*?)(?=\s+Product Journey:|$)"),
+        ]
+
+        for label, patt in metric_patterns:
+            mm = re.search(patt, text, flags=re.I)
+            if mm:
+                val = mm.group(1).strip()
+                val = re.sub(r"\s+", " ", val)
+                metrics.append((label, val))
+
+        # -------- Product Journey --------
+        journey_text = ""
+        jm = re.search(
+            r"Product Journey:\s*(.*?)(?=\s+Recommendation:|\s+Advertising:|\s+Inventory:|$)",
+            text,
+            flags=re.I,
+        )
+        if jm:
+            journey_text = jm.group(1).strip()
+
+        journey_points = []
+        if journey_text:
+            parts = re.split(r"\s+-\s+", journey_text)
+            for p in parts:
+                p = p.strip(" -")
+                if p:
+                    journey_points.append(p)
+
+        # -------- Recommendation --------
+        recommendation = ""
+        rm = re.search(
+            r"Recommendation:\s*(.*?)(?=\s+Advertising:|\s+Inventory:|$)",
+            text,
+            flags=re.I,
+        )
+        if rm:
+            recommendation = rm.group(1).strip()
+
+        # -------- Advertising --------
+        advertising = ""
+        am = re.search(
+            r"Advertising:\s*(.*?)(?=\s+Inventory:|$)",
+            text,
+            flags=re.I,
+        )
+        if am:
+            advertising = am.group(1).strip()
+
+        # -------- Inventory --------
+        inventory = ""
+        im = re.search(r"Inventory:\s*(.*)$", text, flags=re.I)
+        if im:
+            inventory = im.group(1).strip()
+
+        return {
+            "product_name": product_name,
+            "metrics": metrics,
+            "journey_points": journey_points,
+            "recommendation": recommendation,
+            "advertising": advertising,
+            "inventory": inventory,
+        }
+
+    def _metric_chip(label: str, value_text: str) -> str:
+        txt = (value_text or "").strip()
+        is_negative = bool(re.search(r"\(\s*-\s*\d", txt))
+        value_color = "#D92D20" if is_negative else "#16A34A"
 
         return f"""
-        <div style="border:1px solid #E5E7EB; background:#FFFFFF; padding:14px 14px;
-                    border-radius:10px; margin:12px 0; box-shadow:0 1px 2px rgba(0,0,0,0.04);">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-size:14px; font-weight:800; color:#37455F;">{product}</div>
-            <div style="font-size:11px; font-weight:700; color:#6B7280; background:#F3F4F6;
-                        padding:3px 8px; border-radius:999px;">SKU: {sku}</div>
-          </div>
-          <div style="margin-top:10px; font-size:13px; line-height:1.55; color:#37455F;">
-            {action_text}
-          </div>
-        </div>
+        <td valign="top" style="padding:0 8px 8px 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+                 style="border-collapse:separate; background:#F8FAFC; border:1px solid #E5E7EB; border-radius:8px;">
+            <tr>
+              <td style="padding:7px 9px; text-align:left; vertical-align:top;">
+                <div style="font-size:11px; line-height:1.2; color:#667085; font-weight:700; margin-bottom:3px; white-space:nowrap;">
+                  {html.escape(label)}
+                </div>
+                <div style="font-size:12px; line-height:1.25; color:{value_color}; font-weight:600; white-space:nowrap;">
+                  {html.escape(txt)}
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+        """
+
+    
+   
+   
+    def render_simple_action_card(sku: str, action_text: str) -> str:
+        parsed = parse_sku_action_text(action_text)
+
+        product = parsed["product_name"] or safe_product_name(sku) or "Unknown"
+        product = html.escape(str(product))
+        sku_safe = html.escape(str(sku))
+
+        metric_cells = [_metric_chip(label, value) for label, value in parsed["metrics"]]
+
+        metrics_html = ""
+        if metric_cells:
+            metrics_html = f"""
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px;">
+              <tr>
+                {''.join(metric_cells)}
+              </tr>
+            </table>
+            """
+
+        journey_html = ""
+        if parsed["journey_points"]:
+            bullet_rows = "".join(
+                f"""
+                <tr>
+                  <td style="font-size:12px; color:#475467; line-height:1.75; padding:0 0 8px 0;">
+                    <span style="color:#3B82F6; font-weight:700;">•</span>
+                    {html.escape(point)}
+                  </td>
+                </tr>
+                """
+                for point in parsed["journey_points"]
+            )
+
+            journey_html = f"""
+            <div style="font-size:11px; font-weight:800; color:#667085; text-transform:uppercase; margin:14px 0 8px 0; letter-spacing:0.4px;">
+              Performance Journey
+            </div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              {bullet_rows}
+            </table>
+            """
+
+        def _numbered_point_block(title: str, body: str, emoji: str = "") -> str:
+            if not body:
+                return ""
+
+            points = [p.strip() for p in re.split(r'(?<=[.!?])\s+', body) if p.strip()]
+            if not points:
+                points = [body.strip()]
+
+            points_html = "".join(
+                f"""
+                <tr>
+                  <td valign="top" style="font-size:12px; color:#475467; line-height:1.7; padding:0 0 4px 0;">
+                    {idx}. {html.escape(point)}
+                  </td>
+                </tr>
+                """
+                for idx, point in enumerate(points, start=1)
+            )
+
+            return f"""
+            <div style="margin-top:12px;">
+              <div style="font-size:11px; font-weight:800; color:#667085; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px;">
+                {html.escape(emoji)} {html.escape(title)}
+              </div>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {points_html}
+              </table>
+            </div>
+            """
+
+        bottom_cards_html = f"""
+        {_numbered_point_block("Recommendation", parsed["recommendation"], "🎯")}
+        {_numbered_point_block("Advertising", parsed["advertising"], "📢")}
+        {_numbered_point_block("Inventory", parsed["inventory"], "📦")}
+        """
+
+        fallback_html = ""
+        if not parsed["metrics"] and not parsed["journey_points"] and not parsed["recommendation"] and not parsed["advertising"] and not parsed["inventory"]:
+            fallback_html = f"""
+            <div style="margin-top:10px; font-size:13px; line-height:1.6; color:#475467;">
+              {html.escape(_strip_html_tags(action_text))}
+            </div>
+            """
+
+        return f"""
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="border-collapse:separate; width:100%; margin:0 0 18px 0; background:#FFFFFF; border:1px solid #E4E7EC; border-radius:14px;">
+          <tr>
+            <td style="padding:16px 16px 14px 16px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="font-size:16px; font-weight:800; color:#1D2939; padding-bottom:10px;">
+                    {product}
+                  </td>
+                </tr>
+              </table>
+
+              {metrics_html}
+
+              {journey_html}
+
+              {bottom_cards_html}
+
+              {fallback_html}
+
+            </td>
+          </tr>
+        </table>
         """
 
     # ---------------------------
@@ -988,9 +881,9 @@ def send_live_bi_email(
     # ---------------------------
     html_body = f"""
     <html>
-    <body style="font-family:Lato,Arial,sans-serif; background:#f4f4f4; padding:20px;">
-      <div style="max-width:700px; margin:auto; background:#fff;
-                  padding:24px; border-radius:10px; border:2px solid #5EA68E;">
+       <body style="font-family:Lato,Arial,sans-serif; background:#f4f4f4; padding:20px;">
+         <div style="max-width:780px; margin:0 auto; background:#fff;
+              padding:28px; border-radius:10px; border:2px solid #5EA68E; box-sizing:border-box;">
 
         <img src="https://i.postimg.cc/43T3k86Z/logo.png"
              style="width:180px; display:block; margin:0 auto 16px;" />
@@ -1049,7 +942,7 @@ def send_live_bi_email(
         </ul>
 
         <h3 style="color:#37455F; margin-top:28px;">
-          🎯 Actions
+          🎯 Recommendation
         </h3>
 
         {sku_section_html}
@@ -1063,8 +956,8 @@ def send_live_bi_email(
           Support: <a href="mailto:care@phormula.io">care@phormula.io</a>
         </p>
       </div>
-    </body>
-    </html>
+</body>
+</html>
     """
 
     msg = Message(
