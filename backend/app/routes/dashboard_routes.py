@@ -1591,3 +1591,341 @@ def cashflow():
         return jsonify({'error': f"Database error: {str(e)}"}), 500
     finally:
         db_session.close()
+
+
+@dashboard_bp.route('/target-summary', methods=['GET', 'POST'])
+def target_summary():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    token = auth_header.split(' ')[1]
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    # POST -> body, GET -> query params
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        month = data.get('month')
+        year = data.get('year')
+        country_param = data.get('country', '')
+        currency_param = (data.get('currency') or '').lower()
+        target_sales = data.get('target_sales')
+    else:
+        month = request.args.get('month')
+        year = request.args.get('year')
+        country_param = request.args.get('country', '')
+        currency_param = (request.args.get('currency') or '').lower()
+        target_sales = request.args.get('target_sales')
+
+    country = resolve_country(country_param, currency_param)
+
+    if not month:
+        return jsonify({'error': 'Month is required'}), 400
+    if not year:
+        return jsonify({'error': 'Year is required'}), 400
+    if not country:
+        return jsonify({'error': 'country is required'}), 400
+
+    try:
+        year = int(year)
+    except ValueError:
+        return jsonify({'error': 'Invalid year format'}), 400
+
+    try:
+        month_name = datetime.strptime(month.capitalize(), "%B").strftime("%B")
+    except ValueError:
+        return jsonify({'error': 'Invalid month format. Use full month name like January'}), 400
+
+    engine = create_engine(db_url)
+    SessionLocal = sessionmaker(bind=engine)
+    db_session = SessionLocal()
+    inspector = inspect(engine)
+
+    def compute_monthly_cashflow_summary(user_id: int, year: int, country: str, month_name: str):
+        combined_totals = {
+            'net_sales': 0,
+            'gross_sales': 0,
+            'advertising_total': 0,
+            'amazon_fee': 0,
+            'cm2_profit': 0,
+            'cost_of_unit_sold': 0,
+            'otherwplatform': 0,
+            'taxncredit': 0,
+            'cashflow': 0,
+            'rembursement_fee': 0,
+            'quantity_total': 0,
+            'selling_fees': 0,
+            'fba_fees': 0,
+            'promotional_rebates': 0
+        }
+
+        countries_with_data = set()
+
+        upload_query = text("""
+            SELECT DISTINCT country
+            FROM upload_history
+            WHERE user_id = :user_id
+              AND LOWER(month) = LOWER(:month)
+              AND year = :year
+              AND LOWER(country) = LOWER(:country)
+        """)
+        upload_results = db_session.execute(upload_query, {
+            'user_id': user_id,
+            'month': month_name,
+            'year': year,
+            'country': country
+        }).fetchall()
+
+        for result in upload_results:
+            countries_with_data.add(result[0])
+
+        if not countries_with_data:
+            return combined_totals, []
+
+        all_cashflow_data = []
+
+        for record_country in countries_with_data:
+            total_otherwplatform = 0
+            total_taxncredit_from_upload = 0
+
+            upload_values_query = text("""
+                SELECT otherwplatform, taxncredit
+                FROM upload_history
+                WHERE user_id = :user_id
+                  AND LOWER(month) = LOWER(:month)
+                  AND year = :year
+                  AND LOWER(country) = LOWER(:country)
+                LIMIT 1
+            """)
+            upload_values_result = db_session.execute(upload_values_query, {
+                'user_id': user_id,
+                'month': month_name,
+                'year': year,
+                'country': record_country
+            }).fetchone()
+
+            if upload_values_result:
+                if upload_values_result[0]:
+                    total_otherwplatform += float(upload_values_result[0])
+                if upload_values_result[1]:
+                    total_taxncredit_from_upload += float(upload_values_result[1])
+
+            suffix = f"{month_name.lower()}{year}"
+            table_name = (
+                f"skuwisemonthly_{user_id}_{record_country.lower()}_{suffix}_table"
+                if record_country.lower().startswith("global")
+                else f"skuwisemonthly_{user_id}_{record_country.lower()}_{suffix}"
+            )
+
+            if not inspector.has_table(table_name):
+                continue
+
+            try:
+                cashflow_df = pd.read_sql_table(table_name, engine)
+                if cashflow_df.empty:
+                    continue
+
+                numeric_cols = [
+                    'net_sales', 'gross_sales', 'advertising_total', 'amazon_fee',
+                    'cm2_profit', 'cost_of_unit_sold', 'taxncredit', 'rembursement_fee',
+                    'total_quantity', 'selling_fees', 'fba_fees', 'promotional_rebates'
+                ]
+
+                for col in numeric_cols:
+                    if col in cashflow_df.columns:
+                        cashflow_df[col] = pd.to_numeric(cashflow_df[col], errors='coerce').fillna(0)
+
+                def find_total_row(df):
+                    if 'product_name' not in df.columns:
+                        return None
+                    for variation in ['TOTAL', 'Total', 'total', 'TOTALS', 'Totals', 'totals']:
+                        total_row = df[df['product_name'] == variation]
+                        if not total_row.empty:
+                            return total_row
+                    return df[df['product_name'].str.contains('total', case=False, na=False)]
+
+                total_row = find_total_row(cashflow_df) if 'product_name' in cashflow_df.columns else None
+
+                if total_row is not None and not total_row.empty:
+                    net_sales_total = float(total_row['net_sales'].iloc[0]) if 'net_sales' in total_row else 0
+                    cm2_profit_total = float(total_row['cm2_profit'].iloc[0]) if 'cm2_profit' in total_row else 0
+                    cost_of_unit_sold_total = float(total_row['cost_of_unit_sold'].iloc[0]) if 'cost_of_unit_sold' in total_row else 0
+                else:
+                    net_sales_total = float(cashflow_df['net_sales'].sum()) if 'net_sales' in cashflow_df.columns else 0
+                    cm2_profit_total = float(cashflow_df['cm2_profit'].sum()) if 'cm2_profit' in cashflow_df.columns else 0
+                    cost_of_unit_sold_total = float(cashflow_df['cost_of_unit_sold'].sum()) if 'cost_of_unit_sold' in cashflow_df.columns else 0
+
+                cashflow_total = cost_of_unit_sold_total + cm2_profit_total
+
+                combined_totals['net_sales'] += net_sales_total
+                combined_totals['cm2_profit'] += cm2_profit_total
+                combined_totals['cost_of_unit_sold'] += cost_of_unit_sold_total
+                combined_totals['cashflow'] += cashflow_total
+                combined_totals['taxncredit'] += total_taxncredit_from_upload
+                combined_totals['otherwplatform'] += total_otherwplatform
+
+                all_cashflow_data.append({
+                    'country': record_country,
+                    'table_name': table_name,
+                    'net_sales_total': round(net_sales_total, 2),
+                    'cashflow_total': round(cashflow_total, 2)
+                })
+
+            except Exception:
+                continue
+
+        for k in combined_totals:
+            combined_totals[k] = round(combined_totals[k], 2)
+
+        return combined_totals, all_cashflow_data
+
+    try:
+        safe_country = country.lower().replace(" ", "_").replace("-", "_")
+        target_table_name = f"target_{user_id}_{safe_country}_data"
+
+        # Always create table if not exists
+        create_table_sql = text(f"""
+            CREATE TABLE IF NOT EXISTS {target_table_name} (
+                id SERIAL PRIMARY KEY,
+                month VARCHAR(20) NOT NULL,
+                year INTEGER NOT NULL,
+                country VARCHAR(50) NOT NULL,
+                target_sales NUMERIC(12,2) NOT NULL DEFAULT 0,
+                cashflow_total NUMERIC(12,2) NOT NULL DEFAULT 0,
+                net_sales_total NUMERIC(12,2) NOT NULL DEFAULT 0,
+                shortfall_total NUMERIC(12,2) NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (month, year, country)
+            )
+        """)
+        db_session.execute(create_table_sql)
+        db_session.commit()
+
+        # ---------------- POST ----------------
+        if request.method == 'POST':
+            if target_sales is None:
+                return jsonify({'error': 'target_sales is required for POST'}), 400
+
+            try:
+                target_sales = float(target_sales)
+            except ValueError:
+                return jsonify({'error': 'target_sales must be numeric'}), 400
+
+            summary_totals, details = compute_monthly_cashflow_summary(
+                user_id=user_id,
+                year=year,
+                country=country,
+                month_name=month_name
+            )
+
+            if not details:
+                return jsonify({
+                    'error': 'No cashflow data found for the specified month/year/country',
+                    'searched_for': {
+                        'user_id': user_id,
+                        'month': month_name,
+                        'year': year,
+                        'country': country
+                    }
+                }), 404
+
+            net_sales_total = round(summary_totals.get('net_sales', 0), 2)
+            cashflow_total = round(summary_totals.get('cashflow', 0), 2)
+            shortfall_total = round(target_sales - net_sales_total, 2)
+
+            upsert_sql = text(f"""
+                INSERT INTO {target_table_name}
+                    (month, year, country, target_sales, cashflow_total, net_sales_total, shortfall_total, updated_at)
+                VALUES
+                    (:month, :year, :country, :target_sales, :cashflow_total, :net_sales_total, :shortfall_total, CURRENT_TIMESTAMP)
+                ON CONFLICT (month, year, country)
+                DO UPDATE SET
+                    target_sales = EXCLUDED.target_sales,
+                    cashflow_total = EXCLUDED.cashflow_total,
+                    net_sales_total = EXCLUDED.net_sales_total,
+                    shortfall_total = EXCLUDED.shortfall_total,
+                    updated_at = CURRENT_TIMESTAMP
+            """)
+            db_session.execute(upsert_sql, {
+                'month': month_name,
+                'year': year,
+                'country': country,
+                'target_sales': target_sales,
+                'cashflow_total': cashflow_total,
+                'net_sales_total': net_sales_total,
+                'shortfall_total': shortfall_total
+            })
+            db_session.commit()
+
+            return jsonify({
+                'message': 'Target summary saved successfully',
+                'data': {
+                    'user_id': user_id,
+                    'month': month_name,
+                    'year': year,
+                    'country': country,
+                    'target_sales': round(target_sales, 2),
+                    'cashflow_total': cashflow_total,
+                    'net_sales_total': net_sales_total,
+                    'shortfall_total': shortfall_total,
+                    'table_name': target_table_name
+                }
+            }), 200
+
+        # ---------------- GET ----------------
+        get_sql = text(f"""
+            SELECT id, month, year, country, target_sales, cashflow_total,
+                   net_sales_total, shortfall_total, created_at, updated_at
+            FROM {target_table_name}
+            WHERE LOWER(month) = LOWER(:month)
+              AND year = :year
+              AND LOWER(country) = LOWER(:country)
+            LIMIT 1
+        """)
+        row = db_session.execute(get_sql, {
+            'month': month_name,
+            'year': year,
+            'country': country
+        }).fetchone()
+
+        if not row:
+            return jsonify({
+                'error': 'No saved target summary found',
+                'searched_for': {
+                    'user_id': user_id,
+                    'month': month_name,
+                    'year': year,
+                    'country': country
+                },
+                'table_name': target_table_name
+            }), 404
+
+        return jsonify({
+            'message': 'Target summary fetched successfully',
+            'data': {
+                'id': row[0],
+                'month': row[1],
+                'year': row[2],
+                'country': row[3],
+                'target_sales': float(row[4]),
+                'cashflow_total': float(row[5]),
+                'net_sales_total': float(row[6]),
+                'shortfall_total': float(row[7]),
+                'created_at': row[8].isoformat() if row[8] else None,
+                'updated_at': row[9].isoformat() if row[9] else None,
+                'table_name': target_table_name
+            }
+        }), 200
+
+    except Exception as e:
+        db_session.rollback()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    finally:
+        db_session.close()
+
