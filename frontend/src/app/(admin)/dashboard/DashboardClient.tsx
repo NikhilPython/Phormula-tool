@@ -47,7 +47,7 @@ import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/Grouped
 import { exportPnLProductwiseBreakdownMtdExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import * as XLSX from "xlsx-js-style";
-import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData"; 
+import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData";
 import Alert from "@/components/ui/alert/Alert";
 import { ApiResponse } from "@/components/businessInsight/types";
 
@@ -1118,7 +1118,7 @@ export default function DashboardPage() {
     const [invRows, setInvRows] = useState<InventoryRow[]>([]);
     const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlertRecord>({});
     const [activeTab, setActiveTab] = useState<TopTab>("live");
-const [summaryLoading, setSummaryLoading] = useState(true);
+    const [summaryLoading, setSummaryLoading] = useState(true);
     const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(
         () => new Set()
     );
@@ -1284,11 +1284,11 @@ const [summaryLoading, setSummaryLoading] = useState(true);
 
 
 
-useEffect(() => {
-    if (activeTab === "summary") {
-        setSummaryLoading(true);
-    }
-}, [activeTab]);
+    useEffect(() => {
+        if (activeTab === "summary") {
+            setSummaryLoading(true);
+        }
+    }, [activeTab]);
 
 
     useEffect(() => {
@@ -1460,13 +1460,13 @@ useEffect(() => {
     // }, [gbpToUsd, inrToUsd, cadToUsd, displayCurrency]);
 
     useEffect(() => {
-    if (activeTab !== "summary") return;
+        if (activeTab !== "summary") return;
 
-    // when BI payload is ready, hide loader
-    if (liveBiPayload) {
-        setSummaryLoading(false);
-    }
-}, [activeTab, liveBiPayload]);
+        // when BI payload is ready, hide loader
+        if (liveBiPayload) {
+            setSummaryLoading(false);
+        }
+    }, [activeTab, liveBiPayload]);
 
     useEffect(() => {
         fetchFxRates();
@@ -2309,21 +2309,21 @@ useEffect(() => {
     // );
 
     const fetchLiveBiPayload = useCallback(
-    async ({
-        startDay = selectedStartDay,
-        endDay = selectedEndDay,
-        generateInsights = false,
-    }: FetchLiveBiPayloadArgs = {}) => {
-        setSummaryLoading(true);
+        async ({
+            startDay = selectedStartDay,
+            endDay = selectedEndDay,
+            generateInsights = false,
+        }: FetchLiveBiPayloadArgs = {}) => {
+            setSummaryLoading(true);
 
-        // toggle AI insights flag
-        aiRequestedRef.current = !!generateInsights;
+            // toggle AI insights flag
+            aiRequestedRef.current = !!generateInsights;
 
-        // fetch using provided range (or current state range by default)
-        await fetchBiSeries(startDay, endDay);
-    },
-    [fetchBiSeries, selectedStartDay, selectedEndDay]
-);
+            // fetch using provided range (or current state range by default)
+            await fetchBiSeries(startDay, endDay);
+        },
+        [fetchBiSeries, selectedStartDay, selectedEndDay]
+    );
 
     useEffect(() => {
         if (!showLiveBI) return;
@@ -4230,13 +4230,13 @@ useEffect(() => {
 
             {activeTab === "live" && (
                 <div
-    id="live-sales"
-    className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-stretch auto-rows-fr"
-  >
-    {/* LEFT COLUMN */}
-    <div
-      className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-full min-h-full ${leftColumnHeightClass ?? ""}`}
-    >
+                    id="live-sales"
+                    className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-stretch auto-rows-fr"
+                >
+                    {/* LEFT COLUMN */}
+                    <div
+                        className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-full min-h-full ${leftColumnHeightClass ?? ""}`}
+                    >
 
 
                         {/* GLOBAL CARD */}
@@ -4946,54 +4946,54 @@ useEffect(() => {
                     </div>
 
                     {/* RIGHT COLUMN – Sales Target */}
-                   <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-full min-h-full self-stretch">
-  <div className="h-full grid grid-rows-[auto_minmax(0,1fr)] gap-4">
-    {/* Top card = only as tall as content */}
-    <div className="w-full self-start">
-      <SalesTargetStatsCard
-        regions={regions}
-        value={targetRegion}
-        onChange={setTargetRegion}
-        hideTabs={isCountryMode}
-        homeCurrency={displayCurrency}
-        formatHomeK={formatDisplayK}
-        todayHome={targets_todayHome}
-        mtdHome={targets_mtdHome}
-        targetHome={stats_targetHome}
-        lastMonthTotalHome={targets_lastMonthTotalHome}
-        salesTrendPct={stats_salesTrendPct}
-        targetTrendPct={stats_targetTrendPct}
-        currentReimbursement={targets_reimbursement.current}
-        previousReimbursement={targets_reimbursement.previous}
-        biAlignedTotals={biAlignedTotalsHome}
-        biEnabled={biCardsReady}
-      />
-    </div>
+                    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-full min-h-full self-stretch">
+                        <div className="h-full grid grid-rows-[auto_minmax(0,1fr)] gap-4">
+                            {/* Top card = only as tall as content */}
+                            <div className="w-full self-start">
+                                <SalesTargetStatsCard
+                                    regions={regions}
+                                    value={targetRegion}
+                                    onChange={setTargetRegion}
+                                    hideTabs={isCountryMode}
+                                    homeCurrency={displayCurrency}
+                                    formatHomeK={formatDisplayK}
+                                    todayHome={targets_todayHome}
+                                    mtdHome={targets_mtdHome}
+                                    targetHome={stats_targetHome}
+                                    lastMonthTotalHome={targets_lastMonthTotalHome}
+                                    salesTrendPct={stats_salesTrendPct}
+                                    targetTrendPct={stats_targetTrendPct}
+                                    currentReimbursement={targets_reimbursement.current}
+                                    previousReimbursement={targets_reimbursement.previous}
+                                    biAlignedTotals={biAlignedTotalsHome}
+                                    biEnabled={biCardsReady}
+                                />
+                            </div>
 
-    {/* Bottom card = fills remaining height */}
-    <div className="w-full min-h-0">
-      <div className="h-full lg:sticky lg:top-4 2xl:top-6">
-        <SalesTargetCard
-          data={targetData}
-          homeCurrency={displayCurrency}
-          convertToHomeCurrency={identityConvert}
-          formatHomeK={formatDisplayK}
-          todaySales={targets_todayHome}
-          targetHome={stats_targetHome}
-          mtdHome={targets_mtdHome}
-          lastMonthTotalHome={targets_lastMonthTotalHome}
-          lastMonthToDateHome={targets_lastMonthToDateHome}
-          currentReimbursement={targets_reimbursement.current}
-          previousReimbursement={targets_reimbursement.previous}
-          biAlignedTotals={biAlignedTotalsHome}
-          biEnabled={biCardsReady}
-          periodCompletedPct={rangeCompletedPct}
-          periodCompletedLabel="Range"
-        />
-      </div>
-    </div>
-  </div>
-</aside>
+                            {/* Bottom card = fills remaining height */}
+                            <div className="w-full min-h-0">
+                                <div className="h-full lg:sticky lg:top-4 2xl:top-6">
+                                    <SalesTargetCard
+                                        data={targetData}
+                                        homeCurrency={displayCurrency}
+                                        convertToHomeCurrency={identityConvert}
+                                        formatHomeK={formatDisplayK}
+                                        todaySales={targets_todayHome}
+                                        targetHome={stats_targetHome}
+                                        mtdHome={targets_mtdHome}
+                                        lastMonthTotalHome={targets_lastMonthTotalHome}
+                                        lastMonthToDateHome={targets_lastMonthToDateHome}
+                                        currentReimbursement={targets_reimbursement.current}
+                                        previousReimbursement={targets_reimbursement.previous}
+                                        biAlignedTotals={biAlignedTotalsHome}
+                                        biEnabled={biCardsReady}
+                                        periodCompletedPct={rangeCompletedPct}
+                                        periodCompletedLabel="Range"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
                 </div >
 
             )}
@@ -5038,27 +5038,27 @@ useEffect(() => {
                 </div>
             )} */}
 
-{activeTab === "summary" && (
-    <div className="w-full overflow-x-hidden">
-        {summaryLoading || !liveBiPayload ? (
-            <div className="flex min-h-[300px] items-center justify-center py-12 text-center">
-                <Loader />
-            </div>
-        ) : (
-            showLiveBI && (
-                <LiveBusinessClient
-                    countryName={countryName}
-                    ranged="MTD"
-                    month={(currMonthName || "").toLowerCase()}
-                    year={String(currYear)}
-                    initialData={liveBiPayload}
-                    disableAutoFetch
-                    onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
-                />
-            )
-        )}
-    </div>
-)}
+            {activeTab === "summary" && (
+                <div className="w-full overflow-x-hidden">
+                    {summaryLoading || !liveBiPayload ? (
+                        <div className="flex min-h-[300px] items-center justify-center py-12 text-center">
+                            <Loader />
+                        </div>
+                    ) : (
+                        showLiveBI && (
+                            <LiveBusinessClient
+                                countryName={countryName}
+                                ranged="MTD"
+                                month={(currMonthName || "").toLowerCase()}
+                                year={String(currYear)}
+                                initialData={liveBiPayload}
+                                disableAutoFetch
+                                onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
+                            />
+                        )
+                    )}
+                </div>
+            )}
 
             {activeTab === "productwise" && (
                 <>
