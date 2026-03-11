@@ -2869,8 +2869,8 @@ export default function LiveBusinessClient({
 
     return (
       <div className={`grid grid-cols-1 sm:grid-cols-3 gap-5 ${className}`}>
-        <Card label="Primary Focus" value={growth} />
-        <Card label="Profit Strategy" value={profit} />
+        <Card label="Growth" value={growth} />
+        <Card label="Profit" value={profit} />
         <Card label="Inventory Dilution" value={inv} />
       </div>
     );
@@ -2924,14 +2924,6 @@ export default function LiveBusinessClient({
                 {(summaryText || overallSummary.length > 0 || portfolioRecommendation) && (
                   <div className="bg-white border border-[#D9D9D9] rounded-xl sm:p-5 shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-500 w-full">
                     <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
-
-                    {/* {summaryMetricPoints.length > 0 && (
-                      <ul className="list-disc pl-5 space-y-1 pt-2">
-                        {summaryMetricPoints.map((line, idx) => (
-                          <li key={idx}>{formatBulletLine(line)}</li>
-                        ))}
-                      </ul>
-                    )} */}
 
                     {summaryText && (
                       <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 border-slate-300">
