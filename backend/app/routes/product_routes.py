@@ -1242,3 +1242,111 @@ def get_table_data(file_name):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@product_bp.route('/uploadWarehouseData', methods=['POST'])
+def upload_warehouse_data():
+    # ---------- AUTH ----------
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    token = auth_header.split(' ')[1]
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    # ---------- INPUT ----------
+    country = (request.form.get('country') or request.args.get('country') or '').strip().lower()
+    if not country:
+        return jsonify({'error': 'country is required'}), 400
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part found'}), 400
+
+    file = request.files['file']
+    if not file or file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    # ---------- HELPERS ----------
+    def sanitize_identifier(value):
+        value = str(value).strip().lower()
+        value = re.sub(r'[^a-zA-Z0-9_]+', '_', value)
+        value = re.sub(r'_+', '_', value).strip('_')
+        if not value:
+            value = "default"
+        return value
+
+    def normalize_column_name(col):
+        col = str(col).strip().lower()
+        col = re.sub(r'[^a-zA-Z0-9_]+', '_', col)
+        col = re.sub(r'_+', '_', col).strip('_')
+        return col
+
+    safe_country = sanitize_identifier(country)
+    table_name = f"warehouse_{user_id}_{safe_country}_data"
+
+    # Optional: save uploaded file temporarily
+    filename = secure_filename(file.filename)
+    temp_path = os.path.join(basedir, filename)
+
+    try:
+        file.save(temp_path)
+
+        # ---------- READ EXCEL ----------
+        # Reads first sheet by default
+        df = pd.read_excel(temp_path)
+
+        if df.empty:
+            return jsonify({'error': 'Uploaded Excel file is empty'}), 400
+
+        # Normalize column names for PostgreSQL
+        df.columns = [normalize_column_name(c) for c in df.columns]
+
+        # Remove completely empty rows
+        df = df.dropna(how='all')
+
+        # Optional: convert common numeric columns
+        for col in ['local_stock', 'in_transit_units', 'year', 's_no']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # Optional: clean string columns
+        for col in df.columns:
+            if df[col].dtype == object:
+                df[col] = df[col].astype(str).replace({'nan': None, 'None': None})
+
+        # ---------- STORE IN DATABASE ----------
+        user_engine = create_engine(db_url)
+
+        # replace table if already exists
+        df.to_sql(table_name, user_engine, if_exists='replace', index=False)
+
+        return jsonify({
+            'success': True,
+            'message': 'Warehouse Excel uploaded and stored successfully',
+            'table_name': table_name,
+            'file_name': filename,
+            'columns': df.columns.tolist(),
+            'row_count': int(len(df)),
+            'data': df.to_dict(orient="records")   # 👈 ADD THIS
+        }), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({
+            'error': 'Failed to upload warehouse data',
+            'message': str(e)
+        }), 500
+
+    finally:
+        # delete temp file
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
+
