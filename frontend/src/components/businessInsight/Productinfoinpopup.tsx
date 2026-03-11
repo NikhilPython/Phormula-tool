@@ -531,7 +531,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             maxRotation: 0,
             minRotation: 0,
             font: {
-              size:  isSmallScreen ? 9 : 12,
+              size: isSmallScreen ? 9 : 12,
             },
           },
           grid: {
@@ -598,7 +598,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                       />
                     </div>
 
-                    <p className="text-[11px] sm:text-xs lg:text-xs 2xl:text-sm text-charcoal-500">
+                    <p className="text-[11px] sm:text-xs lg:text-xs  text-charcoal-500">
                       Drag horizontally to navigate months.
                     </p>
                   </div>
@@ -635,7 +635,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             </div>
 
             <div className="mt-3 flex flex-wrap items-center justify-center gap-5 text-[13px] font-semibold text-gray-700">
-              {activeTab === "sales_cm1" ? (
+              {activeTab === "sales_cm1" && (
                 <>
                   <div className="flex items-center gap-2">
                     <span className="h-0 w-9 border-t-2 border-gray-700" />
@@ -646,11 +646,6 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     <span>CM1 Profit</span>
                   </div>
                 </>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span className="h-0 w-9 border-t-2 border-gray-700" />
-                  <span>Units</span>
-                </div>
               )}
             </div>
           </div>
