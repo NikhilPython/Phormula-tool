@@ -2999,7 +2999,7 @@ export default function LiveBusinessClient({
                                     <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
                                       {m.label}
                                     </div>
-                                    <div className="mt-1 flex items-baseline gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
+                                    <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
                                       {(() => {
                                         const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
                                         const mainValue = match?.[1]?.trim() || m.value;
@@ -3010,14 +3010,12 @@ export default function LiveBusinessClient({
 
                                         return (
                                           <>
-                                            {/* Main value always neutral */}
                                             <span className="text-slate-900 truncate">
                                               {mainValue}
                                             </span>
 
-                                            {/* % part colored */}
                                             {percentPart && (
-                                              <span style={{ color: percentColor }}>
+                                              <span className="shrink-0" style={{ color: percentColor }}>
                                                 {percentPart}
                                               </span>
                                             )}
@@ -3040,6 +3038,7 @@ export default function LiveBusinessClient({
                           </motion.div>
                         )
                       })}
+
                       {remainingSkusBlock?.trim() && (() => {
                         const parsedOther = parseOtherSkusBlock(remainingSkusBlock);
 
@@ -3053,7 +3052,6 @@ export default function LiveBusinessClient({
                               "bg-white rounded-xl border border-[#D9D9D9] shadow-sm hover:shadow-md transition-shadow",
                               "border-t-4",
                               "p-3 space-y-3",
-                              // topBorderColors[Object.keys(recommendedActions).length % topBorderColors.length],
                             ].join(" ")}
                           >
                             <div className="flex items-center justify-between gap-3">
@@ -3081,7 +3079,6 @@ export default function LiveBusinessClient({
                               </button>
                             </div>
 
-                            {/* ✅ Metrics preview (same UI as other cards) */}
                             {parsedOther.metrics?.length > 0 && (
                               <div className="grid grid-cols-3 gap-2">
                                 {parsedOther.metrics.map((m, i) => (
@@ -3090,7 +3087,7 @@ export default function LiveBusinessClient({
                                       {m.label}
                                     </div>
 
-                                    <div className="mt-1 flex items-baseline gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
+                                    <div className="mt-1 flex flex-col 2xl:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
                                       {(() => {
                                         const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
                                         const mainValue = match?.[1]?.trim() || m.value;
@@ -3101,7 +3098,11 @@ export default function LiveBusinessClient({
                                         return (
                                           <>
                                             <span className="text-slate-900 truncate">{mainValue}</span>
-                                            {percentPart && <span style={{ color: percentColor }}>{percentPart}</span>}
+                                            {percentPart && (
+                                              <span className="shrink-0" style={{ color: percentColor }}>
+                                                {percentPart}
+                                              </span>
+                                            )}
                                           </>
                                         );
                                       })()}
@@ -3111,7 +3112,6 @@ export default function LiveBusinessClient({
                               </div>
                             )}
 
-                            {/* ✅ Recommendation preview line */}
                             <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
                               <div className="line-clamp-2">
                                 {parsedOther.recommendationPoints?.[0] ||
