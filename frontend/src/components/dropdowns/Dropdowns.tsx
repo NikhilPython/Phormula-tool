@@ -905,7 +905,7 @@ const ProductJourneyModal: React.FC<ProductJourneyModalProps> = ({
             <ul className="space-y-2 text-sm text-slate-600">
               {block.journeyBullets.map((j, i) => (
                 <li key={i} className="flex gap-2">
-                  <span className="text-slate-400">→</span>
+                  {/* <span className="text-slate-400">→</span> */}
                   <span>{j}</span>
                 </li>
               ))}

@@ -251,12 +251,12 @@ export default function SkuRecommendationDrawer({
               <ul className="space-y-1 text-xs 2xl:text-sm text-charcoal-600">
                 {selectedRec.journeyPoints.map((p, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="text-charcoal-400">→</span>
-                    <span>
-                      {p
+                    {/* <span className="text-charcoal-400">→</span> */}
+                    <span >
+                      {p 
                         .replace(/^\d+\.\s*-\s*/, "")
                         .replace(/^\d+\.\s*/, "")
-                        .replace(/^-+\s*/, "")}
+                        .replace(/^-+\s*/, "") }
                     </span>
                   </li>
                 ))}
