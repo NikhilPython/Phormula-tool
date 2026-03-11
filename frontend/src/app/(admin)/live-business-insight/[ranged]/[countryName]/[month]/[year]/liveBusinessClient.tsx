@@ -2960,7 +2960,7 @@ export default function LiveBusinessClient({
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                       {Object.entries(recommendedActions).map(([_, text], idx) => {
                         const parsed = parseRecommendedAction(text);
-                        const recommendationPoints = parsed.recommendationPoints; // ✅ FIX
+                        const recommendationPoints = parsed.recommendationPoints;
 
                         const borderColor = topBorderColors[idx % topBorderColors.length];
 
@@ -2995,7 +2995,7 @@ export default function LiveBusinessClient({
                                   });
                                   setRecDrawerOpen(true);
                                 }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-[#F8EDCE] hover:bg-slate-700 transition whitespace-nowrap"
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
                               >
                                 Detailed View
                               </button>
@@ -3065,7 +3065,7 @@ export default function LiveBusinessClient({
                               // topBorderColors[Object.keys(recommendedActions).length % topBorderColors.length],
                             ].join(" ")}
                           >
-                            <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center justify-between gap-3">
                               <div className="text-sm font-semibold text-slate-800 line-clamp-2">
                                 {Object.keys(recommendedActions).length + 1}. {parsedOther.productName}
                               </div>
@@ -3075,12 +3075,12 @@ export default function LiveBusinessClient({
                                 onClick={() => {
                                   setSelectedRec({
                                     productName: parsedOther.productName,
-                                    metrics: parsedOther.metrics,                // ✅ NOW SHOW METRICS
-                                    journeyPoints: parsedOther.journeyPoints,    // ✅ BACKEND JOURNEY
-                                    recommendationPoints: parsedOther.recommendationPoints, // ✅ BACKEND RECO
+                                    metrics: parsedOther.metrics,
+                                    journeyPoints: parsedOther.journeyPoints,
+                                    recommendationPoints: parsedOther.recommendationPoints,
                                     advertisingPoints: parsedOther.advertisingPoints,
                                     inventoryPoints: parsedOther.inventoryPoints,
-                                    showChart: false, // ✅ other skus me chart nahi
+                                    showChart: false,
                                   });
                                   setRecDrawerOpen(true);
                                 }}

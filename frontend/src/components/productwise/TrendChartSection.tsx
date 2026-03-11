@@ -24,21 +24,6 @@ const Line = dynamic(() => import("react-chartjs-2").then((m) => m.Line), {
 
 type TrendTab = "sales_cm1" | "units";
 
-// interface TrendChartSectionProps {
-//   productname: string;
-//   title: string; // e.g. Year'25, Q1'25, etc.
-//   chartDataList: any[];
-//   chartOptions: any;
-//   nonEmptyCountriesFromApi: CountryKey[];
-//   selectedCountries: Record<CountryKey, boolean>;
-//   onToggleCountry: (country: CountryKey) => void;
-//   authToken: string | null;
-//   onProductSelect: (productName: string) => void;
-//   onViewBusinessInsights?: () => void;
-//   insightsLoading?: boolean;
-//   isPreviewMode?: boolean
-// }
-
 type ExportMeta = {
   titleLine: string;
   titleCountry: string;

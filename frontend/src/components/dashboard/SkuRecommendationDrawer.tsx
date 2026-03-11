@@ -3,6 +3,7 @@
 import React from "react";
 import Drawer from "@mui/material/Drawer";
 import Productinfoinpopup from "@/components/businessInsight/Productinfoinpopup";
+import PageBreadcrumb from "../common/PageBreadCrumb";
 
 type ObjectiveContext = {
   growth_intent?: string;
@@ -83,11 +84,25 @@ export default function SkuRecommendationDrawer({
       }}
     >
       <div className="flex flex-col gap-4 h-full">
-        <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
+        <div className="shrink-0 border-b border-slate-200 p-3 flex items-start justify-between gap-3">
           <div>
-            <div className="text-sm text-slate-500">Detailed View</div>
+            {/* <div className="text-sm text-slate-500">Detailed View</div>
             <div className="text-lg font-semibold text-slate-900">
               {selectedRec?.productName || "Details"}
+            </div> */}
+            <div className="flex items-center gap-1 flex-wrap">
+              <PageBreadcrumb
+                pageTitle="Detailed View - "
+                variant="page"
+                textSize="2xl"
+              />
+
+
+              <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
+                {selectedRec?.productName || "Details"}
+              </span>
+
+
             </div>
           </div>
           <button
@@ -99,20 +114,22 @@ export default function SkuRecommendationDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-4 px-3">
-          {objectiveContext && (
+          {/* {objectiveContext && (
             <div className="mt-1">
               <div className="text-sm font-semibold text-charcoal-700 mb-3">Objective</div>
               <ObjectiveCards objective={objectiveContext} />
             </div>
-          )}
+          )} */}
 
           <div>
             <div className="text-sm font-semibold text-charcoal-700 mb-3">Metrics</div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-5 gap-3">
               {(selectedRec?.metrics || []).map((m, i) => (
-                <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="text-[11px] 2xl:text-xs text-charcoal-400">{m.label}</div>
+                <div key={i} className="rounded-lg border border-t-4 border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="text-[10px] 2xl:text-xs text-charcoal-400">
+                    {m.label.replace(/\b\w/g, (char) => char.toUpperCase())}
+                  </div>
                   <div className="text-sm 2xl:text-base font-bold flex items-baseline gap-1">
                     {(() => {
                       const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
@@ -124,8 +141,8 @@ export default function SkuRecommendationDrawer({
 
                       return (
                         <>
-                          <span style={{ color: "#414042" }}>{mainValue}</span>
-                          {percentPart && <span style={{ color: percentColor }}>{percentPart}</span>}
+                          <span className="text-sm 2xl:text-base" style={{ color: "#414042" }}>{mainValue}</span>
+                          {percentPart && <span className="text-[10px] 2xl:text-xs" style={{ color: percentColor }}>{percentPart}</span>}
                         </>
                       );
                     })()}
@@ -136,11 +153,11 @@ export default function SkuRecommendationDrawer({
           </div>
 
           <div>
-            <div className="text-sm font-semibold text-charcoal-700 mb-3">Recommendation</div>
+            <div className="text-sm font-semibold text-charcoal-700 mb-3">Recommendations</div>
 
             {selectedRec?.recommendationPoints?.length ? (
               <div>
-                <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
+                <div className="text-xs font-semibold text-blue-900 mb-1">Action</div>
                 <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
                   {selectedRec.recommendationPoints.map((p, i) => (
                     <li key={i}>{p}</li>
@@ -153,7 +170,7 @@ export default function SkuRecommendationDrawer({
 
             {selectedRec?.advertisingPoints?.length ? (
               <div className="mt-4">
-                <div className="text-xs font-semibold text-purple-900 mb-1">📢 Advertising</div>
+                <div className="text-xs font-semibold text-purple-900 mb-1">Advertising</div>
                 <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
                   {selectedRec.advertisingPoints.map((p, i) => (
                     <li key={i}>{p}</li>
@@ -164,7 +181,7 @@ export default function SkuRecommendationDrawer({
 
             {selectedRec?.inventoryPoints?.length ? (
               <div className="mt-4">
-                <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
+                <div className="text-xs font-semibold text-amber-900 mb-1">Inventory</div>
                 <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
                   {selectedRec.inventoryPoints.map((p, i) => (
                     <li key={i}>{p}</li>
@@ -174,16 +191,16 @@ export default function SkuRecommendationDrawer({
             ) : null}
           </div>
 
-         {selectedRec?.showChart && selectedRec?.productName && (
-              <div className="w-full overflow-hidden rounded-lg border border-slate-200 p-3 bg-white">
-                <div className="w-full">
-                  <Productinfoinpopup
-                    productname={selectedRec.productName}
-                    countryName={countryName}
-                  />
-                </div>
-              </div>
-            )}
+          {selectedRec?.showChart && selectedRec?.productName && (
+            // <div className="w-full overflow-hidden rounded-lg border border-slate-200 p-3 bg-white">
+            <div className="w-full">
+              <Productinfoinpopup
+                productname={selectedRec.productName}
+                countryName={countryName}
+              />
+            </div>
+            // </div>
+          )}
 
           <div className="pb-4">
             <div className="text-sm font-semibold text-charcoal-700 mb-3">Product Journey</div>

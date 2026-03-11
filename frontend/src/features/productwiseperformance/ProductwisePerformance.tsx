@@ -251,14 +251,14 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
     const countryForApi = (platformCountryName || "global").toLowerCase();
     const cacheKey = buildInsightsCacheKey(
-  identifier,
-  countryForApi,
-  range,
-  selectedYear,
-  selectedQuarter,
-  selectedMonth,
-  homeCurrency
-);
+      identifier,
+      countryForApi,
+      range,
+      selectedYear,
+      selectedQuarter,
+      selectedMonth,
+      homeCurrency
+    );
 
     // 1️⃣ Open drawer immediately
     setIsDrawerOpen(true);
@@ -330,18 +330,18 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       const objective = json.objective ?? null;
       const recommendation = json.recommendation || "";
       const productJourney: string[] = Array.isArray(json.product_journey)
-  ? json.product_journey
-  : [];
+        ? json.product_journey
+        : [];
 
       // Best performance from already fetched ProductwisePerformance data
-     const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
+      const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
 
-const bestPerformance = getBestPerformanceForCurrentView({
-  sourceData: sourceData as Record<string, any> | undefined,
-  countryForApi,
-  isPreviewMode,
-  globalKey,
-});
+      const bestPerformance = getBestPerformanceForCurrentView({
+        sourceData: sourceData as Record<string, any> | undefined,
+        countryForApi,
+        isPreviewMode,
+        globalKey,
+      });
 
       setSkuInsights({
         [identifier]: {
@@ -384,7 +384,7 @@ const bestPerformance = getBestPerformanceForCurrentView({
     }
   };
 
-  
+
 
   // NEW: active platform, default "global"
   const [activePlatform, setActivePlatform] = useState<PlatformId>("global");
@@ -541,42 +541,42 @@ const bestPerformance = getBestPerformanceForCurrentView({
   });
 
   useEffect(() => {
-  if (!isDrawerOpen || !selectedSku) return;
+    if (!isDrawerOpen || !selectedSku) return;
 
-  const countryForApi = (platformCountryName || "global").toLowerCase();
-  const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
+    const countryForApi = (platformCountryName || "global").toLowerCase();
+    const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
 
-  const freshBestPerformance = getBestPerformanceForCurrentView({
-    sourceData: sourceData as Record<string, any> | undefined,
-    countryForApi,
-    isPreviewMode,
+    const freshBestPerformance = getBestPerformanceForCurrentView({
+      sourceData: sourceData as Record<string, any> | undefined,
+      countryForApi,
+      isPreviewMode,
+      globalKey,
+    });
+
+    setSkuInsights((prev) => {
+      const current = prev[selectedSku];
+      if (!current) return prev;
+
+      return {
+        ...prev,
+        [selectedSku]: {
+          ...current,
+          best_performance: freshBestPerformance,
+        },
+      };
+    });
+  }, [
+    isDrawerOpen,
+    selectedSku,
+    data,
     globalKey,
-  });
-
-  setSkuInsights((prev) => {
-    const current = prev[selectedSku];
-    if (!current) return prev;
-
-    return {
-      ...prev,
-      [selectedSku]: {
-        ...current,
-        best_performance: freshBestPerformance,
-      },
-    };
-  });
-}, [
-  isDrawerOpen,
-  selectedSku,
-  data,
-  globalKey,
-  range,
-  selectedYear,
-  selectedQuarter,
-  selectedMonth,
-  platformCountryName,
-  isPreviewMode,
-]);
+    range,
+    selectedYear,
+    selectedQuarter,
+    selectedMonth,
+    platformCountryName,
+    isPreviewMode,
+  ]);
 
   const [selectedCountries, setSelectedCountries] = useState<
     Record<CountryKey, boolean>
@@ -944,18 +944,7 @@ const bestPerformance = getBestPerformanceForCurrentView({
 
 
   /* ---------- chart options (currency-aware) ---------- */
-  const yAxisLabel = (() => {
-    switch (homeCurrency) {
-      case "GBP":
-        return "Amount (£)";
-      case "INR":
-        return "Amount (₹)";
-      case "CAD":
-        return "Amount (CA$)";
-      default:
-        return "Amount ($)";
-    }
-  })();
+  const yAxisLabel = "Units (in nos.)";
 
 
   const chartOptions = useMemo(
@@ -1028,7 +1017,7 @@ const bestPerformance = getBestPerformanceForCurrentView({
   // };
 
   const getTitle = () => {
-  if (range === "yearly") return `${selectedYear}`;
+    if (range === "yearly") return `${selectedYear}`;
     if (range === "quarterly") return `${selectedQuarter}'${yearShort}`; // selectedQuarter is "Q4"
     return selectedMonth
       ? `${cap(selectedMonth)}'${yearShort}`
@@ -1036,7 +1025,7 @@ const bestPerformance = getBestPerformanceForCurrentView({
   };
 
   const getHeadingPeriod = () => {
-  if (range === "yearly") return `${selectedYear}`;
+    if (range === "yearly") return `${selectedYear}`;
     if (range === "quarterly") return `${selectedQuarter}'${yearShort}`;
     if (range === "monthly" && selectedMonth) {
       return `${cap(selectedMonth)}'${yearShort}`;
@@ -1265,21 +1254,6 @@ const bestPerformance = getBestPerformanceForCurrentView({
       {canShowResults && data && !loading && (
         <div className="flex flex-col">
 
-          {/* <TrendChartSection
-            productname={productname}
-            title={getTitle()}
-            chartDataList={chartDataList}
-            chartOptions={chartOptions}
-            nonEmptyCountriesFromApi={nonEmptyCountriesFromApi}
-            selectedCountries={selectedCountries}
-            onToggleCountry={handleCountryChange}
-            authToken={authToken}
-            onProductSelect={handleProductSelect}
-            onViewBusinessInsights={handleViewBusinessInsights}
-            insightsLoading={insightsLoading}
-            isPreviewMode={isPreviewMode}
-          /> */}
-
           <TrendChartSection
             productname={productname}
             title={getTitle()}
@@ -1293,30 +1267,28 @@ const bestPerformance = getBestPerformanceForCurrentView({
             onViewBusinessInsights={handleViewBusinessInsights}
             insightsLoading={insightsLoading}
             isPreviewMode={isPreviewMode}
-
-            // ✅ NEW: sheet-1 payload + header meta
             exportMeta={{
               titleLine: `${productname} - Productwise Performance - ${getHeadingPeriod()}`,
               titleCountry: exportTitleCountry,
-              platformLabel: "Amazon", // or derive from activePlatform if you want
+              platformLabel: "Amazon",
               periodLabel: getHeadingPeriod(),
-              companyName: userData?.company_name || "",  // adjust to your actual field name
-              brandName: userData?.brand_name || "",      // adjust to your actual field name
+              companyName: userData?.company_name || "",
+              brandName: userData?.brand_name || "",
               currencyLabel: exportCurrencySymbol,
             }}
             exportCountryCards={exportCountryCards}
           />
 
           <InsightSideDrawer
-  open={isDrawerOpen}
-  selectedSku={selectedSku}
-  skuInsights={skuInsights}
-  onClose={() => setIsDrawerOpen(false)}
-  enableFeedback={false}
-  selectedYear={selectedYear}
-  homeCurrency={homeCurrency}
-  drawerPeriodText={getHeadingPeriod()}
-/>
+            open={isDrawerOpen}
+            selectedSku={selectedSku}
+            skuInsights={skuInsights}
+            onClose={() => setIsDrawerOpen(false)}
+            enableFeedback={false}
+            selectedYear={selectedYear}
+            homeCurrency={homeCurrency}
+            drawerPeriodText={getHeadingPeriod()}
+          />
 
           {isDrawerOpen && insightsError && (
             <div className="fixed right-6 top-16 z-[9999] rounded bg-red-50 px-3 py-2 shadow text-sm text-red-700">
