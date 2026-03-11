@@ -2922,7 +2922,7 @@ export default function LiveBusinessClient({
                 {/* 2) Business Summary */}
                 {(summaryText || overallSummary.length > 0 || portfolioRecommendation) && (
                   <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-500 w-full">
-                    <PageBreadcrumb pageTitle="Business Summary MTD" variant="page" align="left" />
+                    <PageBreadcrumb pageTitle="Business Summary" variant="page" align="left" />
 
                     {summaryText && (
                       <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 border-slate-300">
@@ -2931,13 +2931,13 @@ export default function LiveBusinessClient({
                     )}
 
                     {portfolioRecommendation && (
-                      <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200">
-                        <div className="2xl:text-xs text-[10px] font-semibold text-charcoal-500 mb-1">
-                          Portfolio Recommendation
-                        </div>
-                        <div className="2xl:text-sm text-xs text-charcoal-600 leading-relaxed">
+                      <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center gap-1">
+                        <span className="2xl:text-sm text-xs font-semibold text-charcoal-500">
+                          Portfolio Recommendation:
+                        </span>
+                        <span className="2xl:text-sm text-xs text-charcoal-600 leading-relaxed">
                           {portfolioRecommendation}
-                        </div>
+                        </span>
                       </div>
                     )}
                   </div>
@@ -2946,7 +2946,7 @@ export default function LiveBusinessClient({
                 {/* 3) Recommended Actions (cards) */}
                 {recommendedActions && Object.keys(recommendedActions).length > 0 && (
                   <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full">
-                    <PageBreadcrumb pageTitle="Recommended Actions (MTD)" variant="page" align="left" />
+                    <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" />
 
                     <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                       {Object.entries(recommendedActions).map(([_, text], idx) => {
@@ -3157,7 +3157,7 @@ export default function LiveBusinessClient({
                 {/* MOBILE HEADER */}
                 <div className="flex items-center justify-between xl:hidden">
                   <PageBreadcrumb
-                    pageTitle="SKU Analysis MTD"
+                    pageTitle="SKU Analysis"
                     variant="page"
                     align="left"
                   />
@@ -3207,7 +3207,7 @@ export default function LiveBusinessClient({
                 {/* DESKTOP HEADER */}
                 <div className="hidden xl:flex xl:items-center xl:justify-between xl:gap-6">
                   <PageBreadcrumb
-                    pageTitle="SKU Analysis MTD"
+                    pageTitle="SKU Analysis"
                     variant="page"
                     align="left"
                   />

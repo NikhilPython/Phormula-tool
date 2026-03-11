@@ -149,7 +149,7 @@ export default function SkuRecommendationDrawer({
                       .replace("Cm1", "CM1")}
                   </div>
 
-                  <div className="text-sm 2xl:text-base font-bold flex items-baseline gap-1">
+                  <div className="mt-1 flex flex-col leading-tight">
                     {(() => {
                       const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
                       const mainValue = match?.[1]?.trim() || m.value;
@@ -161,14 +161,15 @@ export default function SkuRecommendationDrawer({
                       return (
                         <>
                           <span
-                            className="text-sm 2xl:text-lg"
+                            className="text-sm 2xl:text-lg font-bold"
                             style={{ color: "#414042" }}
                           >
                             {mainValue}
                           </span>
+
                           {percentPart && (
                             <span
-                              className="text-[10px] 2xl:text-xs"
+                              className="text-[10px] 2xl:text-xs font-semibold"
                               style={{ color: percentColor }}
                             >
                               {percentPart}

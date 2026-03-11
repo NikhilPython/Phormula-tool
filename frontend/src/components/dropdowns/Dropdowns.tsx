@@ -707,21 +707,24 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                             .replace("Cm1", "CM1")}
                         </div>
 
-                        <div className="flex items-baseline gap-1 text-sm font-bold 2xl:text-base">
+                        <div className="flex flex-col leading-tight">
                           {(() => {
                             const { main, delta, deltaColor } = splitMetricValue(m.value);
 
                             return (
                               <>
+                                {/* 2nd line: value */}
                                 <span
-                                  className="text-sm 2xl:text-lg"
+                                  className="text-sm font-bold 2xl:text-lg"
                                   style={{ color: "#414042" }}
                                 >
                                   {main}
                                 </span>
+
+                                {/* 3rd line: percentage */}
                                 {delta && (
                                   <span
-                                    className="text-[10px] 2xl:text-xs"
+                                    className="text-[10px] 2xl:text-xs font-semibold"
                                     style={{
                                       color:
                                         deltaColor === "text-emerald-600"
@@ -1209,7 +1212,7 @@ const capitalizeFirst = (text?: string) => {
 
 //       <div className="flex items-center gap-3">
 
-       
+
 
 
 //         <div className="flex flex-col">
