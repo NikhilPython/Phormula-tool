@@ -1240,7 +1240,7 @@ const MonthlyObjectiveStrip = ({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5  rounded-sm">
 
         <Item
-          label="Primary Focus"
+          label="Growth"
           value={capitalizeFirst(objective?.growth_intent) || "Growth"}
           icon={<TrendingUp size={16} />}
           topColor="#3A8EA4"
@@ -1248,7 +1248,7 @@ const MonthlyObjectiveStrip = ({
         />
 
         <Item
-          label="Profit Strategy"
+          label="Profit"
           value={capitalizeFirst(objective?.profit_priority?.replaceAll("_", " ")) || "Profit"}
           icon={<DollarSign size={16} />}
           topColor="#ED9F50"
@@ -1533,6 +1533,11 @@ const TAB_OPTIONS: { value: DashboardTab; label: string }[] = [
   { value: "skuBreakdown", label: TAB_LABELS.skuBreakdown },
 ];
 
+const HASH_TO_FINANCE_TAB: Record<string, DashboardTab> = {
+  "finance-dashboard": "graphs",
+  "ai-insights": "businessSummary",
+  "pnl-breakdown": "skuBreakdown",
+};
 
 /* ---------------------- Component ---------------------- */
 const Dropdowns: React.FC<DropdownsProps> = ({
@@ -1593,13 +1598,55 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [graphPageError, setGraphPageError] = useState<string | null>(null);
   const [skuRows, setSkuRows] = useState<TableRow[]>([]);
 
-  // ✅ Inside Dropdowns component (add with your other state)
   const [activeTab, setActiveTab] = useState<DashboardTab>("graphs");
+  const [pendingHash, setPendingHash] = useState<string>("");
 
-  // Optional: reset tab when filters change (prevents “empty” tab confusion)
   useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash) return;
     setActiveTab("graphs");
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const applyHash = () => {
+      const hash = window.location.hash.replace("#", "");
+      if (!hash) return;
+
+      const targetTab = HASH_TO_FINANCE_TAB[hash];
+      if (!targetTab) return;
+
+      setPendingHash(hash);
+
+      setActiveTab((prev) => {
+        if (prev === targetTab) return prev;
+        return targetTab;
+      });
+    };
+
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingHash) return;
+    if (!allDropdownsSelected) return;
+
+    const timer = setTimeout(() => {
+      const el = document.getElementById(pendingHash);
+      if (el) {
+        el.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+      setPendingHash("");
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [activeTab, pendingHash, allDropdownsSelected]);
 
   const tabsDisabled: Partial<Record<DashboardTab, boolean>> = useMemo(() => {
     const disabled = !allDropdownsSelected;
@@ -2329,19 +2376,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   }, [range, selectedMonth, selectedQuarter, selectedYear]);
 
-  useEffect(() => {
-    if (!allDropdownsSelected) return;
-
-    if (typeof window === "undefined") return;
-
-    if (window.location.hash === "#business-summary") {
-      requestAnimationFrame(() => {
-        const el = document.getElementById("business-summary");
-        el?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-  }, [allDropdownsSelected]);
-
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -2581,30 +2615,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
-
-  // const renderAiPanel = () => {
-  //   if (!allDropdownsSelected) return null;
-
-  //   return (
-  //     // <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
-  //     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  //       <MonthEndBusinessSummaryCard
-  //         loading={aiPanelLoading}
-  //         error={aiPanelError}
-  //         summaryBullets={aiPanel?.summaryBullets ?? []}
-  //         skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-  //       />
-
-  //       <RecommendationsCard
-  //         loading={aiPanelLoading}
-  //         error={aiPanelError}
-  //         recommendationBullets={aiPanel?.recommendationBullets ?? []}
-  //         inventoryBullets={aiPanel?.inventoryBullets ?? []}
-  //       />
-  //     </div>
-  //     // </div>
-  //   );
-  // };
 
   const getTrendWrapperHeight = () => {
     if (focusedChart === "trend") return "h-[50vh]";
@@ -3297,13 +3307,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       <div className="w-full">
         {/* ---------- TAB 1: GRAPHS ---------- */}
         {activeTab === "graphs" && (
-          <>
-            {/* ✅ Keep your existing monthly/quarterly/yearly graph blocks here, unchanged */}
-
+          <div id="finance-dashboard" className="scroll-mt-[80px]">
+            {/* Monthly */}
             {range === "monthly" && selectedMonth && selectedYear && (
               <>
                 <div className="w-full rounded-xl space-y-4">
-                  {/* Two separate sections */}
                   <div
                     className={[
                       "grid grid-cols-1 gap-4",
@@ -3318,7 +3326,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           "cursor-default select-none",
                           focusedChart === "trend" ? "cursor-default" : "",
                         ].join(" ")}
-                      // title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                       >
                         <div className={getTrendWrapperHeight()}>
                           <PerformanceTrendChart
@@ -3335,7 +3342,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             onToggleExpand={() => toggleFocus("trend")}
                           />
                         </div>
-
                       </div>
                     )}
 
@@ -3349,16 +3355,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           "flex flex-col",
                           focusedChart === "pnl" ? "cursor-default" : "",
                         ].join(" ")}
-                      // title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
                       >
-                        {/* Heading */}
                         <div className="shrink-0 flex items-center justify-between gap-3">
-                          {/* LEFT: title */}
                           <div className="flex items-baseline gap-2 min-w-0">
-                            <PageBreadcrumb pageTitle="P&L" variant="page" align="left" textSize="2xl" />
+                            <PageBreadcrumb
+                              pageTitle="P&L"
+                              variant="page"
+                              align="left"
+                              textSize="2xl"
+                            />
                           </div>
 
-                          {/* RIGHT: icon button (always pinned right) */}
                           <button
                             type="button"
                             data-no-expand
@@ -3366,21 +3373,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               e.stopPropagation();
                               toggleFocus("pnl");
                             }}
-                            aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
+                            aria-label={
+                              focusedChart === "pnl"
+                                ? "Collapse P&L chart"
+                                : "Expand P&L chart"
+                            }
                             title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                            className=" hidden lg:inline-flex rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md"
+                            className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                           >
                             {focusedChart === "pnl" ? (
                               <RiCollapseDiagonalFill size={18} className="font-extrabold" />
@@ -3401,24 +3400,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             onExportApiReady={setChartExportApi}
                             onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
                             isCollapsed={pnlCollapsed}
-
-                            // ✅ NEW
                             uploads={bargraphUploads}
                             loading={bargraphLoading}
                             userMeta={bargraphUserMeta}
                           />
-
                         </div>
                       </div>
                     )}
-
                   </div>
                 </div>
+
                 {allDropdownsSelected && (
                   <div className="mt-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-                      {/* EXPENSE BREAKUP */}
-                      {/* <div className="w-full rounded-xl border border-gray-200 bg-white p-4"> */}
                       <CircleChart
                         range="monthly"
                         month={selectedMonth}
@@ -3438,14 +3432,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         homeCurrency={globalHomeCurrency}
                         onExportBase64Ready={setProductWiseCm1PieBase64}
                       />
-                      {/* </div> */}
                     </div>
                   </div>
                 )}
-
               </>
             )}
 
+            {/* Quarterly */}
             {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
               <>
                 <div className="w-full rounded-xl space-y-4">
@@ -3455,7 +3448,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
                     ].join(" ")}
                   >
-                    {/* LEFT card (Trend) */}
+                    {/* LEFT card */}
                     {(focusedChart === null || focusedChart === "trend") && (
                       <div
                         className={[
@@ -3463,7 +3456,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           "cursor-default select-none",
                           focusedChart === "trend" ? "cursor-default" : "",
                         ].join(" ")}
-                      // title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                       >
                         <div className={getTrendWrapperHeight()}>
                           <PerformanceTrendChart
@@ -3483,7 +3475,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       </div>
                     )}
 
-                    {/* RIGHT card (PnL) */}
+                    {/* RIGHT card */}
                     {(focusedChart === null || focusedChart === "pnl") && (
                       <div
                         className={[
@@ -3497,7 +3489,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         <div className="shrink-0 flex items-center justify-between gap-3">
                           <div className="flex items-baseline gap-2">
                             <PageBreadcrumb
-                              pageTitle="P&L "
+                              pageTitle="P&L"
                               variant="page"
                               align="left"
                               textSize="2xl"
@@ -3511,30 +3503,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               e.stopPropagation();
                               toggleFocus("pnl");
                             }}
-                            aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
+                            aria-label={
+                              focusedChart === "pnl"
+                                ? "Collapse P&L chart"
+                                : "Expand P&L chart"
+                            }
                             title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                            className=" hidden lg:inline-flex rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md"
+                            className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                           >
                             {focusedChart === "pnl" ? (
                               <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                             ) : (
                               <RiExpandDiagonalFill size={18} className="font-extrabold" />
                             )}
-
                           </button>
-
                         </div>
 
                         <div className="flex-1 min-h-0 overflow-hidden mt-4">
@@ -3558,6 +3540,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     )}
                   </div>
                 </div>
+
                 {allDropdownsSelected && (
                   <div className="mt-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
@@ -3586,6 +3569,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               </>
             )}
 
+            {/* Yearly */}
             {allDropdownsSelected && range === "yearly" && selectedYear && (
               <>
                 <div className="w-full rounded-xl space-y-4">
@@ -3595,7 +3579,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
                     ].join(" ")}
                   >
-                    {/* LEFT card (Trend) */}
+                    {/* LEFT card */}
                     {(focusedChart === null || focusedChart === "trend") && (
                       <div
                         className={[
@@ -3603,9 +3587,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           "cursor-default select-none",
                           focusedChart === "trend" ? "cursor-default" : "",
                         ].join(" ")}
-                      // title={focusedChart === "trend" ? "Click to exit full view" : "Click to expand"}
                       >
-
                         <div className={getTrendWrapperHeight()}>
                           <PerformanceTrendChart
                             range={range}
@@ -3620,12 +3602,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             onToggleExpand={() => toggleFocus("trend")}
                           />
                         </div>
-
-
                       </div>
                     )}
 
-                    {/* RIGHT card (PnL) */}
+                    {/* RIGHT card */}
                     {(focusedChart === null || focusedChart === "pnl") && (
                       <div
                         className={[
@@ -3635,12 +3615,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           "flex flex-col",
                           focusedChart === "pnl" ? "cursor-default" : "",
                         ].join(" ")}
-                      // title={focusedChart === "pnl" ? "Click to exit full view" : "Click to expand"}
                       >
                         <div className="shrink-0 flex items-center justify-between gap-3">
                           <div className="flex items-baseline gap-2">
                             <PageBreadcrumb
-                              pageTitle="P&L "
+                              pageTitle="P&L"
                               variant="page"
                               align="left"
                               textSize="2xl"
@@ -3654,31 +3633,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               e.stopPropagation();
                               toggleFocus("pnl");
                             }}
-                            aria-label={focusedChart === "pnl" ? "Collapse P&L chart" : "Expand P&L chart"}
+                            aria-label={
+                              focusedChart === "pnl"
+                                ? "Collapse P&L chart"
+                                : "Expand P&L chart"
+                            }
                             title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                            className=" hidden lg:inline-flex rounded-md
-      border
-      border-gray-300
-      bg-white
-      text-blue-700
-      p-1.5
-      transition-all
-      duration-200
-      ease-out
-      hover:-translate-y-[2px]
-      hover:shadow-lg
-      active:translate-y-0
-      active:shadow-md"
+                            className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                           >
                             {focusedChart === "pnl" ? (
                               <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                             ) : (
                               <RiExpandDiagonalFill size={18} className="font-extrabold" />
                             )}
-
                           </button>
-
-
                         </div>
 
                         <div className="flex-1 min-h-0 overflow-hidden mt-4">
@@ -3696,47 +3664,44 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             userMeta={graphPageUserMeta}
                             error={graphPageError}
                           />
-
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {allDropdownsSelected && (
-                  <div className="mt-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-                      <CircleChart
-                        range="yearly"
-                        month={undefined}
-                        selectedQuarter={undefined}
-                        year={selectedYear}
-                        countryName={initialCountryName}
-                        homeCurrency={globalHomeCurrency}
-                        onExportBase64Ready={setExpenseBreakdownPieBase64}
-                      />
+                <div className="mt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                    <CircleChart
+                      range="yearly"
+                      month={undefined}
+                      selectedQuarter={undefined}
+                      year={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      onExportBase64Ready={setExpenseBreakdownPieBase64}
+                    />
 
-                      <CMchartofsku
-                        range="yearly"
-                        month={undefined}
-                        selectedQuarter={undefined}
-                        year={selectedYear}
-                        countryName={initialCountryName}
-                        homeCurrency={globalHomeCurrency}
-                        onExportBase64Ready={setProductWiseCm1PieBase64}
-                      />
-                    </div>
+                    <CMchartofsku
+                      range="yearly"
+                      month={undefined}
+                      selectedQuarter={undefined}
+                      year={selectedYear}
+                      countryName={initialCountryName}
+                      homeCurrency={globalHomeCurrency}
+                      onExportBase64Ready={setProductWiseCm1PieBase64}
+                    />
                   </div>
-                )}
+                </div>
               </>
             )}
-          </>
+          </div>
         )}
 
         {/* ---------- TAB 2: BUSINESS SUMMARY ---------- */}
-               {activeTab === "businessSummary" && allDropdownsSelected && (
+        {activeTab === "businessSummary" && allDropdownsSelected && (
           <div
-            id="business-summary"
+            id="ai-insights"
             className="scroll-mt-[80px] space-y-5"
           >
             {/* ✅ Loader INSIDE the white container */}
@@ -3816,7 +3781,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
         {/* ---------- TAB 4: SKU / PRODUCTWISE P&L ---------- */}
         {activeTab === "skuBreakdown" && allDropdownsSelected && (
-          <div className="mt-4 space-y-4">
+          <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
             <SKUtable
               range={range as Exclude<RangeType, "">}
               month={range === "monthly" ? selectedMonth : undefined}

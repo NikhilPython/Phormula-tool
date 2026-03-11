@@ -1133,6 +1133,7 @@ export default function DashboardPage() {
         });
     }, []);
 
+    const [pendingHash, setPendingHash] = useState<string>("");
 
     const inventoryAlertList = useMemo<UiAlert[]>(() => {
         return Object.entries(inventoryAlerts || {})
@@ -4118,25 +4119,102 @@ export default function DashboardPage() {
         { id: "inventory", label: "Current Inventory" },
     ];
 
+    const HASH_TO_TAB: Record<string, TopTab> = {
+        "live-sales": "live",
+        "targets-action-items": "summary",
+        "mtd-pl": "productwise",
+        "pnl-mtd": "productwise",
+        "current-inventory": "inventory",
+    };
+
+    const scrollToHashSection = useCallback((hash?: string) => {
+        if (typeof window === "undefined") return;
+
+        const rawHash = hash ?? window.location.hash;
+        if (!rawHash) return;
+
+        const id = rawHash.replace("#", "");
+        if (!id) return;
+
+        // wait a bit so the tab content mounts first
+        setTimeout(() => {
+            const el = document.getElementById(id);
+            if (!el) return;
+
+            el.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        }, 120);
+    }, []);
+
+    const handleHashNavigation = useCallback(
+        (hash?: string) => {
+            if (typeof window === "undefined") return;
+
+            const rawHash = hash ?? window.location.hash;
+            if (!rawHash) return;
+
+            const id = rawHash.replace("#", "");
+            const nextTab = HASH_TO_TAB[id];
+
+            if (nextTab && nextTab !== activeTab) {
+                setActiveTab(nextTab);
+                return; // scrolling will happen in the next effect after tab changes
+            }
+
+            scrollToHashSection(rawHash);
+        },
+        [activeTab, scrollToHashSection, setActiveTab]
+    );
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const applyHash = () => {
+            const hash = window.location.hash.replace("#", "");
+            if (!hash) return;
+
+            const targetTab = HASH_TO_TAB[hash];
+
+            if (targetTab) {
+                setPendingHash(hash);
+                setActiveTab(targetTab);
+                return;
+            }
+
+            const el = document.getElementById(hash);
+            if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+        };
+
+        applyHash();
+        window.addEventListener("hashchange", applyHash);
+
+        return () => window.removeEventListener("hashchange", applyHash);
+    }, []);
+
+    useEffect(() => {
+        if (!pendingHash) return;
+
+        const el = document.getElementById(pendingHash);
+        if (!el) return;
+
+        const timer = setTimeout(() => {
+            el.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+            setPendingHash("");
+        }, 120);
+
+        return () => clearTimeout(timer);
+    }, [activeTab, pendingHash]);
 
     return (
         <div className="relative w-full">
             <HashScroll offset={80} />
-            {/* {(loading || shopifyLoading) && !data && !shopify && (
-                <>
-                    <div className="fixed inset-0 z-40 bg-white/70" />
-                    <div className="fixed inset-0 z-50 flex items-center justify-center">
-                        <Loader fullscreen />
-                    </div>
-                </>
-            )} */}
-            {/* {(loading || shopifyLoading) && !data && !shopify && (
-                <Loader
-                    fullscreen
-                    backgroundClass="bg-white/80"
-                />
-            )} */}
-
             {(loading || shopifyLoading || biLoading) && !data && !shopify && !liveBiPayload && (
                 <Loader fullscreen backgroundClass="bg-white/80" />
             )}

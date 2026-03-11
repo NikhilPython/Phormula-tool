@@ -263,7 +263,7 @@ const AppSidebar: React.FC = () => {
     year: (routeParams?.year as string) || initialPeriod.year,
   };
 
- 
+
 
   const monthToNumber = (monthStr: string) => {
     const idx = monthNames.indexOf(monthStr.toLowerCase());
@@ -515,24 +515,70 @@ const AppSidebar: React.FC = () => {
           name: "Live Sales",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#live-sales`,
         },
-        // {
-        //   name: "Targets and Action Items",
-        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#targets-action-items`,
-        // },
+        {
+          name: "AI Insights",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#targets-action-items`,
+        },
         // {
         //   name: "MTD P&L",
         //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#mtd-pl`,
         // },
-        // {
-        //   name: "P&L Productwise Breakdown",
-        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
-        // },
-        // {
-        //   name: "Current Inventory",
-        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
-        // },
+        {
+          name: "P&L Productwise Breakdown",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
+        },
+        {
+          name: "Current Inventory",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#current-inventory`,
+        },
       ],
     },
+
+    // {
+    //   key: "finance-dashboards",
+    //   name: "FINANCE DASHBOARDS",
+    //   icon: <LuLayoutDashboard className={iconSize} />,
+    //   subItems: [
+    //     {
+    //       name: "P&L Dashboard",
+    //       path: ({ ranged, countryName, month, year }) =>
+    //         `/pnl-dashboard/${ranged}/${countryName}/${month}/${year}`,
+    //     },
+    //     {
+    //       name: "Business Summary",
+    //       path: ({ ranged, countryName, month, year }) =>
+    //         `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
+    //           countryName
+    //         )}/${encodeURIComponent(month)}/${encodeURIComponent(
+    //           year
+    //         )}#business-summary`,
+    //     },
+    //     {
+    //       name: "Cash Flow",
+    //       path: ({ countryName, month, year }) =>
+    //         `/cashflow/${encodeURIComponent(countryName)}/${encodeURIComponent(
+    //           month
+    //         )}/${encodeURIComponent(year)}`,
+    //     },
+    //     {
+    //       name: "SKU wise Profit",
+    //       path: (params: {
+    //         productname?: string;
+    //         countryName: string;
+    //         month: string;
+    //         year: string;
+    //       }) =>
+    //         `/skuwiseprofit/${params.productname ?? "Classic"}/${params.countryName}/${params.month}/${params.year}`,
+    //     },
+    //     {
+    //       name: "Expense Reconcilliation",
+    //       path: ({ countryName, month, year }) =>
+    //         `/expense-reconciliation/${encodeURIComponent(
+    //           countryName
+    //         )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
+    //     },
+    //   ],
+    // },
 
     {
       key: "finance-dashboards",
@@ -540,19 +586,28 @@ const AppSidebar: React.FC = () => {
       icon: <LuLayoutDashboard className={iconSize} />,
       subItems: [
         {
-          name: "P&L Dashboard",
+          name: "Finance Dashboard",
           path: ({ ranged, countryName, month, year }) =>
-            `/pnl-dashboard/${ranged}/${countryName}/${month}/${year}`,
+            `/pnl-dashboard/${ranged}/${countryName}/${month}/${year}#finance-dashboard`,
         },
-        // {
-        //   name: "Business Summary",
-        //   path: ({ ranged, countryName, month, year }) =>
-        //     `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
-        //       countryName
-        //     )}/${encodeURIComponent(month)}/${encodeURIComponent(
-        //       year
-        //     )}#business-summary`,
-        // },
+        {
+          name: "AI Insights",
+          path: ({ ranged, countryName, month, year }) =>
+            `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#ai-insights`,
+        },
+        {
+          name: "P&L Breakdown",
+          path: ({ ranged, countryName, month, year }) =>
+            `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#pnl-breakdown`,
+        },
         {
           name: "Cash Flow",
           path: ({ countryName, month, year }) =>
@@ -625,7 +680,7 @@ const AppSidebar: React.FC = () => {
         />
       ),
       subItems: [
-         {
+        {
           name: "Input Cost",
           path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
