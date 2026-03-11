@@ -1126,7 +1126,7 @@ const ProductInsightsSection = ({
                         const { main, delta, deltaColor } = splitMetricValue(m.value);
 
                         return (
-                          <div className="mt-1 flex items-baseline gap-1 min-w-0">
+                          <div className="mt-1 flex flex-col min-[1700px]:flex-row  2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0">
                             <span className="text-[10px] 2xl:text-xs font-bold text-slate-900 truncate">
                               {main}
                             </span>
