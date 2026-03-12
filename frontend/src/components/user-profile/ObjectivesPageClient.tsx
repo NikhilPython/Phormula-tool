@@ -294,26 +294,73 @@ export default function ObjectivesPageClient({
     setIsObjectiveEditMode(false);
   };
 
-  const saveInlineTarget = async () => {
-    const next = Number(draftTarget);
+  const getPreviousMonthYear = () => {
+  const now = new Date();
+  const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-    if (!Number.isFinite(next) || next < 0) {
-      alert("Please enter a valid number.");
-      return;
-    }
+  const month = previousMonthDate.toLocaleString("en-US", { month: "long" });
+  const year = previousMonthDate.getFullYear();
 
-    try {
-      await updateProfile({ target_sales: next } as any).unwrap();
-      dispatch(setUser({ target_sales: next } as any));
+  return { month, year };
+};
 
-      setIsTargetEditMode(false);
-      setEditingPid(null);
-      setDraftTarget("");
-    } catch (err: any) {
-      console.error(err);
-      alert(err?.data?.message ?? "Failed to update target.");
-    }
+const resolvedTargetCountry = useMemo(() => {
+  if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
+  if (objective.country) return objective.country.toLowerCase();
+  if (country) return country.toLowerCase();
+  return "uk";
+}, [objectiveDraft.country, objective.country, country]);
+
+const saveInlineTarget = async () => {
+  const next = Number(draftTarget);
+
+  if (!Number.isFinite(next) || next < 0) {
+    alert("Please enter a valid number.");
+    return;
+  }
+
+  const { month, year } = getPreviousMonthYear();
+  const payload = {
+    month,
+    year,
+    country: resolvedTargetCountry,
+    target_sales: next,
   };
+
+  try {
+    // existing profile update
+    await updateProfile({ target_sales: next } as any).unwrap();
+    dispatch(setUser({ target_sales: next } as any));
+
+    // new monthly target API
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || "Failed to save monthly target summary.");
+    }
+
+    const result = await res.json();
+    console.log("Monthly target saved:", result);
+
+    setIsTargetEditMode(false);
+    setEditingPid(null);
+    setDraftTarget("");
+  } catch (err: any) {
+    console.error(err);
+    alert(err?.message || err?.data?.message || "Failed to update target.");
+  }
+};
 
   const handleInlineObjectiveSave = async () => {
     try {

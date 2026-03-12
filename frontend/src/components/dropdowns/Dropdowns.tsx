@@ -842,85 +842,6 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 };
 
 
-type ProductJourneyModalProps = {
-  open: boolean;
-  onClose: () => void;
-  block: ProductInsightBlock | null;
-};
-
-const ProductJourneyModal: React.FC<ProductJourneyModalProps> = ({
-  open,
-  onClose,
-  block,
-}) => {
-  if (!open || !block) return null;
-
-  return (
-    <div className="fixed inset-0 z-999999 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl w-[95%] max-w-2xl shadow-xl p-6 space-y-5 relative">
-
-        {/* Close */}
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
-        >
-          ✕
-        </button>
-
-        {/* Product Name */}
-        <h2 className="text-lg font-semibold text-slate-800">
-          {block.name}
-        </h2>
-
-        {/* Metrics */}
-        {block.metrics.length > 0 && (
-          <div className="flex flex-wrap gap-3">
-            {block.metrics.map((m, i) => (
-              <div
-                key={i}
-                className="px-3 py-1 rounded-full text-xs font-medium border"
-                style={{
-                  color: m.color || "#414042",
-                  borderColor: "#E2E8F0",
-                }}
-              >
-                {m.label}: {m.value}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Action Summary */}
-        {block.recommendationBullets.length > 0 && (
-          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-md">
-            <p className="text-sm text-blue-900">
-              💡 {block.recommendationBullets.join(" ")}
-            </p>
-          </div>
-        )}
-
-        {/* Product Journey */}
-        {block.journeyBullets.length > 0 && (
-          <div>
-            <h3 className="font-semibold text-slate-700 mb-2">
-              Product Journey
-            </h3>
-            <ul className="space-y-2 text-sm text-slate-600">
-              {block.journeyBullets.map((j, i) => (
-                <li key={i} className="flex gap-2">
-                  {/* <span className="text-slate-400">→</span> */}
-                  <span>{j}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-
 const ProductInsightsSection = ({
   blocks,
   objective,
@@ -1179,10 +1100,6 @@ const ProductInsightsSection = ({
   );
 };
 
-const capitalizeFirst = (text?: string) => {
-  if (!text) return "";
-  return text.charAt(0).toUpperCase() + text.slice(1);
-};
 
 // const MonthlyObjectiveStrip = ({
 //   objective,
@@ -1300,12 +1217,23 @@ const capitalizeFirst = (text?: string) => {
 //   );
 // };
 
+
+
+
 const MonthlyObjectiveStrip = ({
   objective,
   className = "",
+  targetSummary,
+  currencySymbol = "$",
 }: {
   objective?: ObjectivePayload;
   className?: string;
+  targetSummary?: {
+    target_sales?: number;
+    shortfall_total?: number;
+    cashflow_total?: number;
+  } | null;
+  currencySymbol?: string;
 }) => {
   const growth =
     objective?.growth_intent?.replaceAll("_", " ") || "Not Defined";
@@ -1320,9 +1248,26 @@ const MonthlyObjectiveStrip = ({
         : "No"
       : "Not Defined";
 
-  const targetSet = "$140K";
-  const shortfall = "-$3.6K";
-  const cashFlow = "$130K";
+  const formatMoneyCompact = (value?: number) => {
+    const num = Number(value ?? 0);
+    const sign = num < 0 ? "-" : "";
+    const abs = Math.abs(num);
+
+    let compact = "";
+    if (abs >= 1_000_000) {
+      compact = `${(abs / 1_000_000).toFixed(1)}M`;
+    } else if (abs >= 1_000) {
+      compact = `${(abs / 1_000).toFixed(1)}K`;
+    } else {
+      compact = `${abs.toFixed(0)}`;
+    }
+
+    return `${sign}${currencySymbol}${compact}`;
+  };
+
+  const targetSet = formatMoneyCompact(targetSummary?.target_sales ?? 0);
+  const shortfall = formatMoneyCompact(-(targetSummary?.shortfall_total ?? 0));
+  const cashFlow = formatMoneyCompact(targetSummary?.cashflow_total ?? 0);
 
   const Item = ({
     label,
@@ -1346,7 +1291,7 @@ const MonthlyObjectiveStrip = ({
   );
 
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white shadow-sm p-4 mt-4 ${className}`}>
+    <div className={`rounded-xl border border-slate-200 bg-white shadow-sm p-4 ${className}`}>
       <div className="mb-2">
         <PageBreadcrumb
           pageTitle="Monthly Objectives & Targets"
@@ -1678,6 +1623,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const [activeTab, setActiveTab] = useState<DashboardTab>("graphs");
   const [pendingHash, setPendingHash] = useState<string>("");
+  const [targetSummary, setTargetSummary] = useState<{
+  target_sales?: number;
+  shortfall_total?: number;
+  cashflow_total?: number;
+} | null>(null);
+
+const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash) return;
@@ -2112,6 +2064,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
+  useEffect(() => {
+  const ready =
+    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+    (range === "yearly" && !!selectedYear);
+
+  if (!ready) {
+    setTargetSummary(null);
+    return;
+  }
+
+  fetchTargetSummary();
+}, [range, selectedMonth, selectedQuarter, selectedYear, initialCountryName]);
+
 
 
   const fetchPerformanceTrendFromHistory = async (rangeType: RangeType) => {
@@ -2165,6 +2131,66 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setPerformanceTrend(null);
     }
   };
+
+  const fetchTargetSummary = async () => {
+  if (!selectedYear || !initialCountryName) return;
+
+  const ready =
+    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+    (range === "yearly" && !!selectedYear);
+
+  if (!ready) {
+    setTargetSummary(null);
+    return;
+  }
+
+  let apiMonth = "";
+
+  if (range === "monthly" && selectedMonth) {
+    apiMonth =
+      selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1).toLowerCase();
+  } else {
+    const now = new Date();
+    apiMonth = now.toLocaleString("en-US", { month: "long" });
+  }
+
+  try {
+    setTargetSummaryLoading(true);
+
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`);
+    url.searchParams.set("month", apiMonth);
+    url.searchParams.set("year", selectedYear);
+    url.searchParams.set("country", initialCountryName.toLowerCase());
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      setTargetSummary(null);
+      return;
+    }
+
+    const data = await res.json();
+
+    setTargetSummary({
+      target_sales: Number(data?.target_sales ?? 0),
+      shortfall_total: Number(data?.shortfall_total ?? 0),
+      cashflow_total: Number(data?.cashflow_total ?? 0),
+    });
+  } catch (error) {
+    console.error("Failed to fetch target summary:", error);
+    setTargetSummary(null);
+  } finally {
+    setTargetSummaryLoading(false);
+  }
+};
 
 
 
@@ -3733,8 +3759,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               </div>
             ) : (
               <>
-                {aiPanel?.objective && <MonthlyObjectiveStrip objective={aiPanel.objective} />}
-
+               {aiPanel?.objective && (
+  <MonthlyObjectiveStrip
+    objective={aiPanel.objective}
+    targetSummary={targetSummary}
+    currencySymbol={currencySymbol}
+  />
+)}
                 <AiSingleInsightCard
                   loading={false} // ✅ parent controls loader now
                   error={null}    // ✅ parent controls error now
