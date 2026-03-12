@@ -57,7 +57,7 @@ def send_welcome_and_verification_emails(email, name, verification_link):
   margin:0;
   padding:0;
  background: #d1d5db; /* dark outer bg */
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Lato;
 ">
 
   <!-- Outer wrapper -->
@@ -89,7 +89,7 @@ def send_welcome_and_verification_emails(email, name, verification_link):
       </div>
 
       <p style="font-size:14px; color:#333; margin:0 0 14px;">
-        Hey {name},
+        Hey <strong>{name}</strong>,
       </p>
 
       <p style="font-size:14px; color:#333; margin:0 0 14px;">
@@ -111,7 +111,7 @@ def send_welcome_and_verification_emails(email, name, verification_link):
            style="
              display:inline-block;
              background:#37455F;
-             color:#ffffff;
+             color:#f8edce;
              padding:12px 30px;
              font-size:14px;
              font-weight:600;
@@ -519,8 +519,15 @@ def send_live_bi_email(
     # ---------------------------
     # Overall summary bullets
     # ---------------------------
-    metric_bullets = (overall_summary or {}).get("metric_bullets", []) or []
-    summary_html = "".join(f"<li>{html.escape(str(s))}</li>" for s in metric_bullets)
+    summary_text = (overall_summary or {}).get("summary_text", "") or ""
+    print("[DEBUG] overall_summary:", overall_summary)
+    print("[DEBUG] summary_text:", summary_text)
+
+    summary_html = f"""
+    <p style="font-size:14px; color:#555; line-height:1.8; margin:0;">
+        {html.escape(str(summary_text))}
+    </p>
+    """
 
     # ---------------------------
     # Helpers
@@ -648,20 +655,28 @@ def send_live_bi_email(
 
     def _metric_chip(label: str, value_text: str) -> str:
         txt = (value_text or "").strip()
-        is_negative = bool(re.search(r"\(\s*-\s*\d", txt))
-        value_color = "#D92D20" if is_negative else "#16A34A"
+
+        # split into main value + bracket delta
+        m = re.match(r"^(.*?)(\s*\([^)]+\))?$", txt)
+        main_value = (m.group(1) or "").strip() if m else txt
+        delta_value = (m.group(2) or "").strip() if m else ""
+
+        is_negative = bool(re.search(r"\(\s*-\s*\d", delta_value))
+        delta_color = "#D92D20" if is_negative else "#16A34A"
+
+        delta_html = f'<span style="color:{delta_color}; font-weight:600;"> {html.escape(delta_value)}</span>' if delta_value else ""
 
         return f"""
         <td valign="top" style="padding:0 8px 8px 0;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
                  style="border-collapse:separate; background:#F8FAFC; border:1px solid #E5E7EB; border-radius:8px;">
             <tr>
               <td style="padding:7px 9px; text-align:left; vertical-align:top;">
-                <div style="font-size:11px; line-height:1.2; color:#667085; font-weight:700; margin-bottom:3px; white-space:nowrap;">
+                <div style="font-size:11px; line-height:1.2; color:#667085; font-weight:700; margin-bottom:3px;">
                   {html.escape(label)}
                 </div>
-                <div style="font-size:12px; line-height:1.25; color:{value_color}; font-weight:600; white-space:nowrap;">
-                  {html.escape(txt)}
+                <div style="font-size:12px; line-height:1.25; font-weight:600;">
+                  <span style="color:#414042;">{html.escape(main_value)}</span>{delta_html}
                 </div>
               </td>
             </tr>
@@ -714,24 +729,11 @@ def send_live_bi_email(
             </table>
             """
 
-        def _numbered_point_block(title: str, body: str, emoji: str = "") -> str:
+        def _point_block(title: str, body: str, emoji: str = "") -> str:
             if not body:
                 return ""
 
-            points = [p.strip() for p in re.split(r'(?<=[.!?])\s+', body) if p.strip()]
-            if not points:
-                points = [body.strip()]
-
-            points_html = "".join(
-                f"""
-                <tr>
-                  <td valign="top" style="font-size:12px; color:#475467; line-height:1.7; padding:0 0 4px 0;">
-                    {idx}. {html.escape(point)}
-                  </td>
-                </tr>
-                """
-                for idx, point in enumerate(points, start=1)
-            )
+            clean_body = re.sub(r"\s+", " ", body).strip()
 
             return f"""
             <div style="margin-top:12px;">
@@ -739,15 +741,19 @@ def send_live_bi_email(
                 {html.escape(emoji)} {html.escape(title)}
               </div>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                {points_html}
+                <tr>
+                  <td valign="top" style="font-size:12px; color:#475467; line-height:1.7; padding:0 0 4px 0;">
+                    • {html.escape(clean_body)}
+                  </td>
+                </tr>
               </table>
             </div>
             """
 
         bottom_cards_html = f"""
-        {_numbered_point_block("Recommendation", parsed["recommendation"], "🎯")}
-        {_numbered_point_block("Advertising", parsed["advertising"], "📢")}
-        {_numbered_point_block("Inventory", parsed["inventory"], "📦")}
+        {_point_block("Recommendation", parsed["recommendation"], "")}
+        {_point_block("Advertising", parsed["advertising"], "")}
+        {_point_block("Inventory", parsed["inventory"], "")}
         """
 
         fallback_html = ""
@@ -881,7 +887,11 @@ def send_live_bi_email(
     # ---------------------------
     html_body = f"""
     <html>
-       <body style="font-family:Lato,Arial,sans-serif; background:#f4f4f4; padding:20px;">
+    <head>
+  <meta charset="UTF-8">
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;800&display=swap" rel="stylesheet">
+</head>
+       <body style="font-family:'Lato', Arial, sans-serif; background:#f4f4f4; padding:20px;">
          <div style="max-width:780px; margin:0 auto; background:#fff;
               padding:28px; border-radius:10px; border:2px solid #5EA68E; box-sizing:border-box;">
 
@@ -934,15 +944,15 @@ def send_live_bi_email(
         <hr style="margin:20px 0; border:none; border-top:1px solid #eee;" />
 
         <h3 style="color:#37455F; display:flex; align-items:center;">
-          📊 <span style="margin-left:8px;">Overall Summary</span>
+          <span style="margin-left:8px;">Overall Summary</span>
         </h3>
 
-        <ul style="font-size:14px; color:#555;">
-          {summary_html}
-        </ul>
+        <div style="font-size:14px; color:#555; margin-bottom:8px;">
+        {summary_html}
+       </div>
 
         <h3 style="color:#37455F; margin-top:28px;">
-          🎯 Recommendation
+           Recommendation
         </h3>
 
         {sku_section_html}

@@ -22,7 +22,9 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import DataTable, { ColumnDef as DataTableColumnDef } from "@/components/ui/table/DataTable";
 import InventoryPieCard, { InventoryPieCardHandle } from "@/components/inventory/InventoryPieCard";
+import SegmentedToggle from "@/components/ui/SegmentedToggle";
 /* ================= TYPES ================= */
 interface Params {
   params: Promise<{
@@ -329,11 +331,16 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
       ? defaultYear
       : yearParam || defaultYear;
 
+      type InventoryViewTab = "charts" | "table" | "extra";
+
   const [range, setRange] = useState<Range>("monthly");
   const [selectedMonth, setSelectedMonth] = useState<string>(resolvedMonth);
   const [selectedQuarter, setSelectedQuarter] = useState<string>("Q1");
   const [selectedYear, setSelectedYear] = useState<string>(resolvedYear);
   const [exportTick, setExportTick] = useState(0);
+  const [lostCompRows, setLostCompRows] = useState<AnyRow[]>([]);
+const [lostCompLoading, setLostCompLoading] = useState(false);
+const [lostCompLoaded, setLostCompLoaded] = useState(false);
 
   const isNA =
     monthParam?.toLowerCase() === "na" ||
@@ -386,6 +393,7 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
   const [modalMessage, setModalMessage] = useState('');
 
   const [showMultiuseCountry, setShowMultiuseCountry] = useState(false);
+  const [activeView, setActiveView] = useState<InventoryViewTab>("charts");
 
   const yearOptions = useMemo(() => {
     const MIN_YEAR = 2024;
@@ -441,6 +449,122 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
     };
     // ✅ refetch when user changes filters
   }, [range, selectedMonth, selectedQuarter, selectedYear, marketplaceId, pageLoading, hasValidPeriod]);
+
+
+ async function fetchInventoryLostCompensation() {
+  if (!hasValidPeriod) {
+    setLostCompRows([]);
+    return;
+  }
+
+  setLostCompLoading(true);
+  try {
+    const mode =
+      range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
+
+    const q: Record<string, any> = {
+      country: countryName,
+      year: selectedYear,
+      mode,
+    };
+
+    if (mode === "month") {
+  q.month = selectedMonth;
+}
+
+    if (mode === "quarter") {
+      q.quarter = quarterToNumber(selectedQuarter);
+    }
+
+    const url = `${API_BASE}/api/inventory_lost_compensation?${buildQuery(q)}`;
+    const res = await fetch(url, { headers: authHeaders() });
+    const json = await res.json();
+
+    if (!res.ok || json?.success === false) {
+      throw new Error(json?.error || "Failed to fetch inventory lost compensation");
+    }
+
+    setLostCompRows(Array.isArray(json?.data) ? json.data : []);
+  } catch (e: any) {
+    console.error(e);
+    setLostCompRows([]);
+    setModalMessage(e?.message || "Failed to fetch inventory lost compensation");
+    setShowModal(true);
+  } finally {
+    setLostCompLoading(false);
+  }
+}
+
+useEffect(() => {
+  if (pageLoading) return;
+  if (activeView !== "extra") return;
+
+  void fetchInventoryLostCompensation();
+}, [activeView, range, selectedMonth, selectedQuarter, selectedYear, countryName, pageLoading]);
+
+const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
+  return (lostCompRows || []).map((row, idx) => ({
+    __sno: idx + 1,
+    product_name: formatCell(row?.product_name),
+    msku: formatCell(row?.msku),
+    asin: formatCell(row?.asin),
+    product_barcode: formatCell(row?.product_barcode),
+    price: formatCell(row?.price),
+    currency: formatCell(row?.currency),
+    lost_units: formatCell(row?.lost_units),
+    damaged_units: formatCell(row?.damaged_units),
+    total_lost_units: formatCell(row?.total_lost_units),
+    compensation_units: formatCell(row?.compensation_units),
+    compensation_value: formatCell(row?.compensation_value),
+    compensation_reimbursement_amount: formatCell(row?.compensation_reimbursement_amount),
+    settlement_loss_event_units: formatCell(row?.settlement_loss_event_units),
+    settlement_loss_event_amount: formatCell(row?.settlement_loss_event_amount),
+    loss_value: formatCell(row?.loss_value),
+    net_units: formatCell(row?.net_units),
+    net_value: formatCell(row?.net_value),
+  }));
+}, [lostCompRows]);
+
+
+const lostCompTableColumns = useMemo<
+  DataTableColumnDef<Record<string, React.ReactNode>>[]
+>(() => {
+  return [
+    { key: "__sno", header: "S. No.", width: "70px", cellClassName: "text-center" },
+    { key: "product_name", header: "Product Name", width: "220px", cellClassName: "text-left" },
+    { key: "msku", header: "SKU", width: "120px", cellClassName: "text-center" },
+    { key: "asin", header: "ASIN", width: "140px", cellClassName: "text-center" },
+    { key: "product_barcode", header: "Product Barcode", width: "160px", cellClassName: "text-center" },
+    { key: "price", header: "Price", width: "100px", cellClassName: "text-center" },
+    { key: "currency", header: "Currency", width: "90px", cellClassName: "text-center" },
+    { key: "lost_units", header: "Lost Units", width: "100px", cellClassName: "text-center" },
+    { key: "damaged_units", header: "Damaged Units", width: "120px", cellClassName: "text-center" },
+    { key: "total_lost_units", header: "Total Lost Units", width: "130px", cellClassName: "text-center" },
+    { key: "compensation_units", header: "Compensation Units", width: "150px", cellClassName: "text-center" },
+    { key: "compensation_value", header: "Compensation Value", width: "150px", cellClassName: "text-center" },
+    {
+      key: "compensation_reimbursement_amount",
+      header: "Compensation Reimbursement Amount",
+      width: "220px",
+      cellClassName: "text-center",
+    },
+    {
+      key: "settlement_loss_event_units",
+      header: "Settlement Loss Event Units",
+      width: "190px",
+      cellClassName: "text-center",
+    },
+    {
+      key: "settlement_loss_event_amount",
+      header: "Settlement Loss Event Amount",
+      width: "200px",
+      cellClassName: "text-center",
+    },
+    { key: "loss_value", header: "Loss Value", width: "120px", cellClassName: "text-center" },
+    { key: "net_units", header: "Net Units", width: "100px", cellClassName: "text-center" },
+    { key: "net_value", header: "Net Value", width: "120px", cellClassName: "text-center" },
+  ];
+}, []);
 
 
 
@@ -559,6 +683,17 @@ async function fetchInventoryBreakup() {
   }
 
   /* ================= 2) FETCH FROM DB (store-month/quarter/year) ================= */
+
+  const viewOptions = useMemo(
+  () => [
+    { value: "charts" as const, label: "Inventory Ageing Split" },
+    { value: "table" as const, label: "Recon Table" },
+    { value: "extra" as const, label: "Inventory Cost for Ageing" },
+  ],
+  []
+);
+
+
   async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
     const { range, year, country } = params;
 
@@ -1519,118 +1654,129 @@ if (colKey === "inventory_coverage_ratio") {
         </div>
       </div> */}
 
-      <div className="sticky top-0 z-40 w-full flex flex-col
-        bg-[#F7F7F7] py-2
-        sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
-        border-b border-gray-200">
-        {/* LEFT: Title */}
-        <div className="mb-2 flex flex-wrap items-start gap-2">
-          <div>
-            <div className="flex flex-wrap items-baseline gap-2 justify-start">
-              <PageBreadcrumb
-                variant="page"
-                align="left"
-                textSize="2xl"
-                pageTitle={
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-[#414042] font-bold">Inventory Reconciliation -</span>
-                    <span className="text-[#60a68e] font-bold">{countryName?.toUpperCase()}</span>
-                  </div>
-                }
-              />
+<div className="sticky top-0 z-40 w-full border-b border-gray-200 bg-[#F7F7F7] px-4 py-4">
+  <div className="flex flex-col gap-4">
+    {/* Row 1: title left, filters right */}
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      {/* Left title block */}
+      <div className="flex flex-col">
+        <PageBreadcrumb
+          variant="page"
+          align="left"
+          textSize="2xl"
+          pageTitle={
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-[#414042] font-bold">
+                Inventory Reconciliation -
+              </span>
+              <span className="text-[#60a68e] font-bold">
+                {countryName?.toUpperCase()}
+              </span>
             </div>
+          }
+        />
 
-
-          </div>
-        </div>
-
-        {/* RIGHT: Filters */}
-        <div className="mb-2 sm:mb-0">
-          <div className="flex flex-col md:flex-row sm:items-center  gap-[0.5vw]">
-            <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
-              <PeriodFiltersTable
-                range={range}
-                selectedMonth={selectedMonth}
-                selectedQuarter={selectedQuarter}
-                selectedYear={selectedYear}
-                yearOptions={yearOptions}
-                onRangeChange={(v) => setRange(v)}
-                onMonthChange={(v) => {
-                  const raw = String(v ?? "").trim();
-                  // PeriodFiltersTable may emit values like "Jan" or "Jan 2026".
-                  const parts = raw.split(/\s+/).filter(Boolean);
-                  const monthPart = parts[0] ?? raw;
-                  const yearPart = parts.find((p) => /^\d{4}$/.test(p));
-
-                  setSelectedMonth(normalizeMonth(monthPart));
-                  if (yearPart) setSelectedYear(normalizeYear(yearPart));
-                }}
-                onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
-                onYearChange={(v) => setSelectedYear(String(v))}
-                allowedRanges={['monthly', 'quarterly', 'yearly']}
-              />
-
-              <DownloadIconButton onClick={handleDownloadXLSX} size="md" />
-            </div>
-          </div>
-        </div>
-
-        {/* </div> */}
+        {/* optional subtitle spacing like second screenshot */}
+        {/* <p className="mt-1 text-sm text-neutral-600">
+          Add your subtitle here if needed
+        </p> */}
       </div>
 
-            {/* ✅ Pie charts row */}
-    <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-  <InventoryPieCard
-    ref={breakupPieRef}
-    title="Inventory Breakup"
-    data={breakupPie}
-    loading={pieLoading}
-    height={320}
-  />
+      {/* Right filters */}
+      <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+        <PeriodFiltersTable
+          range={range}
+          selectedMonth={selectedMonth}
+          selectedQuarter={selectedQuarter}
+          selectedYear={selectedYear}
+          yearOptions={yearOptions}
+          onRangeChange={(v) => setRange(v)}
+          onMonthChange={(v) => {
+            const raw = String(v ?? "").trim();
+            const parts = raw.split(/\s+/).filter(Boolean);
+            const monthPart = parts[0] ?? raw;
+            const yearPart = parts.find((p) => /^\d{4}$/.test(p));
 
-  <InventoryPieCard
-    ref={ageingPieRef}
-    title="Inventory Ageing"
-    data={ageingPie}
-    loading={pieLoading}
-    height={320}
-  />
+            setSelectedMonth(normalizeMonth(monthPart));
+            if (yearPart) setSelectedYear(normalizeYear(yearPart));
+          }}
+          onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
+          onYearChange={(v) => setSelectedYear(String(v))}
+          allowedRanges={["monthly", "quarterly", "yearly"]}
+        />
+
+        <DownloadIconButton onClick={handleDownloadXLSX} size="md" />
+      </div>
+    </div>
+
+    {/* Row 2: toggle only */}
+    <div className="flex items-center">
+      <SegmentedToggle
+        value={activeView}
+        options={viewOptions}
+        onChange={(val) => setActiveView(val as InventoryViewTab)}
+        compact
+        textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+      />
+    </div>
+  </div>
 </div>
 
+            {/* ✅ Pie charts row */}
+    {activeView === "charts" && (
+  <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <InventoryPieCard
+      ref={breakupPieRef}
+      title="Inventory Breakup"
+      data={breakupPie}
+      loading={pieLoading}
+      height={320}
+    />
+
+    <InventoryPieCard
+      ref={ageingPieRef}
+      title="Inventory Ageing"
+      data={ageingPie}
+      loading={pieLoading}
+      height={320}
+    />
+  </div>
+)}
+
       {/* Table */}
-      <div
-        className={[
-          "mt-5 w-full rounded-lg border border-gray-200 bg-white",
-          "overflow-x-auto",
-          "[-webkit-overflow-scrolling:touch]",
-        ].join(" ")}
-      >
-
-        {effectiveRows.length === 0 ? (
-          <div className="p-6 text-sm text-neutral-600">No rows returned.</div>
-        ) : (
-          <GroupedCollapsibleTable
-            rows={effectiveRows}
-            getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
-            leftCols={leftCols}
-            groups={groups}
-            singleCols={singleCols}
-            getValue={getValue}
-            getRowClassName={getRowClassName}
-            onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
-            tableClassName={
-              anyExpanded
-                ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-                : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-            }
-            headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-            headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
-            showSignRowInBody
-            getSignForCol={getSignForCol}
-          />
-        )}
-
-      </div>
+     {activeView === "table" && (
+  <div
+    className={[
+      "mt-5 w-full rounded-lg border border-gray-200 bg-white",
+      "overflow-x-auto",
+      "[-webkit-overflow-scrolling:touch]",
+    ].join(" ")}
+  >
+    {effectiveRows.length === 0 ? (
+      <div className="p-6 text-sm text-neutral-600">No rows returned.</div>
+    ) : (
+      <GroupedCollapsibleTable
+        rows={effectiveRows}
+        getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
+        leftCols={leftCols}
+        groups={groups}
+        singleCols={singleCols}
+        getValue={getValue}
+        getRowClassName={getRowClassName}
+        onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+        tableClassName={
+          anyExpanded
+            ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+            : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+        }
+        headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+        headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+        showSignRowInBody
+        getSignForCol={getSignForCol}
+      />
+    )}
+  </div>
+)}
 
       {/* <div className="mt-4" id="inventory-pie-export">
 
@@ -1642,6 +1788,23 @@ if (colKey === "inventory_coverage_ratio") {
           onExportBase64Ready={(b64) => setPieBase64(b64)}
         />
       </div> */}
+
+{activeView === "extra" && (
+  <div className="mt-5">
+    <DataTable<Record<string, React.ReactNode>>
+      columns={lostCompTableColumns}
+      data={lostCompTableData}
+      loading={lostCompLoading}
+      paginate={false}
+      stickyHeader
+      scrollY={false}
+      maxHeight="auto"
+      emptyMessage="No rows returned."
+      tableClassName="text-xs 2xl:text-sm"
+      className="rounded-lg"
+    />
+  </div>
+)}
 
       {/* Multi-country modal (kept) */}
       {showMultiuseCountry && (

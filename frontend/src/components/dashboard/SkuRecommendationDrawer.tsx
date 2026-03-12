@@ -104,7 +104,7 @@ export default function SkuRecommendationDrawer({
       onClose={onClose}
       PaperProps={{
         sx: {
-          width: { xs: "100vw", sm: "75vw", md: "60vw", lg: "55vw" },
+          width: { xs: "100vw", sm: "75vw", md: "60vw", lg: "50vw", "min-[1700px]": "50vw" },
           maxWidth: 900,
         },
       }}

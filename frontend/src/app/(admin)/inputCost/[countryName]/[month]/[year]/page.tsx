@@ -8,6 +8,8 @@ import SkuMultiuseCountryUpload from '@/components/ui/modal/SkuMultiCountryUploa
 import { IoDownload } from "react-icons/io5";
 import DataTable, { ColumnDef } from '@/components/ui/table/DataTable';
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import SegmentedToggle from '@/components/ui/SegmentedToggle';
+import DownloadIconButton from '@/components/ui/button/DownloadButton';
 
 // Types
 interface Params {
@@ -109,6 +111,14 @@ export default function InputCostPage({ params }: Params) {
   const [aspData, setAspData] = useState<Record<string, number>>({});
   const [showMultiuseCountry, setShowMultiuseCountry] = useState(false);
   const [showAllRows, setShowAllRows] = useState(false);
+  const [warehouseData, setWarehouseData] = useState<Record<string, any>[]>([]);
+const [warehouseColumns, setWarehouseColumns] = useState<string[]>([]);
+const [warehouseLoading, setWarehouseLoading] = useState(false);
+const [showWarehouseUpload, setShowWarehouseUpload] = useState(false);
+const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(null);
+
+  type InputCostTab = 'sku-info' | 'extra';
+  const [activeTab, setActiveTab] = useState<InputCostTab>('sku-info');
 
   const isColumnEmpty = (data: SkuRow[], columnName: string) => {
     return data.every((row) => {
@@ -456,6 +466,110 @@ export default function InputCostPage({ params }: Params) {
     }
   };
 
+  const fetchWarehouseData = async () => {
+  const token =
+    typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
+
+  if (!token) return;
+
+  try {
+    setWarehouseLoading(true);
+
+    const response = await fetch(
+      `http://127.0.0.1:5000/uploadWarehouseData?country=${countryName}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setWarehouseData([]);
+      setWarehouseColumns([]);
+      return;
+    }
+
+    const rows = Array.isArray(result?.data) ? result.data : [];
+    const cols = Array.isArray(result?.columns)
+      ? result.columns
+      : rows.length > 0
+      ? Object.keys(rows[0])
+      : [];
+
+    setWarehouseData(rows);
+    setWarehouseColumns(getOrderedWarehouseColumns(cols));
+  } catch (e) {
+    console.error('Failed to fetch warehouse data', e);
+    setWarehouseData([]);
+    setWarehouseColumns([]);
+  } finally {
+    setWarehouseLoading(false);
+  }
+};
+
+  const handleWarehouseUpload = async (file: File) => {
+  const token =
+    typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
+
+  if (!token) {
+    setModalMessage('Authorization token is missing');
+    setShowModal(true);
+    return;
+  }
+
+  try {
+    setWarehouseLoading(true);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('country', countryName);
+
+    const response = await fetch('http://127.0.0.1:5000/uploadWarehouseData', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(result?.error || result?.message || 'Failed to upload warehouse file');
+    }
+
+    const rows = Array.isArray(result?.data) ? result.data : [];
+setWarehouseData(rows);
+
+const cols = Array.isArray(result?.columns)
+  ? result.columns
+  : rows.length > 0
+  ? Object.keys(rows[0])
+  : [];
+
+setWarehouseColumns(getOrderedWarehouseColumns(cols));
+
+    setShowWarehouseUpload(false);
+    setModalMessage(result?.message || 'Warehouse file uploaded successfully');
+    setShowModal(true);
+  } catch (e: any) {
+    setModalMessage(e?.message || 'Failed to upload warehouse file');
+    setShowModal(true);
+  } finally {
+    setWarehouseLoading(false);
+  }
+};
+
+useEffect(() => {
+  if (activeTab === 'extra') {
+    void fetchWarehouseData();
+  }
+}, [activeTab, countryName]);
+
   const renderGrossMarginCell = (row: SkuRow, column: string) => {
     const targetCountry = column.replace('gross_margin_', '');
     const currentPrice =
@@ -661,6 +775,73 @@ if (column === 'product_name') {
     });
   }, [visibleColumns, skuData, isEditing, editedPrices]);
 
+  const tabOptions = useMemo(
+  () => [
+    { value: 'sku-info' as const, label: 'Sku Info' },
+    { value: 'extra' as const, label: 'Extra' },
+  ],
+  []
+);
+
+const getOrderedWarehouseColumns = (cols: string[]) => {
+  const preferredOrder = [
+    's_no',
+    'sku_us',
+    'sku_uk',
+    'local_stock',
+    'in_transit_units',
+    'month',
+    'year',
+  ];
+
+  const preferred = preferredOrder.filter((c) => cols.includes(c));
+  const remaining = cols.filter((c) => !preferredOrder.includes(c));
+
+  return [...preferred, ...remaining];
+};
+
+const getWarehouseHeaderLabel = (col: string) => {
+  switch (col) {
+    case 's_no':
+      return 'S No';
+    case 'sku_us':
+      return 'SKU US';
+    case 'sku_uk':
+      return 'SKU UK';
+    case 'local_stock':
+      return 'Local Stock';
+    case 'in_transit_units':
+      return 'In Transit Units';
+    case 'month':
+      return 'Month';
+    case 'year':
+      return 'Year';
+    default:
+      return col.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+};
+
+const warehouseTableColumns: ColumnDef<Record<string, any>>[] = useMemo(() => {
+  return warehouseColumns.map((col) => ({
+    key: col,
+    header: getWarehouseHeaderLabel(col),
+    width:
+      col === 's_no'
+        ? '70px'
+        : col === 'sku_us' || col === 'sku_uk'
+        ? '120px'
+        : col === 'local_stock' || col === 'in_transit_units'
+        ? '150px'
+        : col === 'month' || col === 'year'
+        ? '110px'
+        : '140px',
+    cellClassName: 'text-center',
+    render: (row) => {
+      const value = row[col];
+      return value === null || value === undefined || value === '' ? '—' : String(value);
+    },
+  }));
+}, [warehouseColumns]);
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error}</div>;
 
@@ -673,70 +854,234 @@ if (column === 'product_name') {
         .gross-margin-na { color: #6c757d; font-style: italic; }
       `}</style>
 
-<div className="flex flex-wrap items-baseline gap-2 justify-start">
-              <PageBreadcrumb
-                pageTitle="Input Cost –"
-                variant="page"
-                align="left"
-                className=""
-              />
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                Amazon {countryName?.toLowerCase() === "global"
-                  ? "Global"
-                  : countryName?.toUpperCase()}
-              </span>
-            </div>
+<div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+  <div className="min-w-0">
+    <div className="flex flex-wrap items-baseline gap-2 justify-start">
+      <PageBreadcrumb
+        pageTitle="Input Cost –"
+        variant="page"
+        align="left"
+        className=""
+      />
+      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+        Amazon {countryName?.toLowerCase() === "global"
+          ? "Global"
+          : countryName?.toUpperCase()}
+      </span>
+    </div>
 
-      {skuData.length > 0 ? (
-        <div className="mt-5">
-          <DataTable<TableRow>
-  columns={columns}
-  data={tableData}
-  loading={loading}
-  paginate={false}
-  pageSize={10}
-  stickyHeader={true}
-  zebra={true}
-  scrollY={false}
-  maxHeight="auto"
-  emptyMessage="No data available"
-  tableClassName="text-sm"
-  className="rounded-xl"
-  rowClassName={(row) =>
-    row.isOthersRow ? 'bg-slate-100 font-semibold cursor-pointer' : ''
-  }
-/>
-        </div>
-      ) : (
-        <p>No data available</p>
-      )}
+    <div className="mt-3">
+      <SegmentedToggle
+        value={activeTab}
+        options={tabOptions}
+        onChange={(val) => setActiveTab(val as InputCostTab)}
+        compact
+        textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+      />
+    </div>
+  </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
-        <div>
-          &nbsp;
-          {isEditing && (
-            <>
-              <button className="styled-button" onClick={saveChanges}>Save Changes</button>
-              &nbsp;
-            </>
-          )}
-          <button className="styled-button" onClick={() => setShowMultiuseCountry(true)}>
-            Re-Upload file
+  <div className="flex flex-wrap items-center gap-3 md:justify-end">
+    {activeTab === 'sku-info' ? (
+      <>
+        {isEditing && (
+          <button className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]" onClick={saveChanges}>
+            Save Changes
           </button>
+        )}
+
+        <button
+         className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+          onClick={() => setShowMultiuseCountry(true)}
+        >
+          Re-Upload file
+        </button>
+
+        <DownloadIconButton onClick={handleDownloadXLSX} size="md" />
+      </>
+    ) : (
+      <button
+        className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
+        onClick={() => setShowWarehouseUpload(true)}
+      >
+        Upload Warehouse File
+      </button>
+    )}
+  </div>
+</div>
+
+           
+
+      {activeTab === 'sku-info' && (
+  <>
+    {skuData.length > 0 ? (
+      <div className="mt-5">
+        <DataTable<TableRow>
+          columns={columns}
+          data={tableData}
+          loading={loading}
+          paginate={false}
+          pageSize={10}
+          stickyHeader={true}
+          zebra={true}
+          scrollY={false}
+          maxHeight="auto"
+          emptyMessage="No data available"
+          tableClassName="text-sm"
+          className="rounded-xl"
+          rowClassName={(row) =>
+            row.isOthersRow ? 'bg-slate-100 font-semibold cursor-pointer' : ''
+          }
+        />
+      </div>
+    ) : (
+      <p className="mt-5">No data available</p>
+    )}
+  </>
+)}
+
+{activeTab === 'extra' && (
+  <div className="mt-5">
+    
+      <div className="mb-2 text-sm font-semibold text-[#414042]">
+        Warehouse Data
+      </div>
+
+    {warehouseLoading ? (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+        Uploading...
+      </div>
+    ) : warehouseData.length > 0 ? (
+      <DataTable<Record<string, any>>
+        columns={warehouseTableColumns}
+        data={warehouseData}
+        paginate={false}
+        stickyHeader
+        scrollY={false}
+        maxHeight="auto"
+        emptyMessage="No warehouse data available"
+        tableClassName="text-sm"
+        className="rounded-xl"
+      />
+    ) : (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+        Upload a warehouse file to view data here.
+      </div>
+    )}
+  </div>
+
+)}
+
+
+{showWarehouseUpload && (
+  <div
+    onClick={() => {
+  setSelectedWarehouseFile(null);
+  setShowWarehouseUpload(false);
+}}
+    className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/50 p-4"
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="relative w-full max-w-xl rounded-xl bg-white shadow-xl"
+    >
+      <button
+        onClick={() => {
+  setSelectedWarehouseFile(null);
+  setShowWarehouseUpload(false);
+}}
+        className="absolute right-4 top-3 text-2xl leading-none text-neutral-500 hover:text-neutral-800"
+        type="button"
+      >
+        &times;
+      </button>
+
+      <div className="border-b border-slate-200 px-6 py-4">
+        <div className="text-lg font-bold text-[#414042]">
+          Upload Warehouse Data
+        </div>
+        <div className="mt-1 text-sm text-slate-500">
+          Upload the warehouse Excel file for{" "}
+          <span className="font-semibold text-[#5EA68E]">
+            {countryName?.toUpperCase()}
+          </span>
+        </div>
+      </div>
+
+      <div className="px-6 py-5">
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5">
+          <div className="text-sm font-medium text-[#414042]">
+            Accepted format
+          </div>
+          <div className="mt-1 text-sm text-slate-500">
+            Please upload an Excel file (.xlsx or .xls)
+          </div>
+
+          <div className="mt-4">
+            <label className="inline-flex cursor-pointer items-center rounded-md bg-[#5EA68E] px-4 py-2 text-sm font-semibold text-yellow-100 hover:opacity-95">
+              Choose File
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  setSelectedWarehouseFile(file);
+                }}
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 rounded-md border border-slate-200 bg-white px-3 py-3 text-sm">
+            {selectedWarehouseFile ? (
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-[#414042]">Selected file</span>
+                <span className="break-all text-slate-600">
+                  {selectedWarehouseFile.name}
+                </span>
+              </div>
+            ) : (
+              <span className="text-slate-400">No file selected</span>
+            )}
+          </div>
         </div>
 
-        <div>
+        <div className="mt-5 flex items-center justify-end gap-3">
           <button
-            onClick={handleDownloadXLSX}
-            className="bg-white border border-[#8B8585] px-1 rounded-sm py-1"
-            style={{
-              boxShadow: "0px 4px 4px 0px #00000040",
+            type="button"
+            onClick={() => {
+              setSelectedWarehouseFile(null);
+              setShowWarehouseUpload(false);
             }}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            <IoDownload size={27} />
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!selectedWarehouseFile) {
+                setModalMessage('Please select a file first');
+                setShowModal(true);
+                return;
+              }
+              void handleWarehouseUpload(selectedWarehouseFile);
+            }}
+            className="rounded-md bg-[#5EA68E] px-4 py-2 text-sm font-semibold text-yellow-100 hover:opacity-95 disabled:opacity-60"
+            disabled={warehouseLoading}
+          >
+            {warehouseLoading ? 'Uploading...' : 'Upload File'}
           </button>
         </div>
       </div>
+    </div>
+  </div>
+)}
+
+
+
+     
 
       {showMultiuseCountry && (
         <div
@@ -751,7 +1096,7 @@ if (column === 'product_name') {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            zIndex: 1000,
+            zIndex: 9999,
           }}
         >
           <div
