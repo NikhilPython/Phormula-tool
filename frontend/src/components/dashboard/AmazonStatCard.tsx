@@ -25,7 +25,7 @@ export default function AmazonStatCard({
   formatter = fmtGBP,
    previousFormatter = formatter,
   bottomLabel,
-  className = "",
+  className = "text-charcoal-500",
   deltaPct,
   inverseDelta
 }: AmazonStatCardProps) {

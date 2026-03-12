@@ -4350,7 +4350,7 @@ export default function DashboardPage() {
             formatter: formatDisplayAmount,
             previousFormatter: formatDisplayAmount,
             bottomLabel: "Last Month",
-            className: "bg-white border-[#8B5CF6] border-t-4 border-t-[#8B5CF6]",
+            className: "bg-white border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
         },
         {
             label: "Target Trend",
@@ -4360,7 +4360,7 @@ export default function DashboardPage() {
             loading: loading,
             formatter: fmtPct,
             bottomLabel: "Last Month",
-            className: "bg-white border-[#10B981] border-t-4 border-t-[#10B981]",
+            className: "bg-white border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
         },
     ];
 
