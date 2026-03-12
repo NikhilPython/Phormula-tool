@@ -50,6 +50,7 @@ import * as XLSX from "xlsx-js-style";
 import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCurrentInventoryData";
 import Alert from "@/components/ui/alert/Alert";
 import { ApiResponse } from "@/components/businessInsight/types";
+import DashboardStickyKpis from "./DashboardStickyKpis";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     asp: "Average Selling Price",
@@ -132,6 +133,9 @@ type FetchLiveBiPayloadArgs = {
     endDay?: number | null;
     generateInsights?: boolean;
 };
+
+
+
 
 /* ===================== ENV & ENDPOINTS ===================== */
 const baseURL =
@@ -2511,7 +2515,6 @@ export default function DashboardPage() {
         return c - p;
     };
 
-
     /* ===================== ✅ RANGE KPIs FOR CARDS (FROM SAME BI DATA AS GRAPH) ===================== */
     useEffect(() => {
         const pts = biDailySeriesHome?.current_mtd || [];
@@ -3783,6 +3786,9 @@ export default function DashboardPage() {
             item.sku === "GRAND_TOTAL"
     );
 
+
+
+
     const ads_spend = grandTotalRow?.ads_spend ?? 0;
     const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
     const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
@@ -4028,29 +4034,6 @@ export default function DashboardPage() {
         [labels]
     );
 
-    const valuesWithAds = useMemo(() => {
-        if (adsIdx === -1) return values;
-        const copy = [...values];
-        copy[adsIdx] = Number(adsSpendTotal ?? 0);
-        return copy;
-    }, [adsIdx, values, adsSpendTotal]);
-
-    // ✅ SAFE: only apply prev replacement if you actually have a number
-    const prevValuesWithAds = useMemo(() => {
-        if (adsIdx === -1) return prevValues;
-
-        // Put your prev ads var here ONLY if it exists, else keep prevValues unchanged
-        const prevAds = undefined as unknown as number; // <-- replace if you have one (or leave as undefined)
-
-        if (!Number.isFinite(Number(prevAds))) return prevValues;
-
-        const copy = [...prevValues];
-        copy[adsIdx] = Number(prevAds);
-        return copy;
-    }, [adsIdx, prevValues]);
-
-
-    // indexes for the 3 bars we want to override
     const idxAds = useMemo(() => labels.findIndex((l) => l === "Advertisements"), [labels]);
     const idxOthers = useMemo(() => labels.findIndex((l) => l === "Others"), [labels]);
     const idxCm2 = useMemo(() => labels.findIndex((l) => l === "CM2 Profit"), [labels]);
@@ -4073,7 +4056,6 @@ export default function DashboardPage() {
     const targetKpisFromBi = useMemo(() => {
         if (!rangeActive || !liveBiPayload) return null;
 
-        // TODO: Replace these keys with your real /live-bi fields:
         return {
             todayHome: liveBiPayload.today_sales_home ?? 0,
             mtdHome: liveBiPayload.period_sales_home ?? 0, // range total (or MTD if no range)
@@ -4199,6 +4181,190 @@ export default function DashboardPage() {
     }, [activeTab, pendingHash]);
 
 
+
+
+    const stickyKpiItems = [
+        {
+            label: "Units",
+            current: useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0),
+            previous: useBiForAmazonCards ? biCardKpis.prev.units : prev.quantity,
+            deltaPct: useBiForAmazonCards ? biCardKpis.deltas.units : deltas.quantityPct,
+            loading: loading || biLoading,
+            formatter: fmtInt,
+            bottomLabel: prevLabel,
+            className: "bg-white border-[#FDD36F] border-t-4 border-t-[#FDD36F]",
+        },
+        {
+            label: "Net Sales",
+            current:
+                showLiveBI && rangeActive
+                    ? biCardKpis.curr.netSales
+                    : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency),
+            previous:
+                showLiveBI && rangeActive
+                    ? biCardKpis.prev.netSales
+                    : convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency),
+            deltaPct: useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct,
+            loading: loading || biLoading,
+            formatter: moneyPerUnitFormatter,
+            previousFormatter: formatDisplayAmount,
+            bottomLabel: prevLabel,
+            className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
+        },
+        {
+            label: "ASP",
+            current:
+                showLiveBI && rangeActive
+                    ? biCardKpis.curr.asp
+                    : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency),
+            previous:
+                showLiveBI && rangeActive
+                    ? biCardKpis.prev.asp
+                    : convertToDisplayCurrency(prev.asp ?? 0, amazonDataCurrency),
+            deltaPct: useBiForAmazonCards ? biCardKpis.deltas.asp : deltas.aspPct,
+            loading: loading || biLoading,
+            formatter: formatDisplayAmount,
+            bottomLabel: prevLabel,
+            className: "bg-white border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
+        },
+        {
+            label: "Cost of Ads",
+            current: useBiForAmazonCards
+                ? cm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_current_advertising ?? 0,
+                        biSourceCurrency
+                    )
+                    : 0
+                : adsSpendTotal,
+            previous: useBiForAmazonCards
+                ? cm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_previous_advertising ?? 0,
+                        biSourceCurrency
+                    )
+                    : 0
+                : amazonPrevAdsDisp,
+            deltaPct: useBiForAmazonCards
+                ? cm2Ready
+                    ? safeDeltaPct(
+                        convertToDisplayCurrency(
+                            biAlignedTotals?.total_current_advertising ?? 0,
+                            biSourceCurrency
+                        ),
+                        convertToDisplayCurrency(
+                            biAlignedTotals?.total_previous_advertising ?? 0,
+                            biSourceCurrency
+                        )
+                    )
+                    : null
+                : amazonAdsDeltaPct,
+            loading: loading || (useBiForAmazonCards ? biLoading : false),
+            formatter: (v: any) =>
+                renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
+            previousFormatter: formatDisplayAmount,
+            bottomLabel: prevLabel,
+            className: "bg-white border-[#C49466] border-t-4 border-t-[#C49466]",
+        },
+        {
+            label: "TACoS",
+            current: useBiForAmazonCards
+                ? cm2Ready
+                    ? (() => {
+                        const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                        const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                        return sales > 0 ? (ads / sales) * 100 : 0;
+                    })()
+                    : 0
+                : amazonCurrRoasPct,
+            previous: useBiForAmazonCards
+                ? cm2Ready
+                    ? (() => {
+                        const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                        const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                        return sales > 0 ? (ads / sales) * 100 : 0;
+                    })()
+                    : 0
+                : amazonPrevRoasPct,
+            deltaPct: useBiForAmazonCards
+                ? cm2Ready
+                    ? deltaPctAbs(
+                        (() => {
+                            const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                            const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                            return sales > 0 ? (ads / sales) * 100 : 0;
+                        })(),
+                        (() => {
+                            const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                            const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                            return sales > 0 ? (ads / sales) * 100 : 0;
+                        })()
+                    )
+                    : null
+                : deltaPctAbs(amazonCurrRoasPct, amazonPrevRoasPct),
+            inverseDelta: true,
+            loading: loading || (useBiForAmazonCards ? biLoading : false),
+            formatter: fmtPct2,
+            bottomLabel: prevLabel,
+            className: "bg-white border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
+        },
+        {
+            label: "CM2 Profit",
+            current: useBiCm2
+                ? cm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                        rangeCurrency
+                    )
+                    : 0
+                : cm2Profit,
+            previous: useBiCm2
+                ? cm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_previous_profit_cm2 ?? 0,
+                        rangeCurrency
+                    )
+                    : 0
+                : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency),
+            deltaPct: useBiCm2
+                ? cm2Ready
+                    ? safeDeltaPct(
+                        biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                        biAlignedTotals?.total_previous_profit_cm2 ?? 0
+                    )
+                    : null
+                : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0),
+            loading: loading || (useBiCm2 ? biLoading : false),
+            formatter: (v: any) =>
+                renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
+            previousFormatter: formatDisplayAmount,
+            bottomLabel: prevLabel,
+            className: "bg-white border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
+        },
+        {
+            label: "Target",
+            current: stats_targetHome ?? 0,
+            previous: targets_lastMonthTotalHome ?? 0,
+            deltaPct: safeDeltaPct(stats_targetHome ?? 0, targets_lastMonthTotalHome ?? 0),
+            loading: loading,
+            formatter: formatDisplayAmount,
+            previousFormatter: formatDisplayAmount,
+            bottomLabel: "Last Month",
+            className: "bg-white border-[#8B5CF6] border-t-4 border-t-[#8B5CF6]",
+        },
+        {
+            label: "Target Trend",
+            current: stats_targetTrendPct ?? 0,
+            previous: 0,
+            deltaPct: null,
+            loading: loading,
+            formatter: fmtPct,
+            bottomLabel: "Last Month",
+            className: "bg-white border-[#10B981] border-t-4 border-t-[#10B981]",
+        },
+    ];
+
+
     return (
         <div className="relative w-full">
             <HashScroll offset={80} />
@@ -4266,6 +4432,10 @@ export default function DashboardPage() {
                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
                 />
             </div>
+
+            {["summary", "productwise", "inventory"].includes(activeTab) && (
+                <DashboardStickyKpis items={stickyKpiItems} />
+            )}
 
             {/* Top 5 alerts */}
             {/* <div className="my-2 md:my-4 space-y-3">
