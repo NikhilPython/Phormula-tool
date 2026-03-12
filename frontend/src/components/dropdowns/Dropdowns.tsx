@@ -1676,29 +1676,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setActiveTab("graphs");
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+ useEffect(() => {
+  if (typeof window === "undefined") return;
 
-    const applyHash = () => {
-      const hash = window.location.hash.replace("#", "");
-      if (!hash) return;
+  const applyHash = (rawHash?: string) => {
+    const hash = (rawHash ?? window.location.hash).replace("#", "");
+    if (!hash) return;
 
-      const targetTab = HASH_TO_FINANCE_TAB[hash];
-      if (!targetTab) return;
+    const targetTab = HASH_TO_FINANCE_TAB[hash];
+    if (!targetTab) return;
 
-      setPendingHash(hash);
+    setPendingHash(hash);
+    setActiveTab(targetTab);
+  };
 
-      setActiveTab((prev) => {
-        if (prev === targetTab) return prev;
-        return targetTab;
-      });
-    };
+  const onHashChange = () => {
+    applyHash(window.location.hash);
+  };
 
-    applyHash();
-    window.addEventListener("hashchange", applyHash);
+  const onCustomHashNavigate = (event: Event) => {
+    const customEvent = event as CustomEvent<{ hash?: string }>;
+    if (!customEvent.detail?.hash) return;
+    applyHash(`#${customEvent.detail.hash}`);
+  };
 
-    return () => window.removeEventListener("hashchange", applyHash);
-  }, []);
+  applyHash(window.location.hash);
+
+  window.addEventListener("hashchange", onHashChange);
+  window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+
+  return () => {
+    window.removeEventListener("hashchange", onHashChange);
+    window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+  };
+}, []);
 
   useEffect(() => {
     if (!pendingHash) return;

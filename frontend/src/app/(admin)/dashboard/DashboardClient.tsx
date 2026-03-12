@@ -4107,14 +4107,12 @@ export default function DashboardPage() {
     type TopTab =
         | "live"
         | "summary"
-        // | "mtd_pl"
         | "productwise"
         | "inventory";
 
     const TOP_TABS: { id: TopTab; label: string }[] = [
         { id: "live", label: "Live Sales" },
         { id: "summary", label: "AI Insights and Recommendations" },
-        // { id: "mtd_pl", label: "MTD P&L Breakdown" },
         { id: "productwise", label: "P&L Productwise Breakdown" },
         { id: "inventory", label: "Current Inventory" },
     ];
@@ -4122,7 +4120,7 @@ export default function DashboardPage() {
     const HASH_TO_TAB: Record<string, TopTab> = {
         "live-sales": "live",
         "ai-insights": "summary",
-        "mtd-pl": "productwise",
+        // "mtd-pl": "productwise",
         "pnl-mtd": "productwise",
         "current-inventory": "inventory",
     };
@@ -4148,69 +4146,60 @@ export default function DashboardPage() {
         }, 120);
     }, []);
 
-    const handleHashNavigation = useCallback(
-        (hash?: string) => {
-            if (typeof window === "undefined") return;
+    const handleHashNavigation = useCallback((rawHash?: string) => {
+        if (typeof window === "undefined") return;
 
-            const rawHash = hash ?? window.location.hash;
-            if (!rawHash) return;
+        const hash = (rawHash ?? window.location.hash).replace("#", "");
+        if (!hash) return;
 
-            const id = rawHash.replace("#", "");
-            const nextTab = HASH_TO_TAB[id];
+        const targetTab = HASH_TO_TAB[hash];
+        if (!targetTab) return;
 
-            if (nextTab && nextTab !== activeTab) {
-                setActiveTab(nextTab);
-                return; // scrolling will happen in the next effect after tab changes
-            }
-
-            scrollToHashSection(rawHash);
-        },
-        [activeTab, scrollToHashSection, setActiveTab]
-    );
+        setPendingHash(hash);
+        setActiveTab(targetTab);
+    }, []);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
 
-        const applyHash = () => {
-            const hash = window.location.hash.replace("#", "");
-            if (!hash) return;
-
-            const targetTab = HASH_TO_TAB[hash];
-
-            if (targetTab) {
-                setPendingHash(hash);
-                setActiveTab(targetTab);
-                return;
-            }
-
-            const el = document.getElementById(hash);
-            if (el) {
-                el.scrollIntoView({ behavior: "smooth", block: "start" });
-            }
+        const onHashChange = () => {
+            handleHashNavigation(window.location.hash);
         };
 
-        applyHash();
-        window.addEventListener("hashchange", applyHash);
+        const onCustomHashNavigate = (event: Event) => {
+            const customEvent = event as CustomEvent<{ hash?: string }>;
+            if (!customEvent.detail?.hash) return;
+            handleHashNavigation(`#${customEvent.detail.hash}`);
+        };
 
-        return () => window.removeEventListener("hashchange", applyHash);
-    }, []);
+        handleHashNavigation(window.location.hash);
+
+        window.addEventListener("hashchange", onHashChange);
+        window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+
+        return () => {
+            window.removeEventListener("hashchange", onHashChange);
+            window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+        };
+    }, [handleHashNavigation]);
 
     useEffect(() => {
         if (!pendingHash) return;
 
-        const el = document.getElementById(pendingHash);
-        if (!el) return;
-
         const timer = setTimeout(() => {
-            el.scrollIntoView({
-                behavior: "smooth",
-                block: "start",
-            });
+            const el = document.getElementById(pendingHash);
+            if (el) {
+                el.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                });
+            }
             setPendingHash("");
-        }, 120);
+        }, 250);
 
         return () => clearTimeout(timer);
     }, [activeTab, pendingHash]);
+
 
     return (
         <div className="relative w-full">

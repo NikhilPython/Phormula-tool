@@ -855,13 +855,37 @@ const AppSidebar: React.FC = () => {
                             key={idx}
                             href={resolvedPath}
                             onClick={async (e) => {
-                              if (!subItem.onClick) return;
-                              e.preventDefault();
-                              try {
-                                await subItem.onClick();
-                              } catch (err) {
-                                console.error(err);
-                                router.push(resolvedPath);
+                              const targetUrl = resolvedPath;
+                              const [targetPathOnly, targetHash = ""] = targetUrl.split("#");
+                              const currentPathOnly = pathname;
+
+                              // custom handler first
+                              if (subItem.onClick) {
+                                e.preventDefault();
+                                try {
+                                  await subItem.onClick();
+                                } catch (err) {
+                                  console.error(err);
+                                  router.push(resolvedPath);
+                                }
+                                return;
+                              }
+
+                              // ✅ same page, only hash changed
+                              if (targetHash && targetPathOnly === currentPathOnly) {
+                                e.preventDefault();
+
+                                // update hash manually
+                                window.history.pushState(null, "", `#${targetHash}`);
+
+                                // notify page explicitly
+                                window.dispatchEvent(
+                                  new CustomEvent("page-hash-navigate", {
+                                    detail: { hash: targetHash },
+                                  })
+                                );
+
+                                return;
                               }
                             }}
                             className={`block rounded transition-colors
