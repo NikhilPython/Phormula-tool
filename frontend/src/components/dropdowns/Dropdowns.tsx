@@ -595,7 +595,7 @@ const metricColors = [
   "border border-[#75BBDA] border-t-[#75BBDA]",
   "border border-[#B75A5A] border-t-[#B75A5A]",
   "border border-[#7B9A6D] border-t-[#7B9A6D]",
-  "border border-[#2DA49A] border-t-[#2DA49A]",
+  "border border-[#C49466] border-t-[#C49466]",
 ];
 
 const metricOrder = [

@@ -127,8 +127,8 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       cm1_profit: "#7B9A6D",
       units_sold: "#FDD36F",
       asp: "#B75A5A",
-      sales_mix: "#db2777",
-      profit_mix: "#0891b2",
+      sales_mix: "#3A8EA4",
+      profit_mix: "#ED9F50",
     };
 
     return colors[metric] || "#6b7280";
@@ -809,11 +809,11 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               {activeTab === "mix" && (
                 <>
                   <div className="flex items-center gap-2">
-                    <span className="h-0 w-9 border-t-2 border-[#75BBDA]" />
+                    <span className="h-0 w-9 border-t-2 border-[#3A8EA4]" />
                     <span>Sales Mix</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="h-0 w-9 border-t-2 border-[#7B9A6D]" />
+                    <span className="h-0 w-9 border-t-2 border-[#ED9F50]" />
                     <span>Profit Mix</span>
                   </div>
                 </>

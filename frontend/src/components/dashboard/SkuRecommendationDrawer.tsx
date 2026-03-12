@@ -65,11 +65,11 @@ type Props = {
 };
 
 const metricColors = [
-  "border-t-[#FDD36F]",
-  "border-t-[#75BBDA]",
-  "border-t-[#B75A5A]",
-  "border-t-[#7B9A6D]",
-  "border-t-[#2DA49A]",
+  "border border-[#FDD36F] border-t-[#FDD36F]",
+  "border border-[#75BBDA] border-t-[#75BBDA]",
+  "border border-[#B75A5A] border-t-[#B75A5A]",
+  "border border-[#7B9A6D] border-t-[#7B9A6D]",
+  "border border-[#C49466] border-t-[#C49466]",
 ];
 
 const metricOrder = [
