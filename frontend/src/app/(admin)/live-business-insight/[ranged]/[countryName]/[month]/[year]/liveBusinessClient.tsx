@@ -714,7 +714,6 @@ export default function LiveBusinessClient({
         },
       });
 
-      console.log('live_mtd_bi response:', res.data);
 
       const newPeriods = res.data.periods || null;
       const rawCat = res.data.categorized_growth || {
@@ -2841,7 +2840,6 @@ export default function LiveBusinessClient({
       b.toLowerCase().includes("business experienced")
     ) ||
     overallSummary[overallSummary.length - 1]; // safe fallback
-  console.log("123", overallSummary, recommendedActions, skuInsights);
 
   const ObjectiveCards = ({
     objective,

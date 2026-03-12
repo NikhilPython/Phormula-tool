@@ -533,53 +533,6 @@ const AppSidebar: React.FC = () => {
         },
       ],
     },
-
-    // {
-    //   key: "finance-dashboards",
-    //   name: "FINANCE DASHBOARDS",
-    //   icon: <LuLayoutDashboard className={iconSize} />,
-    //   subItems: [
-    //     {
-    //       name: "P&L Dashboard",
-    //       path: ({ ranged, countryName, month, year }) =>
-    //         `/pnl-dashboard/${ranged}/${countryName}/${month}/${year}`,
-    //     },
-    //     {
-    //       name: "Business Summary",
-    //       path: ({ ranged, countryName, month, year }) =>
-    //         `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
-    //           countryName
-    //         )}/${encodeURIComponent(month)}/${encodeURIComponent(
-    //           year
-    //         )}#business-summary`,
-    //     },
-    //     {
-    //       name: "Cash Flow",
-    //       path: ({ countryName, month, year }) =>
-    //         `/cashflow/${encodeURIComponent(countryName)}/${encodeURIComponent(
-    //           month
-    //         )}/${encodeURIComponent(year)}`,
-    //     },
-    //     {
-    //       name: "SKU wise Profit",
-    //       path: (params: {
-    //         productname?: string;
-    //         countryName: string;
-    //         month: string;
-    //         year: string;
-    //       }) =>
-    //         `/skuwiseprofit/${params.productname ?? "Classic"}/${params.countryName}/${params.month}/${params.year}`,
-    //     },
-    //     {
-    //       name: "Expense Reconcilliation",
-    //       path: ({ countryName, month, year }) =>
-    //         `/expense-reconciliation/${encodeURIComponent(
-    //           countryName
-    //         )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
-    //     },
-    //   ],
-    // },
-
     {
       key: "finance-dashboards",
       name: "FINANCE DASHBOARDS",
@@ -595,15 +548,6 @@ const AppSidebar: React.FC = () => {
             )}#finance-dashboard`,
         },
         {
-          name: "AI Insights",
-          path: ({ ranged, countryName, month, year }) =>
-            `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
-              countryName
-            )}/${encodeURIComponent(month)}/${encodeURIComponent(
-              year
-            )}#ai-insights`,
-        },
-        {
           name: "P&L Breakdown",
           path: ({ ranged, countryName, month, year }) =>
             `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
@@ -612,6 +556,7 @@ const AppSidebar: React.FC = () => {
               year
             )}#pnl-breakdown`,
         },
+
         {
           name: "Cash Flow",
           path: ({ ranged, countryName, month, year }) =>
@@ -628,15 +573,19 @@ const AppSidebar: React.FC = () => {
               countryName
             )}/${encodeURIComponent(month)}/${encodeURIComponent(
               year
-            )}#productwise-performance`,
+            )}#skuwise-profit`,
         },
         {
-          name: "Expense Reconcilliation",
-          path: ({ countryName, month, year }) =>
-            `/expense-reconciliation/${encodeURIComponent(
+          name: "AI Insights",
+          path: ({ ranged, countryName, month, year }) =>
+            `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
               countryName
-            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#ai-insights`,
         },
+
+
       ],
     },
 
@@ -657,10 +606,10 @@ const AppSidebar: React.FC = () => {
           name: "AI Insights",
           path: `/ai-insight/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
-        {
-          name: "Chatbot",
-          path: `/chatbot/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
+        // {
+        //   name: "Chatbot",
+        //   path: `/chatbot/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+        // },
         {
           name: "Inventory Forecast",
           path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
@@ -700,6 +649,13 @@ const AppSidebar: React.FC = () => {
         {
           name: "Purchase Order (PO) Planning",
           path: `/purchase-order/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+        },
+        {
+          name: "Expense Reconcilliation",
+          path: ({ countryName, month, year }) =>
+            `/expense-reconciliation/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
         },
       ],
     },

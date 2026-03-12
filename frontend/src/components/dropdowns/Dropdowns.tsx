@@ -1587,32 +1587,32 @@ type FocusedChart = "trend" | "pnl" | null;
 
 type DashboardTab =
   | "graphs"
-  | "businessSummary"
   | "skuBreakdown"
-  | "productwisePerformance"
-  | "cashFlow";
+  | "cashFlow"
+  | "skuwiseProfit"
+  | "businessSummary";
 
 const TAB_LABELS: Record<DashboardTab, string> = {
   graphs: "Finance Dashboard",
-  businessSummary: "AI Insights & Recommendations",
   skuBreakdown: "P&L Breakdown",
-  productwisePerformance: "Productwise Performance",
   cashFlow: "Cash Flow",
+  skuwiseProfit: "SKU wise Profit",
+  businessSummary: "AI Insights & Recommendations",
 };
 
 const TAB_OPTIONS: { value: DashboardTab; label: string }[] = [
   { value: "graphs", label: TAB_LABELS.graphs },
-  { value: "businessSummary", label: TAB_LABELS.businessSummary },
   { value: "skuBreakdown", label: TAB_LABELS.skuBreakdown },
-  { value: "productwisePerformance", label: TAB_LABELS.productwisePerformance },
   { value: "cashFlow", label: TAB_LABELS.cashFlow },
+  { value: "skuwiseProfit", label: TAB_LABELS.skuwiseProfit },
+  { value: "businessSummary", label: TAB_LABELS.businessSummary },
 ];
 
 const HASH_TO_FINANCE_TAB: Record<string, DashboardTab> = {
   "finance-dashboard": "graphs",
   "ai-insights": "businessSummary",
   "pnl-breakdown": "skuBreakdown",
-  "productwise-performance": "productwisePerformance",
+  "skuwise-profit": "skuwiseProfit",
   "cash-flow": "cashFlow",
 };
 
@@ -1742,7 +1742,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       graphs: disabled,
       businessSummary: disabled,
       skuBreakdown: disabled,
-      productwisePerformance: disabled,
+      skuwiseProfit: disabled,
       cashFlow: disabled,
     };
   }, [allDropdownsSelected]);
@@ -1870,7 +1870,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const first = topData?.rows?.[0];
     return first?.product_name?.trim() || "";
   }, [topData]);
-
+  
   useEffect(() => {
     setShowNoDataOverlay(false);
     setFocusedChart(null);
@@ -1933,9 +1933,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     allDropdownsSelected && uploadsData?.summary
       ? uploadsData.summary
       : zeroData;
-
-
-  console.log("🔍 displayData:", displayData);
 
   // range: "monthly" | "quarterly" | "yearly"
   const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
@@ -2343,24 +2340,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return nonBg / height;
     };
 
-    // Trim top/bottom by density
     let top = 0;
     while (top < height && rowContentRatio(top) < minContentRatio) top++;
 
     let bottom = height - 1;
     while (bottom >= 0 && rowContentRatio(bottom) < minContentRatio) bottom--;
 
-    // Trim left/right by density
     let left = 0;
     while (left < width && colContentRatio(left) < minContentRatio) left++;
 
     let right = width - 1;
     while (right >= 0 && colContentRatio(right) < minContentRatio) right--;
 
-    // If nothing meaningful found, return original
     if (right <= left || bottom <= top) return { base64: raw, w: img.width, h: img.height };
 
-    // Apply pad
     left = Math.max(0, left - pad);
     top = Math.max(0, top - pad);
     right = Math.min(width - 1, right + pad);
@@ -2385,52 +2378,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
-  const toJpegBase64 = async (
-    base64: string,
-    quality = 0.98,
-    opts?: { scale?: number; bg?: string }
-  ): Promise<{ base64: string; w: number; h: number }> => {
-    const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
-
-    // allow passing either png or jpeg data (we always load as image/*)
-    const img = new Image();
-    img.src = base64.startsWith("data:image/")
-      ? base64
-      : `data:image/png;base64,${raw}`;
-
-    await new Promise<void>((res, rej) => {
-      img.onload = () => res();
-      img.onerror = () => rej(new Error("Failed to load image for JPEG conversion"));
-    });
-
-    const scale = opts?.scale ?? 1;          // ✅ upscale to reduce Excel seams
-    const bg = opts?.bg ?? "#FFFFFF";        // ✅ solid bg
-
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(img.width * scale));
-    canvas.height = Math.max(1, Math.round(img.height * scale));
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return { base64: raw, w: img.width, h: img.height };
-
-    // ✅ high quality scaling
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-
-    // ✅ solid white background
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-    return {
-      base64: canvas.toDataURL("image/jpeg", quality).split("base64,")[1],
-      w: canvas.width,
-      h: canvas.height,
-    };
-  };
-
-  const handleDownloadSkuSheet1 = async () => {
+   const handleDownloadSkuSheet1 = async () => {
     try {
       const wb = new ExcelJS.Workbook();
       const wsSku = wb.addWorksheet("SKU Profitability");
@@ -2456,7 +2404,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
-
   useEffect(() => {
     if (range === "monthly") {
       setAllDropdownsSelected(!!selectedMonth && !!selectedYear);
@@ -2476,13 +2423,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const body = document.body;
 
     if (showNoDataOverlay) {
-      body.style.overflow = "hidden"; // lock both X/Y scroll
+      body.style.overflow = "hidden"; 
     } else {
-      body.style.overflow = ""; // restore default
+      body.style.overflow = ""; 
     }
 
     return () => {
-      body.style.overflow = ""; // cleanup on unmount
+      body.style.overflow = "";
     };
   }, [showNoDataOverlay]);
 
@@ -2517,7 +2464,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               : "ALL";
 
         const url = new URL(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history` // 🔁 replace with your actual endpoint
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history` 
         );
 
         url.searchParams.set("country", countryName);
@@ -2584,7 +2531,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
         const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`);
 
-        // ✅ Only send homeCurrency for GLOBAL
         if (countryName.toLowerCase() === "global" && homeCurrency) {
           url.searchParams.set("homeCurrency", homeCurrency);
         }
@@ -2609,21 +2555,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
         const filtered = rows.filter((r) => {
           const c = (r.country || "").toLowerCase();
-
           if (isGlobal) {
             if (isUsd) return c === "global" || c === "global_usd";
             return c === `global_${normalizedHomeCurrency}`;
           }
-
           return c === countryName.toLowerCase();
         });
-
         setGraphPageUploads(filtered);
-
-        // ✅ If you already have userData in parent, prefer that:
-        // setGraphPageUserMeta({ company_name: userData?.company_name, brand_name: userData?.brand_name });
-
-        // Otherwise if API returns it:
         setGraphPageUserMeta(json?.userMeta ?? null);
       } catch (e: any) {
         setGraphPageUploads([]);
@@ -2636,18 +2574,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     fetchGraphPageUploads();
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency]);
 
-
-  const goBack = () => router.push("/pnl-dashboard/QTD/global/NA/NA");
-
   if (month === "NA" || year === "NA") {
     return <IntegrationDashboard />;
   }
 
-  /* 🌟 Initial fullscreen loader for this page */
   const hasAnyContent = !!uploadsData?.summary;
   const initialLoading = loading && !hasAnyContent;
-
-
 
   if (initialLoading) {
     return (
@@ -2655,7 +2587,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     );
   }
 
-  // 🔹 4) TITLE HELPERS FOR THE OVERLAY
   const capitalizeFirstLetter = (str: string) =>
     str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 
@@ -2680,7 +2611,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return `${capitalizeFirstLetter(range)} Tracking Profitability - ${selectedYear}`;
   };
 
-
   const getCountryLabel = () => {
     const c = (countryName || "").toLowerCase();
     return c === "global" ? "GLOBAL" : (countryName || "").toUpperCase();
@@ -2688,7 +2618,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const getPeriodLabelShort = () => {
     const yy = String(selectedYear || "").slice(-2);
-
     if (range === "monthly" && selectedMonth && selectedYear) {
       return `${convertToAbbreviatedMonth(selectedMonth)}'${yy}`;
     }
@@ -2701,27 +2630,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return "";
   };
 
-  const getPnLTitleParts = () => {
-    return {
-      country: getCountryLabel(),
-      period: getPeriodLabelShort(),
-    };
-  };
-
-
   const getTrendWrapperHeight = () => {
     if (focusedChart === "trend") return "h-[50vh]";
-    // monthly stays perfect
     if (range === "monthly") return "h-[360px]";
-    // restore previous intended size for quarterly/yearly
     return "h-[375px] 2xl:h-[500px]";
   };
 
   return (
     <div ref={layoutRef} className="space-y-3 relative">
-      {/* ===================== STICKY HEADER (EXISTING) ===================== */}
       <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4 ">
-        {/* LEFT: Title + Subtitle */}
         <div className="flex flex-col leading-tight w-full md:w-auto ">
           <div className="flex items-baseline gap-2">
             <PageBreadcrumb pageTitle="Financial Metrics -" variant="page" align="left" textSize="2xl" />
@@ -2735,7 +2652,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           </p>
         </div>
 
-        {/* RIGHT: Filters */}
         <div className="flex w-full mb-2 sm:mb-0 md:w-auto justify-start md:justify-end">
           <PeriodFiltersTable
             range={range === "" ? "yearly" : (range as "monthly" | "quarterly" | "yearly")}
@@ -2771,632 +2687,632 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
       {/* If you want summary cards ALWAYS visible regardless of tab, keep this block here */}
-      
+
       {activeTab !== "cashFlow" && (
-      <div className="flex flex-col gap-5 w-full mt-4">
-        {/* Summary Cards */}
-        {uploadsData?.summary &&
-          (() => {
-            const summary = displayData;
-            const netSales = summary.total_sales;
+        <div className="flex flex-col gap-5 w-full mt-4">
+          {/* Summary Cards */}
+          {uploadsData?.summary &&
+            (() => {
+              const summary = displayData;
+              const netSales = summary.total_sales;
 
 
-            // ✅ comparisons (camelCase OR snake_case)
-            const rawComparisons =
-              (uploadsData as any).summaryComparisons ??
-              (uploadsData as any).summary_comparisons;
+              // ✅ comparisons (camelCase OR snake_case)
+              const rawComparisons =
+                (uploadsData as any).summaryComparisons ??
+                (uploadsData as any).summary_comparisons;
 
-            const comparisons: SummaryComparisons | undefined = rawComparisons
-              ? (rawComparisons as SummaryComparisons)
-              : undefined;
+              const comparisons: SummaryComparisons | undefined = rawComparisons
+                ? (rawComparisons as SummaryComparisons)
+                : undefined;
 
-            const formatMoney = (val: number, opts?: { showPlus?: boolean }) => {
-              const num = Number(val || 0);
-              const sign = num < 0 ? "-" : opts?.showPlus && num > 0 ? "+" : "";
-              const abs = Math.abs(num);
+              const formatMoney = (val: number, opts?: { showPlus?: boolean }) => {
+                const num = Number(val || 0);
+                const sign = num < 0 ? "-" : opts?.showPlus && num > 0 ? "+" : "";
+                const abs = Math.abs(num);
 
-              return `${sign}${currencySymbol}${abs.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}`;
-            };
-
-
-            // ✅ Cost of Ads
-            const costOfAds = summary.advertising_total ?? 0;
-
-            // ✅ "ROAS" as you defined: (Cost of Ads / Net Sales) * 100
-            const getRoas = (s?: Summary) => {
-              const ns = s?.total_sales ?? 0;            // net sales
-              const ads = s?.advertising_total ?? 0;     // cost of ads
-              return ns > 0 ? (ads / ns) * 100 : 0;
-            };
-
-
-            const roas = getRoas(summary);
-
-            const formatRoas = (val: number) =>
-              `${val.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}%`;
-
-            const buildTacosComparisonRows = () => {
-              const yNum = Number(selectedYear);
-
-              const label =
-                range === "monthly"
-                  ? selectedMonth && yNum
-                    ? getPrevMonthLabel(selectedMonth, yNum)
-                    : "Prev month"
-                  : range === "quarterly"
-                    ? selectedQuarter && yNum
-                      ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                      : "Prev quarter"
-                    : yNum
-                      ? getPrevYearLabel(yNum)
-                      : "Prev year";
-
-              const prevVal =
-                range === "monthly"
-                  ? comparisons?.lastMonth
-                    ? getRoas(comparisons.lastMonth)
-                    : undefined
-                  : range === "quarterly"
-                    ? comparisons?.lastQuarter
-                      ? getRoas(comparisons.lastQuarter)
-                      : undefined
-                    : comparisons?.lastYear
-                      ? getRoas(comparisons.lastYear)
-                      : undefined;
-
-              const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-              const delta = hasPrev ? roas - prevVal! : null;
-
-              const deltaClassName =
-                typeof delta === "number"
-                  ? delta > 0
-                    ? "text-red-600"       // higher TACoS worse
-                    : delta < 0
-                      ? "text-emerald-600" // lower TACoS better
-                      : "text-gray-400"
-                  : "text-gray-400";
-
-              const arrow =
-                typeof delta === "number"
-                  ? delta > 0
-                    ? "▼"
-                    : delta < 0
-                      ? "▲"
-                      : ""
-                  : "";
-
-              const deltaText =
-                typeof delta === "number"
-                  ? `${arrow} ${Math.abs(delta).toFixed(2)}%`
-                  : "-";
-
-              return [
-                {
-                  label,
-                  valueText: hasPrev ? formatRoas(prevVal!) : "-",
-                  deltaText,
-                  deltaClassName,
-                },
-              ];
-            };
-
-
-            const formatUnits = (val: number) =>
-              val.toLocaleString(undefined, { maximumFractionDigits: 0 });
-
-            const safeDiv = (num: number, den: number) => (den > 0 ? num / den : 0);
-
-            const formatMoneyPerUnit = (total: number, units: number) => {
-              const perUnit = safeDiv(total, units);
-
-              const totalText = formatMoney(total);
-              const perUnitText = formatMoney(perUnit);
-
-              // If no units, show dash (avoid misleading /unit)
-              if (!units) return `${totalText} (-/unit)`;
-
-              return `${totalText} (${perUnitText}/unit)`;
-            };
-
-            const renderMoneyWithPerUnit = (total: number, units: number) => {
-              const totalText = formatMoney(total);
-
-              if (!units) {
-                return <span>{totalText}</span>;
-              }
-
-              const perUnit = total / units;
-              const perUnitText = formatMoney(perUnit);
-
-              return (
-                <div className="flex items-baseline gap-1 leading-tight">
-                  {/* Main value */}
-                  <span className="text-sm 2xl:text-lg font-semibold">
-                    {totalText}
-                  </span>
-
-                  {/* Per-unit (smaller, muted) */}
-                  <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
-                    ({perUnitText}/unit)
-                  </span>
-                </div>
-              );
-
-            };
-
-            const formatPercent = (val: number) =>
-              `${val.toLocaleString(undefined, {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 2,
-              })}%`;
-
-            const getGrossSales = (s?: Summary) =>
-              s?.total_product_sales ?? s?.gross_sales ?? 0;
-
-            const isSummaryZero =
-              summary.unit_sold === 0 &&
-              summary.total_sales === 0 &&
-              summary.total_expense === 0 &&
-              summary.cm2_profit === 0;
-
-            // const cm2Percent =
-            //   summary.total_sales > 0 ? (summary.cm2_profit / summary.total_sales) * 100 : 0;
-
-            const cm2Percent =
-              netSales > 0 ? (summary.cm2_profit / netSales) * 100 : 0;
-
-            // ---------- generic comparisons helper ----------
-            const getComparisons = (metric: keyof Summary): ComparisonItem[] => {
-              const current = summary[metric] ?? 0;
-
-              const lm = comparisons?.lastMonth?.[metric];
-              const lq = comparisons?.lastQuarter?.[metric];
-              const ly = comparisons?.lastYear?.[metric];
-
-              const makeItem = (label: string, prevVal?: number): ComparisonItem => {
-                if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
-                const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
-                return { label, value: prevVal, diffPct };
+                return `${sign}${currencySymbol}${abs.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`;
               };
 
-              const yNum = Number(selectedYear);
 
-              if (range === "monthly") {
-                const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
-                return [makeItem(label, lm)];
-              }
+              // ✅ Cost of Ads
+              const costOfAds = summary.advertising_total ?? 0;
 
-              if (range === "quarterly") {
-                const label =
-                  selectedQuarter && yNum
-                    ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                    : "Prev quarter";
-                return [makeItem(label, lq)];
-              }
-
-              if (range === "yearly") {
-                const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
-                return [makeItem(label, ly)];
-              }
-
-              return [];
-            };
-
-            const renderComparisons = (metric: keyof Summary, formatter: (val: number) => string) => {
-              const items = getComparisons(metric);
-              if (!items.length) return null;
-
-              return (
-                <div className="2xl:mt-3 space-y-2">
-                  {items.map((item) => {
-                    const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                    const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                    const diffClass = hasDiff
-                      ? item.diffPct! >= 0
-                        ? "text-emerald-600"
-                        : "text-red-600"
-                      : "text-gray-400";
-
-                    return (
-                      <div
-                        key={item.label}
-                        className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums"
-                      >
-                        <div className="min-w-0">
-                          <div className=" whitespace-nowrap">
-                            {item.label}:
-                          </div>
-                          <div className=" whitespace-nowrap">
-                            {hasValue ? formatter(item.value!) : "-"}
-                          </div>
-                        </div>
-
-                        <div className={`font-bold whitespace-nowrap ${diffClass}`}>
-                          {hasDiff ? (
-                            <>
-                              {item.diffPct! >= 0 ? "▲" : "▼"}{" "}
-                              {Math.abs(item.diffPct!).toFixed(2)}%
-                            </>
-                          ) : (
-                            "-"
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            };
-
-            const buildComparisonsRows = (
-              metric: keyof Summary,
-              formatter: (val: number) => string
-            ) => {
-              const items = getComparisons(metric);
-
-              return items.map((item) => {
-                const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                const deltaClassName = hasDiff
-                  ? item.diffPct! >= 0
-                    ? "text-emerald-600"
-                    : "text-red-600"
-                  : "text-gray-400";
-
-                const deltaText = hasDiff
-                  ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
-                  : "-";
-
-                return {
-                  label: item.label,
-                  valueText: hasValue ? formatter(item.value!) : "-",
-                  deltaText,
-                  deltaClassName,
-                };
-              });
-            };
-
-
-            const pickNum = (obj: any, keys: string[]) => {
-              for (const k of keys) {
-                const v = obj?.[k];
-                if (v === 0) return 0;
-                if (typeof v === "number" && !isNaN(v)) return v;
-                if (typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
-              }
-              return 0;
-            };
-
-
-            // ---------- Gross Sales comparisons ----------
-            const getGrossSalesComparisons = (): ComparisonItem[] => {
-              const current = getGrossSales(summary);
-              const yNum = Number(selectedYear);
-
-              const prevMonth = comparisons?.lastMonth ? getGrossSales(comparisons.lastMonth) : undefined;
-              const prevQuarter = comparisons?.lastQuarter ? getGrossSales(comparisons.lastQuarter) : undefined;
-              const prevYear = comparisons?.lastYear ? getGrossSales(comparisons.lastYear) : undefined;
-
-              const makeItem = (label: string, prevVal?: number): ComparisonItem => {
-                if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
-                const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
-                return { label, value: prevVal, diffPct };
+              // ✅ "ROAS" as you defined: (Cost of Ads / Net Sales) * 100
+              const getRoas = (s?: Summary) => {
+                const ns = s?.total_sales ?? 0;            // net sales
+                const ads = s?.advertising_total ?? 0;     // cost of ads
+                return ns > 0 ? (ads / ns) * 100 : 0;
               };
 
-              if (range === "monthly") {
-                const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
-                return [makeItem(label, prevMonth)];
-              }
 
-              if (range === "quarterly") {
+              const roas = getRoas(summary);
+
+              const formatRoas = (val: number) =>
+                `${val.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}%`;
+
+              const buildTacosComparisonRows = () => {
+                const yNum = Number(selectedYear);
+
                 const label =
-                  selectedQuarter && yNum
-                    ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                    : "Prev quarter";
-                return [makeItem(label, prevQuarter)];
-              }
+                  range === "monthly"
+                    ? selectedMonth && yNum
+                      ? getPrevMonthLabel(selectedMonth, yNum)
+                      : "Prev month"
+                    : range === "quarterly"
+                      ? selectedQuarter && yNum
+                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                        : "Prev quarter"
+                      : yNum
+                        ? getPrevYearLabel(yNum)
+                        : "Prev year";
 
-              if (range === "yearly") {
-                const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
-                return [makeItem(label, prevYear)];
-              }
-
-              return [];
-            };
-
-            const renderGrossSalesComparisons = () => {
-              const items = getGrossSalesComparisons();
-              if (!items.length) return null;
-              return (
-                <div className="mt-3 space-y-2">
-                  {items.map((item) => {
-                    const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                    const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                    const diffClass = hasDiff
-                      ? item.diffPct! >= 0
-                        ? "text-emerald-600"
-                        : "text-red-600"
-                      : "text-gray-400";
-
-                    return (
-                      <div
-                        key={item.label}
-                        className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums"
-                      >
-                        <div className="min-w-0">
-                          <div className="whitespace-nowrap">
-                            {item.label}:
-                          </div>
-                          <div className="whitespace-nowrap">
-                            {hasValue ? formatMoney(item.value!) : "-"}
-                          </div>
-                        </div>
-
-                        <div className={`font-bold whitespace-nowrap ${diffClass}`}>
-                          {hasDiff ? (
-                            <>
-                              {item.diffPct! >= 0 ? "▲" : "▼"}{" "}
-                              {Math.abs(item.diffPct!).toFixed(2)}%
-                            </>
-                          ) : (
-                            "-"
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            };
-
-            // ---------- CM2% comparisons ----------
-            const getCm2Percent = (s?: Summary) =>
-              s && s.total_sales > 0 ? (s.cm2_profit / s.total_sales) * 100 : 0;
-            const renderCm2PercentComparisons = () => {
-              const yNum = Number(selectedYear);
-
-              const label =
-                range === "monthly"
-                  ? selectedMonth && yNum
-                    ? getPrevMonthLabel(selectedMonth, yNum)
-                    : "Prev month"
-                  : range === "quarterly"
-                    ? selectedQuarter && yNum
-                      ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                      : "Prev quarter"
-                    : yNum
-                      ? getPrevYearLabel(yNum)
-                      : "Prev year";
-
-              const prevVal =
-                range === "monthly"
-                  ? comparisons?.lastMonth
-                    ? getCm2Percent(comparisons.lastMonth)
-                    : undefined
-                  : range === "quarterly"
-                    ? comparisons?.lastQuarter
-                      ? getCm2Percent(comparisons.lastQuarter)
+                const prevVal =
+                  range === "monthly"
+                    ? comparisons?.lastMonth
+                      ? getRoas(comparisons.lastMonth)
                       : undefined
-                    : comparisons?.lastYear
-                      ? getCm2Percent(comparisons.lastYear)
-                      : undefined;
+                    : range === "quarterly"
+                      ? comparisons?.lastQuarter
+                        ? getRoas(comparisons.lastQuarter)
+                        : undefined
+                      : comparisons?.lastYear
+                        ? getRoas(comparisons.lastYear)
+                        : undefined;
 
-              const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+                const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+                const delta = hasPrev ? roas - prevVal! : null;
 
-              const diffPct =
-                hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
+                const deltaClassName =
+                  typeof delta === "number"
+                    ? delta > 0
+                      ? "text-red-600"       // higher TACoS worse
+                      : delta < 0
+                        ? "text-emerald-600" // lower TACoS better
+                        : "text-gray-400"
+                    : "text-gray-400";
 
-              const diffClass =
-                typeof diffPct === "number"
-                  ? diffPct >= 0
-                    ? "text-emerald-600"
-                    : "text-red-600"
-                  : "text-gray-400";
+                const arrow =
+                  typeof delta === "number"
+                    ? delta > 0
+                      ? "▼"
+                      : delta < 0
+                        ? "▲"
+                        : ""
+                    : "";
 
-              return (
-                <div className="mt-3 space-y-1.5">
-                  <div className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
-                    <div className="min-w-0">
-                      <div className="whitespace-nowrap">
-                        {label}:
-                      </div>
-                      <div className="whitespace-nowrap">
-                        {hasPrev ? formatPercent(prevVal!) : "-"}
-                      </div>
-                    </div>
+                const deltaText =
+                  typeof delta === "number"
+                    ? `${arrow} ${Math.abs(delta).toFixed(2)}%`
+                    : "-";
 
-                    <span className={`font-bold whitespace-nowrap ${diffClass}`}>
-                      {typeof diffPct === "number" ? (
-                        <>
-                          {diffPct >= 0 ? "▲" : "▼"} {Math.abs(diffPct).toFixed(1)}%
-                        </>
-                      ) : (
-                        "-"
-                      )}
+                return [
+                  {
+                    label,
+                    valueText: hasPrev ? formatRoas(prevVal!) : "-",
+                    deltaText,
+                    deltaClassName,
+                  },
+                ];
+              };
+
+
+              const formatUnits = (val: number) =>
+                val.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+              const safeDiv = (num: number, den: number) => (den > 0 ? num / den : 0);
+
+              const formatMoneyPerUnit = (total: number, units: number) => {
+                const perUnit = safeDiv(total, units);
+
+                const totalText = formatMoney(total);
+                const perUnitText = formatMoney(perUnit);
+
+                // If no units, show dash (avoid misleading /unit)
+                if (!units) return `${totalText} (-/unit)`;
+
+                return `${totalText} (${perUnitText}/unit)`;
+              };
+
+              const renderMoneyWithPerUnit = (total: number, units: number) => {
+                const totalText = formatMoney(total);
+
+                if (!units) {
+                  return <span>{totalText}</span>;
+                }
+
+                const perUnit = total / units;
+                const perUnitText = formatMoney(perUnit);
+
+                return (
+                  <div className="flex items-baseline gap-1 leading-tight">
+                    {/* Main value */}
+                    <span className="text-sm 2xl:text-lg font-semibold">
+                      {totalText}
+                    </span>
+
+                    {/* Per-unit (smaller, muted) */}
+                    <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+                      ({perUnitText}/unit)
                     </span>
                   </div>
-                </div>
-              );
-            };
+                );
 
-            const buildCm2PercentComparisonRows = () => {
-              const yNum = Number(selectedYear);
+              };
 
-              const label =
-                range === "monthly"
-                  ? selectedMonth && yNum
-                    ? getPrevMonthLabel(selectedMonth, yNum)
-                    : "Prev month"
-                  : range === "quarterly"
-                    ? selectedQuarter && yNum
+              const formatPercent = (val: number) =>
+                `${val.toLocaleString(undefined, {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 2,
+                })}%`;
+
+              const getGrossSales = (s?: Summary) =>
+                s?.total_product_sales ?? s?.gross_sales ?? 0;
+
+              const isSummaryZero =
+                summary.unit_sold === 0 &&
+                summary.total_sales === 0 &&
+                summary.total_expense === 0 &&
+                summary.cm2_profit === 0;
+
+              // const cm2Percent =
+              //   summary.total_sales > 0 ? (summary.cm2_profit / summary.total_sales) * 100 : 0;
+
+              const cm2Percent =
+                netSales > 0 ? (summary.cm2_profit / netSales) * 100 : 0;
+
+              // ---------- generic comparisons helper ----------
+              const getComparisons = (metric: keyof Summary): ComparisonItem[] => {
+                const current = summary[metric] ?? 0;
+
+                const lm = comparisons?.lastMonth?.[metric];
+                const lq = comparisons?.lastQuarter?.[metric];
+                const ly = comparisons?.lastYear?.[metric];
+
+                const makeItem = (label: string, prevVal?: number): ComparisonItem => {
+                  if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
+                  const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
+                  return { label, value: prevVal, diffPct };
+                };
+
+                const yNum = Number(selectedYear);
+
+                if (range === "monthly") {
+                  const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
+                  return [makeItem(label, lm)];
+                }
+
+                if (range === "quarterly") {
+                  const label =
+                    selectedQuarter && yNum
                       ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                      : "Prev quarter"
-                    : yNum
-                      ? getPrevYearLabel(yNum)
-                      : "Prev year";
+                      : "Prev quarter";
+                  return [makeItem(label, lq)];
+                }
 
-              const prevVal =
-                range === "monthly"
-                  ? comparisons?.lastMonth
-                    ? getCm2Percent(comparisons.lastMonth)
-                    : undefined
-                  : range === "quarterly"
-                    ? comparisons?.lastQuarter
-                      ? getCm2Percent(comparisons.lastQuarter)
+                if (range === "yearly") {
+                  const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
+                  return [makeItem(label, ly)];
+                }
+
+                return [];
+              };
+
+              const renderComparisons = (metric: keyof Summary, formatter: (val: number) => string) => {
+                const items = getComparisons(metric);
+                if (!items.length) return null;
+
+                return (
+                  <div className="2xl:mt-3 space-y-2">
+                    {items.map((item) => {
+                      const hasValue = typeof item.value === "number" && !isNaN(item.value);
+                      const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+                      const diffClass = hasDiff
+                        ? item.diffPct! >= 0
+                          ? "text-emerald-600"
+                          : "text-red-600"
+                        : "text-gray-400";
+
+                      return (
+                        <div
+                          key={item.label}
+                          className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums"
+                        >
+                          <div className="min-w-0">
+                            <div className=" whitespace-nowrap">
+                              {item.label}:
+                            </div>
+                            <div className=" whitespace-nowrap">
+                              {hasValue ? formatter(item.value!) : "-"}
+                            </div>
+                          </div>
+
+                          <div className={`font-bold whitespace-nowrap ${diffClass}`}>
+                            {hasDiff ? (
+                              <>
+                                {item.diffPct! >= 0 ? "▲" : "▼"}{" "}
+                                {Math.abs(item.diffPct!).toFixed(2)}%
+                              </>
+                            ) : (
+                              "-"
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              };
+
+              const buildComparisonsRows = (
+                metric: keyof Summary,
+                formatter: (val: number) => string
+              ) => {
+                const items = getComparisons(metric);
+
+                return items.map((item) => {
+                  const hasValue = typeof item.value === "number" && !isNaN(item.value);
+                  const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+                  const deltaClassName = hasDiff
+                    ? item.diffPct! >= 0
+                      ? "text-emerald-600"
+                      : "text-red-600"
+                    : "text-gray-400";
+
+                  const deltaText = hasDiff
+                    ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
+                    : "-";
+
+                  return {
+                    label: item.label,
+                    valueText: hasValue ? formatter(item.value!) : "-",
+                    deltaText,
+                    deltaClassName,
+                  };
+                });
+              };
+
+
+              const pickNum = (obj: any, keys: string[]) => {
+                for (const k of keys) {
+                  const v = obj?.[k];
+                  if (v === 0) return 0;
+                  if (typeof v === "number" && !isNaN(v)) return v;
+                  if (typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
+                }
+                return 0;
+              };
+
+
+              // ---------- Gross Sales comparisons ----------
+              const getGrossSalesComparisons = (): ComparisonItem[] => {
+                const current = getGrossSales(summary);
+                const yNum = Number(selectedYear);
+
+                const prevMonth = comparisons?.lastMonth ? getGrossSales(comparisons.lastMonth) : undefined;
+                const prevQuarter = comparisons?.lastQuarter ? getGrossSales(comparisons.lastQuarter) : undefined;
+                const prevYear = comparisons?.lastYear ? getGrossSales(comparisons.lastYear) : undefined;
+
+                const makeItem = (label: string, prevVal?: number): ComparisonItem => {
+                  if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
+                  const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
+                  return { label, value: prevVal, diffPct };
+                };
+
+                if (range === "monthly") {
+                  const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
+                  return [makeItem(label, prevMonth)];
+                }
+
+                if (range === "quarterly") {
+                  const label =
+                    selectedQuarter && yNum
+                      ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                      : "Prev quarter";
+                  return [makeItem(label, prevQuarter)];
+                }
+
+                if (range === "yearly") {
+                  const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
+                  return [makeItem(label, prevYear)];
+                }
+
+                return [];
+              };
+
+              const renderGrossSalesComparisons = () => {
+                const items = getGrossSalesComparisons();
+                if (!items.length) return null;
+                return (
+                  <div className="mt-3 space-y-2">
+                    {items.map((item) => {
+                      const hasValue = typeof item.value === "number" && !isNaN(item.value);
+                      const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+                      const diffClass = hasDiff
+                        ? item.diffPct! >= 0
+                          ? "text-emerald-600"
+                          : "text-red-600"
+                        : "text-gray-400";
+
+                      return (
+                        <div
+                          key={item.label}
+                          className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums"
+                        >
+                          <div className="min-w-0">
+                            <div className="whitespace-nowrap">
+                              {item.label}:
+                            </div>
+                            <div className="whitespace-nowrap">
+                              {hasValue ? formatMoney(item.value!) : "-"}
+                            </div>
+                          </div>
+
+                          <div className={`font-bold whitespace-nowrap ${diffClass}`}>
+                            {hasDiff ? (
+                              <>
+                                {item.diffPct! >= 0 ? "▲" : "▼"}{" "}
+                                {Math.abs(item.diffPct!).toFixed(2)}%
+                              </>
+                            ) : (
+                              "-"
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              };
+
+              // ---------- CM2% comparisons ----------
+              const getCm2Percent = (s?: Summary) =>
+                s && s.total_sales > 0 ? (s.cm2_profit / s.total_sales) * 100 : 0;
+              const renderCm2PercentComparisons = () => {
+                const yNum = Number(selectedYear);
+
+                const label =
+                  range === "monthly"
+                    ? selectedMonth && yNum
+                      ? getPrevMonthLabel(selectedMonth, yNum)
+                      : "Prev month"
+                    : range === "quarterly"
+                      ? selectedQuarter && yNum
+                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                        : "Prev quarter"
+                      : yNum
+                        ? getPrevYearLabel(yNum)
+                        : "Prev year";
+
+                const prevVal =
+                  range === "monthly"
+                    ? comparisons?.lastMonth
+                      ? getCm2Percent(comparisons.lastMonth)
                       : undefined
-                    : comparisons?.lastYear
-                      ? getCm2Percent(comparisons.lastYear)
-                      : undefined;
+                    : range === "quarterly"
+                      ? comparisons?.lastQuarter
+                        ? getCm2Percent(comparisons.lastQuarter)
+                        : undefined
+                      : comparisons?.lastYear
+                        ? getCm2Percent(comparisons.lastYear)
+                        : undefined;
 
-              const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+                const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
 
-              const diffPct =
-                hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
+                const diffPct =
+                  hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
 
-              const deltaClassName =
-                typeof diffPct === "number"
-                  ? diffPct >= 0
-                    ? "text-emerald-600"
-                    : "text-red-600"
-                  : "text-gray-400";
+                const diffClass =
+                  typeof diffPct === "number"
+                    ? diffPct >= 0
+                      ? "text-emerald-600"
+                      : "text-red-600"
+                    : "text-gray-400";
 
-              const deltaText =
-                typeof diffPct === "number"
-                  ? `${diffPct >= 0 ? "▲" : "▼"} ${Math.abs(diffPct).toFixed(1)}%`
-                  : "-";
+                return (
+                  <div className="mt-3 space-y-1.5">
+                    <div className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
+                      <div className="min-w-0">
+                        <div className="whitespace-nowrap">
+                          {label}:
+                        </div>
+                        <div className="whitespace-nowrap">
+                          {hasPrev ? formatPercent(prevVal!) : "-"}
+                        </div>
+                      </div>
 
-              return [
+                      <span className={`font-bold whitespace-nowrap ${diffClass}`}>
+                        {typeof diffPct === "number" ? (
+                          <>
+                            {diffPct >= 0 ? "▲" : "▼"} {Math.abs(diffPct).toFixed(1)}%
+                          </>
+                        ) : (
+                          "-"
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                );
+              };
+
+              const buildCm2PercentComparisonRows = () => {
+                const yNum = Number(selectedYear);
+
+                const label =
+                  range === "monthly"
+                    ? selectedMonth && yNum
+                      ? getPrevMonthLabel(selectedMonth, yNum)
+                      : "Prev month"
+                    : range === "quarterly"
+                      ? selectedQuarter && yNum
+                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                        : "Prev quarter"
+                      : yNum
+                        ? getPrevYearLabel(yNum)
+                        : "Prev year";
+
+                const prevVal =
+                  range === "monthly"
+                    ? comparisons?.lastMonth
+                      ? getCm2Percent(comparisons.lastMonth)
+                      : undefined
+                    : range === "quarterly"
+                      ? comparisons?.lastQuarter
+                        ? getCm2Percent(comparisons.lastQuarter)
+                        : undefined
+                      : comparisons?.lastYear
+                        ? getCm2Percent(comparisons.lastYear)
+                        : undefined;
+
+                const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+
+                const diffPct =
+                  hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
+
+                const deltaClassName =
+                  typeof diffPct === "number"
+                    ? diffPct >= 0
+                      ? "text-emerald-600"
+                      : "text-red-600"
+                    : "text-gray-400";
+
+                const deltaText =
+                  typeof diffPct === "number"
+                    ? `${diffPct >= 0 ? "▲" : "▼"} ${Math.abs(diffPct).toFixed(1)}%`
+                    : "-";
+
+                return [
+                  {
+                    label,
+                    valueText: hasPrev ? formatPercent(prevVal!) : "-",
+                    deltaText,
+                    deltaClassName,
+                  },
+                ];
+              };
+
+              const cards = [
                 {
-                  label,
-                  valueText: hasPrev ? formatPercent(prevVal!) : "-",
-                  deltaText,
-                  deltaClassName,
+                  key: "units",
+                  title: "Units",
+                  value: formatUnits(summary.unit_sold),
+                  // className: "border border-[#FDD36F] bg-[#FDD36F4D]",
+                  className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
+                  comparisons: buildComparisonsRows("unit_sold", formatUnits),
+                },
+                {
+                  key: "grossSales",
+                  title: "Gross Sales",
+                  value: renderMoneyWithPerUnit(getGrossSales(summary), summary.unit_sold),
+                  // className: "border border-[#ED9F50] bg-[#ED9F504D]",
+                  className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
+                  comparisons: (() => {
+                    const items = getGrossSalesComparisons();
+                    return items.map((item) => {
+                      const hasValue = typeof item.value === "number" && !isNaN(item.value);
+                      const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+                      const deltaClassName = hasDiff
+                        ? item.diffPct! >= 0
+                          ? "text-emerald-600"
+                          : "text-red-600"
+                        : "text-gray-400";
+
+                      const deltaText = hasDiff
+                        ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
+                        : "-";
+
+                      return {
+                        label: item.label,
+                        valueText: hasValue ? formatMoney(item.value!) : "-",
+                        deltaText,
+                        deltaClassName,
+                      };
+                    });
+                  })(),
+                },
+                {
+                  key: "netSales",
+                  title: "Net Sales",
+                  value: renderMoneyWithPerUnit(netSales, summary.unit_sold),
+                  // className: "border border-[#75BBDA] bg-[#75BBDA4D]",
+                  className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
+                  comparisons: buildComparisonsRows("total_sales", formatMoney),
+                },
+
+                {
+                  key: "expenses",
+                  title: "Marketplace Fees",
+                  value: renderMoneyWithPerUnit(summary.total_expense, summary.unit_sold),
+                  // className: "border border-[#B75A5A] bg-[#B75A5A4D]",
+                  className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
+                  comparisons: buildComparisonsRows("total_expense", formatMoney),
+                },
+                {
+                  key: "ads",
+                  title: "Cost of Advertisement",
+                  value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
+                  // className: "border border-[#C49466] bg-[#C494664D]",
+                  className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
+                  comparisons: buildComparisonsRows("advertising_total", formatMoney),
+                },
+
+                {
+                  key: "tacos",
+                  title: "TACoS",
+                  value: formatRoas(roas),
+                  // className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
+                  className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
+                  comparisons: buildTacosComparisonRows(),
+                },
+                {
+                  key: "cm2",
+                  title: "CM2 Profit",
+                  value: renderMoneyWithPerUnit(summary.cm2_profit, summary.unit_sold),
+                  // className: "border border-[#B8C78C] bg-[#B8C78C4D]",
+                  className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
+                  comparisons: buildComparisonsRows("cm2_profit", formatMoney),
+                },
+                {
+                  key: "cm2Pct",
+                  title: "CM2 Profit %",
+                  value: formatPercent(cm2Percent),
+                  // className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
+                  className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+                  comparisons: buildCm2PercentComparisonRows(),
                 },
               ];
-            };
 
-            const cards = [
-              {
-                key: "units",
-                title: "Units",
-                value: formatUnits(summary.unit_sold),
-                // className: "border border-[#FDD36F] bg-[#FDD36F4D]",
-                className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
-                comparisons: buildComparisonsRows("unit_sold", formatUnits),
-              },
-              {
-                key: "grossSales",
-                title: "Gross Sales",
-                value: renderMoneyWithPerUnit(getGrossSales(summary), summary.unit_sold),
-                // className: "border border-[#ED9F50] bg-[#ED9F504D]",
-                className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
-                comparisons: (() => {
-                  const items = getGrossSalesComparisons();
-                  return items.map((item) => {
-                    const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                    const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                    const deltaClassName = hasDiff
-                      ? item.diffPct! >= 0
-                        ? "text-emerald-600"
-                        : "text-red-600"
-                      : "text-gray-400";
-
-                    const deltaText = hasDiff
-                      ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
-                      : "-";
-
-                    return {
-                      label: item.label,
-                      valueText: hasValue ? formatMoney(item.value!) : "-",
-                      deltaText,
-                      deltaClassName,
-                    };
-                  });
-                })(),
-              },
-              {
-                key: "netSales",
-                title: "Net Sales",
-                value: renderMoneyWithPerUnit(netSales, summary.unit_sold),
-                // className: "border border-[#75BBDA] bg-[#75BBDA4D]",
-                className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
-                comparisons: buildComparisonsRows("total_sales", formatMoney),
-              },
-
-              {
-                key: "expenses",
-                title: "Marketplace Fees",
-                value: renderMoneyWithPerUnit(summary.total_expense, summary.unit_sold),
-                // className: "border border-[#B75A5A] bg-[#B75A5A4D]",
-                className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
-                comparisons: buildComparisonsRows("total_expense", formatMoney),
-              },
-              {
-                key: "ads",
-                title: "Cost of Advertisement",
-                value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
-                // className: "border border-[#C49466] bg-[#C494664D]",
-                className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
-                comparisons: buildComparisonsRows("advertising_total", formatMoney),
-              },
-
-              {
-                key: "tacos",
-                title: "TACoS",
-                value: formatRoas(roas),
-                // className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
-                className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
-                comparisons: buildTacosComparisonRows(),
-              },
-              {
-                key: "cm2",
-                title: "CM2 Profit",
-                value: renderMoneyWithPerUnit(summary.cm2_profit, summary.unit_sold),
-                // className: "border border-[#B8C78C] bg-[#B8C78C4D]",
-                className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-                comparisons: buildComparisonsRows("cm2_profit", formatMoney),
-              },
-              {
-                key: "cm2Pct",
-                title: "CM2 Profit %",
-                value: formatPercent(cm2Percent),
-                // className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
-                className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
-                comparisons: buildCm2PercentComparisonRows(),
-              },
-            ];
-
-            return (
-              <div
-                className={[
-                  "w-full grid gap-2 2xl:gap-3",
-                  "grid-cols-2 sm:grid-cols-4 min-[1700px]:grid-cols-8",
-                  isSummaryZero ? "opacity-30" : "opacity-100",
-                ].join(" ")}
-              >
-                {cards.map((c) => (
-                  <SummaryMetricCard
-                    key={c.key}
-                    title={c.title}
-                    value={c.value}
-                    className={c.className}
-                    comparisons={c.comparisons}
-                  />
-                ))}
-              </div>
-            );
-          })()}
-      </div>
+              return (
+                <div
+                  className={[
+                    "w-full grid gap-2 2xl:gap-3",
+                    "grid-cols-2 sm:grid-cols-4 min-[1700px]:grid-cols-8",
+                    isSummaryZero ? "opacity-30" : "opacity-100",
+                  ].join(" ")}
+                >
+                  {cards.map((c) => (
+                    <SummaryMetricCard
+                      key={c.key}
+                      title={c.title}
+                      value={c.value}
+                      className={c.className}
+                      comparisons={c.comparisons}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+        </div>
       )}
 
       {/* ===================== TAB CONTENT AREA ===================== */}
@@ -3867,8 +3783,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           </div>
         )}
 
-        {activeTab === "productwisePerformance" && allDropdownsSelected && (
-          <div id="productwise-performance" className="mt-4 scroll-mt-[80px]">
+        {activeTab === "skuwiseProfit" && allDropdownsSelected && (
+          <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
             <ProductwisePerformance
               embedded
               countryNameProp={initialCountryName}

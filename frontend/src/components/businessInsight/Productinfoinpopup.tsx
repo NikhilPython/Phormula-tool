@@ -32,13 +32,17 @@ ChartJS.register(
 );
 
 type CountryKey = "uk" | "global" | "us";
-type TrendTab = "sales_cm1" | "units";
+
+type TrendTab = "sales_cm1" | "units_asp" | "mix";
 
 interface ProductMetricPoint {
   month: string;
   net_sales: number;
   cm1_profit: number;
   units_sold: number;
+  asp: number;
+  sales_mix: number;
+  profit_mix: number;
 }
 
 interface ApiMonthRow {
@@ -50,6 +54,9 @@ interface ApiMonthRow {
   quantity?: number;
   units_sold?: number;
   units?: number;
+  asp?: number;
+  sales_mix?: number;
+  profit_mix?: number;
 }
 
 interface ApiResponse {
@@ -114,13 +121,17 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   const baseCurrency: "GBP" | "USD" = pageScope === "uk" ? "GBP" : "USD";
   const currencySymbol = baseCurrency === "GBP" ? "£" : "$";
 
-  const getCountryColor = (country: CountryKey) => {
-    const colors: Record<CountryKey, string> = {
-      uk: "#7B9A6D",
-      us: "#87AD12",
-      global: "#ED9F50",
+  const getMetricColor = (metric: string) => {
+    const colors: Record<string, string> = {
+      net_sales: "#75BBDA",
+      cm1_profit: "#7B9A6D",
+      units_sold: "#FDD36F",
+      asp: "#B75A5A",
+      sales_mix: "#db2777",
+      profit_mix: "#0891b2",
     };
-    return colors[country];
+
+    return colors[metric] || "#6b7280";
   };
 
   const formatCurrency = (value: number) => {
@@ -136,6 +147,19 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     return new Intl.NumberFormat("en-US", {
       maximumFractionDigits: 0,
     }).format(value);
+  };
+
+  const formatAsp = (value: number) => {
+    return new Intl.NumberFormat(baseCurrency === "GBP" ? "en-GB" : "en-US", {
+      style: "currency",
+      currency: baseCurrency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  const formatPercent = (value: number) => {
+    return `${Number(value || 0).toFixed(1)}%`;
   };
 
   const monthShort = (d: Date) =>
@@ -232,28 +256,41 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       const todayEnd = new Date(today.getFullYear(), today.getMonth() - 1, 1);
       const startDate = new Date(START_YEAR, 0, 1);
 
+
       const valueMaps: Record<
         CountryKey,
         {
           net_sales: Map<string, number>;
           cm1_profit: Map<string, number>;
           units_sold: Map<string, number>;
+          asp: Map<string, number>;
+          sales_mix: Map<string, number>;
+          profit_mix: Map<string, number>;
         }
       > = {
         uk: {
           net_sales: new Map(),
           cm1_profit: new Map(),
           units_sold: new Map(),
+          asp: new Map(),
+          sales_mix: new Map(),
+          profit_mix: new Map(),
         },
         global: {
           net_sales: new Map(),
           cm1_profit: new Map(),
           units_sold: new Map(),
+          asp: new Map(),
+          sales_mix: new Map(),
+          profit_mix: new Map(),
         },
         us: {
           net_sales: new Map(),
           cm1_profit: new Map(),
           units_sold: new Map(),
+          asp: new Map(),
+          sales_mix: new Map(),
+          profit_mix: new Map(),
         },
       };
 
@@ -282,6 +319,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               label,
               Number(row.quantity ?? row.units_sold ?? row.units ?? 0)
             );
+            valueMaps[country].asp.set(label, Number(row.asp ?? 0));
+            valueMaps[country].sales_mix.set(label, Number(row.sales_mix ?? 0));
+            valueMaps[country].profit_mix.set(label, Number(row.profit_mix ?? 0));
           });
         });
       }
@@ -302,6 +342,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             net_sales: valueMaps.uk.net_sales.get(label) ?? 0,
             cm1_profit: valueMaps.uk.cm1_profit.get(label) ?? 0,
             units_sold: valueMaps.uk.units_sold.get(label) ?? 0,
+            asp: valueMaps.uk.asp.get(label) ?? 0,
+            sales_mix: valueMaps.uk.sales_mix.get(label) ?? 0,
+            profit_mix: valueMaps.uk.profit_mix.get(label) ?? 0,
           };
         }),
         global: months.map((m) => {
@@ -311,6 +354,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             net_sales: valueMaps.global.net_sales.get(label) ?? 0,
             cm1_profit: valueMaps.global.cm1_profit.get(label) ?? 0,
             units_sold: valueMaps.global.units_sold.get(label) ?? 0,
+            asp: valueMaps.global.asp.get(label) ?? 0,
+            sales_mix: valueMaps.global.sales_mix.get(label) ?? 0,
+            profit_mix: valueMaps.global.profit_mix.get(label) ?? 0,
           };
         }),
         us: months.map((m) => {
@@ -320,6 +366,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             net_sales: valueMaps.us.net_sales.get(label) ?? 0,
             cm1_profit: valueMaps.us.cm1_profit.get(label) ?? 0,
             units_sold: valueMaps.us.units_sold.get(label) ?? 0,
+            asp: valueMaps.us.asp.get(label) ?? 0,
+            sales_mix: valueMaps.us.sales_mix.get(label) ?? 0,
+            profit_mix: valueMaps.us.profit_mix.get(label) ?? 0,
           };
         }),
       };
@@ -371,14 +420,25 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         const point = journeyData[country]?.[idx];
         if (!point) return false;
 
-        if (activeTab === "units") {
-          return Number(point.units_sold || 0) > 0;
+        if (activeTab === "units_asp") {
+          return (
+            Number(point.units_sold || 0) > 0 ||
+            Number(point.asp || 0) > 0
+          );
+        }
+
+        if (activeTab === "mix") {
+          return (
+            Number(point.sales_mix || 0) > 0 ||
+            Number(point.profit_mix || 0) > 0
+          );
         }
 
         return (
           Number(point.net_sales || 0) > 0 ||
           Number(point.cm1_profit || 0) > 0
         );
+
       });
     };
 
@@ -395,45 +455,44 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   const chartJSData = useMemo(() => {
     const labels = allLabels;
+    const activeCountries = (Object.keys(selectedCountries) as CountryKey[])
+      .filter((country) => visibleCountries.includes(country))
+      .filter((country) => selectedCountries[country]);
 
     if (activeTab === "sales_cm1") {
-      const salesDatasets = (Object.keys(selectedCountries) as CountryKey[])
-        .filter((country) => visibleCountries.includes(country))
-        .filter((country) => selectedCountries[country])
-        .map((country) => ({
-          label: `${country.toUpperCase()} Net Sales`,
-          data: labels.map((label) => {
-            const found = journeyData[country]?.find((d) => d.month === label);
-            return found ? found.net_sales : 0;
-          }),
-          borderColor: getCountryColor(country),
-          backgroundColor: getCountryColor(country),
-          tension: 0.35,
-          pointRadius: 3,
-          pointHoverRadius: 5,
-          fill: false,
-          borderDash: [],
-          borderWidth: 2,
-        }));
+      const salesDatasets = activeCountries.map((country) => ({
+        label: `${country.toUpperCase()} Net Sales`,
+        data: labels.map((label) => {
+          const found = journeyData[country]?.find((d) => d.month === label);
+          return found ? found.net_sales : 0;
+        }),
+        borderColor: getMetricColor("net_sales"),
+        backgroundColor: getMetricColor("net_sales"),
+        tension: 0.35,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        fill: false,
+        borderDash: [],
+        borderWidth: 2,
+        yAxisID: "y",
+      }));
 
-      const cm1Datasets = (Object.keys(selectedCountries) as CountryKey[])
-        .filter((country) => visibleCountries.includes(country))
-        .filter((country) => selectedCountries[country])
-        .map((country) => ({
-          label: `${country.toUpperCase()} CM1 Profit`,
-          data: labels.map((label) => {
-            const found = journeyData[country]?.find((d) => d.month === label);
-            return found ? found.cm1_profit : 0;
-          }),
-          borderColor: getCountryColor(country),
-          backgroundColor: getCountryColor(country),
-          tension: 0.35,
-          pointRadius: 3,
-          pointHoverRadius: 5,
-          fill: false,
-          borderDash: [6, 6],
-          borderWidth: 2.5,
-        }));
+      const cm1Datasets = activeCountries.map((country) => ({
+        label: `${country.toUpperCase()} CM1 Profit`,
+        data: labels.map((label) => {
+          const found = journeyData[country]?.find((d) => d.month === label);
+          return found ? found.cm1_profit : 0;
+        }),
+        borderColor: getMetricColor("cm1_profit"),
+        backgroundColor: getMetricColor("cm1_profit"),
+        tension: 0.35,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        fill: false,
+        borderDash: [],
+        borderWidth: 2,
+        yAxisID: "y",
+      }));
 
       return {
         labels,
@@ -441,28 +500,83 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       };
     }
 
-    const unitDatasets = (Object.keys(selectedCountries) as CountryKey[])
-      .filter((country) => visibleCountries.includes(country))
-      .filter((country) => selectedCountries[country])
-      .map((country) => ({
+    if (activeTab === "units_asp") {
+      const unitDatasets = activeCountries.map((country) => ({
         label: `${country.toUpperCase()} Units`,
         data: labels.map((label) => {
           const found = journeyData[country]?.find((d) => d.month === label);
           return found ? found.units_sold : 0;
         }),
-        borderColor: getCountryColor(country),
-        backgroundColor: getCountryColor(country),
+        borderColor: getMetricColor("units_sold"),
+        backgroundColor: getMetricColor("units_sold"),
         tension: 0.35,
         pointRadius: 3,
         pointHoverRadius: 5,
         fill: false,
         borderDash: [],
         borderWidth: 2,
+        yAxisID: "y",
       }));
+
+      const aspDatasets = activeCountries.map((country) => ({
+        label: `${country.toUpperCase()} ASP`,
+        data: labels.map((label) => {
+          const found = journeyData[country]?.find((d) => d.month === label);
+          return found ? found.asp : 0;
+        }),
+        borderColor: getMetricColor("asp"),
+        backgroundColor: getMetricColor("asp"),
+        tension: 0.35,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        fill: false,
+        borderDash: [],
+        borderWidth: 2,
+        yAxisID: "y1",
+      }));
+
+      return {
+        labels,
+        datasets: [...unitDatasets, ...aspDatasets],
+      };
+    }
+    const salesMixDatasets = activeCountries.map((country) => ({
+      label: `${country.toUpperCase()} Sales Mix`,
+      data: labels.map((label) => {
+        const found = journeyData[country]?.find((d) => d.month === label);
+        return found ? found.sales_mix : 0;
+      }),
+      borderColor: getMetricColor("sales_mix"),
+      backgroundColor: getMetricColor("sales_mix"),
+      tension: 0.35,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      fill: false,
+      borderDash: [],
+      borderWidth: 2,
+      yAxisID: "y",
+    }));
+
+    const profitMixDatasets = activeCountries.map((country) => ({
+      label: `${country.toUpperCase()} Profit Mix`,
+      data: labels.map((label) => {
+        const found = journeyData[country]?.find((d) => d.month === label);
+        return found ? found.profit_mix : 0;
+      }),
+      borderColor: getMetricColor("profit_mix"),
+      backgroundColor: getMetricColor("profit_mix"),
+      tension: 0.35,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      fill: false,
+      borderDash: [],
+      borderWidth: 2,
+      yAxisID: "y",
+    }));
 
     return {
       labels,
-      datasets: unitDatasets,
+      datasets: [...salesMixDatasets, ...profitMixDatasets],
     };
   }, [activeTab, allLabels, journeyData, selectedCountries, visibleCountries]);
 
@@ -487,8 +601,16 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               const value = context.parsed.y;
               const label = String(context.dataset.label || "").toLowerCase();
 
-              if (label.includes("unit")) {
+              if (label.includes("units")) {
                 return `${context.dataset.label}: ${formatUnits(value)}`;
+              }
+
+              if (label.includes("asp")) {
+                return `${context.dataset.label}: ${formatAsp(value)}`;
+              }
+
+              if (label.includes("mix")) {
+                return `${context.dataset.label}: ${formatPercent(value)}`;
               }
 
               return `${context.dataset.label}: ${formatCurrency(value)}`;
@@ -527,7 +649,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           max: initialMaxIndex,
           ticks: {
             autoSkip: true,
-            mmaxTicksLimit: isSmallScreen ? 6 : 12,
+            maxTicksLimit: isSmallScreen ? 6 : 12,
             maxRotation: 0,
             minRotation: 0,
             font: {
@@ -541,9 +663,12 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         y: {
           title: {
             display: true,
-            text: activeTab === "units"
-              ? "Units (in nos.)"
-              : `Amount (${currencySymbol})`,
+            text:
+              activeTab === "units_asp"
+                ? "Units"
+                : activeTab === "mix"
+                  ? "Mix (%)"
+                  : `Amount (${currencySymbol})`,
           },
           min: 0,
           ticks: {
@@ -551,10 +676,29 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             font: {
               size: isSmallScreen ? 10 : 12,
             },
-            callback: (value: number) =>
-              activeTab === "units"
-                ? formatUnits(value)
-                : formatCurrency(value),
+            callback: (value: number) => {
+              if (activeTab === "units_asp") return formatUnits(value);
+              if (activeTab === "mix") return formatPercent(value);
+              return formatCurrency(value);
+            },
+          },
+        },
+        y1: {
+          display: activeTab === "units_asp",
+          position: "right",
+          min: 0,
+          grid: {
+            drawOnChartArea: false,
+          },
+          title: {
+            display: activeTab === "units_asp",
+            text: `ASP (${currencySymbol})`,
+          },
+          ticks: {
+            font: {
+              size: isSmallScreen ? 10 : 12,
+            },
+            callback: (value: number) => formatAsp(Number(value)),
           },
         },
       },
@@ -612,7 +756,8 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     className="w-auto"
                     options={[
                       { value: "sales_cm1", label: "Sales & CM1 Profit" },
-                      { value: "units", label: "Units" },
+                      { value: "units_asp", label: "Units & ASP" },
+                      { value: "mix", label: "Sales Mix & Profit Mix" },
                     ]}
                   />
                 </div>
@@ -638,12 +783,38 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               {activeTab === "sales_cm1" && (
                 <>
                   <div className="flex items-center gap-2">
-                    <span className="h-0 w-9 border-t-2 border-gray-700" />
+                    <span className="h-0 w-9 border-t-2 border-[#75BBDA]" />
                     <span>Net Sales</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="h-0 w-9 border-t-2 border-dashed border-gray-700" />
+                    <span className="h-0 w-9 border-t-2 border-[#7B9A6D]" />
                     <span>CM1 Profit</span>
+                  </div>
+                </>
+              )}
+
+              {activeTab === "units_asp" && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#FDD36F]" />
+                    <span>Units</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2  border-[#B75A5A]" />
+                    <span>ASP</span>
+                  </div>
+                </>
+              )}
+
+              {activeTab === "mix" && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#75BBDA]" />
+                    <span>Sales Mix</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#7B9A6D]" />
+                    <span>Profit Mix</span>
                   </div>
                 </>
               )}

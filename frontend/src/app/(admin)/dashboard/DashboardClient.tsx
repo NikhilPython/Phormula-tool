@@ -3783,8 +3783,6 @@ export default function DashboardPage() {
             item.sku === "GRAND_TOTAL"
     );
 
-    console.log("Grand Total Row:", grandTotalRow);
-
     const ads_spend = grandTotalRow?.ads_spend ?? 0;
     const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
     const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
@@ -4112,7 +4110,7 @@ export default function DashboardPage() {
 
     const TOP_TABS: { id: TopTab; label: string }[] = [
         { id: "live", label: "MTD Sales" },
-        { id: "summary", label: "AI Insights and Recommendations" },
+        { id: "summary", label: "AI Insights & Recommendations" },
         { id: "productwise", label: "P&L Breakdown" },
         { id: "inventory", label: "Current Inventory" },
     ];
