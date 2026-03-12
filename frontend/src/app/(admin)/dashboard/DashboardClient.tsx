@@ -4111,9 +4111,9 @@ export default function DashboardPage() {
         | "inventory";
 
     const TOP_TABS: { id: TopTab; label: string }[] = [
-        { id: "live", label: "Live Sales" },
+        { id: "live", label: "MTD Sales" },
         { id: "summary", label: "AI Insights and Recommendations" },
-        { id: "productwise", label: "P&L Productwise Breakdown" },
+        { id: "productwise", label: "P&L Breakdown" },
         { id: "inventory", label: "Current Inventory" },
     ];
 

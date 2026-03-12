@@ -22,6 +22,15 @@ import {
 } from "chart.js";
 import CashFlowSankey from "@/components/cashflow/CashFlowSankey";
 
+interface CashFlowPageProps {
+  embedded?: boolean;
+  countryNameProp?: string;
+  rangeProp?: PeriodType;
+  selectedMonthProp?: string;
+  selectedQuarterProp?: string;
+  selectedYearProp?: string | number;
+}
+
 const hoverPopPlugin = {
   id: "hoverPopPlugin",
   afterDatasetsDraw(chart: any) {
@@ -196,22 +205,37 @@ const quarterToPeriodTypeMap: Record<string, string> = {
   Q4: "quarter4",
 };
 
-const CashFlowPage: React.FC = () => {
+const CashFlowPage: React.FC<CashFlowPageProps> = ({
+  embedded = false,
+  countryNameProp,
+  rangeProp,
+  selectedMonthProp,
+  selectedQuarterProp,
+  selectedYearProp,
+}) => {
   const params = useParams<{
     countryName?: string;
     month?: string;
     year?: string;
   }>();
+
+  const routeCountryName = params?.countryName || "";
+  const routeMonth = params?.month ? decodeURIComponent(params.month) : "";
+  const routeYear = params?.year || "";
+
+  const countryName = embedded ? (countryNameProp || "") : routeCountryName;
+  const paramMonth = embedded ? (selectedMonthProp || "") : routeMonth;
+  const paramYear = embedded ? String(selectedYearProp || "") : routeYear;
+
   const chartRef = React.useRef<any>(null);
-  const countryName = params?.countryName || "";
-  const paramMonth = params?.month ? decodeURIComponent(params.month) : "";
-  const paramYear = params?.year || "";
+
 
   const isPreviewMode =
-    !paramMonth ||
-    !paramYear ||
-    paramMonth.toLowerCase() === "na" ||
-    paramYear.toLowerCase() === "na";
+    !embedded &&
+    (!paramMonth ||
+      !paramYear ||
+      paramMonth.toLowerCase() === "na" ||
+      paramYear.toLowerCase() === "na");
 
   const effectiveCountryForCurrency = isPreviewMode
     ? "global"
@@ -257,16 +281,26 @@ const CashFlowPage: React.FC = () => {
   const defaultMonth = monthsList[prevMonthDate.getMonth()]; // "November"
   const defaultYear = String(prevMonthDate.getFullYear());   // "2024"
 
-  // State
-  const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+  const [selectedQuarter, setSelectedQuarter] = useState<string>(
+    embedded ? (selectedQuarterProp || "") : ""
+  );
+
   const [month, setMonth] = useState<string>(
-    initialMonth || defaultMonth
+    embedded
+      ? capitalize(selectedMonthProp || "")
+      : (initialMonth || defaultMonth)
   );
 
   const [year, setYear] = useState<string>(
-    initialYear || defaultYear
+    embedded
+      ? String(selectedYearProp || "")
+      : (initialYear || defaultYear)
   );
-  const [periodType, setPeriodType] = useState<PeriodType>("monthly");
+
+  const [periodType, setPeriodType] = useState<PeriodType>(
+    embedded ? (rangeProp || "yearly") : "monthly"
+  );
+
   const [error, setError] = useState<string>("");
   const [data, setData] = useState<APIResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -289,6 +323,14 @@ const CashFlowPage: React.FC = () => {
     cashflow: true,
   };
 
+  useEffect(() => {
+    if (!embedded) return;
+
+    setPeriodType(rangeProp || "yearly");
+    setMonth(capitalize(selectedMonthProp || ""));
+    setSelectedQuarter(selectedQuarterProp || "");
+    setYear(String(selectedYearProp || ""));
+  }, [embedded, rangeProp, selectedMonthProp, selectedQuarterProp, selectedYearProp]);
 
   const DUMMY_CASHFLOW_SUMMARY: SummaryShape = {
     quantity_total: 1050,
@@ -859,57 +901,55 @@ const CashFlowPage: React.FC = () => {
 
   return (
     <div className="w-full">
-      {/* Header */}
-      {/* <div className="sticky top-0 z-40 bg-[#F7F7F7] border-b border-gray-200"> */}
-      {/* <div className="flex flex-col md:flex-row md:items-center md:justify-between sm:gap-4 gap-2 mb-2"> */}
 
-      <div className="sticky top-0 z-40 w-full flex flex-col
+      {!embedded && (
+        <div className="sticky top-0 z-40 w-full flex flex-col
   bg-[#F7F7F7]
   sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
   border-b border-gray-200">
-        {/* LEFT: Title */}
-        <div className="mb-2 flex flex-wrap items-start gap-2">
-          <div>
-            <div className="flex flex-wrap items-baseline gap-2 justify-start">
-              <PageBreadcrumb
-                pageTitle="Cash Flow –"
-                variant="page"
-                align="left"
-                className=""
-              />
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                Amazon {countryName?.toLowerCase() === "global"
-                  ? "Global"
-                  : countryName?.toUpperCase()}
-              </span>
+          {/* LEFT: Title */}
+          <div className="mb-2 flex flex-wrap items-start gap-2">
+            <div>
+              <div className="flex flex-wrap items-baseline gap-2 justify-start">
+                <PageBreadcrumb
+                  pageTitle="Cash Flow –"
+                  variant="page"
+                  align="left"
+                  className=""
+                />
+                <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                  Amazon {countryName?.toLowerCase() === "global"
+                    ? "Global"
+                    : countryName?.toUpperCase()}
+                </span>
+              </div>
+
+              <p className="2xl:text-sm text-xs">
+                Track cash generation from performance
+              </p>
             </div>
-
-            <p className="2xl:text-sm text-xs">
-              Track cash generation from performance
-            </p>
           </div>
-        </div>
 
-        {/* RIGHT: Filters */}
-        <div className="mb-2 sm:mb-0">
-          <div className="flex flex-col md:flex-row sm:items-center  gap-[0.5vw]">
-            <PeriodFiltersTable
-              range={periodType}
-              selectedMonth={month.toLowerCase()}
-              selectedQuarter={selectedQuarter}
-              selectedYear={year}
-              yearOptions={years}
-              onRangeChange={handleRangeChange}
-              onMonthChange={handleMonthChange}
-              onQuarterChange={handleQuarterChange}
-              onYearChange={handleYearChange}
-            />
+          {/* RIGHT: Filters */}
+          <div className="mb-2 sm:mb-0">
+            <div className="flex flex-col md:flex-row sm:items-center  gap-[0.5vw]">
+              <PeriodFiltersTable
+                range={periodType}
+                selectedMonth={month.toLowerCase()}
+                selectedQuarter={selectedQuarter}
+                selectedYear={year}
+                yearOptions={years}
+                onRangeChange={handleRangeChange}
+                onMonthChange={handleMonthChange}
+                onQuarterChange={handleQuarterChange}
+                onYearChange={handleYearChange}
+              />
+            </div>
           </div>
+
+          {/* </div> */}
         </div>
-
-        {/* </div> */}
-      </div>
-
+      )}
 
 
       {/* Show alert until a valid period selection is made */}

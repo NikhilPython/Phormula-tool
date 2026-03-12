@@ -45,6 +45,8 @@ import {
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
 import { useRouter } from "next/navigation";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
+import ProductwisePerformance from "@/features/productwiseperformance/ProductwisePerformance";
+import CashFlowPage from "@/app/(admin)/cashflow/[countryName]/[month]/[year]/CashFlowClient";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -1586,27 +1588,32 @@ type FocusedChart = "trend" | "pnl" | null;
 type DashboardTab =
   | "graphs"
   | "businessSummary"
-  // | "breakdowns"    
-  | "skuBreakdown";
+  | "skuBreakdown"
+  | "productwisePerformance"
+  | "cashFlow";
 
 const TAB_LABELS: Record<DashboardTab, string> = {
   graphs: "Finance Dashboard",
   businessSummary: "AI Insights & Recommendations",
-  // breakdowns: "Breakdowns",    
   skuBreakdown: "P&L Breakdown",
+  productwisePerformance: "Productwise Performance",
+  cashFlow: "Cash Flow",
 };
 
 const TAB_OPTIONS: { value: DashboardTab; label: string }[] = [
   { value: "graphs", label: TAB_LABELS.graphs },
   { value: "businessSummary", label: TAB_LABELS.businessSummary },
-  // { value: "breakdowns", label: TAB_LABELS.breakdowns },
   { value: "skuBreakdown", label: TAB_LABELS.skuBreakdown },
+  { value: "productwisePerformance", label: TAB_LABELS.productwisePerformance },
+  { value: "cashFlow", label: TAB_LABELS.cashFlow },
 ];
 
 const HASH_TO_FINANCE_TAB: Record<string, DashboardTab> = {
   "finance-dashboard": "graphs",
   "ai-insights": "businessSummary",
   "pnl-breakdown": "skuBreakdown",
+  "productwise-performance": "productwisePerformance",
+  "cash-flow": "cashFlow",
 };
 
 /* ---------------------- Component ---------------------- */
@@ -1676,40 +1683,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setActiveTab("graphs");
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
 
- useEffect(() => {
-  if (typeof window === "undefined") return;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-  const applyHash = (rawHash?: string) => {
-    const hash = (rawHash ?? window.location.hash).replace("#", "");
-    if (!hash) return;
+    const applyHash = (rawHash?: string) => {
+      const hash = (rawHash ?? window.location.hash).replace("#", "");
+      if (!hash) return;
 
-    const targetTab = HASH_TO_FINANCE_TAB[hash];
-    if (!targetTab) return;
+      const targetTab = HASH_TO_FINANCE_TAB[hash];
+      if (!targetTab) return;
 
-    setPendingHash(hash);
-    setActiveTab(targetTab);
-  };
+      setPendingHash(hash);
+      setActiveTab(targetTab);
+    };
 
-  const onHashChange = () => {
+    const onHashChange = () => {
+      applyHash(window.location.hash);
+    };
+
+    const onCustomHashNavigate = (event: Event) => {
+      const customEvent = event as CustomEvent<{ hash?: string }>;
+      if (!customEvent.detail?.hash) return;
+      applyHash(`#${customEvent.detail.hash}`);
+    };
+
     applyHash(window.location.hash);
-  };
 
-  const onCustomHashNavigate = (event: Event) => {
-    const customEvent = event as CustomEvent<{ hash?: string }>;
-    if (!customEvent.detail?.hash) return;
-    applyHash(`#${customEvent.detail.hash}`);
-  };
+    window.addEventListener("hashchange", onHashChange);
+    window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
 
-  applyHash(window.location.hash);
-
-  window.addEventListener("hashchange", onHashChange);
-  window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
-
-  return () => {
-    window.removeEventListener("hashchange", onHashChange);
-    window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
-  };
-}, []);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     if (!pendingHash) return;
@@ -1734,8 +1741,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return {
       graphs: disabled,
       businessSummary: disabled,
-      // breakdowns: disabled,
       skuBreakdown: disabled,
+      productwisePerformance: disabled,
+      cashFlow: disabled,
     };
   }, [allDropdownsSelected]);
 
@@ -1858,6 +1866,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const { topData, bottomData } = useMemo(() => computeTopBottom5(skuRows), [skuRows]);
 
+  const defaultTopProductName = useMemo(() => {
+    const first = topData?.rows?.[0];
+    return first?.product_name?.trim() || "";
+  }, [topData]);
 
   useEffect(() => {
     setShowNoDataOverlay(false);
@@ -2759,6 +2771,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
       {/* If you want summary cards ALWAYS visible regardless of tab, keep this block here */}
+      
+      {activeTab !== "cashFlow" && (
       <div className="flex flex-col gap-5 w-full mt-4">
         {/* Summary Cards */}
         {uploadsData?.summary &&
@@ -3383,6 +3397,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             );
           })()}
       </div>
+      )}
 
       {/* ===================== TAB CONTENT AREA ===================== */}
       <div className="w-full">
@@ -3826,41 +3841,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           </div>
         )}
 
-
-        {/* ---------- TAB 3: EXPENSE BREAKUP ---------- */}
-        {/* {activeTab === "breakdowns" && allDropdownsSelected && (
-          <div className="mt-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-            
-              <div className="w-full rounded-xl border border-gray-200 bg-white p-4">
-                <CircleChart
-                  range={range as Exclude<RangeType, "">}
-                  month={range === "monthly" ? selectedMonth : undefined}
-                  selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
-                  year={selectedYear}
-                  countryName={initialCountryName}
-                  homeCurrency={globalHomeCurrency}
-                  onExportBase64Ready={setExpenseBreakdownPieBase64}
-                />
-              </div>
-
-             
-              <div className="w-full rounded-xl border border-gray-200 bg-white p-4">
-                <CMchartofsku
-                  range={range as Exclude<RangeType, "">}
-                  month={range === "monthly" ? selectedMonth : undefined}
-                  selectedQuarter={range === "quarterly" && selectedQuarter ? selectedQuarter : undefined}
-                  year={selectedYear}
-                  countryName={initialCountryName}
-                  homeCurrency={globalHomeCurrency}
-                  onExportBase64Ready={setProductWiseCm1PieBase64}
-                />
-              </div>
-            </div>
-          </div>
-        )} */}
-
-        {/* ---------- TAB 4: SKU / PRODUCTWISE P&L ---------- */}
+        {/* ---------- TAB 3: SKU / PRODUCTWISE P&L ---------- */}
         {activeTab === "skuBreakdown" && allDropdownsSelected && (
           <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
             <SKUtable
@@ -3883,6 +3864,33 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 currencySymbol={currencySymbol}
               />
             )}
+          </div>
+        )}
+
+        {activeTab === "productwisePerformance" && allDropdownsSelected && (
+          <div id="productwise-performance" className="mt-4 scroll-mt-[80px]">
+            <ProductwisePerformance
+              embedded
+              countryNameProp={initialCountryName}
+              rangeProp={range as "monthly" | "quarterly" | "yearly"}
+              selectedMonthProp={range === "monthly" ? selectedMonth : ""}
+              selectedQuarterProp={range === "quarterly" ? selectedQuarter : ""}
+              selectedYearProp={selectedYear ? Number(selectedYear) : ""}
+              initialProductName={defaultTopProductName}
+            />
+          </div>
+        )}
+
+        {activeTab === "cashFlow" && allDropdownsSelected && (
+          <div id="cash-flow" className="mt-4 scroll-mt-[80px]">
+            <CashFlowPage
+              embedded
+              countryNameProp={initialCountryName}
+              rangeProp={range as "monthly" | "quarterly" | "yearly"}
+              selectedMonthProp={range === "monthly" ? selectedMonth : ""}
+              selectedQuarterProp={range === "quarterly" ? selectedQuarter : ""}
+              selectedYearProp={selectedYear}
+            />
           </div>
         )}
       </div>

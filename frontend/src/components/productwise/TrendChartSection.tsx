@@ -466,7 +466,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
               />
 
               <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-semibold text-[#5EA68E]">
-                {productname}
+                {productname || "Select a product"}
               </span>
             </div>
 
@@ -518,7 +518,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
               />
 
               <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-semibold text-[#5EA68E]">
-                {productname}
+              {productname || "Select a product"}
               </span>
             </div>
 

@@ -512,7 +512,7 @@ const AppSidebar: React.FC = () => {
       ),
       subItems: [
         {
-          name: "Live Sales",
+          name: "MTD Sales",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#live-sales`,
         },
         {
@@ -524,7 +524,7 @@ const AppSidebar: React.FC = () => {
         //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#mtd-pl`,
         // },
         {
-          name: "P&L Productwise Breakdown",
+          name: "P&L Breakdown",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
         },
         {
@@ -588,7 +588,11 @@ const AppSidebar: React.FC = () => {
         {
           name: "Finance Dashboard",
           path: ({ ranged, countryName, month, year }) =>
-            `/pnl-dashboard/${ranged}/${countryName}/${month}/${year}#finance-dashboard`,
+            `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#finance-dashboard`,
         },
         {
           name: "AI Insights",
@@ -610,20 +614,21 @@ const AppSidebar: React.FC = () => {
         },
         {
           name: "Cash Flow",
-          path: ({ countryName, month, year }) =>
-            `/cashflow/${encodeURIComponent(countryName)}/${encodeURIComponent(
-              month
-            )}/${encodeURIComponent(year)}`,
+          path: ({ ranged, countryName, month, year }) =>
+            `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#cash-flow`,
         },
         {
           name: "SKU wise Profit",
-          path: (params: {
-            productname?: string;
-            countryName: string;
-            month: string;
-            year: string;
-          }) =>
-            `/skuwiseprofit/${params.productname ?? "Classic"}/${params.countryName}/${params.month}/${params.year}`,
+          path: ({ ranged, countryName, month, year }) =>
+            `/pnl-dashboard/${encodeURIComponent(ranged)}/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#productwise-performance`,
         },
         {
           name: "Expense Reconcilliation",
