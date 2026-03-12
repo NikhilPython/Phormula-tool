@@ -360,7 +360,7 @@ const extraCount = Math.max(0, modules.length - 2);
             value={tab}
             options={[
               { value: "personal", label: "User Details" },
-              { value: "objectives", label: "Performance Targets" },
+              // { value: "objectives", label: "Performance Targets" },
               ...(isMember === false ? [{ value: "teamMembers" as const, label: "Team Members" }] : []),
             ]}
             onChange={(val) => setTab(val)}
