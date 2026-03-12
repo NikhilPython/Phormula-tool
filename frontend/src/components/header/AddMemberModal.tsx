@@ -39,92 +39,95 @@ const formatLabel = (value: string) =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
-function ChipsMultiSelect({
+function SectionAccessGrid({
   options,
   value,
   onChange,
-  placeholder = "Select the section you want to give access of",
 }: {
   options: string[];
   value: string[];
   onChange: (next: string[]) => void;
-  placeholder?: string;
 }) {
-  const [open, setOpen] = useState(false);
-
   const toggle = (opt: string) => {
-    if (value.includes(opt)) onChange(value.filter((v) => v !== opt));
-    else onChange([...value, opt]);
+    if (value.includes(opt)) {
+      onChange(value.filter((v) => v !== opt));
+    } else {
+      onChange([...value, opt]);
+    }
   };
 
-  const remove = (opt: string) => onChange(value.filter((v) => v !== opt));
-
-
+  const getModuleMeta = (opt: string) => {
+    switch (opt) {
+      case "LIVE_DASHBOARD":
+        return {
+          title: "Dashboard",
+          subtitle: "Profit, SKU & Cash Flow",
+        };
+      case "FINANCE_DASHBOARDS":
+        return {
+          title: "Finance Dashboards",
+          subtitle: "Profit, SKU & Cash Flow",
+        };
+      case "BUSINESS_INTELLIGENCE":
+        return {
+          title: "Business Intelligence",
+          subtitle: "Insights, Chatbot, Forecast",
+        };
+      case "INVENTORY_PLANNING":
+        return {
+          title: "Inventory",
+          subtitle: "Stock, Dispatches, PO",
+        };
+      default:
+        return {
+          title: formatLabel(opt),
+          subtitle: "",
+        };
+    }
+  };
 
   return (
-    <div className="relative">
-      <div
-        className="min-h-[40px] w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 flex flex-wrap gap-2 items-center cursor-pointer"
-        onClick={() => setOpen((p) => !p)}
-      >
-        {value.length === 0 ? (
-          <span className="text-gray-400 text-sm">{placeholder}</span>
-        ) : (
-          value.map((v) => (
-            <span
-              key={v}
-              className="inline-flex items-center gap-2 rounded-full bg-gray-100 dark:bg-white/5 px-3 py-1 text-xs text-gray-700 dark:text-gray-200"
-              onClick={(e) => e.stopPropagation()}
-            >
-            {formatLabel(v)}
-              <button
-                type="button"
-                className="text-gray-500 hover:text-gray-800 dark:hover:text-white"
-                onClick={() => remove(v)}
-                aria-label={`Remove ${v}`}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {options.map((opt) => {
+        const checked = value.includes(opt);
+        const meta = getModuleMeta(opt);
+
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => toggle(opt)}
+            className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
+              checked
+                ? "border-[#86E0B8] bg-[#EAF7F1]"
+                : "border-gray-200 bg-white hover:bg-gray-50"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-xs ${
+                  checked
+                    ? "border-[#10B981] bg-[#10B981] text-white"
+                    : "border-gray-300 bg-white text-transparent"
+                }`}
               >
-                ✕
-              </button>
-            </span>
-          ))
-        )}
-      </div>
+                ✓
+              </div>
 
-      {open && (
-        <div
-          className="absolute z-[999999] mt-2 w-full rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark shadow-theme-lg p-2"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="max-h-52 overflow-auto">
-            {options.map((opt) => {
-              const checked = value.includes(opt);
-              return (
-                <button
-                  type="button"
-                  key={opt}
-                  onClick={() => toggle(opt)}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 text-left"
-                >
-                  <span className="text-sm text-gray-700 dark:text-gray-200">
-                    {formatLabel(opt)}
-                  </span>
-                  <span className="text-sm">{checked ? "✅" : ""}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="pt-2 flex justify-end">
-            <button
-              type="button"
-              className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
-              onClick={() => setOpen(false)}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900">
+                  {meta.title}
+                </div>
+                {meta.subtitle && (
+                  <div className="mt-0.5 text-xs text-gray-500">
+                    {meta.subtitle}
+                  </div>
+                )}
+              </div>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -368,17 +371,18 @@ export default function AddMemberModal({
 
             {/* Section Access */}
             <div className="md:col-span-2">
-              <label className="text-sm text-gray-700 dark:text-gray-200">
-            Section Access <span className="text-red-500">*</span>
-              </label>
-              <div className="mt-1">
-                <ChipsMultiSelect
-                  options={MODULE_OPTIONS}
-                  value={modules}
-                  onChange={setModules}
-                />
-              </div>
-            </div>
+  <label className="text-sm text-gray-700 dark:text-gray-200">
+    Section Access <span className="text-red-500">*</span>
+  </label>
+
+  <div className="mt-2">
+    <SectionAccessGrid
+      options={MODULE_OPTIONS}
+      value={modules}
+      onChange={setModules}
+    />
+  </div>
+</div>
           </div>
 
           {success && (

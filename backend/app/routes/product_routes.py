@@ -1244,7 +1244,7 @@ def get_table_data(file_name):
         return jsonify({"error": str(e)}), 500
 
 
-@product_bp.route('/uploadWarehouseData', methods=['POST'])
+@product_bp.route('/uploadWarehouseData', methods=['POST', 'GET'])
 def upload_warehouse_data():
     # ---------- AUTH ----------
     auth_header = request.headers.get('Authorization')
@@ -1258,18 +1258,6 @@ def upload_warehouse_data():
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
-
-    # ---------- INPUT ----------
-    country = (request.form.get('country') or request.args.get('country') or '').strip().lower()
-    if not country:
-        return jsonify({'error': 'country is required'}), 400
-
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part found'}), 400
-
-    file = request.files['file']
-    if not file or file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
 
     # ---------- HELPERS ----------
     def sanitize_identifier(value):
@@ -1286,43 +1274,64 @@ def upload_warehouse_data():
         col = re.sub(r'_+', '_', col).strip('_')
         return col
 
+    country = (request.form.get('country') or request.args.get('country') or '').strip().lower()
+    if not country:
+        return jsonify({'error': 'country is required'}), 400
+
     safe_country = sanitize_identifier(country)
     table_name = f"warehouse_{user_id}_{safe_country}_data"
+    user_engine = create_engine(db_url)
 
-    # Optional: save uploaded file temporarily
+    # ---------- GET: READ EXISTING DATA ----------
+    if request.method == 'GET':
+        try:
+            df = pd.read_sql(f'SELECT * FROM "{table_name}"', user_engine)
+
+            return jsonify({
+                'success': True,
+                'message': 'Warehouse data fetched successfully',
+                'table_name': table_name,
+                'columns': df.columns.tolist(),
+                'row_count': int(len(df)),
+                'data': df.to_dict(orient="records")
+            }), 200
+
+        except Exception as e:
+            return jsonify({
+                'error': 'Warehouse data not found',
+                'message': str(e)
+            }), 404
+
+    # ---------- POST: UPLOAD FILE ----------
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part found'}), 400
+
+    file = request.files['file']
+    if not file or file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
     filename = secure_filename(file.filename)
     temp_path = os.path.join(basedir, filename)
 
     try:
         file.save(temp_path)
 
-        # ---------- READ EXCEL ----------
-        # Reads first sheet by default
         df = pd.read_excel(temp_path)
 
         if df.empty:
             return jsonify({'error': 'Uploaded Excel file is empty'}), 400
 
-        # Normalize column names for PostgreSQL
         df.columns = [normalize_column_name(c) for c in df.columns]
-
-        # Remove completely empty rows
         df = df.dropna(how='all')
 
-        # Optional: convert common numeric columns
         for col in ['local_stock', 'in_transit_units', 'year', 's_no']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        # Optional: clean string columns
         for col in df.columns:
             if df[col].dtype == object:
                 df[col] = df[col].astype(str).replace({'nan': None, 'None': None})
 
-        # ---------- STORE IN DATABASE ----------
-        user_engine = create_engine(db_url)
-
-        # replace table if already exists
         df.to_sql(table_name, user_engine, if_exists='replace', index=False)
 
         return jsonify({
@@ -1332,7 +1341,7 @@ def upload_warehouse_data():
             'file_name': filename,
             'columns': df.columns.tolist(),
             'row_count': int(len(df)),
-            'data': df.to_dict(orient="records")   # 👈 ADD THIS
+            'data': df.to_dict(orient="records")
         }), 200
 
     except Exception as e:
@@ -1343,10 +1352,8 @@ def upload_warehouse_data():
         }), 500
 
     finally:
-        # delete temp file
         try:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
         except Exception:
             pass
-

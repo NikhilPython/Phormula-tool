@@ -5,6 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
 import UploadLocalInvModal from '@/components/Modal/UploadLocalInvModal';
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
+import DataTable, { ColumnDef } from '@/components/ui/table/DataTable';
+import { IoDownload } from 'react-icons/io5';
+import DownloadIconButton from '@/components/ui/button/DownloadButton';
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 // ---------- Types ----------
 interface Row {
@@ -40,38 +44,46 @@ export default function PurchaseOrderPage() {
     [countryName],
   );
 
-  const displayedColumns = useMemo(
-    () =>
-      isGlobalRoute
-        ? [
-            'Sno.',
-            'Product Name',
-            'Dispatches UK',
-            'Dispatches Canada',
-            'Dispatches Amazon US',
-            'Total Dispatches',
-            'Current Inventory - Local Warehouse',
-            'PO Already Raised',
-            'PO to be raised',
-            'Cost per Unit (in INR)',
-            'PO Cost (in INR)',
-          ]
-        : [
-            'Sno.',
-            'SKU',
-            'Product Name',
-            'Dispatches UK',
-            'Dispatches Canada',
-            'Dispatches Amazon US',
-            'Total Dispatches',
-            'Current Inventory - Local Warehouse',
-            'PO Already Raised',
-            'PO to be raised',
-            'Cost per Unit (in INR)',
-            'PO Cost (in INR)',
-          ],
-    [isGlobalRoute],
-  );
+const displayedColumns = useMemo(
+  () =>
+    isGlobalRoute
+      ? [
+          'Sno.',
+          'Product Name',
+          'Dispatches UK',
+          'Dispatches Canada',
+          'Dispatches Amazon US',
+          'Total Dispatches',
+          'Current Inventory - Local Warehouse',
+          'PO Already Raised',
+          'PO to be raised',
+          'Cost per Unit (in INR)',
+          'PO Cost (in INR)',
+        ]
+      : [
+          'Sno.',
+          'Product Name',
+          'Dispatches UK',
+          'Total Dispatches',
+          'Current Inventory - Local Warehouse',
+          'PO Already Raised',
+          'PO to be raised',
+          'Cost per Unit (in INR)',
+          'PO Cost (in INR)',
+        ],
+  [isGlobalRoute],
+);
+
+const signRowMap = useMemo<Record<string, string>>(
+  () => ({
+    'Dispatches UK': '(+)',
+    'Dispatches Canada': '(+)',
+    'Dispatches Amazon US': '(+)',
+    'Current Inventory - Local Warehouse': '(-)',
+    'PO Already Raised': '(-)',
+  }),
+  []
+);
 
   // Pre-fill from URL
   useEffect(() => {
@@ -234,6 +246,92 @@ export default function PurchaseOrderPage() {
     );
   };
 
+
+  const tableData = useMemo(() => {
+  if (!skuData.length) return [];
+
+  const signRow: Row = {};
+  displayedColumns.forEach((col) => {
+    signRow[col] = signRowMap[col] || '';
+  });
+  signRow.__isSignRow = true;
+
+  const formattedRows = skuData.map((row, index) => {
+    const out: Row = {};
+
+    displayedColumns.forEach((col) => {
+      let value =
+        col === 'Sno.'
+          ? row[col] ?? index + 1
+          : row[col];
+
+      if (typeof value === 'number') {
+        value = value.toLocaleString('en-IN', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        });
+      }
+
+      out[col] = value ?? '';
+    });
+
+    const isTotalRow =
+      String(row['Product Name'] ?? '').trim().toLowerCase() === 'total';
+
+    out.__isTotalRow = isTotalRow;
+    return out;
+  });
+
+  return [signRow, ...formattedRows];
+}, [skuData, displayedColumns, signRowMap]);
+
+
+const tableColumns = useMemo<ColumnDef<Row>[]>(
+  () =>
+    displayedColumns.map((col) => ({
+      key: col,
+      header: col,
+      width:
+        col === 'Sno.'
+          ? '60px'
+          : col === 'Product Name'
+          ? '220px'
+          : '140px',
+      cellClassName:
+        col === 'Product Name'
+          ? 'text-left'
+          : col === 'Sno.'
+          ? 'text-center'
+          : '',
+      headerClassName:
+        col === 'Sno.'
+          ? 'text-center'
+          : '',
+      render: (row, value) => {
+        const text = String(value ?? '');
+
+        if (row.__isSignRow) {
+          if (text === '(+)') {
+            return <span className="text-green-600 font-medium">{text}</span>;
+          }
+          if (text === '(-)') {
+            return <span className="text-red-500 font-medium">{text}</span>;
+          }
+          return '';
+        }
+
+        return text;
+      },
+    })),
+  [displayedColumns]
+);
+
+const getTableRowClassName = useCallback((row: Row, rowIndex: number) => {
+  if (row.__isSignRow) return 'bg-white';
+  if (row.__isTotalRow) return 'bg-[#D9D9D9] font-semibold';
+  return rowIndex % 2 === 0 ? 'bg-white' : 'bg-white';
+}, []);
+
   return (
     <>
        <style jsx>{`
@@ -350,7 +448,21 @@ font-weight: bold;
         }
         
       `}</style>
-      <h2 className='text-2xl font-bold text-[#414042] mb-6'>
+      <div className='flex items-center justify-between items-start'>
+         <div className="flex flex-wrap items-baseline gap-2 justify-start">
+              <PageBreadcrumb
+                pageTitle="PO Report - "
+                variant="page"
+                align="left"
+                className=""
+              />
+              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                Amazon {countryName?.toLowerCase() === "global"
+                  ? "Global"
+                  : countryName?.toUpperCase()}
+              </span>
+            </div>
+{/* <h2 className='text-2xl font-bold text-[#414042] mb-6'>
         {isGlobalRoute ? (
           <>
             <span style={{ color: '#414042' }}>PO Report for </span>
@@ -362,49 +474,8 @@ font-weight: bold;
             <span style={{ color: '#60a68e' }}>{countryName.toUpperCase()}</span>
           </span>
         )}
-      </h2>
-
-      <div className="inline-dropdowns flex sm:flex-row flex-col">
-        {/* <table className="dropdown-table">
-          <thead>
-            <tr className="dropdown-header">
-              <th className="dropdown-cell">Month</th>
-              <th className="dropdown-cell">Year</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="dropdown-cell">
-                <select
-                  className="dropdown-select"
-                  value={month}
-                  onChange={(e) => setMonth(e.target.value)}
-                >
-                  <option value="">Select</option>
-                  {MONTHS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </td>
-              <td className="dropdown-cell">
-                <select
-                  className="dropdown-select"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                >
-                  <option value="">Select</option>
-                  {YEARS.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </td>
-            </tr>
-          </tbody>
-        </table> */}
+      </h2> */}
+<div className="inline-dropdowns flex sm:flex-row flex-col">
         <MonthYearPickerTable
                         month={month}
                         year={year}
@@ -416,6 +487,8 @@ font-weight: bold;
                         onYearChange={(v) => setYear(v)}
                         valueMode="lower"
                       />
+                     
+                                        <DownloadIconButton onClick={handleExportToExcel} size="md" />
 
         <div className="flex sm:flex-row flex-col gap-4">
           <button
@@ -424,14 +497,17 @@ font-weight: bold;
           >
             {isGlobalRoute ? 'Get Global Report' : 'Get Report'}
           </button>
-          {!isGlobalRoute && (
+          {/* {!isGlobalRoute && (
             <button className="fetch-button" onClick={openUploadModal}>
               Upload Local Warehouse Inventory File&nbsp;
               <i className="fa-solid fa-plus" />
             </button>
-          )}
+          )} */}
         </div>
       </div>
+      </div>
+      
+      
 
       {loading ? (
         <div style={{ padding: '48px', textAlign: 'center' }} />
@@ -449,59 +525,21 @@ font-weight: bold;
         <div className="">
           {skuData.length > 0 ? (
             <>
-              <div className="table-wrapper">
-                <table className="tablec">
-                  <thead className="theadc">
-                    <tr>
-                      {displayedColumns.map((key) => (
-                        <th key={key}>{key}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="explanatory-row">
-                      <td></td>
-                      {!isGlobalRoute && <td></td>}
-                      <td></td>
-                      <td style={{ color: 'green' }}>(+)</td>
-                      <td style={{ color: 'green' }}>(+)</td>
-                      <td style={{ color: 'green' }}>(+)</td>
-                      <td></td>
-                      <td style={{ color: 'red' }}>(-)</td>
-                      <td style={{ color: 'red' }}>(-)</td>
-                      <td></td>
-                      <td></td>
-                      <td></td>
-                    </tr>
-                    {skuData.map((row, index) => {
-                      const isLastRow = index === skuData.length - 1;
-                      return (
-                        <tr key={index} className={isLastRow ? 'total-row' : ''}>
-                          {displayedColumns.map((col) => {
-                            let value = row[col];
-                            if (typeof value === 'number') {
-                              value = value.toLocaleString('en-IN', {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 2,
-                              });
-                            }
-                            return <td key={col}>{value}</td>;
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-                <div className="flex justify-end gap-3 mt-3">
-        <button
-           onClick={handleExportToExcel}
-          className="bg-[#37455F] text-sm text-[#F8EDCE] font-bold w-[220px] py-2 rounded-lg shadow-[0px_4px_4px_0px_#00000040]"
-        >
-           Download (.xlsx)&nbsp;
-                <i className="fa-solid fa-download fa-beat" />
-        </button>
-      </div>
+              <div className="">
+  <DataTable<Row>
+    columns={tableColumns}
+    data={tableData}
+    paginate={false}
+    pageSize={10}
+    stickyHeader
+    scrollY
+    maxHeight="90vh"
+    emptyMessage={`Select Month and Year to see ${isGlobalRoute ? 'Global PO' : 'PO'}!`}
+    rowClassName={getTableRowClassName}
+    tableClassName="text-xs 2xl:text-sm"
+  />
+</div>
+               
             </>
           ) : (
             <p>

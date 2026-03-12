@@ -650,8 +650,9 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
             onClick={onClose}
           />
 
+
           <motion.aside
-            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[900px] bg-white shadow-2xl"
+            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] sm:w-[75vw] md-[60vw] lg:w-[50vw] min-[1700px]:w-[50vw] bg-white shadow-2xl" 
             initial={{ x: 520 }}
             animate={{ x: 0 }}
             exit={{ x: 520 }}

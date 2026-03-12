@@ -287,6 +287,14 @@ const AppSidebar: React.FC = () => {
     return { start_date: toISO(start), end_date: toISO(end) };
   };
 
+  const getCurrentMonthYear = () => {
+  const now = new Date();
+  return {
+    month: monthNames[now.getMonth()], // "march"
+    year: String(now.getFullYear()),   // "2026"
+  };
+};
+
   const ensureSpReportSeedOnce = async (
     baseUrl: string,
     jwtToken: string,
@@ -400,6 +408,46 @@ const AppSidebar: React.FC = () => {
 
     localStorage.setItem(storageKey, "1");
   };
+
+const triggerPurchaseOrderApi = async (
+  country: string,
+  month: string,
+  year: string
+) => {
+  const jwtToken =
+    token || (typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null);
+
+  if (!jwtToken) throw new Error("Missing jwt token");
+
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
+
+  const safeMonth =
+    month.charAt(0).toUpperCase() + month.slice(1).toLowerCase(); // march -> March
+
+  const formData = new FormData();
+  formData.append("month", safeMonth);
+  formData.append("year", year);
+  formData.append("country", country.toLowerCase());
+
+  const res = await fetch(`${baseUrl}/purchase_order`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${jwtToken}`,
+      Accept: "application/json",
+    },
+    body: formData,
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(json?.error || "Purchase order API failed");
+  }
+
+  return json;
+};
+
 
   const onRegionChange = (val: string) => {
     const platform = val as PlatformId;
@@ -618,6 +666,7 @@ const AppSidebar: React.FC = () => {
           name: "P&L Forecast",
           path: `/pnlforecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
+       
       ],
     },
 
@@ -646,17 +695,22 @@ const AppSidebar: React.FC = () => {
           name: "Dispatch Planning",
           path: `/dispatch/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
-        {
-          name: "Purchase Order (PO) Planning",
-          path: `/purchase-order/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
-        {
-          name: "Expense Reconcilliation",
-          path: ({ countryName, month, year }) =>
-            `/expense-reconciliation/${encodeURIComponent(
-              countryName
-            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
-        },
+       {
+  name: "Purchase Order (PO) Planning",
+  path: ({ countryName, month, year }) =>
+    `/purchase-order/${countryName}/${month}/${year}`,
+  onClick: async () => {
+    await triggerPurchaseOrderApi(
+      currentParams.countryName,
+      currentParams.month,
+      currentParams.year
+    );
+  },
+},
+ {
+  name: "Objectives & Targets",
+  path: `/objectives-targets/${currentParams.countryName}`,
+},
       ],
     },
   ];

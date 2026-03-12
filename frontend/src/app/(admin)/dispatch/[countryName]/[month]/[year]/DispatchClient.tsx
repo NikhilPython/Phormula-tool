@@ -9,6 +9,10 @@ import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm'; 
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
 import DataTable, { ColumnDef } from "@/components/ui/table/DataTable"
 import { IoDownload } from "react-icons/io5";
+import DownloadIconButton from '@/components/ui/button/DownloadButton';
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+
+
 
 // Types
 interface SkuRow {
@@ -186,7 +190,6 @@ export default function DispatchPage() {
       ]
     : [
         'Sno.',
-        'sku',
         'Product Name',
         'Inventory at Month End',
         'Projected Sales Total',
@@ -304,11 +307,10 @@ const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
   return {
     key: col === "Sno." ? "sno" : col,
 
-    // 🔥 HEADER FIX
     header: isCoverage ? (
       <div
         className="one-line-ellipsis"
-        title={col}                 // hover pe full text
+        title={col}
       >
         {col}
       </div>
@@ -316,15 +318,17 @@ const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
       col
     ),
 
-    // 🔥 FIXED WIDTH (MANDATORY for ellipsis)
-    width: isCoverage ? "200px" : col === "Sno." ? "50px" : undefined,
+    width:
+      isCoverage ? "200px" : col === "Sno." ? "60px" : undefined,
 
-    // 🔥 CELL alignment
-    cellClassName: isCoverage
-      ? "text-center whitespace-nowrap"
-      : col === "Sno."
-      ? "text-center whitespace-nowrap"
-      : "text-center",
+    cellClassName:
+      col === "Product Name"
+        ? "text-left whitespace-nowrap"
+        : isCoverage
+        ? "text-center whitespace-nowrap"
+        : col === "Sno."
+        ? "text-center whitespace-nowrap"
+        : "text-center",
   };
 });
 
@@ -628,44 +632,22 @@ const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
   width: 100%;
 }
       `}</style>
-     <h2 className='text-2xl font-bold text-[#414042] '>
-      Dispatch Report for <span style={{ color: '#60a68e' }}>{countryName.toUpperCase()}</span>
-    </h2>
-
-    <div className="inline-dropdowns my-4">
-      {/* <table className="dropdown-table">
-        <thead>
-          <tr className="dropdown-header">
-            <th className="dropdown-cell">Month</th>
-            <th className="dropdown-cell">Year</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td className="dropdown-cell">
-              <select className="dropdown-select" value={monthdp} onChange={(e) => setMonthDp(e.target.value)}>
-                <option value="">Select</option>
-                {monthdps.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </td>
-
-            <td className="dropdown-cell">
-              <select className="dropdown-select" value={yeardp} onChange={(e) => setYearDp(e.target.value)}>
-                <option value="">Select</option>
-                {yeardps.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </td>
-          </tr>
-        </tbody>
-      </table> */}
+      <div className='flex justify-between items-start'>
+         <div className="flex flex-wrap items-baseline gap-2 justify-start">
+              <PageBreadcrumb
+                pageTitle="Dispatch Report - "
+                variant="page"
+                align="left"
+                className=""
+              />
+              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                Amazon {countryName?.toLowerCase() === "global"
+                  ? "Global"
+                  : countryName?.toUpperCase()}
+              </span>
+            </div>
+ 
+     <div className="inline-dropdowns">
       <MonthYearPickerTable
                       month={month}
                       year={year}
@@ -683,7 +665,12 @@ const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
           Get Report
         </button>
       </div>
+      <DownloadIconButton onClick={handleExportToExcel} size="md" />
     </div>
+      </div>
+    
+
+   
 
     {loading ? (
       <div className="loading-wrapper">
@@ -716,24 +703,14 @@ const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
   data={tableRows}
   paginate={false}          // ❗ pagination OFF so Total row stays visible
   scrollY
-  maxHeight="70vh"
+  maxHeight="90vh"
   stickyHeader
   loading={loading}
   rowClassName={(row: any) =>
     row.__isTotal ? "bg-[#D9D9D9] font-bold" : ""
   }
 />
-    <div className='flex justify-end items-end mt-2'>
- <button
-                               onClick={handleExportToExcel}
-                              className="bg-white border border-[#8B8585] px-1 rounded-sm py-1"
-                                                          style={{
-                                               boxShadow: "0px 4px 4px 0px #00000040",  
-                                             }}
-                                                       >
-                                                       <IoDownload size={27} />
-                              </button>
-    </div>
+    
             
           </>
         ) : (
