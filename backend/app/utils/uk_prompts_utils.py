@@ -798,7 +798,7 @@ journey_summary must explain the structural evolution
 of the SKU, not only list metric changes.
 
 Each bullet point should represent a meaningful phase
-in the product’s commercial journey.
+in the product's commercial journey.
 
 When data allows, the model should explain:
 
@@ -890,13 +890,13 @@ Use this section ONLY if sku_ads_context contains data.
 Do NOT invent ads_spend, ACOS, or CM2 values.
 
 Definitions:
-- ACOS = ads_spend_curr / net_sales_curr × 100
+- ACOS = ads_spend_curr / net_sales_curr * 100
 - CM2 profit reflects profit after advertising.
 - cm2_margin_curr reflects margin after ads.
 
 ACOS interpretation (current month only):
 - ACOS > 40%  → inefficient advertising
-- ACOS 25–40% → moderate efficiency
+- ACOS 25-40% → moderate efficiency
 - ACOS < 25%  → efficient advertising
 
 Decision discipline:
@@ -940,12 +940,12 @@ MANDATORY STRUCTURE (FOR EVERY SKU)
 Each SKU MUST contain EXACTLY FOUR fields:
 
 1) journey_summary
-   - A list containing 3–7 bullet points depending on the number of
+   - A list containing 3-7 bullet points depending on the number of
      structural phases detected in the SKU's commercial evolution.
-   - 4–6 points preferred when sufficient historical data exists.
+   - 4-6 points preferred when sufficient historical data exists.
 
    Each bullet point represents ONE structural phase in the
-   SKU’s commercial lifecycle.
+   SKU's commercial lifecycle.
 
    Each bullet MUST contain:
 
@@ -955,7 +955,7 @@ Each SKU MUST contain EXACTLY FOUR fields:
    4) If applicable, how the SKU transitioned into the next demand state
 
    Each bullet should remain concise but may contain
-   1–2 short sentences if needed to clearly explain
+   1-2 short sentences if needed to clearly explain
    the commercial behaviour of that phase.
 
    The goal is to clearly explain how pricing, demand,
@@ -963,11 +963,11 @@ Each SKU MUST contain EXACTLY FOUR fields:
 
    Example formats:
 
-   - "Jan–Nov'25: ASP stayed around £12.8–£13.4 while units remained below 180. This indicates demand was constrained at the higher price band."
+   - "Jan-Nov'25: ASP stayed around £12.8-£13.4 while units remained below 180. This indicates demand was constrained at the higher price band."
 
    - "Dec'25: ASP dropped from £12.9 to £10.9 and units increased from 120 to 310, marking a structural pricing shift that unlocked demand."
 
-   - "Jan–Feb'26: Units stabilized above 280 while ASP held near £10.7, showing the SKU entered a sustained high-volume demand phase."
+   - "Jan-Feb'26: Units stabilized above 280 while ASP held near £10.7, showing the SKU entered a sustained high-volume demand phase."
 
    - "Current phase: CM1 per unit declined from £4.6 to £3.1 as volume expanded, indicating margin compression as the trade-off for scale."
 
@@ -1013,11 +1013,12 @@ You MUST NOT:
   "ensure stability"
 - Write long or complex sentences.
 
-GOOD STYLE EXAMPLES:
-- "Keep supporting volume this month."
-- "Protect per-unit profit and avoid further margin drop."
-- "Focus on stabilizing demand before pushing growth."
-- "Reduce aged stock even if margins fall."
+GOOD STYLE EXAMPLES (OPERATOR LANGUAGE):
+- "Monitor the decline in Units. Avoid further ASP increase."
+- "Check product visibility and protect CM1 profit."
+- "Support current Units demand. Avoid further ASP reduction."
+- "Monitor Net Sales trend. Protect CM1 margin."
+- "Support Units recovery. Avoid further ASP pressure."
 
 The recommendation must feel like a
 clear dashboard instruction,
@@ -1025,56 +1026,118 @@ not a strategy presentation.
 
 
 ────────────────────────────────────────
-RECOMMENDATION LANGUAGE SIMPLICITY RULE (CRITICAL)
+PORTFOLIO-LEVEL RECOMMENDATION (MANDATORY)
 ────────────────────────────────────────
 
-The recommendation must be easy to read and immediately clear
-to a non-analyst business operator.
+You MUST generate:
 
-You MUST:
+"portfolio_recommendation"
 
-- Use plain, simple business language.
-- Prefer short, direct sentences.
-- Avoid abstract consultant phrases.
-- State the commercial intent clearly.
-- Keep wording practical and actionable in tone.
-- Ensure the meaning is understandable in one quick read.
+Definition:
 
-You MUST NOT:
+* 1-2 short sentences.
+* Covers the total business direction for the next decision cycle.
 
-- Use complex or academic wording.
-- Stack multiple strategic phrases in one sentence.
-- Use vague language like:
-  "prioritize momentum",
-  "optimize trajectory",
-  "drive structural efficiency",
-  "enable sustainable acceleration".
-- Sound like a strategy presentation or consulting report.
+Rules:
 
-STYLE REQUIREMENTS:
+* Must NOT restate metrics.
+* Must align with growth_intent and profit_priority.
+* Must respect inventory_clearance_priority.
+* Must reflect the 1_month horizon.
 
-- Maximum 2 short sentences.
-- Each sentence should express ONE clear idea.
-- Prefer concrete wording such as:
-  "continue supporting volume growth"
-  "protect per-unit profit"
-  "avoid further price pressure"
-  "focus on stabilizing demand"
-  "monitor margin risk closely"
+ACTIONABILITY REQUIREMENT:
 
-TONE BY OBJECTIVE (LANGUAGE ONLY — NOT LOGIC):
+The recommendation MUST clearly indicate what operators
+should monitor or avoid at the portfolio level.
 
-- Growth-oriented → confident and forward-moving.
-- Profit-protection → cautious and controlled.
-- Inventory clearance → urgent and decisive.
-- Balanced → calm and practical.
+It should reference at least ONE operational driver such as:
 
-The recommendation must feel like a
-clear business instruction,
-not a strategic essay.
+* Units trend
+* Net Sales trend
+* ASP pressure
+* CM1 profit stability
+* demand strength
+* inventory exposure
+
+Preferred instruction formats:
+
+Monitor:
+"Monitor Units decline across the portfolio."
+
+Protect:
+"Protect CM1 profit while demand stabilizes."
+
+Avoid:
+"Avoid further ASP increases while demand remains soft."
+
+Support:
+"Support Units recovery where demand remains strong."
+
+GOOD STYLE EXAMPLES:
+
+"Monitor Units decline across the portfolio. Protect CM1 profit while demand stabilizes."
+
+"Support Units growth where demand is strong. Avoid further ASP increases while demand remains soft."
+
+"Monitor Net Sales trend closely. Protect CM1 profit across key SKUs."
+
+Tone:
+
+The portfolio recommendation should feel like
+a **clear operational instruction for the next month**,
+not a strategic commentary.
 
 
-No SKU may omit any field.
+
+────────────────────────────────────────
+ACTIONABILITY RULE (CRITICAL)
+────────────────────────────────────────
+
+Every recommendation MUST clearly state what the operator
+should monitor or avoid.
+
+The recommendation must reference at least ONE operational
+metric or driver such as:
+
+- Units
+- Net Sales
+- ASP
+- CM1 profit
+- visibility
+- demand
+
+
+Preferred instruction formats:
+
+Monitor:
+- "Monitor the decline in Units."
+- "Monitor ASP pressure."
+
+Avoid:
+- "Avoid further ASP reduction."
+- "Avoid further ASP increase."
+
+Check:
+- "Check product visibility."
+- "Review demand trend."
+
+Protect:
+- "Protect CM1 profit."
+- "Protect current demand levels."
+
+Vague strategic phrases must be avoided.
+
+Bad examples (too vague):
+
+"Support demand."
+"Stabilize demand."
+"Protect margins."
+
+Good examples (clear action):
+
+"Monitor the decline in Units and avoid further ASP increase."
+"Check product visibility and protect CM1 profit."
+"Support current Units demand and avoid ASP reduction."
 
 ────────────────────────────────────────
 CONSOLIDATED ACTION FOR REMAINING SKUS (CRITICAL)
@@ -1111,9 +1174,9 @@ In addition to remaining_skus_recommendation, you MUST generate:
 "remaining_skus_journey_summary"
 
 Rules:
-- Must be a list of 3–7 bullet points depending on
+- Must be a list of 3-7 bullet points depending on
   the structural phases observed across the long-tail SKUs.
-- 4–6 points preferred when sufficient data exists.
+- 4-6 points preferred when sufficient data exists.
 - Must describe the collective structural evolution of SKUs
   not in focus_skus (the long-tail portfolio).
 - Must use remaining_skus_context.time_series if provided.
@@ -1123,7 +1186,7 @@ Rules:
   the journey MUST include numeric anchors using values from that dataset.
 
 - Each bullet should remain concise but may contain
-  1–2 short sentences if needed to explain the collective behaviour.
+  1-2 short sentences if needed to explain the collective behaviour.
 
 - Bullets should explain the overall behaviour of the long-tail portfolio,
   such as demand stability, declining momentum, pricing pressure,
@@ -1178,20 +1241,20 @@ AND inventory_coverage_ratio ≤ 2:
 
 → inventory_recommendation MUST say:
 
-"Your coverage ratio is {inventory_coverage_ratio}. Please immediately send stock to avoid stock-out."
+"Your coverage ratio is {inventory_coverage_ratio} months. Please immediately send stock to avoid stock-out."
 
 If inventory_alert_type = "supply"
 AND inventory_coverage_ratio > 2 and ≤ 5:
 
 → inventory_recommendation MUST say:
 
-"Your coverage ratio is {inventory_coverage_ratio}. Please supply inventory soon to avoid stock-out risk."
+"Your coverage ratio is {inventory_coverage_ratio} months. Please supply inventory soon to avoid stock-out risk."
 
 If inventory_alert_type = "excess":
 
 → inventory_recommendation MUST say:
 
-"Your coverage ratio is {inventory_coverage_ratio}, which may increase storage cost. Please improve sell-through to avoid excess storage fees."
+"Your coverage ratio is {inventory_coverage_ratio} months, which may increase storage cost. Please improve sell-through to avoid excess storage fees."
 
 If inventory_alert_type = "overaged":
 
@@ -1265,7 +1328,8 @@ DECISION PRIORITY STACK (CRITICAL)
 When generating recommendations, the model MUST follow
 this strict decision hierarchy:
 
-1) Demand condition (derived from PRICE–DEMAND INTERPRETATION RULE)
+1) Demand condition (derived from PRICE-DEMAND INTERPRETATION RULE
+   and VISIBILITY CHECK RULE)
 2) objective_v2 strategic intent
 3) Inventory signals (if present)
 4) Advertising efficiency signals (if present)
@@ -1330,7 +1394,7 @@ time_horizon:
 
 
 ────────────────────────────────────────
-PRICE–DEMAND INTERPRETATION RULE (CRITICAL)
+PRICE-DEMAND INTERPRETATION RULE (CRITICAL)
 ────────────────────────────────────────
 
 When evaluating the latest period behaviour using sku_mom
@@ -1372,10 +1436,14 @@ Support volume cautiously and monitor margin risk.
 → Demand State: Demand Weakness
 
 Interpretation:
-Lower pricing is not stimulating demand.
+Lower pricing is not restoring demand. The product may be
+losing visibility, traffic, or ranking.
 
 Recommendation focus:
-Stabilize demand and review visibility or conversion drivers.
+Check product visibility or traffic and avoid further ASP reduction.
+
+Example instruction:
+"Check product visibility and traffic. Avoid further ASP reduction."
 
 
 The model MUST follow this interpretation strictly.
@@ -1426,7 +1494,7 @@ Units drop ≤10%
 → Treat as demand softening.
 
 Moderate decline:
-Units drop 10–25%
+Units drop 10-25%
 → Treat as demand weakness.
 
 Severe decline:
@@ -1441,61 +1509,81 @@ more defensive as demand severity increases.
 RECOMMENDATION STRUCTURE RULE (CRITICAL)
 ────────────────────────────────────────
 
-Each recommendation MUST contain:
+Each recommendation MUST contain TWO operational instructions:
+
+1. A monitoring instruction
+2. A control instruction
+
+The monitoring instruction must reference
+operational metric or driver such as:
+
+* Units
+* Net Sales
+* ASP
+* CM1 profit
+* demand
+* visibility
+
+
+The control instruction must clearly state what action
+should be avoided or protected.
 
 The recommendation MUST also remain consistent
 with the direction of unit movement.
-If units declined, the primary action must focus
-on demand stabilization rather than growth.
 
-1) A clear primary commercial action
-2) A risk-control instruction
+If units declined, the primary action must focus
+on diagnosing the demand driver before recommending growth.
+
+If the VISIBILITY CHECK RULE conditions are satisfied,
+the recommendation MUST prioritize checking product visibility
+instead of generic demand stabilization.
 
 Maximum length:
 2 short sentences.
 
+Sentence structure guidance:
+
+• Sentence 1 → Monitoring instruction
+• Sentence 2 → Control instruction
+
 Examples:
 
 Demand Weakness:
-"Focus on restoring demand momentum this month. Monitor margin risk closely."
+"Monitor the decline in Units closely. Avoid further ASP increase to prevent additional demand loss."
 
 Pricing Strength:
-"Support continued volume growth this month. Protect current per-unit profitability."
+"Support current Units growth this month. Protect CM1 profit per unit."
 
 Elastic Demand:
-"Protect per-unit profit and allow demand to stabilize. Avoid aggressive expansion."
+"Monitor the drop in Units after the ASP increase. Avoid further ASP increases until demand stabilizes."
 
 Discount-Driven Growth:
-"Continue supporting volume cautiously. Watch for margin compression."
+"Support the recovery in Units cautiously. Monitor CM1 profit to avoid margin pressure."
+
 
 
 ────────────────────────────────────────
 PRICING LANGUAGE RESTRICTION (CRITICAL)
 ────────────────────────────────────────
 
-The recommendation MUST NOT contain
-explicit pricing commands.
+Recommendations MAY reference pricing behaviour
+using indirect language such as:
 
-Do NOT use phrases like:
+- avoid further ASP reduction
+- avoid increasing ASP further
+- review current pricing level
+- maintain current ASP
+- monitor ASP pressure
 
-- reduce price
-- price cut
-- increase price
-- avoid price cuts
-- maintain price
-- lower price
+The recommendation MUST NOT give aggressive or
+precise pricing commands like:
 
-Instead describe the commercial intent.
+- reduce price by X
+- increase price to X
+- set price to X
 
-GOOD:
-"Protect per-unit profit."
-"Support demand recovery."
-"Monitor margin pressure."
-
-BAD:
-"Reduce prices."
-"Avoid price cuts."
-"Maintain pricing."
+Instead, pricing should be referenced as a
+risk-control instruction within the recommendation.
 
 
 ────────────────────────────────────────
@@ -1507,14 +1595,38 @@ DECISION DISCIPLINE
 - Do NOT introduce new metrics.
 - Do NOT give portfolio-wide advice inside SKU recommendations.
 
-If ASP, Units, Net Sales, and CM1 profit
-are all declining simultaneously:
+────────────────────────────────────────
+VISIBILITY CHECK RULE (CRITICAL)
+────────────────────────────────────────
 
-→ Interpret this as demand weakness
-or visibility deterioration.
+If ALL of the following metrics declined in the latest period:
 
-Recommendation must focus on
-restoring demand momentum or improving visibility.
+* Units decreased
+* Net Sales decreased
+* ASP decreased
+* CM1 profit decreased
+
+Then the recommendation MUST explicitly instruct
+the operator to check product visibility.
+
+Reason:
+Simultaneous decline in price, demand, and profitability
+indicates that lower pricing is not restoring demand and
+the product may be losing visibility or traffic.
+
+Mandatory recommendation structure in this case:
+
+Sentence 1 → Check product visibility or traffic
+Sentence 2 → Avoid further ASP reduction
+
+Example:
+
+"Check product visibility and traffic. Avoid further ASP reduction while demand remains weak."
+
+This rule OVERRIDES generic demand stabilization language.
+The recommendation MUST include the phrase
+"check product visibility" or "review visibility".
+
 
 The recommendation MUST NOT explicitly
 suggest price reductions.
@@ -1526,6 +1638,9 @@ Do NOT include commentary outside JSON.
 You are generating structured executive
 commercial action reasoning.
 
+This rule takes precedence over
+PRICE-DEMAND INTERPRETATION RULE
+and RECOMMENDATION STRUCTURE RULE.
 
 ────────────────────────────────────────
 PORTFOLIO-LEVEL RECOMMENDATION (MANDATORY)
@@ -1537,7 +1652,7 @@ You MUST generate:
 
 Definition:
 
-- 1–2 short sentences.
+- 1-2 short sentences.
 - Covers the total business direction.
 - Based on:
     • analysis_insights

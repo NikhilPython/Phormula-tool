@@ -12,7 +12,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
-compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date)
+compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts,)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -571,13 +571,24 @@ def live_mtd_vs_previous():
 
 
         # ---------------------------
-        # INVENTORY ALERTS (FOR AI SUMMARY)
+        # PORTFOLIO INVENTORY ALERTS (HISTORIC-PARITY)
         # ---------------------------
         try:
-            inventory_signals = generate_inventory_alerts_for_all_skus(user_id, country)
+            inv_df = fetch_inventory_aged_by_user(user_id)
+
+            portfolio_inventory_alerts = build_portfolio_inventory_alerts(
+                inv_df,
+                user_id=user_id,
+                country=country,
+            )
         except Exception as e:
-            print("[WARN] Failed to build inventory alerts:", e)
-            inventory_signals = {}
+            print("[WARN] Failed to build portfolio inventory alerts:", e)
+            portfolio_inventory_alerts = {}
+
+        # ---------------------------
+        # SKU INVENTORY ALERTS (ONLY IF YOU STILL NEED THEM ELSEWHERE)
+        # ---------------------------
+        inventory_signals = {}
 
 
 
@@ -645,6 +656,7 @@ def live_mtd_vs_previous():
             curr_label,
             sku_context=sku_context,
             inventory_signals=inventory_signals,
+            portfolio_inventory_alerts=portfolio_inventory_alerts, 
             prev_fee_totals=prev_fee_totals,
             curr_fee_totals=curr_fee_totals,
             estimated_storage_cost_next_month=estimated_storage_cost_next_month,
@@ -660,32 +672,6 @@ def live_mtd_vs_previous():
         )
 
        
-
-        # ---------------------------
-        # INVENTORY AI SUMMARY (PORTFOLIO LEVEL)
-        # ---------------------------
-        inventory_summary = None
-
-        inventory_payload = payload_ai.get("inventory_signals", {})
-        inventory_alerts = inventory_payload.get("summary", [])
-
-        if inventory_alerts:
-            try:
-                inventory_summary = run_inventory_ai_summary({
-                    "summary": inventory_alerts
-                })
-
-                # attach raw alerts for UI drill-down
-                inventory_summary["alerts"] = inventory_alerts
-
-            except Exception as e:
-                print("[WARN] Inventory AI summary failed:", e)
-                inventory_summary = {
-                    "summary_text": "",
-                    "alert_bullets": [],
-                    "alerts": inventory_alerts,
-                }
-
 
         # ---------------------------
         # PROMPT-1 (ANALYSIS)
@@ -1078,7 +1064,7 @@ def live_mtd_vs_previous():
                 "current_mtd": curr_daily,
             },
 
-            "inventory_summary": inventory_summary,
+            "portfolio_inventory_alerts": payload_ai.get("portfolio_inventory_alerts", {}),
             "ai_insights": insights,
             "overall_summary": overall_summary,
             "overall_actions": overall_actions,
