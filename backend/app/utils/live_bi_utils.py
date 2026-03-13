@@ -504,6 +504,117 @@ def fetch_inventory_aged_by_user(user_id: int) -> pd.DataFrame:
         df = pd.read_sql(query, conn, params={"user_id": user_id})
 
     return df
+
+def build_portfolio_inventory_alerts(df: pd.DataFrame, user_id: int, country: str) -> dict:
+
+    if df is None or df.empty:
+        return {}
+
+    df = df.copy()
+
+    # safe numeric
+    numeric_cols = [
+        "inv-age-0-to-90-days",
+        "inv-age-91-to-180-days",
+        "inv-age-181-to-270-days",
+        "inv-age-271-to-365-days",
+        "inv-age-365-plus-days",
+        "estimated-storage-cost-next-month",
+        "unfulfillable-quantity"
+    ]
+
+    for c in numeric_cols:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
+
+    alerts = {}
+
+    # -------------------------------------------------
+    # 1️⃣ AGEING INVENTORY
+    # -------------------------------------------------
+
+    aged_181_plus = (
+        df["inv-age-181-to-270-days"]
+        + df["inv-age-271-to-365-days"]
+    )
+
+    ageing_units = int(aged_181_plus.sum())
+    ageing_skus = int((aged_181_plus > 0).sum())
+
+    alerts["ageing_inventory"] = {
+        "total_units": ageing_units,
+        "total_skus": ageing_skus
+    }
+
+    # -------------------------------------------------
+    # 2️⃣ HIGH COVERAGE RATIO
+    # -------------------------------------------------
+
+    coverage_df = compute_inventory_coverage_ratio(user_id, country)
+
+    if coverage_df is not None and not coverage_df.empty:
+
+        high_coverage = coverage_df[
+            coverage_df["inventory_coverage_ratio"] > 4
+        ][["sku", "inventory_coverage_ratio"]]
+
+        alerts["high_coverage"] = {
+            "count": int(len(high_coverage)),
+            "skus": high_coverage.to_dict(orient="records")
+        }
+
+    else:
+        alerts["high_coverage"] = {
+            "count": 0,
+            "skus": []
+        }
+
+    # -------------------------------------------------
+    # 3️⃣ UNFULFILLABLE INVENTORY %
+    # -------------------------------------------------
+
+    total_inventory_units = int(
+        df[
+            [
+                "inv-age-0-to-90-days",
+                "inv-age-91-to-180-days",
+                "inv-age-181-to-270-days",
+                "inv-age-271-to-365-days",
+                "inv-age-365-plus-days",
+            ]
+        ].sum().sum()
+    )
+
+    unfulfillable_units = int(
+        df["unfulfillable-quantity"].sum()
+    )
+
+    unfulfillable_pct = (
+        (unfulfillable_units / total_inventory_units) * 100
+        if total_inventory_units > 0 else 0
+    )
+
+    alerts["unfulfillable"] = {
+        "units": unfulfillable_units,
+        "percentage": round(unfulfillable_pct, 2),
+        "status": "above_1_percent"
+        if unfulfillable_pct > 1 else "below_1_percent"
+    }
+
+    # -------------------------------------------------
+    # 4️⃣ ESTIMATED STORAGE COST
+    # -------------------------------------------------
+
+    total_storage_cost = float(
+        df["estimated-storage-cost-next-month"].sum()
+    )
+
+    alerts["estimated_storage_cost"] = {
+        "value": round(total_storage_cost, 2)
+    }
+
+    return alerts
+
 # -----------------------------------------------------------------------------
 def fetch_estimated_storage_cost_next_month(user_id: int) -> float:
     df = fetch_inventory_aged_by_user(user_id)
@@ -1719,10 +1830,13 @@ def render_live_recommended_action(
     growth_row: dict,
     recommendation: str,
     ads_recommendation: str | None = None,
-    inventory_recommendation: str | None = None,   # ✅ NEW
+    inventory_recommendation: str | None = None,
     journey_summary: list[str] | None = None,
-    currency_symbol="£"
+    currency_symbol="£",
+    inventory_alerts: dict | None = None,   # portfolio alerts
+    render_portfolio_inventory: bool = False,  # control rendering
 ) -> str:
+
     lines = []
 
     name = growth_row.get("product_name") or growth_row.get("sku")
@@ -1762,10 +1876,52 @@ def render_live_recommended_action(
         lines.append("")
         lines.append(f"Advertising: {ads_recommendation}")
 
-    # ---------- Inventory Recommendation (NEW) ----------
+    # ---------- Inventory Recommendation (SKU level) ----------
     if inventory_recommendation:
         lines.append("")
-        lines.append(f"Inventory: {inventory_recommendation}")
+        lines.append(f"• Inventory action: {inventory_recommendation}")
+
+    # =========================================================
+    # PORTFOLIO INVENTORY (ONLY ONCE)
+    # =========================================================
+    if render_portfolio_inventory and inventory_alerts:
+
+        lines.append("")
+        lines.append("## INVENTORY")
+
+        ageing = inventory_alerts.get("ageing_inventory", {})
+        lines.append(
+            f"• Ageing inventory (181+ days): "
+            f"{ageing.get('total_units',0)} units across "
+            f"{ageing.get('total_skus',0)} SKUs"
+        )
+
+        high_cov = inventory_alerts.get("high_coverage", {})
+        lines.append(
+            f"• High coverage SKUs: {high_cov.get('count',0)} SKUs"
+        )
+
+        unful = inventory_alerts.get("unfulfillable", {})
+        if unful.get("status") == "above_1_percent":
+            lines.append(
+                f"• Unfulfillable inventory is above 1% of total inventory "
+                f"({unful.get('percentage')}%)"
+            )
+        else:
+            lines.append(
+                f"• Unfulfillable inventory remains below 1% "
+                f"({unful.get('percentage')}%)"
+            )
+
+        storage = inventory_alerts.get("estimated_storage_cost", {})
+        lines.append(
+            f"• Est. storage cost next month: "
+            f"{currency_symbol}{storage.get('value',0):,.2f}"
+        )
+
+        lines.append(
+            "• For detailed inventory insights, please refer to the Inventory Reconciliation tab."
+        )
 
     return "\n".join(lines)
 
@@ -2330,6 +2486,7 @@ def build_ai_summary(
     prev_fee_totals=None,
     curr_fee_totals=None,
     estimated_storage_cost_next_month=0.0,
+    portfolio_inventory_alerts=None,
     currency=None,
     user_objective=None,
     movement_context=None,
@@ -2401,28 +2558,10 @@ def build_ai_summary(
             "flat_but_large": [],
         }
 
-    # =========================================================
-    # Inventory normalization (UNCHANGED)
-    # =========================================================
     inv_payload = inventory_signals or {}
+    portfolio_inventory_payload = portfolio_inventory_alerts or {}
 
-    if group_inventory_alerts:
-        looks_like_raw = (
-            isinstance(inv_payload, dict)
-            and inv_payload
-            and all(
-                isinstance(v, dict) and "alert_type" in v
-                for v in inv_payload.values()
-            )
-        )
-
-        if looks_like_raw:
-            inv_payload = club_inventory_alerts_by_type(
-                alerts=inv_payload,
-                sku_to_product=sku_to_product or {},
-                max_skus_per_bucket=5,
-            )
-        # =========================================================
+    # =========================================================
     # 🚫 SKUs to Skip
     # =========================================================
     SKUS_TO_SKIP = {
@@ -2570,6 +2709,7 @@ def build_ai_summary(
         },
         "sku_context": sku_context,
         "inventory_signals": inv_payload,
+        "portfolio_inventory_alerts": portfolio_inventory_payload,
         "selling_costs": {
             "platform_fees": {
                 "pct_change": pf_pct,
@@ -2925,268 +3065,7 @@ def generate_sku_inventory_flags(
     return flags
 
 
-# def generate_live_insight(item, country, prev_label, curr_label, user_id, month2):
-#     """
-#     Generate AI insight for a single SKU row from live_mtd_vs_previous growth_data.
 
-#     NEW:
-#     - Pulls 24-month historical trend using get_sku_monthly_history()
-#     - Injects history into prompts for true causal diagnosis
-#     """
-
-#     sku = safe_strip(item.get("sku"), default=None)
-#     product_name = safe_strip(item.get("product_name"), default="this product")
-
-#     # deterministic key
-#     key = sku or product_name
-#     is_new_or_reviving = item.get("new_or_reviving", False)
-
-#     # ---------------------------------------------------------
-#     # 🔹 Attach 24-month historical trend (same as historic BI)
-#     # ---------------------------------------------------------
-#     try:
-#         year2 = int(month2.split("-")[0])
-#         month2_num = int(month2.split("-")[1])
-#         country_lower = country.lower()
-
-#         monthly_history = get_sku_monthly_history(
-#             user_id, country_lower, key, year2, month2_num, 24
-#         )
-#     except Exception as e:
-#         print("[HISTORY ERROR]", e)
-#         monthly_history = []
-
-#     item["historical_trend"] = monthly_history
-
-#     # Data block for model
-#     data_block = json.dumps(item, indent=2)
-
-#     # =========================================================
-#     # 🔹 PROMPT: NEW / REVIVING SKU  (PURE ANALYSIS ONLY)
-#     # =========================================================
-#     if is_new_or_reviving:
-
-#         prompt = f"""
-# You are a senior ecommerce data analyst.
-
-# You are analysing the product: "{product_name}".
-
-# This is a newly launched or recently revived product.
-# Provide ONLY analytical observations based on available data.
-
-# STRICT RULES:
-# - Do NOT provide recommendations.
-# - Do NOT suggest actions or next steps.
-# - Do NOT give a verdict.
-# - Only explain performance analytically.
-# - Each bullet MUST reference "{product_name}" naturally.
-
-# Analyse:
-
-# 1) Current launch strength
-# - Units, Net Sales, ASP and Profit level of "{product_name}".
-# - Whether the debut looks strong, moderate, or weak based purely on numbers.
-
-# 2) Early commercial signals
-# - Whether pricing appears premium, discounted, or neutral.
-# - Whether profitability is healthy or thin.
-# - Whether volume indicates real demand or weak traction.
-
-# 3) Historical context (CRITICAL)
-# - Use the 24-month historical_trend if present.
-# - Identify whether "{product_name}" is:
-#   • a true new launch  
-#   • a revival after inactivity  
-#   • a weak re-entry attempt
-# - Explain how current performance compares to its own past levels.
-# - Mention direction vs historical peak (higher, lower, flat).
-
-# OUTPUT:
-# - Plain bullet points only.
-# - Maximum 5 bullets.
-# - No advice, no strategy, no recommendations.
-# - Every bullet must mention "{product_name}".
-
-# Data:
-# {data_block}
-# """
-
-#     # =========================================================
-#     # 🔹 PROMPT: EXISTING SKU (CAUSAL + HISTORICAL DIAGNOSIS)
-#     # =========================================================
-#     else:
-
-#         prompt = f"""
-# You are a Senior Amazon Business Analyst performing a
-# CAUSAL PERFORMANCE DIAGNOSIS for a single product.
-
-# Product under analysis: "{product_name}"
-# Marketplace: "{country}"
-
-# You are given:
-# - Pre-calculated performance comparing the previous-period-same-days vs current MTD
-# - A rolling 24-month historical_trend for this product
-# - Pre-computed growth and profitability metrics
-
-# Your responsibility is to identify:
-
-# WHAT materially changed,
-# WHY it changed,
-# and WHAT business impact it created
-# for "{product_name}".
-
-# STRICT ANALYTICAL RULES:
-
-# 1) MATERIALITY FIRST  
-# Ignore normal fluctuations.  
-# Focus only on movements that are:
-# • extreme  
-# • trend-defining  
-# • profitability-impacting  
-# • abnormal versus the product’s own history  
-
-# 2) CAUSE → EFFECT DISCIPLINE  
-# Every insight MUST follow:
-
-# Movement → Primary Driver → Business Impact
-
-# Valid causal drivers are LIMITED to:
-# • ASP change (pricing realization)  
-# • unit demand change  
-# • sales mix shift  
-# • per-unit profitability movement  
-
-# Do NOT introduce any other drivers.
-
-# 3) LONG-TERM TREND DIAGNOSIS (MANDATORY)  
-# Using historical_trend:
-
-# Classify the trajectory of "{product_name}" as:
-# • sustained growth  
-# • structural decline  
-# • volatility  
-# • flat / stagnant  
-
-# Also:
-# • identify clear turning points  
-# • compare current MTD performance vs:
-#   – recent 3-month direction  
-#   – historical peak level  
-
-# At least ONE bullet MUST include a historical comparison.
-
-# 4) RECENT MOVEMENT DIAGNOSIS (LIVE PERIOD)  
-
-# For the **current MTD vs previous-period-same-days**:
-
-# • State the dominant commercial change.  
-# • Identify the SINGLE strongest driver:
-#   – pricing movement  
-#   – unit demand movement  
-#   – mix shift  
-#   – per-unit profitability change  
-
-# • Conclude ONLY using one of these impact phrases:
-#   – profitability strengthened  
-#   – margin pressure emerged  
-#   – efficiency deteriorated  
-#   – stable but weak growth  
-
-# METRIC INTERPRETATION RULES (SKU LEVEL):
-
-# • total_quantity = net units sold after returns  
-# • net_sales = realised topline revenue  
-# • asp = realised selling price per unit  
-# • profit = CM1 profit  
-# • unit_wise_profitability = CM1 profit per unit  
-
-# CM2 ATTRIBUTION CONSTRAINT (STRICT):
-
-# CM2 movement can ONLY be driven by:
-# • advertising_total  
-# • platform fees  
-# • storage fees  
-# • reimbursements  
-
-# Do NOT attribute CM2 change to any other cost element.  
-# If CM2 change is unexplained by the allowed drivers,
-# do NOT infer additional causes.
-
-# FORBIDDEN CONTENT (ABSOLUTE):
-
-# • No recommendations  
-# • No actions  
-# • No strategy  
-# • No forward-looking suggestions  
-# • No operational or inventory assumptions  
-# • No speculation beyond provided data  
-
-# OUTPUT FORMAT:
-
-# • Plain text bullet points only  
-# • Maximum 5 bullets  
-# • Each bullet MUST reference "{product_name}" naturally  
-# • Each bullet MUST follow Movement → Driver → Impact logic  
-# • No headings, no markdown, no paragraphs  
-
-# Data:
-# {json.dumps(item, indent=2)}
-# """
-
-
-#     # =========================================================
-#     # 🔹 OPENAI CALL
-#     # =========================================================
-#     try:
-#         ai_response = oa_client.chat.completions.create(
-#             model="gpt-4o",
-#             messages=[
-#                 {
-#                     "role": "system",
-#                     "content": (
-#                         "You are a senior ecommerce analyst. "
-#                         "Respond in plain text with bullet points only. "
-#                         "Do not use Markdown formatting."
-#                     ),
-#                 },
-#                 {"role": "user", "content": prompt},
-#             ],
-#             max_tokens=900,
-#             temperature=0,
-#         )
-
-#         ai_text = ai_response.choices[0].message.content.strip()
-
-       
-#         return key, {
-#             "sku": sku,
-#             "product_name": product_name,
-#             "insight": ai_text,
-#             "key_used": key,
-#             "is_new_or_reviving": is_new_or_reviving,
-#         }
-
-#     except OpenAIError as e:
-#         print("[AI BILLING ERROR]", e)
-
-#         return key, {
-#             "sku": sku,
-#             "product_name": product_name,
-#             "insight": "AI insights are temporarily unavailable. Please contact care@phormula.io.",
-#             "key_used": key,
-#             "is_new_or_reviving": is_new_or_reviving,
-#         }
-
-#     except Exception as e:
-#         print("[AI ERROR] Insight generation failed:", e)
-
-#         return key, {
-#             "sku": sku,
-#             "product_name": product_name,
-#             "insight": "AI insight could not be generated at the moment. Please try again later.",
-#             "key_used": key,
-#             "is_new_or_reviving": is_new_or_reviving,
-#         }
 
 def generate_live_insight(item, country, prev_label, curr_label, user_id, month2):
 

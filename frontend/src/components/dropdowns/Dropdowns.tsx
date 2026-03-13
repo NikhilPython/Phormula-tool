@@ -1266,48 +1266,85 @@ const MonthlyObjectiveStrip = ({
   };
 
   const targetSet = formatMoneyCompact(targetSummary?.target_sales ?? 0);
-  const shortfall = formatMoneyCompact(-(targetSummary?.shortfall_total ?? 0));
+  const shortfallValue = Number(targetSummary?.shortfall_total ?? 0);
+  const shortfall = formatMoneyCompact(-(shortfallValue || 0));
   const cashFlow = formatMoneyCompact(targetSummary?.cashflow_total ?? 0);
 
-  const Item = ({
-    label,
-    value,
-    valueClass = "text-charcoal-500",
-  }: {
-    label: string;
-    value: string;
-    valueClass?: string;
-  }) => (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-      <div className="2xl:text-xs text-[10px] text-charcoal-500">
-        {label}
-      </div>
-      <div
-        className={`mt-1 text-sm 2xl:text-lg font-semibold capitalize ${valueClass}`}
-      >
-        {value}
-      </div>
-    </div>
-  );
+  const objectiveCards = [
+    {
+      label: "Growth",
+      value: growth,
+      accent: "bg-sky-500",
+      valueClass: "text-slate-800",
+    },
+    {
+      label: "Profit",
+      value: profit,
+      accent: "bg-amber-500",
+      valueClass: "text-slate-800",
+    },
+    {
+      label: "Inventory Dilution",
+      value: inventory,
+      accent: "bg-violet-500",
+      valueClass: "text-slate-800",
+    },
+    {
+      label: "Target Set",
+      value: targetSet,
+      accent: "bg-emerald-500",
+      valueClass: "text-slate-800",
+    },
+    {
+      label: "Shortfall",
+      value: shortfall,
+      accent: "bg-rose-500",
+      valueClass: shortfallValue > 0 ? "text-rose-600" : "text-slate-800",
+    },
+    {
+      label: "Cash Flow",
+      value: cashFlow,
+      accent: "bg-cyan-500",
+      valueClass: "text-slate-800",
+    },
+  ];
 
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white shadow-sm p-4 ${className}`}>
-      <div className="mb-2">
-        <PageBreadcrumb
-          pageTitle="Monthly Objectives & Targets"
-          variant="page"
-          textSize="2xl"
-          align="left"
-        />
+    <div
+      className={`rounded-xl border border-slate-200 bg-white shadow-sm p-4 h-full ${className}`}
+    >
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div>
+          <PageBreadcrumb
+            pageTitle="Monthly Objectives & Targets"
+            variant="page"
+            textSize="2xl"
+            align="left"
+          />
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5">
-        <Item label="Growth" value={growth} />
-        <Item label="Profit" value={profit} />
-        <Item label="Inventory Dilution" value={inventory} />
-        <Item label="Target Set" value={targetSet} />
-        <Item label="Shortfall" value={shortfall} valueClass="text-red-600" />
-        <Item label="Cash Flow" value={cashFlow} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3">
+        {objectiveCards.map((item) => (
+          <div
+            key={item.label}
+            className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-2 transition-all duration-200 hover:shadow-sm"
+          >
+            <div className={`absolute left-0 top-0 h-full w-1 `} />
+
+            <div className="pl-2">
+              <div className="text-[11px] 2xl:text-xs font-medium text-slate-500 leading-tight">
+                {item.label}
+              </div>
+
+              <div
+                className={`mt-2 text-base 2xl:text-base font-semibold leading-snug capitalize break-words ${item.valueClass}`}
+              >
+                {item.value}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1326,32 +1363,37 @@ type AiSingleInsightCardProps = {
   nameToSkuMap?: Record<string, string>;
   objective?: ObjectivePayload;
 
-  // ✅ ADD THESE
   range: RangeType;
   selectedYear: string;
   selectedQuarter: Quarter | "";
   homeCurrency?: string;
-  countryName: string; // ✅ ADD
-  portfolioRecommendation?: string | null; // ✅ ADD
+  countryName: string;
+  portfolioRecommendation?: string | null;
+
+  targetSummary?: {
+    target_sales?: number;
+    shortfall_total?: number;
+    cashflow_total?: number;
+  } | null;
+
+  currencySymbol?: string;
 };
 
 const formatSummaryPeriod = (text?: string) => {
   if (!text) return "";
 
-  const m = text.match(/\(([^)]+)\)/);     // pick "(...)" safely
+  const m = text.match(/\(([^)]+)\)/);
   if (!m) return "";
 
-  const inside = m[1].trim();             // e.g. "2026 vs 2025" OR "Jan 2026 vs Jan 2025"
+  const inside = m[1].trim();
   const [leftRaw, rightRaw] = inside.split(/\s*vs\s*/i);
   if (!leftRaw || !rightRaw) return `(${inside})`;
 
   const formatPart = (part: string) => {
     const p = part.trim();
 
-    // ✅ Case 1: Year only ("2026")
     if (/^\d{4}$/.test(p)) return p;
 
-    // ✅ Case 2: Month Year ("January 2026")
     const [month, year] = p.split(/\s+/);
     if (!month || !year) return p;
 
@@ -1364,8 +1406,8 @@ const formatSummaryPeriod = (text?: string) => {
 };
 
 const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
-  loading, // kept for prop compatibility but NOT used for UI
-  error,   // kept for prop compatibility but NOT used for UI
+  loading,
+  error,
   summaryBullets,
   recommendationBullets,
   skuInsightsBullets,
@@ -1380,13 +1422,15 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   selectedYear,
   selectedQuarter,
   homeCurrency,
+  targetSummary,
+  currencySymbol = "$",
 }) => {
-
   if (
     !summaryBullets.length &&
     !recommendationBullets.length &&
     !skuInsightsBullets.length &&
-    !inventoryBullets.length
+    !inventoryBullets.length &&
+    !objective
   ) {
     return null;
   }
@@ -1399,40 +1443,53 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   return (
     <div className="flex flex-col gap-5">
       <div className="w-full space-y-4">
+        {/* Summary + Monthly Objective side by side */}
+        {(narrativeInsights.length > 0 || objective) && (
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+            {/* Left: Summary */}
+            {narrativeInsights.length > 0 && (
+              <div className="xl:col-span-7 rounded-xl border border-slate-200 bg-white shadow-sm p-4 h-full">
+                <div className="space-y-3 h-full">
+                  <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold leading-snug">
+                    {narrativeInsights[0]?.split("(")[0]?.trim()}
+                    <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
+                      {formatSummaryPeriod(narrativeInsights[0])}
+                    </span>
+                  </h2>
 
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-          {/* Narrative Summary */}
-          {narrativeInsights.length > 0 && (
-            <>
-              <div className="space-y-3">
-                <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold">
-                  {narrativeInsights[0]?.split("(")[0]?.trim()}
-                  <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
-                    {formatSummaryPeriod(narrativeInsights[0])}
-                  </span>
-                </h2>
-
-                <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
-                  {narrativeInsights.slice(1).map((line, i) => (
-                    <p key={i}>{line}</p>
-                  ))}
-                </div>
-
-                {/* ✅ ADD THIS AT THE END */}
-                {portfolioRecommendation ? (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="text-xs font-semibold text-slate-700 mb-1">
-                      Portfolio Recommendation
-                    </div>
-                    <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                      {portfolioRecommendation}
-                    </div>
+                  <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+                    {narrativeInsights.slice(1).map((line, i) => (
+                      <p key={i}>{line}</p>
+                    ))}
                   </div>
-                ) : null}
+
+                  {portfolioRecommendation ? (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-xs font-semibold text-slate-700 mb-1">
+                        Portfolio Recommendation
+                      </div>
+                      <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+                        {portfolioRecommendation}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </>
-          )}
-        </div>
+            )}
+
+            {/* Right: Monthly Objective */}
+            {objective ? (
+              <div className="xl:col-span-5 h-full">
+                <MonthlyObjectiveStrip
+                  objective={objective}
+                  targetSummary={targetSummary}
+                  currencySymbol={currencySymbol}
+                  className="h-full"
+                />
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {/* Product Insights */}
         <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
@@ -1452,7 +1509,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
           </div>
         </div>
 
-        {/* ================= INVENTORY SECTION ================= */}
+        {/* Inventory Section */}
         {inventoryBullets.length > 0 && (
           <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <div className="flex items-center gap-2">
@@ -1462,8 +1519,12 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
             </div>
 
             {(() => {
-              const detailLines = inventoryBullets.filter((b) => /for detailed/i.test(b));
-              const mainLines = inventoryBullets.filter((b) => !/for detailed/i.test(b));
+              const detailLines = inventoryBullets.filter((b) =>
+                /for detailed/i.test(b)
+              );
+              const mainLines = inventoryBullets.filter(
+                (b) => !/for detailed/i.test(b)
+              );
 
               return (
                 <>
@@ -1482,7 +1543,9 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                             key={i}
                             className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
                           >
-                            <span className="text-sm font-medium text-slate-700">{label}</span>
+                            <span className="text-sm font-medium text-slate-700">
+                              {label}
+                            </span>
                             {value ? (
                               <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
                                 {value}
@@ -1496,14 +1559,18 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                       const hasColon = colonIdx > -1;
 
                       const left = hasColon ? raw.slice(0, colonIdx).trim() : raw;
-                      const right = hasColon ? raw.slice(colonIdx + 1).trim() : "";
+                      const right = hasColon
+                        ? raw.slice(colonIdx + 1).trim()
+                        : "";
 
                       return (
                         <div
                           key={i}
                           className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
                         >
-                          <span className="text-sm font-medium text-slate-700">{left}</span>
+                          <span className="text-sm font-medium text-slate-700">
+                            {left}
+                          </span>
                           {right ? (
                             <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
                               {right}
@@ -3759,31 +3826,33 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
               </div>
             ) : (
               <>
-               {aiPanel?.objective && (
+               {/* {aiPanel?.objective && (
   <MonthlyObjectiveStrip
     objective={aiPanel.objective}
     targetSummary={targetSummary}
     currencySymbol={currencySymbol}
   />
-)}
+)} */}
                 <AiSingleInsightCard
-                  loading={false} // ✅ parent controls loader now
-                  error={null}    // ✅ parent controls error now
-                  summaryBullets={aiPanel?.summaryBullets ?? []}
-                  recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                  skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                  inventoryBullets={aiPanel?.inventoryBullets ?? []}
-                  recommendationsMap={aiPanel?.recommendationsMap}
-                  objective={aiPanel?.objective}
-                  remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                  nameToSkuMap={nameToSkuMap}
-                  range={range}
-                  selectedYear={selectedYear}
-                  selectedQuarter={selectedQuarter}
-                  homeCurrency={globalHomeCurrency}
-                  countryName={initialCountryName}
-                  portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
-                />
+  loading={false}
+  error={null}
+  summaryBullets={aiPanel?.summaryBullets ?? []}
+  recommendationBullets={aiPanel?.recommendationBullets ?? []}
+  skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+  inventoryBullets={aiPanel?.inventoryBullets ?? []}
+  recommendationsMap={aiPanel?.recommendationsMap}
+  objective={aiPanel?.objective}
+  remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+  nameToSkuMap={nameToSkuMap}
+  range={range}
+  selectedYear={selectedYear}
+  selectedQuarter={selectedQuarter}
+  homeCurrency={globalHomeCurrency}
+  countryName={initialCountryName}
+  portfolioRecommendation={aiPanel?.portfolioRecommendation}
+  targetSummary={targetSummary}
+  currencySymbol={currencySymbol}
+/>
               </>
             )}
           </div>

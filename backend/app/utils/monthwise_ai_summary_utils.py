@@ -435,7 +435,10 @@ def compute_generic_movement(series: list, col: str):
         if prev is None or prev == 0 or cur is None:
             continue
 
-        pct = (cur - prev) / abs(prev) * 100
+        if col == "platform_fee_inventory_storage":
+            pct = (abs(cur) - abs(prev)) / abs(prev) * 100
+        else:
+            pct = (cur - prev) / abs(prev) * 100
 
         points.append({
             "year": series[i]["year"],
@@ -497,7 +500,10 @@ def extract_rolling_extremes(rolling_series: list):
             if prev is None or prev == 0 or cur is None:
                 continue
 
-            pct = (cur - prev) / abs(prev) * 100
+            if col == "platform_fee_inventory_storage":
+                pct = (abs(cur) - abs(prev)) / abs(prev) * 100
+            else:
+                pct = (cur - prev) / abs(prev) * 100
 
             points.append({
                 "year": rolling_series[i]["year"],
@@ -619,6 +625,25 @@ def compute_period_pct_changes(df_current_total, df_prev_total):
             return None
         return round(cur - prev, 2)
 
+    # ✅ helper only for storage cost (because DB stores it negative)
+    def pct_storage(col):
+        cur = _total_value(df_current_total, col)
+        prev = _total_value(df_prev_total, col)
+
+        
+        if cur is None or prev in (None, 0):
+            print("DEBUG STORAGE: missing values or prev=0")
+            return None
+
+        cur_abs = abs(cur)
+        prev_abs = abs(prev)
+
+        pct_val = round((cur_abs - prev_abs) / prev_abs * 100, 2)
+
+
+
+        return pct_val
+
     return {
         "units": pct("total_quantity"),
         "net_sales": pct("net_sales"),
@@ -627,9 +652,10 @@ def compute_period_pct_changes(df_current_total, df_prev_total):
         "cm1_profit_per_unit": pct("unit_wise_profitability"),
         "cm2_profit": pct("cm2_profit"),
         "advertising": pct("advertising_total"),
-        "storage_fees": pct("platform_fee_inventory_storage"),
 
-        # ✅ FIXED
+        # ✅ FIXED storage calculation
+        "storage_fees": pct_storage("platform_fee_inventory_storage"),
+
         "acos": pct_point("acos"),
     }
 
@@ -1232,10 +1258,7 @@ def run_prompt_2_strategy(
         "sku_mom": sku_mom or {},
     }
 
-    # 🔍 DEBUG — SEE WHAT PROMPT 2 RECEIVES
-    print("\n================ PROMPT 2 INPUT ================")
-    print(json.dumps(_make_json_safe(payload), indent=2))
-    print("===============================================\n")
+   
     # -------------------------------------------------
     # 🔐 SANITIZE before json.dumps
     # -------------------------------------------------
@@ -1799,12 +1822,7 @@ def get_or_create_summary(
         allow_inventory = is_latest
         allow_recommendations = False
 
-    # 🔍 DEBUG
-    print("IS LATEST:", is_latest)
-    print("ALLOW RECOMMENDATIONS:", allow_recommendations)
-    print("PERIOD:", period)
-    print("TIMELINE:", timeline)
-    print("YEAR:", year)    
+        
 
     # ============================================================
     # CACHE CHECK
