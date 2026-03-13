@@ -13,6 +13,20 @@ import { useGetUserDataQuery, useUpdateProfileMutation } from "@/lib/api/profile
 import { platformToCurrencyCode } from "@/lib/utils/currency";
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import type { PlatformId } from "@/lib/utils/platforms";
+import SegmentedToggle from "../ui/SegmentedToggle";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
+import TargetVsSalesChart from "../objectives/TargetVsSalesChart";
+import ObjectiveMoMChart from "../objectives/ObjectiveMoMChart";
+
 
 type ObjectivesPageClientProps = {
   country?: string;
@@ -46,6 +60,19 @@ type TargetRow = Row & {
   __pid?: PlatformId | "global";
 };
 
+type SummaryTab =
+  | "business_summary"
+  | "target_achieved"
+  | "objective_mom"
+  | "output";
+
+const SUMMARY_TABS: Array<{ key: SummaryTab; label: string }> = [
+  { key: "business_summary", label: "Business Summary and Journey" },
+  { key: "target_achieved", label: "Targets" },
+  { key: "objective_mom", label: "Objective MoM" },
+  { key: "output", label: "Output" },
+];
+
 const PLATFORM_TARGET_META: Partial<
   Record<PlatformId, { marketplace: string; currencySymbol: string }>
 > = {
@@ -54,6 +81,31 @@ const PLATFORM_TARGET_META: Partial<
   "amazon-ca": { marketplace: "Amazon CA", currencySymbol: "C$" },
   shopify: { marketplace: "Shopify", currencySymbol: "" },
 };
+
+// Target vs Slaes graph Dummy Data - To be removed when real API is integrated
+const dummyTargetVsSalesData = [
+  { month: "Jan", target: 12000, sales: 9800 },
+  { month: "Feb", target: 12000, sales: 10450 },
+  { month: "Mar", target: 12000, sales: 11700 },
+  { month: "Apr", target: 14000, sales: 12600 },
+  { month: "May", target: 14000, sales: 13250 },
+  { month: "Jun", target: 14000, sales: 13800 },
+  { month: "Jul", target: 16000, sales: 14900 },
+  { month: "Aug", target: 16000, sales: 15400 },
+  { month: "Sep", target: 16000, sales: 15150 },
+  { month: "Oct", target: 18000, sales: 16900 },
+  { month: "Nov", target: 18000, sales: 17600 },
+  { month: "Dec", target: 18000, sales: 18500 },
+];
+
+const shortMoney = (value: number, currency = "USD") =>
+  new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+
 
 const prettifyObjectiveValue = (v?: string | null) => {
   const s = (v ?? "").trim();
@@ -112,12 +164,159 @@ function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function SummaryTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: SummaryTab;
+  onChange: (tab: SummaryTab) => void;
+}) {
+  return (
+    <div className="mb-4">
+      <SegmentedToggle<SummaryTab>
+        value={activeTab}
+        onChange={onChange}
+        options={SUMMARY_TABS.map((tab) => ({
+          value: tab.key,
+          label: tab.label,
+        }))}
+        className="mt-2"
+        compact
+        textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+      />
+    </div>
+  );
+}
+
+function PlaceholderPanel({ title }: { title: string }) {
+  return (
+    <div className="rounded-2xl ">
+
+
+      <div className="space-y-5 text-sm text-charcoal-500 dark:text-gray-300">
+        <div>
+          <h4 className="font-semibold ">
+            1. Business Foundation
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            <li>
+              Built around premium skincare products focusing on quality,
+              repeat purchases, and strong customer trust.
+            </li>
+            <li>
+              Established presence across Amazon US and Shopify to balance
+              marketplace reach with direct customer ownership.
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold">
+            2. Early Growth Phase
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            <li>
+              Initial growth was driven by product-market fit within core
+              skincare categories.
+            </li>
+            <li>
+              Amazon helped generate traffic and sales volume while Shopify
+              strengthened direct brand relationships.
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold ">
+            3. Revenue Expansion Strategy
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            <li>
+              Growth focused on paid advertising, organic ranking improvement,
+              and stronger marketplace visibility.
+            </li>
+            <li>
+              Efforts prioritized scalable sales growth while maintaining brand
+              positioning and customer experience.
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold ">
+            4. Margin Protection
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            <li>
+              As the business scaled, protecting healthy profit margins became
+              a key operational focus.
+            </li>
+            <li>
+              Decisions balanced advertising spend, pricing strategy, and
+              discounting against profitability.
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold ">
+            5. Inventory Management Evolution
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            <li>
+              Inventory turnover became critical due to shelf-life sensitivity
+              and aging stock risks.
+            </li>
+            <li>
+              Focus shifted to clearing slow-moving SKUs while maintaining
+              healthy stock levels of best-selling products.
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold ">
+            6. Operational Maturity
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            <li>
+              The business transitioned from simple sales tracking to
+              target-based performance management.
+            </li>
+            <li>
+              Strategic planning began integrating revenue targets, inventory
+              health, and profitability considerations.
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold">
+            7. Current Strategic Direction
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            <li>
+              The focus is now on sustainable scaling while maintaining strong
+              margins and operational discipline.
+            </li>
+            <li>
+              Bestseller continuity, controlled expansion, and optimized
+              inventory flow drive the current growth strategy.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ObjectivesPageClient({
   country,
 }: ObjectivesPageClientProps) {
   const dispatch = useAppDispatch();
   const token = useSelector((state: any) => state.auth?.token);
 
+  const [activeTab, setActiveTab] = useState<SummaryTab>("business_summary");
   const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
   const [ratesLoading, setRatesLoading] = useState(false);
 
@@ -185,11 +384,7 @@ export default function ObjectivesPageClient({
 
   const pageCurrency = useMemo(() => platformToCurrencyCode(pagePlatform), [pagePlatform]);
 
-  const homeCurrencyCode = (
-    (data as any)?.homeCurrency ||
-    pageCurrency ||
-    "USD"
-  ).toUpperCase();
+  const homeCurrencyCode = ((data as any)?.homeCurrency || pageCurrency || "USD").toUpperCase();
 
   const baseNativeTarget = Number((data as any)?.target_sales ?? 0);
 
@@ -363,17 +558,14 @@ export default function ObjectivesPageClient({
       await updateProfile({ target_sales: next } as any).unwrap();
       dispatch(setUser({ target_sales: next } as any));
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
-        }
-      );
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
 
       const result = await res.json();
 
@@ -392,8 +584,6 @@ export default function ObjectivesPageClient({
       alert(err?.message || "Failed to update target.");
     }
   };
-
-
 
   const handleInlineObjectiveSave = async () => {
     try {
@@ -571,229 +761,303 @@ export default function ObjectivesPageClient({
         <div className="mb-4 text-sm text-red-500">Failed to load objectives page.</div>
       )}
 
-      <div className="grid grid-cols-1 gap-4">
-        <InfoCard
-          title={<PageBreadcrumb pageTitle="Monthly Targets" variant="table" align="left" />}
-          action={
-            <div className="flex items-center gap-2">
-              {!isTargetEditMode ? (
-                !targetLocked && (
-                  <button
-                    type="button"
-                    onClick={openTargetEditMode}
-                    className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
-                    aria-label="Enable edit mode"
-                    title="Edit targets"
-                  >
-                    <FiEdit className="text-lg" />
-                  </button>
-                )
+      <div className="mb-1">
+        <PageBreadcrumb pageTitle="Business Overview" variant="page" align="left" textSize="2xl" />
+      </div>
+
+      <SummaryTabs activeTab={activeTab} onChange={setActiveTab} />
+
+      {activeTab === "business_summary" && (
+        <div className="grid grid-cols-1 gap-4">
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
+            action={
+              !isObjectiveEditMode ? (
+                <button
+                  onClick={startObjectiveEdit}
+                  className="h-9 w-9 text-gray-700"
+                  type="button"
+                >
+                  <FiEdit className="text-lg" />
+                </button>
               ) : (
-                <>
-                  <Button
-                    type="button"
-                    onClick={saveInlineTarget}
-                    size="icon"
-                    disabled={isSaving || !editingPid}
-                    title="Save"
-                  >
+                <div className="flex items-center gap-2">
+                  <Button size="icon" onClick={handleInlineObjectiveSave}>
                     <FiCheck />
                   </Button>
-
-                  <Button
-                    type="button"
-                    onClick={closeTargetEditMode}
-                    size="icon"
-                    variant="outline"
-                    disabled={isSaving}
-                    title="Cancel"
-                  >
+                  <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
                     <FiX />
                   </Button>
-                </>
-              )}
-            </div>
-          }
-        >
-          {isTargetEditMode && (
-            <div className="mb-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
-              ⚠️ Please enter your target carefully. Once saved, you will not be able to change it until the 1st of next month.
-            </div>
-          )}
-
-          <DataTable
-            columns={monthlyTargetColumns}
-            data={monthlyTargetData}
-            paginate={false}
-            scrollY={false}
-            stickyHeader={false}
-            emptyMessage={
-              ratesLoading ? "Loading currency rates..." : "No connected marketplaces."
+                </div>
+              )
             }
-            className="rounded-xl"
-            rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-semibold" : "")}
-          />
-        </InfoCard>
+          >
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <div className="mb-1 flex items-center justify-end">
+                  {/* <p className="text-xs text-gray-500 dark:text-gray-400">Business Summary</p> */}
+                  {isObjectiveEditMode && <p className="text-xs text-gray-500">Max 250 characters</p>}
+                </div>
 
-        <InfoCard
-          title={<PageBreadcrumb pageTitle="Strategic Objectives" variant="table" align="left" />}
-          action={
-            !isObjectiveEditMode ? (
-              <button
-                onClick={startObjectiveEdit}
-                className="h-9 w-9 text-gray-700"
-                type="button"
-              >
-                <FiEdit className="text-lg" />
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Button size="icon" onClick={handleInlineObjectiveSave}>
-                  <FiCheck />
-                </Button>
-                <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
-                  <FiX />
-                </Button>
+                {isObjectiveEditMode ? (
+                  <textarea
+                    rows={5}
+                    maxLength={250}
+                    value={objectiveDraft.business_context || ""}
+                    onChange={(e) =>
+                      setObjectiveDraft((prev) => ({
+                        ...prev,
+                        business_context: e.target.value,
+                      }))
+                    }
+                    className="w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    placeholder="Describe your business context..."
+                  />
+                ) : objective.business_context ? (
+                  <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
+                    {objective.business_context}
+                  </p>
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm text-gray-400 dark:text-gray-500 italic leading-relaxed">
+                    Example:
+                    Our business primarily sells premium skincare products across Amazon US and Shopify.
+                    We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
+                    Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
+                    while maintaining bestseller stock is a key priority.
+                  </p>
+                )}
               </div>
-            )
-          }
-        >
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <InfoItem
-              label="Growth"
-              value={
-                isObjectiveEditMode ? (
-                  <select
-                    value={objectiveDraft.growth_intent}
-                    onChange={(e) =>
-                      setObjectiveDraft((prev) => ({
-                        ...prev,
-                        growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
-                      }))
-                    }
-                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                  >
-                    {GROWTH_OPTIONS.map((v) => (
-                      <option key={v} value={v}>
-                        {v.charAt(0).toUpperCase() + v.slice(1)}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  prettifyObjectiveValue(objective.growth_intent)
-                )
-              }
-            />
-
-            <InfoItem
-              label="Profit"
-              value={
-                isObjectiveEditMode ? (
-                  <select
-                    value={objectiveDraft.profit_priority}
-                    onChange={(e) =>
-                      setObjectiveDraft((prev) => ({
-                        ...prev,
-                        profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
-                      }))
-                    }
-                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                  >
-                    {PROFIT_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  prettifyObjectiveValue(objective.profit_priority)
-                )
-              }
-            />
-
-            <InfoItem
-              label="Inventory Dilution"
-              value={
-                isObjectiveEditMode ? (
-                  <select
-                    value={objectiveDraft.inventory_clearance_priority ? "yes" : "no"}
-                    onChange={(e) =>
-                      setObjectiveDraft((prev) => ({
-                        ...prev,
-                        inventory_clearance_priority: e.target.value === "yes",
-                      }))
-                    }
-                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                  >
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
-                ) : (
-                  objective.inventory_clearance_priority ? "Yes" : "No"
-                )
-              }
-            />
-
-            <InfoItem
-              label="Country"
-              value={
-                isObjectiveEditMode ? (
-                  <select
-                    value={objectiveDraft.country}
-                    onChange={(e) =>
-                      setObjectiveDraft((prev) => ({
-                        ...prev,
-                        country: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                  >
-                    <option value="" disabled>
-                      Select Country
-                    </option>
-                    {integratedCountries.map((c) => (
-                      <option key={c} value={c}>
-                        {c.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  objective.country?.toUpperCase() || "-"
-                )
-              }
-            />
-
-            <div className="col-span-1 sm:col-span-2">
-              <div className="mb-1 flex items-center justify-between">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Business Context</p>
-                {isObjectiveEditMode && <p className="text-xs text-gray-500">Max 250 characters</p>}
-              </div>
-
-              {isObjectiveEditMode ? (
-                <textarea
-                  rows={4}
-                  maxLength={250}
-                  value={objectiveDraft.business_context || ""}
-                  onChange={(e) =>
-                    setObjectiveDraft((prev) => ({
-                      ...prev,
-                      business_context: e.target.value,
-                    }))
-                  }
-                  className="w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                  placeholder="Describe your business context..."
-                />
-              ) : objective.business_context ? (
-                <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
-                  {objective.business_context}
-                </p>
-              ) : (
-                <p className="text-sm font-medium text-gray-800 dark:text-white/90">-</p>
-              )}
             </div>
-          </div>
-        </InfoCard>
-      </div>
+          </InfoCard>
+
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Business Journey" variant="table" align="left" />}
+          >
+            <PlaceholderPanel title="Business Journey" />
+          </InfoCard>
+        </div>
+      )}
+
+
+
+      {activeTab === "target_achieved" && (
+        <div className="grid grid-cols-1 gap-4">
+
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Monthly Targets" variant="table" align="left" />}
+            action={
+              <div className="flex items-center gap-2">
+                {!isTargetEditMode ? (
+                  !targetLocked && (
+                    <button
+                      type="button"
+                      onClick={openTargetEditMode}
+                      className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
+                      aria-label="Enable edit mode"
+                      title="Edit targets"
+                    >
+                      <FiEdit className="text-lg" />
+                    </button>
+                  )
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={saveInlineTarget}
+                      size="icon"
+                      disabled={isSaving || !editingPid}
+                      title="Save"
+                    >
+                      <FiCheck />
+                    </Button>
+
+                    <Button
+                      type="button"
+                      onClick={closeTargetEditMode}
+                      size="icon"
+                      variant="outline"
+                      disabled={isSaving}
+                      title="Cancel"
+                    >
+                      <FiX />
+                    </Button>
+                  </>
+                )}
+              </div>
+            }
+          >
+            {isTargetEditMode && (
+              <div className="mb-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+                ⚠️ Please enter your target carefully. Once saved, you will not be able to
+                change it until the 1st of next month.
+              </div>
+            )}
+
+            <DataTable
+              columns={monthlyTargetColumns}
+              data={monthlyTargetData}
+              paginate={false}
+              scrollY={false}
+              stickyHeader={false}
+              emptyMessage={
+                ratesLoading ? "Loading currency rates..." : "No connected marketplaces."
+              }
+              className="rounded-xl"
+              rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-semibold" : "")}
+            />
+          </InfoCard>
+          
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Target vs Monthwise Sales" variant="table" align="left" />}
+          >
+            <div className="h-[420px] w-full">
+              <TargetVsSalesChart currencySymbol={homeCurrencyCode === "GBP" ? "£" : homeCurrencyCode === "USD" ? "$" : homeCurrencyCode === "EUR" ? "€" : homeCurrencyCode} />
+            </div>
+          </InfoCard>
+        </div>
+      )}
+
+      {activeTab === "objective_mom" && (
+        <div className="grid grid-cols-1 gap-4">
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Strategic Objectives" variant="table" align="left" />}
+            action={
+              !isObjectiveEditMode ? (
+                <button
+                  onClick={startObjectiveEdit}
+                  className="h-9 w-9 text-gray-700"
+                  type="button"
+                >
+                  <FiEdit className="text-lg" />
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button size="icon" onClick={handleInlineObjectiveSave}>
+                    <FiCheck />
+                  </Button>
+                  <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
+                    <FiX />
+                  </Button>
+                </div>
+              )
+            }
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <InfoItem
+                label="Growth"
+                value={
+                  isObjectiveEditMode ? (
+                    <select
+                      value={objectiveDraft.growth_intent}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
+                        }))
+                      }
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    >
+                      {GROWTH_OPTIONS.map((v) => (
+                        <option key={v} value={v}>
+                          {v.charAt(0).toUpperCase() + v.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    prettifyObjectiveValue(objective.growth_intent)
+                  )
+                }
+              />
+
+              <InfoItem
+                label="Profit"
+                value={
+                  isObjectiveEditMode ? (
+                    <select
+                      value={objectiveDraft.profit_priority}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
+                        }))
+                      }
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    >
+                      {PROFIT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    prettifyObjectiveValue(objective.profit_priority)
+                  )
+                }
+              />
+
+              <InfoItem
+                label="Inventory Dilution"
+                value={
+                  isObjectiveEditMode ? (
+                    <select
+                      value={objectiveDraft.inventory_clearance_priority ? "yes" : "no"}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          inventory_clearance_priority: e.target.value === "yes",
+                        }))
+                      }
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    >
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  ) : (
+                    objective.inventory_clearance_priority ? "Yes" : "No"
+                  )
+                }
+              />
+
+              <InfoItem
+                label="Country"
+                value={
+                  isObjectiveEditMode ? (
+                    <select
+                      value={objectiveDraft.country}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          country: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    >
+                      <option value="" disabled>
+                        Select Country
+                      </option>
+                      {integratedCountries.map((c) => (
+                        <option key={c} value={c}>
+                          {c.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    objective.country?.toUpperCase() || "-"
+                  )
+                }
+              />
+            </div>
+          </InfoCard>
+
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Objective MoM (Month on Month)" variant="table" align="left" />}
+          >
+            <div className="h-[420px] w-full">
+              <ObjectiveMoMChart title="Objective MoM Trend" />
+            </div>
+          </InfoCard>
+        </div>
+      )}
     </div>
   );
 }
