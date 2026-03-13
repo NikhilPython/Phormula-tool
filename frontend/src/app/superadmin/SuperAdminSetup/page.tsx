@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import { Eye, EyeOff, Mail, Lock, Shield } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import Image from "next/image";
+import { Check } from "lucide-react";
 
 type ApiError = {
   message?: string;
@@ -88,8 +90,18 @@ export default function SuperAdminSetupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-[#5EA68E]">
-      <div className="w-full max-w-md sm:max-w-lg md:max-w-xl bg-white/95 backdrop-blur rounded-2xl shadow-2xl p-6 sm:p-8">
+    <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-[#EFEFEF]">
+      <div className="absolute top-6 left-6">
+          <Image
+            width={220}
+            height={40}
+            src="/images/logo/Logo_Phormula.png"
+            alt="Phormula"
+            priority
+            className="w-[150px] xl:w-[180px] 2xl:w-[220px]"
+          />
+        </div>
+      <div className="w-full max-w-md sm:max-w-lg md:max-w-xl bg-white/95 backdrop-blur border border-t-8 border-t-[#5EA68E] rounded-2xl shadow-2xl p-6 sm:p-8">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#5EA68E] to-[#1f5274] flex items-center justify-center text-white">
@@ -104,39 +116,64 @@ export default function SuperAdminSetupPage() {
         </div>
 
         {/* Progress */}
-        <div className="flex items-center justify-center mb-8">
-          <div className="flex items-center">
-            <div
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
-                step >= 1
-                  ? "bg-gradient-to-br from-[#5EA68E] to-[#1f5274] text-white"
-                  : "bg-gray-200 text-gray-400"
-              }`}
-            >
-              1
-            </div>
-            <div
-              className={`w-10 sm:w-12 h-1 mx-2 ${
-                step >= 2 ? "bg-gradient-to-r from-[#5EA68E] to-[#1f5274]" : "bg-gray-200"
-              }`}
-            />
-            <div
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
-                step >= 2
-                  ? "bg-gradient-to-br from-[#5EA68E] to-[#1f5274] text-white"
-                  : "bg-gray-200 text-gray-400"
-              }`}
-            >
-              2
-            </div>
-          </div>
-        </div>
+       <div className="flex flex-col items-center mb-8">
+
+  {/* Circles */}
+  <div className="flex items-center">
+    
+    {/* STEP 1 */}
+    <div
+      className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
+        step >= 1
+          ? "bg-gradient-to-br from-[#5EA68E] to-[#1f5274] text-white"
+          : "bg-gray-200 text-gray-400"
+      }`}
+    >
+      {step > 1 ? <Check className="w-4 h-4" /> : "1"}
+    </div>
+
+    {/* LINE */}
+    <div
+      className={`w-14 h-[2px] mx-3 ${
+        step >= 2
+          ? "bg-gradient-to-r from-[#5EA68E] to-[#1f5274]"
+          : "bg-gray-200"
+      }`}
+    />
+
+    {/* STEP 2 */}
+    <div
+      className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${
+        step >= 2
+          ? "bg-gradient-to-br from-[#5EA68E] to-[#1f5274] text-white"
+          : "bg-gray-200 text-gray-400"
+      }`}
+    >
+      2
+    </div>
+  </div>
+
+  {/* Labels */}
+  <div className="flex items-center mt-3 text-sm font-medium">
+    
+    <div className="w-[80px] text-center text-[#1f5274]">
+      {step === 1 ? "Email" : "Email & OTP"}
+    </div>
+
+    <div className="w-14"></div>
+
+    <div className="w-[100px] text-center text-[#1f5274]">
+      {step === 1 ? "Verify OTP" : "Set Password"}
+    </div>
+
+  </div>
+</div>
 
         {/* Step 1 */}
         {step === 1 && (
           <form onSubmit={handleEmailSubmit}>
             <div className="mb-5">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Email Address*</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
@@ -153,10 +190,10 @@ export default function SuperAdminSetupPage() {
             <button
               type="submit"
               disabled={loading || !email.trim()}
-              className={`w-full py-3 text-sm sm:text-base font-semibold text-white rounded-lg transition-all duration-300 ${
+              className={`w-full py-3 text-sm sm:text-base font-semibold text-[#F8EDCE] rounded-lg transition-all duration-300 ${
                 loading || !email.trim()
-                  ? "cursor-not-allowed opacity-60 bg-[rgba(96,166,142,0.5)]"
-                  : "bg-gradient-to-br from-[#5EA68E] to-[#1f5274] hover:from-[#1f5274] hover:to-[#5EA68E] hover:shadow-lg"
+                  ? "cursor-not-allowed opacity-60 bg-[#37455F]"
+                    : "bg-[#37455F] hover:shadow-lg"
               }`}
             >
               {loading ? "Sending OTP..." : "Send OTP"}
@@ -175,21 +212,20 @@ export default function SuperAdminSetupPage() {
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 required
-                className="w-full py-3 text-center tracking-wider rounded-lg border-2 border-gray-200 text-sm sm:text-base focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20 font-semibold outline-none transition"
+                className="w-full py-3 text-left px-3 tracking-wider rounded-lg border-2 border-gray-200 text-sm sm:text-base focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20 font-semibold outline-none transition"
               />
             </div>
 
             <div className="mb-5">
               <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter password (min 8 characters)"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full pl-10 pr-10 py-3 rounded-lg border-2 border-gray-200 text-sm sm:text-base focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20 outline-none transition"
+                  className="w-full px-3 py-3 rounded-lg border-2 border-gray-200 text-sm sm:text-base focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20 outline-none transition"
                 />
                 <button
                   type="button"
@@ -204,14 +240,13 @@ export default function SuperAdminSetupPage() {
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input
                   type={showConfirmPassword ? "text" : "password"}
                   placeholder="Confirm your password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  className="w-full pl-10 pr-10 py-3 rounded-lg border-2 border-gray-200 text-sm sm:text-base focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20 outline-none transition"
+                  className="w-full px-3 py-3 rounded-lg border-2 border-gray-200 text-sm sm:text-base focus:border-[#5EA68E] focus:ring-4 focus:ring-[#5EA68E]/20 outline-none transition"
                 />
                 <button
                   type="button"
@@ -227,7 +262,7 @@ export default function SuperAdminSetupPage() {
               <button
                 type="button"
                 onClick={resetToStep1}
-                className="w-full sm:w-1/2 py-3 text-sm sm:text-base font-semibold border-2 border-[#5EA68E] text-[#5EA68E] rounded-lg transition-all hover:bg-[#5EA68E] hover:text-white"
+                className="w-full sm:w-1/2 py-3 text-sm sm:text-base font-semibold border-2 border-[#37455F] text-[#37455F] rounded-lg transition-all hover:bg-[#5EA68E] hover:text-white"
               >
                 Back
               </button>
@@ -235,10 +270,10 @@ export default function SuperAdminSetupPage() {
               <button
                 type="submit"
                 disabled={loading || !otp.trim() || !password || !confirmPassword}
-                className={`w-full sm:w-1/2 py-3 text-sm sm:text-base font-semibold text-white rounded-lg transition-all duration-300 ${
+                className={`w-full sm:w-1/2 py-3 text-sm sm:text-base font-semibold text-[#F8EDCE] rounded-lg transition-all duration-300 ${
                   loading || !otp.trim() || !password || !confirmPassword
-                    ? "cursor-not-allowed opacity-60 bg-[rgba(96,166,142,0.5)]"
-                    : "bg-gradient-to-br from-[#5EA68E] to-[#1f5274] hover:from-[#1f5274] hover:to-[#5EA68E] hover:shadow-lg"
+                    ? "cursor-not-allowed opacity-60 bg-[#37455F]"
+                    : "bg-[#37455F] hover:shadow-lg"
                 }`}
               >
                 {loading ? "Setting up..." : "Complete Setup"}
