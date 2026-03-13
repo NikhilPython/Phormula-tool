@@ -522,123 +522,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     []
   );
 
-  // const groups = useMemo<ColGroup<TableRow>[]>(() => [
-  //   {
-  //     id: "units_breakdown",
-  //     label: "Net Units Sold",
-  //     collapsedCols: [{ key: "net_units_sold", label: "", align: "center" }], // hide "Total" on collapsed
-  //     expandedCols: [
-  //       { key: "sku", label: "SKU", align: "center" },
-  //       { key: "units_sold", label: "Units Sold", align: "center" },
-  //       { key: "return_units", label: "Return", align: "center" },
-  //       { key: "net_units_sold", label: "Total", align: "center" },
-  //     ],
-  //   },
-
-  //   {
-  //     id: "sales",
-  //     // label: "Sales",
-  //     label: (
-  //       <>
-  //         Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
-  //       </>
-  //     ),
-  //     collapsedCols: [{ key: "net_sales", label: "", align: "center" }], // hide "Total" on collapsed
-  //     expandedCols: [
-  //       { key: "product_sales", label: "Gross Sales", align: "center" },
-  //       { key: "refund_sales", label: "Sales - Refund", align: "center" },
-  //       { key: "tex_and_credits", label: "Taxes and Credits", align: "center" },
-  //       { key: "net_sales", label: "Total", align: "center" },
-  //     ],
-  //   },
-
-  //   {
-  //     id: "amazon_breakdown",
-  //     // label: "Marketplace Fees",
-  //     label: "Marketplace Fees",
-  //     info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
-  //     collapsedCols: [{ key: "amazon_fee", label: "", align: "center" }], // hide "Total" on collapsed
-  //     expandedCols: [
-  //       { key: "selling_fees", label: "Selling Fees", align: "center" },
-  //       { key: "fba_fees", label: "FBA Fees", align: "center" },
-  //       { key: "amazon_fee", label: "Total", align: "center" },
-  //     ],
-  //   },
-
-  //   {
-  //     id: "other_transactions_breakdown",
-  //     label: "Other Transactions",
-  //     collapsedCols: [{ key: "other_transactions", label: "", align: "center" }], // hide "Total" on collapsed
-  //     expandedCols: [
-  //       {
-  //         key: "net_taxes", label: (
-  //           <>
-  //             Net Taxes <InfoTip text={TERM_DEFINITIONS.net_taxes} />
-  //           </>
-  //         ),
-  //         align: "center",
-  //       },
-  //       {
-  //         key: "net_credits", label: (
-  //           <>
-  //             Net Credits <InfoTip text={TERM_DEFINITIONS.net_credits} />
-  //           </>
-  //         ), align: "center"
-  //       },
-  //       { key: "other_transactions", label: "Total", align: "center" },
-  //     ],
-  //   },
-
-  //   {
-  //     id: "profit_breakdown",
-  //     // label: "CM1 Profit",
-  //     label: (
-  //       <>
-  //         CM1 Profit <InfoTip text={TERM_DEFINITIONS.cm1_profit} />
-  //       </>
-  //     ),
-  //     collapsedCols: [{ key: "profit", label: "", align: "center" }], // hide "Total" on collapsed
-  //     expandedCols: [
-  //       { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" },
-  //       { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
-  //       { key: "profit", label: "Total", align: "center" },
-  //     ],
-  //   },
-  // ], []);
-
-
-  // const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
-  //   () => [
-  //     // {
-  //     //   key: "asp", label: (
-  //     //     <>
-  //     //       ASP <InfoTip text={TERM_DEFINITIONS.asp} />
-  //     //     </>
-  //     //   ), align: "center"
-  //     // },
-  //     {
-  //       key: "asp",
-  //       label: "ASP",
-  //       info: <InfoTip text={TERM_DEFINITIONS.asp} />,
-  //       align: "center",
-  //     },
-  //     // { key: "net_sales", label: "Net Sales", align: "center" },
-  //     { key: "cost_of_unit_sold", label: "COGS", align: "center" },
-  //     { key: "promotional_rebates", label: "Promotions", align: "center" },
-  //     { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
-  //     // { key: "net_units_sold", label: "Net Units Sold", align: "center" },
-  //     // { key: "amazon_fee", label: "Marketplace Fees", align: "center" },
-  //     // { key: "other_transactions", label: "Other Transactions", align: "center" },
-  //     // { key: "profit", label: "CM1 Profit Margin", align: "center" },
-  //   ] as LeafCol<TableRow>[],
-  //   []
-  // );
-
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
       id: "units_breakdown",
       label: "Net Units Sold",
-      collapsedCols: [{ key: "net_units_sold", label: "", align: "center", width: 20 }],
+      collapsedCols: [{ key: "net_units_sold", label: "", align: "center", width: 140 }],
       expandedCols: [
         { key: "sku", label: "SKU", align: "center" },
         { key: "units_sold", label: "Units Sold", align: "center" },
@@ -673,6 +561,24 @@ const SKUtable: React.FC<SKUtableProps> = ({
     },
 
     {
+      id: "promotional_rebates",
+      label: "Promotions",
+      // info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
+      collapsedCols: [{ key: "promotional_rebates", label: "", align: "center" }],
+      expandedCols: [
+       { key: "promotional_rebates", label: "Promotions", align: "center" },
+        {
+          key: "promotional_rebates_percentage",
+          label: "Promotions %",
+          align: "center",
+          noWrap: true,
+          width: 170,
+          thClassName: "whitespace-nowrap",
+        },
+      ],
+    },
+
+    {
       id: "other_transactions_breakdown",
       label: "Other Transactions",
       collapsedCols: [{ key: "other_transactions", label: "", align: "center" }],
@@ -699,8 +605,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       info: <InfoTip text={TERM_DEFINITIONS.cm1_profit} />,
       collapsedCols: [{ key: "profit", label: "", align: "center" }],
       expandedCols: [
-        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center", width: 150 },
-        { key: "profit_percentage", label: "CM1 Profit %", align: "center" },
+        { key: "unit_wise_profitability", label: "Per Unit", align: "center", width: 150 },
+        { key: "profit_percentage", label: "%", align: "center" },
         { key: "profit", label: "Total", align: "center" },
       ],
     },
@@ -721,9 +627,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         key: "promotional_rebates_percentage",
         label: "Promotions %",
         align: "center",
-        noWrap: true,                 // ✅ important
-        width: 170,                   // keep if you want
-        thClassName: "whitespace-nowrap", // optional now
+        noWrap: true,
+        width: 170,
+        thClassName: "whitespace-nowrap",
       },
     ],
     []
@@ -1290,112 +1196,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const topData = useMemo(() => buildTopBottom(tableData, "top"), [tableData, buildTopBottom]);
   const bottomData = useMemo(() => buildTopBottom(tableData, "bottom"), [tableData, buildTopBottom]);
 
-  // const getTop5Profitable = useCallback(
-  //   (data: TableRow[]) => {
-  //     const rows = data.slice(0, -1); // exclude Total row
-  //     const top5 = [...rows].sort((a, b) => (b.profit || 0) - (a.profit || 0)).slice(0, 5);
-
-  //     const totalProfit = top5.reduce((s, r) => s + (r.profit || 0), 0);
-  //     const totalProfitMix = top5.reduce((s, r) => s + (r.profit_mix || 0), 0);
-  //     const totalSalesMix = top5.reduce((s, r) => s + (r.sales_mix || 0), 0);
-
-  //     // ✅ avg CM1 across top5 = total CM1 profit / total net units sold
-  //     const totalNetUnits = top5.reduce((s, r) => s + (r.net_units_sold || 0), 0);
-  //     const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
-
-  //     const formatted = top5.map((item) => {
-  //       const netUnits = item.net_units_sold || 0;
-
-  //       // ✅ per-row CM1 per unit
-  //       const cm1PerUnit = netUnits > 0 ? (item.profit || 0) / netUnits : 0;
-
-  //       return {
-  //         product_name: getDisplayProductNameFromRow(item),
-  //         profit: (item.profit || 0).toLocaleString(undefined, {
-  //           minimumFractionDigits: 2,
-  //           maximumFractionDigits: 2,
-  //         }),
-  //         profitMix: (item.profit_mix || 0).toFixed(2),
-  //         salesMix: (item.sales_mix || 0).toFixed(2),
-
-  //         // ✅ SHOW THIS IN TABLE ROWS
-  //         cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
-  //           minimumFractionDigits: 2,
-  //           maximumFractionDigits: 2,
-  //         }),
-  //       };
-  //     });
-
-  //     return {
-  //       rows: formatted,
-  //       totals: {
-  //         profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-  //         profitMix: totalProfitMix.toFixed(2),
-  //         salesMix: totalSalesMix.toFixed(2),
-
-  //         // ✅ SHOW THIS IN TOTAL ROW (average of the 5)
-  //         avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-  //       },
-  //     };
-  //   },
-  //   [getDisplayProductNameFromRow]
-  // );
-
-  // const getBottom5Profitable = useCallback(
-  //   (data: TableRow[]) => {
-  //     const rows = data.slice(0, -1); // exclude Total row
-  //     const bottom5 = [...rows].sort((a, b) => (a.profit || 0) - (b.profit || 0)).slice(0, 5);
-
-  //     const totalProfit = bottom5.reduce((s, r) => s + (r.profit || 0), 0);
-  //     const totalProfitMix = bottom5.reduce((s, r) => s + (r.profit_mix || 0), 0);
-  //     const totalSalesMix = bottom5.reduce((s, r) => s + (r.sales_mix || 0), 0);
-
-  //     // ✅ avg CM1 across bottom5 = total CM1 profit / total net units sold
-  //     const totalNetUnits = bottom5.reduce((s, r) => s + (r.net_units_sold || 0), 0);
-  //     const avgCm1 = totalNetUnits > 0 ? totalProfit / totalNetUnits : 0;
-
-  //     const formatted = bottom5.map((item) => {
-  //       const netUnits = item.net_units_sold || 0;
-
-  //       // ✅ per-row CM1 per unit
-  //       const cm1PerUnit = netUnits > 0 ? (item.profit || 0) / netUnits : 0;
-
-  //       return {
-  //         product_name: getDisplayProductNameFromRow(item),
-  //         profit: (item.profit || 0).toLocaleString(undefined, {
-  //           minimumFractionDigits: 2,
-  //           maximumFractionDigits: 2,
-  //         }),
-  //         profitMix: (item.profit_mix || 0).toFixed(2),
-  //         salesMix: (item.sales_mix || 0).toFixed(2),
-
-  //         // ✅ SHOW THIS IN TABLE ROWS
-  //         cm1_per_unit: cm1PerUnit.toLocaleString(undefined, {
-  //           minimumFractionDigits: 2,
-  //           maximumFractionDigits: 2,
-  //         }),
-  //       };
-  //     });
-
-  //     return {
-  //       rows: formatted,
-  //       totals: {
-  //         profit: totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-  //         profitMix: totalProfitMix.toFixed(2),
-  //         salesMix: totalSalesMix.toFixed(2),
-
-  //         // ✅ SHOW THIS IN TOTAL ROW (average of the 5)
-  //         avg_cm1: avgCm1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-  //       },
-  //     };
-  //   },
-  //   [getDisplayProductNameFromRow]
-  // );
-
-
-  // const topData = useMemo(() => getTop5Profitable(tableData), [tableData, getTop5Profitable]);
-  // const bottomData = useMemo(() => getBottom5Profitable(tableData), [tableData, getBottom5Profitable]);
-
   /* --------- UI handlers --------- */
   const handleProductClick = useCallback((product: string) => {
     setSelectedProduct(product);
@@ -1451,42 +1251,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
           <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
             <div className="min-w-full">
               <GroupedCollapsibleTable<TableRow>
-                // rows={tableData}
                 rows={displayRows}
                 leftCols={LEFT_COLS}
                 groups={groups}
                 singleCols={SINGLE_COLS}
-                // layout={[
-
-                //   { type: "group", id: "units_breakdown" },
-                //   { type: "single", key: "net_units_sold" },
-
-                //   { type: "single", key: "asp" },
-
-
-                //   { type: "group", id: "sales" },
-                //   { type: "single", key: "net_sales" },
-
-                //   { type: "group", id: "promotions_breakdown" },
-                //   { type: "single", key: "cost_of_unit_sold" },
-
-                //   { type: "group", id: "amazon_breakdown" },
-                //   { type: "single", key: "amazon_fee" },
-
-                //   { type: "group", id: "other_transactions_breakdown" },
-                //   { type: "single", key: "other_transactions" },
-
-                //   { type: "group", id: "profit_breakdown" },
-                //   { type: "single", key: "profit" },
-                // ]}
                 layout={[
                   { type: "group", id: "units_breakdown" },
                   { type: "single", key: "asp" },
 
                   { type: "group", id: "sales" },
+                  { type: "group", id: "promotional_rebates" },
 
-                  { type: "single", key: "promotional_rebates" },
-                  { type: "single", key: "promotional_rebates_percentage" },
+                  // { type: "single", key: "promotional_rebates" },
+                  // { type: "single", key: "promotional_rebates_percentage" },
                   { type: "single", key: "cost_of_unit_sold" },
 
 

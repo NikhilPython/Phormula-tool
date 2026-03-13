@@ -3139,7 +3139,7 @@ export default function DashboardPage() {
                     key: "quantity",
                     label: "Total",
                     align: "center" as const,
-                    width: 20,
+                    width:80,
                 },
             ],
 
@@ -4486,7 +4486,7 @@ export default function DashboardPage() {
                                 <div className="w-full rounded-xl border bg-white p-4 lg:p-3 2xl:p-5 shadow-sm">
                                     <div className="mb-4 flex items-start justify-between gap-3">
                                         <div className="flex items-baseline gap-2">
-                                            <PageBreadcrumb pageTitle="Global" variant="page" align="left" />
+                                            <PageBreadcrumb pageTitle="Global MTD Sales" variant="page" align="left" />
                                         </div>
 
                                         {showLiveBI && platform === "global" && (
@@ -4756,7 +4756,8 @@ export default function DashboardPage() {
                                 {/* Amazon KPI Box */}
                                 <div className="w-full rounded-xl border bg-white p-3 2xl:p-5 shadow-sm">
                                     <div className="mb-3 lg:mb-2 2xl:mb-4 flex flex-row gap-3 items-start md:items-start md:justify-between">
-                                        <div className="flex flex-col flex-1 min-w-0">
+                                         <div className="flex items-baseline gap-2">
+                                            <PageBreadcrumb pageTitle="MTD Sales" variant="page" align="left" />
                                         </div>
                                         <div className="flex items-center gap-2">
                                             {showLiveBI && isCountryMode && (

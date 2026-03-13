@@ -58,13 +58,6 @@ export default function AmazonStatCard({
     );
   }
 
-  // const deltaColor =
-  //   deltaToShow == null
-  //     ? "text-gray-400"
-  //     : isUp
-  //       ? "text-emerald-600"
-  //       : "text-rose-600";
-
   const goodClass = "text-emerald-600";
   const badClass = "text-red-600";
 
@@ -86,7 +79,7 @@ export default function AmazonStatCard({
 
       <div className="mt-1 text-sm 2xl:text-lg font-semibold leading-tight min-w-0">
         <ValueOrSkeleton loading={loading} mode="inline" compact>
-          <span className="inline-flex items-baseline gap-1 min-w-0 truncate">
+          <span className="inline-flex text-charcoal-500 items-baseline gap-1 min-w-0 truncate">
             {formatter(currVal)}
           </span>
         </ValueOrSkeleton>

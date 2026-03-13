@@ -244,23 +244,7 @@ function PlaceholderPanel({ title }: { title: string }) {
 
         <div>
           <h4 className="font-semibold ">
-            4. Margin Protection
-          </h4>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
-            <li>
-              As the business scaled, protecting healthy profit margins became
-              a key operational focus.
-            </li>
-            <li>
-              Decisions balanced advertising spend, pricing strategy, and
-              discounting against profitability.
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 className="font-semibold ">
-            5. Inventory Management Evolution
+            4. Inventory Management Evolution
           </h4>
           <ul className="mt-1 list-disc space-y-1 pl-5">
             <li>
@@ -270,38 +254,6 @@ function PlaceholderPanel({ title }: { title: string }) {
             <li>
               Focus shifted to clearing slow-moving SKUs while maintaining
               healthy stock levels of best-selling products.
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 className="font-semibold ">
-            6. Operational Maturity
-          </h4>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
-            <li>
-              The business transitioned from simple sales tracking to
-              target-based performance management.
-            </li>
-            <li>
-              Strategic planning began integrating revenue targets, inventory
-              health, and profitability considerations.
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <h4 className="font-semibold">
-            7. Current Strategic Direction
-          </h4>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
-            <li>
-              The focus is now on sustainable scaling while maintaining strong
-              margins and operational discipline.
-            </li>
-            <li>
-              Bestseller continuity, controlled expansion, and optimized
-              inventory flow drive the current growth strategy.
             </li>
           </ul>
         </div>

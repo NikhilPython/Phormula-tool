@@ -170,6 +170,7 @@ export default function ObjectiveMoMChart({
                 },
                 axisLabel: {
                     color: "#6B7280",
+                    formatter: (value: string) => value.replace("’ ", "’"),
                 },
             },
 

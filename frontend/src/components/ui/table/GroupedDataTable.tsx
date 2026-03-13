@@ -67,17 +67,17 @@ export default function GroupedDataTable<T extends Row>({
 
     return (
         <div
-  className={clsx(
-    "relative w-full max-w-full overflow-x-auto overflow-y-auto max-h-[520px] rounded-xl border border-slate-200 bg-white shadow-sm",
-    className
-  )}
->
-<table
-  className={clsx(
-    "w-max min-w-full table-auto border-collapse text-xs text-slate-700",
-    tableClassName
-  )}
->
+            className={clsx(
+                "relative w-full max-w-full overflow-x-auto overflow-y-auto max-h-[520px] rounded-xl border border-slate-200 bg-white shadow-sm",
+                className
+            )}
+        >
+            <table
+                className={clsx(
+                    "w-max min-w-full table-auto border-collapse text-xs text-slate-700",
+                    tableClassName
+                )}
+            >
 
                 <thead className={clsx(stickyHeader && "sticky top-0 z-10")}>
                     {/* Row 1: Group headers */}
@@ -109,7 +109,7 @@ export default function GroupedDataTable<T extends Row>({
                     </tr>
 
                     {/* Row 2: Sub headers (Applicable / Charged) */}
-                    <tr className="bg-[#EFEFEF] text-slate-700">
+                    <tr className="bg-green-500 text-yellow-200">
                         {groupedColumns.flatMap((g, gi) =>
                             g.columns.map((c, ci) => (
                                 <th
@@ -173,16 +173,16 @@ export default function GroupedDataTable<T extends Row>({
                                         const value = (row as any)[String(col.key)];
                                         return (
                                             <td
-  key={`g-${ri}-${String(col.key)}-${ci}`}
-  className={clsx(
-    "border border-gray-300 px-2 py-3 text-center whitespace-nowrap",
-    col.cellClassName
-  )}
-  style={colWidthStyle(col.width)}   // ✅ REQUIRED
-  title={showCellTitle ? String(value ?? "\u00A0") : undefined}
->
-  {col.render ? col.render(row, value, ri) : value ?? "\u00A0"}
-</td>
+                                                key={`g-${ri}-${String(col.key)}-${ci}`}
+                                                className={clsx(
+                                                    "border border-gray-300 px-2 py-3 text-center whitespace-nowrap",
+                                                    col.cellClassName
+                                                )}
+                                                style={colWidthStyle(col.width)}   // ✅ REQUIRED
+                                                title={showCellTitle ? String(value ?? "\u00A0") : undefined}
+                                            >
+                                                {col.render ? col.render(row, value, ri) : value ?? "\u00A0"}
+                                            </td>
 
                                         );
                                     })
