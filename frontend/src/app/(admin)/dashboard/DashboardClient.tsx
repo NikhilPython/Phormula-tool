@@ -3877,6 +3877,12 @@ export default function DashboardPage() {
             ? ((stats_mtdHome - proratedTargetToDate) / stats_targetHome) * 100
             : 0;
 
+    const stats_targetTrendPrevPct = useMemo(() => {
+        return stats_targetHome > 0
+            ? ((stats_lastMtdHome - proratedTargetToDate) / stats_targetHome) * 100
+            : 0;
+    }, [stats_lastMtdHome, proratedTargetToDate, stats_targetHome]);
+
     const ADS_SIGN_PLUS = new Set(["net_sales", "credits", "tax_and_credits"]);
     const ADS_SIGN_MINUS = new Set([
         "ads_spend",
@@ -4355,8 +4361,8 @@ export default function DashboardPage() {
         {
             label: "Target Trend",
             current: stats_targetTrendPct ?? 0,
-            previous: 0,
-            deltaPct: null,
+            previous: stats_targetTrendPrevPct ?? 0,
+            deltaPct: deltaPctAbs(stats_targetTrendPct ?? 0, stats_targetTrendPrevPct ?? 0),
             loading: loading,
             formatter: fmtPct,
             bottomLabel: "Last Month",
