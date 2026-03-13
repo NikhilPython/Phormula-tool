@@ -1,9 +1,11 @@
 import ObjectivesPageClient from "@/components/user-profile/ObjectivesPageClient";
 
-export default function Page({
+export default async function Page({
   params,
 }: {
-  params: { countryName: string };
+  params: Promise<{ countryName: string }>;
 }) {
-  return <ObjectivesPageClient country={params.countryName} />;
+  const { countryName } = await params;
+
+  return <ObjectivesPageClient country={countryName} />;
 }
