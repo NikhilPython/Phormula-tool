@@ -125,7 +125,7 @@ export default function ObjectivesPageClient({
   const [draftTarget, setDraftTarget] = useState<string>("");
   const [isTargetEditMode, setIsTargetEditMode] = useState(false);
   const [isObjectiveEditMode, setIsObjectiveEditMode] = useState(false);
-
+  const [targetLocked, setTargetLocked] = useState(false);
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "aggressive",
     profit_priority: "protect_growth",
@@ -161,27 +161,27 @@ export default function ObjectivesPageClient({
   }, [connected]);
 
   const pagePlatform: PlatformId = useMemo(() => {
-  const c = (country || "").toLowerCase();
+    const c = (country || "").toLowerCase();
 
-  if (c === "uk") return "amazon-uk";
-  if (c === "us") return "amazon-us";
-  if (c === "ca") return "amazon-ca";
-  if (c === "global") return "shopify";
+    if (c === "uk") return "amazon-uk";
+    if (c === "us") return "amazon-us";
+    if (c === "ca") return "amazon-ca";
+    if (c === "global") return "shopify";
 
-  const amazonConnectedCount = [
-    connected.amazonUk,
-    connected.amazonUs,
-    connected.amazonCa,
-  ].filter(Boolean).length;
+    const amazonConnectedCount = [
+      connected.amazonUk,
+      connected.amazonUs,
+      connected.amazonCa,
+    ].filter(Boolean).length;
 
-  if (amazonConnectedCount === 1) {
-    if (connected.amazonUk) return "amazon-uk";
-    if (connected.amazonUs) return "amazon-us";
-    if (connected.amazonCa) return "amazon-ca";
-  }
+    if (amazonConnectedCount === 1) {
+      if (connected.amazonUk) return "amazon-uk";
+      if (connected.amazonUs) return "amazon-us";
+      if (connected.amazonCa) return "amazon-ca";
+    }
 
-  return "shopify";
-}, [country, connected.amazonUk, connected.amazonUs, connected.amazonCa]);
+    return "shopify";
+  }, [country, connected.amazonUk, connected.amazonUs, connected.amazonCa]);
 
   const pageCurrency = useMemo(() => platformToCurrencyCode(pagePlatform), [pagePlatform]);
 
@@ -199,16 +199,16 @@ export default function ObjectivesPageClient({
     label: string;
     value: UserObjectiveForm["profit_priority"];
   }> = [
-    { label: "Yes Profit is high priority", value: "high" },
-    {
-      label: "I'm Okay with current profit if it helps me grow my sales",
-      value: "protect_growth",
-    },
-    {
-      label: "I'm Okay with short term losses if it helps in high growth numbers",
-      value: "sacrifice_short_term",
-    },
-  ];
+      { label: "Yes Profit is high priority", value: "high" },
+      {
+        label: "I'm Okay with current profit if it helps me grow my sales",
+        value: "protect_growth",
+      },
+      {
+        label: "I'm Okay with short term losses if it helps in high growth numbers",
+        value: "sacrifice_short_term",
+      },
+    ];
 
   useEffect(() => {
     if (!token) return;
@@ -294,73 +294,106 @@ export default function ObjectivesPageClient({
     setIsObjectiveEditMode(false);
   };
 
-  const getPreviousMonthYear = () => {
-  const now = new Date();
-  const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const getCurrentMonthYear = () => {
+    const now = new Date();
 
-  const month = previousMonthDate.toLocaleString("en-US", { month: "long" });
-  const year = previousMonthDate.getFullYear();
-
-  return { month, year };
-};
-
-const resolvedTargetCountry = useMemo(() => {
-  if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
-  if (objective.country) return objective.country.toLowerCase();
-  if (country) return country.toLowerCase();
-  return "uk";
-}, [objectiveDraft.country, objective.country, country]);
-
-const saveInlineTarget = async () => {
-  const next = Number(draftTarget);
-
-  if (!Number.isFinite(next) || next < 0) {
-    alert("Please enter a valid number.");
-    return;
-  }
-
-  const { month, year } = getPreviousMonthYear();
-  const payload = {
-    month,
-    year,
-    country: resolvedTargetCountry,
-    target_sales: next,
+    return {
+      month: now.toLocaleString("en-US", { month: "long" }),
+      year: now.getFullYear(),
+    };
   };
 
-  try {
-    // existing profile update
-    await updateProfile({ target_sales: next } as any).unwrap();
-    dispatch(setUser({ target_sales: next } as any));
+  const resolvedTargetCountry = useMemo(() => {
+    if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
+    if (objective.country) return objective.country.toLowerCase();
+    if (country) return country.toLowerCase();
+    return "uk";
+  }, [objectiveDraft.country, objective.country, country]);
 
-    // new monthly target API
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
+  useEffect(() => {
+    if (!token) return;
+
+    const fetchTargetStatus = async () => {
+      try {
+        const now = new Date();
+        const month = now.toLocaleString("en-US", { month: "long" });
+        const year = now.getFullYear();
+
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary?month=${month}&year=${year}&country=${resolvedTargetCountry}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.data?.target_sales) {
+            setTargetLocked(true);
+          }
+        }
+      } catch (err) {
+        console.error("Target status check failed", err);
       }
-    );
+    };
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(errText || "Failed to save monthly target summary.");
+    fetchTargetStatus();
+  }, [token, resolvedTargetCountry]);
+
+  const saveInlineTarget = async () => {
+    const next = Number(draftTarget);
+
+    if (!Number.isFinite(next) || next < 0) {
+      alert("Please enter a valid number.");
+      return;
     }
 
-    const result = await res.json();
-    console.log("Monthly target saved:", result);
+    const { month, year } = getCurrentMonthYear();
 
-    setIsTargetEditMode(false);
-    setEditingPid(null);
-    setDraftTarget("");
-  } catch (err: any) {
-    console.error(err);
-    alert(err?.message || err?.data?.message || "Failed to update target.");
-  }
-};
+    const payload = {
+      month,
+      year,
+      country: resolvedTargetCountry,
+      target_sales: next,
+    };
+
+    try {
+      await updateProfile({ target_sales: next } as any).unwrap();
+      dispatch(setUser({ target_sales: next } as any));
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result?.error || "Failed to save monthly target summary.");
+      }
+
+      console.log("Monthly target saved:", result);
+
+      setIsTargetEditMode(false);
+      setEditingPid(null);
+      setDraftTarget("");
+      setTargetLocked(true);
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Failed to update target.");
+    }
+  };
+
+
 
   const handleInlineObjectiveSave = async () => {
     try {
@@ -408,15 +441,15 @@ const saveInlineTarget = async () => {
     }
   }, []);
 
-useEffect(() => {
-  if (!objective.country) {
-    if (country) {
-      setObjective((prev) => ({ ...prev, country: country.toLowerCase() }));
-    } else if (integratedCountries.length) {
-      setObjective((prev) => ({ ...prev, country: integratedCountries[0] }));
+  useEffect(() => {
+    if (!objective.country) {
+      if (country) {
+        setObjective((prev) => ({ ...prev, country: country.toLowerCase() }));
+      } else if (integratedCountries.length) {
+        setObjective((prev) => ({ ...prev, country: integratedCountries[0] }));
+      }
     }
-  }
-}, [country, integratedCountries, objective.country]);
+  }, [country, integratedCountries, objective.country]);
 
   const monthlyTargetData: TargetRow[] = useMemo(() => {
     const currentTarget = Number((data as any)?.target_sales ?? 0);
@@ -544,15 +577,17 @@ useEffect(() => {
           action={
             <div className="flex items-center gap-2">
               {!isTargetEditMode ? (
-                <button
-                  type="button"
-                  onClick={openTargetEditMode}
-                  className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
-                  aria-label="Enable edit mode"
-                  title="Edit targets"
-                >
-                  <FiEdit className="text-lg" />
-                </button>
+                !targetLocked && (
+                  <button
+                    type="button"
+                    onClick={openTargetEditMode}
+                    className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
+                    aria-label="Enable edit mode"
+                    title="Edit targets"
+                  >
+                    <FiEdit className="text-lg" />
+                  </button>
+                )
               ) : (
                 <>
                   <Button
@@ -580,6 +615,12 @@ useEffect(() => {
             </div>
           }
         >
+          {isTargetEditMode && (
+            <div className="mb-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+              ⚠️ Please enter your target carefully. Once saved, you will not be able to change it until the 1st of next month.
+            </div>
+          )}
+
           <DataTable
             columns={monthlyTargetColumns}
             data={monthlyTargetData}

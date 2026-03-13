@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify , send_file
 from sqlalchemy import create_engine , MetaData , text, inspect
 from sqlalchemy.orm import sessionmaker
+from zoneinfo import ZoneInfo
 from app.utils.token_utils import get_effective_user_id_from_token
 import jwt
 import os
@@ -1593,6 +1594,8 @@ def cashflow():
         db_session.close()
 
 
+
+
 @dashboard_bp.route('/target-summary', methods=['GET', 'POST'])
 def target_summary():
     auth_header = request.headers.get('Authorization')
@@ -1640,6 +1643,25 @@ def target_summary():
         month_name = datetime.strptime(month.capitalize(), "%B").strftime("%B")
     except ValueError:
         return jsonify({'error': 'Invalid month format. Use full month name like January'}), 400
+
+    # POST should only allow current month and current year
+    if request.method == 'POST':
+        now = datetime.now(ZoneInfo("Asia/Kolkata"))
+        current_month = now.strftime("%B")
+        current_year = now.year
+
+        if month_name != current_month or year != current_year:
+            return jsonify({
+                'error': 'POST is allowed only for the current month and year',
+                'allowed': {
+                    'month': current_month,
+                    'year': current_year
+                },
+                'received': {
+                    'month': month_name,
+                    'year': year
+                }
+            }), 400
 
     engine = create_engine(db_url)
     SessionLocal = sessionmaker(bind=engine)
@@ -1788,7 +1810,6 @@ def target_summary():
         safe_country = country.lower().replace(" ", "_").replace("-", "_")
         target_table_name = f"target_{user_id}_{safe_country}_data"
 
-        # Always create table if not exists
         create_table_sql = text(f"""
             CREATE TABLE IF NOT EXISTS {target_table_name} (
                 id SERIAL PRIMARY KEY,
@@ -1807,7 +1828,7 @@ def target_summary():
         db_session.execute(create_table_sql)
         db_session.commit()
 
-        # ---------------- POST ----------------
+        # POST
         if request.method == 'POST':
             if target_sales is None:
                 return jsonify({'error': 'target_sales is required for POST'}), 400
@@ -1824,19 +1845,16 @@ def target_summary():
                 month_name=month_name
             )
 
-            if not details:
-                return jsonify({
-                    'error': 'No cashflow data found for the specified month/year/country',
-                    'searched_for': {
-                        'user_id': user_id,
-                        'month': month_name,
-                        'year': year,
-                        'country': country
-                    }
-                }), 404
 
+            # If no cashflow data exists, treat totals as 0
             net_sales_total = round(summary_totals.get('net_sales', 0), 2)
             cashflow_total = round(summary_totals.get('cashflow', 0), 2)
+
+            # If no details found, still allow saving target
+            if not details:
+                net_sales_total = 0
+                cashflow_total = 0
+
             shortfall_total = round(target_sales - net_sales_total, 2)
 
             upsert_sql = text(f"""
@@ -1878,7 +1896,7 @@ def target_summary():
                 }
             }), 200
 
-        # ---------------- GET ----------------
+        # GET
         get_sql = text(f"""
             SELECT id, month, year, country, target_sales, cashflow_total,
                    net_sales_total, shortfall_total, created_at, updated_at
