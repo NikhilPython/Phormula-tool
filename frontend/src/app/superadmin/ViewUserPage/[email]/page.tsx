@@ -32,6 +32,7 @@ type SkuWiseTable = {
 type ViewUserData = {
   user_id?: number | string;
   brand_name?: string;
+  name?: string;
   annual_sales_range?: string;
   related_upload_history?: UploadHistoryRow[];
   related_country_profiles?: CountryProfileRow[];
@@ -257,7 +258,7 @@ export default function ViewUserPage() {
             <h2 className="text-xl sm:text-2xl font-semibold">User Details for: {email}</h2>
             {data && (
               <div className="grid sm:grid-cols-3 gap-2 sm:gap-6 text-white/90 text-sm sm:text-base">
-                <p><strong className="text-white">User ID:</strong> {data.user_id}</p>
+               
                 <p><strong className="text-white">Brand Name:</strong> {data.brand_name}</p>
                 <p><strong className="text-white">Annual Sales Range:</strong> {data.annual_sales_range}</p>
               </div>

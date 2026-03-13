@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { FaSearch } from "react-icons/fa";
 import { Settings } from "lucide-react";
 import { toast } from "sonner";
+import Image from "next/image";
+import Loader from "@/components/loader/Loader";
+import { FaLongArrowAltRight } from "react-icons/fa";
+import SegmentedToggle from "@/components/ui/SegmentedToggle";
+
 
 // put gif in /public OR keep as import (both work)
 // If you want import style, keep it like below and ensure next.config allows it if needed.
@@ -21,6 +26,11 @@ type UserRow = {
   id: number | string;
   email: string;
   brand_name: string;
+  name: string;
+  company_name: string;
+  country?: string;
+  marketplace_id?: string;
+  status?: string;
 };
 
 type DashboardResponse = {
@@ -41,6 +51,7 @@ export default function SuperAdminDashboardPage() {
   const [error, setError] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [showSearch, setShowSearch] = useState<boolean>(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   const router = useRouter();
 
@@ -49,6 +60,79 @@ export default function SuperAdminDashboardPage() {
     const remaining = Math.max(0, MIN_LOADER_MS - elapsed);
     window.setTimeout(() => setLoading(false), remaining);
   };
+
+  const STATUS_OPTIONS = [
+  { value: "all" as const, label: "All" },
+  { value: "active" as const, label: "Active" },
+  { value: "inactive" as const, label: "Inactive" },
+];
+
+const normalizeStatus = (status?: string) => {
+  const s = String(status || "").trim().toLowerCase();
+  if (s === "inactive") return "inactive";
+  return "active";
+};
+
+const allUsers = defaultData?.users || [];
+
+const filteredUsers = allUsers.filter((user) => {
+  const matchesSearch =
+    !emailInput.trim() ||
+    user.email.toLowerCase().includes(emailInput.toLowerCase()) ||
+    user.brand_name.toLowerCase().includes(emailInput.toLowerCase()) ||
+    user.name.toLowerCase().includes(emailInput.toLowerCase()) ||
+    user.company_name.toLowerCase().includes(emailInput.toLowerCase());
+
+  const userStatus = normalizeStatus(user.status);
+
+  const matchesStatus =
+    statusFilter === "all" ? true : userStatus === statusFilter;
+
+  return matchesSearch && matchesStatus;
+});
+
+const totalUsers = allUsers.length;
+const activeUsers = allUsers.filter((u) => normalizeStatus(u.status) === "active").length;
+const inactiveUsers = allUsers.filter((u) => normalizeStatus(u.status) === "inactive").length;
+
+const totalBrands = new Set(
+  allUsers.map((u) => (u.brand_name || "").trim()).filter(Boolean)
+).size;
+
+const totalCompanies = new Set(
+  allUsers.map((u) => (u.company_name || "").trim()).filter(Boolean)
+).size;
+
+const totalMarketplaces = new Set(
+  allUsers.map((u) => (u.marketplace_id || "").trim()).filter(Boolean)
+).size;
+
+const summaryCards = [
+  {
+    title: "Total Users",
+    value: totalUsers,
+    accent: "border-t-[#F4C04E]",
+    subText: `↑ ${activeUsers} active users`,
+  },
+  {
+    title: "Active Brands",
+    value: totalBrands,
+    accent: "border-t-[#C78B57]",
+    subText: `↑ ${totalBrands} total brands`,
+  },
+  {
+    title: "Companies",
+    value: totalCompanies,
+    accent: "border-t-[#2EA8E5]",
+    subText: `↑ ${totalCompanies} total companies`,
+  },
+  {
+    title: "Marketplaces",
+    value: totalMarketplaces,
+    accent: "border-t-[#93A95B]",
+    subText: `↑ ${inactiveUsers} inactive users`,
+  },
+];
 
   useEffect(() => {
     const fetchDefaultData = async () => {
@@ -258,36 +342,18 @@ export default function SuperAdminDashboardPage() {
         <div className="mx-auto px-4 sm:px-6 mb-6">
           <div className="flex items-center justify-between gap-3 py-3 sm:py-4">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="h-9 w-9 rounded-lg bg-white/15 ring-1 ring-white/20 flex items-center justify-center text-white font-bold">
-                SA
-              </div>
-              <h1 className="truncate text-lg sm:text-2xl font-semibold tracking-tight text-white">
-                Super Admin Dashboard
-              </h1>
+              <Image
+                            width={220}
+                            height={40}
+                            src="/images/auth/Phormula.png"
+                            alt="Phormula"
+                            priority
+                            className="2xl:w-[220px] 2xl:h-[50px] xl:w-[150px] w-auto "
+                          />
+              
             </div>
-
             <div className="flex items-center gap-2 sm:gap-3">
-              <form onSubmit={handleEmailSearch} className="hidden md:flex items-center gap-2">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={emailInput}
-                    onChange={handleSearchInputChange}
-                    placeholder="Search email, brand..."
-                    className="w-[280px] lg:w-[360px] rounded-lg bg-white/95 text-slate-800 placeholder:text-slate-400 border border-white/40 focus:border-white focus:ring-4 focus:ring-white/20 px-4 py-2.5 shadow"
-                  />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                   <FaSearch />
-                  </span>
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-semibold text-white bg-white/10 hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/30 disabled:opacity-60"
-                >
-                  Search
-                </button>
-              </form>
+              
 
               <button
                 type="button"
@@ -301,11 +367,10 @@ export default function SuperAdminDashboardPage() {
                 <button
                   type="button"
                   onClick={() => setShowSettings((s) => !s)}
-                  className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-white bg-white/10 hover:bg-white/20 font-medium shadow focus:outline-none focus:ring-4 focus:ring-white/30"
+                  className="inline-flex items-center justify-center rounded-lg p-3 text-white bg-white/10 hover:bg-white/20 font-medium shadow focus:outline-none focus:ring-4 focus:ring-white/30"
                   aria-label="Open settings"
                 >
-                  <Settings size={18} className="md:mr-2" />
-                  <span className="hidden md:inline">Settings</span>
+                  <Settings size={20}  />
                 </button>
 
                 {showSettings && (
@@ -374,6 +439,71 @@ export default function SuperAdminDashboardPage() {
           )}
         </div>
       </header>
+<div className="flex justify-between items-start py-5">
+              <h1 className="truncate text-lg sm:text-2xl font-semibold tracking-tight text-[#414042]">
+                Super Admin Dashboard
+              </h1>
+              <form onSubmit={handleEmailSearch} className="hidden md:flex items-center gap-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={emailInput}
+                    onChange={handleSearchInputChange}
+                    placeholder="Search email, brand..."
+                    className="w-[280px] lg:w-[360px] rounded-lg bg-white/95 text-slate-800 placeholder:text-slate-400 border border-white/40 focus:border-white focus:ring-4 focus:ring-white/20 px-4 py-2.5 shadow"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                   <FaSearch />
+                  </span>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-semibold text-[#f8edce] bg-[#37455F] hover:bg-white/20 focus:outline-none focus:ring-4 focus:ring-white/30 disabled:opacity-60"
+                >
+                  Search
+                </button>
+              </form>
+</div>
+
+<div className="space-y-4 mb-6">
+  {/* Summary Cards */}
+  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    {summaryCards.map((card) => (
+      <div
+        key={card.title}
+        className={`rounded-xl border border-slate-200 border-t-4 ${card.accent} bg-white shadow-sm px-4 py-4`}
+      >
+        <div className="text-[11px] sm:text-xs text-slate-500 font-medium">
+          {card.title}
+        </div>
+        <div className="mt-2 text-xl sm:text-2xl font-semibold text-[#414042]">
+          {card.value.toLocaleString()}
+        </div>
+        <div className="mt-2 text-[11px] sm:text-xs text-[#5EA68E] font-medium">
+          {card.subText}
+        </div>
+      </div>
+    ))}
+  </div>
+
+  {/* Table Header Row */}
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-t-xl border border-b-0 border-slate-200 bg-white px-4 py-3">
+    <h2 className="text-sm sm:text-base font-semibold text-[#5EA68E]">
+      User Brand Registry
+    </h2>
+
+    <SegmentedToggle
+      value={statusFilter}
+      options={STATUS_OPTIONS}
+      onChange={setStatusFilter}
+      compact
+      className="w-fit"
+      textSizeClass="text-[10px] sm:text-xs"
+    />
+  </div>
+</div>
+      
 
       <div className="mx-auto">
         {error && (
@@ -383,77 +513,80 @@ export default function SuperAdminDashboardPage() {
         )}
 
         {loading ? (
-          <div className="min-h-[60vh] grid place-items-center">
-           loading....
-          </div>
+          <Loader fullscreen backgroundClass="bg-white/80" />
         ) : (
           <div className="space-y-8">
             {!searchResult && defaultData && (
               <div className="space-y-8">
                 <section>
-                  <h4 className="text-lg font-semibold text-slate-700 mb-3">All Admins</h4>
-                  <div className="overflow-x-auto bg-white rounded-xl shadow ring-1 ring-slate-200">
-                    <table className="min-w-[600px] w-full table-auto">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            ID
-                          </th>
-                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Email
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {defaultData.user_admins?.map((admin) => (
-                          <tr key={admin.id} className="border-t">
-                            <td className="px-4 py-3 text-sm text-slate-700">{admin.id}</td>
-                            <td className="px-4 py-3 text-sm text-slate-700">{admin.email}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-
-                <section>
-                  <h4 className="text-lg font-semibold text-slate-700 mb-3">
-                    All Registered Users
-                  </h4>
                   <div className="overflow-x-auto bg-white rounded-xl shadow ring-1 ring-slate-200">
                     <table className="min-w-[700px] w-full table-auto">
                       <thead className="bg-slate-50">
                         <tr>
                           <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Users ID
+                              Name
                           </th>
                           <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                            Email
+                              Email
                           </th>
+                          
                           <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
                             Brand Name
                           </th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+                            Company Name
+                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+                            Country
+                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+                            Marketplace ID
+                          </th>
+                          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+  Status
+</th>
                           <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {defaultData.users?.map((user) => (
-                          <tr key={user.id} className="border-t">
-                            <td className="px-4 py-3 text-sm text-slate-700">{user.id}</td>
-                            <td className="px-4 py-3 text-sm text-slate-700">{user.email}</td>
-                            <td className="px-4 py-3 text-sm text-slate-700">{user.brand_name}</td>
-                            <td className="px-4 py-3 text-sm text-slate-700">
-                              <button
-                                onClick={() =>
-                                  router.push(`/superadmin/ViewUserPage/${encodeURIComponent(user.email)}`)
-                                }
-                                className="inline-flex items-center justify-center px-3 py-2 rounded-md text-white bg-gradient-to-r from-[#5EA68E] to-[#1f5274] hover:from-[#1f5274] hover:to-[#5EA68E] shadow"
-                              >
-                                View
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                       {filteredUsers.map((user) => {
+  const userStatus = normalizeStatus(user.status);
+
+  return (
+    <tr key={user.id} className="border-t">
+      <td className="px-4 py-3 text-sm text-slate-700">{user.name}</td>
+      <td className="px-4 py-3 text-sm text-slate-700">{user.email}</td>
+      <td className="px-4 py-3 text-sm text-slate-700">{user.brand_name}</td>
+      <td className="px-4 py-3 text-sm text-slate-700">{user.company_name}</td>
+      <td className="px-4 py-3 text-sm text-slate-700">{user.country}</td>
+      <td className="px-4 py-3 text-sm text-slate-700">{user.marketplace_id}</td>
+
+      <td className="px-4 py-3 text-sm text-slate-700">
+        <div className="inline-flex items-center gap-2">
+          <span
+            className={`inline-block h-2 w-2 rounded-full ${
+              userStatus === "active" ? "bg-green-500" : "bg-red-500"
+            }`}
+          />
+          <span className="capitalize">
+            {userStatus}
+          </span>
+        </div>
+      </td>
+
+      <td className="px-4 py-3 text-sm text-slate-700">
+        <button
+          onClick={() =>
+            router.push(`/superadmin/ViewUserPage/${encodeURIComponent(user.email)}`)
+          }
+          className="inline-flex items-center justify-center px-3 py-2 rounded-md bg-white border border-[#414042] text-[#414042] shadow"
+        >
+          View <FaLongArrowAltRight className="pl-1" />
+        </button>
+      </td>
+    </tr>
+  );
+})}
                       </tbody>
                     </table>
                   </div>
@@ -463,54 +596,92 @@ export default function SuperAdminDashboardPage() {
 
             {searchResult && defaultData && (
               <section>
-                <h3 className="text-xl font-semibold text-slate-700 mb-3">
-                  Search Results for: <span className="text-slate-900">{emailInput}</span>
-                </h3>
+  <h3 className="text-xl font-semibold text-slate-700 mb-3">
+    Search Results for: <span className="text-slate-900">{emailInput}</span>
+  </h3>
 
-                <div className="overflow-x-auto bg-white rounded-xl shadow ring-1 ring-slate-200">
-                  <table className="min-w-[700px] w-full table-auto">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          User ID
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Email
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
-                          Brand Name
-                        </th>
-                        <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(defaultData.users || [])
-                        .filter(
-                          (user) =>
-                            user.email.toLowerCase().includes(emailInput.toLowerCase()) ||
-                            user.brand_name.toLowerCase().includes(emailInput.toLowerCase())
-                        )
-                        .map((user) => (
-                          <tr key={user.id} className="border-t">
-                            <td className="px-4 py-3 text-sm text-slate-700">{user.id}</td>
-                            <td className="px-4 py-3 text-sm text-slate-700">{user.email}</td>
-                            <td className="px-4 py-3 text-sm text-slate-700">{user.brand_name}</td>
-                            <td className="px-4 py-3 text-sm text-slate-700">
-                              <button
-                                onClick={() =>
-                                  router.push(`/ViewUserPage/${encodeURIComponent(user.email)}`)
-                                }
-                                className="inline-flex items-center justify-center px-3 py-2 rounded-md text-white bg-gradient-to-r from-[#5EA68E] to-[#1f5274] hover:from-[#1f5274] hover:to-[#5EA68E] shadow"
-                              >
-                                View
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-t-xl border border-b-0 border-slate-200 bg-white px-4 py-3">
+    <h2 className="text-sm sm:text-base font-semibold text-[#5EA68E]">
+      User Brand Registry
+    </h2>
+
+    <SegmentedToggle
+      value={statusFilter}
+      options={STATUS_OPTIONS}
+      onChange={setStatusFilter}
+      compact
+      className="w-fit"
+      textSizeClass="text-[10px] sm:text-xs"
+    />
+  </div>
+
+  <div className="overflow-x-auto bg-white rounded-b-xl shadow ring-1 ring-slate-200">
+    <table className="min-w-[900px] w-full table-auto">
+      <thead className="bg-slate-50">
+        <tr>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+            Name
+          </th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+            Email
+          </th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+            Brand Name
+          </th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+            Company Name
+          </th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+            Country
+          </th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+            Marketplace ID
+          </th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600">
+            Status
+          </th>
+          <th className="px-4 py-3 text-left text-sm font-semibold text-slate-600"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {filteredUsers.map((user) => {
+          const userStatus = normalizeStatus(user.status);
+
+          return (
+            <tr key={user.id} className="border-t">
+              <td className="px-4 py-3 text-sm text-slate-700">{user.name}</td>
+              <td className="px-4 py-3 text-sm text-slate-700">{user.email}</td>
+              <td className="px-4 py-3 text-sm text-slate-700">{user.brand_name}</td>
+              <td className="px-4 py-3 text-sm text-slate-700">{user.company_name}</td>
+              <td className="px-4 py-3 text-sm text-slate-700">{user.country}</td>
+              <td className="px-4 py-3 text-sm text-slate-700">{user.marketplace_id}</td>
+              <td className="px-4 py-3 text-sm text-slate-700">
+                <div className="inline-flex items-center gap-2">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${
+                      userStatus === "active" ? "bg-green-500" : "bg-red-500"
+                    }`}
+                  />
+                  <span className="capitalize">{userStatus}</span>
                 </div>
-              </section>
+              </td>
+              <td className="px-4 py-3 text-sm text-slate-700">
+                <button
+                  onClick={() =>
+                    router.push(`/superadmin/ViewUserPage/${encodeURIComponent(user.email)}`)
+                  }
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-md bg-white border border-[#414042] text-[#414042] shadow"
+                >
+                  View <FaLongArrowAltRight className="pl-1" />
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</section>
             )}
           </div>
         )}

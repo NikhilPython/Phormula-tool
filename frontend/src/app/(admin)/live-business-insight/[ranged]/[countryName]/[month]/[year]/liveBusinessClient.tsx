@@ -2859,7 +2859,7 @@ export default function LiveBusinessClient({
     const Card = ({ label, value }: { label: string; value: string }) => (
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
         <div className="2xl:text-xs text-[10px] text-charcoal-500">{label}</div>
-        <div className="mt-1 text-sm 2xl:text-lg font-semibold text-charcoal-500 capitalize">
+        <div className="mt-1 text-sm 2xl:text-base font-semibold text-charcoal-500 capitalize">
           {value}
         </div>
       </div>
