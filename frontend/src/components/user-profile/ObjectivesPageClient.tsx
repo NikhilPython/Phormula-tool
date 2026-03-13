@@ -1116,251 +1116,263 @@ export default function ObjectivesPageClient({
         </div>
       )} */}
 
-     {activeTab === "business_summary" && (
-  <div className="grid grid-cols-1 gap-4">
-    <InfoCard
-      title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
-      action={
-        !isObjectiveEditMode ? (
-          <button
-            onClick={startObjectiveEdit}
-            className="h-9 w-9 text-gray-700"
-            type="button"
-          >
-            <FiEdit className="text-lg" />
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Button size="icon" onClick={handleInlineObjectiveSave}>
-              <FiCheck />
-            </Button>
-            <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
-              <FiX />
-            </Button>
-          </div>
-        )
-      }
-    >
-      {(() => {
-        const visibleFiles = isObjectiveEditMode
-          ? objectiveDraft.uploaded_files
-          : objective.uploaded_files;
-
-        const hasWebsite = Boolean(
-          (isObjectiveEditMode ? objectiveDraft.website : objective.website)?.trim()
-        );
-
-        const hasFiles = Boolean(visibleFiles?.length);
-
-        return (
-          <div className="grid grid-cols-1 gap-5">
-            <div>
-              <div className="mb-1 flex items-center justify-end">
-                {isObjectiveEditMode && (
-                  <p className="text-xs text-gray-500">Max 250 characters</p>
-                )}
-              </div>
-
-              {isObjectiveEditMode ? (
-                <textarea
-                  rows={5}
-                  maxLength={250}
-                  value={objectiveDraft.business_context || ""}
-                  onChange={(e) =>
-                    setObjectiveDraft((prev) => ({
-                      ...prev,
-                      business_context: e.target.value,
-                    }))
-                  }
-                  className="w-full resize-none rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                  placeholder="Describe your business context..."
-                />
-              ) : objective.business_context ? (
-                <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
-                  {objective.business_context}
-                </p>
+      {activeTab === "business_summary" && (
+        <div className="grid grid-cols-1 gap-4">
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
+            action={
+              !isObjectiveEditMode ? (
+                <button
+                  onClick={startObjectiveEdit}
+                  className="h-9 w-9 text-gray-700"
+                  type="button"
+                >
+                  <FiEdit className="text-lg" />
+                </button>
               ) : (
-                <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
-                  Example:
-                  Our business primarily sells premium skincare products across Amazon US and Shopify.
-                  We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
-                  Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
-                  while maintaining bestseller stock is a key priority.
-                </p>
-              )}
-            </div>
+                <div className="flex items-center gap-2">
+                  <Button size="icon" onClick={handleInlineObjectiveSave}>
+                    <FiCheck />
+                  </Button>
+                  <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
+                    <FiX />
+                  </Button>
+                </div>
+              )
+            }
+          >
+            {(() => {
+              const visibleFiles = isObjectiveEditMode
+                ? objectiveDraft.uploaded_files
+                : objective.uploaded_files;
 
-            {(isObjectiveEditMode || hasWebsite || hasFiles) && (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {(isObjectiveEditMode || hasWebsite) && (
+              const hasWebsite = Boolean(
+                (isObjectiveEditMode ? objectiveDraft.website : objective.website)?.trim()
+              );
+
+              const hasFiles = Boolean(visibleFiles?.length);
+
+              return (
+                <div className="grid grid-cols-1 gap-5">
                   <div>
-                    <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Website</p>
+                    <div className="mb-1 flex items-center justify-end">
+                      {isObjectiveEditMode && (
+                        <p className="text-xs text-gray-500">Max 250 characters</p>
+                      )}
+                    </div>
 
                     {isObjectiveEditMode ? (
-                      <div className="relative">
-                        <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                          type="url"
-                          placeholder="https://yourwebsite.com"
-                          value={objectiveDraft.website || ""}
-                          onChange={(e) =>
-                            setObjectiveDraft((prev) => ({
-                              ...prev,
-                              website: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-md border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                        />
-                      </div>
+                      <textarea
+                        rows={5}
+                        maxLength={250}
+                        value={objectiveDraft.business_context || ""}
+                        onChange={(e) =>
+                          setObjectiveDraft((prev) => ({
+                            ...prev,
+                            business_context: e.target.value,
+                          }))
+                        }
+                        className="w-full resize-none rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        placeholder="Describe your business context..."
+                      />
+                    ) : objective.business_context ? (
+                      <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
+                        {objective.business_context}
+                      </p>
                     ) : (
-                      <a
-                        href={objective.website}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm font-medium text-blue-600 hover:underline break-all"
-                      >
-                        {objective.website}
-                      </a>
+                      <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
+                        Example:
+                        Our business primarily sells premium skincare products across Amazon US and Shopify.
+                        We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
+                        Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
+                        while maintaining bestseller stock is a key priority.
+                      </p>
                     )}
                   </div>
-                )}
 
-                {(isObjectiveEditMode || hasFiles) && (
-                  <div>
-                    <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Files</p>
+                  {isObjectiveEditMode && (
+                    <div className="flex items-center gap-3 py-3">
+                      <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
 
-                    {isObjectiveEditMode ? (
-                      <div className="">
-                        <div className="w-full rounded-md border border-gray-300 bg-white flex items-center gap-2  px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
-                          <label
-                            htmlFor="business-summary-file"
-                            className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                          >
-                            Upload File
-                          </label>
-                          <input
-                            id="business-summary-file"
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".docx,.pptx"
-                            multiple
-                            onChange={handleFilesSelected}
-                            className="hidden"
-                          />
-                          <span className="block w-full truncate px-2 text-xs text-gray-500 dark:text-gray-400">
-                            {visibleFiles?.length
-                              ? visibleFiles.map((f) => f.name).join(", ")
-                              : "No file selected"}
-                          </span>
+                      <span className="whitespace-nowrap text-[10px] sm:text-xs font-medium tracking-widest text-gray-400 dark:text-gray-500">
+                        OR AUTO-EXTRACT YOUR BUSINESS SUMMARY
+                      </span>
+
+                      <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                    </div>
+                  )}
+
+                  {(isObjectiveEditMode || hasWebsite || hasFiles) && (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {(isObjectiveEditMode || hasWebsite) && (
+                        <div>
+                          <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Website</p>
+
+                          {isObjectiveEditMode ? (
+                            <div className="relative">
+                              <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                              <input
+                                type="url"
+                                placeholder="https://yourwebsite.com"
+                                value={objectiveDraft.website || ""}
+                                onChange={(e) =>
+                                  setObjectiveDraft((prev) => ({
+                                    ...prev,
+                                    website: e.target.value,
+                                  }))
+                                }
+                                className="w-full rounded-md border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                              />
+                            </div>
+                          ) : (
+                            <a
+                              href={objective.website}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sm font-medium text-blue-600 hover:underline break-all"
+                            >
+                              {objective.website}
+                            </a>
+                          )}
                         </div>
+                      )}
 
-                        {/* remove this button if you do not want a template action */}
-                        {/* <button
+                      {(isObjectiveEditMode || hasFiles) && (
+                        <div>
+                          <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Files</p>
+
+                          {isObjectiveEditMode ? (
+                            <div className="">
+                              <div className="w-full rounded-md border border-gray-300 bg-white flex items-center gap-2  px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
+                                <label
+                                  htmlFor="business-summary-file"
+                                  className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                                >
+                                  Upload File
+                                </label>
+                                <input
+                                  id="business-summary-file"
+                                  ref={fileInputRef}
+                                  type="file"
+                                  accept=".docx,.pptx"
+                                  multiple
+                                  onChange={handleFilesSelected}
+                                  className="hidden"
+                                />
+                                <span className="block w-full truncate px-2 text-xs text-gray-500 dark:text-gray-400">
+                                  {visibleFiles?.length
+                                    ? visibleFiles.map((f) => f.name).join(", ")
+                                    : "No file selected"}
+                                </span>
+                              </div>
+
+                              {/* remove this button if you do not want a template action */}
+                              {/* <button
                           type="button"
                           onClick={onDownloadTemplate}
                           className="mx-auto mt-6 flex items-center gap-1 text-[13px] font-medium text-[#5EA68E] hover:text-[#4a907a]"
                         >
                           Download format here <FiDownload className="relative top-[1px]" />
                         </button> */}
-                      </div>
-                    ) : hasFiles ? (
-                      <div className="space-y-3">
-                        {visibleFiles.map((file) => (
-                          <div
-                            key={file.id}
-                            className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <FiFileText className="shrink-0 text-charcoal-500" />
-                                  <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
-                                    {file.name}
-                                  </p>
-                                </div>
-                                <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
-                                  {formatFileSize(file.size)}
-                                </p>
-
-                                {file.uploadStatus === "error" ? (
-                                  <p className="mt-2 text-xs text-red-500">{file.error}</p>
-                                ) : (
-                                  <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
-                                    {file.extractedText || "No text extracted"}
-                                  </p>
-                                )}
-                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            )}
+                          ) : hasFiles ? (
+                            <div className="space-y-3">
+                              {visibleFiles.map((file) => (
+                                <div
+                                  key={file.id}
+                                  className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <FiFileText className="shrink-0 text-charcoal-500" />
+                                        <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
+                                          {file.name}
+                                        </p>
+                                      </div>
+                                      <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
+                                        {formatFileSize(file.size)}
+                                      </p>
 
-            {isExtractingFiles && (
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                Extracting text from files...
-              </div>
-            )}
-
-            {hasFiles && (
-              <div className="space-y-3">
-                {visibleFiles.map((file) => (
-                  <div
-                    key={file.id}
-                    className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <FiFileText className="shrink-0 text-charcoal-500" />
-                          <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
-                            {file.name}
-                          </p>
+                                      {file.uploadStatus === "error" ? (
+                                        <p className="mt-2 text-xs text-red-500">{file.error}</p>
+                                      ) : (
+                                        <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
+                                          {file.extractedText || "No text extracted"}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
-                        <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
-                          {formatFileSize(file.size)}
-                        </p>
-
-                        {file.uploadStatus === "error" ? (
-                          <p className="mt-2 text-xs text-red-500">{file.error}</p>
-                        ) : (
-                          <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
-                            {file.extractedText || "No text extracted"}
-                          </p>
-                        )}
-                      </div>
-
-                      {isObjectiveEditMode && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveUploadedFile(file.id)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 dark:hover:bg-gray-700"
-                          title="Remove file"
-                        >
-                          <FiTrash2 />
-                        </button>
                       )}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })()}
-    </InfoCard>
+                  )}
 
-    <InfoCard
-      title={<PageBreadcrumb pageTitle="Business Journey" variant="table" align="left" />}
-    >
-      <PlaceholderPanel title="Business Journey" />
-    </InfoCard>
-  </div>
-)}
+                  {isExtractingFiles && (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                      Extracting text from files...
+                    </div>
+                  )}
+
+                  {hasFiles && (
+                    <div className="space-y-3">
+                      {visibleFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <FiFileText className="shrink-0 text-charcoal-500" />
+                                <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
+                                  {file.name}
+                                </p>
+                              </div>
+                              <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
+                                {formatFileSize(file.size)}
+                              </p>
+
+                              {file.uploadStatus === "error" ? (
+                                <p className="mt-2 text-xs text-red-500">{file.error}</p>
+                              ) : (
+                                <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
+                                  {file.extractedText || "No text extracted"}
+                                </p>
+                              )}
+                            </div>
+
+                            {isObjectiveEditMode && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveUploadedFile(file.id)}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 dark:hover:bg-gray-700"
+                                title="Remove file"
+                              >
+                                <FiTrash2 />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </InfoCard>
+
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Business Journey" variant="table" align="left" />}
+          >
+            <PlaceholderPanel title="Business Journey" />
+          </InfoCard>
+        </div>
+      )}
 
       {activeTab === "target_achieved" && (
         <div className="grid grid-cols-1 gap-4">
