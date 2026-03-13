@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useSelector } from "react-redux";
-import { FiEdit, FiCheck, FiX } from "react-icons/fi";
-
+// import { FiEdit, FiCheck, FiX } from "react-icons/fi";
 import Button from "@/components/ui/button/Button";
 import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataTable";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
@@ -14,32 +13,24 @@ import { platformToCurrencyCode } from "@/lib/utils/currency";
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import type { PlatformId } from "@/lib/utils/platforms";
 import SegmentedToggle from "../ui/SegmentedToggle";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
 import TargetVsSalesChart from "../objectives/TargetVsSalesChart";
 import ObjectiveMoMChart from "../objectives/ObjectiveMoMChart";
-
+import { FiEdit, FiCheck, FiX, FiPlus, FiGlobe, FiFileText, FiTrash2 } from "react-icons/fi";
+import JSZip from "jszip";
+import mammoth from "mammoth";
 
 type ObjectivesPageClientProps = {
   country?: string;
 };
 
-type UserObjectiveForm = {
-  growth_intent: "conservative" | "balanced" | "aggressive";
-  profit_priority: "high" | "protect_growth" | "sacrifice_short_term";
-  inventory_clearance_priority: boolean;
-  business_context: string;
-  country: string;
-  time_horizon: "1_month";
-};
+// type UserObjectiveForm = {
+//   growth_intent: "conservative" | "balanced" | "aggressive";
+//   profit_priority: "high" | "protect_growth" | "sacrifice_short_term";
+//   inventory_clearance_priority: boolean;
+//   business_context: string;
+//   country: string;
+//   time_horizon: "1_month";
+// };
 
 type CurrencyRateRow = {
   user_currency: string;
@@ -65,6 +56,27 @@ type SummaryTab =
   | "target_achieved"
   | "objective_mom"
   | "output";
+
+type UploadedSummaryFile = {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  extractedText: string;
+  uploadStatus: "ready" | "processing" | "error";
+  error?: string;
+};
+
+type UserObjectiveForm = {
+  growth_intent: "conservative" | "balanced" | "aggressive";
+  profit_priority: "high" | "protect_growth" | "sacrifice_short_term";
+  inventory_clearance_priority: boolean;
+  business_context: string;
+  country: string;
+  time_horizon: "1_month";
+  website: string;
+  uploaded_files: UploadedSummaryFile[];
+};
 
 const SUMMARY_TABS: Array<{ key: SummaryTab; label: string }> = [
   { key: "business_summary", label: "Business Summary and Journey" },
@@ -262,6 +274,78 @@ function PlaceholderPanel({ title }: { title: string }) {
   );
 }
 
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const readFileAsArrayBuffer = (file: File) =>
+  new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as ArrayBuffer);
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+
+const stripXmlTags = (xml: string) =>
+  xml
+    .replace(/<a:br\s*\/>/g, "\n")
+    .replace(/<\/a:p>/g, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{2,}/g, "\n\n")
+    .trim();
+
+const extractTextFromDocx = async (file: File) => {
+  const buffer = await readFileAsArrayBuffer(file);
+  const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+  return (result.value || "").trim();
+};
+
+const extractTextFromPptx = async (file: File) => {
+  const buffer = await readFileAsArrayBuffer(file);
+  const zip = await JSZip.loadAsync(buffer);
+
+  const slideFiles = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort((a, b) => {
+      const getNum = (s: string) => Number(s.match(/slide(\d+)\.xml/)?.[1] || 0);
+      return getNum(a) - getNum(b);
+    });
+
+  const texts: string[] = [];
+
+  for (const slidePath of slideFiles) {
+    const xml = await zip.files[slidePath].async("string");
+    const slideText = stripXmlTags(xml);
+    if (slideText) {
+      texts.push(slideText);
+    }
+  }
+
+  return texts.join("\n\n---\n\n").trim();
+};
+
+const extractTextFromSupportedFile = async (file: File) => {
+  const name = file.name.toLowerCase();
+
+  if (name.endsWith(".docx")) {
+    return extractTextFromDocx(file);
+  }
+
+  if (name.endsWith(".pptx")) {
+    return extractTextFromPptx(file);
+  }
+
+  throw new Error("Only .docx and .pptx text extraction is supported in the frontend.");
+};
+
 export default function ObjectivesPageClient({
   country,
 }: ObjectivesPageClientProps) {
@@ -284,6 +368,8 @@ export default function ObjectivesPageClient({
     business_context: "",
     country: "",
     time_horizon: "1_month",
+    website: "",
+    uploaded_files: [],
   });
 
   const [objectiveDraft, setObjectiveDraft] = useState<UserObjectiveForm>(objective);
@@ -292,6 +378,9 @@ export default function ObjectivesPageClient({
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
 
   const connected = useConnectedPlatforms();
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isExtractingFiles, setIsExtractingFiles] = useState(false);
 
   const connectedPlatformsForTargets = useMemo(() => {
     const ids: PlatformId[] = [];
@@ -537,11 +626,46 @@ export default function ObjectivesPageClient({
     }
   };
 
+  // const handleInlineObjectiveSave = async () => {
+  //   try {
+  //     const payload = {
+  //       ...objectiveDraft,
+  //       country: objectiveDraft.country.toLowerCase(),
+  //     };
+
+  //     const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         Authorization: `Bearer ${token}`,
+  //       },
+  //       body: JSON.stringify(payload),
+  //     });
+
+  //     if (!res.ok) throw new Error("Failed to save objective");
+
+  //     setObjective(objectiveDraft);
+  //     setIsObjectiveEditMode(false);
+
+  //     localStorage.setItem("user_objective", JSON.stringify(objectiveDraft));
+  //     localStorage.setItem("user_objective_backend", JSON.stringify(payload));
+  //   } catch (err) {
+  //     console.error(err);
+  //     alert("Failed to save objective");
+  //   }
+  // };
+
   const handleInlineObjectiveSave = async () => {
     try {
       const payload = {
         ...objectiveDraft,
         country: objectiveDraft.country.toLowerCase(),
+        uploaded_files: objectiveDraft.uploaded_files.map((file) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          extracted_text: file.extractedText,
+        })),
       };
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
@@ -703,6 +827,92 @@ export default function ObjectivesPageClient({
     [homeCurrencyCode, editingPid, draftTarget, isTargetEditMode, data]
   );
 
+
+
+
+  const handleOpenFilePicker = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleRemoveUploadedFile = (id: string) => {
+    setObjectiveDraft((prev) => ({
+      ...prev,
+      uploaded_files: prev.uploaded_files.filter((file) => file.id !== id),
+    }));
+  };
+
+  const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    setIsExtractingFiles(true);
+
+    try {
+      const processed = await Promise.all(
+        files.map(async (file) => {
+          const id = `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+          try {
+            const extractedText = await extractTextFromSupportedFile(file);
+
+            return {
+              id,
+              name: file.name,
+              size: file.size,
+              type: file.type || "application/octet-stream",
+              extractedText,
+              uploadStatus: "ready" as const,
+            };
+          } catch (error: any) {
+            return {
+              id,
+              name: file.name,
+              size: file.size,
+              type: file.type || "application/octet-stream",
+              extractedText: "",
+              uploadStatus: "error" as const,
+              error: error?.message || "Failed to extract text",
+            };
+          }
+        })
+      );
+
+      setObjectiveDraft((prev) => ({
+        ...prev,
+        uploaded_files: [...prev.uploaded_files, ...processed],
+      }));
+    } finally {
+      setIsExtractingFiles(false);
+      e.target.value = "";
+    }
+  };
+
+
+
+
+
+
+
+
+  useEffect(() => {
+    const saved = localStorage.getItem("user_objective");
+    if (!saved) return;
+
+    try {
+      const parsed = JSON.parse(saved);
+      setObjective((prev) => ({
+        ...prev,
+        ...parsed,
+        website: parsed.website ?? "",
+        uploaded_files: Array.isArray(parsed.uploaded_files) ? parsed.uploaded_files : [],
+        profit_priority: parsed.profit_priority ?? parsed.primary_goal ?? prev.profit_priority,
+        growth_intent: parsed.growth_intent ?? parsed.risk_level ?? prev.growth_intent,
+      }));
+    } catch (e) {
+      console.error("Failed to parse objective from localStorage");
+    }
+  }, []);
+
   return (
     <div className="w-full">
       {(isLoading || ratesLoading) && (
@@ -718,7 +928,7 @@ export default function ObjectivesPageClient({
       </div>
 
       <SummaryTabs activeTab={activeTab} onChange={setActiveTab} />
-
+      {/* 
       {activeTab === "business_summary" && (
         <div className="grid grid-cols-1 gap-4">
           <InfoCard
@@ -744,10 +954,9 @@ export default function ObjectivesPageClient({
               )
             }
           >
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-5">
               <div>
                 <div className="mb-1 flex items-center justify-end">
-                  {/* <p className="text-xs text-gray-500 dark:text-gray-400">Business Summary</p> */}
                   {isObjectiveEditMode && <p className="text-xs text-gray-500">Max 250 characters</p>}
                 </div>
 
@@ -762,7 +971,7 @@ export default function ObjectivesPageClient({
                         business_context: e.target.value,
                       }))
                     }
-                    className="w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    className="w-full resize-none rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                     placeholder="Describe your business context..."
                   />
                 ) : objective.business_context ? (
@@ -770,13 +979,130 @@ export default function ObjectivesPageClient({
                     {objective.business_context}
                   </p>
                 ) : (
-                  <p className="whitespace-pre-wrap text-sm text-gray-400 dark:text-gray-500 italic leading-relaxed">
+                  <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
                     Example:
                     Our business primarily sells premium skincare products across Amazon US and Shopify.
                     We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
                     Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
                     while maintaining bestseller stock is a key priority.
                   </p>
+                )}
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Website</p>
+
+                {isObjectiveEditMode ? (
+                  <div className="relative">
+                    <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="url"
+                      placeholder="https://yourwebsite.com"
+                      value={objectiveDraft.website || ""}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          website: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-2xl border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    />
+                  </div>
+                ) : objective.website ? (
+                  <a
+                    href={objective.website}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm font-medium text-blue-600 hover:underline"
+                  >
+                    {objective.website}
+                  </a>
+                ) : (
+                  <p className="text-sm italic text-gray-400">No website added</p>
+                )}
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Files</p>
+                  {isObjectiveEditMode && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".docx,.pptx"
+                        multiple
+                        onChange={handleFilesSelected}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleOpenFilePicker}
+                        className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        <FiPlus className="text-base" />
+                        Add Files
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {isExtractingFiles && (
+                  <div className="mb-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    Extracting text from files...
+                  </div>
+                )}
+
+                {(isObjectiveEditMode ? objectiveDraft.uploaded_files : objective.uploaded_files)?.length ? (
+                  <div className="space-y-3">
+                    {(isObjectiveEditMode ? objectiveDraft.uploaded_files : objective.uploaded_files).map((file) => (
+                      <div
+                        key={file.id}
+                        className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <FiFileText className="shrink-0 text-gray-500" />
+                              <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
+                                {file.name}
+                              </p>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {formatFileSize(file.size)}
+                            </p>
+
+                            {file.uploadStatus === "error" ? (
+                              <p className="mt-2 text-xs text-red-500">{file.error}</p>
+                            ) : (
+                              <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
+                                {file.extractedText || "No text extracted"}
+                              </p>
+                            )}
+                          </div>
+
+                          {isObjectiveEditMode && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveUploadedFile(file.id)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 dark:hover:bg-gray-700"
+                              title="Remove file"
+                            >
+                              <FiTrash2 />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center dark:border-gray-700 dark:bg-gray-800/50">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {isObjectiveEditMode
+                        ? "Upload .docx or .pptx files to extract text and include it in your business summary payload."
+                        : "No files added"}
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
@@ -788,9 +1114,182 @@ export default function ObjectivesPageClient({
             <PlaceholderPanel title="Business Journey" />
           </InfoCard>
         </div>
-      )}
+      )} */}
+
+     {activeTab === "business_summary" && (
+  <div className="grid grid-cols-1 gap-4">
+    <InfoCard
+      title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
+      action={
+        !isObjectiveEditMode ? (
+          <button
+            onClick={startObjectiveEdit}
+            className="h-9 w-9 text-gray-700"
+            type="button"
+          >
+            <FiEdit className="text-lg" />
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Button size="icon" onClick={handleInlineObjectiveSave}>
+              <FiCheck />
+            </Button>
+            <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
+              <FiX />
+            </Button>
+          </div>
+        )
+      }
+    >
+      {(() => {
+        const visibleFiles = isObjectiveEditMode
+          ? objectiveDraft.uploaded_files
+          : objective.uploaded_files;
+
+        const hasWebsite = Boolean(
+          (isObjectiveEditMode ? objectiveDraft.website : objective.website)?.trim()
+        );
+
+        const hasFiles = Boolean(visibleFiles?.length);
+
+        return (
+          <div className="grid grid-cols-1 gap-5">
+            <div>
+              <div className="mb-1 flex items-center justify-end">
+                {isObjectiveEditMode && (
+                  <p className="text-xs text-gray-500">Max 250 characters</p>
+                )}
+              </div>
+
+              {isObjectiveEditMode ? (
+                <textarea
+                  rows={5}
+                  maxLength={250}
+                  value={objectiveDraft.business_context || ""}
+                  onChange={(e) =>
+                    setObjectiveDraft((prev) => ({
+                      ...prev,
+                      business_context: e.target.value,
+                    }))
+                  }
+                  className="w-full resize-none rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                  placeholder="Describe your business context..."
+                />
+              ) : objective.business_context ? (
+                <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
+                  {objective.business_context}
+                </p>
+              ) : (
+                <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
+                  Example:
+                  Our business primarily sells premium skincare products across Amazon US and Shopify.
+                  We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
+                  Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
+                  while maintaining bestseller stock is a key priority.
+                </p>
+              )}
+            </div>
+
+            {(isObjectiveEditMode || hasWebsite || hasFiles) && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {(isObjectiveEditMode || hasWebsite) && (
+                  <div>
+                    <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Website</p>
+
+                    {isObjectiveEditMode ? (
+                      <div className="relative">
+                        <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="url"
+                          placeholder="https://yourwebsite.com"
+                          value={objectiveDraft.website || ""}
+                          onChange={(e) =>
+                            setObjectiveDraft((prev) => ({
+                              ...prev,
+                              website: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-md border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        />
+                      </div>
+                    ) : (
+                      <a
+                        href={objective.website}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-medium text-blue-600 hover:underline break-all"
+                      >
+                        {objective.website}
+                      </a>
+                    )}
+                  </div>
+                )}
 
 
+              </div>
+            )}
+
+            {isExtractingFiles && (
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                Extracting text from files...
+              </div>
+            )}
+
+            {hasFiles && (
+              <div className="space-y-3">
+                {visibleFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <FiFileText className="shrink-0 text-charcoal-500" />
+                          <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
+                            {file.name}
+                          </p>
+                        </div>
+                        <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
+                          {formatFileSize(file.size)}
+                        </p>
+
+                        {file.uploadStatus === "error" ? (
+                          <p className="mt-2 text-xs text-red-500">{file.error}</p>
+                        ) : (
+                          <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
+                            {file.extractedText || "No text extracted"}
+                          </p>
+                        )}
+                      </div>
+
+                      {isObjectiveEditMode && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveUploadedFile(file.id)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 dark:hover:bg-gray-700"
+                          title="Remove file"
+                        >
+                          <FiTrash2 />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+    </InfoCard>
+
+    <InfoCard
+      title={<PageBreadcrumb pageTitle="Business Journey" variant="table" align="left" />}
+    >
+      <PlaceholderPanel title="Business Journey" />
+    </InfoCard>
+  </div>
+)}
 
       {activeTab === "target_achieved" && (
         <div className="grid grid-cols-1 gap-4">
@@ -858,7 +1357,7 @@ export default function ObjectivesPageClient({
               rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-semibold" : "")}
             />
           </InfoCard>
-          
+
           <InfoCard
             title={<PageBreadcrumb pageTitle="Target vs Monthwise Sales" variant="table" align="left" />}
           >
