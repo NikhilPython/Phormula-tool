@@ -1,6 +1,6 @@
 "use client";
-
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSelector } from "react-redux";
 // import { FiEdit, FiCheck, FiX } from "react-icons/fi";
 import Button from "@/components/ui/button/Button";
@@ -53,8 +53,7 @@ type TargetRow = Row & {
 
 type SummaryTab =
   | "business_summary"
-  | "target_achieved"
-  | "objective_mom"
+  | "targets_and_objectives"
   | "output";
 
 type UploadedSummaryFile = {
@@ -79,9 +78,8 @@ type UserObjectiveForm = {
 };
 
 const SUMMARY_TABS: Array<{ key: SummaryTab; label: string }> = [
-  { key: "business_summary", label: "Business Summary and Journey" },
-  { key: "target_achieved", label: "Targets" },
-  { key: "objective_mom", label: "Objective MoM" },
+  { key: "business_summary", label: "Business Summary" },
+  { key: "targets_and_objectives", label: "Targets and Objectives" },
   { key: "output", label: "Output" },
 ];
 
@@ -350,9 +348,21 @@ export default function ObjectivesPageClient({
   country,
 }: ObjectivesPageClientProps) {
   const dispatch = useAppDispatch();
+  const searchParams = useSearchParams();
   const token = useSelector((state: any) => state.auth?.token);
 
   const [activeTab, setActiveTab] = useState<SummaryTab>("business_summary");
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+
+    if (
+      tab === "business_summary" ||
+      tab === "targets_and_objectives" ||
+      tab === "output"
+    ) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
   const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
   const [ratesLoading, setRatesLoading] = useState(false);
 
@@ -360,7 +370,6 @@ export default function ObjectivesPageClient({
   const [draftTarget, setDraftTarget] = useState<string>("");
   const [isTargetEditMode, setIsTargetEditMode] = useState(false);
   const [isObjectiveEditMode, setIsObjectiveEditMode] = useState(false);
-  const [targetLocked, setTargetLocked] = useState(false);
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "aggressive",
     profit_priority: "protect_growth",
@@ -546,37 +555,6 @@ export default function ObjectivesPageClient({
     return "uk";
   }, [objectiveDraft.country, objective.country, country]);
 
-  useEffect(() => {
-    if (!token) return;
-
-    const fetchTargetStatus = async () => {
-      try {
-        const now = new Date();
-        const month = now.toLocaleString("en-US", { month: "long" });
-        const year = now.getFullYear();
-
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary?month=${month}&year=${year}&country=${resolvedTargetCountry}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.data?.target_sales) {
-            setTargetLocked(true);
-          }
-        }
-      } catch (err) {
-        console.error("Target status check failed", err);
-      }
-    };
-
-    fetchTargetStatus();
-  }, [token, resolvedTargetCountry]);
 
   const saveInlineTarget = async () => {
     const next = Number(draftTarget);
@@ -619,7 +597,6 @@ export default function ObjectivesPageClient({
       setIsTargetEditMode(false);
       setEditingPid(null);
       setDraftTarget("");
-      setTargetLocked(true);
     } catch (err: any) {
       console.error(err);
       alert(err?.message || "Failed to update target.");
@@ -928,217 +905,47 @@ export default function ObjectivesPageClient({
       </div>
 
       <SummaryTabs activeTab={activeTab} onChange={setActiveTab} />
-      {/* 
       {activeTab === "business_summary" && (
         <div className="grid grid-cols-1 gap-4">
           <InfoCard
             title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
             action={
-              !isObjectiveEditMode ? (
-                <button
-                  onClick={startObjectiveEdit}
-                  className="h-9 w-9 text-gray-700"
-                  type="button"
-                >
-                  <FiEdit className="text-lg" />
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Button size="icon" onClick={handleInlineObjectiveSave}>
-                    <FiCheck />
-                  </Button>
-                  <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
-                    <FiX />
-                  </Button>
-                </div>
-              )
-            }
-          >
-            <div className="grid grid-cols-1 gap-5">
-              <div>
-                <div className="mb-1 flex items-center justify-end">
-                  {isObjectiveEditMode && <p className="text-xs text-gray-500">Max 250 characters</p>}
-                </div>
-
-                {isObjectiveEditMode ? (
-                  <textarea
-                    rows={5}
-                    maxLength={250}
-                    value={objectiveDraft.business_context || ""}
-                    onChange={(e) =>
-                      setObjectiveDraft((prev) => ({
-                        ...prev,
-                        business_context: e.target.value,
-                      }))
-                    }
-                    className="w-full resize-none rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    placeholder="Describe your business context..."
-                  />
-                ) : objective.business_context ? (
-                  <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
-                    {objective.business_context}
-                  </p>
-                ) : (
-                  <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
-                    Example:
-                    Our business primarily sells premium skincare products across Amazon US and Shopify.
-                    We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
-                    Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
-                    while maintaining bestseller stock is a key priority.
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Website</p>
-
-                {isObjectiveEditMode ? (
-                  <div className="relative">
-                    <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="url"
-                      placeholder="https://yourwebsite.com"
-                      value={objectiveDraft.website || ""}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          website: e.target.value,
-                        }))
-                      }
-                      className="w-full rounded-2xl border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    />
-                  </div>
-                ) : objective.website ? (
-                  <a
-                    href={objective.website}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm font-medium text-blue-600 hover:underline"
+              <div className="flex items-center gap-2">
+                {!isTargetEditMode ? (
+                  <button
+                    type="button"
+                    onClick={openTargetEditMode}
+                    className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
+                    aria-label="Enable edit mode"
+                    title="Edit targets"
                   >
-                    {objective.website}
-                  </a>
+                    <FiEdit className="text-lg" />
+                  </button>
                 ) : (
-                  <p className="text-sm italic text-gray-400">No website added</p>
+                  <>
+                    <Button
+                      type="button"
+                      onClick={saveInlineTarget}
+                      size="icon"
+                      disabled={isSaving || !editingPid}
+                      title="Save"
+                    >
+                      <FiCheck />
+                    </Button>
+
+                    <Button
+                      type="button"
+                      onClick={closeTargetEditMode}
+                      size="icon"
+                      variant="outline"
+                      disabled={isSaving}
+                      title="Cancel"
+                    >
+                      <FiX />
+                    </Button>
+                  </>
                 )}
               </div>
-
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Files</p>
-                  {isObjectiveEditMode && (
-                    <>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".docx,.pptx"
-                        multiple
-                        onChange={handleFilesSelected}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleOpenFilePicker}
-                        className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        <FiPlus className="text-base" />
-                        Add Files
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                {isExtractingFiles && (
-                  <div className="mb-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                    Extracting text from files...
-                  </div>
-                )}
-
-                {(isObjectiveEditMode ? objectiveDraft.uploaded_files : objective.uploaded_files)?.length ? (
-                  <div className="space-y-3">
-                    {(isObjectiveEditMode ? objectiveDraft.uploaded_files : objective.uploaded_files).map((file) => (
-                      <div
-                        key={file.id}
-                        className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <FiFileText className="shrink-0 text-gray-500" />
-                              <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
-                                {file.name}
-                              </p>
-                            </div>
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              {formatFileSize(file.size)}
-                            </p>
-
-                            {file.uploadStatus === "error" ? (
-                              <p className="mt-2 text-xs text-red-500">{file.error}</p>
-                            ) : (
-                              <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
-                                {file.extractedText || "No text extracted"}
-                              </p>
-                            )}
-                          </div>
-
-                          {isObjectiveEditMode && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveUploadedFile(file.id)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 dark:hover:bg-gray-700"
-                              title="Remove file"
-                            >
-                              <FiTrash2 />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center dark:border-gray-700 dark:bg-gray-800/50">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {isObjectiveEditMode
-                        ? "Upload .docx or .pptx files to extract text and include it in your business summary payload."
-                        : "No files added"}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </InfoCard>
-
-          <InfoCard
-            title={<PageBreadcrumb pageTitle="Business Journey" variant="table" align="left" />}
-          >
-            <PlaceholderPanel title="Business Journey" />
-          </InfoCard>
-        </div>
-      )} */}
-
-      {activeTab === "business_summary" && (
-        <div className="grid grid-cols-1 gap-4">
-          <InfoCard
-            title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
-            action={
-              !isObjectiveEditMode ? (
-                <button
-                  onClick={startObjectiveEdit}
-                  className="h-9 w-9 text-gray-700"
-                  type="button"
-                >
-                  <FiEdit className="text-lg" />
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Button size="icon" onClick={handleInlineObjectiveSave}>
-                    <FiCheck />
-                  </Button>
-                  <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
-                    <FiX />
-                  </Button>
-                </div>
-              )
             }
           >
             {(() => {
@@ -1371,28 +1178,41 @@ export default function ObjectivesPageClient({
           >
             <PlaceholderPanel title="Business Journey" />
           </InfoCard>
+
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Target vs Monthwise Sales" variant="table" align="left" />}
+          >
+            <div className="h-[420px] w-full">
+              <TargetVsSalesChart currencySymbol={homeCurrencyCode === "GBP" ? "£" : homeCurrencyCode === "USD" ? "$" : homeCurrencyCode === "EUR" ? "€" : homeCurrencyCode} />
+            </div>
+          </InfoCard>
+
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Objective MoM (Month on Month)" variant="table" align="left" />}
+          >
+            <div className="h-[420px] w-full">
+              <ObjectiveMoMChart title="Objective MoM Trend" />
+            </div>
+          </InfoCard>
         </div>
       )}
 
-      {activeTab === "target_achieved" && (
+      {activeTab === "targets_and_objectives" && (
         <div className="grid grid-cols-1 gap-4">
-
           <InfoCard
             title={<PageBreadcrumb pageTitle="Monthly Targets" variant="table" align="left" />}
             action={
               <div className="flex items-center gap-2">
                 {!isTargetEditMode ? (
-                  !targetLocked && (
-                    <button
-                      type="button"
-                      onClick={openTargetEditMode}
-                      className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
-                      aria-label="Enable edit mode"
-                      title="Edit targets"
-                    >
-                      <FiEdit className="text-lg" />
-                    </button>
-                  )
+                  <button
+                    type="button"
+                    onClick={openTargetEditMode}
+                    className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
+                    aria-label="Enable edit mode"
+                    title="Edit targets"
+                  >
+                    <FiEdit className="text-lg" />
+                  </button>
                 ) : (
                   <>
                     <Button
@@ -1420,13 +1240,6 @@ export default function ObjectivesPageClient({
               </div>
             }
           >
-            {isTargetEditMode && (
-              <div className="mb-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
-                ⚠️ Please enter your target carefully. Once saved, you will not be able to
-                change it until the 1st of next month.
-              </div>
-            )}
-
             <DataTable
               columns={monthlyTargetColumns}
               data={monthlyTargetData}
@@ -1441,18 +1254,6 @@ export default function ObjectivesPageClient({
             />
           </InfoCard>
 
-          <InfoCard
-            title={<PageBreadcrumb pageTitle="Target vs Monthwise Sales" variant="table" align="left" />}
-          >
-            <div className="h-[420px] w-full">
-              <TargetVsSalesChart currencySymbol={homeCurrencyCode === "GBP" ? "£" : homeCurrencyCode === "USD" ? "$" : homeCurrencyCode === "EUR" ? "€" : homeCurrencyCode} />
-            </div>
-          </InfoCard>
-        </div>
-      )}
-
-      {activeTab === "objective_mom" && (
-        <div className="grid grid-cols-1 gap-4">
           <InfoCard
             title={<PageBreadcrumb pageTitle="Strategic Objectives" variant="table" align="left" />}
             action={
@@ -1580,14 +1381,6 @@ export default function ObjectivesPageClient({
                   )
                 }
               />
-            </div>
-          </InfoCard>
-
-          <InfoCard
-            title={<PageBreadcrumb pageTitle="Objective MoM (Month on Month)" variant="table" align="left" />}
-          >
-            <div className="h-[420px] w-full">
-              <ObjectiveMoMChart title="Objective MoM Trend" />
             </div>
           </InfoCard>
         </div>

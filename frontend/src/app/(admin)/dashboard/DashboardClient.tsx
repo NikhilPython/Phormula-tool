@@ -3139,7 +3139,7 @@ export default function DashboardPage() {
                     key: "quantity",
                     label: "Total",
                     align: "center" as const,
-                    width:80,
+                    width: 150,
                 },
             ],
 
@@ -3172,8 +3172,8 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "cm1_profit_per_unit", label: "CM1 Profit Per Unit", align: "center" as const },
-                { key: "cm1_profit_per", label: "CM1 Profit %", align: "center" as const },
+                { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
+                { key: "cm1_profit_per", label: "%", align: "center" as const },
                 {
                     key: "profit",
                     label: "Total",
@@ -3242,8 +3242,8 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "cm2_profit_per_unit", label: "CM2 Profit Per Unit", align: "center" as const },
-                { key: "cm2_profit_per", label: "CM2 Profit %", align: "center" as const },
+                { key: "cm2_profit_per_unit", label: "Per Unit", align: "center" as const },
+                { key: "cm2_profit_per", label: "%", align: "center" as const },
                 {
                     key: "cm2_profit",
                     label: "Total",

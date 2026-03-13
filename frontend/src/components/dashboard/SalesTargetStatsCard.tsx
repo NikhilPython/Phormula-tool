@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useMemo } from "react";
+import { FiEdit } from "react-icons/fi";
+import { useRouter } from "next/navigation";
 import { getISTYearMonth, getPrevMonthShortLabel } from "@/lib/dashboard/date";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import type { RegionKey, RegionMetrics } from "@/lib/dashboard/types";
@@ -64,7 +66,7 @@ export default function SalesTargetStatsCard({
 }: Props) {
 
   const prevLabel = getPrevMonthShortLabel();
-
+  const router = useRouter();
   const { monthName, year } = getISTYearMonth();
   const monthYearLabel = `${new Date(`${monthName} 1, ${year}`).toLocaleString("en-US", {
     month: "short",
@@ -130,7 +132,37 @@ export default function SalesTargetStatsCard({
 
   return (
     <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
+      {/* <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
+        <div className="flex items-center gap-1">
+          <PageBreadcrumb
+            pageTitle="Sales Metrics"
+            textSize="2xl"
+            variant="page"
+            align="center"
+          />
+        </div>
+
+        {!hideTabs && (
+          <SegmentedToggle<RegionKey>
+            value={value}
+            options={availableRegions.map((r: RegionKey) => ({ value: r }))}
+            onChange={onChange}
+            className="mt-1"
+          />
+        )}
+      </div> */}
+
       <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
+        <button
+          type="button"
+          onClick={() => router.push("/objectives-targets/uk?tab=targets_and_objectives")}
+          className="absolute right-0 top-0 inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100"
+          aria-label="Edit targets and objectives"
+          title="Edit targets and objectives"
+        >
+          <FiEdit className="text-lg" />
+        </button>
+
         <div className="flex items-center gap-1">
           <PageBreadcrumb
             pageTitle="Sales Metrics"
