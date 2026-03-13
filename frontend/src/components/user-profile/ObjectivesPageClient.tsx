@@ -1225,7 +1225,78 @@ export default function ObjectivesPageClient({
                   </div>
                 )}
 
+                {(isObjectiveEditMode || hasFiles) && (
+                  <div>
+                    <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Files</p>
 
+                    {isObjectiveEditMode ? (
+                      <div className="">
+                        <div className="w-full rounded-md border border-gray-300 bg-white flex items-center gap-2  px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
+                          <label
+                            htmlFor="business-summary-file"
+                            className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                          >
+                            Upload File
+                          </label>
+                          <input
+                            id="business-summary-file"
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".docx,.pptx"
+                            multiple
+                            onChange={handleFilesSelected}
+                            className="hidden"
+                          />
+                          <span className="block w-full truncate px-2 text-xs text-gray-500 dark:text-gray-400">
+                            {visibleFiles?.length
+                              ? visibleFiles.map((f) => f.name).join(", ")
+                              : "No file selected"}
+                          </span>
+                        </div>
+
+                        {/* remove this button if you do not want a template action */}
+                        {/* <button
+                          type="button"
+                          onClick={onDownloadTemplate}
+                          className="mx-auto mt-6 flex items-center gap-1 text-[13px] font-medium text-[#5EA68E] hover:text-[#4a907a]"
+                        >
+                          Download format here <FiDownload className="relative top-[1px]" />
+                        </button> */}
+                      </div>
+                    ) : hasFiles ? (
+                      <div className="space-y-3">
+                        {visibleFiles.map((file) => (
+                          <div
+                            key={file.id}
+                            className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <FiFileText className="shrink-0 text-charcoal-500" />
+                                  <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
+                                    {file.name}
+                                  </p>
+                                </div>
+                                <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
+                                  {formatFileSize(file.size)}
+                                </p>
+
+                                {file.uploadStatus === "error" ? (
+                                  <p className="mt-2 text-xs text-red-500">{file.error}</p>
+                                ) : (
+                                  <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
+                                    {file.extractedText || "No text extracted"}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             )}
 
