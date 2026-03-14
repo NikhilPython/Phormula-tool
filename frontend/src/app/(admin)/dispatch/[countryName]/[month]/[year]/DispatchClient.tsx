@@ -4,22 +4,26 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import '@/app/(admin)/pnlforecast/[countryName]/[month]/[year]/Styles.css';
-import { Modal } from '@/components/ui/modal'; // Adjust path as needed
-import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm'; // Adjust path as needed
+import { Modal } from '@/components/ui/modal';
+import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm';
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
 import DataTable, { ColumnDef } from "@/components/ui/table/DataTable"
 import { IoDownload } from "react-icons/io5";
 import DownloadIconButton from '@/components/ui/button/DownloadButton';
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
-
-
-// Types
 interface SkuRow {
   [key: string]: string | number | undefined
   sku?: string
   'Product Name'?: string
 }
+
+type DispatchPageProps = {
+  embedded?: boolean;
+  countryNameProp?: string;
+  selectedMonthProp?: string;
+  selectedYearProp?: string;
+};
 
 const monthNames = [
   'January',
@@ -53,13 +57,29 @@ function getCurrentYear() {
   return String(nextMonth.getFullYear())
 }
 
-export default function DispatchPage() {
-  const params = useParams<{ countryName: string; month: string; year: string }>()
+export default function DispatchPage({
+  embedded = false,
+  countryNameProp,
+  selectedMonthProp,
+  selectedYearProp,
+}: DispatchPageProps) {
+  const params = useParams<{ countryName?: string; month?: string; year?: string }>()
   const router = useRouter()
 
-  const countryName = useMemo(() => (params?.countryName ?? '').toString(), [params])
-  const month = useMemo(() => (params?.month ?? '').toString(), [params])
-  const year = useMemo(() => (params?.year ?? '').toString(), [params])
+  const countryName = useMemo(
+    () => (countryNameProp ?? params?.countryName ?? '').toString(),
+    [countryNameProp, params]
+  );
+
+  const month = useMemo(
+    () => (selectedMonthProp ?? params?.month ?? '').toString(),
+    [selectedMonthProp, params]
+  );
+
+  const year = useMemo(
+    () => (selectedYearProp ?? params?.year ?? '').toString(),
+    [selectedYearProp, params]
+  );
 
   const [monthdp, setMonthDp] = useState<string>(getCurrentMonthPlus1())
   const [yeardp, setYearDp] = useState<string>(getCurrentYear())

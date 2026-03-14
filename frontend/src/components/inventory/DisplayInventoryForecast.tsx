@@ -17,7 +17,7 @@ import PageBreadcrumb from "../common/PageBreadCrumb";
 import { exportInventoryForecastViewExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import "@/lib/chartSetup";
-import SegmentedToggle from '../ui/SegmentedToggle';
+
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -102,7 +102,6 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     total: true,
   });
   const [showToggleModal, setShowToggleModal] = useState(false);
-  const [selectedView, setSelectedView] = useState<"inventory" | "purchaseOrder" | "dispatch">("inventory");
   const chartRef = useRef<any>(null);
   const demoMode = Boolean(isDemoMode);
   const forecastData = useMemo(() => (Array.isArray(data) ? data : []), [data]);
@@ -467,20 +466,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           </div>
         </div>
 
-        <SegmentedToggle
-          value={selectedView}
-          onChange={(val) =>
-            setSelectedView(val as "inventory" | "purchaseOrder" | "dispatch")
-          }
-          options={[
-            { value: "inventory", label: "Inventory Forecast" },
-            { value: "purchaseOrder", label: "Purchase Order" },
-            { value: "dispatch", label: "Dispatch" },
-          ]}
-          className="w-full"
-          textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-          compact
-        />
+        
       </div>
 
       {/* Chart: Top 5 SKUs + Total */}

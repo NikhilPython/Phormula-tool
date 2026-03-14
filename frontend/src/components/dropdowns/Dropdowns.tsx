@@ -1171,7 +1171,7 @@ const MonthlyObjectiveStrip = ({
               </div>
 
               <div
-                className={`mt-2 text-base 2xl:text-base font-semibold leading-snug capitalize break-words ${item.valueClass}`}
+                className={`mt-2  text-sm font-semibold leading-snug capitalize break-words ${item.valueClass}`}
               >
                 {item.value}
               </div>

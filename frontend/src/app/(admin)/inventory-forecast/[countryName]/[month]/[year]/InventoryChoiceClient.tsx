@@ -4,6 +4,19 @@ import { useParams, useRouter } from 'next/navigation';
 import { CheckCircle } from 'lucide-react';
 import { FaLock } from "react-icons/fa";
 import { API_BASE } from "@/config/env";
+import InventoryFlowTabs, { InventoryFlowTab } from '@/components/inventory/InventoryFlowTabs';
+
+const HASH_TO_TAB: Record<string, InventoryFlowTab> = {
+  "inventory-forecast": "inventory",
+  "dispatch": "dispatch",
+  "purchase-order": "purchaseOrder",
+};
+
+const TAB_TO_HASH: Record<InventoryFlowTab, string> = {
+  inventory: "inventory-forecast",
+  dispatch: "dispatch",
+  purchaseOrder: "purchase-order",
+};
 
 export default function InventoryChoicePage() {
   const router = useRouter();
@@ -11,6 +24,8 @@ export default function InventoryChoicePage() {
 
   const countryName = params?.countryName;
   const { month, year } = params;
+
+  
 
   const today = new Date();
   const prevIdx = today.getMonth() === 0 ? 11 : today.getMonth() - 1;
@@ -31,15 +46,84 @@ export default function InventoryChoicePage() {
   const effectiveMonth = month || monthNames[prevIdx];
   const effectiveYear = year || String(today.getFullYear());
 
-  // ---- Country Profile Popup State ----
   const [profileCompleted, setProfileCompleted] = useState(false);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<InventoryFlowTab>("inventory");
 
+  useEffect(() => {
+  if (typeof window === 'undefined') return;
+
+  const applyHash = (rawHash?: string) => {
+    const hash = (rawHash ?? window.location.hash).replace('#', '');
+    if (!hash) {
+      setActiveTab('inventory');
+      return;
+    }
+
+    const tab = HASH_TO_TAB[hash];
+    if (tab) setActiveTab(tab);
+  };
+
+  const onHashChange = () => applyHash(window.location.hash);
+
+  const onCustomHashNavigate = (event: Event) => {
+    const customEvent = event as CustomEvent<{ hash?: string }>;
+    if (!customEvent.detail?.hash) return;
+    applyHash(`#${customEvent.detail.hash}`);
+  };
+
+  applyHash(window.location.hash);
+
+  window.addEventListener('hashchange', onHashChange);
+  window.addEventListener('page-hash-navigate', onCustomHashNavigate as EventListener);
+
+  return () => {
+    window.removeEventListener('hashchange', onHashChange);
+    window.removeEventListener('page-hash-navigate', onCustomHashNavigate as EventListener);
+  };
+}, []);
+
+const handleTabChange = (tab: InventoryFlowTab) => {
+  setActiveTab(tab);
+
+  const hash = TAB_TO_HASH[tab];
+  if (typeof window !== 'undefined') {
+    window.history.pushState(null, '', `#${hash}`);
+  }
+};
+
+const goToForecastPageWithTab = (tab: InventoryFlowTab) => {
+  const hash = TAB_TO_HASH[tab];
+  router.push(`/inventoryForecast/${countryName}/${effectiveMonth}/${effectiveYear}#${hash}`);
+};
+
+const handleDispatchAccess = () => {
+  if (!profileCompleted) {
+    setActiveTab('dispatch');
+    setIsPopupOpen(true);
+    return;
+  }
+
+  goToForecastPageWithTab('dispatch');
+};
+
+const handlePurchaseOrderAccess = () => {
+  if (!profileCompleted) {
+    setActiveTab('purchaseOrder');
+    setIsPopupOpen(true);
+    return;
+  }
+
+  goToForecastPageWithTab('purchaseOrder');
+};
+
+ 
   const [country, setCountry] = useState<'uk' | 'us'>(() =>
     countryName?.toLowerCase() === 'us' ? 'us' : 'uk'
   );
   const [transitTime, setTransitTime] = useState('');
   const [stockUnit, setStockUnit] = useState('');
+
   const MARKETPLACE_BY_COUNTRY: Record<'uk' | 'us', string> = {
     us: "ATVPDKIKX0DER",
     uk: "A1F83G8C2ARO7P",
@@ -47,24 +131,20 @@ export default function InventoryChoicePage() {
 
   const marketplace = MARKETPLACE_BY_COUNTRY[country];
 
-
-
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [apiError, setApiError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const countryProfileKeyBase = countryName || 'global';
 
-  // Check once if country profile is already completed for this country/user
- useEffect(() => {
-  if (typeof window === 'undefined') return;
-  const key = `countryProfileCompleted-${countryProfileKeyBase}`;
-  const hasProfile = localStorage.getItem(key) === 'true';
-  setProfileCompleted(hasProfile);
-  setIsPopupOpen(false); // ✅ kabhi auto open nahi
-}, [countryProfileKeyBase]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = `countryProfileCompleted-${countryProfileKeyBase}`;
+    const hasProfile = localStorage.getItem(key) === 'true';
+    setProfileCompleted(hasProfile);
+    setIsPopupOpen(false);
+  }, [countryProfileKeyBase]);
 
-  // Only redirect to automation/manual if profile is completed
   useEffect(() => {
     if (!profileCompleted) return;
     if (typeof window === 'undefined') return;
@@ -72,38 +152,43 @@ export default function InventoryChoicePage() {
     const method = localStorage.getItem(
       `forecastMethod-${countryName}-${effectiveMonth}-${effectiveYear}`
     );
+
     if (method === 'automation')
       router.push(`/inventoryForecast/${countryName}/${effectiveMonth}/${effectiveYear}`);
     else if (method === 'manual')
       router.push(`/manual/${countryName}/${effectiveMonth}/${effectiveYear}`);
   }, [profileCompleted, countryName, effectiveMonth, effectiveYear, router]);
 
+ 
+
   const handleAutomation = () => {
-  if (!profileCompleted) {
-    setIsPopupOpen(true); // ✅ modal ab yahin se open hoga
-    return;
-  }
-
-  localStorage.setItem(
-    `forecastMethod-${countryName}-${effectiveMonth}-${effectiveYear}`,
-    'automation'
-  );
-
-  router.push(`/inventoryForecast/${countryName}/${effectiveMonth}/${effectiveYear}`);
-};
-
- const handleManual = () => {
     if (!profileCompleted) {
       setIsPopupOpen(true);
       return;
     }
+
+    localStorage.setItem(
+      `forecastMethod-${countryName}-${effectiveMonth}-${effectiveYear}`,
+      'automation'
+    );
+
+    router.push(`/inventoryForecast/${countryName}/${effectiveMonth}/${effectiveYear}`);
+  };
+
+  const handleManual = () => {
+    if (!profileCompleted) {
+      setIsPopupOpen(true);
+      return;
+    }
+
     localStorage.setItem(
       `forecastMethod-${countryName}-${effectiveMonth}-${effectiveYear}`,
       'manual'
     );
+
     router.push(`/manual/${countryName}/${effectiveMonth}/${effectiveYear}`);
   };
-  // ---- Save Country Profile (Popup Submit) ----
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setApiError('');
@@ -140,7 +225,6 @@ export default function InventoryChoicePage() {
         return;
       }
 
-      // ✅ yahan change kiya: jwtToken use ho raha hai
       const token = localStorage.getItem('jwtToken');
       if (!token) {
         setApiError('User not authenticated. Token missing.');
@@ -151,7 +235,7 @@ export default function InventoryChoicePage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` // jwtToken yahan use ho raha
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
           country,
@@ -175,7 +259,6 @@ export default function InventoryChoicePage() {
         return;
       }
 
-      // Success – never show popup again for this country/user
       const key = `countryProfileCompleted-${countryProfileKeyBase}`;
       localStorage.setItem(key, 'true');
       setProfileCompleted(true);
@@ -189,9 +272,14 @@ export default function InventoryChoicePage() {
   };
 
   return (
-    <div className="flex justify-center items-center font-lato px-4 py-10 relative">
-      {/* Country Profile Popup */}
- {isPopupOpen ? (
+    <div className="flex flex-col justify-center items-center font-lato px-4 py-10 relative">
+      <div className="mb-5">
+  <InventoryFlowTabs
+    value={activeTab}
+    onChange={handleTabChange}
+  />
+</div>
+      {isPopupOpen ? (
         <div className="fixed inset-0 z-99999 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
             <h2 className="text-xl font-semibold text-charcoal-500 mb-1 text-center">
@@ -202,7 +290,6 @@ export default function InventoryChoicePage() {
             </p>
 
             <form onSubmit={handleSaveProfile} className="space-y-4">
-              {/* Country */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Country <span className="text-red-500">*</span>
@@ -220,7 +307,6 @@ export default function InventoryChoicePage() {
                 )}
               </div>
 
-              {/* Marketplace (fixed Amazon) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Marketplace
@@ -233,11 +319,9 @@ export default function InventoryChoicePage() {
                 />
                 <p className="text-[11px] text-gray-400 mt-1">
                   Marketplace is fixed to Amazon and cannot be changed.
-                  
                 </p>
               </div>
 
-              {/* Transit Time */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Transit Time (months) <span className="text-red-500">*</span>
@@ -257,7 +341,6 @@ export default function InventoryChoicePage() {
                 )}
               </div>
 
-              {/* Stock Unit */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Stock Unit <span className="text-red-500">*</span>
@@ -295,105 +378,130 @@ export default function InventoryChoicePage() {
             </p>
           </div>
         </div>
-      ) : ( 
-      <div className="bg-white rounded-2xl shadow-[6px_6px_7px_0px_#00000026] w-full max-w-lg md:p-8 p-4 border border-gray-200">
-        <h1 className="md:text-2xl text-xl font-semibold text-center text-charcoal-500">
-          Inventory Forecast
-        </h1>
-        <p className="text-charcoal-500 text-center mt-1 md:mb-6 mb-4 md:text-base text-sm">
-          Choose your forecasting method to sync your sales data
-        </p>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-[6px_6px_7px_0px_#00000026] w-full max-w-lg md:p-8 p-4 border border-gray-200">
+          <h1 className="md:text-2xl text-xl font-semibold text-center text-charcoal-500">
+            Inventory Forecast
+          </h1>
+          <p className="text-charcoal-500 text-center mt-1 md:mb-6 mb-4 md:text-base text-sm">
+            Choose your forecasting method to sync your sales data
+          </p>
 
-        <div className="bg-[#F3F8F6] border border-green-500 rounded-xl md:p-6 p-4">
-          <div className="flex justify-start items-center gap-2">
-            <div className="bg-gray-custom p-2 rounded-lg">
-              {/* link icon */}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#5EA68E"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-charcoal-500">Automation</h2>
-              <p className="md:text-sm text-xs text-green-500">Setup in 30 seconds</p>
-            </div>
-          </div>
-          <ul className="space-y-2 text-gray-700 md:text-sm text-xs mt-3">
-            <li className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-green-500" />
-              AI-powered prediction
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-green-500" />
-              Historical data analysis
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-green-500" />
-              Always up-to-date insights
-            </li>
-            <li className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-green-500" />
-              No manual work required
-            </li>
-          </ul>
-          <button
-            onClick={handleAutomation}
-            className="mt-6 w-full bg-green-500 text-yellow-200 py-2.5 sm:text-base text-sm rounded-lg font-bold flex items-center justify-center gap-2 shadow hover:bg-[#4e937b] transition-all"
+         
+
+         {activeTab === 'inventory' ? (
+  <>
+    <div className="bg-[#F3F8F6] border border-green-500 rounded-xl md:p-6 p-4">
+      <div className="flex justify-start items-center gap-2">
+        <div className="bg-gray-custom p-2 rounded-lg">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#5EA68E"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            Enable Automation
-          </button>
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+          </svg>
         </div>
-
-        <div className="flex items-center md:my-6 my-4">
-          <div className="flex-grow border-t border-gray-300"></div>
-          <span className="mx-3 text-gray-500 text-sm">or</span>
-          <div className="flex-grow border-t border-gray-300"></div>
+        <div>
+          <h2 className="text-lg font-semibold text-charcoal-500">Automation</h2>
+          <p className="md:text-sm text-xs text-green-500">Setup in 30 seconds</p>
         </div>
-
-        <div className="text-center">
-          <button
-            onClick={handleManual}
-            className="text-charcoal-500 font-medium hover:underline md:text-sm text-xs flex items-center justify-center gap-1 mx-auto"
-          >
-            Set up manual file uploads instead
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="m6 17 5-5-5-5" />
-              <path d="m13 17 5-5-5-5" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="flex items-center md:my-6 my-4">
-          <div className="flex-grow border-t border-gray-300"></div>
-          <div className="flex-grow border-t border-gray-300"></div>
-        </div>
-
-        <p className="text-gray-500 text-xs mt-8 text-center flex items-center justify-center gap-1">
-          <FaLock size={14} />
-          Your credentials are encrypted and stored securely
-        </p>
       </div>
-       )}
+
+      <ul className="space-y-2 text-gray-700 md:text-sm text-xs mt-3">
+        <li className="flex items-center gap-2">
+          <CheckCircle size={16} className="text-green-500" />
+          AI-powered prediction
+        </li>
+        <li className="flex items-center gap-2">
+          <CheckCircle size={16} className="text-green-500" />
+          Historical data analysis
+        </li>
+        <li className="flex items-center gap-2">
+          <CheckCircle size={16} className="text-green-500" />
+          Always up-to-date insights
+        </li>
+        <li className="flex items-center gap-2">
+          <CheckCircle size={16} className="text-green-500" />
+          No manual work required
+        </li>
+      </ul>
+
+      <button
+        onClick={handleAutomation}
+        className="mt-6 w-full bg-green-500 text-yellow-200 py-2.5 sm:text-base text-sm rounded-lg font-bold flex items-center justify-center gap-2 shadow hover:bg-[#4e937b] transition-all"
+      >
+        Enable Automation
+      </button>
+    </div>
+
+    <div className="flex items-center md:my-6 my-4">
+      <div className="flex-grow border-t border-gray-300"></div>
+      <span className="mx-3 text-gray-500 text-sm">or</span>
+      <div className="flex-grow border-t border-gray-300"></div>
+    </div>
+
+    <div className="text-center">
+      <button
+        onClick={handleManual}
+        className="text-charcoal-500 font-medium hover:underline md:text-sm text-xs flex items-center justify-center gap-1 mx-auto"
+      >
+        Set up manual file uploads instead
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="m6 17 5-5-5-5" />
+          <path d="m13 17 5-5-5-5" />
+        </svg>
+      </button>
+    </div>
+  </>
+) : activeTab === 'dispatch' ? (
+  <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
+    <h2 className="text-lg font-semibold text-charcoal-500">Dispatch Planning</h2>
+    <p className="mt-2 text-sm text-slate-600">
+      Complete inventory setup first, then continue to dispatch planning.
+    </p>
+
+    <button
+      onClick={handleDispatchAccess}
+      className="mt-5 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold shadow hover:bg-[#4e937b] transition-all"
+    >
+      Continue to Dispatch
+    </button>
+  </div>
+) : (
+  <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
+    <h2 className="text-lg font-semibold text-charcoal-500">Purchase Order Planning</h2>
+    <p className="mt-2 text-sm text-slate-600">
+      Complete inventory setup first, then continue to purchase order planning.
+    </p>
+
+    <button
+      onClick={handlePurchaseOrderAccess}
+      className="mt-5 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold shadow hover:bg-[#4e937b] transition-all"
+    >
+      Continue to Purchase Order
+    </button>
+  </div>
+)}
+        </div>
+      )}
     </div>
   );
 }
