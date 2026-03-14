@@ -575,7 +575,8 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   const inventoryRecoBullets = mergeToSingleBullet(toBullets(inventoryText));
   const adsRecoBullets = toBullets(recObj?.ads_recommendation);
   const periodBadge = getPeriodBadge(range, year, month, quarter);
-
+  const shouldHideGraphForOtherSkus =
+    range === "monthly" && block?.isOtherSkus;
   const sortedMetrics = [...(block?.metrics || [])].sort((a, b) => {
     const aIndex = metricOrder.indexOf(a.label.toLowerCase());
     const bIndex = metricOrder.indexOf(b.label.toLowerCase());
@@ -756,12 +757,14 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     )}
                 </div>
 
-                <div className="w-full">
-                  <Productinfoinpopup
-                    productname={block.name}
-                    countryName={countryName}
-                  />
-                </div>
+                {!shouldHideGraphForOtherSkus && (
+                  <div className="w-full">
+                    <Productinfoinpopup
+                      productname={block.name}
+                      countryName={countryName}
+                    />
+                  </div>
+                )}
 
                 <div className="pb-4">
                   <div className="flex items-center gap-1 flex-wrap">
@@ -776,7 +779,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     <ul className="space-y-1 text-xs text-charcoal-600 2xl:text-sm">
                       {block.journeyBullets.map((p, i) => (
                         <li key={i} className="flex items-start gap-2">
-                          <span className="text-charcoal-400">→</span>
+                          {/* <span className="text-charcoal-400">→</span> */}
                           <span>
                             {p
                               .replace(/^\d+\.\s*-\s*/, "")
