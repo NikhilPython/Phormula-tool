@@ -81,9 +81,9 @@ class Config:
                 "task": "tasks.generate_monthly_forecast_files",
                 "schedule": crontab(day_of_month=1, hour=11, minute=30),
             },
-            "send-live-bi-email-test-1-22pm": {
+            "send-live-bi-email-weekly": {
                 "task": "tasks.send_live_bi_email_daily",
-                "schedule": crontab(hour=11, minute=30),
+                "schedule": crontab(day_of_month="1,8,15,22,29", hour=11, minute=30),
             },
             # "generate-forecast-every-month-1st-11-30am": {
             #     "task": "tasks.generate_monthly_forecast_files",
