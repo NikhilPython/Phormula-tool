@@ -156,7 +156,7 @@ export default function RegionSelect({
 
   return (
     <div ref={containerRef} className={`mb-4 ${className}`}>
-      <label className="flex items-center gap-2 text-sm font-semibold text-green-500 mb-2 ml-2.5">
+      <label className="flex items-center gap-2 text-sm font-semibold text-green-500 mb-2 ml-1.5">
         <FiMapPin className="h-5 w-5" />
         <span className="tracking-wide">{label}</span>
       </label>
@@ -169,7 +169,7 @@ export default function RegionSelect({
           aria-label={label}
           className="
             w-full rounded-md border border-[#41404233]
-            bg-white text-sm text-charcoal-500
+            bg-white xl:text-[12px] 2xl:text-[13px] text-charcoal-500
             px-3 py-1 shadow-sm outline-none
             flex items-center justify-between
             focus:ring-1 focus:ring-green-500 focus:border-green-500
@@ -200,7 +200,7 @@ export default function RegionSelect({
                 key={opt.value}
                 onClick={() => handleSelect(opt.value)}
                 className="
-          block w-full text-left px-3 py-1 text-sm
+          block w-full text-left px-3 py-1 text-xs 
           text-charcoal-500 hover:text-yellow-200
           hover:bg-green-500
         "
@@ -212,7 +212,7 @@ export default function RegionSelect({
             <button
               onClick={() => handleSelect('add_more_countries')}
               className="
-        block w-full text-left px-3 py-1 text-sm font-semibold
+        block w-full text-left px-3 py-1 text-xs font-semibold
         text-green-500 border-t border-gray-400/40
         hover:bg-green-500 hover:text-yellow-200
       "

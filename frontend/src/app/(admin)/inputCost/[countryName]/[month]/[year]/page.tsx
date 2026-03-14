@@ -778,7 +778,7 @@ if (column === 'product_name') {
   const tabOptions = useMemo(
   () => [
     { value: 'sku-info' as const, label: 'Sku Info' },
-    { value: 'extra' as const, label: 'Extra' },
+    { value: 'extra' as const, label: 'Upload Warehouse Data' },
   ],
   []
 );

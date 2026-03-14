@@ -9,6 +9,9 @@ import DisplayInventoryForecast from '@/components/inventory/DisplayInventoryFor
 import Loading from '@/components/inventory/Loading';
 import { Modal } from '@/components/ui/modal';
 import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm';
+import InventoryFlowTabs, { InventoryFlowTab } from '@/components/inventory/InventoryFlowTabs';
+import DispatchPage from '@/app/(admin)/dispatch/[countryName]/[month]/[year]/DispatchClient';
+import PurchaseOrderPage from '@/app/(admin)/purchase-order/[countryName]/[month]/[year]/PurchaseOrderClient';
 
 // ---------------- Types ----------------
 type UploadItem = {
@@ -55,6 +58,18 @@ const DUMMY_INVENTORY_FORECAST = [
     "Mar'26": 580,
   },
 ];
+
+const HASH_TO_TAB: Record<string, InventoryFlowTab> = {
+  "inventory-forecast": "inventory",
+  "dispatch": "dispatch",
+  "purchase-order": "purchaseOrder",
+};
+
+const TAB_TO_HASH: Record<InventoryFlowTab, string> = {
+  inventory: "inventory-forecast",
+  dispatch: "dispatch",
+  purchaseOrder: "purchase-order",
+};
 
 
 // --------------------------------------
@@ -103,10 +118,109 @@ export default function InventoryForecastPage() {
   const [isServerError, setIsServerError] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [activeTab, setActiveTab] = useState<InventoryFlowTab>("inventory");
+const [pendingHash, setPendingHash] = useState<string>("");
+
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const applyHash = (rawHash?: string) => {
+    const hash = (rawHash ?? window.location.hash).replace("#", "");
+    if (!hash) {
+      setActiveTab("inventory");
+      return;
+    }
+
+    const targetTab = HASH_TO_TAB[hash];
+    if (!targetTab) return;
+
+    setPendingHash(hash);
+    setActiveTab(targetTab);
+  };
+
+  const onHashChange = () => {
+    applyHash(window.location.hash);
+  };
+
+  const onCustomHashNavigate = (event: Event) => {
+    const customEvent = event as CustomEvent<{ hash?: string }>;
+    if (!customEvent.detail?.hash) return;
+    applyHash(`#${customEvent.detail.hash}`);
+  };
+
+  applyHash(window.location.hash);
+
+  window.addEventListener("hashchange", onHashChange);
+  window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+
+  return () => {
+    window.removeEventListener("hashchange", onHashChange);
+    window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+  };
+}, []);
 
   const isDemoMode =
   params.month?.toUpperCase() === 'NA' &&
   params.year?.toUpperCase() === 'NA';
+
+
+  const triggerPurchaseOrderApi = async (
+  country: string,
+  month: string,
+  year: string
+) => {
+  const jwtToken =
+    typeof window !== "undefined"
+      ? localStorage.getItem("jwtToken")
+      : null;
+
+  if (!jwtToken) throw new Error("Missing jwt token");
+
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
+
+  const safeMonth =
+    month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+
+  const formData = new FormData();
+  formData.append("month", safeMonth);
+  formData.append("year", year);
+  formData.append("country", country.toLowerCase());
+
+  const res = await fetch(`${baseUrl}/purchase_order`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${jwtToken}`,
+      Accept: "application/json",
+    },
+    body: formData,
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(json?.error || "Purchase order API failed");
+  }
+
+  return json;
+};
+
+const [poTriggered, setPoTriggered] = useState(false);
+
+useEffect(() => {
+  if (activeTab === "purchaseOrder" && !poTriggered) {
+    setPoTriggered(true);
+
+    triggerPurchaseOrderApi(
+      countryName,
+      apiMonth,
+      apiYear
+    ).catch((err) => {
+      console.error("PO API error:", err);
+    });
+  }
+}, [activeTab, poTriggered, countryName, apiMonth, apiYear]);
 
   // -------------- Effects --------------
   useEffect(() => {
@@ -335,6 +449,19 @@ export default function InventoryForecastPage() {
   return (
   
   <div className="">
+    <div className="sticky top-0 z-30 bg-[#F7F7F7] border-b border-gray-200 py-2">
+  <InventoryFlowTabs
+    value={activeTab}
+    onChange={(tab) => {
+      setActiveTab(tab);
+
+      const hash = TAB_TO_HASH[tab];
+      if (typeof window !== "undefined") {
+        window.history.pushState(null, "", `#${hash}`);
+      }
+    }}
+  />
+</div>
     <style>{`
       .alert-container {
         display: flex; align-items: center; background-color: #f2f2f2;
@@ -354,41 +481,24 @@ export default function InventoryForecastPage() {
       .country-name { color: #414042; }
     `}</style>
 
-    {loading ? (
-      // 1) sabse pehle loading
-      <Loading />
-    ) : missingMonths.length > 0 ? (
-      // 2) agar missing months hain → ye sabse high priority
-      <div>
-         <h3 className="text-2xl font-bold text-[#414042]">
-       Inventory Forecast </h3>
-         <span style={{ fontSize: '12px' }}>
-          The following Monthly files are needed to upload:&nbsp;
-          <strong style={{ color: '#60a68e' }}>
-            {missingMonths.join(', ')}
-          </strong>
-        </span>
-        <div className="alert-container">
-          <div className="alert-message">
-            <i className="fa-solid fa-circle-exclamation alert-icon"></i>
-            <span>Please upload at least 4 months&apos; files to see for the next two months.</span>
-          </div>
-          <button
-            className="alert-button"
-            onClick={() => setShowUpload(true)}
-          >
-            Upload Now <i className="fa-solid fa-chevron-right"></i>
-          </button>
-        </div>
+   {loading ? (
+  <Loading />
+) : activeTab === "inventory" ? (
+  missingMonths.length > 0 ? (
+    <div id="inventory-forecast" className="scroll-mt-[80px]">
+      <h3 className="text-2xl font-bold text-[#414042]">Inventory Forecast</h3>
 
-       
-      </div>
-    ) : error ? (
-      // 3) agar error hai, lekin missing months nahi (server error type)
+      <span style={{ fontSize: '12px' }}>
+        The following Monthly files are needed to upload:&nbsp;
+        <strong style={{ color: '#60a68e' }}>
+          {missingMonths.join(', ')}
+        </strong>
+      </span>
+
       <div className="alert-container">
         <div className="alert-message">
           <i className="fa-solid fa-circle-exclamation alert-icon"></i>
-          <span>{error}</span>
+          <span>Please upload at least 4 months&apos; files to see for the next two months.</span>
         </div>
         <button
           className="alert-button"
@@ -397,8 +507,22 @@ export default function InventoryForecastPage() {
           Upload Now <i className="fa-solid fa-chevron-right"></i>
         </button>
       </div>
-    ) : (
-      // 4) normal case → data hai to table/forecast show karo
+    </div>
+  ) : error ? (
+    <div id="inventory-forecast" className="alert-container scroll-mt-[80px]">
+      <div className="alert-message">
+        <i className="fa-solid fa-circle-exclamation alert-icon"></i>
+        <span>{error}</span>
+      </div>
+      <button
+        className="alert-button"
+        onClick={() => setShowUpload(true)}
+      >
+        Upload Now <i className="fa-solid fa-chevron-right"></i>
+      </button>
+    </div>
+  ) : (
+    <div id="inventory-forecast" className="scroll-mt-[80px]">
       <DisplayInventoryForecast
         countryName={countryName}
         month={apiMonth}
@@ -406,8 +530,27 @@ export default function InventoryForecastPage() {
         data={excelData ?? []}
         isDemoMode={isDemoMode}
       />
-    )}
-
+    </div>
+  )
+) : activeTab === "dispatch" ? (
+  <div id="dispatch" className="scroll-mt-[80px]">
+    <DispatchPage
+      embedded
+      countryNameProp={countryName}
+      selectedMonthProp={apiMonth}
+      selectedYearProp={apiYear}
+    />
+  </div>
+) : (
+  <div id="purchase-order" className="scroll-mt-[80px]">
+    <PurchaseOrderPage
+      embedded
+      countryNameProp={countryName}
+      selectedMonthProp={apiMonth}
+      selectedYearProp={apiYear}
+    />
+  </div>
+)}
     <Modal
       isOpen={showUpload}
       onClose={() => setShowUpload(false)}

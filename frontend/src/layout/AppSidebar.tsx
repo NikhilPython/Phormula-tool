@@ -91,9 +91,9 @@ const AppSidebar: React.FC = () => {
   const isPreviewMode = routeParams?.month === "NA" && routeParams?.year === "NA";
 
   // ✅ Smaller / laptop friendly typography
-  const textMain = "text-[11px] sm:text-[12px] lg:text-[12.5px] xl:text-[13px]";
+  const textMain = "text-[11px] sm:text-[12px] lg:text-[12.5px] xl:text-[12px] 2xl:text-[13px]";
   const textSection =
-    "text-[10px] sm:text-[11px] lg:text-[11.5px] xl:text-[12px] tracking-wide";
+    "text-[10px] sm:text-[11px] lg:text-[11.5px] xl:text-[13px] 2xl:text-[14px] tracking-wide";
   const padItem = "px-2 py-1 sm:py-1.5";
   const padHeader = "px-2 py-1.5 sm:py-2";
   const iconSize = "h-[18px] w-[18px] sm:h-5 sm:w-5 lg:h-[22px] lg:w-[22px]";
@@ -658,10 +658,10 @@ const AppSidebar: React.FC = () => {
         //   name: "Chatbot",
         //   path: `/chatbot/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         // },
-        {
-          name: "Inventory Forecast",
-          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
+       {
+  name: "Inventory Forecast",
+  path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-forecast`,
+},
         {
           name: "P&L Forecast",
           path: `/pnlforecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
@@ -692,21 +692,21 @@ const AppSidebar: React.FC = () => {
           path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
         {
-          name: "Dispatch Planning",
-          path: `/dispatch/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
+  name: "Dispatch Planning",
+  path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#dispatch`,
+},
         {
-          name: "Purchase Order (PO) Planning",
-          path: ({ countryName, month, year }) =>
-            `/purchase-order/${countryName}/${month}/${year}`,
-          onClick: async () => {
-            await triggerPurchaseOrderApi(
-              currentParams.countryName,
-              currentParams.month,
-              currentParams.year
-            );
-          },
-        },
+  name: "Purchase Order (PO) Planning",
+  path: ({ countryName, month, year }) =>
+    `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`,
+  onClick: async () => {
+    await triggerPurchaseOrderApi(
+      currentParams.countryName,
+      currentParams.month,
+      currentParams.year
+    );
+  },
+},
         {
           name: "Expense Reconcilliation",
           path: ({ countryName, month, year }) =>
@@ -768,7 +768,7 @@ const AppSidebar: React.FC = () => {
   return (
     <aside
       className={`fixed mt-16 flex flex-col lg:mt-0 top-0 left-0 bg-white text-gray-900 h-screen overflow-y-auto transition-all duration-300 ease-in-out z-[1100]
-        px-3 sm:px-4 lg:px-3 xl:px-4
+        px-3 sm:px-4 lg:px-1 xl:px-1.5 2xl:px-4
         ${isMobileOpen
           ? "w-full"
           : showText
@@ -799,7 +799,7 @@ const AppSidebar: React.FC = () => {
         <button
           type="button"
           onClick={handleToggle}
-          className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200"
+          className="flex items-center justify-center w-8 h-8 2xl:w-9 2xl:h-9 rounded-lg border border-gray-200"
           aria-label="Toggle sidebar"
         >
           {showText ? (
@@ -808,6 +808,7 @@ const AppSidebar: React.FC = () => {
               alt="Close sidebar"
               width={20}
               height={20}
+             className="2xl:w-[20px] 2xl:h-[20px] w-[18px] h-[18px]"
             />
           ) : (
             <Image
@@ -815,6 +816,7 @@ const AppSidebar: React.FC = () => {
               alt="Open sidebar"
               width={20}
               height={20}
+             className="2xl:w-[20px] 2xl:h-[20px] w-[18px] h-[18px]"
             />
           )}
         </button>
@@ -828,7 +830,7 @@ const AppSidebar: React.FC = () => {
           options={regionOptions}
           onChange={onRegionChange}
           className={`mb-2 rounded bg-transparent text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#5EA68E]
-      px-2 py-1 ${textMain}`}
+       py-1 ${textMain}`}
         />
       )}
 
