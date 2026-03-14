@@ -76,16 +76,30 @@ export default function SalesTargetCard({
   periodCompletedPct,
   periodCompletedLabel,
 }: Props) {
- 
+
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
 
-  const [extraBottom, setExtraBottom] = useState(20);
+  // const [extraBottom, setExtraBottom] = useState(20);
+
+  // useEffect(() => {
+  //   const mq = window.matchMedia("(min-width: 1536px)"); 
+
+  //   const update = () => {
+  //     setExtraBottom(mq.matches ? 20 : 8);
+  //   };
+
+  //   update();
+  //   mq.addEventListener("change", update);
+  //   return () => mq.removeEventListener("change", update);
+  // }, []);
+
+  const [extraBottom, setExtraBottom] = useState(4);
 
   useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1536px)"); // Tailwind 2xl
+    const mq = window.matchMedia("(min-width: 1536px)");
 
     const update = () => {
-      setExtraBottom(mq.matches ? 20 : 8);
+      setExtraBottom(mq.matches ? 10 : 2);
     };
 
     update();
@@ -155,48 +169,6 @@ export default function SalesTargetCard({
   const lastMonthToDateHomeFinal = useBi
     ? biAlignedTotals!.total_previous_net_sales
     : lastMonthToDateHomeResolved;
-
-
-  // ---- Gauge ratios (all in HOME currency) ----
-  // const ratio =
-  //   targetHomeResolved > 0 ? mtdHomeResolved / targetHomeResolved : 0;
-
-  // const ratioLast =
-  //   targetHomeResolved > 0
-  //     ? lastMonthTotalHomeResolved / targetHomeResolved
-  //     : 0;
-
-  // const decRatio =
-  //   targetHomeResolved > 0 ? decTargetHomeResolved / targetHomeResolved : 0;
-
-  // const greenDraw = Math.min(Math.max(ratio, 0), 1);
-
-  // const OVERFLOW_EMPTY_AT = 2;
-  // let orangeDraw = 1;
-  // if (ratio > 1) {
-  //   const t = (ratio - 1) / (OVERFLOW_EMPTY_AT - 1);
-  //   orangeDraw = 1 - Math.min(Math.max(t, 0), 1);
-  // }
-
-  // // ✅ Base position of blue marker (where Dec target is on the scale)
-  // const decBase = Math.min(Math.max(decRatio, 0), 1);
-
-  // // ✅ Shrink factor when ratio > 1 (same behavior as orange)
-  // let decShrink = 1;
-  // if (ratio > 1) {
-  //   const t = (ratio - 1) / (OVERFLOW_EMPTY_AT - 1);
-  //   decShrink = 1 - Math.min(Math.max(t, 0), 1);
-  // }
-
-  // // ✅ Final visible blue arc
-  // const decDraw = decBase * decShrink;
-  // const toDeg_DecTarget = 180 * decDraw;
-
-  // const toDeg_MTD = 180 * greenDraw;
-  // const toDeg_Orange = 180 * orangeDraw;
-
-  // const pctDisplay = ratio * 100;
-
 
   // ---- Gauge ratios (all in HOME currency) ----
 
@@ -352,12 +324,6 @@ export default function SalesTargetCard({
   const hideTip = () => setTip((t) => ({ ...t, show: false }));
 
   const tipTitle = "Sales Snapshot";
-  // const tipLines = [
-  //   `MTD Sale: ${formatHomeK(mtdHomeResolved)} (${pctDisplay.toFixed(2)}%)`,
-  //   `${thisMonthLabel} Target: ${formatHomeK(targetHomeResolved)}`,
-  //   `${prevLabel} Sale: ${formatHomeK(lastMonthTotalHomeResolved)}`,
-  //   `Last month by today: ${formatHomeK(lastMonthToDateHomeResolved)}`,
-  // ];
 
   const tipLines = [
     `MTD Sale: ${formatHomeK(mtdHomeFinal)} (${pctDisplay.toFixed(2)}%)`,
@@ -433,7 +399,7 @@ export default function SalesTargetCard({
 
 
   return (
-    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm sm:h-full flex flex-col bg-white">
+    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
       {/* Legend */}
       <div className="mt-2 2xl:mt-2 flex items-center justify-center sm:justify-around gap-6 text-[10px] 2xl:text-xs">
         <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
@@ -471,7 +437,7 @@ export default function SalesTargetCard({
       </div>
 
       {/* Gauge */}
-      <div className="mt-3 2xl:mt-4 flex flex-col items-center justify-center">
+      <div className="mt-3 2xl:mt-4 flex flex-col items-center">
         <div
           ref={wrapRef}
           className="relative"
@@ -609,25 +575,21 @@ export default function SalesTargetCard({
         </div>
 
         {/* Percentage */}
-        <div className="mt-1 2xl:mt-2 text-center">
+        <div className="mt-2 text-center">
           <div className="text-3xl font-semibold">{pctDisplay.toFixed(2)}%</div>
           <div className="text-[10px] 2xl:text-xs text-charcoal-500">Target Achieved</div>
-          <div className="mt-1 text-[10px] 2xl:text-xs text-charcoal-500">
-            {/* <span className=" text-green-500 font-bold">{monthCompletedPct.toFixed(2)}%</span> of Month Completed vs {" "}
-            <span className=" text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span> of Target Achieved */}
-
-            <span className="text-green-500 font-bold">{completedPct.toFixed(2)}%
-            </span>
+          <div className="mt-2 text-[10px] 2xl:text-xs text-charcoal-500">
+            <span className="text-green-500 font-bold">{completedPct.toFixed(2)}%</span>
             {" "}of Month Completed vs{" "}
             <span className="text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span>
             {" "}of Target Achieved
           </div>
-
         </div>
       </div>
 
       {/* Reimbursement Section */}
-      <div className=" max-[1700px]:mt-3 px-3 py-2 max-[1700px]:py-3 2xl:py-1.5">
+      {/* Reimbursement Section */}
+      <div className="mt-6 2xl:mt-7 px-3 pt-2 pb-0">
         <div className="flex items-center justify-center gap-2">
           <div className="text-[10px] 2xl:text-xs text-charcoal-500">
             Monthly Reimbursement
@@ -636,8 +598,8 @@ export default function SalesTargetCard({
           {showReimbDelta && (
             <div
               className={`text-[10px] 2xl:text-xs font-medium px-2 py-0.5 rounded ${reimbursementDeltaPct! >= 0
-                ? "bg-green-50 text-green-700"
-                : "bg-rose-50 text-rose-700"
+                  ? "bg-green-50 text-green-700"
+                  : "bg-rose-50 text-rose-700"
                 }`}
               title="Current vs previous reimbursement (in home currency)"
             >
@@ -650,7 +612,7 @@ export default function SalesTargetCard({
         <div className="mt-2">
           <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
             <span className="text-charcoal-500">
-              {toApostropheLabel(reimbNowLabel)}{' '}
+              {toApostropheLabel(reimbNowLabel)}{" "}
             </span>
             <span className="font-semibold text-gray-900">
               {formatWithCurrencySpace(reimbNow)}{" "}
@@ -658,7 +620,6 @@ export default function SalesTargetCard({
                 ({fmtPct(reimbNowSalesPct)})
               </span>
             </span>
-
           </div>
           <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
             <div
@@ -671,7 +632,7 @@ export default function SalesTargetCard({
         <div className="mt-2">
           <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
             <span className="text-charcoal-500">
-              {toApostropheLabel(reimbPrevLabel)}{' '}
+              {toApostropheLabel(reimbPrevLabel)}{" "}
             </span>
             <span className="font-semibold text-gray-900">
               {formatWithCurrencySpace(reimbPrev)}{" "}
@@ -679,13 +640,10 @@ export default function SalesTargetCard({
                 ({fmtPct(reimbPrevSalesPct)})
               </span>
             </span>
-
-
           </div>
           <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
             <div
               className="h-full rounded-full"
-              // style={{ width: `${reimbPrevPct}%`, backgroundColor: "#F59E0B" }}
               style={{ width: `${reimbPrevPct}%`, backgroundColor: "#9CA3AF" }}
             />
           </div>

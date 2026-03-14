@@ -131,26 +131,7 @@ export default function SalesTargetStatsCard({
 
 
   return (
-    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
-      {/* <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
-        <div className="flex items-center gap-1">
-          <PageBreadcrumb
-            pageTitle="Sales Metrics"
-            textSize="2xl"
-            variant="page"
-            align="center"
-          />
-        </div>
-
-        {!hideTabs && (
-          <SegmentedToggle<RegionKey>
-            value={value}
-            options={availableRegions.map((r: RegionKey) => ({ value: r }))}
-            onChange={onChange}
-            className="mt-1"
-          />
-        )}
-      </div> */}
+    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
 
       <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
         <button
@@ -182,8 +163,8 @@ export default function SalesTargetStatsCard({
         )}
       </div>
 
-      <div className="pt-4 flex-1">
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 text-sm h-full ">
+      <div className="pt-4 lg:flex-1">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 text-sm h-auto lg:h-full">
           {[
             { title: "Today", value: formatHomeK(todayHome), helper: "\u00A0" },
             { title: "MTD Sales", value: formatHomeK(currMtd), helper: "\u00A0" },

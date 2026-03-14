@@ -174,12 +174,12 @@ const isPercentLabel = (label: string) => {
 export function exportCurrentInventoryExcel(params: {
   filename: string;
 
-  // heading like: "Amazon UK - Current Inventory - Jan'26"
+  // heading like: "Phormula UK - Current Inventory - Jan'26"
   titleLine: string;
 
   countryName: string; // "uk" | "us" | "global"
   titleCountry: string; // "UK" | "US" | "Global"
-  platformLabel?: string; // "Amazon" etc
+  platformLabel?: string; // "Phormula" etc
 
   periodLabel: string; // e.g. "Jan'26" or "Jan 2026"
   companyName: string;
@@ -194,7 +194,7 @@ const {
     titleLine = "",
     countryName = "",
     titleCountry = "",
-    platformLabel = "Amazon",
+    platformLabel = "Phormula",
     periodLabel = "",
     companyName = "",
     brandName = "",
@@ -288,7 +288,7 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
     titleLine,
     countryName,
     titleCountry,
-    platformLabel = "Amazon",
+    platformLabel = "Phormula",
     periodLabel,
     companyName,
     brandName,
@@ -502,7 +502,7 @@ const {
   filename,
   titleLine,
   titleCountry,
-  platformLabel = "Amazon",
+  platformLabel = "Phormula",
   periodLabel,
   companyName,
   brandName,
@@ -687,9 +687,9 @@ export async function exportProductwiseTrendsExcel(params: {
   filename: string;
 
   // Header content (same structure as exportInventoryReconExcel)
-  titleLine: string;          // e.g. "Amazon UK - Productwise Trends - Jan'26"
+  titleLine: string;          // e.g. "Phormula UK - Productwise Trends - Jan'26"
   titleCountry: string;       // "UK" | "US" | "Global"
-  platformLabel?: string;     // "Amazon"
+  platformLabel?: string;     // "Phormula"
   periodLabel: string;        // "Jan'26"
 
   companyName: string;
@@ -738,7 +738,7 @@ export async function exportProductwiseTrendsExcel(params: {
     filename,
     titleLine,
     titleCountry,
-    platformLabel = "Amazon",
+    platformLabel = "Phormula",
     periodLabel,
     companyName,
     brandName,
@@ -1096,7 +1096,7 @@ export async function exportInventoryForecastViewExcel(params: {
     chartImageBase64,
     titleLine = "Inventory Forecast View",
     titleCountry = "",
-    platformLabel = "Amazon",
+    platformLabel = "Phormula",
     periodLabel = "",
     companyName = "",
     brandName = "",
@@ -1348,7 +1348,7 @@ export async function exportPnLForecastExcel(params: {
     filename,
     titleLine = "P&L Forecast",
     titleCountry = "",
-    platformLabel = "Amazon",
+    platformLabel = "Phormula",
     periodLabel = "",
     companyName = "",
     brandName = "",
