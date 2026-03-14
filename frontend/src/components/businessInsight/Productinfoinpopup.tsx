@@ -665,7 +665,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             display: true,
             text:
               activeTab === "units_asp"
-                ? "Units"
+                ? "Units (in nos.)"
                 : activeTab === "mix"
                   ? "Mix (%)"
                   : `Amount (${currencySymbol})`,
@@ -730,7 +730,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         <div className="flex flex-col gap-8">
           <div>
             <div className="mb-4 w-full">
-              <div className="flex sm:items-center sm:justify-between gap-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col items-start">
@@ -742,18 +742,18 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                       />
                     </div>
 
-                    <p className="text-[11px] sm:text-xs lg:text-xs  text-charcoal-500">
+                    <p className="mt-1 text-[11px] sm:text-xs lg:text-xs text-charcoal-500">
                       Drag horizontally to navigate months.
                     </p>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-start sm:justify-end gap-3">
+                <div className="w-full sm:w-auto">
                   <SegmentedToggle<TrendTab>
                     value={activeTab}
                     onChange={setActiveTab}
-                    textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-                    className="w-auto"
+                    textSizeClass="text-[10px] sm:text-xs"
+                    className="w-full sm:w-auto"
                     options={[
                       { value: "sales_cm1", label: "Sales & CM1 Profit" },
                       { value: "units_asp", label: "Units & ASP" },

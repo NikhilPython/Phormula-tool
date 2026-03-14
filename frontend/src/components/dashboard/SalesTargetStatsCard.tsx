@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useMemo } from "react";
+import { FiEdit } from "react-icons/fi";
+import { useRouter } from "next/navigation";
 import { getISTYearMonth, getPrevMonthShortLabel } from "@/lib/dashboard/date";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import type { RegionKey, RegionMetrics } from "@/lib/dashboard/types";
@@ -64,7 +66,7 @@ export default function SalesTargetStatsCard({
 }: Props) {
 
   const prevLabel = getPrevMonthShortLabel();
-
+  const router = useRouter();
   const { monthName, year } = getISTYearMonth();
   const monthYearLabel = `${new Date(`${monthName} 1, ${year}`).toLocaleString("en-US", {
     month: "short",
@@ -129,8 +131,19 @@ export default function SalesTargetStatsCard({
 
 
   return (
-    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
+    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-auto lg:h-full flex flex-col bg-white">
+
       <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
+        <button
+          type="button"
+          onClick={() => router.push("/objectives-targets/uk?tab=targets_and_objectives")}
+          className="absolute right-0 top-0 inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100"
+          aria-label="Edit targets and objectives"
+          title="Edit targets and objectives"
+        >
+          <FiEdit className="text-lg" />
+        </button>
+
         <div className="flex items-center gap-1">
           <PageBreadcrumb
             pageTitle="Sales Metrics"
@@ -150,8 +163,8 @@ export default function SalesTargetStatsCard({
         )}
       </div>
 
-      <div className="pt-4 flex-1">
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 text-sm h-full ">
+      <div className="pt-4 lg:flex-1">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 text-sm h-auto lg:h-full">
           {[
             { title: "Today", value: formatHomeK(todayHome), helper: "\u00A0" },
             { title: "MTD Sales", value: formatHomeK(currMtd), helper: "\u00A0" },

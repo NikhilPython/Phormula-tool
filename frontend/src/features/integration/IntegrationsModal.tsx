@@ -141,6 +141,7 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
           pageTitle="Select Your Integration"
           variant="table"
           textSize="2xl"
+          align="center2"
         />
 
         <div className="flex flex-col sm:flex-row justify-center items-center gap-6 sm:gap-10 mt-6">

@@ -609,37 +609,46 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
             transition={{ type: "tween", duration: 0.25 }}
           >
             <div className="flex h-full flex-col gap-4">
-              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 p-3">
-                <div>
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <PageBreadcrumb
-                      pageTitle="Detailed View - "
-                      variant="page"
-                      textSize="2xl"
-                    />
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 p-3">
 
-                    <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {block.name || "Details"}
-                    </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
 
-                    {drawerPeriodText ? (
-                      <span className="ml-1 text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl ">
-                        {drawerPeriodText}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <PageBreadcrumb
+                        pageTitle="Detailed View - "
+                        variant="page"
+                        textSize="2xl"
+                      />
+                    </div>
+
+                    {/* Green section */}
+                    <div className="flex flex-wrap items-center gap-1 sm:ml-1">
+                      <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {block.name || "Details"}
                       </span>
-                    ) : periodBadge ? (
-                      <span className="ml-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
-                        {periodBadge}
-                      </span>
-                    ) : null}
+
+                      {drawerPeriodText ? (
+                        <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                          {drawerPeriodText}
+                        </span>
+                      ) : periodBadge ? (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
+                          {periodBadge}
+                        </span>
+                      ) : null}
+                    </div>
+
                   </div>
                 </div>
 
                 <button
                   onClick={onClose}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   ✕
                 </button>
+
               </div>
 
               <div className="flex-1 space-y-6 overflow-y-auto px-3">
@@ -947,7 +956,7 @@ const ProductInsightsSection = ({
         <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" textSize="2xl" />
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {blocks.map((b, idx) => {
           const borderColor = topBorderColors[idx % topBorderColors.length];
 
@@ -1344,7 +1353,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
 
               return (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {mainLines.map((b, i) => {
                       const raw = String(b || "").trim();
 
@@ -1357,7 +1366,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                         return (
                           <div
                             key={i}
-                            className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
+                            className="flex items-start justify-between gap-3 bg-white rounded-lg p-3 border border-amber-100"
                           >
                             <span className="text-sm font-medium text-slate-700">
                               {label}

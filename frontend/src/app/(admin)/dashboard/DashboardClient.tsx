@@ -3139,7 +3139,7 @@ export default function DashboardPage() {
                     key: "quantity",
                     label: "Total",
                     align: "center" as const,
-                    width:80,
+                    width: 150,
                 },
             ],
 
@@ -3172,8 +3172,8 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "cm1_profit_per_unit", label: "CM1 Profit Per Unit", align: "center" as const },
-                { key: "cm1_profit_per", label: "CM1 Profit %", align: "center" as const },
+                { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
+                { key: "cm1_profit_per", label: "%", align: "center" as const },
                 {
                     key: "profit",
                     label: "Total",
@@ -3242,8 +3242,8 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "cm2_profit_per_unit", label: "CM2 Profit Per Unit", align: "center" as const },
-                { key: "cm2_profit_per", label: "CM2 Profit %", align: "center" as const },
+                { key: "cm2_profit_per_unit", label: "Per Unit", align: "center" as const },
+                { key: "cm2_profit_per", label: "%", align: "center" as const },
                 {
                     key: "cm2_profit",
                     label: "Total",
@@ -4433,7 +4433,7 @@ export default function DashboardPage() {
                     value={activeTab}
                     options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
                     onChange={setActiveTab}
-                    className="mt-2"
+                    className="mt-2 w-full"
                     compact
                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
                 />
@@ -4472,11 +4472,11 @@ export default function DashboardPage() {
             {activeTab === "live" && (
                 <div
                     id="live-sales"
-                    className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-stretch auto-rows-fr"
+                    className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-start lg:items-stretch lg:auto-rows-fr"
                 >
                     {/* LEFT COLUMN */}
                     <div
-                        className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-full min-h-full ${leftColumnHeightClass ?? ""}`}
+                        className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-auto min-h-0 lg:h-full lg:min-h-full ${leftColumnHeightClass ?? ""}`}
                     >
 
 
@@ -4484,39 +4484,37 @@ export default function DashboardPage() {
                         {!isCountryMode && hasGlobalCard && (
                             <div className="flex">
                                 <div className="w-full rounded-xl border bg-white p-4 lg:p-3 2xl:p-5 shadow-sm">
-                                    <div className="mb-4 flex items-start justify-between gap-3">
-                                        <div className="flex items-baseline gap-2">
+                                    <div className="mb-4 flex items-center justify-between gap-3">
+                                        <div className="min-w-0 shrink-0">
                                             <PageBreadcrumb pageTitle="Global MTD Sales" variant="page" align="left" />
                                         </div>
 
                                         {showLiveBI && platform === "global" && (
-                                            <RangePicker
-                                                selectedStartDay={selectedStartDay}
-                                                selectedEndDay={selectedEndDay}
-                                                onSubmit={(s, e) => {
-                                                    setSelectedStartDay(s);
-                                                    setSelectedEndDay(e);
-                                                    fetchLiveBiPayload({ startDay: s, endDay: e, generateInsights: false });
-                                                }}
-                                                onClear={() => {
-                                                    setSelectedStartDay(null);
-                                                    setSelectedEndDay(null);
-                                                    fetchLiveBiPayload({ startDay: null, endDay: null, generateInsights: false });
-                                                }}
-
-                                                onCloseReset={() => {
-                                                    setSelectedStartDay(null);
-                                                    setSelectedEndDay(null);
-
-                                                    // ✅ Add this too (same as clear)
-                                                    fetchLiveBiPayload({
-                                                        startDay: null,
-                                                        endDay: null,
-                                                        generateInsights: false,
-                                                    });
-                                                }}
-                                            />
-
+                                            <div className="shrink-0 ml-auto">
+                                                <RangePicker
+                                                    selectedStartDay={selectedStartDay}
+                                                    selectedEndDay={selectedEndDay}
+                                                    onSubmit={(s, e) => {
+                                                        setSelectedStartDay(s);
+                                                        setSelectedEndDay(e);
+                                                        fetchLiveBiPayload({ startDay: s, endDay: e, generateInsights: false });
+                                                    }}
+                                                    onClear={() => {
+                                                        setSelectedStartDay(null);
+                                                        setSelectedEndDay(null);
+                                                        fetchLiveBiPayload({ startDay: null, endDay: null, generateInsights: false });
+                                                    }}
+                                                    onCloseReset={() => {
+                                                        setSelectedStartDay(null);
+                                                        setSelectedEndDay(null);
+                                                        fetchLiveBiPayload({
+                                                            startDay: null,
+                                                            endDay: null,
+                                                            generateInsights: false,
+                                                        });
+                                                    }}
+                                                />
+                                            </div>
                                         )}
                                     </div>
 
@@ -4755,12 +4753,13 @@ export default function DashboardPage() {
                             <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-4">
                                 {/* Amazon KPI Box */}
                                 <div className="w-full rounded-xl border bg-white p-3 2xl:p-5 shadow-sm">
-                                    <div className="mb-3 lg:mb-2 2xl:mb-4 flex flex-row gap-3 items-start md:items-start md:justify-between">
-                                         <div className="flex items-baseline gap-2">
+                                    <div className="mb-3 lg:mb-2 2xl:mb-4 flex items-center justify-between gap-2 sm:gap-3">
+                                        <div className="min-w-0">
                                             <PageBreadcrumb pageTitle="MTD Sales" variant="page" align="left" />
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            {showLiveBI && isCountryMode && (
+
+                                        {showLiveBI && isCountryMode && (
+                                            <div className="ml-auto shrink-0">
                                                 <RangePicker
                                                     selectedStartDay={selectedStartDay}
                                                     selectedEndDay={selectedEndDay}
@@ -4777,9 +4776,8 @@ export default function DashboardPage() {
                                                         setSelectedEndDay(null);
                                                     }}
                                                 />
-                                            )}
-
-                                        </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
@@ -5188,8 +5186,8 @@ export default function DashboardPage() {
                     </div>
 
                     {/* RIGHT COLUMN – Sales Target */}
-                    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-full min-h-full self-stretch">
-                        <div className="h-full grid grid-rows-[auto_minmax(0,1fr)] gap-4">
+                    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-auto min-h-0 self-auto lg:h-full lg:min-h-full lg:self-stretch">
+                        <div className="grid gap-4 h-auto lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
                             {/* Top card = only as tall as content */}
                             <div className="w-full self-start">
                                 <SalesTargetStatsCard
@@ -5213,27 +5211,27 @@ export default function DashboardPage() {
                             </div>
 
                             {/* Bottom card = fills remaining height */}
-                            <div className="w-full min-h-0">
-                                <div className="h-full lg:sticky lg:top-4 2xl:top-6">
-                                    <SalesTargetCard
-                                        data={targetData}
-                                        homeCurrency={displayCurrency}
-                                        convertToHomeCurrency={identityConvert}
-                                        formatHomeK={formatDisplayK}
-                                        todaySales={targets_todayHome}
-                                        targetHome={stats_targetHome}
-                                        mtdHome={targets_mtdHome}
-                                        lastMonthTotalHome={targets_lastMonthTotalHome}
-                                        lastMonthToDateHome={targets_lastMonthToDateHome}
-                                        currentReimbursement={targets_reimbursement.current}
-                                        previousReimbursement={targets_reimbursement.previous}
-                                        biAlignedTotals={biAlignedTotalsHome}
-                                        biEnabled={biCardsReady}
-                                        periodCompletedPct={rangeCompletedPct}
-                                        periodCompletedLabel="Range"
-                                    />
-                                </div>
+                            {/* <div className="w-full min-h-0"> */}
+                            <div className="h-auto lg:h-full lg:sticky lg:top-4 2xl:top-6">
+                                <SalesTargetCard
+                                    data={targetData}
+                                    homeCurrency={displayCurrency}
+                                    convertToHomeCurrency={identityConvert}
+                                    formatHomeK={formatDisplayK}
+                                    todaySales={targets_todayHome}
+                                    targetHome={stats_targetHome}
+                                    mtdHome={targets_mtdHome}
+                                    lastMonthTotalHome={targets_lastMonthTotalHome}
+                                    lastMonthToDateHome={targets_lastMonthToDateHome}
+                                    currentReimbursement={targets_reimbursement.current}
+                                    previousReimbursement={targets_reimbursement.previous}
+                                    biAlignedTotals={biAlignedTotalsHome}
+                                    biEnabled={biCardsReady}
+                                    periodCompletedPct={rangeCompletedPct}
+                                    periodCompletedLabel="Range"
+                                />
                             </div>
+                            {/* </div> */}
                         </div>
                     </aside>
                 </div >
