@@ -11,6 +11,7 @@ from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.forecasting_utils import process_forecasting
 from app.models.user_models import UploadHistory , User, CountryProfile, StoredFile, db
 from app.utils.manual_forecast_utils import generate_manual_forecast
+from app.services.forecast_service import _normalize_forecast_month
 from calendar import month_name
 from dateutil.relativedelta import relativedelta
 from dotenv import load_dotenv
@@ -145,12 +146,63 @@ def load_forecast_df(*, user_id, country, filename, disk_fallback_path=None):
     return None, None
 
 
+# def save_file_to_db(*, user_id, country, filename, file_bytes, kind, month=None, year=None, content_type=None):
+#     if content_type is None:
+#         content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+#     # UPSERT-like behavior (update if exists)
+#     existing = StoredFile.query.filter_by(user_id=user_id, country=country, filename=filename).first()
+#     if existing:
+#         existing.data = file_bytes
+#         existing.kind = kind
+#         existing.month = month
+#         existing.year = str(year) if year is not None else existing.year
+#         existing.content_type = content_type
+#         db.session.commit()
+#         return existing
+
+#     row = StoredFile(
+#         user_id=user_id,
+#         country=country,
+#         filename=filename,
+#         data=file_bytes,
+#         kind=kind,
+#         month=month,
+#         year=str(year) if year is not None else None,
+#         content_type=content_type,
+#     )
+#     db.session.add(row)
+#     try:
+#         db.session.commit()
+#     except IntegrityError:
+#         db.session.rollback()
+#         # race-safe update
+#         row2 = StoredFile.query.filter_by(user_id=user_id, country=country, filename=filename).first()
+#         row2.data = file_bytes
+#         row2.kind = kind
+#         row2.month = month
+#         row2.year = str(year) if year is not None else row2.year
+#         row2.content_type = content_type
+#         db.session.commit()
+#         return row2
+#     return row
+
+
+# def load_file_from_db(*, user_id, country, filename):
+#     row = StoredFile.query.filter_by(user_id=user_id, country=country, filename=filename).first()
+#     return row  # None if not found
+
 def save_file_to_db(*, user_id, country, filename, file_bytes, kind, month=None, year=None, content_type=None):
     if content_type is None:
         content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-    # UPSERT-like behavior (update if exists)
-    existing = StoredFile.query.filter_by(user_id=user_id, country=country, filename=filename).first()
+    # UPSERT-like behavior
+    existing = StoredFile.query.filter_by(
+        user_id=user_id,
+        country=country,
+        filename=filename
+    ).first()
+
     if existing:
         existing.data = file_bytes
         existing.kind = kind
@@ -164,33 +216,45 @@ def save_file_to_db(*, user_id, country, filename, file_bytes, kind, month=None,
         user_id=user_id,
         country=country,
         filename=filename,
-        data=file_bytes,
+        data=file_bytes,   # ✅ correct field
         kind=kind,
         month=month,
         year=str(year) if year is not None else None,
         content_type=content_type,
     )
     db.session.add(row)
+
     try:
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        # race-safe update
-        row2 = StoredFile.query.filter_by(user_id=user_id, country=country, filename=filename).first()
-        row2.data = file_bytes
-        row2.kind = kind
-        row2.month = month
-        row2.year = str(year) if year is not None else row2.year
-        row2.content_type = content_type
-        db.session.commit()
-        return row2
+
+        row2 = StoredFile.query.filter_by(
+            user_id=user_id,
+            country=country,
+            filename=filename
+        ).first()
+
+        if row2:
+            row2.data = file_bytes
+            row2.kind = kind
+            row2.month = month
+            row2.year = str(year) if year is not None else row2.year
+            row2.content_type = content_type
+            db.session.commit()
+            return row2
+
+        raise
+
     return row
 
-
 def load_file_from_db(*, user_id, country, filename):
-    row = StoredFile.query.filter_by(user_id=user_id, country=country, filename=filename).first()
-    return row  # None if not found
-
+    return (
+        StoredFile.query
+        .filter_by(user_id=user_id, country=country, filename=filename)
+        .order_by(StoredFile.created_at.desc())
+        .first()
+    )
 
 @forecast_bp.route('/api/forecast_allmonths', methods=['GET']) 
 def forecast_allmonths():
@@ -447,6 +511,198 @@ def forecast_monthrange():
 #         print(traceback.format_exc())
 #         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
 
+# def generate_forecast_core(user_id, country, mv, year, send_email_flag=True):
+#     country = str(country).strip().lower()
+#     mv = str(mv).strip().lower()
+#     year = str(year).strip()
+
+#     current_month = datetime.now().strftime("%b").lower()
+#     inventory_filename = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
+#     forecast_filename = f'forecasts_for_{user_id}_{country}.xlsx'
+
+#     # DB-first cache
+#     stored_inv = load_file_from_db(
+#         user_id=user_id,
+#         country=country,
+#         filename=inventory_filename
+#     )
+#     if stored_inv:
+#         return {
+#             "success": True,
+#             "cached": True,
+#             "stored_inv": stored_inv,
+#             "inventory_filename": stored_inv.filename,
+#         }
+
+#     engine = create_engine(db_url)
+
+#     result = process_forecasting(user_id, country, mv, year, engine)
+
+#     if not result or not result.get("inventory_bytes"):
+#         return {
+#             "success": False,
+#             "error": "Forecast generation failed (no output bytes)."
+#         }
+
+#     # Save forecasts_for
+#     if result.get("forecast_bytes"):
+#         save_file_to_db(
+#             user_id=user_id,
+#             country=country,
+#             filename=result.get("forecast_filename", forecast_filename),
+#             file_bytes=result["forecast_bytes"],
+#             kind="forecasts_for",
+#             month=mv.lower(),
+#             year=str(year),
+#             content_type=XLSX_MIME
+#         )
+
+#     # Save inventory forecast
+#     save_file_to_db(
+#         user_id=user_id,
+#         country=country,
+#         filename=result.get("inventory_filename", inventory_filename),
+#         file_bytes=result["inventory_bytes"],
+#         kind="inventory_forecast",
+#         month=mv.lower(),
+#         year=str(year),
+#         content_type=XLSX_MIME
+#     )
+
+#     stored_inv = load_file_from_db(
+#         user_id=user_id,
+#         country=country,
+#         filename=result.get("inventory_filename", inventory_filename)
+#     )
+
+#     if not stored_inv:
+#         return {
+#             "success": False,
+#             "error": "Saved forecast not found in DB after generation."
+#         }
+
+#     if send_email_flag:
+#         try:
+#             send_forecast_email(user_id, stored_inv.filename, mv, year)
+#         except Exception as e:
+#             print(f"[EMAIL][WARN] send_forecast_email failed: {e}")
+
+#     return {
+#         "success": True,
+#         "cached": False,
+#         "stored_inv": stored_inv,
+#         "inventory_filename": stored_inv.filename,
+#     }
+
+def generate_forecast_core(user_id, country, mv, year, send_email_flag=True):
+    country = str(country).strip().lower()
+    mv = str(mv).strip().lower()
+    year = str(year).strip()
+
+    month_map = {
+        "jan": "january",
+        "feb": "february",
+        "mar": "march",
+        "apr": "april",
+        "may": "may",
+        "jun": "june",
+        "jul": "july",
+        "aug": "august",
+        "sep": "september",
+        "oct": "october",
+        "nov": "november",
+        "dec": "december",
+    }
+    mv = month_map.get(mv, mv)
+
+# @forecast_bp.route('/api/forecast', methods=['GET'])
+# def get_forecast():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#         if not user_id:
+#             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
+
+#         country = request.args.get('country')
+#         mv = request.args.get('month')
+#         year = request.args.get('year')
+#         if not all([country, mv, year]):
+#             return jsonify({'error': 'Missing required parameters: country, month, or year'}), 400
+
+#         current_month = datetime.now().strftime("%b").lower()
+#         inventory_filename = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
+#         forecast_filename = f'forecasts_for_{user_id}_{country}.xlsx'
+
+#         # ✅ DB-first cache (inventory file)
+#         stored_inv = load_file_from_db(user_id=user_id, country=country, filename=inventory_filename)
+#         if stored_inv:
+#             return send_db_file(stored_inv, download_name=inventory_filename)
+
+#         engine = create_engine(db_url)
+
+#         # Run pipeline
+#         result = process_forecasting(user_id, country, mv, year, engine)
+
+#         if not result or not result.get("inventory_bytes"):
+#             return jsonify({'error': 'Forecast generation failed (no output bytes).'}), 500
+
+#         # Save forecasts_for (PnL dependency)
+#         if result.get("forecast_bytes"):
+#             save_file_to_db(
+#                 user_id=user_id,
+#                 country=country,
+#                 filename=result.get("forecast_filename", forecast_filename),
+#                 file_bytes=result["forecast_bytes"],
+#                 kind="forecasts_for",
+#                 month=mv.lower(),
+#                 year=str(year),
+#                 content_type=XLSX_MIME
+#             )
+
+#         # Save inventory forecast
+#         save_file_to_db(
+#             user_id=user_id,
+#             country=country,
+#             filename=result.get("inventory_filename", inventory_filename),
+#             file_bytes=result["inventory_bytes"],
+#             kind="inventory_forecast",
+#             month=mv.lower(),
+#             year=str(year),
+#             content_type=XLSX_MIME
+#         )
+
+#         stored_inv = load_file_from_db(
+#             user_id=user_id,
+#             country=country,
+#             filename=result.get("inventory_filename", inventory_filename)
+#         )
+#         if not stored_inv:
+#             return jsonify({'error': 'Saved forecast not found in DB after generation.'}), 500
+
+#         # email (optional)
+#         try:
+#             send_forecast_email(user_id, stored_inv.filename, mv, year)
+#         except Exception as e:
+#             print(f"[EMAIL][WARN] send_forecast_email failed: {e}")
+
+#         return send_db_file(stored_inv, download_name=stored_inv.filename)
+
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token'}), 401
+#     except Exception as e:
+#         import traceback
+#         print(traceback.format_exc())
+#         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
+
+from app.services.forecast_service import generate_forecast_for_user
+
 @forecast_bp.route('/api/forecast', methods=['GET'])
 def get_forecast():
     auth_header = request.headers.get('Authorization')
@@ -461,66 +717,35 @@ def get_forecast():
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
         country = request.args.get('country')
-        mv = request.args.get('month')
+        mv = _normalize_forecast_month(mv)
         year = request.args.get('year')
+
         if not all([country, mv, year]):
             return jsonify({'error': 'Missing required parameters: country, month, or year'}), 400
 
-        current_month = datetime.now().strftime("%b").lower()
-        inventory_filename = f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
-        forecast_filename = f'forecasts_for_{user_id}_{country}.xlsx'
+        country = str(country).strip().lower()
+        mv = _normalize_forecast_month(mv)
+        year = str(year).strip()
 
-        # ✅ DB-first cache (inventory file)
-        stored_inv = load_file_from_db(user_id=user_id, country=country, filename=inventory_filename)
-        if stored_inv:
-            return send_db_file(stored_inv, download_name=inventory_filename)
-
-        engine = create_engine(db_url)
-
-        # Run pipeline
-        result = process_forecasting(user_id, country, mv, year, engine)
-
-        if not result or not result.get("inventory_bytes"):
-            return jsonify({'error': 'Forecast generation failed (no output bytes).'}), 500
-
-        # Save forecasts_for (PnL dependency)
-        if result.get("forecast_bytes"):
-            save_file_to_db(
-                user_id=user_id,
-                country=country,
-                filename=result.get("forecast_filename", forecast_filename),
-                file_bytes=result["forecast_bytes"],
-                kind="forecasts_for",
-                month=mv.lower(),
-                year=str(year),
-                content_type=XLSX_MIME
-            )
-
-        # Save inventory forecast
-        save_file_to_db(
+        result = generate_forecast_for_user(
             user_id=user_id,
             country=country,
-            filename=result.get("inventory_filename", inventory_filename),
-            file_bytes=result["inventory_bytes"],
-            kind="inventory_forecast",
-            month=mv.lower(),
-            year=str(year),
-            content_type=XLSX_MIME
+            mv=mv,
+            year=year,
+            send_email=True,
         )
+
+        if not result.get("success"):
+            return jsonify({'error': result.get("error", "Forecast generation failed.")}), 500
 
         stored_inv = load_file_from_db(
             user_id=user_id,
             country=country,
-            filename=result.get("inventory_filename", inventory_filename)
+            filename=result["filename"],
         )
+
         if not stored_inv:
             return jsonify({'error': 'Saved forecast not found in DB after generation.'}), 500
-
-        # email (optional)
-        try:
-            send_forecast_email(user_id, stored_inv.filename, mv, year)
-        except Exception as e:
-            print(f"[EMAIL][WARN] send_forecast_email failed: {e}")
 
         return send_db_file(stored_inv, download_name=stored_inv.filename)
 
@@ -532,9 +757,7 @@ def get_forecast():
         import traceback
         print(traceback.format_exc())
         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
-
-
-
+    
 
 
 @forecast_bp.route('/forecast_global', methods=['GET', 'POST'])

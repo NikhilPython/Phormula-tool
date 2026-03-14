@@ -505,23 +505,24 @@ def send_live_bi_email(
     curr_label,
     deep_link_token=None,
     overall_actions=None,     # dict or bullets, depending on your pipeline
-    sku_actions=None,         # ✅ dict: { sku -> rendered_text } (text/html)
+    sku_actions=None,         # dict: { sku -> rendered_text } (text/html)
     sku_to_product=None,      # optional: dict {sku -> product_name}
+    portfolio_recommendation=None,
 ):
     import traceback
+    import html
+    import re
 
     if not to_email:
         print("[WARN] No email provided.")
         return
 
-    subject = f"[Phormula] Live MTD Business Insights - {country.upper()} ({curr_label})"
+    subject = f"[Phormula] Live MTD Business Insights - {str(country).upper()} ({curr_label})"
 
     # ---------------------------
-    # Overall summary bullets
+    # Overall summary
     # ---------------------------
     summary_text = (overall_summary or {}).get("summary_text", "") or ""
-    print("[DEBUG] overall_summary:", overall_summary)
-    print("[DEBUG] summary_text:", summary_text)
 
     summary_html = f"""
     <p style="font-size:14px; color:#555; line-height:1.8; margin:0;">
@@ -550,12 +551,24 @@ def send_live_bi_email(
         text = re.sub(r"[ \t]+", " ", text)
         text = re.sub(r"\n\s+", "\n", text)
         text = re.sub(r"\n{2,}", "\n", text)
-        return text.strip()   
+        return text.strip()
 
-    def _email_safe_text(text: str) -> str:
-        if not text:
-            return ""
-        return html.escape(str(text)).replace("\n", "<br>")
+    def _fallback_section_html() -> str:
+        fallback_text = portfolio_recommendation or "No SKU-wise actions available for this run."
+        return f"""
+        <div style="
+            font-size:13px;
+            color:#555;
+            line-height:1.7;
+            background:#FFF8E7;
+            border:1px solid #F5D48A;
+            border-radius:10px;
+            padding:14px 16px;
+            margin-bottom:18px;
+        ">
+            {html.escape(str(fallback_text))}
+        </div>
+        """
 
     def parse_sku_action_text(action_text: str) -> dict:
         raw = _strip_html_tags(action_text)
@@ -578,13 +591,9 @@ def send_live_bi_email(
         m = re.match(r"^(.*?)(?=\s+ASP:)", text, flags=re.I)
         if m:
             product_name = m.group(1).strip(" :-")
-        else:
-            # fallback if no product before ASP
-            product_name = ""
 
         # -------- Metrics --------
         metrics = []
-
         metric_patterns = [
             ("ASP", r"ASP:\s*(.*?)(?=\s+Units:|\s+Net sales:|\s+CM1 profit:|\s+CM1 profit per unit:|\s+Product Journey:|$)"),
             ("Units", r"Units:\s*(.*?)(?=\s+Net sales:|\s+CM1 profit:|\s+CM1 profit per unit:|\s+Product Journey:|$)"),
@@ -596,8 +605,7 @@ def send_live_bi_email(
         for label, patt in metric_patterns:
             mm = re.search(patt, text, flags=re.I)
             if mm:
-                val = mm.group(1).strip()
-                val = re.sub(r"\s+", " ", val)
+                val = re.sub(r"\s+", " ", mm.group(1).strip())
                 metrics.append((label, val))
 
         # -------- Product Journey --------
@@ -656,7 +664,6 @@ def send_live_bi_email(
     def _metric_chip(label: str, value_text: str) -> str:
         txt = (value_text or "").strip()
 
-        # split into main value + bracket delta
         m = re.match(r"^(.*?)(\s*\([^)]+\))?$", txt)
         main_value = (m.group(1) or "").strip() if m else txt
         delta_value = (m.group(2) or "").strip() if m else ""
@@ -664,7 +671,10 @@ def send_live_bi_email(
         is_negative = bool(re.search(r"\(\s*-\s*\d", delta_value))
         delta_color = "#D92D20" if is_negative else "#16A34A"
 
-        delta_html = f'<span style="color:{delta_color}; font-weight:600;"> {html.escape(delta_value)}</span>' if delta_value else ""
+        delta_html = (
+            f'<span style="color:{delta_color}; font-weight:600;"> {html.escape(delta_value)}</span>'
+            if delta_value else ""
+        )
 
         return f"""
         <td valign="top" style="padding:0 8px 8px 0;">
@@ -684,15 +694,11 @@ def send_live_bi_email(
         </td>
         """
 
-    
-   
-   
     def render_simple_action_card(sku: str, action_text: str) -> str:
         parsed = parse_sku_action_text(action_text)
 
         product = parsed["product_name"] or safe_product_name(sku) or "Unknown"
         product = html.escape(str(product))
-        sku_safe = html.escape(str(sku))
 
         metric_cells = [_metric_chip(label, value) for label, value in parsed["metrics"]]
 
@@ -729,7 +735,7 @@ def send_live_bi_email(
             </table>
             """
 
-        def _point_block(title: str, body: str, emoji: str = "") -> str:
+        def _point_block(title: str, body: str) -> str:
             if not body:
                 return ""
 
@@ -738,7 +744,7 @@ def send_live_bi_email(
             return f"""
             <div style="margin-top:12px;">
               <div style="font-size:11px; font-weight:800; color:#667085; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px;">
-                {html.escape(emoji)} {html.escape(title)}
+                {html.escape(title)}
               </div>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
@@ -751,13 +757,19 @@ def send_live_bi_email(
             """
 
         bottom_cards_html = f"""
-        {_point_block("Recommendation", parsed["recommendation"], "")}
-        {_point_block("Advertising", parsed["advertising"], "")}
-        {_point_block("Inventory", parsed["inventory"], "")}
+        {_point_block("Recommendation", parsed["recommendation"])}
+        {_point_block("Advertising", parsed["advertising"])}
+        {_point_block("Inventory", parsed["inventory"])}
         """
 
         fallback_html = ""
-        if not parsed["metrics"] and not parsed["journey_points"] and not parsed["recommendation"] and not parsed["advertising"] and not parsed["inventory"]:
+        if (
+            not parsed["metrics"]
+            and not parsed["journey_points"]
+            and not parsed["recommendation"]
+            and not parsed["advertising"]
+            and not parsed["inventory"]
+        ):
             fallback_html = f"""
             <div style="margin-top:10px; font-size:13px; line-height:1.6; color:#475467;">
               {html.escape(_strip_html_tags(action_text))}
@@ -779,11 +791,8 @@ def send_live_bi_email(
               </table>
 
               {metrics_html}
-
               {journey_html}
-
               {bottom_cards_html}
-
               {fallback_html}
 
             </td>
@@ -797,20 +806,18 @@ def send_live_bi_email(
     sku_section_html = ""
 
     try:
-        # ✅ Primary path: sku_actions is dict {sku -> rendered_text}
-        # We DO NOT call render_sku_card here because your dict doesn't contain "metrics"
-        # and render_sku_card expects structured cards.
+        # Primary path: sku_actions is dict {sku -> rendered_text}
         if sku_actions and isinstance(sku_actions, dict):
             cards = []
             for sku_key, action_text in sku_actions.items():
-                if not sku_key:
+                if not sku_key or not action_text:
                     continue
                 cards.append(render_simple_action_card(sku_key, action_text))
-            sku_section_html = "".join(cards) if cards else """
-                <p style="font-size:13px; color:#777;">
-                  No SKU-wise actions available for this run.
-                </p>
-            """
+
+            if cards:
+                sku_section_html = "".join(cards)
+            else:
+                sku_section_html = _fallback_section_html()
 
         # Fallback path: overall_actions exists (old pipeline)
         elif overall_actions:
@@ -818,52 +825,54 @@ def send_live_bi_email(
             if parsed_cards:
                 rendered = []
                 for idx, card in enumerate(parsed_cards):
-                    # harden the card schema so render_sku_card won't crash on missing keys
                     if isinstance(card, dict):
                         card.setdefault("sku", card.get("sku") or card.get("product") or "Unknown")
                         card.setdefault("product", card.get("product") or card.get("product_name") or card.get("sku") or "Unknown")
                         card.setdefault("metrics", card.get("metrics") or {})
                         card.setdefault("action_text", card.get("action_text") or card.get("action") or "")
+
                     try:
                         rendered.append(render_sku_card(card, idx))
                     except Exception as e:
                         print(f"[WARN] render_sku_card failed idx={idx}: {e}")
                         traceback.print_exc()
-                        # final fallback: show a simple card
-                        sku_fallback = (card.get("sku") if isinstance(card, dict) else "Unknown")
-                        action_fallback = (card.get("action_text") if isinstance(card, dict) else str(card))
+                        sku_fallback = card.get("sku") if isinstance(card, dict) else "Unknown"
+                        action_fallback = card.get("action_text") if isinstance(card, dict) else str(card)
                         rendered.append(render_simple_action_card(sku_fallback, action_fallback))
 
                 sku_section_html = "".join(rendered)
+
             else:
-                # fallback: plain bullets if overall_actions is iterable of strings
                 if isinstance(overall_actions, (list, tuple)):
-                    sku_section_html = f"""
-                    <ul style="font-size:14px; color:#555;">
-                      {''.join(f"<li>{a}</li>" for a in overall_actions)}
-                    </ul>
-                    """
+                    clean_items = [str(a).strip() for a in overall_actions if str(a).strip()]
+                    if clean_items:
+                        sku_section_html = f"""
+                        <div style="
+                            font-size:14px;
+                            color:#555;
+                            line-height:1.8;
+                            background:#FFF8E7;
+                            border:1px solid #F5D48A;
+                            border-radius:10px;
+                            padding:14px 16px;
+                            margin-bottom:18px;
+                        ">
+                          <ul style="margin:0; padding-left:18px;">
+                            {''.join(f"<li>{html.escape(a)}</li>" for a in clean_items)}
+                          </ul>
+                        </div>
+                        """
+                    else:
+                        sku_section_html = _fallback_section_html()
                 else:
-                    sku_section_html = """
-                    <p style="font-size:13px; color:#777;">
-                      No SKU-wise actions available for this run.
-                    </p>
-                    """
+                    sku_section_html = _fallback_section_html()
         else:
-            sku_section_html = """
-            <p style="font-size:13px; color:#777;">
-              No SKU-wise actions available for this run.
-            </p>
-            """
+            sku_section_html = _fallback_section_html()
 
     except Exception as e:
         print("[WARN] Failed building SKU section:", e)
         traceback.print_exc()
-        sku_section_html = """
-        <p style="font-size:13px; color:#777;">
-          Actions section unavailable due to a rendering error.
-        </p>
-        """
+        sku_section_html = _fallback_section_html()
 
     # ---------------------------
     # DEEP LINK
@@ -888,12 +897,12 @@ def send_live_bi_email(
     html_body = f"""
     <html>
     <head>
-  <meta charset="UTF-8">
-  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;800&display=swap" rel="stylesheet">
-</head>
-       <body style="font-family:'Lato', Arial, sans-serif; background:#f4f4f4; padding:20px;">
-         <div style="max-width:780px; margin:0 auto; background:#fff;
-              padding:28px; border-radius:10px; border:2px solid #5EA68E; box-sizing:border-box;">
+      <meta charset="UTF-8">
+      <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;800&display=swap" rel="stylesheet">
+    </head>
+    <body style="font-family:'Lato', Arial, sans-serif; background:#f4f4f4; padding:20px;">
+      <div style="max-width:780px; margin:0 auto; background:#fff;
+           padding:28px; border-radius:10px; border:2px solid #5EA68E; box-sizing:border-box;">
 
         <img src="https://i.postimg.cc/43T3k86Z/logo.png"
              style="width:180px; display:block; margin:0 auto 16px;" />
@@ -912,7 +921,7 @@ def send_live_bi_email(
             padding:6px 16px;
             border-radius:20px;
             margin-bottom:8px;">
-            Country: {country.upper()}
+            Country: {html.escape(str(country).upper())}
           </div>
 
           <div style="margin-top:10px;">
@@ -925,7 +934,7 @@ def send_live_bi_email(
               border-radius:12px;
               margin-right:6px;
               display:inline-block;">
-              Previous: {prev_label}
+              Previous: {html.escape(str(prev_label))}
             </span>
 
             <span style="
@@ -936,7 +945,7 @@ def send_live_bi_email(
               padding:4px 10px;
               border-radius:12px;
               display:inline-block;">
-              Current: {curr_label}
+              Current: {html.escape(str(curr_label))}
             </span>
           </div>
         </div>
@@ -948,11 +957,11 @@ def send_live_bi_email(
         </h3>
 
         <div style="font-size:14px; color:#555; margin-bottom:8px;">
-        {summary_html}
-       </div>
+          {summary_html}
+        </div>
 
         <h3 style="color:#37455F; margin-top:28px;">
-           Recommendation
+          Recommendation
         </h3>
 
         {sku_section_html}
@@ -966,8 +975,8 @@ def send_live_bi_email(
           Support: <a href="mailto:care@phormula.io">care@phormula.io</a>
         </p>
       </div>
-</body>
-</html>
+    </body>
+    </html>
     """
 
     msg = Message(

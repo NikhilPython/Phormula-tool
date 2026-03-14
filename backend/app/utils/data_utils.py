@@ -9,7 +9,7 @@ from app.models.user_models import User
 from flask_mail import Message
 from flask import current_app
 from app import mail
-
+from datetime import datetime, date
 from dotenv import load_dotenv
 
 import warnings
@@ -63,31 +63,116 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
             raise ValueError(f"No user found with ID {user_id}")
 
         user_email = user.email
+        user_name = (user.name or "there").strip()
 
         msg = Message(
-            'Your Forecast Report',
-            sender=current_app.config.get('MAIL_DEFAULT_SENDER'),
-            recipients=[user_email]
+            "Your Forecast Report",
+            sender=current_app.config.get("MAIL_DEFAULT_SENDER"),
+            recipients=[user_email],
         )
 
-        msg.body = f"""
-Dear {user.email},
+        month_title = str(month).capitalize()
+        year_text = str(year)
 
-Please find attached the forecast report for {month} {year} that you requested.
+        msg.html = f"""
+        <html>
+        <body style="margin:0; padding:0; background:#f2f2f2; font-family:Arial, Helvetica, sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f2f2f2; padding:16px 0;">
+            <tr>
+              <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+                  
+                  <!-- top green bar -->
+                  <tr>
+                    <td style="background:#5ea68e; padding:10px 18px; color:#ffffff;">
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td style="font-size:28px; line-height:28px; font-weight:300; color:#ffffff;">
+                            |p|
+                          </td>
+                          <td align="right" style="font-size:12px; color:#f8edce;">
+                            Inventory &amp; Dispatch Report
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
 
-Best regards,
-The Phormula Team
-"""
+                  <!-- logo/title -->
+                  <tr>
+                    <td align="center" style="padding:28px 30px 18px 30px; background:#ffffff;">
+                      <div style="font-size:26px; color:#1d6d84; line-height:1.2; margin-bottom:8px;">
+                        |phormula|
+                      </div>
+                      <div style="font-size:14px; color:#4a4a4a;">
+                        Your {month_title} {year_text} Forecast Report is ready
+                      </div>
+                    </td>
+                  </tr>
 
-        # ✅ Load bytes from DB
+                  <!-- divider -->
+                  <tr>
+                    <td style="border-top:1px solid #dddddd; font-size:1px; line-height:1px;">&nbsp;</td>
+                  </tr>
+
+                  <!-- body -->
+                  <tr>
+                    <td style="padding:22px 32px 26px 32px; color:#444444; font-size:14px; line-height:1.7;">
+                      <p style="margin:0 0 18px 0;">Hey {user_name},</p>
+
+                      <p style="margin:0 0 14px 0;">
+                        Please find attached your inventory forecast and dispatch report for
+                        {month_title} {year_text}. It covers your current stock positions,
+                        demand projections, and dispatch performance for the period.
+                      </p>
+
+                      <p style="margin:0 0 14px 0;">
+                        Kindly review at your earliest convenience and flag anything that needs attention.
+                      </p>
+
+                      <p style="margin:0 0 14px 0;">
+                        Thank you for your continued partnership. We look forward to hearing from you.
+                      </p>
+
+                      <p style="margin:18px 0 0 0;">Warm regards,</p>
+                      <p style="margin:0;"><strong>The Phormula Team</strong></p>
+                      <p style="margin:0;">care@phormula.io</p>
+                    </td>
+                  </tr>
+
+                  <!-- footer -->
+                  <tr>
+                    <td style="background:#5ea68e; padding:12px 18px; color:#ffffff; font-size:12px;">
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td style="font-size:12px; color:#f8edce;">
+                            © 2026 Phormula. All rights reserved.
+                          </td>
+                          <td align="right" style="font-size:12px; color:#f8edce;">
+                            Unsubscribe &nbsp;&nbsp; Support
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+        """
+
         q = StoredFile.query.filter_by(user_id=user_id, filename=file_name)
         if country:
             q = q.filter_by(country=country.lower())
-        stored = q.first()
 
+        stored = q.first()
         if not stored:
-            # helpful debug: try to locate by user+kind if filename differs
-            raise FileNotFoundError(f"File not found in DB for user_id={user_id}, filename={file_name}")
+            raise FileNotFoundError(
+                f"File not found in DB for user_id={user_id}, filename={file_name}"
+            )
 
         content_type = stored.content_type or XLSX_MIME
         msg.attach(file_name, content_type, stored.data)
@@ -98,7 +183,7 @@ The Phormula Team
     except Exception as e:
         print(f"Failed to send forecast email: {e}")
         raise
-
+    
 
 
 def generate_pnl_report(year: int, month: str) -> dict:
