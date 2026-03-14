@@ -251,12 +251,6 @@ def live_mtd_vs_previous():
         remaining_skus_reco = None
         remaining_skus_journey = None
 
-        # ✅ PRE-INITIALIZE (VERY IMPORTANT)
-        portfolio_recommendation = None
-        sku_strategy_actions = {}
-        remaining_skus_reco = None
-        remaining_skus_journey = None
-
         payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
         if not user_id:
@@ -1107,7 +1101,8 @@ def live_mtd_vs_previous():
                             overall_summary=response_payload["overall_summary"],
                             overall_actions=response_payload["overall_actions"],
                             sku_actions=recommended_actions_mtd,
-                            
+                            sku_to_product=sku_to_product,                     # ✅ NEW
+                            portfolio_recommendation=portfolio_recommendation, # ✅ NEW
                             country=country,
                             prev_label=prev_label,
                             curr_label=curr_label,
