@@ -974,6 +974,10 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
               return formatAxisMonth(rawLabel);
             },
           },
+          grid: {
+            display: false, 
+            drawBorder: false,
+          },
         },
         y: {
           title: { display: true, text: yAxisLabel },

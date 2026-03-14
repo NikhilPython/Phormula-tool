@@ -15,22 +15,24 @@ import type { PlatformId } from "@/lib/utils/platforms";
 import SegmentedToggle from "../ui/SegmentedToggle";
 import TargetVsSalesChart from "../objectives/TargetVsSalesChart";
 import ObjectiveMoMChart from "../objectives/ObjectiveMoMChart";
-import { FiEdit, FiCheck, FiX, FiPlus, FiGlobe, FiFileText, FiTrash2 } from "react-icons/fi";
+import {
+  FiEdit,
+  FiCheck,
+  FiX,
+  FiPlus,
+  FiGlobe,
+  FiFileText,
+  FiTrash2,
+  FiMaximize2,
+  FiMinimize2,
+} from "react-icons/fi";
+import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import JSZip from "jszip";
 import mammoth from "mammoth";
 
 type ObjectivesPageClientProps = {
   country?: string;
 };
-
-// type UserObjectiveForm = {
-//   growth_intent: "conservative" | "balanced" | "aggressive";
-//   profit_priority: "high" | "protect_growth" | "sacrifice_short_term";
-//   inventory_clearance_priority: boolean;
-//   business_context: string;
-//   country: string;
-//   time_horizon: "1_month";
-// };
 
 type CurrencyRateRow = {
   user_currency: string;
@@ -379,7 +381,11 @@ export default function ObjectivesPageClient({
   });
 
   const [objectiveDraft, setObjectiveDraft] = useState<UserObjectiveForm>(objective);
+  const [expandedChart, setExpandedChart] = useState<"targetSales" | "objectiveMoM" | null>(null);
 
+  const toggleChartExpand = (chart: "targetSales" | "objectiveMoM") => {
+    setExpandedChart((prev) => (prev === chart ? null : chart));
+  };
   const { data, isLoading, isError } = useGetUserDataQuery();
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
 
@@ -1172,21 +1178,99 @@ export default function ObjectivesPageClient({
             <PlaceholderPanel title="Business Journey" />
           </InfoCard>
 
-          <InfoCard
-            title={<PageBreadcrumb pageTitle="Target vs Monthwise Sales" variant="table" align="left" />}
-          >
-            <div className="h-[420px] w-full">
-              <TargetVsSalesChart currencySymbol={homeCurrencyCode === "GBP" ? "£" : homeCurrencyCode === "USD" ? "$" : homeCurrencyCode === "EUR" ? "€" : homeCurrencyCode} />
-            </div>
-          </InfoCard>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {(expandedChart === null || expandedChart === "targetSales") && (
+              <div className={expandedChart === "targetSales" ? "lg:col-span-2" : ""}>
+                <InfoCard
+                  title={
+                    <PageBreadcrumb
+                      pageTitle="Target vs Monthwise Sales"
+                      variant="table"
+                      align="left"
+                    />
+                  }
+                  action={
+                    <button
+                      type="button"
+                      data-no-expand
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleChartExpand("targetSales");
+                      }}
+                      aria-label={
+                        expandedChart === "targetSales"
+                          ? "Collapse Target vs Monthwise Sales chart"
+                          : "Expand Target vs Monthwise Sales chart"
+                      }
+                      title={expandedChart === "targetSales" ? "Collapse" : "Expand"}
+                      className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md dark:bg-gray-800 dark:border-gray-700 dark:text-blue-400"
+                    >
+                      {expandedChart === "targetSales" ? (
+                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                      ) : (
+                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                      )}
+                    </button>
+                  }
+                >
+                  <div className="h-[420px] w-full">
+                    <TargetVsSalesChart
+                      currencySymbol={
+                        homeCurrencyCode === "GBP"
+                          ? "£"
+                          : homeCurrencyCode === "USD"
+                            ? "$"
+                            : homeCurrencyCode === "EUR"
+                              ? "€"
+                              : homeCurrencyCode
+                      }
+                    />
+                  </div>
+                </InfoCard>
+              </div>
+            )}
 
-          <InfoCard
-            title={<PageBreadcrumb pageTitle="Objective MoM (Month on Month)" variant="table" align="left" />}
-          >
-            <div className="h-[420px] w-full">
-              <ObjectiveMoMChart title="Objective MoM Trend" />
-            </div>
-          </InfoCard>
+            {(expandedChart === null || expandedChart === "objectiveMoM") && (
+              <div className={expandedChart === "objectiveMoM" ? "lg:col-span-2" : ""}>
+                <InfoCard
+                  title={
+                    <PageBreadcrumb
+                      pageTitle="Objective MoM (Month on Month)"
+                      variant="table"
+                      align="left"
+                    />
+                  }
+                  action={
+                    <button
+                      type="button"
+                      data-no-expand
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleChartExpand("objectiveMoM");
+                      }}
+                      aria-label={
+                        expandedChart === "objectiveMoM"
+                          ? "Collapse Objective MoM chart"
+                          : "Expand Objective MoM chart"
+                      }
+                      title={expandedChart === "objectiveMoM" ? "Collapse" : "Expand"}
+                      className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md dark:bg-gray-800 dark:border-gray-700 dark:text-blue-400"
+                    >
+                      {expandedChart === "objectiveMoM" ? (
+                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                      ) : (
+                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                      )}
+                    </button>
+                  }
+                >
+                  <div className="h-[420px] w-full">
+                    <ObjectiveMoMChart title="Objective MoM Trend" />
+                  </div>
+                </InfoCard>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

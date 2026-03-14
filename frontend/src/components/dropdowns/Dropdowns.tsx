@@ -597,7 +597,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
       {open && (
         <>
           <motion.div
-            className="fixed inset-0 z-[999999] bg-black/40"
+            className="fixed inset-0 z-[999999] h-full bg-black/40"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
