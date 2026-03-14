@@ -122,7 +122,7 @@ export default function GroupedCollapsibleTable<RowT>({
   onVisibleColCountChange,
   tableClassName = "min-w-[800px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
-  headerRow2ClassName = "bg-[#EFEFEF] text-charcoal-500",
+  headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   summary
 }: Props<RowT>) {
   /* ---------------- State ---------------- */
@@ -292,45 +292,22 @@ export default function GroupedCollapsibleTable<RowT>({
                   className={`${thBase} cursor-pointer select-none text-center ${g.headerClassName || ""}`}
                   title="Click to expand/collapse"
                 >
+                  <div className="flex w-full items-center">
+                    {/* TEXT + INFO */}
+                    <span className="flex-1 inline-flex items-center justify-center gap-1 whitespace-normal break-words leading-tight">
+                      <span className="flex items-center">{g.label}</span>
 
-                  {/* <div className="flex w-full items-start sm:items-center">
-                  
-                    <span className="shrink-0 w-5 flex items-center justify-center">
-                      <span className="rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
-                        {isCollapsed ? "+" : "−"}
-                      </span>
+                      {g.info && (
+                        <span className="flex items-center shrink-0">
+                          {g.info}
+                        </span>
+                      )}
                     </span>
 
-                   
-                    <span className="flex-1 px-2 text-center whitespace-normal break-words leading-tight">
-                      {g.label}
+                    {/* +/- TOGGLE */}
+                    <span className="shrink-0 ml-2 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+                      {isCollapsed ? "+" : "−"}
                     </span>
-
-                  
-                    <span className="shrink-0 w-5 flex items-center justify-center">
-                      {g.info ? g.info : null}
-                    </span>
-                  </div> */}
-
-                  <div className="flex w-full items-start sm:items-center">
-                    {/* LEFT SLOT */}
-                    <span className="shrink-0 w-5 flex items-center justify-center">
-                      <span className="rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
-                        {isCollapsed ? "+" : "−"}
-                      </span>
-                    </span>
-
-                    {/* TEXT */}
-                    <span className="flex-1 px-2 text-center whitespace-normal break-words leading-tight">
-                      {g.label}
-                    </span>
-
-                    {/* RIGHT SLOT */}
-                    {g.info ? (
-                      <span className="shrink-0 w-5 flex items-center justify-center">
-                        {g.info}
-                      </span>
-                    ) : null}
                   </div>
                 </th>
               );
@@ -356,47 +333,25 @@ export default function GroupedCollapsibleTable<RowT>({
                 className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${isExpandable ? "cursor-pointer select-none" : ""
                   }`}
               >
-                {/* <div className="flex items-center justify-center gap-2 min-w-0">
-                  {isExpandable && (
-                    <span className="shrink-0 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
-                      {isTargetCollapsed ? "+" : "−"}
-                    </span>
-                  )}
-
-               
-                  <span className="min-w-0 whitespace-normal break-words leading-tight">
-                    {c.label}
-                  </span>
-
-                </div> */}
-
-                <div className="flex w-full items-start sm:items-center">
-                  {hasLeft && (
-                    <span className="shrink-0 w-4 flex items-center justify-center">
-                      <span className="rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
-                        {isTargetCollapsed ? "+" : "−"}
-                      </span>
-                    </span>
-                  )}
-
-                  {/* <span
-                    className={`${hasLeft || hasRight ? "flex-1 px-2" : "w-full"
-                      } text-center whitespace-normal break-words leading-tight`}
-                  >
-                    {c.label}
-                  </span> */}
-
+                <div className="flex w-full items-center">
+                  {/* TEXT + INFO */}
                   <span
-                    className={`${hasLeft || hasRight ? "flex-1 px-2" : "w-full"
-                      } text-center leading-tight ${c.noWrap ? "whitespace-nowrap" : "whitespace-normal break-words"
+                    className={`flex-1 inline-flex items-center justify-center gap-1 leading-tight ${c.noWrap ? "whitespace-nowrap" : "whitespace-normal break-words"
                       }`}
                   >
-                    {c.label}
+                    <span className="flex items-center">{c.label}</span>
+
+                    {c.info && (
+                      <span className="flex items-center shrink-0">
+                        {c.info}
+                      </span>
+                    )}
                   </span>
 
-                  {hasRight && (
-                    <span className="shrink-0 w-4 flex items-center justify-center">
-                      {c.info}
+                  {/* +/- TOGGLE */}
+                  {hasLeft && (
+                    <span className="shrink-0 ml-2 rounded border border-white/60 bg-white/10 px-1 text-xs leading-none">
+                      {isTargetCollapsed ? "+" : "−"}
                     </span>
                   )}
                 </div>

@@ -176,6 +176,16 @@ const colorMapping: Record<string, string> = {
   "Cash Generated": "#7B9A6D",
 };
 
+const mobileShortLabelMap: Record<string, string> = {
+  Sales: "Sales",
+  "Amazon Fees": "Amz Fees",
+  "Advertising Cost": "Ads",
+  "Tax and Credit": "Tax/Crd",
+  "Other Charges": "Other",
+  "Net Reimbursement": "Reimb",
+  "Cash Generated": "Cash",
+};
+
 const monthsList = [
   "January",
   "February",
@@ -196,6 +206,21 @@ const quarterMapping: Record<string, string[]> = {
   Q2: ["April", "May", "June"],
   Q3: ["July", "August", "September"],
   Q4: ["October", "November", "December"],
+};
+
+const shortMonthMap: Record<string, string> = {
+  January: "Jan",
+  February: "Feb",
+  March: "Mar",
+  April: "Apr",
+  May: "May",
+  June: "Jun",
+  July: "Jul",
+  August: "Aug",
+  September: "Sep",
+  October: "Oct",
+  November: "Nov",
+  December: "Dec",
 };
 
 const quarterToPeriodTypeMap: Record<string, string> = {
@@ -593,10 +618,18 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   }, []);
 
 
+  const [viewportWidth, setViewportWidth] = useState<number>(
+    typeof window !== "undefined" ? window.innerWidth : 1200
+  );
 
-  // chart helpers
-  const viewportWidth =
-    typeof window !== "undefined" ? window.innerWidth : 1200;
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+
 
   const isSmallScreen = viewportWidth < 1024; // mobile + tablet
   const isMobile = viewportWidth < 640;
@@ -614,12 +647,16 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       selectedQuarter &&
       Object.keys(quarterlyMonthlyData).length > 0
     ) {
-      labels = quarterMapping[selectedQuarter] || [];
+      const sourceMonths = quarterMapping[selectedQuarter] || [];
+
+      labels = sourceMonths.map((m) =>
+        isMobile ? shortMonthMap[m] || m : m
+      );
 
       columnsToDisplay2.forEach((key) => {
         if (!selectedGraphs[key]) return;
 
-        const ds = labels.map((monthName) => {
+        const ds = sourceMonths.map((monthName) => {
           const md = quarterlyMonthlyData[monthName];
           return Math.abs(Number(md?.[key] ?? 0));
         });
@@ -637,7 +674,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         });
       });
     } else if (periodType === "yearly") {
-      labels = monthsList;
+      labels = monthsList.map((m) => (isMobile ? shortMonthMap[m] || m : m));
 
       columnsToDisplay2.forEach((key) => {
         if (!selectedGraphs[key]) return;
@@ -671,7 +708,12 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     const filteredKeys = columnsToDisplay2.filter((k) => selectedGraphs[k]);
 
     return {
-      labels: filteredKeys.map((k) => labelMap[k]),
+      labels: filteredKeys.map((k) => {
+        const fullLabel = labelMap[k];
+        return isMobile
+          ? mobileShortLabelMap[fullLabel] || fullLabel
+          : fullLabel;
+      }),
       datasets: [
         {
           label: "Amount",
@@ -684,15 +726,6 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
           ),
           borderWidth: 1,
           maxBarThickness: barWidthInPixels,
-
-          // keep same color on hover
-          hoverBackgroundColor: filteredKeys.map(
-            (k) => colorMapping[labelMap[k]] || "#999"
-          ),
-          hoverBorderColor: filteredKeys.map(
-            (k) => colorMapping[labelMap[k]] || "#666"
-          ),
-          hoverBorderWidth: 1,
         },
       ],
     };
@@ -714,6 +747,10 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     },
     scales: {
       x: {
+        grid: {
+          display: false,
+          drawBorder: false,
+        },
         title: {
           display: false,
         },
@@ -726,22 +763,9 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
             this: any,
             _value: unknown,
             index: number
-          ): string | string[] | number {
+          ): string | number {
             const label = this.chart.data.labels?.[index];
-
-            if (typeof label !== "string") {
-              return typeof label === "number" ? label : "";
-            }
-
-            if (isSmallScreen) {
-              const words = label.split(" ");
-
-              if (words.length >= 2) {
-                return [words[0], words.slice(1).join(" ")];
-              }
-            }
-
-            return label;
+            return typeof label === "string" || typeof label === "number" ? label : "";
           },
         },
         offset: true,
@@ -786,6 +810,10 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     },
     scales: {
       x: {
+        grid: {
+          display: false,
+          drawBorder: false,
+        },
         title: {
           display: false,
         },
@@ -794,20 +822,9 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
           maxRotation: 0,
           minRotation: 0,
           autoSkip: false,
-          callback: function (this: any, _value: any, index: number): string | string[] | number {
+          callback: function (this: any, _value: any, index: number): string | number {
             const label = this.chart.data.labels?.[index];
-
-            if (typeof label !== "string") return label;
-
-            if (isSmallScreen) {
-              const words = label.split(" ");
-
-              if (words.length >= 2) {
-                return [words[0], words.slice(1).join(" ")];
-              }
-            }
-
-            return label;
+            return typeof label === "string" || typeof label === "number" ? label : "";
           },
         },
       },
@@ -900,13 +917,13 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
 
   return (
-    <div className="w-full">
+    <div className="w-full pb-6 sm:pb-0">
 
       {!embedded && (
-        <div className="sticky top-0 z-40 w-full flex flex-col
-  bg-[#F7F7F7]
-  sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
-  border-b border-gray-200">
+        <div
+          className="w-full flex flex-col bg-[#F7F7F7] gap-1 sm:gap-4 border-b border-gray-200
+  md:sticky md:top-0 md:z-40 sm:flex-row md:items-center md:justify-between"
+        >
           {/* LEFT: Title */}
           <div className="mb-2 flex flex-wrap items-start gap-2">
             <div>
@@ -951,7 +968,6 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         </div>
       )}
 
-
       {/* Show alert until a valid period selection is made */}
       {
         !isPreviewMode && !canShowResults && (
@@ -965,7 +981,6 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
           </div>
         )
       }
-
 
       {/* Loading – now using Loader */}
       {
@@ -1019,10 +1034,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
             {/* Chart Section */}
             <div className="mt-6 rounded-xl bg-white p-4 shadow border">
-
-
-              <div className="h-[50vh] sm:h-[40vw] max-h-[560px]">
-                {/* <div className="h-[280px] sm:h-[320px] md:h-[360px]"> */}
+              <div className="h-[320px] sm:h-[40vw] max-h-[560px]">
                 {periodType === "monthly" ? (
                   <Bar
                     ref={chartRef}

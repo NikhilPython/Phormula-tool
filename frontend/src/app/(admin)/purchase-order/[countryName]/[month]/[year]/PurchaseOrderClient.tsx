@@ -15,6 +15,13 @@ interface Row {
   [key: string]: any;
 }
 
+type PurchaseOrderPageProps = {
+  embedded?: boolean;
+  countryNameProp?: string;
+  selectedMonthProp?: string;
+  selectedYearProp?: string;
+};
+
 const MONTHS = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December',
@@ -26,9 +33,22 @@ function capitalize(s: string) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
 }
 
-export default function PurchaseOrderPage() {
-  const { countryName = '', month: urlMonth = '', year: urlYear = '' } =
-    (useParams() as { countryName?: string; month?: string; year?: string });
+export default function PurchaseOrderPage({
+  embedded = false,
+  countryNameProp,
+  selectedMonthProp,
+  selectedYearProp,
+}: PurchaseOrderPageProps) {
+  const params = useParams() as {
+    countryName?: string;
+    month?: string;
+    year?: string;
+  };
+
+  const countryName = (countryNameProp ?? params?.countryName ?? '').toString();
+  const urlMonth = (selectedMonthProp ?? params?.month ?? '').toString();
+  const urlYear = (selectedYearProp ?? params?.year ?? '').toString();
+
   const router = useRouter();
 
   const [month, setMonth] = useState<string>('');

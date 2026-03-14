@@ -1,61 +1,80 @@
-
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 import jwt
-from sqlalchemy import create_engine, text
-from sqlalchemy import inspect
+from sqlalchemy import create_engine, text, inspect
 import os
 import base64
 from config import Config
 import json
 from openai import OpenAI
-from sqlalchemy import text
-SECRET_KEY = Config.SECRET_KEY
 from dotenv import load_dotenv
 from app.routes.business_intelligence import get_sku_monthly_history
 from app.utils.token_utils import get_effective_user_id_from_token
-from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy, build_sku_inventory_flags, fetch_inventory_aged_by_user, get_or_create_summary
-from app.models.user_models  import UserObjective
+from app.utils.monthwise_ai_summary_utils import (
+    run_prompt_2_strategy,
+    build_sku_inventory_flags,
+    fetch_inventory_aged_by_user,
+    get_or_create_summary
+)
+from app.models.user_models import UserObjective
 
 load_dotenv()
+
+SECRET_KEY = Config.SECRET_KEY
 db_url = os.getenv('DATABASE_URL')
-db_url1= os.getenv('DATABASE_ADMIN_URL')
+db_url1 = os.getenv('DATABASE_ADMIN_URL')
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 skuwise_bp = Blueprint('skuwise_bp', __name__)
+
+# Create engines once only
+engine = create_engine(
+    db_url,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=10,
+    max_overflow=20
+)
+
+admin_engine = create_engine(
+    db_url1,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=5,
+    max_overflow=10
+)
+
 
 def encode_file_to_base64(file_path):
     with open(file_path, 'rb') as file:
         return base64.b64encode(file.read()).decode('utf-8')
+
 
 def get_countries_for_currency(currency):
     currency = currency.lower()
 
     if currency == "usd":
         return ["uk_usd", "us", "global"]
-
     elif currency == "inr":
         return ["uk", "us", "global_inr"]
-
     elif currency == "gbp":
         return ["uk", "us", "global_gbp"]
-
     elif currency == "cad":
         return ["uk", "us", "global_cad"]
 
-    # default fallback
     return ["uk", "us", "global"]
 
 
-def get_conversion_rate(conn1,source_currency, target_currency, month, year):
+def get_conversion_rate(conn1, source_currency, target_currency, month, year):
     try:
         query = text("""
-            SELECT conversion_rate 
+            SELECT conversion_rate
             FROM currency_conversion
             WHERE LOWER(user_currency) = :source
-            AND LOWER(selected_currency) = :target
-            AND LOWER(month) = :month
-            AND year = :year
+              AND LOWER(selected_currency) = :target
+              AND LOWER(month) = :month
+              AND year = :year
             LIMIT 1
         """)
         result = conn1.execute(query, {
@@ -66,216 +85,15 @@ def get_conversion_rate(conn1,source_currency, target_currency, month, year):
         }).fetchone()
 
         return float(result[0]) if result else 1.0
-    except:
+    except Exception:
         return 1.0
 
 
 country_currency_map = {
     "uk": "gbp",
     "us": "usd",
-    "global": None   # global stays as it is (optional)
+    "global": None
 }
-
-
-# @skuwise_bp.route('/ProductwisePerformance', methods=['POST'])
-# def productwise_performance():
-#     try:
-#         # Authentication
-#         auth_header = request.headers.get('Authorization')
-#         if not auth_header or not auth_header.startswith('Bearer '):
-#             return jsonify({'error': 'Authorization token missing or invalid'}), 401
-
-#         token = auth_header.split(' ')[1]
-#         try:
-#             payload, user_id, member_id = get_effective_user_id_from_token(token)
-#             user_id = str(payload.get('user_id'))
-#         except jwt.ExpiredSignatureError:
-#             return jsonify({'error': 'Token expired'}), 401
-#         except jwt.InvalidTokenError:
-#             return jsonify({'error': 'Invalid token'}), 401
-
-#         # Request data
-#         data = request.get_json()
-#         product_name = data.get('product_name')
-#         time_range = data.get('time_range', 'Yearly')
-#         year = data.get('year', datetime.now().year)
-#         quarter = data.get('quarter')
-
-#         home_currency = (data.get('home_currency') or 'USD').lower()
-
-#         requested_countries = get_countries_for_currency(home_currency)
-
-#         if not product_name:
-#             return jsonify({'error': 'Product name is required'}), 400
-
-#         # DB connections
-#         engine = create_engine(db_url)
-#         engine1 = create_engine(db_url1)
-#         conn = engine.connect()
-#         conn1 = engine1.connect()
-#         inspector = inspect(engine)
-#         all_tables = inspector.get_table_names()
-
-#         # Month definitions
-#         month_mapping = {
-#             'january': '01', 'february': '02', 'march': '03',
-#             'april': '04', 'may': '05', 'june': '06',
-#             'july': '07', 'august': '08', 'september': '09',
-#             'october': '10', 'november': '11', 'december': '12'
-#         }
-#         quarter_months = {
-#             '1': ['january', 'february', 'march'],
-#             '2': ['april', 'may', 'june'],
-#             '3': ['july', 'august', 'september'],
-#             '4': ['october', 'november', 'december']
-#         }
-
-#         if time_range == 'Quarterly' and quarter:
-#             months_to_fetch = quarter_months.get(str(quarter), [])
-#         else:
-#             months_to_fetch = list(month_mapping.keys())
-
-#         result_data = {}
-
-#         # Iterate over requested countries
-#         for country in requested_countries:
-
-#             country_data = []
-
-#             for month in months_to_fetch:
-#                 month_num = month_mapping[month]
-
-#                 # global / global_gbp / global_inr ... all have *_table suffix
-#                 if country.lower().startswith("global"):
-#                     table_patterns = [
-#                         f"skuwisemonthly_{user_id}_{country}_{month}{year}_table"
-#                     ]
-#                 else:
-#                     table_patterns = [
-#                         f"skuwisemonthly_{user_id}_{country}_{month}{year}"
-#                     ]
-
-#                 total_sales = 0.0
-#                 total_quantity = 0
-#                 total_profit = 0.0
-#                 total_asp = 0.0
-#                 total_cost_of_unit_sold = 0.0
-#                 table_found = False
-#                 conversion_rate_applied = None
-
-#                 for i, table_pattern in enumerate(table_patterns):
-#                     matching_tables = [
-#                         table for table in all_tables
-#                         if table.lower() == table_pattern.lower()
-#                     ]
-
-#                     if not matching_tables:
-#                         print(f"    ✗ No table found for: {table_pattern}")
-#                         continue
-
-#                     table_found = True
-#                     table_name = matching_tables[0]
-
-#                     try:
-#                         columns = [
-#                             col['name'] for col in inspector.get_columns(table_name)
-#                         ]
-#                         required_cols = {
-#                             'product_name',
-#                             'net_sales',
-#                             'quantity',
-#                             'profit',
-#                             'asp',
-#                             'cost_of_unit_sold',
-#                         }
-#                         if not required_cols.issubset(columns):
-#                             print(f"    Skipping table {table_name}: required columns missing")
-#                             continue
-
-#                         query = text(f"""
-#                             SELECT net_sales, quantity, profit, asp, cost_of_unit_sold
-#                             FROM "{table_name}"
-#                             WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
-#                         """)
-
-#                         rows = conn.execute(
-#                             query, {'product_name': product_name}
-#                         ).fetchall()
-
-#                         table_sales = sum(float(row[0] or 0) for row in rows)
-#                         table_quantity = sum(int(row[1] or 0) for row in rows)
-#                         table_profit = sum(float(row[2] or 0) for row in rows)
-#                         table_asp = sum(float(row[3] or 0) for row in rows)
-#                         table_cost_of_unit_sold = sum(
-#                             float(row[4] or 0) for row in rows
-#                         )
-#                         if country.lower() in ('uk', 'us'):
-#                             source_currency = country_currency_map.get(country.lower())
-#                             target_currency = home_currency.lower()
-
-#                             if source_currency and target_currency:
-#                                 conversion_rate = get_conversion_rate(
-#                                     conn1,
-#                                     source_currency,
-#                                     target_currency,
-#                                     month,
-#                                     year
-#                                 )
-#                             else:
-#                                 conversion_rate = 1.0
-
-#                             # Apply conversion only for UK / US
-#                             table_sales *= conversion_rate
-#                             table_profit *= conversion_rate
-#                             table_asp *= conversion_rate
-#                             table_cost_of_unit_sold *= conversion_rate
-
-#                             conversion_rate_applied = conversion_rate
-#                         else:
-#                             conversion_rate_applied = 1.0
-                           
-#                         total_sales += table_sales
-#                         total_quantity += table_quantity
-#                         total_profit += table_profit
-#                         total_asp += table_asp
-#                         total_cost_of_unit_sold += table_cost_of_unit_sold
-#                     except Exception as e:
-#                         conn.rollback()
-#                         print(f"Error querying table {table_name}: {str(e)}")
-
-#                 gross_margin = (
-#                     (total_profit / total_sales) * 100 if total_sales > 0 else 0.0
-#                 )
-
-#                 country_data.append({
-#                     'month': month.capitalize(),
-#                     'month_num': month_num,
-#                     'net_sales': total_sales if table_found else 0.0,
-#                     'quantity': total_quantity if table_found else 0,
-#                     'profit': total_profit if table_found else 0.0,
-#                     'gross_margin': gross_margin,
-#                     'year': year,
-#                     'conversion_rate_applied': conversion_rate_applied,
-#                 })
-
-#             country_data.sort(key=lambda x: x['month_num'])
-#             result_data[country] = country_data
-
-#         conn.close()
-#         conn1.close()
-
-#         return jsonify({
-#             'success': True,
-#             'product_name': product_name,
-#             'time_range': time_range,
-#             'year': year,
-#             'quarter': quarter if time_range == 'Quarterly' else None,
-#             'data': result_data,
-#             'available_countries': list(result_data.keys())
-#         })
-
-#     except Exception as e:
-#         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
 
 @skuwise_bp.route('/ProductwisePerformance', methods=['POST'])
@@ -296,26 +114,17 @@ def productwise_performance():
             return jsonify({'error': 'Invalid token'}), 401
 
         # Request data
-        data = request.get_json()
+        data = request.get_json() or {}
         product_name = data.get('product_name')
         time_range = data.get('time_range', 'Yearly')
         year = data.get('year', datetime.now().year)
         quarter = data.get('quarter')
-
         home_currency = (data.get('home_currency') or 'USD').lower()
 
         requested_countries = get_countries_for_currency(home_currency)
 
         if not product_name:
             return jsonify({'error': 'Product name is required'}), 400
-
-        # DB connections
-        engine = create_engine(db_url)
-        engine1 = create_engine(db_url1)
-        conn = engine.connect()
-        conn1 = engine1.connect()
-        inspector = inspect(engine)
-        all_tables = inspector.get_table_names()
 
         # Month definitions
         month_mapping = {
@@ -339,148 +148,143 @@ def productwise_performance():
 
         result_data = {}
 
-        # Iterate over requested countries
-        for country in requested_countries:
+        with engine.connect() as conn, admin_engine.connect() as conn1:
+            inspector = inspect(engine)
+            all_tables = inspector.get_table_names()
 
-            country_data = []
+            # Iterate over requested countries
+            for country in requested_countries:
+                country_data = []
 
-            for month in months_to_fetch:
-                month_num = month_mapping[month]
+                for month in months_to_fetch:
+                    month_num = month_mapping[month]
 
-                if country.lower().startswith("global"):
-                    table_patterns = [
-                        f"skuwisemonthly_{user_id}_{country}_{month}{year}_table"
-                    ]
-                else:
-                    table_patterns = [
-                        f"skuwisemonthly_{user_id}_{country}_{month}{year}"
-                    ]
-
-                total_sales = 0.0
-                total_quantity = 0
-                total_profit = 0.0
-                total_asp = 0.0
-                total_sales_mix = 0.0
-                total_profit_mix = 0.0
-                total_cost_of_unit_sold = 0.0
-
-                table_found = False
-                conversion_rate_applied = None
-
-                for table_pattern in table_patterns:
-
-                    matching_tables = [
-                        table for table in all_tables
-                        if table.lower() == table_pattern.lower()
-                    ]
-
-                    if not matching_tables:
-                        # print(f"✗ No table found for: {table_pattern}")
-                        continue
-
-                    table_found = True
-                    table_name = matching_tables[0]
-
-                    try:
-
-                        columns = [
-                            col['name'] for col in inspector.get_columns(table_name)
+                    if country.lower().startswith("global"):
+                        table_patterns = [
+                            f"skuwisemonthly_{user_id}_{country}_{month}{year}_table"
+                        ]
+                    else:
+                        table_patterns = [
+                            f"skuwisemonthly_{user_id}_{country}_{month}{year}"
                         ]
 
-                        required_cols = {
-                            'product_name',
-                            'net_sales',
-                            'quantity',
-                            'profit',
-                            'asp',
-                            'sales_mix',
-                            'profit_mix',
-                            'cost_of_unit_sold',
-                        }
+                    total_sales = 0.0
+                    total_quantity = 0
+                    total_profit = 0.0
+                    total_asp = 0.0
+                    total_sales_mix = 0.0
+                    total_profit_mix = 0.0
+                    total_cost_of_unit_sold = 0.0
 
-                        if not required_cols.issubset(columns):
-                            print(f"Skipping table {table_name}: required columns missing")
+                    table_found = False
+                    conversion_rate_applied = None
+
+                    for table_pattern in table_patterns:
+                        matching_tables = [
+                            table for table in all_tables
+                            if table.lower() == table_pattern.lower()
+                        ]
+
+                        if not matching_tables:
                             continue
 
-                        query = text(f"""
-                            SELECT net_sales, quantity, profit, asp, sales_mix, profit_mix, cost_of_unit_sold
-                            FROM "{table_name}"
-                            WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
-                        """)
+                        table_found = True
+                        table_name = matching_tables[0]
 
-                        rows = conn.execute(
-                            query, {'product_name': product_name}
-                        ).fetchall()
+                        try:
+                            columns = [
+                                col['name'] for col in inspector.get_columns(table_name)
+                            ]
 
-                        table_sales = sum(float(row[0] or 0) for row in rows)
-                        table_quantity = sum(int(row[1] or 0) for row in rows)
-                        table_profit = sum(float(row[2] or 0) for row in rows)
-                        table_asp = sum(float(row[3] or 0) for row in rows)
-                        table_sales_mix = sum(float(row[4] or 0) for row in rows)
-                        table_profit_mix = sum(float(row[5] or 0) for row in rows)
-                        table_cost_of_unit_sold = sum(float(row[6] or 0) for row in rows)
+                            required_cols = {
+                                'product_name',
+                                'net_sales',
+                                'quantity',
+                                'profit',
+                                'asp',
+                                'sales_mix',
+                                'profit_mix',
+                                'cost_of_unit_sold',
+                            }
 
-                        if country.lower() in ('uk', 'us'):
+                            if not required_cols.issubset(columns):
+                                print(f"Skipping table {table_name}: required columns missing")
+                                continue
 
-                            source_currency = country_currency_map.get(country.lower())
-                            target_currency = home_currency.lower()
+                            query = text(f"""
+                                SELECT net_sales, quantity, profit, asp, sales_mix, profit_mix, cost_of_unit_sold
+                                FROM "{table_name}"
+                                WHERE LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
+                            """)
 
-                            if source_currency and target_currency:
-                                conversion_rate = get_conversion_rate(
-                                    conn1,
-                                    source_currency,
-                                    target_currency,
-                                    month,
-                                    year
-                                )
+                            rows = conn.execute(
+                                query, {'product_name': product_name}
+                            ).fetchall()
+
+                            table_sales = sum(float(row[0] or 0) for row in rows)
+                            table_quantity = sum(int(row[1] or 0) for row in rows)
+                            table_profit = sum(float(row[2] or 0) for row in rows)
+                            table_asp = sum(float(row[3] or 0) for row in rows)
+                            table_sales_mix = sum(float(row[4] or 0) for row in rows)
+                            table_profit_mix = sum(float(row[5] or 0) for row in rows)
+                            table_cost_of_unit_sold = sum(float(row[6] or 0) for row in rows)
+
+                            if country.lower() in ('uk', 'us'):
+                                source_currency = country_currency_map.get(country.lower())
+                                target_currency = home_currency.lower()
+
+                                if source_currency and target_currency:
+                                    conversion_rate = get_conversion_rate(
+                                        conn1,
+                                        source_currency,
+                                        target_currency,
+                                        month,
+                                        year
+                                    )
+                                else:
+                                    conversion_rate = 1.0
+
+                                table_sales *= conversion_rate
+                                table_profit *= conversion_rate
+                                table_asp *= conversion_rate
+                                table_cost_of_unit_sold *= conversion_rate
+
+                                conversion_rate_applied = conversion_rate
                             else:
-                                conversion_rate = 1.0
+                                conversion_rate_applied = 1.0
 
-                            table_sales *= conversion_rate
-                            table_profit *= conversion_rate
-                            table_asp *= conversion_rate
-                            table_cost_of_unit_sold *= conversion_rate
+                            total_sales += table_sales
+                            total_quantity += table_quantity
+                            total_profit += table_profit
+                            total_asp += table_asp
+                            total_sales_mix += table_sales_mix
+                            total_profit_mix += table_profit_mix
+                            total_cost_of_unit_sold += table_cost_of_unit_sold
 
-                            conversion_rate_applied = conversion_rate
+                        except Exception as e:
+                            print(f"Error querying table {table_name}: {str(e)}")
+                            continue
 
-                        else:
-                            conversion_rate_applied = 1.0
+                    gross_margin = (
+                        (total_profit / total_sales) * 100 if total_sales > 0 else 0.0
+                    )
 
-                        total_sales += table_sales
-                        total_quantity += table_quantity
-                        total_profit += table_profit
-                        total_asp += table_asp
-                        total_sales_mix += table_sales_mix
-                        total_profit_mix += table_profit_mix
-                        total_cost_of_unit_sold += table_cost_of_unit_sold
+                    country_data.append({
+                        'month': month.capitalize(),
+                        'month_num': month_num,
+                        'net_sales': total_sales if table_found else 0.0,
+                        'quantity': total_quantity if table_found else 0,
+                        'profit': total_profit if table_found else 0.0,
+                        'asp': total_asp if table_found else 0.0,
+                        'sales_mix': total_sales_mix if table_found else 0.0,
+                        'profit_mix': total_profit_mix if table_found else 0.0,
+                        'gross_margin': gross_margin,
+                        'year': year,
+                        'conversion_rate_applied': conversion_rate_applied,
+                    })
 
-                    except Exception as e:
-                        conn.rollback()
-                        print(f"Error querying table {table_name}: {str(e)}")
-
-                gross_margin = (
-                    (total_profit / total_sales) * 100 if total_sales > 0 else 0.0
-                )
-
-                country_data.append({
-                    'month': month.capitalize(),
-                    'month_num': month_num,
-                    'net_sales': total_sales if table_found else 0.0,
-                    'quantity': total_quantity if table_found else 0,
-                    'profit': total_profit if table_found else 0.0,
-                    'asp': total_asp if table_found else 0.0,
-                    'sales_mix': total_sales_mix if table_found else 0.0,
-                    'profit_mix': total_profit_mix if table_found else 0.0,
-                    'gross_margin': gross_margin,
-                    'year': year,
-                    'conversion_rate_applied': conversion_rate_applied,
-                })
-
-            country_data.sort(key=lambda x: x['month_num'])
-            result_data[country] = country_data
-
-        conn.close()
-        conn1.close()
+                country_data.sort(key=lambda x: x['month_num'])
+                result_data[country] = country_data
 
         return jsonify({
             'success': True,
@@ -515,37 +319,32 @@ def product_search():
         return jsonify({'error': 'Search query is required'}), 400
 
     try:
-        db_url = os.getenv('DATABASE_URL')
-        engine = create_engine(db_url)
-        conn = engine.connect()
-
         table_name = f"sku_{user_id}_data_table"
-        
-        # Check if the table exists
-        inspector = inspect(engine)
-        if not inspector.has_table(table_name):
-            return jsonify({'error': 'No data found for this user.'}), 404
 
-        # Keep LIKE for search suggestions but add DISTINCT to avoid duplicates
-        query = text(f"""
-            SELECT DISTINCT product_name
-            FROM {table_name}
-            WHERE LOWER(product_name) LIKE LOWER(:search_query)
-            ORDER BY product_name
-            LIMIT 10
-        """)
-        
-        results = conn.execute(query, {'search_query': f'%{search_query}%'}).fetchall()
-        
+        with engine.connect() as conn:
+            inspector = inspect(engine)
+
+            if not inspector.has_table(table_name):
+                return jsonify({'error': 'No data found for this user.'}), 404
+
+            query = text(f"""
+                SELECT DISTINCT product_name
+                FROM "{table_name}"
+                WHERE LOWER(product_name) LIKE LOWER(:search_query)
+                ORDER BY product_name
+                LIMIT 10
+            """)
+
+            results = conn.execute(
+                query, {'search_query': f'%{search_query}%'}
+            ).fetchall()
+
         products = [{'product_name': row[0]} for row in results]
-
-        conn.close()
-
         return jsonify({'products': products}), 200
 
     except Exception as e:
         return jsonify({'error': f'Error searching products: {str(e)}'}), 500
-    
+
 
 @skuwise_bp.route('/Product_names', methods=['GET'])
 def product_names():
@@ -562,35 +361,29 @@ def product_names():
         return jsonify({'error': 'Invalid token'}), 401
 
     try:
-        db_url = os.getenv('DATABASE_URL')
-        engine = create_engine(db_url)
-        conn = engine.connect()
-
         table_name = f"sku_{user_id}_data_table"
 
-        # Check if the table exists
-        inspector = inspect(engine)
-        if not inspector.has_table(table_name):
-            conn.close()
-            return jsonify({'error': 'No data table found for this user.'}), 404
+        with engine.connect() as conn:
+            inspector = inspect(engine)
 
-        # Fetch only product_name
-        query = text(f"""
-            SELECT DISTINCT product_name
-            FROM {table_name}
-            ORDER BY product_name ASC
-        """)
+            if not inspector.has_table(table_name):
+                return jsonify({'error': 'No data table found for this user.'}), 404
 
-        rows = conn.execute(query).fetchall()
-        conn.close()
+            query = text(f"""
+                SELECT DISTINCT product_name
+                FROM "{table_name}"
+                ORDER BY product_name ASC
+            """)
+
+            rows = conn.execute(query).fetchall()
 
         product_list = [row[0] for row in rows]
-
         return jsonify({'product_names': product_list}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
+    
+    
 
 
 ############################################################################################################################################
@@ -1278,3 +1071,4 @@ def productwise_growth_ai():
     except Exception as e:
         print("ProductwiseGrowthAI ERROR:", str(e))
         return jsonify({'error': str(e)}), 500
+

@@ -444,6 +444,7 @@ def process_forecasting(user_id, country, mv, year, engine, table_name_prefix="u
       - 5..11 latest contiguous months -> ARIMA ONLY
       - >=12 latest contiguous months  -> ARIMA + HYBRID
     """
+    
 
     # --- 12-month window ending at last full month ---
     today = datetime.now()
@@ -2328,8 +2329,111 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     current_month = datetime.now().strftime("%b").lower()
     inventory_filename = f"inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx"
 
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils.dataframe import dataframe_to_rows
+
+    # ----------------- Build 2-sheet Excel -----------------
+    inventory_sheet_cols = [
+        "sku",
+        "Product Name",
+        f"{sold_m3} Sold",
+        f"{sold_m2} Sold",
+        f"{sold_m1} Sold",
+    ] + monthwise_forecast_cols + future_month_columns + [
+        "Projected Sales Total",
+    ]
+
+    inventory_sheet_cols = [c for c in inventory_sheet_cols if c in inventory_forecast.columns]
+
+    dispatch_sheet_cols = [
+        "sku",
+        "Product Name",
+        "Inventory at Month End",
+        "Inventory Coverage Ratio Before Dispatch",
+        "Dispatch",
+        "Current Inventory + Dispatch",
+    ]
+    dispatch_sheet_cols = [c for c in dispatch_sheet_cols if c in inventory_forecast.columns]
+
+    inventory_sheet_df = inventory_forecast[inventory_sheet_cols].copy()
+    dispatch_sheet_df = inventory_forecast[dispatch_sheet_cols].copy()
+
+    current_month = datetime.now().strftime("%b").lower()
+    inventory_filename = f"inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx"
+
+    # ---------- workbook ----------
+    wb = Workbook()
+    ws_inventory = wb.active
+    ws_inventory.title = "Inventory"
+    ws_dispatch = wb.create_sheet("Dispatch")
+
+    # ---------- styles ----------
+    title_fill = PatternFill("solid", fgColor="1F3B2D")
+    title_font = Font(color="FFFFFF", bold=True, size=14)
+    meta_font = Font(bold=False, size=11)
+    header_fill = PatternFill("solid", fgColor="D9EAD3")
+    header_font = Font(bold=True, size=11)
+    thin = Side(style="thin", color="CCCCCC")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def write_sheet(ws, title_text, df):
+        # Title row
+        ws["A1"] = title_text
+        ws["A1"].fill = title_fill
+        ws["A1"].font = title_font
+        ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
+
+        # Merge title across columns
+        max_cols = max(len(df.columns), 6)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_cols)
+        company_name = "Skin"
+
+        # Meta info
+        ws["A2"] = f"Company Name : {company_name}"
+        ws["A4"] = f"Country : {str(country).upper()}"
+        ws["A5"] = "Platform : Phormula"
+
+        for row in range(2, 6):
+            ws[f"A{row}"].font = meta_font
+
+        start_row = 7
+
+        # Write dataframe
+        for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start_row):
+            for c_idx, value in enumerate(row, 1):
+                cell = ws.cell(row=r_idx, column=c_idx, value=value)
+                cell.border = border
+
+                if r_idx == start_row:
+                    cell.fill = header_fill
+                    cell.font = header_font
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                else:
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        # Autofit-ish widths
+        from openpyxl.utils import get_column_letter
+
+        for col_idx in range(1, ws.max_column + 1):
+            max_length = 0
+            col_letter = get_column_letter(col_idx)
+
+            for row_idx in range(1, ws.max_row + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                try:
+                    if cell.value is not None:
+                        max_length = max(max_length, len(str(cell.value)))
+                except Exception:
+                    pass
+
+            ws.column_dimensions[col_letter].width = min(max_length + 2, 28)
+
+    write_sheet(ws_inventory, "Inventory Report", inventory_sheet_df)
+    write_sheet(ws_dispatch, "Dispatch Report", dispatch_sheet_df)
+
     inv_buf = BytesIO()
-    inventory_forecast.to_excel(inv_buf, index=False, engine="openpyxl")
+    wb.save(inv_buf)
     inv_buf.seek(0)
 
     print("\n========== FORECAST FINISHED ==========")

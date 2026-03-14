@@ -32,6 +32,7 @@ add_profit_column_from_uk_profit,
 get_previous_month_mtd_payload,
 _i
 )
+from app.services.amazon_monthly_sync_service import sync_monthly_transactions_for_user
 from app.utils.amazon_utils import MTD_COLUMNS, COUNTRY_TO_SELECTED_CURRENCY, DEFAULT_SKU_PRICE_CURRENCY
 from app.utils.amazon_utils import AmazonSPAPIClient, amazon_client
 from flask import jsonify, request, send_file
@@ -413,6 +414,162 @@ def list_amazon_connections():
 # ------------------------------------------------- MTD fetched -------------------------------------------------
 
 
+# # =========================================================
+# # ROUTE
+# # =========================================================
+# @amazon_api_bp.route("/amazon_api/finances/monthly_transactions", methods=["GET"])
+# def finances_monthly_transactions():
+#     auth_header = request.headers.get("Authorization")
+#     if not auth_header or not auth_header.startswith("Bearer "):
+#         return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
+
+#     token = auth_header.split(" ")[1]
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#         user_id = payload["user_id"]
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({"success": False, "error": "Token has expired"}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({"success": False, "error": "Invalid token"}), 401
+
+#     now_utc = datetime.now(timezone.utc)
+#     try:
+#         year = int(request.args.get("year", now_utc.year))
+#         month = int(request.args.get("month", 6))
+#         if month < 1 or month > 12:
+#             raise ValueError
+#     except ValueError:
+#         return jsonify({"success": False, "error": "Invalid year or month"}), 400
+
+#     transaction_status = request.args.get("transaction_status", "RELEASED")
+#     marketplace_id = request.args.get("marketplace_id")
+#     transaction_type_filter = request.args.get("transaction_type")
+#     response_format = (request.args.get("format") or "json").lower()
+
+#     store_in_db = (request.args.get("store_in_db", "true").lower() != "false")
+#     run_upload = (request.args.get("run_upload_pipeline", "false").lower() == "true")
+#     ui_country = (request.args.get("country") or "").strip().lower()
+#     if not ui_country:
+#         ui_country = "uk"  # fallback (or map by marketplace_id)
+
+
+#     if run_upload and not ui_country:
+#         return jsonify({"success": False, "error": "country is required when run_upload_pipeline=true"}), 400
+
+#     _apply_region_and_marketplace_from_request()
+
+#     au = amazon_user.query.filter_by(user_id=user_id, region=amazon_client.region).first()
+#     if not au or not au.refresh_token:
+#         return jsonify({
+#             "success": False,
+#             "error": "Amazon account not connected for this region",
+#             "status": "no_refresh_token",
+#         }), 400
+
+#     amazon_client.refresh_token = au.refresh_token
+
+#     posted_after, posted_before = _month_date_range_utc(year, month)
+
+#     params: Dict[str, Any] = {
+#         "postedAfter": posted_after,
+#         "postedBefore": posted_before,
+#         "marketplaceId": marketplace_id or amazon_client.marketplace_id,
+#     }
+#     if transaction_status:
+#         params["transactionStatus"] = transaction_status
+
+#     all_rows: List[Dict[str, Any]] = []
+
+#     while True:
+#         res = amazon_client.make_api_call(
+#             "/finances/2024-06-19/transactions",
+#             method="GET",
+#             params=params,
+#         )
+#         if not res or "error" in res:
+#             return jsonify({"success": False, "error": res or {"error": "Unknown SP-API error"}}), 502
+
+#         payload_res = res.get("payload") or res
+#         transactions = payload_res.get("transactions") or []
+
+#         for tx in transactions:
+#             tstatus = (tx or {}).get("transactionStatus")
+#             ttype = (tx or {}).get("transactionType")
+
+#             if tstatus != "RELEASED":
+#                 continue
+#             if transaction_type_filter and ttype != transaction_type_filter:
+#                 continue
+
+#             all_rows.append(_flatten_transaction_to_row(tx or {}))
+
+#         next_token = payload_res.get("nextToken")
+#         if not next_token:
+#             break
+#         params = {"nextToken": next_token}
+
+#     pipeline_result = None
+#     if run_upload:
+#         if not store_in_db:
+#             pipeline_result = {
+#                 "success": True,
+#                 "skipped": True,
+#                 "message": "run_upload_pipeline skipped because store_in_db=false and pipeline always uses DB."
+#             }
+#         else:
+#             df_in = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
+#             try:
+#                 pipeline_result = run_upload_pipeline_from_df(
+#                     df_raw=df_in,
+#                     user_id=user_id,
+#                     country=ui_country,
+#                     month_num=str(month),
+#                     year=str(year),
+#                     db_url=db_url,
+#                     db_url_aux=db_url1,
+#                 )
+#             except Exception as e:
+#                 return jsonify({"success": False, "error": f"Upload pipeline failed: {str(e)}"}), 500
+
+#             if not pipeline_result or not pipeline_result.get("success"):
+#                 return jsonify({
+#                     "success": False,
+#                     "error": "Upload pipeline returned failure",
+#                     "pipeline_result": pipeline_result,
+#                 }), 400
+
+#     if response_format == "excel":
+#         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
+#         df = df.reindex(columns=MTD_COLUMNS, fill_value=0.0)
+
+#         output = io.BytesIO()
+#         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+#             df.to_excel(writer, index=False, sheet_name="Transactions")
+
+#             if pipeline_result:
+#                 pd.DataFrame([pipeline_result]).to_excel(writer, index=False, sheet_name="PipelineMeta")
+
+#         output.seek(0)
+#         filename = f"finances_transactions_{year}_{month:02d}.xlsx"
+#         return send_file(
+#             output,
+#             as_attachment=True,
+#             download_name=filename,
+#             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+#         )
+
+#     return jsonify({
+#         "success": True,
+#         "year": year,
+#         "month": month,
+#         "count": len(all_rows),
+#         "store_in_db": store_in_db,
+#         "run_upload_pipeline": run_upload,
+#         "country": ui_country,
+#         "pipeline_result": pipeline_result,
+#         "transactions": all_rows,
+#     }), 200
+
 # =========================================================
 # ROUTE
 # =========================================================
@@ -434,7 +591,7 @@ def finances_monthly_transactions():
     now_utc = datetime.now(timezone.utc)
     try:
         year = int(request.args.get("year", now_utc.year))
-        month = int(request.args.get("month", 6))
+        month = int(request.args.get("month", now_utc.month))
         if month < 1 or month > 12:
             raise ValueError
     except ValueError:
@@ -449,93 +606,40 @@ def finances_monthly_transactions():
     run_upload = (request.args.get("run_upload_pipeline", "false").lower() == "true")
     ui_country = (request.args.get("country") or "").strip().lower()
     if not ui_country:
-        ui_country = "uk"  # fallback (or map by marketplace_id)
-
+        ui_country = "uk"
 
     if run_upload and not ui_country:
         return jsonify({"success": False, "error": "country is required when run_upload_pipeline=true"}), 400
 
     _apply_region_and_marketplace_from_request()
 
-    au = amazon_user.query.filter_by(user_id=user_id, region=amazon_client.region).first()
-    if not au or not au.refresh_token:
-        return jsonify({
-            "success": False,
-            "error": "Amazon account not connected for this region",
-            "status": "no_refresh_token",
-        }), 400
+    result = sync_monthly_transactions_for_user(
+        user_id=user_id,
+        year=year,
+        month=month,
+        country=ui_country,
+        marketplace_id=marketplace_id or amazon_client.marketplace_id,
+        transaction_status=transaction_status,
+        transaction_type_filter=transaction_type_filter,
+        store_in_db=store_in_db,
+        run_upload=run_upload,
+        db_url=db_url,
+        db_url_aux=db_url1,
+    )
 
-    amazon_client.refresh_token = au.refresh_token
+    if not result.get("success"):
+        status_code = 400
+        error_text = str(result.get("error", "")).lower()
 
-    posted_after, posted_before = _month_date_range_utc(year, month)
+        if "no_refresh_token" in str(result.get("status", "")).lower():
+            status_code = 400
+        elif "sp-api" in error_text or "unknown sp-api error" in error_text:
+            status_code = 502
 
-    params: Dict[str, Any] = {
-        "postedAfter": posted_after,
-        "postedBefore": posted_before,
-        "marketplaceId": marketplace_id or amazon_client.marketplace_id,
-    }
-    if transaction_status:
-        params["transactionStatus"] = transaction_status
+        return jsonify(result), status_code
 
-    all_rows: List[Dict[str, Any]] = []
-
-    while True:
-        res = amazon_client.make_api_call(
-            "/finances/2024-06-19/transactions",
-            method="GET",
-            params=params,
-        )
-        if not res or "error" in res:
-            return jsonify({"success": False, "error": res or {"error": "Unknown SP-API error"}}), 502
-
-        payload_res = res.get("payload") or res
-        transactions = payload_res.get("transactions") or []
-
-        for tx in transactions:
-            tstatus = (tx or {}).get("transactionStatus")
-            ttype = (tx or {}).get("transactionType")
-
-            if tstatus != "RELEASED":
-                continue
-            if transaction_type_filter and ttype != transaction_type_filter:
-                continue
-
-            all_rows.append(_flatten_transaction_to_row(tx or {}))
-
-        next_token = payload_res.get("nextToken")
-        if not next_token:
-            break
-        params = {"nextToken": next_token}
-
-    pipeline_result = None
-    if run_upload:
-        if not store_in_db:
-            pipeline_result = {
-                "success": True,
-                "skipped": True,
-                "message": "run_upload_pipeline skipped because store_in_db=false and pipeline always uses DB."
-            }
-        else:
-            df_in = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
-            try:
-                pipeline_result = run_upload_pipeline_from_df(
-                    df_raw=df_in,
-                    user_id=user_id,
-                    country=ui_country,
-                    month_num=str(month),
-                    year=str(year),
-                    db_url=db_url,
-                    db_url_aux=db_url1,
-                )
-            except Exception as e:
-                return jsonify({"success": False, "error": f"Upload pipeline failed: {str(e)}"}), 500
-
-            if not pipeline_result or not pipeline_result.get("success"):
-                return jsonify({
-                    "success": False,
-                    "error": "Upload pipeline returned failure",
-                    "pipeline_result": pipeline_result,
-                }), 400
+    all_rows = result.get("transactions", [])
+    pipeline_result = result.get("pipeline_result")
 
     if response_format == "excel":
         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
@@ -546,7 +650,11 @@ def finances_monthly_transactions():
             df.to_excel(writer, index=False, sheet_name="Transactions")
 
             if pipeline_result:
-                pd.DataFrame([pipeline_result]).to_excel(writer, index=False, sheet_name="PipelineMeta")
+                pd.DataFrame([pipeline_result]).to_excel(
+                    writer,
+                    index=False,
+                    sheet_name="PipelineMeta",
+                )
 
         output.seek(0)
         filename = f"finances_transactions_{year}_{month:02d}.xlsx"
@@ -557,17 +665,7 @@ def finances_monthly_transactions():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    return jsonify({
-        "success": True,
-        "year": year,
-        "month": month,
-        "count": len(all_rows),
-        "store_in_db": store_in_db,
-        "run_upload_pipeline": run_upload,
-        "country": ui_country,
-        "pipeline_result": pipeline_result,
-        "transactions": all_rows,
-    }), 200
+    return jsonify(result), 200
 
 
 @amazon_api_bp.route('/upload', methods=['POST'])

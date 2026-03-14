@@ -18,6 +18,7 @@ import { exportInventoryForecastViewExcel } from "@/lib/excel/exportCurrentInven
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import "@/lib/chartSetup";
 
+
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 type YM = { y: number; m: number };
@@ -32,12 +33,12 @@ export interface DisplayInventoryForecastProps {
 }
 
 const MONTH_ABBR = [
-  'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec',
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ] as const;
 
 const FULL_MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ] as const;
 
 function parseMonthHeaderToDate(col?: string | null): YM | null {
@@ -101,7 +102,6 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     total: true,
   });
   const [showToggleModal, setShowToggleModal] = useState(false);
-
   const chartRef = useRef<any>(null);
   const demoMode = Boolean(isDemoMode);
   const forecastData = useMemo(() => (Array.isArray(data) ? data : []), [data]);
@@ -445,213 +445,217 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
         )}
       </h3>
     </div> */}
-      <div className="flex justify-between items-center gap-4">
-  <div className="flex items-baseline gap-2">
-    <PageBreadcrumb
-      pageTitle={
-        <>
-          Forecasted Data -{" "}
-          {monthRange && (
-            <span className="text-green-500">
-              {countryName.toUpperCase()} ({monthRange})
-            </span>
-          )}
-        </>
-      }
-      variant="page"
-      align="left"
-      textSize="2xl"
-    />
-  </div>
-</div>
+      <div className="flex flex-col gap-3">
+        <div className="flex justify-between items-center gap-4 flex-wrap">
+          <div className="flex items-baseline gap-2">
+            <PageBreadcrumb
+              pageTitle={
+                <>
+                  Forecasted Data -{" "}
+                  {monthRange && (
+                    <span className="text-green-500">
+                      {countryName.toUpperCase()} ({monthRange})
+                    </span>
+                  )}
+                </>
+              }
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+          </div>
+        </div>
+
+        
+      </div>
 
       {/* Chart: Top 5 SKUs + Total */}
       <div className="flex flex-col gap-6 mt-5 ">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
- <div className="flex flex-col gap-4">
-  <div className="flex items-center justify-between w-full gap-3">
-  
-  <div className="flex flex-col leading-tight">
-    <div className="flex items-baseline gap-2">
-      <PageBreadcrumb
-        pageTitle="Top 5 SKUs Inventory Trend"
-        variant="page"
-        align="left"
-        textSize="2xl"
-      />
-    </div>
-    <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-      Historical data vs forecasted trends
-    </p>
-  </div>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between w-full gap-3">
 
-  <div className="flex items-center gap-3">
-    <DownloadIconButton
-      onClick={handleDownload}
-      disabled={demoMode}
-    />
-  </div>
+              <div className="flex flex-col leading-tight">
+                <div className="flex items-baseline gap-2">
+                  <PageBreadcrumb
+                    pageTitle="Top 5 SKUs Inventory Trend"
+                    variant="page"
+                    align="left"
+                    textSize="2xl"
+                  />
+                </div>
+                <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+                  Historical data vs forecasted trends
+                </p>
+              </div>
 
-</div>
+              <div className="flex items-center gap-3">
+                <DownloadIconButton
+                  onClick={handleDownload}
+                  disabled={demoMode}
+                />
+              </div>
 
-</div>
+            </div>
 
-<div
-  className="
+          </div>
+
+          <div
+            className="
     shrink-0 mt-4 md:mt-2 flex flex-wrap items-center justify-center
     gap-4 w-full transition-opacity duration-300
   "
->
-  {[
-    ...top5Rows.map((t, i) => ({
-      name: `top${i + 1}`,
-      label:
-        (t.row["sku"] as string) ||
-        (t.row["Product Name"] as string) ||
-        `SKU ${i + 1}`,
-      color: palette[i % palette.length],
-    })),
-    { name: "total", label: "Total", color: "#C49466" },
-  ].map(({ name, label, color }) => {
-    const isChecked = !!selectedSeries[name];
+          >
+            {[
+              ...top5Rows.map((t, i) => ({
+                name: `top${i + 1}`,
+                label:
+                  (t.row["sku"] as string) ||
+                  (t.row["Product Name"] as string) ||
+                  `SKU ${i + 1}`,
+                color: palette[i % palette.length],
+              })),
+              { name: "total", label: "Total", color: "#C49466" },
+            ].map(({ name, label, color }) => {
+              const isChecked = !!selectedSeries[name];
 
-    return (
-      <label
-        key={name}
-        className="
+              return (
+                <label
+                  key={name}
+                  className="
           shrink-0 flex items-center gap-1 sm:gap-1.5
           font-semibold select-none whitespace-nowrap
           text-[10px] 2xl:text-xs my-1 2xl:my-3
           text-charcoal-500 cursor-pointer
         "
-      >
-        <span
-          className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
-          style={{
-            borderColor: color,
-            backgroundColor: isChecked ? color : "white",
-          }}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleSeries(name);
-          }}
-        >
-          {isChecked && (
-            <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
-              <path
-                fill="currentColor"
-                d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
-              />
-            </svg>
-          )}
-        </span>
+                >
+                  <span
+                    className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
+                    style={{
+                      borderColor: color,
+                      backgroundColor: isChecked ? color : "white",
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSeries(name);
+                    }}
+                  >
+                    {isChecked && (
+                      <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
+                        <path
+                          fill="currentColor"
+                          d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                        />
+                      </svg>
+                    )}
+                  </span>
 
-        <span className="capitalize">{label}</span>
-      </label>
-    );
-  })}
-</div>
+                  <span className="capitalize">{label}</span>
+                </label>
+              );
+            })}
+          </div>
 
-       <div className='w-full h-[550px]'>
-  <Line ref={chartRef} data={chartData} options={chartOptions} plugins={[forecastPlugin]} />
-</div>
+          <div className='w-full h-[550px]'>
+            <Line ref={chartRef} data={chartData} options={chartOptions} plugins={[forecastPlugin]} />
+          </div>
 
-<div className="flex justify-center mt-4">
-  <div className="flex flex-wrap justify-center items-center gap-6 text-xs ">
-    <div className="flex items-center gap-2 text-charcoal-500">
-      <span className="inline-block w-8 border-b-2 border-charcoal-500" />
-      <span className="whitespace-nowrap">Last 3 months (Actual)</span>
-    </div>
-    <div className="flex items-center gap-2">
-      <span className="inline-block w-8 border-b-2 border-charcoal-500 border-dashed" />
-      <span className="whitespace-nowrap">Next 3 months (Forecast)</span>
-    </div>
-  </div>
-</div>
+          <div className="flex justify-center mt-4">
+            <div className="flex flex-wrap justify-center items-center gap-6 text-xs ">
+              <div className="flex items-center gap-2 text-charcoal-500">
+                <span className="inline-block w-8 border-b-2 border-charcoal-500" />
+                <span className="whitespace-nowrap">Last 3 months (Actual)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-8 border-b-2 border-charcoal-500 border-dashed" />
+                <span className="whitespace-nowrap">Next 3 months (Forecast)</span>
+              </div>
+            </div>
+          </div>
         </div>
-        
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-        {/* <h2 className='2xl:text-2xl text-[18px] font-bold text-[#414042]'>Detailed Forecast Data (All SKUs)</h2> */}
-        <PageBreadcrumb
-        pageTitle="Detailed Forecast Data (All SKUs)"
-        variant="page"
-        align="left"
-        textSize="2xl"
-      />
-   <div className="mt-4 w-full overflow-x-auto">
-  <div className="rounded-xl border border-gray-300 overflow-hidden min-w-[900px]">
-    <table className="w-full 2xl:text-sm text-xs text-[#414042]">
-    <thead>
-  <tr className="font-normal">
-   <th rowSpan={2} className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle">
-  S.No
-</th>
-<th rowSpan={2} className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE]  font-semibold text-left align-middle">
-  Product Name
-</th>
-<th rowSpan={2} className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle">
-  SKU
-</th>
+
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+          {/* <h2 className='2xl:text-2xl text-[18px] font-bold text-[#414042]'>Detailed Forecast Data (All SKUs)</h2> */}
+          <PageBreadcrumb
+            pageTitle="Detailed Forecast Data (All SKUs)"
+            variant="page"
+            align="left"
+            textSize="2xl"
+          />
+          <div className="mt-4 w-full overflow-x-auto">
+            <div className="rounded-xl border border-gray-300 overflow-hidden min-w-[900px]">
+              <table className="w-full 2xl:text-sm text-xs text-[#414042]">
+                <thead>
+                  <tr className="font-normal">
+                    <th rowSpan={2} className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle">
+                      S.No
+                    </th>
+                    <th rowSpan={2} className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE]  font-semibold text-left align-middle">
+                      Product Name
+                    </th>
+                    <th rowSpan={2} className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle">
+                      SKU
+                    </th>
 
 
-    {/* Last 3 Months */}
-    <th className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold" colSpan={3}>
-      Last 3 Months
-    </th>
+                    {/* Last 3 Months */}
+                    <th className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold" colSpan={3}>
+                      Last 3 Months
+                    </th>
 
-    {/* Forecasted Months */}
-    <th className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold" colSpan={3}>
-      Forecasted Months
-    </th>
-  </tr>
+                    {/* Forecasted Months */}
+                    <th className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold" colSpan={3}>
+                      Forecasted Months
+                    </th>
+                  </tr>
 
-  <tr>
-   
-    {/* Dynamic month labels */}
-    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{soldLabels[0] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{soldLabels[1] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{soldLabels[2] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{forecastLabels[0] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{forecastLabels[1] || ''}</th>
-    <th className="p-2 border border-gray-300 bg-[#EFEFEF]">{forecastLabels[2] || ''}</th>
-  </tr>
-</thead>
+                  <tr>
 
-    <tbody>
-      {tableRows.map((row, i) => (
-        <tr key={i} className="text-center border-t border-gray-300 bg-white">
-          <td className="p-2 border border-gray-300">{row.sNo}</td>
-          <td className="p-2 border border-gray-300 text-left">{row.product}</td>
-          <td className="p-2 border border-gray-300 ">{row.sku}</td>
-          <td className="p-2 border border-gray-300">{row.sold1}</td>
-          <td className="p-2 border border-gray-300">{row.sold2}</td>
-          <td className="p-2 border border-gray-300">{row.sold3}</td>
-          <td className="p-2 border border-gray-300">{row.f1}</td>
-          <td className="p-2 border border-gray-300">{row.f2}</td>
-          <td className="p-2 border border-gray-300">{row.f3}</td>
-        </tr>
-      ))}
-      <tr className="text-center border-t border-gray-300 bg-[#EFEFEF] font-semibold">
-        <td className="p-2 border border-gray-300"></td>
-        <td className="p-2 border border-gray-300 text-left">Total</td>
-        <td className="p-2 border border-gray-300"></td>
-        <td className="p-2 border border-gray-300">{totalsRow.sold1}</td>
-        <td className="p-2 border border-gray-300">{totalsRow.sold2}</td>
-        <td className="p-2 border border-gray-300">{totalsRow.sold3}</td>
-        <td className="p-2 border border-gray-300">{totalsRow.f1}</td>
-        <td className="p-2 border border-gray-300">{totalsRow.f2}</td>
-        <td className="p-2 border border-gray-300">{totalsRow.f3}</td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-</div>
-        </div> 
-       
+                    {/* Dynamic month labels */}
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{soldLabels[0] || ''}</th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{soldLabels[1] || ''}</th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{soldLabels[2] || ''}</th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{forecastLabels[0] || ''}</th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{forecastLabels[1] || ''}</th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{forecastLabels[2] || ''}</th>
+                  </tr>
+                </thead>
 
- </div>
+                <tbody>
+                  {tableRows.map((row, i) => (
+                    <tr key={i} className="text-center border-t border-gray-300 bg-white">
+                      <td className="p-2 border border-gray-300">{row.sNo}</td>
+                      <td className="p-2 border border-gray-300 text-left">{row.product}</td>
+                      <td className="p-2 border border-gray-300 ">{row.sku}</td>
+                      <td className="p-2 border border-gray-300">{row.sold1}</td>
+                      <td className="p-2 border border-gray-300">{row.sold2}</td>
+                      <td className="p-2 border border-gray-300">{row.sold3}</td>
+                      <td className="p-2 border border-gray-300">{row.f1}</td>
+                      <td className="p-2 border border-gray-300">{row.f2}</td>
+                      <td className="p-2 border border-gray-300">{row.f3}</td>
+                    </tr>
+                  ))}
+                  <tr className="text-center border-t border-gray-300 bg-[#EFEFEF] font-semibold">
+                    <td className="p-2 border border-gray-300"></td>
+                    <td className="p-2 border border-gray-300 text-left">Total</td>
+                    <td className="p-2 border border-gray-300"></td>
+                    <td className="p-2 border border-gray-300">{totalsRow.sold1}</td>
+                    <td className="p-2 border border-gray-300">{totalsRow.sold2}</td>
+                    <td className="p-2 border border-gray-300">{totalsRow.sold3}</td>
+                    <td className="p-2 border border-gray-300">{totalsRow.f1}</td>
+                    <td className="p-2 border border-gray-300">{totalsRow.f2}</td>
+                    <td className="p-2 border border-gray-300">{totalsRow.f3}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
 
-      
+
+      </div>
+
+
     </div>
   );
 };

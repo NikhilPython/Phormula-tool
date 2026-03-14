@@ -2859,7 +2859,7 @@ export default function LiveBusinessClient({
     const Card = ({ label, value }: { label: string; value: string }) => (
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
         <div className="2xl:text-xs text-[10px] text-charcoal-500">{label}</div>
-        <div className="mt-1 text-sm 2xl:text-lg font-semibold text-charcoal-500 capitalize">
+        <div className="mt-1 text-sm 2xl:text-base font-semibold text-charcoal-500 capitalize">
           {value}
         </div>
       </div>
@@ -2911,45 +2911,42 @@ export default function LiveBusinessClient({
 
                 {/* 1) Monthly Objective */}
                 <div className="flex flex-col lg:flex-row gap-4 items-stretch">
-  <div className="flex-1">
-    {(summaryText || overallSummary.length > 0 || portfolioRecommendation) && (
-      <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-500 w-full h-full flex flex-col">
-        <PageBreadcrumb pageTitle="Business Summary" variant="page" align="left" />
+                  <div className="flex-1">
+                    {(summaryText || overallSummary.length > 0 || portfolioRecommendation) && (
+                      <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-500 w-full h-full flex flex-col">
+                        <PageBreadcrumb pageTitle="Business Summary" variant="page" align="left" />
 
-        {summaryText && (
-          <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1">
-            {summaryText}
-          </div>
-        )}
+                        {summaryText && (
+                          <div className="mt-3 2xl:text-sm text-xs text-charcoal-500 border-slate-300 flex-1">
+                            {summaryText}
+                          </div>
+                        )}
 
-        {portfolioRecommendation && (
-          <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center gap-1">
-            <span className="2xl:text-sm text-xs font-semibold text-charcoal-500">
-              Portfolio Recommendation:
-            </span>
-            <span className="2xl:text-sm text-xs text-charcoal-600 leading-relaxed">
-              {portfolioRecommendation}
-            </span>
-          </div>
-        )}
-      </div>
-    )}
-  </div>
+                        {portfolioRecommendation && (
+                          <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center gap-1">
+                            <span className="2xl:text-sm text-xs font-semibold text-charcoal-500">
+                              Portfolio Recommendation:
+                            </span>
+                            <span className="2xl:text-sm text-xs text-charcoal-600 leading-relaxed">
+                              {portfolioRecommendation}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-  <div className="lg:w-1/3 flex">
-    {objectiveContext && (
-      <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full h-full flex flex-col">
-        <PageBreadcrumb pageTitle="Monthly Objective" variant="page" align="left" />
-        <ObjectiveCards objective={objectiveContext} className="mt-3 flex-1" />
-      </div>
-    )}
-  </div>
-</div>
+                  <div className="lg:w-1/3 flex">
+                    {objectiveContext && (
+                      <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-4 text-xs 2xl:text-sm text-charcoal-600 w-full h-full flex flex-col">
+                        <PageBreadcrumb pageTitle="Monthly Objective" variant="page" align="left" />
+                        <ObjectiveCards objective={objectiveContext} className="mt-3 flex-1" />
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-               
 
-                {/* 2) Business Summary */}
-               
 
                 {/* 3) Recommended Actions (cards) */}
                 {recommendedActions && Object.keys(recommendedActions).length > 0 && (

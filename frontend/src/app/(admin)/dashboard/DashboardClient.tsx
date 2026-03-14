@@ -606,7 +606,6 @@ const ensureSpReportSeedOncePerDay = async (
         localStorage.setItem(storageKey, "1");
     });
 
-    // ✅ IMPORTANT: if another tab/render is running it, don't error, just exit
     if (didRun === null) return;
 };
 
@@ -1288,13 +1287,11 @@ export default function DashboardPage() {
     }, [platform]);
 
 
-
     useEffect(() => {
         if (activeTab === "summary") {
             setSummaryLoading(true);
         }
     }, [activeTab]);
-
 
     useEffect(() => {
         fetchMonthlySp();
@@ -1318,16 +1315,12 @@ export default function DashboardPage() {
         });
     };
 
-
     /* ===================== AMAZON / SHOPIFY STATE ===================== */
     const [loading, setLoading] = useState(false);
     const [unauthorized, setUnauthorized] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<any>(null);
-
     const { connections: amazonConnections } = useAmazonConnections();
-
-    // Shopify (current month)
     const [shopifyLoading, setShopifyLoading] = useState(false);
     const [shopifyError, setShopifyError] = useState<string | null>(null);
     const [shopifyRows, setShopifyRows] = useState<any[]>([]);
@@ -1339,14 +1332,11 @@ export default function DashboardPage() {
     const [biStatus, setBiStatus] = useState<
         "idle" | "loading" | "processing" | "ready" | "error"
     >("idle");
-
-    // const biUiLoading = biStatus === "loading" || biStatus === "processing";
     const [closedAlerts, setClosedAlerts] = useState<string[]>([]);
 
 
     const chartRef = React.useRef<HTMLDivElement | null>(null);
     const prevLabel = useMemo(() => getPrevMonthShortLabel(), []);
-
     const getDayOfMonthIST = () => {
         const now = new Date();
         const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
@@ -1355,22 +1345,17 @@ export default function DashboardPage() {
 
     const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
 
-
     /* ===================== ✅ SHARED RANGE STATE (PARENT) ===================== */
     const [selectedStartDay, setSelectedStartDay] = useState<number | null>(null);
     const [selectedEndDay, setSelectedEndDay] = useState<number | null>(null);
-
     const [biLoading, setBiLoading] = useState(false);
     const [biError, setBiError] = useState<string | null>(null);
     const [biDailySeries, setBiDailySeries] = useState<DailySeries | null>(null);
     const [biPeriods, setBiPeriods] = useState<BiApiResponse["periods"] | null>(null);
-    // const [liveBiPayload, setLiveBiPayload] = useState<BiApiResponse | null>(null);
     const [liveBiPayload, setLiveBiPayload] = useState<any>(null);
     const [biAlignedTotals, setBiAlignedTotals] = useState<BiAlignedTotals | null>(null);
     const [liveBiReady, setLiveBiReady] = useState(false);
     const retryRef = useRef(0);
-
-
 
     /* ===================== FX RATES ===================== */
     const [gbpToUsd, setGbpToUsd] = useState(GBP_TO_USD_ENV);
@@ -1380,7 +1365,6 @@ export default function DashboardPage() {
 
     const biUiLoading = biStatus === "loading" || biStatus === "processing";
 
-    // Parent controls BI readiness now
     const pageLoading =
         loading ||
         shopifyLoading ||
@@ -1388,10 +1372,8 @@ export default function DashboardPage() {
         adsLoading ||
         monthlySpLoading ||
         invLoading ||
-        biUiLoading; // keep only this for BI
+        biUiLoading;
 
-    // Optional: if you want to block until BI payload exists when showLiveBI:
-    /// || (showLiveBI && !liveBiPayload && biStatus !== "error")
 
     type CurrencyRateRow = {
         conversion_rate: number;
@@ -1446,7 +1428,6 @@ export default function DashboardPage() {
             if (inrUsd != null) setInrToUsd(inrUsd);
             if (cadUsd != null) setCadToUsd(cadUsd);
 
-            // console.log("✅ FX (current month)", { month, year, gbpUsd, inrUsd, cadUsd });
         } catch (err) {
             console.error("Failed to fetch FX from DB, keeping env defaults", err);
         } finally {
@@ -1455,19 +1436,8 @@ export default function DashboardPage() {
     }, []);
 
 
-    // useEffect(() => {
-    //   console.log("📊 FINAL FX RATES IN USE", {
-    //     GBP_TO_USD: gbpToUsd,
-    //     INR_TO_USD: inrToUsd,
-    //     CAD_TO_USD: cadToUsd,
-    //     displayCurrency,
-    //   });
-    // }, [gbpToUsd, inrToUsd, cadToUsd, displayCurrency]);
-
     useEffect(() => {
         if (activeTab !== "summary") return;
-
-        // when BI payload is ready, hide loader
         if (liveBiPayload) {
             setSummaryLoading(false);
         }
@@ -1498,7 +1468,6 @@ export default function DashboardPage() {
         setAmazonRegion(forcedRegion);
     }, [isCountryMode, forcedRegion]);
 
-    // ✅ which region is selected in the Sales Target card
     const [targetRegion, setTargetRegion] = useState<RegionKey>(
         isCountryMode ? forcedRegion : "Global"
     );
@@ -1539,7 +1508,6 @@ export default function DashboardPage() {
 
                 await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                // ✅ SD supports UK/US only
                 if (country === "UK" || country === "US") {
                     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
                 }
@@ -1572,7 +1540,7 @@ export default function DashboardPage() {
 
 
     useEffect(() => {
-        if (!adsSeeded) return; // ✅ monthly runs only after seed succeeds
+        if (!adsSeeded) return;
         if (platform === "shopify") return;
 
         let cancelled = false;
@@ -1617,9 +1585,7 @@ export default function DashboardPage() {
                 console.error("monthly_sp_sd_to_db error:", e);
             }
         };
-
         run();
-
         return () => {
             cancelled = true;
         };
@@ -1628,7 +1594,6 @@ export default function DashboardPage() {
 
     useEffect(() => {
         let cancelled = false;
-
         const run = async () => {
             try {
                 setAdsLoading(true);
@@ -1637,7 +1602,6 @@ export default function DashboardPage() {
                     if (!cancelled) setAdsSeeded(true);
                     return;
                 }
-
                 const jwtToken =
                     typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
@@ -1648,18 +1612,14 @@ export default function DashboardPage() {
                     }
                     return;
                 }
-
                 const country =
                     platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
                 await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
 
-                // ✅ SD supports UK/US only
                 if (country === "UK" || country === "US") {
                     await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
                 }
-
-                // ✅ ADD THIS: SB Keyword seed (your new API)
                 await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
 
                 if (!cancelled) {
@@ -1684,9 +1644,6 @@ export default function DashboardPage() {
         };
     }, [platform, baseURL]);
 
-
-
-    // region -> backend country
     const inventoryCountry = useMemo(() => {
         const v = (graphRegionToUse || "").toString().trim().toLowerCase(); // or your region prop
         return v.length ? v : "global";
@@ -1704,7 +1661,6 @@ export default function DashboardPage() {
             setInvRows([]);
             return;
         }
-
         setInvLoading(true);
         setInvError("");
 
@@ -1717,7 +1673,6 @@ export default function DashboardPage() {
                 year: invMonthYear.year,
                 XLSX,
             });
-
             setInvRows(rows);
             setInventoryAlerts(alerts);
         } catch (e: any) {
@@ -1732,7 +1687,6 @@ export default function DashboardPage() {
     useEffect(() => {
         fetchInventory();
     }, [fetchInventory]);
-
 
     /* ===================== CONVERSION + FORMATTING (DISPLAY CURRENCY) ===================== */
     const convertToDisplayCurrency = useCallback(
@@ -1788,7 +1742,6 @@ export default function DashboardPage() {
                 if (existing) {
                     existing.value += value;
                     existing.prevValue += prevValue;
-                    // keep latest deltaPct (or you could compute weighted delta later if needed)
                     existing.deltaPct = Number(s.delta_pct ?? existing.deltaPct ?? 0);
                 } else {
                     merged.set(name, {
@@ -1810,7 +1763,6 @@ export default function DashboardPage() {
                 .sort((a, b) => b.value - a.value);
         }
 
-        // ✅ 2) Fallback: your existing frontend logic (keep as backup)
         const cg = liveBiPayload?.categorized_growth;
         const top80 = cg?.top_80_skus ?? [];
         const other = cg?.other_skus ?? [];
@@ -1829,8 +1781,6 @@ export default function DashboardPage() {
 
         const total = sorted.reduce((s, x) => s + x.profit_curr, 0) || 1;
 
-        // keep your previous “min 5 named + pareto” logic here if you want
-        // (but ideally you won't hit this path once backend cm1_profit_pie exists)
         const top = sorted.slice(0, 5);
         const rest = sorted.slice(5);
 
@@ -1873,7 +1823,6 @@ export default function DashboardPage() {
         return { netSales, totalOrders };
     }, [shopifyPrevRows]);
 
-    // ✅ Global FULL month target = Amazon(previous full month from BI) + Shopify(previous month total)
     const globalPrevFullMonthNetSalesDisp = useMemo(() => {
         const amazonFull = prevFullMonthNetSalesDisp; // already in display currency
         const shopifyFull = convertToDisplayCurrency(shopifyPrevDeriv?.netSales ?? 0, "INR");
@@ -1914,8 +1863,6 @@ export default function DashboardPage() {
                 maximumFractionDigits: 2,
             })
             : "-";
-
-
 
     const formatDisplayK = useCallback(
         (value: number | null | undefined) => {
@@ -1959,7 +1906,6 @@ export default function DashboardPage() {
         };
     }, [biDailySeries, convertToDisplayCurrency, biDataCurrency]);
 
-
     /* ===================== AMAZON FETCH ===================== */
     const fetchAmazon = useCallback(async () => {
         setLoading(true);
@@ -1974,12 +1920,9 @@ export default function DashboardPage() {
                 setUnauthorized(true);
                 throw new Error("No token found. Please sign in.");
             }
-
-            // ✅ decide country from platform
             const uiCountry =
                 platform === "amazon-us" ? "us" : platform === "amazon-ca" ? "ca" : "uk";
 
-            // ✅ marketplace id (fallback to UK one you provided)
             const marketplaceId =
                 (amazonConnections?.find?.((c: any) => (c?.country || "").toLowerCase() === uiCountry)
                     ?.marketplace_id) ||
@@ -2159,31 +2102,17 @@ export default function DashboardPage() {
         }
     }, [shopifyStore]);
 
-
-
-
-
-
     /* ===================== ✅ SHARED BI FETCH (FOR CARDS + GRAPH) ===================== */
     const { monthName: currMonthName, year: currYear } = getISTYearMonth();
-
     const lastBiKeyRef = useRef<string>("");
     const aiRequestedRef = useRef<boolean>(false);
-
-
-
 
     const fetchBiSeries = useCallback(
         async (startDay?: number | null, endDay?: number | null) => {
             if (!showLiveBI) return;
-
             const normalized = (biCountryName || "").toLowerCase();
-
             if (!normalized || normalized === "global") return;
-
-
             const rangeActive = startDay != null && endDay != null;
-
             const key = JSON.stringify({
                 country: normalized,
                 ranged: "MTD",
@@ -2191,7 +2120,7 @@ export default function DashboardPage() {
                 year: currYear,
                 startDay: rangeActive ? startDay : null,
                 endDay: rangeActive ? endDay : null,
-                ai: aiRequestedRef.current, // ✅ IMPORTANT
+                ai: aiRequestedRef.current,
             });
             setBiError(null);
             setBiLoading(true);
@@ -2216,10 +2145,8 @@ export default function DashboardPage() {
                     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 });
 
-                // ✅ HANDLE 202 FIRST
                 if (res.status === 202) {
                     setBiStatus("processing");
-                    // IMPORTANT
                     return;
                 }
 
@@ -2230,8 +2157,6 @@ export default function DashboardPage() {
                 const json: BiApiResponse = await res.json();
 
                 lastBiKeyRef.current = key;
-                // aiRequestedRef.current = true;
-
                 setLiveBiPayload(json);
                 setBiPeriods(json?.periods || null);
                 setBiDailySeries(json?.daily_series || null);
@@ -2241,8 +2166,6 @@ export default function DashboardPage() {
                 setTimeout(() => {
                     setBiStatus("ready");   // 🔥 force render
                 }, 0);
-
-                // setBiAlignedTotals(json?.aligned_totals || null);
                 const alignedFromNested = (json as any)?.aligned_totals;
 
                 const alignedFromTopLevel: BiAlignedTotals = {
@@ -2294,24 +2217,8 @@ export default function DashboardPage() {
         const timer = setTimeout(() => {
             fetchBiSeries(selectedStartDay, selectedEndDay);
         }, 3000);
-
         return () => clearTimeout(timer);
     }, [biStatus, fetchBiSeries, selectedStartDay, selectedEndDay]);
-
-    // const fetchLiveBiPayload = useCallback(
-    //     async ({
-    //         startDay = selectedStartDay,
-    //         endDay = selectedEndDay,
-    //         generateInsights = false,
-    //     }: FetchLiveBiPayloadArgs = {}) => {
-    //         // toggle AI insights flag
-    //         aiRequestedRef.current = !!generateInsights;
-
-    //         // fetch using provided range (or current state range by default)
-    //         await fetchBiSeries(startDay, endDay);
-    //     },
-    //     [fetchBiSeries, selectedStartDay, selectedEndDay]
-    // );
 
     const fetchLiveBiPayload = useCallback(
         async ({
@@ -2320,11 +2227,7 @@ export default function DashboardPage() {
             generateInsights = false,
         }: FetchLiveBiPayloadArgs = {}) => {
             setSummaryLoading(true);
-
-            // toggle AI insights flag
             aiRequestedRef.current = !!generateInsights;
-
-            // fetch using provided range (or current state range by default)
             await fetchBiSeries(startDay, endDay);
         },
         [fetchBiSeries, selectedStartDay, selectedEndDay]
@@ -2358,48 +2261,35 @@ export default function DashboardPage() {
         refreshAll();
     }, []);
 
-
-
     /* ===================== AMAZON DERIVED DATA ===================== */
     const totals = data?.totals || null;
     const derived = data?.derived_totals || null;
-
     const uk = useMemo(() => {
         const netSalesGBP = derived?.net_sales != null ? toNumberSafe(derived.net_sales) : null;
         const aspGBP = derived?.asp != null ? toNumberSafe(derived.asp) : null;
         const cm2ProfitGBP =
             derived?.cm2_profit != null ? toNumberSafe(derived.cm2_profit) : null;
-
         const cogsGBP = totals?.cogs != null ? toNumberSafe(totals.cogs) : 0;
         const fbaFeesGBP = totals?.fba_fees != null ? toNumberSafe(totals.fba_fees) : 0;
         const sellingFeesGBP = totals?.selling_fees != null ? toNumberSafe(totals.selling_fees) : 0;
-
-        // ✅ your backend already computed amazon_fees = selling + fba, but we can compute too
         const amazonFeesGBP =
             derived?.amazon_fees != null
                 ? toNumberSafe(derived.amazon_fees)
                 : (fbaFeesGBP + sellingFeesGBP);
-
         const profitGBP = derived?.profit != null ? toNumberSafe(derived.profit) : null;
-
         const unitsGBP = totals?.quantity != null ? toNumberSafe(totals.quantity) : null;
-
 
         let profitPctGBP: number | null = null;
         if (cm2ProfitGBP !== null && netSalesGBP && netSalesGBP !== 0) {
             profitPctGBP = (cm2ProfitGBP / netSalesGBP) * 100;
         }
 
-
         const grossSalesGBP =
-            totals?.gross_sales != null ? toNumberSafe(totals.gross_sales) : null; // ✅ current gross
-
+            totals?.gross_sales != null ? toNumberSafe(totals.gross_sales) : null;
         const advertisingGBP =
             derived?.advertising_fees != null ? toNumberSafe(derived.advertising_fees) : 0;
-
         const platformFeeGBP =
             derived?.platform_fee != null ? toNumberSafe(derived.platform_fee) : 0;
-
 
         return {
             unitsGBP,
@@ -2419,14 +2309,9 @@ export default function DashboardPage() {
     const safeDeltaPct = (current: number, previous: number) => {
         const c = Number(current) || 0;
         const p = Number(previous) || 0;
-
         if (!p) return null;
-
         return ((c - p) / Math.abs(p)) * 100;
     };
-
-
-
 
     const prevTotals = data?.previous_period?.totals || null;
 
@@ -2434,7 +2319,7 @@ export default function DashboardPage() {
         return {
             quantity: toNumberSafe(prevTotals?.quantity ?? 0),
             netSales: toNumberSafe(prevTotals?.net_sales ?? 0),
-            grossSales: toNumberSafe(prevTotals?.gross_sales ?? 0), // ✅ add
+            grossSales: toNumberSafe(prevTotals?.gross_sales ?? 0),
             asp: toNumberSafe(prevTotals?.asp ?? 0),
             profit: toNumberSafe(prevTotals?.profit ?? 0),
             cm2Profit: toNumberSafe(prevTotals?.cm2_profit ?? 0),
@@ -2442,7 +2327,6 @@ export default function DashboardPage() {
         };
     }, [prevTotals]);
 
-    // ✅ AMAZON Ads (display currency)
     const amazonCurrAdsDisp = useMemo(() => {
         const ads = toNumberSafe(derived?.advertising_fees ?? 0);
         return convertToDisplayCurrency(ads, amazonDataCurrency);
@@ -2458,7 +2342,6 @@ export default function DashboardPage() {
         [amazonCurrAdsDisp, amazonPrevAdsDisp]
     );
 
-    // ✅ AMAZON ROAS% = (Ads / Net Sales) * 100
     const amazonCurrRoasPct = useMemo(() => {
         const sales = toNumberSafe(derived?.net_sales ?? 0);
         const ads = toNumberSafe(derived?.advertising_fees ?? 0);
@@ -2470,13 +2353,6 @@ export default function DashboardPage() {
         const ads = toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0);
         return sales > 0 ? (ads / sales) * 100 : 0;
     }, [data?.previous_period?.totals?.net_sales, data?.previous_period?.totals?.advertising_fees]);
-
-    const amazonRoasDeltaPct = useMemo(
-        () => safeDeltaPct(amazonCurrRoasPct, amazonPrevRoasPct),
-        [amazonCurrRoasPct, amazonPrevRoasPct]
-    );
-
-
 
     const curr = useMemo(() => {
         return {
@@ -2494,8 +2370,6 @@ export default function DashboardPage() {
             netSalesPct: safeDeltaPct(curr.netSales, prev.netSales),
             aspPct: safeDeltaPct(curr.asp, prev.asp),
             profitPct: safeDeltaPct(curr.profit, prev.profit),
-
-            // Profit % must be percentage-points (pp)
             profitMarginPctPts:
                 curr.profitPct != null && prev.profitPct != null
                     ? Number(curr.profitPct) - Number(prev.profitPct)
@@ -2506,7 +2380,7 @@ export default function DashboardPage() {
     const deltaPctPoints = (currentPct: number, previousPct: number) => {
         const c = Number(currentPct) || 0;
         const p = Number(previousPct) || 0;
-        return c - p; // percentage points
+        return c - p;
     };
 
     const deltaPctAbs = (currentPct: number, previousPct: number) => {
@@ -2521,15 +2395,12 @@ export default function DashboardPage() {
         if (!pts.length) return;
 
         const todayDay = getDayOfMonthIST();
-
-        // try exact today
         const exact = pts.find((p) => Number(p.date?.slice(8, 10)) === todayDay);
         if (exact?.net_sales != null) {
             setTodaySalesRaw(Number(exact.net_sales) || 0);
             return;
         }
 
-        // fallback: latest available day in series
         const latest = [...pts].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
         setTodaySalesRaw(Number(latest?.net_sales) || 0);
     }, [biDailySeriesHome]);
@@ -2584,23 +2455,13 @@ export default function DashboardPage() {
         };
     }, [biDailySeriesHome, selectedStartDay, selectedEndDay]);
 
-    // const rangeActive = selectedStartDay != null && selectedEndDay != null;
     const rangeActive = selectedStartDay != null && selectedEndDay != null;
-
-    // use BI only when a range is active
     const useBiCm2 = showLiveBI && rangeActive;
-
-    // BI values are usable only when rangeActive + finished loading + response present
     const cm2Ready = useBiCm2 && !biLoading && !!biAlignedTotals;
-
-
-    // ✅ only when range is active + BI is ready
     const biCardsReady = rangeActive && !biLoading && !!biAlignedTotals;
 
     const biAlignedTotalsHome = useMemo(() => {
         if (!biCardsReady || !biAlignedTotals) return null;
-
-        // convert BI source currency -> your display currency
         const conv = (v?: number) =>
             convertToDisplayCurrency(Number(v || 0), biSourceCurrency);
 
@@ -2623,7 +2484,6 @@ export default function DashboardPage() {
         };
     }, [biCardsReady, biAlignedTotals, convertToDisplayCurrency, biSourceCurrency]);
 
-    const globalRangeCurrency = currencyForCountry(biCountryName);
     const globalUseBi = platform === "global" && showLiveBI && rangeActive;
     const globalCm2Ready = globalUseBi && !biLoading && !!biAlignedTotals;
 
@@ -2659,18 +2519,14 @@ export default function DashboardPage() {
     const prevAmazonUKTotalUSD = useMemo(() => {
         const prevTotalGBP = toNumberSafe(data?.previous_month_total_net_sales?.total);
         if (prevTotalGBP > 0) return prevTotalGBP * gbpToUsd;
-
-        // fallback: estimate full last-month total from last-month MTD
         const { todayDay, daysInPrevMonth } = getISTDayInfo();
         if (!todayDay || !daysInPrevMonth) return 0;
-
-        // prevAmazonMtdSalesUSD is already last month MTD (USD)
         return (prevAmazonMtdSalesUSD * daysInPrevMonth) / todayDay;
     }, [data?.previous_month_total_net_sales?.total, gbpToUsd, prevAmazonMtdSalesUSD]);
 
 
     const amazonUK_Gross_USD = useMemo(() => {
-        const grossGBP = toNumberSafe(totals?.gross_sales); // ✅ current gross
+        const grossGBP = toNumberSafe(totals?.gross_sales);
         return grossGBP * gbpToUsd;
     }, [totals?.gross_sales, gbpToUsd]);
 
@@ -2682,11 +2538,11 @@ export default function DashboardPage() {
     }, [amazonUK_Gross_USD, shopifyDeriv?.netSales, inrToUsd]);
 
     const prevAmazonGrossUSD = useMemo(() => {
-        return toNumberSafe(prev.grossSales) * gbpToUsd; // prev gross in GBP → USD
+        return toNumberSafe(prev.grossSales) * gbpToUsd;
     }, [prev.grossSales, gbpToUsd]);
 
     const prevGlobalGrossUSD = useMemo(() => {
-        const prevShopifyUSD = toNumberSafe(shopifyPrevDeriv?.netSales) * inrToUsd; // shopify gross not available; using net like you do elsewhere
+        const prevShopifyUSD = toNumberSafe(shopifyPrevDeriv?.netSales) * inrToUsd;
         return prevAmazonGrossUSD + prevShopifyUSD;
     }, [prevAmazonGrossUSD, shopifyPrevDeriv?.netSales, inrToUsd]);
 
@@ -2701,9 +2557,7 @@ export default function DashboardPage() {
         return prevINRTotal * inrToUsd;
     }, [shopifyPrevDeriv, inrToUsd]);
 
-
     const globalPrevTotalUSD = prevShopifyTotalUSD + prevAmazonUKTotalUSD;
-
 
     const chooseLastMonthTotal = (manualUSD: number, computedUSD: number) =>
         USE_MANUAL_LAST_MONTH && manualUSD > 0 ? manualUSD : computedUSD;
@@ -2713,12 +2567,8 @@ export default function DashboardPage() {
         return daysInPrevMonth > 0 ? (lastMonthTotalUSD * todayDay) / daysInPrevMonth : 0;
     };
 
-
-
-
     // ---------- NET SALES (DISPLAY CURRENCY) ----------
 
-    // Amazon current & prev net sales (already correct source)
     const amazonCurrNetDisp = useMemo(
         () => convertToDisplayCurrency(uk.netSalesGBP ?? 0, "GBP"),
         [uk.netSalesGBP, convertToDisplayCurrency]
@@ -2729,7 +2579,6 @@ export default function DashboardPage() {
         [prev.netSales, convertToDisplayCurrency]
     );
 
-    // Global = Amazon + Shopify (NET SALES ONLY)
     const globalCurrNetDisp = useMemo(() => {
         const amazon = amazonCurrNetDisp;
         const shopify = convertToDisplayCurrency(
@@ -2814,19 +2663,14 @@ export default function DashboardPage() {
             CA: caRegion,
         } as Record<RegionKey, RegionMetrics>;
     }, [
-        // existing deps you already had
         globalCurrNetDisp,
         globalPrevNetDisp,
         amazonCurrNetDisp,
         amazonPrevNetDisp,
         prevFullMonthNetSalesDisp,
         globalPrevFullMonthNetSalesDisp,
-
-        // ✅ add these because we use them inside now
         userData?.target_sales,
         convertToDisplayCurrency,
-
-        // these are referenced by US/CA regions
         chooseLastMonthTotal,
         prorateToDate,
     ]);
@@ -2872,11 +2716,9 @@ export default function DashboardPage() {
             const cogs = convertToDisplayCurrency(uk.cogsGBP ?? 0, "GBP");
             const adv = convertToDisplayCurrency(uk.advertisingGBP ?? 0, "GBP");
 
-            const others = convertToDisplayCurrency(uk.platformFeeGBP ?? 0, "GBP"); // you renamed Platform Fees → Others
-            const cm1 = convertToDisplayCurrency(uk.profitGBP ?? 0, "GBP");         // you renamed Profit → CM1 Profit
+            const others = convertToDisplayCurrency(uk.platformFeeGBP ?? 0, "GBP");
+            const cm1 = convertToDisplayCurrency(uk.profitGBP ?? 0, "GBP");
             const cm2 = convertToDisplayCurrency(uk.cm2ProfitGBP ?? 0, "GBP");
-
-            // ✅ NEW: Tax & Credits from totals.tax_and_credits
             const taxCredits = convertToDisplayCurrency(
                 toNumberSafe(totals?.tax_and_credits ?? 0),
                 "GBP"
@@ -2893,7 +2735,6 @@ export default function DashboardPage() {
                 { label: "CM2 Profit", raw: cm2, display: formatDisplayAmount(cm2) },
             ];
         };
-
 
         if (graphRegionToUse === "Global") {
             if (onlyAmazon) return ukPl();
@@ -2954,7 +2795,6 @@ export default function DashboardPage() {
     const labels = useMemo(() => chartItems.map((i) => i.label), [chartItems]);
     const values = useMemo(() => chartItems.map((i) => Number(i.raw ?? 0)), [chartItems]);
 
-    // If you still need "no data" detection:
     const allValuesZero = useMemo(
         () => values.length === 0 || values.every((v) => Math.abs(v) < 1e-9),
         [values]
@@ -2978,20 +2818,15 @@ export default function DashboardPage() {
             asp: Number(r.asp ?? 0),
             net_sales: Number(r.net_sales ?? 0),
             cogs: Number(r.cogs ?? 0),
-
             fba_fees: Number(r.fba_fees ?? 0),
             selling_fees: Number(r.selling_fees ?? 0),
-
             ads_spend: Number(r.ads_spend ?? 0),
             cm2_profit: Number(r.cm2_profit ?? 0),
-
             tax: Number(r.tax ?? 0),
             credits: Number(r.credits ?? 0),
             tax_and_credits: Number(r.tax_and_credits ?? 0),
-
             cm1_profit_per: Number(r.cm1_profit_per ?? 0),
             cm1_profit_per_unit: Number(r.cm1_profit_per_unit ?? 0),
-
             cm2_profit_per: Number(r.cm2_profit_per ?? 0),
             cm2_profit_per_unit: Number(r.cm2_profit_per_unit ?? 0),
             profit: Number(r.profit ?? 0),
@@ -3000,13 +2835,10 @@ export default function DashboardPage() {
             platform_fee_inventory_storage: Number(r.platform_fee_inventory_storage ?? 0),
             lost_total: Number(r.lost_total ?? 0),
             other: Number(r.other ?? 0),
-
         });
 
         const mapped = body.map((r: any, idx: number) => mapRow(r, idx, false));
-
         if (total) mapped.push(mapRow(total, undefined, true));
-
         return mapped;
     }, [data]);
 
@@ -3033,11 +2865,9 @@ export default function DashboardPage() {
 
         const bodyRows = monthlySkuwiseRows.filter((r) => !r.isTotal && r.sku !== "GRAND_TOTAL");
 
-        // If there are 9 or fewer body rows, show them as-is (plus total if present).
         if (bodyRows.length <= 9) {
             const out = [...bodyRows];
             if (totalRow) out.push(totalRow);
-            // re-number S.No
             return out.map((r, idx) => (r.isTotal ? r : { ...r, sno: idx + 1 }));
         }
 
@@ -3068,7 +2898,6 @@ export default function DashboardPage() {
             cogs: sum("cogs"),
             fba_fees: sum("fba_fees"),
             selling_fees: sum("selling_fees"),
-            // Not shown in the current layout; keep them as 0 to avoid misleading sums.
             tax: 0,
             credits: 0,
             tax_and_credits: 0,
@@ -3089,8 +2918,6 @@ export default function DashboardPage() {
 
 
     const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
-        // ✅ Summary rows for "P&L Productwise Breakdown MTD"
-        // Data source: mtd_transactions API response (data), with a safe fallback to GRAND_TOTAL in skuwise_items.
         return computePlSummaryTotals(data, monthlySkuwiseRows);
     }, [data, monthlySkuwiseRows]);
 
@@ -3105,12 +2932,6 @@ export default function DashboardPage() {
             id: "marketplace_fees",
             label: "Marketplace Fees",
             info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
-            // label: (
-            //     <>
-            //         Marketplace Fees <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />
-            //     </>
-            // ),
-
             collapsedCols: [
                 {
                     key: "marketplace_total",
@@ -3139,7 +2960,7 @@ export default function DashboardPage() {
                     key: "quantity",
                     label: "Total",
                     align: "center" as const,
-                    width: 20,
+                    width: 150,
                 },
             ],
 
@@ -3155,11 +2976,6 @@ export default function DashboardPage() {
 
         {
             id: "profit",
-            // label: (
-            //     <>
-            //         CM1 Profit <InfoTip text={TERM_DEFINITIONS.cm1_profit} />
-            //     </>
-            // ),
             label: "CM1 Profit",
             info: <InfoTip text={TERM_DEFINITIONS.cm1_profit} />,
 
@@ -3172,8 +2988,8 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "cm1_profit_per_unit", label: "CM1 Profit Per Unit", align: "center" as const },
-                { key: "cm1_profit_per", label: "CM1 Profit %", align: "center" as const },
+                { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
+                { key: "cm1_profit_per", label: "%", align: "center" as const },
                 {
                     key: "profit",
                     label: "Total",
@@ -3196,22 +3012,12 @@ export default function DashboardPage() {
             expandedCols: [
                 {
                     key: "tax",
-                    // label: (
-                    // <>
-                    //     Net Taxes <InfoTip text={TERM_DEFINITIONS.net_taxes} />
-                    // </>
-                    // ), 
                     label: "Net Taxes",
                     info: <InfoTip text={TERM_DEFINITIONS.net_taxes} />,
                     align: "center" as const
                 },
                 {
                     key: "credits",
-                    //  label: (
-                    //     <>
-                    //         Net Credits <InfoTip text={TERM_DEFINITIONS.net_credits} />
-                    //     </>
-                    // ), 
                     label: "Net Credits",
                     info: <InfoTip text={TERM_DEFINITIONS.net_credits} />,
                     align: "center" as const
@@ -3225,11 +3031,6 @@ export default function DashboardPage() {
         },
         {
             id: "cm2_profit",
-            // label: (
-            //     <>
-            //         CM2 Profit <InfoTip text={TERM_DEFINITIONS.cm2_profit} />
-            //     </>
-            // ),
             label: "CM2 Profit",
             info: <InfoTip text={TERM_DEFINITIONS.cm2_profit} />,
 
@@ -3242,8 +3043,8 @@ export default function DashboardPage() {
             ],
 
             expandedCols: [
-                { key: "cm2_profit_per_unit", label: "CM2 Profit Per Unit", align: "center" as const },
-                { key: "cm2_profit_per", label: "CM2 Profit %", align: "center" as const },
+                { key: "cm2_profit_per_unit", label: "Per Unit", align: "center" as const },
+                { key: "cm2_profit_per", label: "%", align: "center" as const },
                 {
                     key: "cm2_profit",
                     label: "Total",
@@ -3257,23 +3058,12 @@ export default function DashboardPage() {
         { key: "quantity", label: "Net Units Sold", align: "center" as const },
         {
             key: "asp",
-            //  label: (
-            //     <>
-            //         ASP <InfoTip text={TERM_DEFINITIONS.asp} />
-            //     </>
-            // ), 
             label: "ASP",
             info: <InfoTip text={TERM_DEFINITIONS.asp} />,
             align: "center" as const
         },
         {
             key: "net_sales",
-            //  label: (
-            //     <>
-            //         Net Sales <InfoTip text={TERM_DEFINITIONS.net_sales} />
-            //     </>
-            // ), 
-
             label: "Net Sales",
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
             align: "center" as const
@@ -3289,27 +3079,8 @@ export default function DashboardPage() {
 
     ];
 
-
-    const monthlyAdsSpentTotal = useMemo<number>(() => {
-        const items = (data as any)?.skuwise_items ?? [];
-        const grand = items.find((r: any) => r?.sku === "GRAND_TOTAL");
-
-        return Number(
-            grand?.ad_spend ??
-            grand?.advertising_spend ??
-            grand?.advertising_fees ??
-            grand?.advertising_cost ??
-            (data as any)?.derived_totals?.advertising_fees ??
-            (data as any)?.totals?.advertising_cost ??
-            0
-        );
-    }, [data]);
-
-
-
     const prevValues = useMemo(() => {
         const getPrev = (label: string) => {
-            // map label -> previous raw value (same currency basis as current raw)
             switch (label) {
                 case "Net Sales":
                     return globalUseBi
@@ -3392,7 +3163,6 @@ export default function DashboardPage() {
 
     const colors = labels.map((label) => colorMapping[label] || "#75BBDA");
 
-
     /* ===================== EXCEL EXPORT (USES displayCurrency symbol) ===================== */
     const captureChartPng = useCallback(async () => {
         const container = chartRef.current;
@@ -3431,7 +3201,6 @@ export default function DashboardPage() {
     const handleDownload = useCallback(async () => {
         try {
             const pngDataUrl = await captureChartPng();
-
             const workbook = new ExcelJS.Workbook();
             const sheet = workbook.addWorksheet("Amazon P&L");
 
@@ -3440,7 +3209,6 @@ export default function DashboardPage() {
             sheet.addRow([`Country: ${countryNameForGraph.toUpperCase()}`]);
             sheet.addRow([`Currency: ${currencySymbol}`]);
             sheet.addRow([""]);
-
             sheet.addRow(["Metric", "", `Amount (${currencySymbol})`]);
 
             const signs: Record<string, string> = {
@@ -3496,15 +3264,12 @@ export default function DashboardPage() {
     const todaySalesFromBI = useMemo(() => {
         const points = biDailySeries?.current_mtd || [];
         if (!points.length) return 0;
-
-        // if range active, use sliced series (so "today" = last day in range)
         const pts = rangeActive
             ? sliceByDayRange(points, selectedStartDay, selectedEndDay)
             : points;
 
         if (!pts.length) return 0;
 
-        // pick last point by date (safe even if API order changes)
         const last = [...pts].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
 
         return Number(last?.net_sales) || 0;
@@ -3575,7 +3340,6 @@ export default function DashboardPage() {
         [globalCurrAdsDisp, globalPrevAdsDisp]
     );
 
-    // ✅ GLOBAL ROAS% (normalize to USD to avoid GBP+INR mixing)
     const globalCurrRoasPct = useMemo(() => {
         const ads = toNumberSafe(derived?.advertising_fees ?? 0);
         const amazonSales = toNumberSafe(derived?.net_sales ?? 0);
@@ -3667,11 +3431,6 @@ export default function DashboardPage() {
         inrToUsd,
     ]);
 
-    const globalRoasDeltaPct = useMemo(
-        () => safeDeltaPct(globalCurrRoasPct, globalPrevRoasPct),
-        [globalCurrRoasPct, globalPrevRoasPct]
-    );
-
     const globalCurrAspDisp = useMemo(() => {
         return globalCurrUnits > 0 ? globalCurrNetSalesDisp / globalCurrUnits : 0;
     }, [globalCurrUnits, globalCurrNetSalesDisp]);
@@ -3725,34 +3484,23 @@ export default function DashboardPage() {
     }, [combinedGrossUSD, convertToDisplayCurrency]);
 
     const globalPrevGrossDisp = useMemo(() => {
-        const prevAmazonGrossUSD = toNumberSafe(prev.grossSales) * gbpToUsd; // prev gross comes in GBP
+        const prevAmazonGrossUSD = toNumberSafe(prev.grossSales) * gbpToUsd;
         const prevShopifyUSD = toNumberSafe(shopifyPrevDeriv?.netSales) * inrToUsd;
         return convertToDisplayCurrency(prevAmazonGrossUSD + prevShopifyUSD, "USD");
     }, [prev.grossSales, gbpToUsd, shopifyPrevDeriv?.netSales, inrToUsd, convertToDisplayCurrency]);
-
-
 
     /* ===================== RENDER FLAGS ===================== */
     const hasAnyGraphData = amazonIntegrated || shopifyIntegrated;
     const hasGlobalCard = !noIntegrations;
     const hasAmazonCard = amazonIntegrated;
     const hasShopifyCard = !shopifyNotConnected;
-
     const leftColumnHeightClass = !hasShopifyCard ? "lg:min-h-[520px]" : "";
-
     const prevShort = getShort(biPeriods?.previous?.label);
     const currShort = getShort(biPeriods?.current_mtd?.label);
-
     const rangeCurrency = currencyForCountry(countryName);
-
-
     const identityConvert = useCallback((v: number, _from?: any) => v, []);
-
     const reimbursementHome = useMemo(() => {
-        // current month reimbursement lives in derived_totals
         const currRaw = toNumberSafe(derived?.current_net_reimbursement ?? 0);
-
-        // previous month reimbursement lives in previous_period.totals (as per your snippet)
         const prevRaw = toNumberSafe(
             data?.previous_period?.totals?.previous_net_reimbursement ?? 0
         );
@@ -3772,7 +3520,6 @@ export default function DashboardPage() {
         amazonDataCurrency,
     ]);
 
-
     const targetData = regions[targetRegion] || regions.Global;
 
     const stats_mtdHome = identityConvert(targetData.mtdUSD ?? 0);
@@ -3785,21 +3532,14 @@ export default function DashboardPage() {
             item.product_name === "Grand Total" ||
             item.sku === "GRAND_TOTAL"
     );
-
-
-
-
     const ads_spend = grandTotalRow?.ads_spend ?? 0;
     const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
     const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
-
-
     const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
     const lost_inventory_total = grandTotalRow?.lost_total ?? 0;
     const otherPlatformFee = grandTotalRow?.platformfeenew ?? 0;
     const platformFee = grandTotalRow?.platform_fee ?? 0;
     const dealVouchers = grandTotalRow?.dealsvouchar_ads ?? 0;
-
 
     const costOfAds = Math.abs(
         toNumber(sponsoredBrandSpend - dealVouchers)
@@ -3809,16 +3549,12 @@ export default function DashboardPage() {
         toNumber(ads_spend + costOfAds)
     );
 
-
     const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
-
-
 
     const reimbursementForSummary = useMemo(() => {
         return toNumber(reimbursementHome?.current);
     }, [reimbursementHome?.current]);
 
-    // CM2 Margin (%) = (CM2 Profit / Net Sales) * 100
     const cm2MarginPctForSummary = useMemo(() => {
         const cm2 = cm2Profit;
         const netSales = toNumber(plSummaryTotals.net_sales);
@@ -3831,14 +3567,11 @@ export default function DashboardPage() {
         return mtdSales ? (reimbursementForSummary / mtdSales) * 100 : 0;
     }, [reimbursementForSummary, stats_mtdHome]);
 
-    // Reimbursement vs CM2 Margin (%) = (Reimbursement / CM2 Profit/Loss) * 100
     const reimbursementVsCm2PctForSummary = useMemo(() => {
         const cm2 = cm2Profit;
         return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
     }, [reimbursementForSummary, plSummaryTotals.cm2_profit]);
 
-    // Reimbursement vs Sales (%) = (Reimbursement / Net Sales) * 100
-    // (Your text omitted *100; keeping % for consistent display with existing UI.)
     const reimbursementVsSalesPctForSummary = useMemo(() => {
         const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
@@ -3876,6 +3609,12 @@ export default function DashboardPage() {
         stats_targetHome > 0
             ? ((stats_mtdHome - proratedTargetToDate) / stats_targetHome) * 100
             : 0;
+
+    const stats_targetTrendPrevPct = useMemo(() => {
+        return stats_targetHome > 0
+            ? ((stats_lastMtdHome - proratedTargetToDate) / stats_targetHome) * 100
+            : 0;
+    }, [stats_lastMtdHome, proratedTargetToDate, stats_targetHome]);
 
     const ADS_SIGN_PLUS = new Set(["net_sales", "credits", "tax_and_credits"]);
     const ADS_SIGN_MINUS = new Set([
@@ -3940,7 +3679,6 @@ export default function DashboardPage() {
                 };
             });
 
-            // ✅ IMPORTANT: pass percents as numbers (NOT "12.3%") so export can format them properly
             const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
                 ...(countryName === "us" || countryName === "global"
                     ? [
@@ -3952,25 +3690,20 @@ export default function DashboardPage() {
                     ]
                     : []),
 
-                // ---- Cost of Advertisement (parent + children)
                 { label: "Cost of Advertisement", value: "", bold: true },
                 { label: "Visibility - Ads (-)", value: "", indent: 1 },
                 { label: "Visibility - Deals, Vouchers and Reviews (-)", value: "", indent: 1 },
-
-                // ---- Other Transactions (parent + children)
                 { label: "Other Transactions", value: "", bold: true },
                 { label: "Other Platform Fees (-)", value: "", indent: 1 },
                 { label: "Inventory Storage Fees (-)", value: Number((plSummaryTotals as any)?.platform_fee_inventory_storage ?? 0), indent: 1 },
                 { label: "Misc. Transactions (+)", value: "", indent: 1 },
                 { label: "Reimbursement for lost Inventory (+)", value: "", indent: 1 },
-
-                // ---- Fixed rows (same as your table fixedRows)
                 { label: "CM2 Profit/Loss", value: Number((plSummaryTotals as any)?.cm2_profit ?? 0), bold: true },
-                { label: "CM2 Margins", value: Number(cm2MarginPctForSummary ?? 0), bold: true }, // percent
-                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosPctForSummary ?? 0), bold: true }, // percent
+                { label: "CM2 Margins", value: Number(cm2MarginPctForSummary ?? 0), bold: true },
+                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosPctForSummary ?? 0), bold: true },
                 { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0), bold: true },
-                { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0), bold: true }, // percent
-                { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0), bold: true }, // percent
+                { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0), bold: true },
+                { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0), bold: true },
             ];
 
             exportPnLProductwiseBreakdownMtdExcel({
@@ -4018,21 +3751,6 @@ export default function DashboardPage() {
         );
     }, [skuwiseItems]);
 
-
-    const mtdExtraTotals = useMemo(() => {
-        const g = grandTotalSkuRow || {};
-        return {
-            lost_total: toNumber(g.lost_total),
-            platform_fee: toNumber(g.platform_fee),
-            platform_fee_inventory_storage: toNumber(g.platform_fee_inventory_storage),
-        };
-    }, [grandTotalSkuRow]);
-
-
-    const adsIdx = useMemo(
-        () => labels.findIndex((l) => l === "Advertisements"),
-        [labels]
-    );
 
     const idxAds = useMemo(() => labels.findIndex((l) => l === "Advertisements"), [labels]);
     const idxOthers = useMemo(() => labels.findIndex((l) => l === "Others"), [labels]);
@@ -4105,27 +3823,6 @@ export default function DashboardPage() {
         "current-inventory": "inventory",
     };
 
-    const scrollToHashSection = useCallback((hash?: string) => {
-        if (typeof window === "undefined") return;
-
-        const rawHash = hash ?? window.location.hash;
-        if (!rawHash) return;
-
-        const id = rawHash.replace("#", "");
-        if (!id) return;
-
-        // wait a bit so the tab content mounts first
-        setTimeout(() => {
-            const el = document.getElementById(id);
-            if (!el) return;
-
-            el.scrollIntoView({
-                behavior: "smooth",
-                block: "start",
-            });
-        }, 120);
-    }, []);
-
     const handleHashNavigation = useCallback((rawHash?: string) => {
         if (typeof window === "undefined") return;
 
@@ -4179,9 +3876,6 @@ export default function DashboardPage() {
 
         return () => clearTimeout(timer);
     }, [activeTab, pendingHash]);
-
-
-
 
     const stickyKpiItems = [
         {
@@ -4355,8 +4049,8 @@ export default function DashboardPage() {
         {
             label: "Target Trend",
             current: stats_targetTrendPct ?? 0,
-            previous: 0,
-            deltaPct: null,
+            previous: stats_targetTrendPrevPct ?? 0,
+            deltaPct: deltaPctAbs(stats_targetTrendPct ?? 0, stats_targetTrendPrevPct ?? 0),
             loading: loading,
             formatter: fmtPct,
             bottomLabel: "Last Month",
@@ -4368,9 +4062,17 @@ export default function DashboardPage() {
     return (
         <div className="relative w-full">
             <HashScroll offset={80} />
-            {(loading || shopifyLoading || biLoading) && !data && !shopify && !liveBiPayload && (
+            {/* {(loading || shopifyLoading || biLoading) && !data && !shopify && !liveBiPayload && (
                 <Loader fullscreen backgroundClass="bg-white/80" />
-            )}
+            )} */}
+
+            {activeTab === "live" &&
+                (loading || shopifyLoading || biLoading) &&
+                !data && !shopify && !liveBiPayload && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80">
+                        <Loader backgroundClass="bg-transparent" />
+                    </div>
+                )}
 
 
             <div className="sticky top-0 z-40 bg-[#F7F7F7] ">
@@ -4427,7 +4129,7 @@ export default function DashboardPage() {
                     value={activeTab}
                     options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
                     onChange={setActiveTab}
-                    className="mt-2"
+                    className="mt-2 w-full"
                     compact
                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
                 />
@@ -4466,11 +4168,11 @@ export default function DashboardPage() {
             {activeTab === "live" && (
                 <div
                     id="live-sales"
-                    className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-stretch auto-rows-fr"
+                    className="grid grid-cols-12 gap-4 mt-2 md:mt-4 scroll-mt-[80px] items-start lg:items-stretch lg:auto-rows-fr"
                 >
                     {/* LEFT COLUMN */}
                     <div
-                        className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-full min-h-full ${leftColumnHeightClass ?? ""}`}
+                        className={`col-span-12 lg:col-span-8 order-2 lg:order-1 flex flex-col gap-4 h-auto min-h-0 lg:h-full lg:min-h-full ${leftColumnHeightClass ?? ""}`}
                     >
 
 
@@ -4478,39 +4180,37 @@ export default function DashboardPage() {
                         {!isCountryMode && hasGlobalCard && (
                             <div className="flex">
                                 <div className="w-full rounded-xl border bg-white p-4 lg:p-3 2xl:p-5 shadow-sm">
-                                    <div className="mb-4 flex items-start justify-between gap-3">
-                                        <div className="flex items-baseline gap-2">
-                                            <PageBreadcrumb pageTitle="Global" variant="page" align="left" />
+                                    <div className="mb-4 flex items-center justify-between gap-3">
+                                        <div className="min-w-0 shrink-0">
+                                            <PageBreadcrumb pageTitle="Global MTD Sales" variant="page" align="left" />
                                         </div>
 
                                         {showLiveBI && platform === "global" && (
-                                            <RangePicker
-                                                selectedStartDay={selectedStartDay}
-                                                selectedEndDay={selectedEndDay}
-                                                onSubmit={(s, e) => {
-                                                    setSelectedStartDay(s);
-                                                    setSelectedEndDay(e);
-                                                    fetchLiveBiPayload({ startDay: s, endDay: e, generateInsights: false });
-                                                }}
-                                                onClear={() => {
-                                                    setSelectedStartDay(null);
-                                                    setSelectedEndDay(null);
-                                                    fetchLiveBiPayload({ startDay: null, endDay: null, generateInsights: false });
-                                                }}
-
-                                                onCloseReset={() => {
-                                                    setSelectedStartDay(null);
-                                                    setSelectedEndDay(null);
-
-                                                    // ✅ Add this too (same as clear)
-                                                    fetchLiveBiPayload({
-                                                        startDay: null,
-                                                        endDay: null,
-                                                        generateInsights: false,
-                                                    });
-                                                }}
-                                            />
-
+                                            <div className="shrink-0 ml-auto">
+                                                <RangePicker
+                                                    selectedStartDay={selectedStartDay}
+                                                    selectedEndDay={selectedEndDay}
+                                                    onSubmit={(s, e) => {
+                                                        setSelectedStartDay(s);
+                                                        setSelectedEndDay(e);
+                                                        fetchLiveBiPayload({ startDay: s, endDay: e, generateInsights: false });
+                                                    }}
+                                                    onClear={() => {
+                                                        setSelectedStartDay(null);
+                                                        setSelectedEndDay(null);
+                                                        fetchLiveBiPayload({ startDay: null, endDay: null, generateInsights: false });
+                                                    }}
+                                                    onCloseReset={() => {
+                                                        setSelectedStartDay(null);
+                                                        setSelectedEndDay(null);
+                                                        fetchLiveBiPayload({
+                                                            startDay: null,
+                                                            endDay: null,
+                                                            generateInsights: false,
+                                                        });
+                                                    }}
+                                                />
+                                            </div>
                                         )}
                                     </div>
 
@@ -4749,11 +4449,13 @@ export default function DashboardPage() {
                             <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-4">
                                 {/* Amazon KPI Box */}
                                 <div className="w-full rounded-xl border bg-white p-3 2xl:p-5 shadow-sm">
-                                    <div className="mb-3 lg:mb-2 2xl:mb-4 flex flex-row gap-3 items-start md:items-start md:justify-between">
-                                        <div className="flex flex-col flex-1 min-w-0">
+                                    <div className="mb-3 lg:mb-2 2xl:mb-4 flex items-center justify-between gap-2 sm:gap-3">
+                                        <div className="min-w-0">
+                                            <PageBreadcrumb pageTitle="MTD Sales" variant="page" align="left" />
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            {showLiveBI && isCountryMode && (
+
+                                        {showLiveBI && isCountryMode && (
+                                            <div className="ml-auto shrink-0">
                                                 <RangePicker
                                                     selectedStartDay={selectedStartDay}
                                                     selectedEndDay={selectedEndDay}
@@ -4770,9 +4472,8 @@ export default function DashboardPage() {
                                                         setSelectedEndDay(null);
                                                     }}
                                                 />
-                                            )}
-
-                                        </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
@@ -5181,8 +4882,8 @@ export default function DashboardPage() {
                     </div>
 
                     {/* RIGHT COLUMN – Sales Target */}
-                    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-full min-h-full self-stretch">
-                        <div className="h-full grid grid-rows-[auto_minmax(0,1fr)] gap-4">
+                    <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-auto min-h-0 self-auto lg:h-full lg:min-h-full lg:self-stretch">
+                        <div className="grid gap-4 h-auto lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
                             {/* Top card = only as tall as content */}
                             <div className="w-full self-start">
                                 <SalesTargetStatsCard
@@ -5206,27 +4907,27 @@ export default function DashboardPage() {
                             </div>
 
                             {/* Bottom card = fills remaining height */}
-                            <div className="w-full min-h-0">
-                                <div className="h-full lg:sticky lg:top-4 2xl:top-6">
-                                    <SalesTargetCard
-                                        data={targetData}
-                                        homeCurrency={displayCurrency}
-                                        convertToHomeCurrency={identityConvert}
-                                        formatHomeK={formatDisplayK}
-                                        todaySales={targets_todayHome}
-                                        targetHome={stats_targetHome}
-                                        mtdHome={targets_mtdHome}
-                                        lastMonthTotalHome={targets_lastMonthTotalHome}
-                                        lastMonthToDateHome={targets_lastMonthToDateHome}
-                                        currentReimbursement={targets_reimbursement.current}
-                                        previousReimbursement={targets_reimbursement.previous}
-                                        biAlignedTotals={biAlignedTotalsHome}
-                                        biEnabled={biCardsReady}
-                                        periodCompletedPct={rangeCompletedPct}
-                                        periodCompletedLabel="Range"
-                                    />
-                                </div>
+                            {/* <div className="w-full min-h-0"> */}
+                            <div className="h-auto lg:h-full lg:sticky lg:top-4 2xl:top-6">
+                                <SalesTargetCard
+                                    data={targetData}
+                                    homeCurrency={displayCurrency}
+                                    convertToHomeCurrency={identityConvert}
+                                    formatHomeK={formatDisplayK}
+                                    todaySales={targets_todayHome}
+                                    targetHome={stats_targetHome}
+                                    mtdHome={targets_mtdHome}
+                                    lastMonthTotalHome={targets_lastMonthTotalHome}
+                                    lastMonthToDateHome={targets_lastMonthToDateHome}
+                                    currentReimbursement={targets_reimbursement.current}
+                                    previousReimbursement={targets_reimbursement.previous}
+                                    biAlignedTotals={biAlignedTotalsHome}
+                                    biEnabled={biCardsReady}
+                                    periodCompletedPct={rangeCompletedPct}
+                                    periodCompletedLabel="Range"
+                                />
                             </div>
+                            {/* </div> */}
                         </div>
                     </aside>
                 </div >

@@ -110,7 +110,7 @@ export default function SkuRecommendationDrawer({
       }}
     >
       <div className="flex flex-col gap-4 h-full">
-        <div className="shrink-0 border-b border-slate-200 p-3 flex items-start justify-between gap-3">
+        <div className="shrink-0 border-b border-slate-200 p-3 flex items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-1 flex-wrap">
               <PageBreadcrumb

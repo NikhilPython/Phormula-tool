@@ -91,9 +91,9 @@ const AppSidebar: React.FC = () => {
   const isPreviewMode = routeParams?.month === "NA" && routeParams?.year === "NA";
 
   // ✅ Smaller / laptop friendly typography
-  const textMain = "text-[11px] sm:text-[12px] lg:text-[12.5px] xl:text-[13px]";
+  const textMain = "text-[11px] sm:text-[12px] lg:text-[12.5px] xl:text-[12px] 2xl:text-[13px]";
   const textSection =
-    "text-[10px] sm:text-[11px] lg:text-[11.5px] xl:text-[12px] tracking-wide";
+    "text-[10px] sm:text-[11px] lg:text-[11.5px] xl:text-[13px] 2xl:text-[14px] tracking-wide";
   const padItem = "px-2 py-1 sm:py-1.5";
   const padHeader = "px-2 py-1.5 sm:py-2";
   const iconSize = "h-[18px] w-[18px] sm:h-5 sm:w-5 lg:h-[22px] lg:w-[22px]";
@@ -288,12 +288,12 @@ const AppSidebar: React.FC = () => {
   };
 
   const getCurrentMonthYear = () => {
-  const now = new Date();
-  return {
-    month: monthNames[now.getMonth()], // "march"
-    year: String(now.getFullYear()),   // "2026"
+    const now = new Date();
+    return {
+      month: monthNames[now.getMonth()], // "march"
+      year: String(now.getFullYear()),   // "2026"
+    };
   };
-};
 
   const ensureSpReportSeedOnce = async (
     baseUrl: string,
@@ -409,44 +409,44 @@ const AppSidebar: React.FC = () => {
     localStorage.setItem(storageKey, "1");
   };
 
-const triggerPurchaseOrderApi = async (
-  country: string,
-  month: string,
-  year: string
-) => {
-  const jwtToken =
-    token || (typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null);
+  const triggerPurchaseOrderApi = async (
+    country: string,
+    month: string,
+    year: string
+  ) => {
+    const jwtToken =
+      token || (typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null);
 
-  if (!jwtToken) throw new Error("Missing jwt token");
+    if (!jwtToken) throw new Error("Missing jwt token");
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
 
-  const safeMonth =
-    month.charAt(0).toUpperCase() + month.slice(1).toLowerCase(); // march -> March
+    const safeMonth =
+      month.charAt(0).toUpperCase() + month.slice(1).toLowerCase(); // march -> March
 
-  const formData = new FormData();
-  formData.append("month", safeMonth);
-  formData.append("year", year);
-  formData.append("country", country.toLowerCase());
+    const formData = new FormData();
+    formData.append("month", safeMonth);
+    formData.append("year", year);
+    formData.append("country", country.toLowerCase());
 
-  const res = await fetch(`${baseUrl}/purchase_order`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${jwtToken}`,
-      Accept: "application/json",
-    },
-    body: formData,
-  });
+    const res = await fetch(`${baseUrl}/purchase_order`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${jwtToken}`,
+        Accept: "application/json",
+      },
+      body: formData,
+    });
 
-  const json = await res.json().catch(() => ({}));
+    const json = await res.json().catch(() => ({}));
 
-  if (!res.ok) {
-    throw new Error(json?.error || "Purchase order API failed");
-  }
+    if (!res.ok) {
+      throw new Error(json?.error || "Purchase order API failed");
+    }
 
-  return json;
-};
+    return json;
+  };
 
 
   const onRegionChange = (val: string) => {
@@ -583,7 +583,7 @@ const triggerPurchaseOrderApi = async (
     },
     {
       key: "finance-dashboards",
-      name: "FINANCE DASHBOARDS",
+      name: "FINANCIAL METRICS",
       icon: <LuLayoutDashboard className={iconSize} />,
       subItems: [
         {
@@ -658,15 +658,15 @@ const triggerPurchaseOrderApi = async (
         //   name: "Chatbot",
         //   path: `/chatbot/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         // },
-        {
-          name: "Inventory Forecast",
-          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
+       {
+  name: "Inventory Forecast",
+  path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-forecast`,
+},
         {
           name: "P&L Forecast",
           path: `/pnlforecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
-       
+
       ],
     },
 
@@ -692,13 +692,13 @@ const triggerPurchaseOrderApi = async (
           path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
         {
-          name: "Dispatch Planning",
-          path: `/dispatch/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
-       {
+  name: "Dispatch Planning",
+  path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#dispatch`,
+},
+        {
   name: "Purchase Order (PO) Planning",
   path: ({ countryName, month, year }) =>
-    `/purchase-order/${countryName}/${month}/${year}`,
+    `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`,
   onClick: async () => {
     await triggerPurchaseOrderApi(
       currentParams.countryName,
@@ -707,10 +707,17 @@ const triggerPurchaseOrderApi = async (
     );
   },
 },
- {
-  name: "Objectives & Targets",
-  path: `/objectives-targets/${currentParams.countryName}`,
-},
+        {
+          name: "Expense Reconcilliation",
+          path: ({ countryName, month, year }) =>
+            `/expense-reconciliation/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
+        },
+        {
+          name: "Objectives & Targets",
+          path: `/objectives-targets/${currentParams.countryName}`,
+        },
       ],
     },
   ];
@@ -761,7 +768,7 @@ const triggerPurchaseOrderApi = async (
   return (
     <aside
       className={`fixed mt-16 flex flex-col lg:mt-0 top-0 left-0 bg-white text-gray-900 h-screen overflow-y-auto transition-all duration-300 ease-in-out z-[1100]
-        px-3 sm:px-4 lg:px-3 xl:px-4
+        px-3 sm:px-4 lg:px-1 xl:px-1.5 2xl:px-4
         ${isMobileOpen
           ? "w-full"
           : showText
@@ -792,7 +799,7 @@ const triggerPurchaseOrderApi = async (
         <button
           type="button"
           onClick={handleToggle}
-          className="flex items-center justify-center w-8 h-8 lg:w-9 lg:h-9 rounded-lg border border-gray-200"
+          className="flex items-center justify-center w-8 h-8 2xl:w-9 2xl:h-9 rounded-lg border border-gray-200"
           aria-label="Toggle sidebar"
         >
           {showText ? (
@@ -801,6 +808,7 @@ const triggerPurchaseOrderApi = async (
               alt="Close sidebar"
               width={20}
               height={20}
+             className="2xl:w-[20px] 2xl:h-[20px] w-[18px] h-[18px]"
             />
           ) : (
             <Image
@@ -808,6 +816,7 @@ const triggerPurchaseOrderApi = async (
               alt="Open sidebar"
               width={20}
               height={20}
+             className="2xl:w-[20px] 2xl:h-[20px] w-[18px] h-[18px]"
             />
           )}
         </button>
@@ -821,7 +830,7 @@ const triggerPurchaseOrderApi = async (
           options={regionOptions}
           onChange={onRegionChange}
           className={`mb-2 rounded bg-transparent text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#5EA68E]
-      px-2 py-1 ${textMain}`}
+       py-1 ${textMain}`}
         />
       )}
 

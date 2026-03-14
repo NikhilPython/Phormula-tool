@@ -8,7 +8,7 @@ from config import Config
 from sqlalchemy import text
 from flask_session import Session
 from datetime import timedelta
-
+from app.utils.celery_utils import celery_init_app
 
 # Load environment variables
 load_dotenv()
@@ -16,42 +16,43 @@ load_dotenv()
 # Create extension instances
 db = SQLAlchemy()
 mail = Mail()
+sess = Session()
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-    
-    
+
     # Database configuration
     app.config['SQLALCHEMY_BINDS'] = {
         'superadmin': app.config['SQLALCHEMY_DATABASE_ADMIN_URL'],
-        
         'shopify': app.config['SQLALCHEMY_DATABASE_SHOPIFY_URL'],
-        'chatbot': app.config['SQLALCHEMY_DATABASE_CHATBOT_URL'],  # ✅ Add this
-        'amazon': app.config['SQLALCHEMY_DATABASE_AMAZON_URL']  # ✅ Add this
+        'chatbot': app.config['SQLALCHEMY_DATABASE_CHATBOT_URL'],
+        'amazon': app.config['SQLALCHEMY_DATABASE_AMAZON_URL']
     }
-    
+
     # Create databases if they don't exist
     from app.utils.token_utils import create_database_if_not_exists
     create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_URI'])
     create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_ADMIN_URL'])
-    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_SHOPIFY_URL'])  # ✅ Add this
-    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_CHATBOT_URL'])  # ✅ Add this
-    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_AMAZON_URL'])  # ✅ Add this
+    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_SHOPIFY_URL'])
+    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_CHATBOT_URL'])
+    create_database_if_not_exists(app.config['SQLALCHEMY_DATABASE_AMAZON_URL'])
 
-    
     # Initialize extensions
     db.init_app(app)
     mail.init_app(app)
-    
-    # 🔧 IMPROVED CORS configuration for session support
-    CORS(app,
-         resources={r"/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}},
-         supports_credentials=True,  # This is crucial for sessions
-         allow_headers=["Content-Type", "Authorization", "Cookie"],  # Add Cookie header
-         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-    
-    # Import and register blueprints
+    sess.init_app(app)
+
+    # CORS
+    CORS(
+        app,
+        resources={r"/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}},
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization", "Cookie"],
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    )
+
+    # Register blueprints
     from app.routes.user_routes import user_bp
     from app.routes.upload_routes import upload_bp
     from app.routes.dashboard_routes import dashboard_bp
@@ -67,7 +68,6 @@ def create_app():
     from app.routes.pie_chart_routes import pie_chart_bp
     from app.routes.add_member_routes import add_member_bp
     from app.routes.amazon_api_routes import amazon_api_bp
-    from app.routes.shopify_routes import shopify_bp
     from app.routes.skuwise_profit_routes import skuwise_bp
     from app.routes.fba_routes import fba_bp
     from app.routes.error_status_routes import error_status_bp
@@ -80,10 +80,8 @@ def create_app():
     from app.routes.monthwise_ai_summary_routes import summary_bp
     from app.routes.advertisement_api_routes import advertisement_api_routes_bp
     from app.routes.member_auth import member_auth_bp
-    from app.routes.inventory_breakup_routes import inventory_breakup_bp 
-    
-     # Register the new fee_preview_bp
-   
+    from app.routes.inventory_breakup_routes import inventory_breakup_bp
+
     app.register_blueprint(user_bp)
     app.register_blueprint(upload_bp)
     app.register_blueprint(dashboard_bp)
@@ -103,7 +101,7 @@ def create_app():
     app.register_blueprint(fba_bp)
     app.register_blueprint(error_status_bp)
     app.register_blueprint(referral_fee_bp)
-    app.register_blueprint(fee_preview_bp) 
+    app.register_blueprint(fee_preview_bp)
     app.register_blueprint(inventory_bp)
     app.register_blueprint(conversion_bp)
     app.register_blueprint(amazon_sales_api_bp)
@@ -112,14 +110,10 @@ def create_app():
     app.register_blueprint(advertisement_api_routes_bp)
     app.register_blueprint(member_auth_bp)
     app.register_blueprint(inventory_breakup_bp)
-    
-    
-    
+
     with app.app_context():
-        # Create tables from models
         db.create_all()
-       
-        # Attempt to alter table only if it exists
+
         from sqlalchemy import inspect
         inspector = inspect(db.engine)
         if 'upload_history' in inspector.get_table_names():
@@ -129,5 +123,8 @@ def create_app():
                     conn.commit()
             except Exception as e:
                 print(f"[WARNING] Could not alter upload_history table: {e}")
-    
+
+    # Initialize Celery after app setup
+    celery_init_app(app)
+
     return app

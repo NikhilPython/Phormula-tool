@@ -4,7 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 import { useAppDispatch } from "@/lib/hooks";
 import { logout, setUser } from "@/lib/features/auth/authSlice";
@@ -13,16 +13,13 @@ import { useGetUserQuery } from "@/lib/api/userApi";
 import AddMemberModal from "@/components/header/AddMemberModal";
 
 
-
-
-
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
 
   const dispatch = useAppDispatch();
   const router = useRouter();
-
+  const pathname = usePathname();
   const { user: userFromStore, token } = useAppSelector((s: any) => s.auth);
 
   const { data: userFromApi } = useGetUserQuery(undefined, {
@@ -86,7 +83,20 @@ export default function UserDropdown() {
     .join("")
     .toUpperCase();
 
-    const isMember = userFromStore?.is_member === true;
+  const isMember = userFromStore?.is_member === true;
+
+  const getCountryFromPath = () => {
+    const segments = pathname?.split("/").filter(Boolean) || [];
+
+    if (segments.length > 1) {
+      // most pages use /page/{country}/month/year
+      return segments[1];
+    }
+
+    return "global";
+  };
+
+
 
   return (
     <div className="relative z-99999">
@@ -94,7 +104,7 @@ export default function UserDropdown() {
         <span className="mr-1 font-normal text-xs md:text-sm 2xl:text-base inline-flex items-center gap-2">
           Welcome,
           <span className="font-bold  inline-flex items-center gap-2">
- <i>{userFromStore?.name}!</i>
+            <i>{userFromStore?.name}!</i>
 
             <div
               onClick={toggleDropdown}
@@ -136,6 +146,29 @@ export default function UserDropdown() {
             <DropdownItem
               onItemClick={closeDropdown}
               tag="a"
+              href={`/objectives-targets/${getCountryFromPath()}`}
+              className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+            >
+              Business Overview
+            </DropdownItem>
+
+            {!isMember && (
+              <li>
+                <DropdownItem
+                  onItemClick={() => {
+                    closeDropdown();
+                    setIsAddMemberOpen(true);
+                  }}
+                  tag="button"
+                  className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300 w-full text-left"
+                >
+                  Add Members
+                </DropdownItem>
+              </li>
+            )}
+            <DropdownItem
+              onItemClick={closeDropdown}
+              tag="a"
               href="/profile"
               className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
@@ -143,7 +176,7 @@ export default function UserDropdown() {
             </DropdownItem>
           </li>
 
-          <li>
+          {/* <li>
             <DropdownItem
               onItemClick={closeDropdown}
               tag="a"
@@ -152,9 +185,9 @@ export default function UserDropdown() {
             >
               Create New Country Profile
             </DropdownItem>
-          </li>
+          </li> */}
 
-          <li>
+          {/* <li>
             <DropdownItem
               onItemClick={closeDropdown}
               tag="a"
@@ -163,9 +196,9 @@ export default function UserDropdown() {
             >
               Your Country Profile
             </DropdownItem>
-          </li>
+          </li> */}
 
-          <li>
+          {/* <li>
             <DropdownItem
               onItemClick={closeDropdown}
               tag="a"
@@ -174,23 +207,9 @@ export default function UserDropdown() {
             >
               Your Uploads
             </DropdownItem>
-          </li>
+          </li> */}
 
-          {/* ✅ NEW: Add Members */}
-{!isMember && (
-  <li>
-    <DropdownItem
-      onItemClick={() => {
-        closeDropdown();
-        setIsAddMemberOpen(true);
-      }}
-      tag="button"
-      className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300 w-full text-left"
-    >
-      Add Members
-    </DropdownItem>
-  </li>
-)}
+
         </ul>
 
         <button
@@ -218,13 +237,13 @@ export default function UserDropdown() {
       </Dropdown>
 
       {/* ✅ Modal */}
-{!isMember && (
-  <AddMemberModal
-    isOpen={isAddMemberOpen}
-    onClose={() => setIsAddMemberOpen(false)}
-    token={token}
-  />
-)}
+      {!isMember && (
+        <AddMemberModal
+          isOpen={isAddMemberOpen}
+          onClose={() => setIsAddMemberOpen(false)}
+          token={token}
+        />
+      )}
     </div>
   );
 }

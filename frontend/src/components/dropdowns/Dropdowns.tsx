@@ -25,34 +25,18 @@ import type { TopBottomData } from "@/lib/pnl/topBottom";
 import type { TableRow } from "./SKUtable";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
-import {
-  TrendingUp,
-  DollarSign,
-  Package,
-  Target,
-  AlertCircle,
-  Wallet,
-} from "lucide-react";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts";
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
 import { useRouter } from "next/navigation";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import ProductwisePerformance from "@/features/productwiseperformance/ProductwisePerformance";
 import CashFlowPage from "@/app/(admin)/cashflow/[countryName]/[month]/[year]/CashFlowClient";
+import { jwtDecode } from "jwt-decode";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
   unit_sold: number;
-  total_sales: number;      // (your current "Sales")
-  gross_sales?: number;     // ✅ ADD THIS
+  total_sales: number;
+  gross_sales?: number;
   total_product_sales?: number;
   total_expense: number;
   cm2_profit: number;
@@ -76,14 +60,11 @@ type UploadRow = {
   total_profit: number;
 };
 
-
-
 type SummaryComparisons = {
   lastMonth?: Summary;
   lastQuarter?: Summary;
   lastYear?: Summary;
 };
-
 
 type UploadHistoryResponse = {
   summary: Summary;
@@ -117,8 +98,6 @@ type RecommendationsMap = Record<
   {
     journey_summary?: string[];
     recommendation?: string;
-
-    // ✅ ADD THESE (new API fields)
     inventory_recommendation?: string;
     ads_recommendation?: string;
   }
@@ -128,13 +107,9 @@ type RecommendationsMap = Record<
 
 type AiSummaryResponse = {
   summary?: string | null;
-
-  // ✅ now recommendations can be OBJECT (new API) OR markdown string (old)
   recommendations?: string | RecommendationsMap | null;
-
   objective?: ObjectivePayload;
   objective_changed?: boolean;
-
   performance_trend?: PerformanceTrendPayload;
   performance_trend_metric?: "net_sales" | "units";
   portfolio_recommendation?: string | null;
@@ -145,23 +120,21 @@ type AiPanelData = {
   skuInsightsBullets: string[];
   recommendationBullets: string[];
   inventoryBullets: string[];
-
   recommendationsMap?: RecommendationsMap;
   objective?: ObjectivePayload;
-
   rawSummary?: string | null;
   rawRecommendations?: string | null;
-
-  // ✅ ADD THIS
   remainingSkusRecommendation?: string;
   portfolioRecommendation?: string | null;
 };
 
-
+type JwtPayload = {
+  user_id?: string | number;
+  [k: string]: unknown;
+};
 
 type RangeType = "monthly" | "quarterly" | "yearly" | "";
 
-/** Quarter union and helpers */
 type Quarter = "Q1" | "Q2" | "Q3" | "Q4";
 const isQuarter = (v: string): v is Quarter =>
   (["Q1", "Q2", "Q3", "Q4"] as const).includes(v as Quarter);
@@ -191,7 +164,7 @@ const monthIndexMap: Record<string, number> = {
   july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
 };
 
-type FetchedPeriods = Record<string, string[]>; // { "2024": ["january","february"], ... }
+type FetchedPeriods = Record<string, string[]>;
 
 const readFetchedPeriods = (): FetchedPeriods => {
   if (typeof window === "undefined") return {};
@@ -224,7 +197,6 @@ const markFetched = (year: string, month?: string) => {
 
   writeFetchedPeriods(fp);
 
-  // keep latestFetchedPeriod updated (used by PeriodFiltersTable too)
   if (m) {
     localStorage.setItem("latestFetchedPeriod", JSON.stringify({ year: y, month: m }));
   }
@@ -251,16 +223,15 @@ const getPrevMonthLabel = (selectedMonth: string, selectedYear: number) => {
   if (idx === undefined) return "Last month";
 
   const prev = new Date(selectedYear, idx - 1, 1);
-  const mon = prev.toLocaleString("en-US", { month: "short" }); // Nov
-  const yy = String(prev.getFullYear()).slice(-2); // 25
-  return `${mon}'${yy}`; // Nov'25
+  const mon = prev.toLocaleString("en-US", { month: "short" });
+  const yy = String(prev.getFullYear()).slice(-2);
+  return `${mon}'${yy}`;
 };
 
 const getCurrencySymbol = (codeOrCountry: string) => {
   const v = (codeOrCountry || "").toLowerCase();
 
   switch (v) {
-    // Home currency / common codes
     case "usd":
     case "us":
     case "global":
@@ -284,7 +255,6 @@ const getCurrencySymbol = (codeOrCountry: string) => {
   }
 };
 
-
 const getPrevQuarterLabel = (q: Quarter, selectedYear: number) => {
   const order: Quarter[] = ["Q1", "Q2", "Q3", "Q4"];
   const idx = order.indexOf(q);
@@ -305,8 +275,6 @@ const getPrevYearLabel = (selectedYear: number) => {
 
 const splitMetricValue = (value: string) => {
   const v = (value || "").trim();
-
-  // matches: "£10.55 (+7.54%)" OR "80.00 (-31.62%)"
   const m = v.match(/^(.+?)\s*(\(([-+])[^)]+\))\s*$/);
 
   if (!m) {
@@ -314,8 +282,8 @@ const splitMetricValue = (value: string) => {
   }
 
   const main = m[1].trim();
-  const delta = m[2].trim();     // "(+7.54%)"
-  const sign = m[3];             // "+" | "-"
+  const delta = m[2].trim();
+  const sign = m[3];
 
   const deltaColor = sign === "+" ? "text-emerald-600" : "text-red-600";
   return { main, delta, deltaColor };
@@ -334,7 +302,7 @@ type ProductInsightBlock = {
   journeyBullets: string[];
   recommendationBullets: string[];
   inventoryBullets: string[];
-  isOtherSkus?: boolean; // ✅ ADD
+  isOtherSkus?: boolean;
 };
 
 
@@ -373,7 +341,7 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       !isMetric(line) &&
       !line.toLowerCase().startsWith("recommendation:") &&
       !line.toLowerCase().startsWith("product journey") &&
-      !line.toLowerCase().startsWith("inventory action:") &&   // ✅ ADD
+      !line.toLowerCase().startsWith("inventory action:") &&
       !!nextLine &&
       isMetric(nextLine);
 
@@ -396,7 +364,7 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
         metrics: [],
         journeyBullets: [],
         recommendationBullets: [],
-        inventoryBullets: [],          // ✅ ADD
+        inventoryBullets: [],
         isOtherSkus: isOther,
       };
 
@@ -406,7 +374,6 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
 
     if (!current) continue;
 
-    // section switches
     if (line.toLowerCase().startsWith("product journey")) {
       inJourney = true;
       continue;
@@ -419,7 +386,6 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       continue;
     }
 
-    // ✅ ADD: inventory action lines
     if (line.toLowerCase().startsWith("inventory action:")) {
       inJourney = false;
       const inv = line.replace(/^inventory action:\s*/i, "").trim();
@@ -427,7 +393,6 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
       continue;
     }
 
-    // metrics
     if (isMetric(line)) {
       const [label, ...rest] = line.split(":");
       const value = rest.join(":").trim();
@@ -452,9 +417,6 @@ const parseProductInsightsBlocks = (lines: string[]): ProductInsightBlock[] => {
   pushCurrent();
   return blocks;
 };
-
-
-
 
 const parseMdSections = (md?: string | null): Record<string, string[]> => {
   if (!md) return {};
@@ -493,14 +455,11 @@ const parseMdSections = (md?: string | null): Record<string, string[]> => {
   return out;
 };
 
-
-
 const extractRecoAndInventoryBullets = (
   mdOrObj?: string | RecommendationsMap | null
 ) => {
   // ✅ Case 1: object-based recommendations (new API)
   if (mdOrObj && typeof mdOrObj === "object") {
-    // We will render these inside Product Insights, so keep reco bullets empty here
     return {
       recommendationBullets: [],
       inventoryBullets: [],
@@ -526,7 +485,6 @@ const toBullets = (text?: string) => {
   if (!text) return [];
   const t = text.trim();
 
-  // if already multiline / bullets
   if (t.includes("\n")) {
     return t
       .split("\n")
@@ -534,7 +492,6 @@ const toBullets = (text?: string) => {
       .filter(Boolean);
   }
 
-  // otherwise split by sentences
   return t
     .split(/(?:\.\s+|;\s+|\s\|\s)/g)
     .map((x) => x.trim())
@@ -551,7 +508,7 @@ const toNum = (v: any) => {
 const mergeToSingleBullet = (arr: string[]) => {
   const cleaned = (arr || []).map(s => String(s).trim()).filter(Boolean);
   if (!cleaned.length) return [];
-  return [cleaned.join(" ")]; // single bullet line
+  return [cleaned.join(" ")];
 };
 
 const getPeriodBadge = (range: RangeType, year: string, month?: string, quarter?: string) => {
@@ -559,22 +516,19 @@ const getPeriodBadge = (range: RangeType, year: string, month?: string, quarter?
 
   if (range === "monthly" && month) {
     const shortMonth = month.slice(0, 3);
-    return `${shortMonth}'${yy}`; // Jan'26
+    return `${shortMonth}'${yy}`;
   }
 
   if (range === "quarterly" && quarter) {
-    return `${quarter}'${yy}`;    // Q1'26
+    return `${quarter}'${yy}`;
   }
 
   if (range === "yearly" && year) {
-    return String(year);         // 2026
+    return String(year);
   }
 
   return "";
 };
-
-
-
 
 type RightProductDrawerProps = {
   open: boolean;
@@ -625,7 +579,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   const inventoryRecoBullets = mergeToSingleBullet(toBullets(inventoryText));
   const adsRecoBullets = toBullets(recObj?.ads_recommendation);
   const periodBadge = getPeriodBadge(range, year, month, quarter);
-
+  const shouldHideGraphForOtherSkus = !!block?.isOtherSkus;
   const sortedMetrics = [...(block?.metrics || [])].sort((a, b) => {
     const aIndex = metricOrder.indexOf(a.label.toLowerCase());
     const bIndex = metricOrder.indexOf(b.label.toLowerCase());
@@ -643,7 +597,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
       {open && (
         <>
           <motion.div
-            className="fixed inset-0 z-[999999] bg-black/40"
+            className="fixed inset-0 z-[999999] h-full bg-black/40"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -652,44 +606,53 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
 
           <motion.aside
-            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] sm:w-[75vw] md-[60vw] lg:w-[50vw] min-[1700px]:w-[50vw] bg-white shadow-2xl" 
+            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] sm:w-[75vw] md-[60vw] lg:w-[50vw] min-[1700px]:w-[50vw] bg-white shadow-2xl"
             initial={{ x: 520 }}
             animate={{ x: 0 }}
             exit={{ x: 520 }}
             transition={{ type: "tween", duration: 0.25 }}
           >
             <div className="flex h-full flex-col gap-4">
-              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 p-3">
-                <div>
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <PageBreadcrumb
-                      pageTitle="Detailed View - "
-                      variant="page"
-                      textSize="2xl"
-                    />
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 p-3">
 
-                    <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
-                      {block.name || "Details"}
-                    </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
 
-                    {drawerPeriodText ? (
-                      <span className="ml-1 text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl ">
-                        {drawerPeriodText}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <PageBreadcrumb
+                        pageTitle="Detailed View - "
+                        variant="page"
+                        textSize="2xl"
+                      />
+                    </div>
+
+                    {/* Green section */}
+                    <div className="flex flex-wrap items-center gap-1 sm:ml-1">
+                      <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                        {block.name || "Details"}
                       </span>
-                    ) : periodBadge ? (
-                      <span className="ml-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
-                        {periodBadge}
-                      </span>
-                    ) : null}
+
+                      {drawerPeriodText ? (
+                        <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                          {drawerPeriodText}
+                        </span>
+                      ) : periodBadge ? (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
+                          {periodBadge}
+                        </span>
+                      ) : null}
+                    </div>
+
                   </div>
                 </div>
 
                 <button
                   onClick={onClose}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   ✕
                 </button>
+
               </div>
 
               <div className="flex-1 space-y-6 overflow-y-auto px-3">
@@ -724,7 +687,6 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                                   {main}
                                 </span>
 
-                                {/* 3rd line: percentage */}
                                 {delta && (
                                   <span
                                     className="text-[10px] 2xl:text-xs font-semibold"
@@ -798,12 +760,14 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     )}
                 </div>
 
-                <div className="w-full">
-                  <Productinfoinpopup
-                    productname={block.name}
-                    countryName={countryName}
-                  />
-                </div>
+                {!shouldHideGraphForOtherSkus && (
+                  <div className="w-full">
+                    <Productinfoinpopup
+                      productname={block.name}
+                      countryName={countryName}
+                    />
+                  </div>
+                )}
 
                 <div className="pb-4">
                   <div className="flex items-center gap-1 flex-wrap">
@@ -818,7 +782,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     <ul className="space-y-1 text-xs text-charcoal-600 2xl:text-sm">
                       {block.journeyBullets.map((p, i) => (
                         <li key={i} className="flex items-start gap-2">
-                          <span className="text-charcoal-400">→</span>
+                          {/* <span className="text-charcoal-400">→</span> */}
                           <span>
                             {p
                               .replace(/^\d+\.\s*-\s*/, "")
@@ -841,7 +805,6 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   );
 };
 
-
 const ProductInsightsSection = ({
   blocks,
   objective,
@@ -851,7 +814,6 @@ const ProductInsightsSection = ({
   selectedYear,
   selectedQuarter,
   homeCurrency,
-
   countryName,
   drawerPeriodText,
   selectedMonth,
@@ -875,12 +837,10 @@ const ProductInsightsSection = ({
   const [perfError, setPerfError] = useState<string | null>(null);
   const [perfData, setPerfData] = useState<any>(null);
 
-  // If you later add metric toggle, keep this state (and include in deps)
   const [perfMetric, setPerfMetric] = useState<"net_sales" | "units">("net_sales");
 
   const hasBlocks = blocks.length > 0; // ✅ compute instead of early return
 
-  // top border colors (rotate)
   const topBorderColors = ["border-t-blue-500", "border-t-amber-500", "border-t-emerald-500", "border-t-rose-500"];
 
   const skuActions =
@@ -890,7 +850,7 @@ const ProductInsightsSection = ({
     {};
 
   useEffect(() => {
-    // ✅ guard inside effect
+
     if (!hasBlocks) return;
     if (!selectedBlock) return;
     if (selectedBlock.isOtherSkus) return;
@@ -906,8 +866,7 @@ const ProductInsightsSection = ({
         const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
         if (!token) throw new Error("Missing token");
 
-        const productKeyForApi = selectedBlock.name; // ✅ Always product name
-
+        const productKeyForApi = selectedBlock.name;
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/ProductwisePerformance`, {
           method: "POST",
           headers: {
@@ -978,10 +937,9 @@ const ProductInsightsSection = ({
     homeCurrency,
     nameToSkuMap,
     countryName,
-    perfMetric, // ✅ include, since you read it inside effect
+    perfMetric,
   ]);
 
-  // ✅ NOW you can early return (after hooks)
   if (!hasBlocks) return null;
 
   const openDrawer = (b: ProductInsightBlock) => {
@@ -1004,7 +962,7 @@ const ProductInsightsSection = ({
         <PageBreadcrumb pageTitle="Recommendations" variant="page" align="left" textSize="2xl" />
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {blocks.map((b, idx) => {
           const borderColor = topBorderColors[idx % topBorderColors.length];
 
@@ -1020,7 +978,6 @@ const ProductInsightsSection = ({
                 "p-3 space-y-3",
               ].join(" ")}
             >
-              {/* Header */}
               <div className="flex items-start justify-between gap-3">
                 <div className="text-sm font-semibold text-slate-800">
                   {idx + 1}. {b.name}
@@ -1034,7 +991,6 @@ const ProductInsightsSection = ({
                 </button>
               </div>
 
-              {/* Metrics */}
               {b.metrics?.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {b.metrics.map((m, i) => (
@@ -1067,8 +1023,6 @@ const ProductInsightsSection = ({
                   ))}
                 </div>
               )}
-
-              {/* Short inline recommendation */}
               {b.recommendationBullets?.length > 0 && (
                 <p className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
                   {b.recommendationBullets.join(" ")}
@@ -1079,7 +1033,6 @@ const ProductInsightsSection = ({
         })}
       </div>
 
-      {/* Right Drawer */}
       <RightProductDrawer
         open={!!selectedBlock}
         onClose={() => {
@@ -1099,126 +1052,6 @@ const ProductInsightsSection = ({
     </div>
   );
 };
-
-
-// const MonthlyObjectiveStrip = ({
-//   objective,
-// }: {
-//   objective?: ObjectivePayload;
-// }) => {
-//   const Item = ({
-//     label,
-//     value,
-//     icon,
-//     topColor,
-//     iconBg,
-//     iconColor,
-//     valueClass = "text-slate-800",
-//   }: {
-//     label: string;
-//     value: string;
-//     icon: React.ReactNode;
-//     topColor: string;
-//     iconBg: string;
-//     iconColor?: string;
-//     valueClass?: string;
-//   }) => (
-//     <div className="relative flex flex-col justify-center px-6 py-4 bg-white border border-slate-200 rounded-xl">
-
-//       {/* Top Color Bar */}
-//       <div
-//         className="absolute top-0 left-0 w-full h-1"
-//       />
-
-//       <div className="flex items-center gap-3">
-
-
-
-
-//         <div className="flex flex-col">
-//           <span className="text-xs text-slate-500">{label}</span>
-//           <span className={`text-sm font-semibold ${valueClass}`}>
-//             {value}
-//           </span>
-//         </div>
-//       </div>
-//     </div>
-//   );
-
-
-//   return (
-//     <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 mt-4">
-
-//       {/* Title */}
-//       <div className="mb-2">
-//         <PageBreadcrumb
-//           pageTitle=" Monthly Objectives & Targets"
-//           variant="page"
-//           textSize="2xl"
-//           align="left"
-//         />
-//       </div>
-
-//       {/* Strip Grid */}
-//       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5  rounded-sm">
-
-//         <Item
-//           label="Growth"
-//           value={capitalizeFirst(objective?.growth_intent) || "Growth"}
-//           icon={<TrendingUp size={16} />}
-//           topColor="#3A8EA4"
-//           iconBg="#E0F2F1"
-//         />
-
-//         <Item
-//           label="Profit"
-//           value={capitalizeFirst(objective?.profit_priority?.replaceAll("_", " ")) || "Profit"}
-//           icon={<DollarSign size={16} />}
-//           topColor="#ED9F50"
-//           iconBg="#FFF3E0"
-//         />
-
-//         <Item
-//           label="Inventory Dilution"
-//           value={objective?.inventory_clearance_priority ? "Yes" : "No"}
-//           icon={<Package size={16} />}
-//           topColor="#C0BFC1"
-//           iconBg="#F3F4F6"
-//         />
-
-//         <Item
-//           label="Target Set"
-//           value="$140K"
-//           icon={<Target size={16} />}
-//           topColor="#5EA68E"
-//           iconBg="#E6F4EA"
-//         />
-
-//         <Item
-//           label="Shortfall"
-//           value="-$3.6K"
-//           icon={<AlertCircle size={16} />}
-//           topColor="#B75A5A"
-//           iconBg="#FDECEA"
-//           valueClass="text-red-600"
-//         />
-
-//         <Item
-//           label="Cash Flow"
-//           value="$130K"
-//           icon={<Wallet size={16} />}
-//           topColor="#75BBDA"
-//           iconBg="#E3F2FD"
-//         />
-
-
-//       </div>
-//     </div>
-//   );
-// };
-
-
-
 
 const MonthlyObjectiveStrip = ({
   objective,
@@ -1266,48 +1099,85 @@ const MonthlyObjectiveStrip = ({
   };
 
   const targetSet = formatMoneyCompact(targetSummary?.target_sales ?? 0);
-  const shortfall = formatMoneyCompact(-(targetSummary?.shortfall_total ?? 0));
+  const shortfallValue = Number(targetSummary?.shortfall_total ?? 0);
+  const shortfall = formatMoneyCompact(-(shortfallValue || 0));
   const cashFlow = formatMoneyCompact(targetSummary?.cashflow_total ?? 0);
 
-  const Item = ({
-    label,
-    value,
-    valueClass = "text-charcoal-500",
-  }: {
-    label: string;
-    value: string;
-    valueClass?: string;
-  }) => (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-      <div className="2xl:text-xs text-[10px] text-charcoal-500">
-        {label}
-      </div>
-      <div
-        className={`mt-1 text-sm 2xl:text-lg font-semibold capitalize ${valueClass}`}
-      >
-        {value}
-      </div>
-    </div>
-  );
+  const objectiveCards = [
+    {
+      label: "Growth",
+      value: growth,
+      accent: "bg-sky-500",
+      valueClass: "text-slate-800",
+    },
+    {
+      label: "Profit",
+      value: profit,
+      accent: "bg-amber-500",
+      valueClass: "text-slate-800",
+    },
+    {
+      label: "Inventory Dilution",
+      value: inventory,
+      accent: "bg-violet-500",
+      valueClass: "text-slate-800",
+    },
+    {
+      label: "Target Set",
+      value: targetSet,
+      accent: "bg-emerald-500",
+      valueClass: "text-slate-800",
+    },
+    {
+      label: "Shortfall",
+      value: shortfall,
+      accent: "bg-rose-500",
+      valueClass: shortfallValue > 0 ? "text-rose-600" : "text-slate-800",
+    },
+    {
+      label: "Cash Flow",
+      value: cashFlow,
+      accent: "bg-cyan-500",
+      valueClass: "text-slate-800",
+    },
+  ];
 
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white shadow-sm p-4 ${className}`}>
-      <div className="mb-2">
-        <PageBreadcrumb
-          pageTitle="Monthly Objectives & Targets"
-          variant="page"
-          textSize="2xl"
-          align="left"
-        />
+    <div
+      className={`rounded-xl border border-slate-200 bg-white shadow-sm p-4 h-full ${className}`}
+    >
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div>
+          <PageBreadcrumb
+            pageTitle="Monthly Objectives & Targets"
+            variant="page"
+            textSize="2xl"
+            align="left"
+          />
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-5">
-        <Item label="Growth" value={growth} />
-        <Item label="Profit" value={profit} />
-        <Item label="Inventory Dilution" value={inventory} />
-        <Item label="Target Set" value={targetSet} />
-        <Item label="Shortfall" value={shortfall} valueClass="text-red-600" />
-        <Item label="Cash Flow" value={cashFlow} />
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3">
+        {objectiveCards.map((item) => (
+          <div
+            key={item.label}
+            className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-2 transition-all duration-200 hover:shadow-sm"
+          >
+            <div className={`absolute left-0 top-0 h-full w-1 `} />
+
+            <div className="pl-2">
+              <div className="text-[11px] 2xl:text-xs font-medium text-slate-500 leading-tight">
+                {item.label}
+              </div>
+
+              <div
+                className={`mt-2  text-sm font-semibold leading-snug capitalize break-words ${item.valueClass}`}
+              >
+                {item.value}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1326,32 +1196,37 @@ type AiSingleInsightCardProps = {
   nameToSkuMap?: Record<string, string>;
   objective?: ObjectivePayload;
 
-  // ✅ ADD THESE
   range: RangeType;
   selectedYear: string;
   selectedQuarter: Quarter | "";
   homeCurrency?: string;
-  countryName: string; // ✅ ADD
-  portfolioRecommendation?: string | null; // ✅ ADD
+  countryName: string;
+  portfolioRecommendation?: string | null;
+
+  targetSummary?: {
+    target_sales?: number;
+    shortfall_total?: number;
+    cashflow_total?: number;
+  } | null;
+
+  currencySymbol?: string;
 };
 
 const formatSummaryPeriod = (text?: string) => {
   if (!text) return "";
 
-  const m = text.match(/\(([^)]+)\)/);     // pick "(...)" safely
+  const m = text.match(/\(([^)]+)\)/);
   if (!m) return "";
 
-  const inside = m[1].trim();             // e.g. "2026 vs 2025" OR "Jan 2026 vs Jan 2025"
+  const inside = m[1].trim();
   const [leftRaw, rightRaw] = inside.split(/\s*vs\s*/i);
   if (!leftRaw || !rightRaw) return `(${inside})`;
 
   const formatPart = (part: string) => {
     const p = part.trim();
 
-    // ✅ Case 1: Year only ("2026")
     if (/^\d{4}$/.test(p)) return p;
 
-    // ✅ Case 2: Month Year ("January 2026")
     const [month, year] = p.split(/\s+/);
     if (!month || !year) return p;
 
@@ -1364,8 +1239,8 @@ const formatSummaryPeriod = (text?: string) => {
 };
 
 const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
-  loading, // kept for prop compatibility but NOT used for UI
-  error,   // kept for prop compatibility but NOT used for UI
+  loading,
+  error,
   summaryBullets,
   recommendationBullets,
   skuInsightsBullets,
@@ -1380,13 +1255,15 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   selectedYear,
   selectedQuarter,
   homeCurrency,
+  targetSummary,
+  currencySymbol = "$",
 }) => {
-
   if (
     !summaryBullets.length &&
     !recommendationBullets.length &&
     !skuInsightsBullets.length &&
-    !inventoryBullets.length
+    !inventoryBullets.length &&
+    !objective
   ) {
     return null;
   }
@@ -1399,40 +1276,51 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
   return (
     <div className="flex flex-col gap-5">
       <div className="w-full space-y-4">
+        {(narrativeInsights.length > 0 || objective) && (
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+            {narrativeInsights.length > 0 && (
+              <div className="xl:col-span-7 rounded-xl border border-slate-200 bg-white shadow-sm p-4 h-full">
+                <div className="space-y-3 h-full">
+                  <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold leading-snug">
+                    {narrativeInsights[0]?.split("(")[0]?.trim()}
+                    <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
+                      {formatSummaryPeriod(narrativeInsights[0])}
+                    </span>
+                  </h2>
 
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-          {/* Narrative Summary */}
-          {narrativeInsights.length > 0 && (
-            <>
-              <div className="space-y-3">
-                <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold">
-                  {narrativeInsights[0]?.split("(")[0]?.trim()}
-                  <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
-                    {formatSummaryPeriod(narrativeInsights[0])}
-                  </span>
-                </h2>
-
-                <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
-                  {narrativeInsights.slice(1).map((line, i) => (
-                    <p key={i}>{line}</p>
-                  ))}
-                </div>
-
-                {/* ✅ ADD THIS AT THE END */}
-                {portfolioRecommendation ? (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="text-xs font-semibold text-slate-700 mb-1">
-                      Portfolio Recommendation
-                    </div>
-                    <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                      {portfolioRecommendation}
-                    </div>
+                  <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed space-y-2">
+                    {narrativeInsights.slice(1).map((line, i) => (
+                      <p key={i}>{line}</p>
+                    ))}
                   </div>
-                ) : null}
+
+                  {portfolioRecommendation ? (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-xs font-semibold text-slate-700 mb-1">
+                        Portfolio Recommendation
+                      </div>
+                      <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+                        {portfolioRecommendation}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </>
-          )}
-        </div>
+            )}
+
+            {/* Right: Monthly Objective */}
+            {objective ? (
+              <div className="xl:col-span-5 h-full">
+                <MonthlyObjectiveStrip
+                  objective={objective}
+                  targetSummary={targetSummary}
+                  currencySymbol={currencySymbol}
+                  className="h-full"
+                />
+              </div>
+            ) : null}
+          </div>
+        )}
 
         {/* Product Insights */}
         <div className="w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4">
@@ -1452,7 +1340,7 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
           </div>
         </div>
 
-        {/* ================= INVENTORY SECTION ================= */}
+        {/* Inventory Section */}
         {inventoryBullets.length > 0 && (
           <div className="space-y-4 rounded-xl border border-slate-200 bg-white shadow-sm p-4">
             <div className="flex items-center gap-2">
@@ -1462,12 +1350,16 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
             </div>
 
             {(() => {
-              const detailLines = inventoryBullets.filter((b) => /for detailed/i.test(b));
-              const mainLines = inventoryBullets.filter((b) => !/for detailed/i.test(b));
+              const detailLines = inventoryBullets.filter((b) =>
+                /for detailed/i.test(b)
+              );
+              const mainLines = inventoryBullets.filter(
+                (b) => !/for detailed/i.test(b)
+              );
 
               return (
                 <>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {mainLines.map((b, i) => {
                       const raw = String(b || "").trim();
 
@@ -1480,9 +1372,11 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                         return (
                           <div
                             key={i}
-                            className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
+                            className="flex items-start justify-between gap-3 bg-white rounded-lg p-3 border border-amber-100"
                           >
-                            <span className="text-sm font-medium text-slate-700">{label}</span>
+                            <span className="text-sm font-medium text-slate-700">
+                              {label}
+                            </span>
                             {value ? (
                               <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
                                 {value}
@@ -1496,14 +1390,18 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
                       const hasColon = colonIdx > -1;
 
                       const left = hasColon ? raw.slice(0, colonIdx).trim() : raw;
-                      const right = hasColon ? raw.slice(colonIdx + 1).trim() : "";
+                      const right = hasColon
+                        ? raw.slice(colonIdx + 1).trim()
+                        : "";
 
                       return (
                         <div
                           key={i}
                           className="flex justify-between items-center bg-white rounded-lg p-3 border border-amber-100"
                         >
-                          <span className="text-sm font-medium text-slate-700">{left}</span>
+                          <span className="text-sm font-medium text-slate-700">
+                            {left}
+                          </span>
                           {right ? (
                             <span className="font-bold text-[#414042] text-sm whitespace-nowrap">
                               {right}
@@ -1562,6 +1460,8 @@ const HASH_TO_FINANCE_TAB: Record<string, DashboardTab> = {
   "cash-flow": "cashFlow",
 };
 
+
+
 /* ---------------------- Component ---------------------- */
 const Dropdowns: React.FC<DropdownsProps> = ({
   initialRanged,
@@ -1571,27 +1471,96 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 }) => {
   const { data: userData } = useGetUserDataQuery();
 
-  // Normalized home currency from profile (e.g. "usd", "inr")
   const homeCurrency = (userData?.homeCurrency || "USD").toLowerCase();
 
   const router = useRouter();
 
-  // params from parent
   const ranged = initialRanged;
   const countryName = initialCountryName;
   const month = initialMonth;
   const year = initialYear;
 
-  // Global vs Country page
   const isGlobalPage = countryName.toLowerCase() === "global";
 
-  // For child components: only pass homeCurrency when global
   const globalHomeCurrency = isGlobalPage ? homeCurrency : undefined;
 
-  // Symbol for summary cards
+  const token = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("jwtToken");
+  }, []);
+
+  const userid = useMemo(() => {
+    if (!token) return "";
+    try {
+      const decoded = jwtDecode<JwtPayload>(token);
+      return decoded?.user_id ?? "";
+    } catch {
+      return "";
+    }
+  }, [token]);
+
+  const quarterMapping: Record<string, string> = {
+    Q1: "quarter1",
+    Q2: "quarter2",
+    Q3: "quarter3",
+    Q4: "quarter4",
+  };
+
+  const buildParentSkuUrl = () => {
+    if (range === "monthly") {
+      const skuwiseFileName =
+        initialCountryName.toLowerCase() === "global"
+          ? `skuwisemonthly_${userid}_${initialCountryName}_${(selectedMonth || "").toLowerCase()}${selectedYear}_table`
+          : `skuwisemonthly_${userid}_${initialCountryName.toLowerCase()}_${(selectedMonth || "").toLowerCase()}${selectedYear}`;
+
+      const url = new URL(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`
+      );
+
+      url.searchParams.set("country", initialCountryName);
+      url.searchParams.set("month", (selectedMonth || "").toLowerCase());
+      url.searchParams.set("year", String(selectedYear));
+
+      if (initialCountryName.toLowerCase() === "global" && globalHomeCurrency) {
+        url.searchParams.set("homeCurrency", globalHomeCurrency);
+      }
+
+      return url.toString();
+    }
+
+    if (range === "quarterly") {
+      const backendQuarter = quarterMapping[selectedQuarter] || "";
+
+      const url = new URL(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/quarterlyskutable`
+      );
+
+      url.searchParams.set("quarter", backendQuarter);
+      url.searchParams.set("country", initialCountryName);
+      url.searchParams.set("year", String(selectedYear));
+      url.searchParams.set("userid", String(userid));
+
+      if (initialCountryName.toLowerCase() === "global" && globalHomeCurrency) {
+        url.searchParams.set("homeCurrency", globalHomeCurrency);
+      }
+
+      return url.toString();
+    }
+
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/YearlySKU`);
+    url.searchParams.set("country", initialCountryName);
+    url.searchParams.set("year", String(selectedYear));
+
+    if (initialCountryName.toLowerCase() === "global" && globalHomeCurrency) {
+      url.searchParams.set("homeCurrency", globalHomeCurrency);
+    }
+
+    return url.toString();
+  };
+
   const currencySymbol = isGlobalPage
-    ? getCurrencySymbol(homeCurrency) // GLOBAL → homeCurrency
-    : getCurrencySymbol(countryName || ""); // Country → country currency
+    ? getCurrencySymbol(homeCurrency)
+    : getCurrencySymbol(countryName || "");
   const [collapsed, setCollapsed] = useState(false);
 
   const [range, setRange] = useState<RangeType>("");
@@ -1613,8 +1582,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [bargraphUploads, setBargraphUploads] = useState<UploadRow[]>([]);
   const [bargraphLoading, setBargraphLoading] = useState(false);
   const [bargraphUserMeta, setBargraphUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
-
-  // ✅ GraphPage (Line chart) data from parent
   const [graphPageUploads, setGraphPageUploads] = useState<UploadRow[]>([]);
   const [graphPageLoading, setGraphPageLoading] = useState(false);
   const [graphPageUserMeta, setGraphPageUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
@@ -1624,12 +1591,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [activeTab, setActiveTab] = useState<DashboardTab>("graphs");
   const [pendingHash, setPendingHash] = useState<string>("");
   const [targetSummary, setTargetSummary] = useState<{
-  target_sales?: number;
-  shortfall_total?: number;
-  cashflow_total?: number;
-} | null>(null);
+    target_sales?: number;
+    shortfall_total?: number;
+    cashflow_total?: number;
+  } | null>(null);
 
-const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
+  const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash) return;
@@ -1719,7 +1686,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
     setFocusedChart((prev) => (prev === which ? null : which));
   };
 
-  // ✅ PnL is "collapsed" when it's NOT in focused full view
   const pnlCollapsed = focusedChart !== "pnl";
 
   // ---------------- AI Summary Panel state ----------------
@@ -1727,7 +1693,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
   const [aiPanelLoading, setAiPanelLoading] = useState(false);
   const [aiPanelError, setAiPanelError] = useState<string | null>(null);
 
-  // ✅ ADD THIS (request version guard)
   const aiRequestIdRef = useRef(0);
 
   const [chartExportApi, setChartExportApi] = useState<ProfitChartExportApi | null>(null);
@@ -1757,7 +1722,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
   ): { topData: TopBottomData; bottomData: TopBottomData } => {
     const clean = (rows || []).filter(Boolean);
 
-    // ✅ robust number parser (handles "1,234.56", null, undefined, "")
     const num = (v: any) => {
       if (v === null || v === undefined) return 0;
       if (typeof v === "number") return isFinite(v) ? v : 0;
@@ -1768,13 +1732,11 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
     const lower = (v: any) => String(v || "").trim().toLowerCase();
 
-    // remove Total if present (supports product_name or sku)
     const withoutTotal = clean.filter((r) => {
       const name = lower((r as any).product_name ?? (r as any).sku);
       return name !== "total";
     });
 
-    // ✅ sort using parsed numbers (prevents string-sorting bugs)
     const sortByProfitDesc = [...withoutTotal].sort((a, b) => num(b.profit) - num(a.profit));
     const sortByProfitAsc = [...withoutTotal].sort((a, b) => num(a.profit) - num(b.profit));
 
@@ -1823,7 +1785,7 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
     const first = topData?.rows?.[0];
     return first?.product_name?.trim() || "";
   }, [topData]);
-  
+
   useEffect(() => {
     setShowNoDataOverlay(false);
     setFocusedChart(null);
@@ -1871,7 +1833,7 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
   const zeroData: Summary = {
     unit_sold: 0,
     total_sales: 0,
-    gross_sales: 0, // ✅ ADD THIS
+    gross_sales: 0,
     total_product_sales: 0,
     total_expense: 0,
     cm2_profit: 0,
@@ -1899,7 +1861,7 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
   const fetchUploadHistory = async (
     rangeType: RangeType,
     monthVal: string,
-    quarterVal: string, // safe for the API as plain string
+    quarterVal: string,
     yearVal: string,
     country: string
   ) => {
@@ -1919,7 +1881,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
       url.searchParams.set("year", yearVal);
       url.searchParams.set("country", country);
 
-      // ✅ Only for GLOBAL send homeCurrency
       if (country.toLowerCase() === "global" && homeCurrency) {
         url.searchParams.set("homeCurrency", homeCurrency);
       }
@@ -1933,31 +1894,26 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         console.error(`API Error: ${err?.error ?? res.statusText}`);
-        // setUploadsData(null);
         return;
       }
 
       const data: UploadHistoryResponse = await res.json();
       setUploadsData(data);
 
-      // ✅ Persist fetched periods so older months/years remain selectable later
       if (data?.summary) {
         if (rangeType === "monthly" && yearVal && monthVal) {
           markFetched(yearVal, monthVal);
         }
         if (rangeType === "quarterly" && yearVal) {
-          // optional: mark year as seen (no month)
           markFetched(yearVal);
         }
         if (rangeType === "yearly" && yearVal) {
-          // optional: mark year as seen (no month)
           markFetched(yearVal);
         }
       }
 
     } catch (error) {
       console.error("Error fetching data: ", error);
-      // setUploadsData(null);
     } finally {
       setLoading(false);
     }
@@ -1967,7 +1923,7 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
   const fetchAiSummary = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
 
-    const requestId = ++aiRequestIdRef.current; // ✅ 1️⃣ request version
+    const requestId = ++aiRequestIdRef.current;
 
     const timeline =
       rangeType === "monthly"
@@ -1981,7 +1937,7 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
     setAiPanelLoading(true);
     setAiPanelError(null);
-    setAiPanel(null); // ✅ 2️⃣ clear stale summary
+    setAiPanel(null);
 
     try {
       const token =
@@ -2012,9 +1968,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
       if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
 
-      // setPerformanceTrend(data.performance_trend ?? null);
-      // setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
-
       const sections = parseMdSections(data.summary);
 
       const summaryLines = sections["SUMMARY"] ?? [];
@@ -2023,7 +1976,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
       const { recommendationBullets, inventoryBullets, recommendationsMap } =
         extractRecoAndInventoryBullets(data.recommendations as any);
 
-      // ✅ extract remaining_skus_recommendation safely
       let remainingSkusRecommendation: string | undefined;
 
       if (
@@ -2045,51 +1997,46 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
         rawSummary: data.summary ?? null,
         rawRecommendations:
           typeof data.recommendations === "string" ? data.recommendations : null,
-
-        // ✅ NEW
         remainingSkusRecommendation,
         portfolioRecommendation: data.portfolio_recommendation ?? null,
       });
 
-
-
     } catch (e: any) {
-      if (requestId !== aiRequestIdRef.current) return; // ✅ 3️⃣ guard
+      if (requestId !== aiRequestIdRef.current) return;
       setAiPanel(null);
       setAiPanelError(e?.message || "Failed to fetch AI summary");
     } finally {
       if (requestId === aiRequestIdRef.current) {
-        setAiPanelLoading(false); // ✅ 3️⃣ guard
+        setAiPanelLoading(false);
       }
     }
   };
 
   useEffect(() => {
-  const ready =
-    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-    (range === "yearly" && !!selectedYear);
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
 
-  if (!ready) {
-    setTargetSummary(null);
-    return;
-  }
+    if (!ready) {
+      setTargetSummary(null);
+      return;
+    }
 
-  fetchTargetSummary();
-}, [range, selectedMonth, selectedQuarter, selectedYear, initialCountryName]);
+    fetchTargetSummary();
+  }, [range, selectedMonth, selectedQuarter, selectedYear, initialCountryName]);
 
 
 
   const fetchPerformanceTrendFromHistory = async (rangeType: RangeType) => {
     if (!countryName || !rangeType || !selectedYear) return;
 
-    // build timeline exactly like your summary route did
     const timeline =
       rangeType === "monthly"
-        ? monthNameToNumber(selectedMonth)               // 1..12
+        ? monthNameToNumber(selectedMonth)
         : rangeType === "quarterly"
-          ? selectedQuarter                              // "Q1".."Q4"
-          : "ALL";                                       // yearly
+          ? selectedQuarter
+          : "ALL";
 
     if (rangeType === "monthly" && !timeline) return;
     if (rangeType === "quarterly" && !selectedQuarter) return;
@@ -2103,11 +2050,8 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
       url.searchParams.set("period", rangeType);
       url.searchParams.set("timeline", String(timeline));
       url.searchParams.set("year", String(selectedYear));
+      url.searchParams.set("metric", performanceTrendMetric);
 
-      // (optional) if you want to control metric from FE:
-      url.searchParams.set("metric", performanceTrendMetric); // "net_sales" | "units"
-
-      // ✅ Only for GLOBAL send homeCurrency
       if (countryName.toLowerCase() === "global" && homeCurrency) {
         url.searchParams.set("homeCurrency", homeCurrency);
       }
@@ -2133,66 +2077,64 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
   };
 
   const fetchTargetSummary = async () => {
-  if (!selectedYear || !initialCountryName) return;
+    if (!selectedYear || !initialCountryName) return;
 
-  const ready =
-    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-    (range === "yearly" && !!selectedYear);
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
 
-  if (!ready) {
-    setTargetSummary(null);
-    return;
-  }
-
-  let apiMonth = "";
-
-  if (range === "monthly" && selectedMonth) {
-    apiMonth =
-      selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1).toLowerCase();
-  } else {
-    const now = new Date();
-    apiMonth = now.toLocaleString("en-US", { month: "long" });
-  }
-
-  try {
-    setTargetSummaryLoading(true);
-
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-
-    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`);
-    url.searchParams.set("month", apiMonth);
-    url.searchParams.set("year", selectedYear);
-    url.searchParams.set("country", initialCountryName.toLowerCase());
-
-    const res = await fetch(url.toString(), {
-      method: "GET",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
+    if (!ready) {
       setTargetSummary(null);
       return;
     }
 
-    const data = await res.json();
+    let apiMonth = "";
 
-    setTargetSummary({
-      target_sales: Number(data?.target_sales ?? 0),
-      shortfall_total: Number(data?.shortfall_total ?? 0),
-      cashflow_total: Number(data?.cashflow_total ?? 0),
-    });
-  } catch (error) {
-    console.error("Failed to fetch target summary:", error);
-    setTargetSummary(null);
-  } finally {
-    setTargetSummaryLoading(false);
-  }
-};
+    if (range === "monthly" && selectedMonth) {
+      apiMonth =
+        selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1).toLowerCase();
+    } else {
+      const now = new Date();
+      apiMonth = now.toLocaleString("en-US", { month: "long" });
+    }
 
+    try {
+      setTargetSummaryLoading(true);
 
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`);
+      url.searchParams.set("month", apiMonth);
+      url.searchParams.set("year", selectedYear);
+      url.searchParams.set("country", initialCountryName.toLowerCase());
+
+      const res = await fetch(url.toString(), {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        setTargetSummary(null);
+        return;
+      }
+
+      const data = await res.json();
+
+      setTargetSummary({
+        target_sales: Number(data?.target_sales ?? 0),
+        shortfall_total: Number(data?.shortfall_total ?? 0),
+        cashflow_total: Number(data?.cashflow_total ?? 0),
+      });
+    } catch (error) {
+      console.error("Failed to fetch target summary:", error);
+      setTargetSummary(null);
+    } finally {
+      setTargetSummaryLoading(false);
+    }
+  };
 
   const handleMonthChange = (v: string) => {
     setSelectedMonth(v);
@@ -2240,7 +2182,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
   }, []);
 
 
-  // ✅ only change when global currency changes (prevents country pages going 0)
   const fetchCurrencyKey = isGlobalPage ? homeCurrency : "country";
 
   useEffect(() => {
@@ -2257,14 +2198,12 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, fetchCurrencyKey]);
 
-  // Fetch AI summary/recommendations for the selected period
   useEffect(() => {
     if (!range || !selectedYear) {
       setAiPanel(null);
       return;
     }
 
-    // align with the same dropdown validity rules
     const ready =
       (range === "monthly" && !!selectedMonth && !!selectedYear) ||
       (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
@@ -2297,115 +2236,9 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
     }
 
     fetchPerformanceTrendFromHistory(range);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric]);
 
-
-  const cropPngBase64WithSize = async (
-    base64: string,
-    pad = 0,
-    opts?: {
-      // how close to white counts as background (0-255)
-      whiteThreshold?: number;     // default 253
-      // how much non-bg must exist in a row/col to keep it (0..1)
-      minContentRatio?: number;    // default 0.002 (0.2%)
-    }
-  ): Promise<{ base64: string; w: number; h: number }> => {
-    const isDataUrl = base64.startsWith("data:image/");
-    const raw = base64.includes("base64,") ? base64.split("base64,")[1] : base64;
-
-    const img = new Image();
-
-    // ✅ Use original data URL if present (jpeg/png)
-    // ✅ Otherwise assume png (your older charts send raw png base64)
-    img.src = isDataUrl ? base64 : `data:image/png;base64,${raw}`;
-
-
-    await new Promise<void>((res, rej) => {
-      img.onload = () => res();
-      img.onerror = () => rej(new Error("Failed to load image for cropping"));
-    });
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return { base64: raw, w: img.width, h: img.height };
-
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx.drawImage(img, 0, 0);
-
-    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-    const whiteThreshold = opts?.whiteThreshold ?? 253;
-    const minContentRatio = opts?.minContentRatio ?? 0.002; // 0.2%
-
-    // Background: transparent OR near-white
-    const isBg = (r: number, g: number, b: number, a: number) => {
-      if (a === 0) return true;
-      return r >= whiteThreshold && g >= whiteThreshold && b >= whiteThreshold;
-    };
-
-    // Count non-bg pixels in a row
-    const rowContentRatio = (y: number) => {
-      let nonBg = 0;
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-        if (!isBg(r, g, b, a)) nonBg++;
-      }
-      return nonBg / width;
-    };
-
-    // Count non-bg pixels in a col
-    const colContentRatio = (x: number) => {
-      let nonBg = 0;
-      for (let y = 0; y < height; y++) {
-        const i = (y * width + x) * 4;
-        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-        if (!isBg(r, g, b, a)) nonBg++;
-      }
-      return nonBg / height;
-    };
-
-    let top = 0;
-    while (top < height && rowContentRatio(top) < minContentRatio) top++;
-
-    let bottom = height - 1;
-    while (bottom >= 0 && rowContentRatio(bottom) < minContentRatio) bottom--;
-
-    let left = 0;
-    while (left < width && colContentRatio(left) < minContentRatio) left++;
-
-    let right = width - 1;
-    while (right >= 0 && colContentRatio(right) < minContentRatio) right--;
-
-    if (right <= left || bottom <= top) return { base64: raw, w: img.width, h: img.height };
-
-    left = Math.max(0, left - pad);
-    top = Math.max(0, top - pad);
-    right = Math.min(width - 1, right + pad);
-    bottom = Math.min(height - 1, bottom + pad);
-
-    const cropW = right - left + 1;
-    const cropH = bottom - top + 1;
-
-    const out = document.createElement("canvas");
-    const outCtx = out.getContext("2d");
-    if (!outCtx) return { base64: raw, w: img.width, h: img.height };
-
-    out.width = cropW;
-    out.height = cropH;
-
-    outCtx.drawImage(canvas, left, top, cropW, cropH, 0, 0, cropW, cropH);
-
-    return {
-      base64: out.toDataURL("image/png").split("base64,")[1],
-      w: cropW,
-      h: cropH,
-    };
-  };
-
-   const handleDownloadSkuSheet1 = async () => {
+  const handleDownloadSkuSheet1 = async () => {
     try {
       const wb = new ExcelJS.Workbook();
       const wsSku = wb.addWorksheet("SKU Profitability");
@@ -2450,9 +2283,9 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
     const body = document.body;
 
     if (showNoDataOverlay) {
-      body.style.overflow = "hidden"; 
+      body.style.overflow = "hidden";
     } else {
-      body.style.overflow = ""; 
+      body.style.overflow = "";
     }
 
     return () => {
@@ -2491,7 +2324,7 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
               : "ALL";
 
         const url = new URL(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history` 
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`
         );
 
         url.searchParams.set("country", countryName);
@@ -2601,6 +2434,135 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
     fetchGraphPageUploads();
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency]);
 
+
+  useEffect(() => {
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
+
+    if (!ready || !initialCountryName) {
+      setSkuRows([]);
+      return;
+    }
+
+    const ac = new AbortController();
+
+    const normalizeRowsForParent = (data: any[]): TableRow[] => {
+      return data.map((row) => {
+        const productName =
+          row?.product_name && String(row.product_name).trim() !== ""
+            ? String(row.product_name)
+            : row?.sku && String(row.sku).trim() !== ""
+              ? String(row.sku)
+              : "-";
+
+        const isTotalRow = productName.trim().toLowerCase() === "total";
+
+        const toNumber = (v: any) => {
+          if (v === undefined || v === null || v === "") return 0;
+          if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+          const n = Number(String(v).replace(/,/g, "").trim());
+          return Number.isFinite(n) ? n : 0;
+        };
+
+        return {
+          ...row,
+          product_name: isTotalRow ? "Total" : productName,
+          sku: row.sku ?? "-",
+
+          quantity: toNumber(row.quantity),
+          return_quantity: toNumber(row.return_quantity),
+          total_quantity: toNumber(row.total_quantity),
+
+          units_sold: toNumber(row.quantity),
+          return_units: toNumber(row.return_quantity),
+          net_units_sold: toNumber(row.total_quantity),
+
+          asp: toNumber(row.asp ?? row.ASP),
+          product_sales: toNumber(row.gross_sales ?? row.product_sales),
+          refund_sales: toNumber(row.refund_sales),
+          net_sales: toNumber(row.net_sales),
+          lost_total: toNumber(row.lost_total),
+
+          cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
+          shipment_charges: toNumber(row.shipment_charges),
+          selling_fees: toNumber(row.selling_fees),
+          fba_fees: toNumber(row.fba_fees),
+          amazon_fee: toNumber(row.amazon_fee),
+
+          tex_and_credits: toNumber(row.tex_and_credits),
+          net_taxes: toNumber(row.net_taxes),
+          net_credits: toNumber(row.net_credits),
+
+          promotional_rebates: toNumber(row.promotional_rebates),
+          promotional_rebates_percentage: toNumber(row.promotional_rebates_percentage),
+
+          misc_transaction: toNumber(row.misc_transaction),
+          other_transaction_fees: toNumber(row.other_transaction_fees),
+          other_transactions: toNumber(row.other_transaction_fees),
+
+          profit: toNumber(row.profit),
+          profit_percentage: toNumber(row.profit_percentage),
+          unit_wise_profitability: toNumber(row.unit_wise_profitability),
+
+          profit_mix: toNumber(row.profit_mix),
+          sales_mix: toNumber(row.sales_mix),
+        } as TableRow;
+      });
+    };
+
+    const fetchSkuRows = async () => {
+      try {
+        if (!token) {
+          setSkuRows([]);
+          return;
+        }
+
+        const url = buildParentSkuUrl();
+
+        const res = await fetch(url, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+          signal: ac.signal,
+        });
+
+        if (!res.ok) {
+          setSkuRows([]);
+          return;
+        }
+
+        const data = await res.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+          setSkuRows([]);
+          return;
+        }
+
+        const normalized = normalizeRowsForParent(data);
+        setSkuRows(normalized);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setSkuRows([]);
+      }
+    };
+
+    fetchSkuRows();
+
+    return () => ac.abort();
+  }, [
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    initialCountryName,
+    globalHomeCurrency,
+    userid,
+    token,
+  ]);
+
+
   if (month === "NA" || year === "NA") {
     return <IntegrationDashboard />;
   }
@@ -2636,11 +2598,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
       )} ${selectedYear}`;
     }
     return `${capitalizeFirstLetter(range)} Tracking Profitability - ${selectedYear}`;
-  };
-
-  const getCountryLabel = () => {
-    const c = (countryName || "").toLowerCase();
-    return c === "global" ? "GLOBAL" : (countryName || "").toUpperCase();
   };
 
   const getPeriodLabelShort = () => {
@@ -2713,8 +2670,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
       </div>
 
       {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
-      {/* If you want summary cards ALWAYS visible regardless of tab, keep this block here */}
-
       {activeTab !== "cashFlow" && (
         <div className="flex flex-col gap-5 w-full mt-4">
           {/* Summary Cards */}
@@ -2722,9 +2677,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
             (() => {
               const summary = displayData;
               const netSales = summary.total_sales;
-
-
-              // ✅ comparisons (camelCase OR snake_case)
               const rawComparisons =
                 (uploadsData as any).summaryComparisons ??
                 (uploadsData as any).summary_comparisons;
@@ -2744,11 +2696,8 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
                 })}`;
               };
 
-
-              // ✅ Cost of Ads
               const costOfAds = summary.advertising_total ?? 0;
 
-              // ✅ "ROAS" as you defined: (Cost of Ads / Net Sales) * 100
               const getRoas = (s?: Summary) => {
                 const ns = s?.total_sales ?? 0;            // net sales
                 const ads = s?.advertising_total ?? 0;     // cost of ads
@@ -2835,18 +2784,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
               const safeDiv = (num: number, den: number) => (den > 0 ? num / den : 0);
 
-              const formatMoneyPerUnit = (total: number, units: number) => {
-                const perUnit = safeDiv(total, units);
-
-                const totalText = formatMoney(total);
-                const perUnitText = formatMoney(perUnit);
-
-                // If no units, show dash (avoid misleading /unit)
-                if (!units) return `${totalText} (-/unit)`;
-
-                return `${totalText} (${perUnitText}/unit)`;
-              };
-
               const renderMoneyWithPerUnit = (total: number, units: number) => {
                 const totalText = formatMoney(total);
 
@@ -2859,12 +2796,10 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
                 return (
                   <div className="flex items-baseline gap-1 leading-tight">
-                    {/* Main value */}
                     <span className="text-sm 2xl:text-lg font-semibold">
                       {totalText}
                     </span>
 
-                    {/* Per-unit (smaller, muted) */}
                     <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
                       ({perUnitText}/unit)
                     </span>
@@ -2887,9 +2822,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
                 summary.total_sales === 0 &&
                 summary.total_expense === 0 &&
                 summary.cm2_profit === 0;
-
-              // const cm2Percent =
-              //   summary.total_sales > 0 ? (summary.cm2_profit / summary.total_sales) * 100 : 0;
 
               const cm2Percent =
                 netSales > 0 ? (summary.cm2_profit / netSales) * 100 : 0;
@@ -2931,53 +2863,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
                 return [];
               };
 
-              const renderComparisons = (metric: keyof Summary, formatter: (val: number) => string) => {
-                const items = getComparisons(metric);
-                if (!items.length) return null;
-
-                return (
-                  <div className="2xl:mt-3 space-y-2">
-                    {items.map((item) => {
-                      const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                      const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                      const diffClass = hasDiff
-                        ? item.diffPct! >= 0
-                          ? "text-emerald-600"
-                          : "text-red-600"
-                        : "text-gray-400";
-
-                      return (
-                        <div
-                          key={item.label}
-                          className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums"
-                        >
-                          <div className="min-w-0">
-                            <div className=" whitespace-nowrap">
-                              {item.label}:
-                            </div>
-                            <div className=" whitespace-nowrap">
-                              {hasValue ? formatter(item.value!) : "-"}
-                            </div>
-                          </div>
-
-                          <div className={`font-bold whitespace-nowrap ${diffClass}`}>
-                            {hasDiff ? (
-                              <>
-                                {item.diffPct! >= 0 ? "▲" : "▼"}{" "}
-                                {Math.abs(item.diffPct!).toFixed(2)}%
-                              </>
-                            ) : (
-                              "-"
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              };
-
               const buildComparisonsRows = (
                 metric: keyof Summary,
                 formatter: (val: number) => string
@@ -3006,18 +2891,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
                   };
                 });
               };
-
-
-              const pickNum = (obj: any, keys: string[]) => {
-                for (const k of keys) {
-                  const v = obj?.[k];
-                  if (v === 0) return 0;
-                  if (typeof v === "number" && !isNaN(v)) return v;
-                  if (typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
-                }
-                return 0;
-              };
-
 
               // ---------- Gross Sales comparisons ----------
               const getGrossSalesComparisons = (): ComparisonItem[] => {
@@ -3053,52 +2926,6 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
                 }
 
                 return [];
-              };
-
-              const renderGrossSalesComparisons = () => {
-                const items = getGrossSalesComparisons();
-                if (!items.length) return null;
-                return (
-                  <div className="mt-3 space-y-2">
-                    {items.map((item) => {
-                      const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                      const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                      const diffClass = hasDiff
-                        ? item.diffPct! >= 0
-                          ? "text-emerald-600"
-                          : "text-red-600"
-                        : "text-gray-400";
-
-                      return (
-                        <div
-                          key={item.label}
-                          className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums"
-                        >
-                          <div className="min-w-0">
-                            <div className="whitespace-nowrap">
-                              {item.label}:
-                            </div>
-                            <div className="whitespace-nowrap">
-                              {hasValue ? formatMoney(item.value!) : "-"}
-                            </div>
-                          </div>
-
-                          <div className={`font-bold whitespace-nowrap ${diffClass}`}>
-                            {hasDiff ? (
-                              <>
-                                {item.diffPct! >= 0 ? "▲" : "▼"}{" "}
-                                {Math.abs(item.diffPct!).toFixed(2)}%
-                              </>
-                            ) : (
-                              "-"
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
               };
 
               // ---------- CM2% comparisons ----------
@@ -3759,16 +3586,16 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
               </div>
             ) : (
               <>
-               {aiPanel?.objective && (
+                {/* {aiPanel?.objective && (
   <MonthlyObjectiveStrip
     objective={aiPanel.objective}
     targetSummary={targetSummary}
     currencySymbol={currencySymbol}
   />
-)}
+)} */}
                 <AiSingleInsightCard
-                  loading={false} // ✅ parent controls loader now
-                  error={null}    // ✅ parent controls error now
+                  loading={false}
+                  error={null}
                   summaryBullets={aiPanel?.summaryBullets ?? []}
                   recommendationBullets={aiPanel?.recommendationBullets ?? []}
                   skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
@@ -3782,7 +3609,9 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
                   selectedQuarter={selectedQuarter}
                   homeCurrency={globalHomeCurrency}
                   countryName={initialCountryName}
-                  portfolioRecommendation={aiPanel?.portfolioRecommendation} // ✅ ADD
+                  portfolioRecommendation={aiPanel?.portfolioRecommendation}
+                  targetSummary={targetSummary}
+                  currencySymbol={currencySymbol}
                 />
               </>
             )}
@@ -3817,7 +3646,24 @@ const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
         {activeTab === "skuwiseProfit" && allDropdownsSelected && (
           <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
+            {/* <ProductwisePerformance
+              embedded
+              countryNameProp={initialCountryName}
+              rangeProp={range as "monthly" | "quarterly" | "yearly"}
+              selectedMonthProp={range === "monthly" ? selectedMonth : ""}
+              selectedQuarterProp={range === "quarterly" ? selectedQuarter : ""}
+              selectedYearProp={selectedYear ? Number(selectedYear) : ""}
+              initialProductName={defaultTopProductName}
+            /> */}
             <ProductwisePerformance
+              key={[
+                initialCountryName,
+                range,
+                selectedMonth,
+                selectedQuarter,
+                selectedYear,
+                defaultTopProductName,
+              ].join("-")}
               embedded
               countryNameProp={initialCountryName}
               rangeProp={range as "monthly" | "quarterly" | "yearly"}

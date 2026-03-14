@@ -284,7 +284,7 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
     if (!token) return;
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/currency-rates', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/currency-rates`, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -352,7 +352,7 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
         const monthName = monthNames[currentMonthIndex];
         try {
           const response = await fetch(
-            `http://127.0.0.1:5000/asp-data?country=${countryName}&month=${monthName}&year=${currentYear}`,
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/asp-data?country=${countryName}&month=${monthName}&year=${currentYear}`,
             {
               method: 'GET',
               headers: { Authorization: `Bearer ${token}` },
@@ -393,7 +393,7 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
         return;
       }
       try {
-        const response = await fetch('http://127.0.0.1:5000/skuprice', {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/skuprice`, {
           method: 'GET',
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -434,7 +434,7 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
       return;
     }
     try {
-      const response = await fetch('http://127.0.0.1:5000/updatePrices', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/updatePrices`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -476,7 +476,7 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
     setWarehouseLoading(true);
 
     const response = await fetch(
-      `http://127.0.0.1:5000/uploadWarehouseData?country=${countryName}`,
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData?country=${countryName}`,
       {
         method: 'GET',
         headers: {
@@ -528,7 +528,7 @@ const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(
     formData.append('file', file);
     formData.append('country', countryName);
 
-    const response = await fetch('http://127.0.0.1:5000/uploadWarehouseData', {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -778,7 +778,7 @@ if (column === 'product_name') {
   const tabOptions = useMemo(
   () => [
     { value: 'sku-info' as const, label: 'Sku Info' },
-    { value: 'extra' as const, label: 'Extra' },
+    { value: 'extra' as const, label: 'Upload Warehouse Data' },
   ],
   []
 );
