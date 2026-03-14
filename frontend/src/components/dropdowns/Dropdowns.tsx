@@ -575,8 +575,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   const inventoryRecoBullets = mergeToSingleBullet(toBullets(inventoryText));
   const adsRecoBullets = toBullets(recObj?.ads_recommendation);
   const periodBadge = getPeriodBadge(range, year, month, quarter);
-  const shouldHideGraphForOtherSkus =
-    range === "monthly" && block?.isOtherSkus;
+  const shouldHideGraphForOtherSkus = !!block?.isOtherSkus;
   const sortedMetrics = [...(block?.metrics || [])].sort((a, b) => {
     const aIndex = metricOrder.indexOf(a.label.toLowerCase());
     const bIndex = metricOrder.indexOf(b.label.toLowerCase());
