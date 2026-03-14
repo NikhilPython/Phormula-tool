@@ -30,6 +30,7 @@ import { useRouter } from "next/navigation";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import ProductwisePerformance from "@/features/productwiseperformance/ProductwisePerformance";
 import CashFlowPage from "@/app/(admin)/cashflow/[countryName]/[month]/[year]/CashFlowClient";
+import { jwtDecode } from "jwt-decode";
 
 /* ---------------------- Types ---------------------- */
 type Summary = {
@@ -127,7 +128,10 @@ type AiPanelData = {
   portfolioRecommendation?: string | null;
 };
 
-
+type JwtPayload = {
+  user_id?: string | number;
+  [k: string]: unknown;
+};
 
 type RangeType = "monthly" | "quarterly" | "yearly" | "";
 
@@ -1456,6 +1460,8 @@ const HASH_TO_FINANCE_TAB: Record<string, DashboardTab> = {
   "cash-flow": "cashFlow",
 };
 
+
+
 /* ---------------------- Component ---------------------- */
 const Dropdowns: React.FC<DropdownsProps> = ({
   initialRanged,
@@ -1478,6 +1484,79 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const globalHomeCurrency = isGlobalPage ? homeCurrency : undefined;
 
+  const token = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("jwtToken");
+  }, []);
+
+  const userid = useMemo(() => {
+    if (!token) return "";
+    try {
+      const decoded = jwtDecode<JwtPayload>(token);
+      return decoded?.user_id ?? "";
+    } catch {
+      return "";
+    }
+  }, [token]);
+
+  const quarterMapping: Record<string, string> = {
+    Q1: "quarter1",
+    Q2: "quarter2",
+    Q3: "quarter3",
+    Q4: "quarter4",
+  };
+
+  const buildParentSkuUrl = () => {
+    if (range === "monthly") {
+      const skuwiseFileName =
+        initialCountryName.toLowerCase() === "global"
+          ? `skuwisemonthly_${userid}_${initialCountryName}_${(selectedMonth || "").toLowerCase()}${selectedYear}_table`
+          : `skuwisemonthly_${userid}_${initialCountryName.toLowerCase()}_${(selectedMonth || "").toLowerCase()}${selectedYear}`;
+
+      const url = new URL(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit/${skuwiseFileName}`
+      );
+
+      url.searchParams.set("country", initialCountryName);
+      url.searchParams.set("month", (selectedMonth || "").toLowerCase());
+      url.searchParams.set("year", String(selectedYear));
+
+      if (initialCountryName.toLowerCase() === "global" && globalHomeCurrency) {
+        url.searchParams.set("homeCurrency", globalHomeCurrency);
+      }
+
+      return url.toString();
+    }
+
+    if (range === "quarterly") {
+      const backendQuarter = quarterMapping[selectedQuarter] || "";
+
+      const url = new URL(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/quarterlyskutable`
+      );
+
+      url.searchParams.set("quarter", backendQuarter);
+      url.searchParams.set("country", initialCountryName);
+      url.searchParams.set("year", String(selectedYear));
+      url.searchParams.set("userid", String(userid));
+
+      if (initialCountryName.toLowerCase() === "global" && globalHomeCurrency) {
+        url.searchParams.set("homeCurrency", globalHomeCurrency);
+      }
+
+      return url.toString();
+    }
+
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/YearlySKU`);
+    url.searchParams.set("country", initialCountryName);
+    url.searchParams.set("year", String(selectedYear));
+
+    if (initialCountryName.toLowerCase() === "global" && globalHomeCurrency) {
+      url.searchParams.set("homeCurrency", globalHomeCurrency);
+    }
+
+    return url.toString();
+  };
 
   const currencySymbol = isGlobalPage
     ? getCurrencySymbol(homeCurrency)
@@ -2354,6 +2433,135 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     fetchGraphPageUploads();
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency]);
+
+
+  useEffect(() => {
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
+
+    if (!ready || !initialCountryName) {
+      setSkuRows([]);
+      return;
+    }
+
+    const ac = new AbortController();
+
+    const normalizeRowsForParent = (data: any[]): TableRow[] => {
+      return data.map((row) => {
+        const productName =
+          row?.product_name && String(row.product_name).trim() !== ""
+            ? String(row.product_name)
+            : row?.sku && String(row.sku).trim() !== ""
+              ? String(row.sku)
+              : "-";
+
+        const isTotalRow = productName.trim().toLowerCase() === "total";
+
+        const toNumber = (v: any) => {
+          if (v === undefined || v === null || v === "") return 0;
+          if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+          const n = Number(String(v).replace(/,/g, "").trim());
+          return Number.isFinite(n) ? n : 0;
+        };
+
+        return {
+          ...row,
+          product_name: isTotalRow ? "Total" : productName,
+          sku: row.sku ?? "-",
+
+          quantity: toNumber(row.quantity),
+          return_quantity: toNumber(row.return_quantity),
+          total_quantity: toNumber(row.total_quantity),
+
+          units_sold: toNumber(row.quantity),
+          return_units: toNumber(row.return_quantity),
+          net_units_sold: toNumber(row.total_quantity),
+
+          asp: toNumber(row.asp ?? row.ASP),
+          product_sales: toNumber(row.gross_sales ?? row.product_sales),
+          refund_sales: toNumber(row.refund_sales),
+          net_sales: toNumber(row.net_sales),
+          lost_total: toNumber(row.lost_total),
+
+          cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
+          shipment_charges: toNumber(row.shipment_charges),
+          selling_fees: toNumber(row.selling_fees),
+          fba_fees: toNumber(row.fba_fees),
+          amazon_fee: toNumber(row.amazon_fee),
+
+          tex_and_credits: toNumber(row.tex_and_credits),
+          net_taxes: toNumber(row.net_taxes),
+          net_credits: toNumber(row.net_credits),
+
+          promotional_rebates: toNumber(row.promotional_rebates),
+          promotional_rebates_percentage: toNumber(row.promotional_rebates_percentage),
+
+          misc_transaction: toNumber(row.misc_transaction),
+          other_transaction_fees: toNumber(row.other_transaction_fees),
+          other_transactions: toNumber(row.other_transaction_fees),
+
+          profit: toNumber(row.profit),
+          profit_percentage: toNumber(row.profit_percentage),
+          unit_wise_profitability: toNumber(row.unit_wise_profitability),
+
+          profit_mix: toNumber(row.profit_mix),
+          sales_mix: toNumber(row.sales_mix),
+        } as TableRow;
+      });
+    };
+
+    const fetchSkuRows = async () => {
+      try {
+        if (!token) {
+          setSkuRows([]);
+          return;
+        }
+
+        const url = buildParentSkuUrl();
+
+        const res = await fetch(url, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+          signal: ac.signal,
+        });
+
+        if (!res.ok) {
+          setSkuRows([]);
+          return;
+        }
+
+        const data = await res.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+          setSkuRows([]);
+          return;
+        }
+
+        const normalized = normalizeRowsForParent(data);
+        setSkuRows(normalized);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setSkuRows([]);
+      }
+    };
+
+    fetchSkuRows();
+
+    return () => ac.abort();
+  }, [
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    initialCountryName,
+    globalHomeCurrency,
+    userid,
+    token,
+  ]);
+
 
   if (month === "NA" || year === "NA") {
     return <IntegrationDashboard />;
@@ -3438,7 +3646,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
         {activeTab === "skuwiseProfit" && allDropdownsSelected && (
           <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
+            {/* <ProductwisePerformance
+              embedded
+              countryNameProp={initialCountryName}
+              rangeProp={range as "monthly" | "quarterly" | "yearly"}
+              selectedMonthProp={range === "monthly" ? selectedMonth : ""}
+              selectedQuarterProp={range === "quarterly" ? selectedQuarter : ""}
+              selectedYearProp={selectedYear ? Number(selectedYear) : ""}
+              initialProductName={defaultTopProductName}
+            /> */}
             <ProductwisePerformance
+              key={[
+                initialCountryName,
+                range,
+                selectedMonth,
+                selectedQuarter,
+                selectedYear,
+                defaultTopProductName,
+              ].join("-")}
               embedded
               countryNameProp={initialCountryName}
               rangeProp={range as "monthly" | "quarterly" | "yearly"}

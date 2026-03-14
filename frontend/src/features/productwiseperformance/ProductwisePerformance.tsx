@@ -278,10 +278,20 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
   useEffect(() => {
     if (!embedded) return;
-    if (!selectedProductName && initialProductName) {
-      setSelectedProductName(initialProductName);
-    }
-  }, [embedded, initialProductName, selectedProductName]);
+
+    setSelectedProductName(initialProductName || "");
+    setSelectedSku(null);
+    setSkuInsights({});
+    setIsDrawerOpen(false);
+  }, [
+    embedded,
+    initialProductName,
+    rangeProp,
+    selectedMonthProp,
+    selectedQuarterProp,
+    selectedYearProp,
+    countryNameProp,
+  ]);
 
   const productname = embedded
     ? selectedProductName
