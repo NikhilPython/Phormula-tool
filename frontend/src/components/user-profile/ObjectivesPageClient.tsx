@@ -201,8 +201,6 @@ function SummaryTabs({
 function PlaceholderPanel({ title }: { title: string }) {
   return (
     <div className="rounded-2xl ">
-
-
       <div className="space-y-5 text-sm text-charcoal-500 dark:text-gray-300">
         <div>
           <h4 className="font-semibold ">
@@ -219,7 +217,6 @@ function PlaceholderPanel({ title }: { title: string }) {
             </li>
           </ul>
         </div>
-
         <div>
           <h4 className="font-semibold">
             2. Early Growth Phase
@@ -910,42 +907,38 @@ export default function ObjectivesPageClient({
           <InfoCard
             title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
             action={
-              <div className="flex items-center gap-2">
-                {!isTargetEditMode ? (
-                  <button
+              !isObjectiveEditMode ? (
+                <button
+                  type="button"
+                  onClick={startObjectiveEdit}
+                  className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
+                  aria-label="Enable business summary edit mode"
+                  title="Edit business summary"
+                >
+                  <FiEdit className="text-lg" />
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button
                     type="button"
-                    onClick={openTargetEditMode}
-                    className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
-                    aria-label="Enable edit mode"
-                    title="Edit targets"
+                    onClick={handleInlineObjectiveSave}
+                    size="icon"
+                    title="Save"
                   >
-                    <FiEdit className="text-lg" />
-                  </button>
-                ) : (
-                  <>
-                    <Button
-                      type="button"
-                      onClick={saveInlineTarget}
-                      size="icon"
-                      disabled={isSaving || !editingPid}
-                      title="Save"
-                    >
-                      <FiCheck />
-                    </Button>
+                    <FiCheck />
+                  </Button>
 
-                    <Button
-                      type="button"
-                      onClick={closeTargetEditMode}
-                      size="icon"
-                      variant="outline"
-                      disabled={isSaving}
-                      title="Cancel"
-                    >
-                      <FiX />
-                    </Button>
-                  </>
-                )}
-              </div>
+                  <Button
+                    type="button"
+                    onClick={cancelObjectiveEdit}
+                    size="icon"
+                    variant="outline"
+                    title="Cancel"
+                  >
+                    <FiX />
+                  </Button>
+                </div>
+              )
             }
           >
             {(() => {

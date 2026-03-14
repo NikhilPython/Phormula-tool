@@ -433,7 +433,7 @@ export default function SalesTargetCard({
 
 
   return (
-    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm h-full flex flex-col bg-white">
+    <div className="rounded-xl border p-3 2xl:p-5 shadow-sm sm:h-full flex flex-col bg-white">
       {/* Legend */}
       <div className="mt-2 2xl:mt-2 flex items-center justify-center sm:justify-around gap-6 text-[10px] 2xl:text-xs">
         <div className="flex items-center justify-center gap-2 w-full md:w-[60px] xl:w-full">
@@ -621,14 +621,6 @@ export default function SalesTargetCard({
             {" "}of Month Completed vs{" "}
             <span className="text-green-500 font-bold">{pctDisplay.toFixed(2)}%</span>
             {" "}of Target Achieved
-
-            {/* <span
-              className={`ml-2 font-medium ${paceDeltaPct >= 0 ? "text-green-700" : "text-rose-700"
-                }`}
-            >
-              ({paceDeltaPct >= 0 ? "+" : "-"}
-              {Math.abs(paceDeltaPct).toFixed(2)}% pace)
-            </span> */}
           </div>
 
         </div>

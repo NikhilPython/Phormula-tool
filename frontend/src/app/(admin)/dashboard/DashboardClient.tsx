@@ -4433,7 +4433,7 @@ export default function DashboardPage() {
                     value={activeTab}
                     options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
                     onChange={setActiveTab}
-                    className="mt-2"
+                    className="mt-2 w-full"
                     compact
                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
                 />
@@ -5213,7 +5213,7 @@ export default function DashboardPage() {
                             </div>
 
                             {/* Bottom card = fills remaining height */}
-                            <div className="w-full min-h-0">
+                            {/* <div className="w-full min-h-0"> */}
                                 <div className="h-full lg:sticky lg:top-4 2xl:top-6">
                                     <SalesTargetCard
                                         data={targetData}
@@ -5233,7 +5233,7 @@ export default function DashboardPage() {
                                         periodCompletedLabel="Range"
                                     />
                                 </div>
-                            </div>
+                            {/* </div> */}
                         </div>
                     </aside>
                 </div >
