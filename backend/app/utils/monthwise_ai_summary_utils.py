@@ -349,6 +349,105 @@ def build_rolling_monthly_series(
 
     return series
 
+
+def fetch_month_end_inventory_lookup(user_id: int):
+
+    query = text("""
+        SELECT
+            msku,
+            disposition,
+            date,
+            ending_warehouse_balance
+        FROM monthwise_inventory
+        WHERE user_id = :user_id
+    """)
+
+    with amazon_engine.connect() as conn:
+        df = pd.read_sql(query, conn, params={"user_id": user_id})
+
+    if df.empty:
+        return {}
+
+    df["date"] = pd.to_datetime(df["date"])
+    df["year"] = df["date"].dt.year
+    df["month"] = df["date"].dt.month
+
+    df = df.sort_values("date")
+
+    # take LAST snapshot per sku + disposition + month
+    month_end = (
+        df.groupby(["msku", "disposition", "year", "month"], as_index=False)
+        .last()
+    )
+
+    lookup = {}
+
+    for _, r in month_end.iterrows():
+
+        key = (str(r["msku"]), int(r["year"]), int(r["month"]))
+
+        if key not in lookup:
+            lookup[key] = {
+                "sellable_inventory": 0,
+                "damaged_inventory": 0,
+                "expired_inventory": 0
+            }
+
+        disp = str(r["disposition"]).upper()
+        units = float(r["ending_warehouse_balance"])
+
+        if disp == "SELLABLE":
+            lookup[key]["sellable_inventory"] += units
+
+        elif disp in ["DEFECTIVE", "WAREHOUSE_DAMAGED", "CUSTOMER_DAMAGED"]:
+            lookup[key]["damaged_inventory"] += units
+
+        elif disp in ["EXPIRED"]:
+            lookup[key]["expired_inventory"] += units
+
+    return lookup
+
+# def build_rolling_sku_series(
+#     user_id: int,
+#     country: str,
+#     sku: str,
+#     anchor_year: int,
+#     anchor_month: int
+# ):
+#     series = []
+
+#     for y, m in rolling_months(anchor_year, anchor_month, 24):
+#         df = fetch_precalc_table(
+#             user_id=user_id,
+#             country=country,
+#             period="monthly",
+#             timeline=str(m),
+#             year=y
+#         )
+
+#         if df.empty:
+#             continue
+
+#         df = _normalize_sku_col(df)
+#         row = df[df["sku"] == sku]
+
+#         if row.empty:
+#             continue
+
+#         series.append({
+#             "year": y,
+#             "month": m,
+#             "units": float(safe_num(row["total_quantity"].iloc[0]).iloc[0]),
+#             "asp": round(float(safe_num(row["asp"].iloc[0]).iloc[0]), 2),
+#             "cm1_profit": float(safe_num(row["profit"].iloc[0]).iloc[0]),
+#             "net_sales": float(safe_num(row["net_sales"].iloc[0]).iloc[0]),
+#             "unit_wise_profitability": float(safe_num(row["unit_wise_profitability"].iloc[0]).iloc[0]),
+#             "sales_mix": float(safe_num(row["sales_mix"].iloc[0]).iloc[0]),
+#             "profit_mix": float(safe_num(row["profit_mix"].iloc[0]).iloc[0]),
+#         })
+
+#     return series
+
 def build_rolling_sku_series(
     user_id: int,
     country: str,
@@ -356,9 +455,14 @@ def build_rolling_sku_series(
     anchor_year: int,
     anchor_month: int
 ):
+
     series = []
 
+    # 🔹 fetch inventory once
+    inventory_lookup = fetch_month_end_inventory_lookup(user_id)
+
     for y, m in rolling_months(anchor_year, anchor_month, 24):
+
         df = fetch_precalc_table(
             user_id=user_id,
             country=country,
@@ -376,13 +480,49 @@ def build_rolling_sku_series(
         if row.empty:
             continue
 
+        # 🔹 inventory lookup
+        inv = inventory_lookup.get((sku, y, m), {})
+
         series.append({
             "year": y,
             "month": m,
+
             "units": float(safe_num(row["total_quantity"].iloc[0]).iloc[0]),
             "asp": round(float(safe_num(row["asp"].iloc[0]).iloc[0]), 2),
             "cm1_profit": float(safe_num(row["profit"].iloc[0]).iloc[0]),
+            "net_sales": float(safe_num(row["net_sales"].iloc[0]).iloc[0]),
+            "unit_wise_profitability": float(safe_num(row["unit_wise_profitability"].iloc[0]).iloc[0]),
+            "sales_mix": float(safe_num(row["sales_mix"].iloc[0]).iloc[0]),
+            "profit_mix": float(safe_num(row["profit_mix"].iloc[0]).iloc[0]),
+
+            # 🔹 NEW inventory fields
+            "sellable_inventory": inv.get("sellable_inventory"),
+            "damaged_inventory": inv.get("damaged_inventory"),
+            "expired_inventory": inv.get("expired_inventory")
         })
+
+    if sku == "SEMNIWPF":
+
+        print("\n================ SKU DEBUG =================")
+        print(f"SKU: {sku}")
+        print("--------------------------------------------")
+
+        for row in series:
+            print(
+                f"{row['year']}-{row['month']:02d} | "
+                f"Units: {row.get('units')} | "
+                f"ASP: {row.get('asp')} | "
+                f"Net Sales: {row.get('net_sales')} | "
+                f"Profit: {row.get('cm1_profit')} | "
+                f"Unit Profit: {row.get('unit_wise_profitability')} | "
+                f"Sales Mix: {row.get('sales_mix')} | "
+                f"Profit Mix: {row.get('profit_mix')} | "
+                f"Sellable Inv: {row.get('sellable_inventory')} | "
+                f"Damaged Inv: {row.get('damaged_inventory')} | "
+                f"Expired Inv: {row.get('expired_inventory')}"
+            )
+
+        print("============================================\n")    
 
     return series
 
@@ -404,8 +544,7 @@ def build_remaining_skus_time_series(
         df_detail, _ = _split_total_row(df)
         sku_month = compute_sku_precalc(df_detail)
 
-        # aggregate "remaining" SKUs for this month (no previous needed)
-        # we only need current month snapshot metrics for the journey
+   
         agg = build_remaining_skus_aggregate(
             sku_current=sku_month,
             sku_prev={},
@@ -420,6 +559,10 @@ def build_remaining_skus_time_series(
             "units": agg.get("total_quantity", {}).get("current"),
             "asp": agg.get("asp", {}).get("current"),
             "cm1_profit": agg.get("profit", {}).get("current"),
+             "net_sales": agg.get("net_sales", {}).get("current"),
+            "unit_wise_profitability": agg.get("unit_wise_profitability", {}).get("current"),
+            "sales_mix": agg.get("sales_mix", {}).get("current"),
+            "profit_mix": agg.get("profit_mix", {}).get("current"),
         })
 
     return series
@@ -872,13 +1015,6 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
 
     return out
 
-
-
-
-
-
-
-
 def fetch_inventory_aged_by_user(user_id: int) -> pd.DataFrame:
     query = text("""
         SELECT
@@ -1144,16 +1280,12 @@ def build_remaining_skus_aggregate(
         "unit_wise_profitability": mk(cur_ppu, prev_ppu),
     }
 
-
 def compute_yoy_pct(df_current_total, df_prev_total, col):
     cur = _total_value(df_current_total, col)
     prev = _total_value(df_prev_total, col)
     if cur is None or prev in (None, 0):
         return None
     return round((cur - prev) / abs(prev) * 100, 2)
-
-
-
 
 def period_label(period: str, timeline: str, year: int) -> str:
     if period == "monthly":
@@ -1163,9 +1295,6 @@ def period_label(period: str, timeline: str, year: int) -> str:
     if period == "yearly":
         return f"{year}"                                              # "2025"
     return f"{period} {timeline} {year}"
-
-
-
 
 def resolve_comparison(period, timeline, year):
     if period == "monthly":
@@ -1183,8 +1312,6 @@ def resolve_comparison(period, timeline, year):
 
     raise ValueError("Invalid period")
 
-
-
 def run_prompt_1_analysis(ai_payload):
     resp = openai_client.chat.completions.create(
         model="gpt-4.1",
@@ -1195,8 +1322,6 @@ def run_prompt_1_analysis(ai_payload):
         temperature=0.2,
     )
     return resp.choices[0].message.content.strip()
-
-
 
 def run_prompt_2_strategy(
     analysis_insights: dict,
@@ -1275,7 +1400,6 @@ def run_prompt_2_strategy(
 
     return resp.choices[0].message.content.strip()
 
-
 def run_prompt_3_polish(bullets: dict) -> dict:
     resp = openai_client.chat.completions.create(
         model="gpt-4.1",
@@ -1286,9 +1410,6 @@ def run_prompt_3_polish(bullets: dict) -> dict:
         temperature=0.2,
     )
     return json.loads(resp.choices[0].message.content)
-
-
-
 
 def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -> list[str]:
     
@@ -1327,7 +1448,6 @@ def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -
         return [sku for sku, _ in ranked[:5]]
 
     return selected
-
 
 def build_comparison_label(period: str, timeline: str, year: int):
     if period == "monthly":
@@ -1447,7 +1567,6 @@ def build_sku_inventory_flags(inventory_df: pd.DataFrame, user_id: int, country:
         }
 
     return sku_inventory_flags
-
 
 def render_month_end_summary(
     *,
@@ -1749,9 +1868,6 @@ def render_month_end_summary(
 
 
     return "\n".join(lines)
-
-
-
 
 def get_or_create_summary(
     user_id,

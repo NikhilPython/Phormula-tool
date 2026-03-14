@@ -375,7 +375,7 @@ def productwise_performance():
                     ]
 
                     if not matching_tables:
-                        print(f"✗ No table found for: {table_pattern}")
+                        # print(f"✗ No table found for: {table_pattern}")
                         continue
 
                     table_found = True
