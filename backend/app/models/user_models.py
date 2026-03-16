@@ -1,6 +1,6 @@
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Enum
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Enum, Date
 from app import db
 from sqlalchemy.sql import func
 from sqlalchemy import Text
@@ -287,7 +287,32 @@ class HistoricAISummary(db.Model):
             f"<HistoricAISummary user_id={self.user_id}, "
             f"period={self.period}, timeline={self.timeline}, year={self.year}>"
         )
- 
+
+class LiveAISummary(db.Model):
+    __tablename__ = "live_ai_summary"
+    __bind_key__ = "chatbot"
+
+    id = Column(Integer, primary_key=True)
+
+    user_id = Column(Integer, nullable=False)
+    country = Column(String(20), nullable=False)
+
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+
+    # objective tracking
+    objective_hash = Column(String(255), nullable=True)
+
+    # AI outputs
+    analysis = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    strategy = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<LiveAISummary user_id={self.user_id}, start={self.start_date}, end={self.end_date}>"
+
 class UserObjective(db.Model):
     __tablename__ = "user_objectives"
     __bind_key__ = "chatbot"

@@ -18,6 +18,11 @@ from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.uk_time_series_utils import build_rolling_sku_series,build_remaining_skus_time_series
 from app.utils.uk_prompts_utils import get_excel_recommendation_from_live_context
+import hashlib
+import json
+from datetime import datetime, date
+from app import db
+from app.models.user_models import LiveAISummary
 
 # -----------------------------------------------------------------------------
 # ENV / DB SETUP
@@ -232,9 +237,83 @@ def build_cm1_profit_pie_slices(
     }
 
 
+def generate_objective_hash(obj):
+    return hashlib.md5(
+        json.dumps(obj, sort_keys=True).encode()
+    ).hexdigest()
 
+def safe_json_load(val):
+    try:
+        return json.loads(val) if val else {}
+    except Exception:
+        return {}
 
+def get_cached_live_ai(user_id, country, start_date, end_date, objective_hash):
 
+    record = LiveAISummary.query.filter_by(
+        user_id=user_id,
+        country=country,
+        start_date=start_date,
+        end_date=end_date
+    ).first()
+
+    if not record:
+        return None
+
+    # objective changed
+    if record.objective_hash != objective_hash:
+        return None
+
+    # next day rerun
+    if not record.created_at or record.created_at.date() < date.today():
+        return None
+
+    return {
+    "analysis": safe_json_load(record.analysis),
+    "summary": safe_json_load(record.summary),
+    "strategy": safe_json_load(record.strategy)
+    }
+
+def save_live_ai_cache(
+    user_id,
+    country,
+    start_date,
+    end_date,
+    objective_hash,
+    analysis,
+    summary,
+    strategy
+):
+
+    record = LiveAISummary.query.filter_by(
+        user_id=user_id,
+        country=country,
+        start_date=start_date,
+        end_date=end_date
+    ).first()
+
+    if record:
+        record.analysis = json.dumps(analysis)
+        record.summary = json.dumps(summary)
+        record.strategy = json.dumps(strategy)
+        record.objective_hash = objective_hash
+        record.created_at = datetime.utcnow()
+
+    else:
+        record = LiveAISummary(
+            user_id=user_id,
+            country=country,
+            start_date=start_date,
+            end_date=end_date,
+            objective_hash=objective_hash,
+            analysis=json.dumps(analysis),
+            summary=json.dumps(summary),
+            strategy=json.dumps(strategy)
+        )
+
+        db.session.add(record)
+
+    db.session.commit()
 
 @live_data_bi_bp.route("/live_mtd_bi", methods=["GET"])
 def live_mtd_vs_previous():
@@ -665,29 +744,47 @@ def live_mtd_vs_previous():
             current_month=ranges["meta"]["current_month"],
         )
 
-       
+        # ====================================================
+        # AI CACHE CHECK
+        # ====================================================
 
-        # ---------------------------
-        # PROMPT-1 (ANALYSIS)
-        # ---------------------------
-        analysis = run_live_prompt_1_analysis(payload_ai)
+        objective_hash = generate_objective_hash(user_objective)
 
-       
-        # ---------------------------
-        # PROMPT-1.5 (EXECUTIVE SUMMARY)
-        # ---------------------------
-        summary_out = run_live_prompt_1_5_summary(
-            analysis_output=analysis,
-            numeric_context={
-                "periods": payload_ai["periods"],
-                "pct_changes": payload_ai["pct_changes"],
-                "selling_costs": payload_ai["selling_costs"],
-                "roas": payload_ai["roas"],
-                "movement_context": payload_ai["movement_context"],
-                "currency": payload_ai["currency"],
-            },
-            user_objective=user_objective,
+        cached_ai = get_cached_live_ai(
+            user_id=user_id,
+            country=country,
+            start_date=curr_start,
+            end_date=curr_end,
+            objective_hash=objective_hash,
         )
+
+        if cached_ai:
+            analysis = cached_ai["analysis"]
+            summary_out = cached_ai["summary"]
+            strategy_parsed = cached_ai["strategy"]
+
+        else:
+            # ---------------------------
+            # PROMPT-1 (ANALYSIS)
+            # ---------------------------
+            analysis = run_live_prompt_1_analysis(payload_ai)
+
+
+            # ---------------------------
+            # PROMPT-1.5 (EXECUTIVE SUMMARY)
+            # ---------------------------
+            summary_out = run_live_prompt_1_5_summary(
+                analysis_output=analysis,
+                numeric_context={
+                    "periods": payload_ai["periods"],
+                    "pct_changes": payload_ai["pct_changes"],
+                    "selling_costs": payload_ai["selling_costs"],
+                    "roas": payload_ai["roas"],
+                    "movement_context": payload_ai["movement_context"],
+                    "currency": payload_ai["currency"],
+                },
+                user_objective=user_objective,
+            )
 
      
         # ===========================
@@ -695,9 +792,6 @@ def live_mtd_vs_previous():
         # ===========================
         overall_summary_text = summary_out.get("summary_text", "")
         overall_summary_bullets = summary_out.get("metric_bullets", [])
-
-
-
 
         # ---------------------------
         # STRATEGY ENGINE (MONTH-END PROMPT 2)
@@ -853,35 +947,51 @@ def live_mtd_vs_previous():
         except Exception as e:
             print("[WARN] Remaining SKU series failed:", e)        
 
-        
 
         # ---------------------------------------
         # STRATEGY ENGINE (SAFE WRAPPED)
         # ---------------------------------------
 
-        try:
-            strategy_raw = run_prompt_2_strategy(
-                analysis_insights=analysis,
-                objective_v2=user_objective,
-                focus_skus=[r.get("sku") for r in top_80_skus],
-                sku_time_series=sku_time_series,
-                inventory_alerts=payload_ai.get("inventory_signals", {}),
-                sku_inventory_flags=sku_inventory_flags,
+        if not cached_ai:
+
+            try:
+                strategy_raw = run_prompt_2_strategy(
+                    analysis_insights=analysis,
+                    objective_v2=user_objective,
+                    focus_skus=[r.get("sku") for r in top_80_skus],
+                    sku_time_series=sku_time_series,
+                    inventory_alerts=payload_ai.get("inventory_signals", {}),
+                    sku_inventory_flags=sku_inventory_flags,
+                    country=country,
+                    sku_ads_context=sku_ads_context,
+                    sku_live_context=sku_live_context,
+                    ads_monthly=ads_monthly,
+                    remaining_skus_context={
+                        "aggregated_metrics": remaining_growth_row,
+                        "time_series": remaining_series
+                    } if remaining_growth_row else {},
+                )
+
+                strategy_parsed = json.loads(strategy_raw) if strategy_raw else {}
+
+            except Exception as e:
+                print("[STRATEGY ERROR]", e)
+                strategy_parsed = {}
+
+        # ====================================================
+        # SAVE AI CACHE
+        # ====================================================
+        if not cached_ai:
+            save_live_ai_cache(
+                user_id=user_id,
                 country=country,
-                sku_ads_context=sku_ads_context,
-                sku_live_context=sku_live_context,
-                ads_monthly=ads_monthly,
-                remaining_skus_context={
-                    "aggregated_metrics": remaining_growth_row,
-                    "time_series": remaining_series
-                } if remaining_growth_row else {},
+                start_date=curr_start,
+                end_date=curr_end,
+                objective_hash=objective_hash,
+                analysis=analysis,
+                summary=summary_out,
+                strategy=strategy_parsed
             )
-
-            strategy_parsed = json.loads(strategy_raw) if strategy_raw else {}
-
-        except Exception as e:
-            print("[STRATEGY ERROR]", e)
-            strategy_parsed = {}
 
         # Safe extraction (always executes)
         portfolio_recommendation = strategy_parsed.get("portfolio_recommendation")
