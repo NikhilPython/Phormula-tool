@@ -17,7 +17,7 @@ from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_r
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.uk_time_series_utils import build_rolling_sku_series,build_remaining_skus_time_series
-
+from app.utils.uk_prompts_utils import get_excel_recommendation_from_live_context
 
 # -----------------------------------------------------------------------------
 # ENV / DB SETUP
@@ -752,6 +752,29 @@ def live_mtd_vs_previous():
         })
 
         # -------------------------------------------------
+        # EXCEL-BASED LIVE SKU RECOMMENDATIONS
+        # -------------------------------------------------
+
+        excel_live_recommendations = {}
+
+        growth_intent = user_objective.get("growth_intent", "balanced")
+        profit_priority = user_objective.get("profit_priority", "protect_growth")
+
+        for row in sku_live_context:
+
+            sku = row.get("sku")
+            if not sku:
+                continue
+
+            rec = get_excel_recommendation_from_live_context(
+                sku_live_row=row,
+                growth_intent=growth_intent,
+                profit_priority=profit_priority
+            )
+
+            excel_live_recommendations[sku] = rec
+
+        # -------------------------------------------------
         # 🔥 SKU-LEVEL INVENTORY FLAGS (FOR PROMPT-2)
         # -------------------------------------------------
         try:
@@ -863,6 +886,12 @@ def live_mtd_vs_previous():
         # Safe extraction (always executes)
         portfolio_recommendation = strategy_parsed.get("portfolio_recommendation")
         sku_strategy_actions = strategy_parsed.get("sku_actions", {})
+        # -------------------------------------------------
+        # Override AI recommendation with Excel logic
+        # -------------------------------------------------
+        for sku, action in sku_strategy_actions.items():
+            if sku in excel_live_recommendations:
+                action["recommendation"] = excel_live_recommendations.get(sku, "")
         remaining_skus_reco = strategy_parsed.get("remaining_skus_recommendation")
         remaining_skus_journey = strategy_parsed.get("remaining_skus_journey_summary")
 
@@ -1101,8 +1130,7 @@ def live_mtd_vs_previous():
                             overall_summary=response_payload["overall_summary"],
                             overall_actions=response_payload["overall_actions"],
                             sku_actions=recommended_actions_mtd,
-                            sku_to_product=sku_to_product,                     # ✅ NEW
-                            portfolio_recommendation=portfolio_recommendation, # ✅ NEW
+                            
                             country=country,
                             prev_label=prev_label,
                             curr_label=curr_label,

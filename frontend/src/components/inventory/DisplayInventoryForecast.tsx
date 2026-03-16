@@ -118,56 +118,77 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     return `${MONTH_ABBR[p.m]}'${String(p.y).slice(-2)}`;
   };
 
-  const soldColsSorted = useMemo(() => {
-    const items: Array<{ key: string; ym: YM }> = [];
-    for (const k of allKeys) {
-      if (!/\sSold$/i.test(k)) continue;
-      const core = k.replace(/\s+Sold$/i, '');
-      const parsed = parseMonthHeaderToDate(core);
-      if (parsed) items.push({ key: k, ym: parsed });
-    }
-    items.sort((a, b) => compareYM(a.ym, b.ym));
-    return items;
-  }, [allKeys]);
-
-  const maxSoldYM = useMemo<YM | null>(() => {
-    if (!soldColsSorted.length) return null;
-    return soldColsSorted[soldColsSorted.length - 1].ym;
-  }, [soldColsSorted]);
-
-  const last3SoldOldestFirst = useMemo<string[]>(() => {
-    return soldColsSorted.slice(-3).map((x) => x.key);
-  }, [soldColsSorted]);
-
-  const soldLabels = useMemo(
-    () => last3SoldOldestFirst.map((k) => monthWithYearLabel(k.replace(/\s+Sold$/i, ''))),
-    [last3SoldOldestFirst]
+  const selectedForecastStart = useMemo<YM | null>(() => {
+  const fullMonthIndex = FULL_MONTHS.findIndex(
+    (m) => m.toLowerCase() === String(month).toLowerCase()
   );
 
-  const forecastMonthColsSorted = useMemo(() => {
-    const arr: Array<{ key: string; ym: YM }> = [];
-    for (const k of allKeys) {
-      if (/\sSold$/i.test(k)) continue;
-      const parsed = parseMonthHeaderToDate(k);
-      if (parsed) arr.push({ key: k, ym: parsed });
-    }
-    arr.sort((a, b) => compareYM(a.ym, b.ym));
-    return arr;
-  }, [allKeys]);
+  if (fullMonthIndex === -1) return null;
 
-  const forecast3 = useMemo<string[]>(() => {
-    if (!forecastMonthColsSorted.length) return [];
-    let after = forecastMonthColsSorted;
-    if (maxSoldYM) {
-      after = forecastMonthColsSorted.filter((x) => compareYM(x.ym, maxSoldYM) > 0);
-    }
-    return (after.length >= 3 ? after.slice(0, 3) : forecastMonthColsSorted.slice(0, 3)).map((x) => x.key);
-  }, [forecastMonthColsSorted, maxSoldYM]);
+  const yr = parseInt(String(year), 10);
+  if (!Number.isFinite(yr)) return null;
 
-  const forecastLabels = useMemo(
-    () => forecast3.map((k) => monthWithYearLabel(k)),
-    [forecast3]
+  return { y: yr, m: fullMonthIndex };
+}, [month, year]);
+
+const monthColsSorted = useMemo(() => {
+  const arr: Array<{ key: string; ym: YM }> = [];
+
+  for (const k of allKeys) {
+    const normalizedKey = String(k).replace(/\s+Sold$/i, '').trim();
+    const parsed = parseMonthHeaderToDate(normalizedKey);
+    if (parsed) {
+      arr.push({ key: k, ym: parsed });
+    }
+  }
+
+  arr.sort((a, b) => compareYM(a.ym, b.ym));
+  return arr;
+}, [allKeys]);
+
+const last3SoldOldestFirst = useMemo<string[]>(() => {
+  if (!monthColsSorted.length) return [];
+
+  if (!selectedForecastStart) {
+    return monthColsSorted.slice(0, 3).map((x) => x.key);
+  }
+
+  const actuals = monthColsSorted.filter(
+    (x) => compareYM(x.ym, selectedForecastStart) < 0
   );
+
+  return actuals.slice(-3).map((x) => x.key);
+}, [monthColsSorted, selectedForecastStart]);
+
+const forecast3 = useMemo<string[]>(() => {
+  if (!monthColsSorted.length) return [];
+
+  if (!selectedForecastStart) {
+    return monthColsSorted.slice(3, 6).map((x) => x.key);
+  }
+
+  const forecasts = monthColsSorted.filter(
+    (x) => compareYM(x.ym, selectedForecastStart) >= 0
+  );
+
+  return forecasts.slice(0, 3).map((x) => x.key);
+}, [monthColsSorted, selectedForecastStart]);
+
+const soldLabels = useMemo(
+  () =>
+    last3SoldOldestFirst.map((k) =>
+      monthWithYearLabel(String(k).replace(/\s+Sold$/i, '').trim())
+    ),
+  [last3SoldOldestFirst]
+);
+
+const forecastLabels = useMemo(
+  () =>
+    forecast3.map((k) =>
+      monthWithYearLabel(String(k).replace(/\s+Sold$/i, '').trim())
+    ),
+  [forecast3]
+);
 
   const tableRows = useMemo(
     () =>

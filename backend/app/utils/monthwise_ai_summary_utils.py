@@ -12,10 +12,11 @@ import pandas as pd
 import numpy as np
 from app.models.user_models import HistoricAISummary, UserObjective
 from app.utils.formulas_utils import safe_num
-from app.utils.uk_prompts_utils import AI_SYSTEM_PROMPT_1, AI_SYSTEM_PROMPT_2, AI_SYSTEM_PROMPT_3_POLISHER
+from app.utils.uk_prompts_utils import AI_SYSTEM_PROMPT_1, AI_SYSTEM_PROMPT_2, AI_SYSTEM_PROMPT_3_POLISHER, get_excel_recommendation_from_metrics
 from app import db
 from openai import OpenAIError
 from app.utils.uk_coverage_ratio_utils import compute_inventory_coverage_ratio
+
 
 
 
@@ -349,6 +350,105 @@ def build_rolling_monthly_series(
 
     return series
 
+
+def fetch_month_end_inventory_lookup(user_id: int):
+
+    query = text("""
+        SELECT
+            msku,
+            disposition,
+            date,
+            ending_warehouse_balance
+        FROM monthwise_inventory
+        WHERE user_id = :user_id
+    """)
+
+    with amazon_engine.connect() as conn:
+        df = pd.read_sql(query, conn, params={"user_id": user_id})
+
+    if df.empty:
+        return {}
+
+    df["date"] = pd.to_datetime(df["date"])
+    df["year"] = df["date"].dt.year
+    df["month"] = df["date"].dt.month
+
+    df = df.sort_values("date")
+
+    # take LAST snapshot per sku + disposition + month
+    month_end = (
+        df.groupby(["msku", "disposition", "year", "month"], as_index=False)
+        .last()
+    )
+
+    lookup = {}
+
+    for _, r in month_end.iterrows():
+
+        key = (str(r["msku"]), int(r["year"]), int(r["month"]))
+
+        if key not in lookup:
+            lookup[key] = {
+                "sellable_inventory": 0,
+                "damaged_inventory": 0,
+                "expired_inventory": 0
+            }
+
+        disp = str(r["disposition"]).upper()
+        units = float(r["ending_warehouse_balance"])
+
+        if disp == "SELLABLE":
+            lookup[key]["sellable_inventory"] += units
+
+        elif disp in ["DEFECTIVE", "WAREHOUSE_DAMAGED", "CUSTOMER_DAMAGED"]:
+            lookup[key]["damaged_inventory"] += units
+
+        elif disp in ["EXPIRED"]:
+            lookup[key]["expired_inventory"] += units
+
+    return lookup
+
+# def build_rolling_sku_series(
+#     user_id: int,
+#     country: str,
+#     sku: str,
+#     anchor_year: int,
+#     anchor_month: int
+# ):
+#     series = []
+
+#     for y, m in rolling_months(anchor_year, anchor_month, 24):
+#         df = fetch_precalc_table(
+#             user_id=user_id,
+#             country=country,
+#             period="monthly",
+#             timeline=str(m),
+#             year=y
+#         )
+
+#         if df.empty:
+#             continue
+
+#         df = _normalize_sku_col(df)
+#         row = df[df["sku"] == sku]
+
+#         if row.empty:
+#             continue
+
+#         series.append({
+#             "year": y,
+#             "month": m,
+#             "units": float(safe_num(row["total_quantity"].iloc[0]).iloc[0]),
+#             "asp": round(float(safe_num(row["asp"].iloc[0]).iloc[0]), 2),
+#             "cm1_profit": float(safe_num(row["profit"].iloc[0]).iloc[0]),
+#             "net_sales": float(safe_num(row["net_sales"].iloc[0]).iloc[0]),
+#             "unit_wise_profitability": float(safe_num(row["unit_wise_profitability"].iloc[0]).iloc[0]),
+#             "sales_mix": float(safe_num(row["sales_mix"].iloc[0]).iloc[0]),
+#             "profit_mix": float(safe_num(row["profit_mix"].iloc[0]).iloc[0]),
+#         })
+
+#     return series
+
 def build_rolling_sku_series(
     user_id: int,
     country: str,
@@ -356,9 +456,14 @@ def build_rolling_sku_series(
     anchor_year: int,
     anchor_month: int
 ):
+
     series = []
 
+    # 🔹 fetch inventory once
+    inventory_lookup = fetch_month_end_inventory_lookup(user_id)
+
     for y, m in rolling_months(anchor_year, anchor_month, 24):
+
         df = fetch_precalc_table(
             user_id=user_id,
             country=country,
@@ -376,13 +481,49 @@ def build_rolling_sku_series(
         if row.empty:
             continue
 
+        # 🔹 inventory lookup
+        inv = inventory_lookup.get((sku, y, m), {})
+
         series.append({
             "year": y,
             "month": m,
+
             "units": float(safe_num(row["total_quantity"].iloc[0]).iloc[0]),
             "asp": round(float(safe_num(row["asp"].iloc[0]).iloc[0]), 2),
             "cm1_profit": float(safe_num(row["profit"].iloc[0]).iloc[0]),
+            "net_sales": float(safe_num(row["net_sales"].iloc[0]).iloc[0]),
+            "unit_wise_profitability": float(safe_num(row["unit_wise_profitability"].iloc[0]).iloc[0]),
+            "sales_mix": float(safe_num(row["sales_mix"].iloc[0]).iloc[0]),
+            "profit_mix": float(safe_num(row["profit_mix"].iloc[0]).iloc[0]),
+
+            # 🔹 NEW inventory fields
+            "sellable_inventory": inv.get("sellable_inventory"),
+            "damaged_inventory": inv.get("damaged_inventory"),
+            "expired_inventory": inv.get("expired_inventory")
         })
+
+    if sku == "SEMNIWPF":
+
+        print("\n================ SKU DEBUG =================")
+        print(f"SKU: {sku}")
+        print("--------------------------------------------")
+
+        for row in series:
+            print(
+                f"{row['year']}-{row['month']:02d} | "
+                f"Units: {row.get('units')} | "
+                f"ASP: {row.get('asp')} | "
+                f"Net Sales: {row.get('net_sales')} | "
+                f"Profit: {row.get('cm1_profit')} | "
+                f"Unit Profit: {row.get('unit_wise_profitability')} | "
+                f"Sales Mix: {row.get('sales_mix')} | "
+                f"Profit Mix: {row.get('profit_mix')} | "
+                f"Sellable Inv: {row.get('sellable_inventory')} | "
+                f"Damaged Inv: {row.get('damaged_inventory')} | "
+                f"Expired Inv: {row.get('expired_inventory')}"
+            )
+
+        print("============================================\n")    
 
     return series
 
@@ -404,8 +545,7 @@ def build_remaining_skus_time_series(
         df_detail, _ = _split_total_row(df)
         sku_month = compute_sku_precalc(df_detail)
 
-        # aggregate "remaining" SKUs for this month (no previous needed)
-        # we only need current month snapshot metrics for the journey
+   
         agg = build_remaining_skus_aggregate(
             sku_current=sku_month,
             sku_prev={},
@@ -420,6 +560,10 @@ def build_remaining_skus_time_series(
             "units": agg.get("total_quantity", {}).get("current"),
             "asp": agg.get("asp", {}).get("current"),
             "cm1_profit": agg.get("profit", {}).get("current"),
+             "net_sales": agg.get("net_sales", {}).get("current"),
+            "unit_wise_profitability": agg.get("unit_wise_profitability", {}).get("current"),
+            "sales_mix": agg.get("sales_mix", {}).get("current"),
+            "profit_mix": agg.get("profit_mix", {}).get("current"),
         })
 
     return series
@@ -872,13 +1016,6 @@ def compute_sku_precalc(df: pd.DataFrame) -> dict:
 
     return out
 
-
-
-
-
-
-
-
 def fetch_inventory_aged_by_user(user_id: int) -> pd.DataFrame:
     query = text("""
         SELECT
@@ -1144,16 +1281,12 @@ def build_remaining_skus_aggregate(
         "unit_wise_profitability": mk(cur_ppu, prev_ppu),
     }
 
-
 def compute_yoy_pct(df_current_total, df_prev_total, col):
     cur = _total_value(df_current_total, col)
     prev = _total_value(df_prev_total, col)
     if cur is None or prev in (None, 0):
         return None
     return round((cur - prev) / abs(prev) * 100, 2)
-
-
-
 
 def period_label(period: str, timeline: str, year: int) -> str:
     if period == "monthly":
@@ -1163,9 +1296,6 @@ def period_label(period: str, timeline: str, year: int) -> str:
     if period == "yearly":
         return f"{year}"                                              # "2025"
     return f"{period} {timeline} {year}"
-
-
-
 
 def resolve_comparison(period, timeline, year):
     if period == "monthly":
@@ -1183,8 +1313,6 @@ def resolve_comparison(period, timeline, year):
 
     raise ValueError("Invalid period")
 
-
-
 def run_prompt_1_analysis(ai_payload):
     resp = openai_client.chat.completions.create(
         model="gpt-4.1",
@@ -1195,8 +1323,6 @@ def run_prompt_1_analysis(ai_payload):
         temperature=0.2,
     )
     return resp.choices[0].message.content.strip()
-
-
 
 def run_prompt_2_strategy(
     analysis_insights: dict,
@@ -1275,7 +1401,6 @@ def run_prompt_2_strategy(
 
     return resp.choices[0].message.content.strip()
 
-
 def run_prompt_3_polish(bullets: dict) -> dict:
     resp = openai_client.chat.completions.create(
         model="gpt-4.1",
@@ -1287,8 +1412,42 @@ def run_prompt_3_polish(bullets: dict) -> dict:
     )
     return json.loads(resp.choices[0].message.content)
 
+def build_excel_sku_recommendations(sku_mom: dict, objective_v2: dict) -> dict:
+    """
+    Deterministic SKU recommendation lookup from Excel-derived rule engine.
+    Uses latest period current vs previous metrics already present in sku_mom.
+    """
 
+    growth_intent = str(objective_v2.get("growth_intent", "balanced")).lower()
+    profit_priority = str(objective_v2.get("profit_priority", "protect_growth")).lower()
 
+    output = {}
+
+    for sku, metrics in (sku_mom or {}).items():
+        if not isinstance(metrics, dict):
+            continue
+
+        asp = metrics.get("asp", {}) or {}
+        units = metrics.get("total_quantity", {}) or {}
+        net_sales = metrics.get("net_sales", {}) or {}
+        profit = metrics.get("profit", {}) or {}
+
+        rec = get_excel_recommendation_from_metrics(
+            asp_current=asp.get("current"),
+            asp_previous=asp.get("previous"),
+            units_current=units.get("current"),
+            units_previous=units.get("previous"),
+            net_sales_current=net_sales.get("current"),
+            net_sales_previous=net_sales.get("previous"),
+            cm1_profit_current=profit.get("current"),
+            cm1_profit_previous=profit.get("previous"),
+            growth_intent=growth_intent,
+            profit_priority=profit_priority,
+        )
+
+        output[sku] = rec
+
+    return output
 
 def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -> list[str]:
     
@@ -1327,7 +1486,6 @@ def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -
         return [sku for sku, _ in ranked[:5]]
 
     return selected
-
 
 def build_comparison_label(period: str, timeline: str, year: int):
     if period == "monthly":
@@ -1447,7 +1605,6 @@ def build_sku_inventory_flags(inventory_df: pd.DataFrame, user_id: int, country:
         }
 
     return sku_inventory_flags
-
 
 def render_month_end_summary(
     *,
@@ -1750,9 +1907,6 @@ def render_month_end_summary(
 
     return "\n".join(lines)
 
-
-
-
 def get_or_create_summary(
     user_id,
     country,
@@ -2023,6 +2177,14 @@ def get_or_create_summary(
         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
 
     # ============================================================
+    # EXCEL-BASED SKU RECOMMENDATIONS
+    # ============================================================
+    excel_sku_recommendations = build_excel_sku_recommendations(
+        sku_mom=sku_mom,
+        objective_v2=objective_v2
+    )    
+
+    # ============================================================
     # PROMPT 1 (ANALYSIS)
     # ============================================================
     analysis_insights = {}
@@ -2098,8 +2260,26 @@ def get_or_create_summary(
             parsed = json.loads(strategy_raw)
 
             portfolio_recommendation = parsed.get("portfolio_recommendation", "")
-            # Core SKU actions
-            sku_actions = parsed.get("sku_actions") or {}
+
+            ai_sku_actions = parsed.get("sku_actions") or {}
+            sku_actions = {}
+
+            # -------------------------------------------------
+            # Merge AI outputs + Excel recommendation
+            # -------------------------------------------------
+            for sku in top_5_skus:
+                ai_data = ai_sku_actions.get(sku, {}) or {}
+
+                sku_actions[sku] = {
+                    "journey_summary": ai_data.get("journey_summary", []),
+
+                    # ✅ Excel-based deterministic recommendation
+                    "recommendation": excel_sku_recommendations.get(sku, ""),
+
+                    # ✅ Keep AI-generated recommendations
+                    "ads_recommendation": ai_data.get("ads_recommendation", ""),
+                    "inventory_recommendation": ai_data.get("inventory_recommendation", ""),
+                }
 
             # ✅ Capture consolidated recommendation for remaining SKUs
             remaining_skus_rec = parsed.get("remaining_skus_recommendation")
@@ -2108,7 +2288,7 @@ def get_or_create_summary(
 
             remaining_journey = parsed.get("remaining_skus_journey_summary")
             if isinstance(remaining_journey, list) and remaining_journey:
-                sku_actions["remaining_skus_journey_summary"] = remaining_journey    
+                sku_actions["remaining_skus_journey_summary"] = remaining_journey
 
         except Exception:
             print("\n❌ Prompt-2 JSON PARSE FAILED")
@@ -2117,9 +2297,15 @@ def get_or_create_summary(
 
     # 🔥 SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
     if not allow_recommendations:
-        for sku in sku_actions:
-            if "recommendation" in sku_actions[sku]:
-                sku_actions[sku]["recommendation"] = ""
+
+    # Remove SKU level recommendations
+        for key, value in sku_actions.items():
+            if isinstance(value, dict) and "recommendation" in value:
+                value["recommendation"] = ""
+
+        # Remove remaining SKU recommendation
+        if "remaining_skus_recommendation" in sku_actions:
+            sku_actions["remaining_skus_recommendation"] = ""
 
     # final_text = strategy_raw if strategy_raw else analysis_raw
 
