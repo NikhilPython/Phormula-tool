@@ -4070,7 +4070,7 @@ export default function DashboardPage() {
                 (loading || shopifyLoading || biLoading) &&
                 !data && !shopify && !liveBiPayload && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80">
-                        <Loader backgroundClass="bg-white/80" />
+                        <Loader backgroundClass="bg-transparent" />
                     </div>
                 )}
 

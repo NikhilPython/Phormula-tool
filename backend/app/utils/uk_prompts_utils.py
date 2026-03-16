@@ -828,7 +828,7 @@ Examples of good simple wording:
 - "Sales improved as demand picked up."
 - "Price went up, but demand slowed."
 - "Inventory piled up faster than sales."
-- "The seller Reduced price to move stock."
+- "The seller reduced price to move stock."
 - "The product was still selling, but profit became weaker."
 - "This looks like a stock-clearing phase."
 
@@ -857,48 +857,19 @@ You MUST:
 - never invent months, values, or missing phases
 
 Priority metrics for journey_summary:
-
-Core demand metrics:
 - Units
-- Net Sales
-
-Pricing and profitability metrics:
 - ASP
+- Net Sales
 - Profit (CM1)
 - Unit Profitability
-
-Portfolio contribution metrics:
 - Sales Mix
 - Profit Mix
-
-Inventory health metrics:
 - Sellable Inventory
 - Damaged Inventory
 - Expired Inventory
 
-CRITICAL COVERAGE RULE:
-
-When sku_time_series contains these metrics across multiple months,
-journey_summary MUST distribute them across the bullets.
-
-The journey MUST normally include:
-
-• references to Net Sales
-• reference to Sales Mix
-• reference to Profit Mix
-• reference to Inventory behaviour when inventory data exists
-
-This ensures the journey explains:
-
-- demand scale (Units + Net Sales)
-- pricing and margin behaviour (ASP + Unit Profitability)
-- portfolio contribution (Sales Mix + Profit Mix)
-- inventory health (Sellable / Damaged / Expired inventory)
-
-The journey must NOT focus only on Units, ASP, or Unit Profitability.
-
 If metric relationships are clear, explain them simply:
-- If ASP rises and Units fall → explain that higher pricing appears to have Reduced demand
+- If ASP rises and Units fall → explain that higher pricing appears to have reduced demand
 - If ASP falls and Units rise → explain that lower pricing helped sales
 - If Net Sales stays stable but Profit declines → explain margin pressure
 - If Sales Mix stays healthy but Profit Mix falls → explain that the SKU is still selling but contributing less profit
@@ -972,21 +943,11 @@ the major phases of the product.
 
 The journey must read like a simple product story, not a monthly log.
 
-A strong product journey usually explains four business dimensions:
-
-1) Demand scale → Units and Net Sales
-2) Pricing and margin behaviour → ASP and Unit Profitability
-3) Portfolio contribution → Sales Mix and Profit Mix
-4) Inventory health → Sellable / Damaged / Expired inventory
-
-When these metrics exist in sku_time_series,
-the journey should naturally touch all four dimensions.
-
 Group the history into meaningful business phases such as:
 - early traction
 - growth phase
 - stable demand phase
-- pricing Increase phase
+- pricing increase phase
 - demand slowdown
 - inventory build-up
 - discounting phase
@@ -1052,25 +1013,14 @@ Good example:
 "From Mar'24 to Jul'24, Units grew from 285 to 633 and Net Sales rose from 2405.87 to 4844.08, showing a strong early growth phase. Sales Mix stayed above 57%, so the SKU was already a major sales driver."
 
 Another good example:
-"From Oct'24 to Jan'25, ASP Increased from 8.31 to 11.13 while Units fell from 455 to 201, suggesting that the higher price Reduced demand. Profit per unit improved, but Sales Mix dropped from 54.37% to 35.52%."
+"From Oct'24 to Jan'25, ASP increased from 8.31 to 11.13 while Units fell from 455 to 201, suggesting that the higher price reduced demand. Profit per unit improved, but Sales Mix dropped from 54.37% to 35.52%."
 
 Another good example:
-"By Nov'24, Sellable Inventory Increased from 195 units in Jul'24 to 1619 units while Units stayed above 120. Sales Mix reached 19.38% and Profit Mix 19.62%, showing the SKU remained a major sales and profit contributor even as inventory built up."
+"By Nov'24, Sellable Inventory increased from 195 units in Jul'24 to 1619 units while Units stayed above 120. Sales Mix reached 19.38% and Profit Mix 19.62%, showing the SKU remained a major sales and profit contributor even as inventory built up."
 
 Avoid forcing every bullet to mention every metric.
 Only mention the metrics that matter for that phase.
 
-When available, Net Sales, Sales Mix, Profit Mix, and Inventory
-should be incorporated into different bullets so the journey
-reflects revenue scale, portfolio contribution, and inventory health,
-not only demand and price movement.
-
-────────────────────────────────────────
-PHASE EXPLANATION DEPTH RULE (MANDATORY)
-────────────────────────────────────────
-
-Each bullet after the identity bullet MUST explain
-a meaningful commercial phase using MULTIPLE signals
 when data exists.
 
 To ensure sufficient depth, each bullet SHOULD normally reference
@@ -1092,22 +1042,22 @@ and business impact.
 
 Weak example (NOT acceptable):
 
-"Units Increased from 15 to 70."
+"Units increased from 15 to 70."
 
 Strong example (acceptable):
 
-"From Mar'25 to Sep'25 Units Increased from 15 to 70 and Net Sales rose from
+"From Mar'25 to Sep'25 Units increased from 15 to 70 and Net Sales rose from
 342.71 to 1401.69, showing strong early demand and growing contribution."
 
 Inventory behaviour MUST be explained as part of demand dynamics when possible.
 
 Weak example:
 
-"Inventory Increased to 1020 units."
+"Inventory increased to 1020 units."
 
 Strong example:
 
-"Inventory Increased from 11 units in Mar'25 to 1020 units in Sep'25,
+"Inventory increased from 11 units in Mar'25 to 1020 units in Sep'25,
 which grew much faster than sales and indicates stock build-up."
 
 Profit changes MUST explain the likely business driver when visible.
@@ -1125,41 +1075,12 @@ This rule ensures that every phase explains
 WHAT changed and WHAT it means for the business,
 not just the metric movement.
 
-
-METRIC DIVERSITY RULE (CRITICAL)
-
-The journey MUST avoid repeating the same metric combination
-across most bullets.
-
-Example of poor metric diversity:
-Units + ASP repeated across all bullets.
-
-Instead the model should rotate metrics across phases such as:
-
-Growth phase:
-Units + Net Sales
-
-Contribution phase:
-Sales Mix + Profit Mix
-
-Pricing phase:
-ASP + Unit Profitability
-
-Inventory phase:
-Inventory + Units
-
-Profit pressure phase:
-Profit + Profit Mix
-
-The journey MUST describe the SKU through multiple business lenses,
-not only through pricing and unit movement.
-
 ────────────────────────────────────────
 REVENUE + PROFIT EXPLANATION RULE (CRITICAL)
 ────────────────────────────────────────
 
 When Net Sales data exists:
-- bullets MUST reference Net Sales
+- at least TWO bullets should reference Net Sales
 - explain revenue movement in simple terms
 - connect Units and ASP movement to Net Sales whenever clear
 
@@ -1184,11 +1105,7 @@ If Sales Mix and/or Profit Mix exist in sku_time_series:
 
 - journey_summary MUST reference in bullets
 - when both exist and materially diverge, explain the contrast simply
-- if the SKU has 10+ months of history, journey_summary MUST reference Sales Mix at least once
-  and Profit Mix at least once in separate bullets when possible.
-- If Sales Mix changes materially across the journey (Increase or decline),
-  the model SHOULD highlight the shift using real numbers
-  and explain how the SKU's contribution to total account sales changed.
+- if the SKU has 10+ months of history, journey_summary MUST reference Sales Mix and Profit Mix.
 - during important phases such as growth, inventory build-up, peak demand, slowdown, discounting, or recovery, the model MUST explain how the SKU's contribution to total account sales or profit changed
 
 Simple interpretation:
@@ -1205,7 +1122,7 @@ Explain what it means for the business.
 
 
 ────────────────────────────────────────
-INVENTORY STORY RULE (MANDATORY)
+INVENTORY STORY RULE (MANDATORY WHEN APPLICABLE)
 ────────────────────────────────────────
 
 If Sellable Inventory, Damaged Inventory, or Expired Inventory exist in sku_time_series,
@@ -1222,34 +1139,28 @@ Examples:
 - "Inventory later fell from 5693 to 842 units, showing the price-led sell-through worked."
 - "Expired inventory appeared at 74 units, which signals inventory health pressure."
 
-Inventory MUST be described as part of the business journey,
+Inventory should be described as part of the business journey,
 not as a separate stock report.
 
-INVENTORY JOURNEY COMPLETENESS RULE (CRITICAL)
+INVENTORY JOURNEY RULE (MANDATORY)
 
-When Sellable Inventory exists across multiple months,
-the journey MUST explain the full inventory evolution.
+When inventory exists across multiple months,
+the journey should explain how inventory evolved over time,
+not just the peak inventory month.
 
-The explanation MUST normally include:
+The explanation should include:
 
-1) the first month inventory appeared
-2) the build-up phase
+1) when inventory first appeared
+2) how it grew or declined
 3) the peak inventory level
-4) the later reduction or sell-through phase
-
-If inventory declines significantly after a peak,
-the journey MUST mention the reduction.
+4) how inventory later changed (sell-through or liquidation)
 
 Example:
 
-"Inventory first appeared at 195 units in Jul'24.
-It Increased to 607 units in Aug'24 and peaked at 1619 units in Nov'24,
-showing stock build-up.
-Inventory later declined to 312 units by Feb'26,
-indicating gradual sell-through."
+"In Jul'24 inventory first appeared at 795 units.
+By Aug'24 it increased to 2082 units and later peaked at 9383 units in Nov'24,
+showing heavy stock build-up."
 
-The journey should describe inventory as a dynamic flow,
-not only the peak level.
 If inventory is missing for early months, use it only from the first month where it appears.
 
 ────────────────────────────────────────
@@ -1274,29 +1185,6 @@ Examples:
 
 Milestones should strengthen the story, not turn it into a month-by-month list.
 
-PHASE BOUNDARY CONSISTENCY RULE
-
-When describing a phase across multiple months,
-the start and end values must reflect the true directional change.
-
-If the first and last values are similar,
-do NOT describe the phase as growth or decline.
-
-Instead describe it as:
-
-- stable demand
-- volatile demand
-- fluctuating demand
-- sideways movement
-
-Example:
-
-Bad:
-"Units declined from 71 to 71."
-
-Good:
-"Units fluctuated between 50 and 79 per month."
-
 
 ────────────────────────────────────────
 CHANGE MAGNITUDE RULE (MANDATORY)
@@ -1314,7 +1202,7 @@ Use this especially for:
 
 Examples:
 - "Units grew from 285 to 633 (+122%)."
-- "Net Sales Increased from 2405.87 to 4844.08 (+101%)."
+- "Net Sales increased from 2405.87 to 4844.08 (+101%)."
 - "Profit fell from 1187.41 to 424.35 (-64%)."
 
 
@@ -1459,18 +1347,18 @@ of the SKU including:
    - Expired Inventory
 
    If metric relationships are clear, explain them simply:
-   - If ASP rises and Units fall, explain that higher pricing appears to have Reduced demand
+   - If ASP rises and Units fall, explain that higher pricing appears to have reduced demand
    - If ASP falls and Units rise, explain that lower pricing helped sales
    - If Net Sales stays stable but Profit declines, explain margin pressure
    - If Sales Mix stays healthy but Profit Mix falls, explain that the SKU is still selling but contributing less profit
    - If Inventory rises much faster than sales, explain overstock or stock build-up
-   - If heavy discounting Increases Units but weakens Profit, explain clearance or stock liquidation behaviour
+   - If heavy discounting increases Units but weakens Profit, explain clearance or stock liquidation behaviour
 
    The journey should group the SKU into clear business phases where valid, such as:
         • early traction
         • growth phase
         • stable phase
-        • price Increase phase
+        • price increase phase
         • demand slowdown
         • inventory build-up
         • discounting phase
@@ -1486,9 +1374,9 @@ of the SKU including:
 
    - "From Mar'24 to Jul'24, Units grew from 285 to 633 and Net Sales rose from 2405.87 to 4844.08, showing a strong growth phase. Sales Mix stayed above 57%, so the SKU was already a major sales contributor."
 
-   - "From Oct'24 to Jan'25, ASP Increased from 8.31 to 11.13 while Units fell from 455 to 201, suggesting the higher price slowed demand. Profit per unit improved, but Sales Mix dropped from 54.37% to 35.52%."
+   - "From Oct'24 to Jan'25, ASP increased from 8.31 to 11.13 while Units fell from 455 to 201, suggesting the higher price slowed demand. Profit per unit improved, but Sales Mix dropped from 54.37% to 35.52%."
 
-   - "By Nov'24, Sellable Inventory reached 9383 units while Units stayed between X and Y per month, showing stock build-up. This likely created pressure to Reduce price later."
+   - "By Nov'24, Sellable Inventory reached 9383 units while Units stayed between X and Y per month, showing stock build-up. This likely created pressure to reduce price later."
 
    - "In the latest phase, lower ASP helped sales move, but Profit Mix weakened, so the SKU was selling with lower profit contribution."
 
@@ -2291,6 +2179,22 @@ This rule OVERRIDES:
 • RECOMMENDATION STRUCTURE RULE
 
 The recommendation MUST NOT suggest price reductions.
+
+
+The recommendation MUST NOT explicitly
+suggest price reductions.
+
+
+Do NOT include markdown.
+Do NOT include commentary outside JSON.
+
+You are generating structured executive
+commercial action reasoning.
+
+This rule takes precedence over
+PRICE-DEMAND INTERPRETATION RULE
+and RECOMMENDATION STRUCTURE RULE.
+
 
 
 ────────────────────────────────────────
