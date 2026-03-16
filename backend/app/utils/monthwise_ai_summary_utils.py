@@ -502,29 +502,7 @@ def build_rolling_sku_series(
             "expired_inventory": inv.get("expired_inventory")
         })
 
-    if sku == "SEMNIWPF":
-
-        print("\n================ SKU DEBUG =================")
-        print(f"SKU: {sku}")
-        print("--------------------------------------------")
-
-        for row in series:
-            print(
-                f"{row['year']}-{row['month']:02d} | "
-                f"Units: {row.get('units')} | "
-                f"ASP: {row.get('asp')} | "
-                f"Net Sales: {row.get('net_sales')} | "
-                f"Profit: {row.get('cm1_profit')} | "
-                f"Unit Profit: {row.get('unit_wise_profitability')} | "
-                f"Sales Mix: {row.get('sales_mix')} | "
-                f"Profit Mix: {row.get('profit_mix')} | "
-                f"Sellable Inv: {row.get('sellable_inventory')} | "
-                f"Damaged Inv: {row.get('damaged_inventory')} | "
-                f"Expired Inv: {row.get('expired_inventory')}"
-            )
-
-        print("============================================\n")    
-
+    
     return series
 
 def build_remaining_skus_time_series(
@@ -1822,43 +1800,42 @@ def render_month_end_summary(
     # REMAINING SKUS — METRICS + JOURNEY + RECOMMENDATION
     # =========================================================
     remaining_rec = sku_actions.get("remaining_skus_recommendation")
+    remaining_journey = sku_actions.get("remaining_skus_journey_summary")
 
-    if isinstance(remaining_rec, str) and remaining_rec.strip():
+    if remaining_agg:
+
         lines.append("\nOther SKUs")
 
         # --- Aggregated Metrics ---
-        if isinstance(remaining_agg, dict) and remaining_agg:
+        lines.append(
+            f"• ASP: {fmt_value_with_pct(remaining_agg.get('asp'), is_currency=True)}"
+        )
 
-            lines.append(
-                f"• ASP: {fmt_value_with_pct(remaining_agg.get('asp'), is_currency=True)}"
-            )
+        lines.append(
+            f"• Units: {fmt_value_with_pct(remaining_agg.get('total_quantity'))}"
+        )
 
-            lines.append(
-                f"• Units: {fmt_value_with_pct(remaining_agg.get('total_quantity'))}"
-            )
+        lines.append(
+            f"• Net sales: {fmt_value_with_pct(remaining_agg.get('net_sales'), is_currency=True)}"
+        )
 
-            lines.append(
-                f"• Net sales: {fmt_value_with_pct(remaining_agg.get('net_sales'), is_currency=True)}"
-            )
+        lines.append(
+            f"• CM1 profit: {fmt_value_with_pct(remaining_agg.get('profit'), is_currency=True)}"
+        )
 
-            lines.append(
-                f"• CM1 profit: {fmt_value_with_pct(remaining_agg.get('profit'), is_currency=True)}"
-            )
+        lines.append(
+            f"• CM1 profit per unit: {fmt_value_with_pct(remaining_agg.get('unit_wise_profitability'), is_currency=True)}"
+        )
 
-            lines.append(
-                f"• CM1 profit per unit: {fmt_value_with_pct(remaining_agg.get('unit_wise_profitability'), is_currency=True)}"
-            )
-
-        # --- LLM Journey ---
-        remaining_journey = sku_actions.get("remaining_skus_journey_summary")
-
+        # --- Journey ---
         if isinstance(remaining_journey, list) and remaining_journey:
             lines.append("• Product journey:")
             for point in remaining_journey:
                 lines.append(f"   - {point}")
 
-        # --- Recommendation ---
-        lines.append(f"• Recommendation: {remaining_rec}")
+        # --- Recommendation (optional) ---
+        if isinstance(remaining_rec, str) and remaining_rec.strip():
+            lines.append(f"• Recommendation: {remaining_rec}")
 
 
 
@@ -2251,10 +2228,7 @@ def get_or_create_summary(
             sku_inventory_flags=sku_inventory_flags,
             remaining_skus_context=remaining_skus_context   # ✅ NEW
         )
-        # # 🔍 DEBUG — SEE EXACT PROMPT-2 OUTPUT
-        # print("\n================ PROMPT 2 RAW OUTPUT ================")
-        # print(strategy_raw)
-        # print("=====================================================\n")
+       
 
         try:
             parsed = json.loads(strategy_raw)
@@ -2295,15 +2269,16 @@ def get_or_create_summary(
             sku_actions = {}
 
 
+
     # 🔥 SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
     if not allow_recommendations:
 
-    # Remove SKU level recommendations
+        # Remove SKU level recommendations
         for key, value in sku_actions.items():
             if isinstance(value, dict) and "recommendation" in value:
                 value["recommendation"] = ""
 
-        # Remove remaining SKU recommendation
+        # Remove remaining SKUs recommendation text but keep card
         if "remaining_skus_recommendation" in sku_actions:
             sku_actions["remaining_skus_recommendation"] = ""
 

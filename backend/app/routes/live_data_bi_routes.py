@@ -750,41 +750,57 @@ def live_mtd_vs_previous():
 
         objective_hash = generate_objective_hash(user_objective)
 
-        cached_ai = get_cached_live_ai(
-            user_id=user_id,
-            country=country,
-            start_date=curr_start,
-            end_date=curr_end,
-            objective_hash=objective_hash,
-        )
+        # default safe values
+        analysis = {}
+        summary_out = {"summary_text": "", "metric_bullets": []}
+        strategy_parsed = {}
 
-        if cached_ai:
-            analysis = cached_ai["analysis"]
-            summary_out = cached_ai["summary"]
-            strategy_parsed = cached_ai["strategy"]
+        try:
 
-        else:
-            # ---------------------------
-            # PROMPT-1 (ANALYSIS)
-            # ---------------------------
-            analysis = run_live_prompt_1_analysis(payload_ai)
-
-
-            # ---------------------------
-            # PROMPT-1.5 (EXECUTIVE SUMMARY)
-            # ---------------------------
-            summary_out = run_live_prompt_1_5_summary(
-                analysis_output=analysis,
-                numeric_context={
-                    "periods": payload_ai["periods"],
-                    "pct_changes": payload_ai["pct_changes"],
-                    "selling_costs": payload_ai["selling_costs"],
-                    "roas": payload_ai["roas"],
-                    "movement_context": payload_ai["movement_context"],
-                    "currency": payload_ai["currency"],
-                },
-                user_objective=user_objective,
+            cached_ai = get_cached_live_ai(
+                user_id=user_id,
+                country=country,
+                start_date=curr_start,
+                end_date=curr_end,
+                objective_hash=objective_hash,
             )
+
+            if cached_ai:
+                analysis = cached_ai["analysis"]
+                summary_out = cached_ai["summary"]
+                strategy_parsed = cached_ai["strategy"]
+
+            else:
+
+                # ---------------------------
+                # PROMPT-1 (ANALYSIS)
+                # ---------------------------
+                analysis = run_live_prompt_1_analysis(payload_ai)
+
+                # ---------------------------
+                # PROMPT-1.5 (EXECUTIVE SUMMARY)
+                # ---------------------------
+                summary_out = run_live_prompt_1_5_summary(
+                    analysis_output=analysis,
+                    numeric_context={
+                        "periods": payload_ai["periods"],
+                        "pct_changes": payload_ai["pct_changes"],
+                        "selling_costs": payload_ai["selling_costs"],
+                        "roas": payload_ai["roas"],
+                        "movement_context": payload_ai["movement_context"],
+                        "currency": payload_ai["currency"],
+                    },
+                    user_objective=user_objective,
+                )
+
+        except Exception as e:
+
+            print("[AI ERROR] Failed to generate AI summary:", e)
+
+            # fallback values (graphs still work)
+            analysis = {}
+            summary_out = {"summary_text": "", "metric_bullets": []}
+            strategy_parsed = {}
 
      
         # ===========================
@@ -955,6 +971,7 @@ def live_mtd_vs_previous():
         if not cached_ai:
 
             try:
+
                 strategy_raw = run_prompt_2_strategy(
                     analysis_insights=analysis,
                     objective_v2=user_objective,
@@ -972,10 +989,15 @@ def live_mtd_vs_previous():
                     } if remaining_growth_row else {},
                 )
 
-                strategy_parsed = json.loads(strategy_raw) if strategy_raw else {}
+                if strategy_raw:
+                    strategy_parsed = json.loads(strategy_raw)
+                else:
+                    strategy_parsed = {}
 
             except Exception as e:
-                print("[STRATEGY ERROR]", e)
+
+                print("[AI ERROR] Strategy generation failed:", e)
+
                 strategy_parsed = {}
 
         # ====================================================
