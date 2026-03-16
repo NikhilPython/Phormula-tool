@@ -1947,3 +1947,90 @@ def target_summary():
     finally:
         db_session.close()
 
+
+
+@dashboard_bp.route('/target-summary-history', methods=['GET'])
+def target_summary_history():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    token = auth_header.split(' ')[1]
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    year = request.args.get('year')
+    country_param = request.args.get('country', '')
+    currency_param = (request.args.get('currency') or '').lower()
+
+    country = resolve_country(country_param, currency_param)
+
+    if not year:
+        return jsonify({'error': 'Year is required'}), 400
+    if not country:
+        return jsonify({'error': 'country is required'}), 400
+
+    try:
+        year = int(year)
+    except ValueError:
+        return jsonify({'error': 'Invalid year format'}), 400
+
+    engine = create_engine(db_url)
+    SessionLocal = sessionmaker(bind=engine)
+    db_session = SessionLocal()
+
+    try:
+        safe_country = country.lower().replace(" ", "_").replace("-", "_")
+        target_table_name = f"target_{user_id}_{safe_country}_data"
+
+        inspector = inspect(engine)
+        if not inspector.has_table(target_table_name):
+            return jsonify({
+                'message': 'No target history found',
+                'data': []
+            }), 200
+
+        rows = db_session.execute(text(f"""
+            SELECT month, year, country, target_sales, net_sales_total, cashflow_total, shortfall_total
+            FROM {target_table_name}
+            WHERE year = :year
+              AND LOWER(country) = LOWER(:country)
+        """), {
+            'year': year,
+            'country': country
+        }).fetchall()
+
+        month_order = {
+            "January": 1, "February": 2, "March": 3, "April": 4,
+            "May": 5, "June": 6, "July": 7, "August": 8,
+            "September": 9, "October": 10, "November": 11, "December": 12
+        }
+
+        result = []
+        for row in rows:
+            result.append({
+                'month': row[0],
+                'year': row[1],
+                'country': row[2],
+                'target_sales': float(row[3] or 0),
+                'monthwise_sales': float(row[4] or 0),   # use net_sales_total as actual sales
+                'cashflow_total': float(row[5] or 0),
+                'shortfall_total': float(row[6] or 0),
+            })
+
+        result.sort(key=lambda x: month_order.get(x['month'], 99))
+
+        return jsonify({
+            'message': 'Target summary history fetched successfully',
+            'data': result
+        }), 200
+
+    except Exception as e:
+        db_session.rollback()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    finally:
+        db_session.close()

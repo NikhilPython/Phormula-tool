@@ -383,6 +383,9 @@ export default function ObjectivesPageClient({
   const [objectiveDraft, setObjectiveDraft] = useState<UserObjectiveForm>(objective);
   const [expandedChart, setExpandedChart] = useState<"targetSales" | "objectiveMoM" | null>(null);
 
+  const [objectiveTargetDraft, setObjectiveTargetDraft] = useState<string>("");
+  const [objectiveEditingPid, setObjectiveEditingPid] = useState<PlatformId | null>(null);
+
   const toggleChartExpand = (chart: "targetSales" | "objectiveMoM") => {
     setExpandedChart((prev) => (prev === chart ? null : chart));
   };
@@ -532,15 +535,38 @@ export default function ObjectivesPageClient({
     cancelEditTarget();
   };
 
+  // const startObjectiveEdit = () => {
+  //   setObjectiveDraft(objective);
+  //   setIsObjectiveEditMode(true);
+  // };
+
   const startObjectiveEdit = () => {
     setObjectiveDraft(objective);
+    setObjectiveTargetDraft(String(Number((data as any)?.target_sales ?? 0)));
+    setObjectiveEditingPid(pagePlatform);
     setIsObjectiveEditMode(true);
   };
 
+  // const cancelObjectiveEdit = () => {
+  //   setObjectiveDraft(objective);
+  //   setIsObjectiveEditMode(false);
+  // };
+
   const cancelObjectiveEdit = () => {
     setObjectiveDraft(objective);
+    setObjectiveTargetDraft("");
+    setObjectiveEditingPid(null);
     setIsObjectiveEditMode(false);
   };
+
+  const strategicTargetPid = objectiveEditingPid || pagePlatform;
+  const strategicNativeCurrency = platformToCurrencyCode(strategicTargetPid) || homeCurrencyCode;
+  const strategicTargetCountry = platformToCountry(strategicTargetPid);
+  const strategicConversionRate = getFxDb(
+    strategicNativeCurrency,
+    homeCurrencyCode,
+    strategicTargetCountry
+  );
 
   const getCurrentMonthYear = () => {
     const now = new Date();
@@ -606,11 +632,17 @@ export default function ObjectivesPageClient({
     }
   };
 
-  // const handleInlineObjectiveSave = async () => {
+  //  const handleInlineObjectiveSave = async () => {
   //   try {
   //     const payload = {
   //       ...objectiveDraft,
   //       country: objectiveDraft.country.toLowerCase(),
+  //       uploaded_files: objectiveDraft.uploaded_files.map((file) => ({
+  //         name: file.name,
+  //         size: file.size,
+  //         type: file.type,
+  //         extracted_text: file.extractedText,
+  //       })),
   //     };
 
   //     const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
@@ -637,7 +669,14 @@ export default function ObjectivesPageClient({
 
   const handleInlineObjectiveSave = async () => {
     try {
-      const payload = {
+      const nextTarget = Number(objectiveTargetDraft);
+
+      if (!Number.isFinite(nextTarget) || nextTarget < 0) {
+        alert("Please enter a valid target.");
+        return;
+      }
+
+      const objectivePayload = {
         ...objectiveDraft,
         country: objectiveDraft.country.toLowerCase(),
         uploaded_files: objectiveDraft.uploaded_files.map((file) => ({
@@ -648,25 +687,56 @@ export default function ObjectivesPageClient({
         })),
       };
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const { month, year } = getCurrentMonthYear();
 
-      if (!res.ok) throw new Error("Failed to save objective");
+      const targetPayload = {
+        month,
+        year,
+        country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
+        target_sales: nextTarget,
+      };
+
+      const [objectiveRes, targetSummaryRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(objectivePayload),
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(targetPayload),
+        }),
+      ]);
+
+      if (!objectiveRes.ok) {
+        throw new Error("Failed to save objective");
+      }
+
+      const targetSummaryJson = await targetSummaryRes.json();
+      if (!targetSummaryRes.ok) {
+        throw new Error(targetSummaryJson?.error || "Failed to save monthly target summary.");
+      }
+
+      await updateProfile({ target_sales: nextTarget } as any).unwrap();
+      dispatch(setUser({ target_sales: nextTarget } as any));
 
       setObjective(objectiveDraft);
       setIsObjectiveEditMode(false);
+      setObjectiveTargetDraft("");
+      setObjectiveEditingPid(null);
 
       localStorage.setItem("user_objective", JSON.stringify(objectiveDraft));
-      localStorage.setItem("user_objective_backend", JSON.stringify(payload));
+      localStorage.setItem("user_objective_backend", JSON.stringify(objectivePayload));
     } catch (err) {
       console.error(err);
-      alert("Failed to save objective");
+      alert("Failed to save section");
     }
   };
 
@@ -1215,6 +1285,9 @@ export default function ObjectivesPageClient({
                 >
                   <div className="h-[420px] w-full">
                     <TargetVsSalesChart
+                      year={new Date().getFullYear()}
+                      country={resolvedTargetCountry}
+                      currency={homeCurrencyCode.toLowerCase()}
                       currencySymbol={
                         homeCurrencyCode === "GBP"
                           ? "£"
@@ -1224,6 +1297,9 @@ export default function ObjectivesPageClient({
                               ? "€"
                               : homeCurrencyCode
                       }
+                      token={token || ""}
+                      apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
+                      className="h-full w-full"
                     />
                   </div>
                 </InfoCard>
@@ -1235,7 +1311,7 @@ export default function ObjectivesPageClient({
                 <InfoCard
                   title={
                     <PageBreadcrumb
-                      pageTitle="Objective MoM (Month on Month)"
+                      pageTitle="Objective MoM"
                       variant="table"
                       align="left"
                     />
@@ -1276,7 +1352,7 @@ export default function ObjectivesPageClient({
 
       {activeTab === "targets_and_objectives" && (
         <div className="grid grid-cols-1 gap-4">
-          <InfoCard
+          {/* <InfoCard
             title={<PageBreadcrumb pageTitle="Monthly Targets" variant="table" align="left" />}
             action={
               <div className="flex items-center gap-2">
@@ -1456,6 +1532,172 @@ export default function ObjectivesPageClient({
                   ) : (
                     objective.country?.toUpperCase() || "-"
                   )
+                }
+              />
+            </div>
+          </InfoCard> */}
+
+          <InfoCard
+            title={
+              <PageBreadcrumb
+                pageTitle="Strategic Objectives and Monthly Targets"
+                variant="table"
+                align="left"
+              />
+            }
+            action={
+              !isObjectiveEditMode ? (
+                <button
+                  onClick={startObjectiveEdit}
+                  className="h-9 w-9 text-gray-700"
+                  type="button"
+                >
+                  <FiEdit className="text-lg" />
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button size="icon" onClick={handleInlineObjectiveSave}>
+                    <FiCheck />
+                  </Button>
+                  <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
+                    <FiX />
+                  </Button>
+                </div>
+              )
+            }
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <InfoItem
+                label="Growth"
+                value={
+                  isObjectiveEditMode ? (
+                    <select
+                      value={objectiveDraft.growth_intent}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
+                        }))
+                      }
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    >
+                      {GROWTH_OPTIONS.map((v) => (
+                        <option key={v} value={v}>
+                          {v.charAt(0).toUpperCase() + v.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    prettifyObjectiveValue(objective.growth_intent)
+                  )
+                }
+              />
+
+              <InfoItem
+                label="Profit"
+                value={
+                  isObjectiveEditMode ? (
+                    <select
+                      value={objectiveDraft.profit_priority}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
+                        }))
+                      }
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    >
+                      {PROFIT_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    prettifyObjectiveValue(objective.profit_priority)
+                  )
+                }
+              />
+
+              <InfoItem
+                label="Inventory Dilution"
+                value={
+                  isObjectiveEditMode ? (
+                    <select
+                      value={objectiveDraft.inventory_clearance_priority ? "yes" : "no"}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          inventory_clearance_priority: e.target.value === "yes",
+                        }))
+                      }
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    >
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  ) : (
+                    objective.inventory_clearance_priority ? "Yes" : "No"
+                  )
+                }
+              />
+
+              <InfoItem
+                label="Country"
+                value={
+                  isObjectiveEditMode ? (
+                    <select
+                      value={objectiveDraft.country}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          country: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    >
+                      <option value="" disabled>
+                        Select Country
+                      </option>
+                      {integratedCountries.map((c) => (
+                        <option key={c} value={c}>
+                          {c.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    objective.country?.toUpperCase() || "-"
+                  )
+                }
+              />
+
+              <InfoItem
+                label={`Target (${strategicNativeCurrency})`}
+                value={
+                  isObjectiveEditMode ? (
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={objectiveTargetDraft}
+                      onChange={(e) => setObjectiveTargetDraft(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      placeholder="Enter target"
+                    />
+                  ) : (
+                    money(Number((data as any)?.target_sales ?? 0), strategicNativeCurrency)
+                  )
+                }
+              />
+
+              <InfoItem
+                label={`Conversion Rate (${homeCurrencyCode})`}
+                value={
+                  <span>
+                    {strategicNativeCurrency === homeCurrencyCode
+                      ? "-"
+                      : strategicConversionRate.toFixed(3)}
+                  </span>
                 }
               />
             </div>
