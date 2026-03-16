@@ -360,8 +360,79 @@ def forecast_allmonths():
         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
 
 
+# @forecast_bp.route('/api/forecast_monthrange', methods=['GET'])
+# def forecast_monthrange():
+#     auth_header = request.headers.get('Authorization')
+#     if not auth_header or not auth_header.startswith('Bearer '):
+#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+#     token = auth_header.split(' ')[1]
+
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#         if not user_id:
+#             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
+
+#         country = request.args.get('country')
+#         if not country:
+#             return jsonify({'error': 'Missing required parameter: country'}), 400
+
+#         # NOTE: keep in sync with utils filename (current month)
+#         current_month = datetime.now().strftime("%b").lower()
+
+#         output_file = (
+#             f'inventory_forecast_{user_id}_global_{current_month}+2.xlsx'
+#             if country == 'global'
+#             else f'inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx'
+#         )
+
+#         stored = load_file_from_db(user_id=user_id, country=country, filename=output_file)
+#         if not stored:
+#             return jsonify({'error': 'Forecast file not found in DB. Please generate it first.'}), 404
+
+#         df = pd.read_excel(BytesIO(stored.data))
+
+
+#         month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}$")
+#         month_columns = [col for col in df.columns if month_pattern.match(str(col))]
+
+#         if not month_columns:
+#             return jsonify({'error': 'No valid month columns found in the forecast file'}), 400
+
+#         def month_key(col):
+#             try:
+#                 return pd.to_datetime(col.replace("'", ""), format="%b%y")
+#             except:
+#                 return pd.Timestamp.max
+
+#         month_columns_sorted = sorted(set(month_columns), key=month_key)
+
+#         first_month = month_columns_sorted[0]
+#         last_month = month_columns_sorted[-1]
+
+#         return jsonify({'month_range': f"{first_month}-{last_month}"}), 200
+
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({'error': 'Token has expired'}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({'error': 'Invalid token for month range'}), 401
+#     except Exception as e:
+#         import traceback
+#         print("Unexpected error during month range calculation:")
+#         print(traceback.format_exc())
+#         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
+
 @forecast_bp.route('/api/forecast_monthrange', methods=['GET'])
 def forecast_monthrange():
+    import re
+    import traceback
+    from io import BytesIO
+    from datetime import datetime
+
+    import jwt
+    import pandas as pd
+    from flask import request, jsonify
+
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
@@ -370,6 +441,7 @@ def forecast_monthrange():
 
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
+
         if not user_id:
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
@@ -377,7 +449,6 @@ def forecast_monthrange():
         if not country:
             return jsonify({'error': 'Missing required parameter: country'}), 400
 
-        # NOTE: keep in sync with utils filename (current month)
         current_month = datetime.now().strftime("%b").lower()
 
         output_file = (
@@ -387,42 +458,64 @@ def forecast_monthrange():
         )
 
         stored = load_file_from_db(user_id=user_id, country=country, filename=output_file)
+
         if not stored:
-            return jsonify({'error': 'Forecast file not found in DB. Please generate it first.'}), 404
+            return jsonify({
+                'error': 'Forecast file not found',
+                'expected_filename': output_file
+            }), 404
 
-        df = pd.read_excel(BytesIO(stored.data))
+        # 🔹 IMPORTANT: header row is row 7
+        df = pd.read_excel(BytesIO(stored.data), header=6)
 
+        # normalize columns
+        df.columns = [str(c).replace(" Sold", "").strip() for c in df.columns]
 
-        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}$")
-        month_columns = [col for col in df.columns if month_pattern.match(str(col))]
+        print("Columns detected:", df.columns.tolist())
+
+        month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}")
+
+        month_columns = [
+            col for col in df.columns
+            if month_pattern.match(str(col))
+        ]
 
         if not month_columns:
-            return jsonify({'error': 'No valid month columns found in the forecast file'}), 400
+            return jsonify({
+                'error': 'No month columns found',
+                'columns': [str(c) for c in df.columns]
+            }), 400
 
-        def month_key(col):
-            try:
-                return pd.to_datetime(col.replace("'", ""), format="%b%y")
-            except:
-                return pd.Timestamp.max
+        def parse_month(col):
+            col = str(col).replace(" Sold", "")
+            return pd.to_datetime(col.replace("'", ""), format="%b%y")
 
-        month_columns_sorted = sorted(set(month_columns), key=month_key)
+        month_columns_sorted = sorted(month_columns, key=parse_month)
 
-        first_month = month_columns_sorted[0]
-        last_month = month_columns_sorted[-1]
+        first_month = month_columns_sorted[0].replace(" Sold", "")
+        last_month = month_columns_sorted[-1].replace(" Sold", "")
 
-        return jsonify({'month_range': f"{first_month}-{last_month}"}), 200
+        return jsonify({
+            "first_month": first_month,
+            "last_month": last_month,
+            "month_range": f"{first_month}-{last_month}"
+        }), 200
 
     except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token has expired'}), 401
+        return jsonify({'error': 'Token expired'}), 401
+
     except jwt.InvalidTokenError:
-        return jsonify({'error': 'Invalid token for month range'}), 401
+        return jsonify({'error': 'Invalid token'}), 401
+
     except Exception as e:
-        import traceback
-        print("Unexpected error during month range calculation:")
+        print("Unexpected error:")
         print(traceback.format_exc())
-        return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
 
-
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
+    
 
 # @forecast_bp.route('/api/forecast', methods=['GET'])
 # def get_forecast():
@@ -717,8 +810,14 @@ def get_forecast():
             return jsonify({'error': 'Invalid token payload: user_id missing'}), 401
 
         country = request.args.get('country')
-        mv = _normalize_forecast_month(mv)
         year = request.args.get('year')
+
+        mv = request.args.get('month')
+
+        if mv:
+            mv = _normalize_forecast_month(mv)
+        else:
+            return jsonify({"error": "Month parameter is required"}), 400
 
         if not all([country, mv, year]):
             return jsonify({'error': 'Missing required parameters: country, month, or year'}), 400

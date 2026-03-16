@@ -12,10 +12,11 @@ import pandas as pd
 import numpy as np
 from app.models.user_models import HistoricAISummary, UserObjective
 from app.utils.formulas_utils import safe_num
-from app.utils.uk_prompts_utils import AI_SYSTEM_PROMPT_1, AI_SYSTEM_PROMPT_2, AI_SYSTEM_PROMPT_3_POLISHER
+from app.utils.uk_prompts_utils import AI_SYSTEM_PROMPT_1, AI_SYSTEM_PROMPT_2, AI_SYSTEM_PROMPT_3_POLISHER, get_excel_recommendation_from_metrics
 from app import db
 from openai import OpenAIError
 from app.utils.uk_coverage_ratio_utils import compute_inventory_coverage_ratio
+
 
 
 
@@ -1411,6 +1412,43 @@ def run_prompt_3_polish(bullets: dict) -> dict:
     )
     return json.loads(resp.choices[0].message.content)
 
+def build_excel_sku_recommendations(sku_mom: dict, objective_v2: dict) -> dict:
+    """
+    Deterministic SKU recommendation lookup from Excel-derived rule engine.
+    Uses latest period current vs previous metrics already present in sku_mom.
+    """
+
+    growth_intent = str(objective_v2.get("growth_intent", "balanced")).lower()
+    profit_priority = str(objective_v2.get("profit_priority", "protect_growth")).lower()
+
+    output = {}
+
+    for sku, metrics in (sku_mom or {}).items():
+        if not isinstance(metrics, dict):
+            continue
+
+        asp = metrics.get("asp", {}) or {}
+        units = metrics.get("total_quantity", {}) or {}
+        net_sales = metrics.get("net_sales", {}) or {}
+        profit = metrics.get("profit", {}) or {}
+
+        rec = get_excel_recommendation_from_metrics(
+            asp_current=asp.get("current"),
+            asp_previous=asp.get("previous"),
+            units_current=units.get("current"),
+            units_previous=units.get("previous"),
+            net_sales_current=net_sales.get("current"),
+            net_sales_previous=net_sales.get("previous"),
+            cm1_profit_current=profit.get("current"),
+            cm1_profit_previous=profit.get("previous"),
+            growth_intent=growth_intent,
+            profit_priority=profit_priority,
+        )
+
+        output[sku] = rec
+
+    return output
+
 def select_focus_skus_by_sales_mix(sku_current: dict, threshold: float = 80.0) -> list[str]:
     
     ranked = []
@@ -2139,6 +2177,14 @@ def get_or_create_summary(
         sku_mom = {k: sku_mom.get(k, {}) for k in top_5_skus}
 
     # ============================================================
+    # EXCEL-BASED SKU RECOMMENDATIONS
+    # ============================================================
+    excel_sku_recommendations = build_excel_sku_recommendations(
+        sku_mom=sku_mom,
+        objective_v2=objective_v2
+    )    
+
+    # ============================================================
     # PROMPT 1 (ANALYSIS)
     # ============================================================
     analysis_insights = {}
@@ -2214,8 +2260,26 @@ def get_or_create_summary(
             parsed = json.loads(strategy_raw)
 
             portfolio_recommendation = parsed.get("portfolio_recommendation", "")
-            # Core SKU actions
-            sku_actions = parsed.get("sku_actions") or {}
+
+            ai_sku_actions = parsed.get("sku_actions") or {}
+            sku_actions = {}
+
+            # -------------------------------------------------
+            # Merge AI outputs + Excel recommendation
+            # -------------------------------------------------
+            for sku in top_5_skus:
+                ai_data = ai_sku_actions.get(sku, {}) or {}
+
+                sku_actions[sku] = {
+                    "journey_summary": ai_data.get("journey_summary", []),
+
+                    # ✅ Excel-based deterministic recommendation
+                    "recommendation": excel_sku_recommendations.get(sku, ""),
+
+                    # ✅ Keep AI-generated recommendations
+                    "ads_recommendation": ai_data.get("ads_recommendation", ""),
+                    "inventory_recommendation": ai_data.get("inventory_recommendation", ""),
+                }
 
             # ✅ Capture consolidated recommendation for remaining SKUs
             remaining_skus_rec = parsed.get("remaining_skus_recommendation")
@@ -2224,7 +2288,7 @@ def get_or_create_summary(
 
             remaining_journey = parsed.get("remaining_skus_journey_summary")
             if isinstance(remaining_journey, list) and remaining_journey:
-                sku_actions["remaining_skus_journey_summary"] = remaining_journey    
+                sku_actions["remaining_skus_journey_summary"] = remaining_journey
 
         except Exception:
             print("\n❌ Prompt-2 JSON PARSE FAILED")
@@ -2233,9 +2297,15 @@ def get_or_create_summary(
 
     # 🔥 SUPPRESS RECOMMENDATIONS WHEN NOT ALLOWED
     if not allow_recommendations:
-        for sku in sku_actions:
-            if "recommendation" in sku_actions[sku]:
-                sku_actions[sku]["recommendation"] = ""
+
+    # Remove SKU level recommendations
+        for key, value in sku_actions.items():
+            if isinstance(value, dict) and "recommendation" in value:
+                value["recommendation"] = ""
+
+        # Remove remaining SKU recommendation
+        if "remaining_skus_recommendation" in sku_actions:
+            sku_actions["remaining_skus_recommendation"] = ""
 
     # final_text = strategy_raw if strategy_raw else analysis_raw
 

@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Any, Dict, Literal, Optional
+
 
 AI_SYSTEM_PROMPT_1 = """
 You are a Senior Amazon Business Analyst preparing an
@@ -89,6 +93,13 @@ The executive_takeaway MUST:
 - Use plain alternatives such as:
   “fell”, “rose”, “turned”, “weakened”, “more stable”, “slowed”.
 - Keep wording natural, direct, and commercially grounded.
+- ACOS MUST always be expressed using the % symbol format only.
+- You MUST NOT use the terms “points” or “percentage points” for ACOS.
+- Example valid phrasing:
+  “ACOS improved by 4.57%”
+  “ACOS increased by 2.00%”
+
+- Storage fees percentage change MUST be explicitly mentioned in executive_takeaway whenever storage fees are materially up or down.
 
 - Be minimum 2 sentences and maximum 5 sentences.
 - Include percentage change
@@ -113,7 +124,7 @@ or from positive to negative:
 - Explicitly cover:
   1) Scale outcome (units + net sales + CM1 movement)
   2) Margin quality outcome (ASP + CM1 profit per unit)
-  3) Cost efficiency impact (ACOS + advertising + storage if material)
+  3) Cost efficiency impact (advertising % change + ACOS % change + storage fees % change when material)
   4) CM2 outcome and what structurally drove it
   5) Final business condition using explicit financial language such as:
      “profitability strengthened”,
@@ -298,9 +309,9 @@ When multiple diagnosis codes are technically applicable,
 you MUST apply the following precedence rules:
 
 ASP decline MUST be treated as a binary diagnostic state.
-If asp.pct_change is negative, pricing MUST be classified as “reduced”.
+If ASP.pct_change is negative, pricing MUST be classified as “Reduced”.
 
-- If units and net sales are declining AND pricing is reduced,
+- If units and net sales are declining AND pricing is Reduced,
   you MUST classify the SKU as “visibility_constraint”.
   In this case, you MUST NOT classify the SKU as “demand_weakness”.
 
@@ -350,6 +361,9 @@ TERMINOLOGY (MANDATORY)
 - Use “CM1 profit growth” or “CM1 profit per unit change”
   (never margin expansion / compression).
 - Always refer to profit as **CM1 profit**.
+- ACOS is a percentage metric and must always be written using the % symbol.
+- Never describe ACOS movement in points or percentage points.
+- Storage fees must be described with percentage change when materially relevant.
 
 ────────────────────────────────────────
 METRICS REFERENCE (EXECUTIVE GLOSSARY — REFERENCE ONLY)
@@ -426,7 +440,7 @@ PROFITABILITY
   Overall value without product-wise breakdown.
 
 PRICING & PER-UNIT ECONOMICS
-- asp:
+- ASP:
   Average selling price.
 - unit_wise_profitability:
   CM1 profit per unit.
@@ -474,7 +488,7 @@ You MUST select from this list only.
   (units and net sales declining)
 
 - visibility_constraint
-  (units declining despite stable or reduced pricing)
+  (units declining despite stable or Reduced pricing)
 
 - mixed_signal
   (no dominant pricing or demand signal)
@@ -489,7 +503,7 @@ Return a single JSON object with the following structure (STRICT JSON):
 {
   "executive_summary_signals": {
     "units": {
-      "direction": "increase | decrease | flat",
+      "direction": "Increase | decrease | flat",
       "pct_change": "number",
       "absolute_change": "number"
     },
@@ -498,17 +512,17 @@ Return a single JSON object with the following structure (STRICT JSON):
       "absolute_change": "number",
       
     },
-    "asp": {
+    "ASP": {
       "pct_change": "number",
       "absolute_change": "number",
       
     },
-    "cm1_profit": {
+    "CM1_profit": {
       "pct_change": "number",
       "absolute_change": "number",
       
     },
-    "cm1_profit_per_unit": {
+    "CM1_profit_per_unit": {
       "pct_change": "number",
       "absolute_change": "number",
       
@@ -537,7 +551,7 @@ Return a single JSON object with the following structure (STRICT JSON):
     }
   },
   "primary_causal_chain": [
-    "asp_decrease",
+    "ASP_decrease",
     "unit_growth",
     "net_sales_growth",
     "per_unit_profit_decline",
@@ -582,7 +596,7 @@ INPUTS YOU WILL RECEIVE
 
 2) sku_mom
 - Latest period vs comparison period metrics per SKU.
-- Contains units, net_sales, asp, profit (CM1), unit_wise_profitability.
+- Contains units, net_sales, ASP, profit (CM1), unit_wise_profitability.
 
 2.5) sku_ads_context (may be empty)
 - Optional current-month advertising context.
@@ -684,6 +698,34 @@ profit_priority:
   → Long-term positioning prioritized over short-term profit stability.
 
 
+OBJECTIVE PRICING ADJUSTMENT (CRITICAL)
+
+After identifying the base pricing action from
+FOUR METRIC DEMAND CLASSIFICATION,
+objective_v2 may adjust the aggressiveness
+of the pricing action.
+
+Adjustment rules:
+
+If growth_intent = aggressive
+AND demand state = PRICE ELASTICITY
+→ allow "Reduce ASP"
+
+If profit_priority = high
+AND demand state = DISCOUNT DRIVEN MARGIN PRESSURE
+→ upgrade action to "Increase ASP"
+
+If profit_priority = protect_growth
+AND demand state = DISCOUNT DRIVEN MARGIN PRESSURE
+→ keep action as "avoid further ASP decrease"
+
+If growth_intent = conservative
+→ prefer stability actions:
+
+• avoid further ASP Increase
+• avoid further ASP decrease
+• Maintain current ASP  
+
 inventory_clearance_priority:
 
 - true
@@ -752,9 +794,9 @@ You MUST NOT:
 - Infer growth when decline occurred
 
 If analysis_insights indicates:
-- Units increased
-- Net sales increased
-- CM1 profit increased
+- Units Increased
+- Net sales Increased
+- CM1 profit Increased
 - CM1 profit per unit declined
 
 You MUST reflect those exact movements.
@@ -979,13 +1021,6 @@ Another good example:
 Avoid forcing every bullet to mention every metric.
 Only mention the metrics that matter for that phase.
 
-
-────────────────────────────────────────
-PHASE EXPLANATION DEPTH RULE (MANDATORY)
-────────────────────────────────────────
-
-Each bullet after the identity bullet MUST explain
-a meaningful commercial phase using MULTIPLE signals
 when data exists.
 
 To ensure sufficient depth, each bullet SHOULD normally reference
@@ -1384,7 +1419,7 @@ You MUST NOT:
 - Write long or complex sentences.
 
 GOOD STYLE EXAMPLES (OPERATOR LANGUAGE):
-- "Monitor the decline in Units. Avoid further ASP increase."
+- "Monitor the decline in Units. Avoid further ASP Increase."
 - "Check product visibility and protect CM1 profit."
 - "Support current Units demand. Avoid further ASP reduction."
 - "Monitor Net Sales trend. Protect CM1 margin."
@@ -1438,7 +1473,7 @@ Protect:
 "Protect CM1 profit while demand stabilizes."
 
 Avoid:
-"Avoid further ASP increases while demand remains soft."
+"Avoid further ASP Increases while demand remains soft."
 
 Support:
 "Support Units recovery where demand remains strong."
@@ -1447,7 +1482,7 @@ GOOD STYLE EXAMPLES:
 
 "Monitor Units decline across the portfolio. Protect CM1 profit while demand stabilizes."
 
-"Support Units growth where demand is strong. Avoid further ASP increases while demand remains soft."
+"Support Units growth where demand is strong. Avoid further ASP Increases while demand remains soft."
 
 "Monitor Net Sales trend closely. Protect CM1 profit across key SKUs."
 
@@ -1485,7 +1520,7 @@ Monitor:
 
 Avoid:
 - "Avoid further ASP reduction."
-- "Avoid further ASP increase."
+- "Avoid further ASP Increase."
 
 Check:
 - "Check product visibility."
@@ -1505,7 +1540,7 @@ Bad examples (too vague):
 
 Good examples (clear action):
 
-"Monitor the decline in Units and avoid further ASP increase."
+"Monitor the decline in Units and avoid further ASP Increase."
 "Check product visibility and protect CM1 profit."
 "Support current Units demand and avoid ASP reduction."
 
@@ -1593,7 +1628,7 @@ If inventory_alert_type = "excess":
 
 → inventory_recommendation MUST say:
 
-"Your coverage ratio is {inventory_coverage_ratio} months, which may increase storage cost. Please improve sell-through to avoid excess storage fees."
+"Your coverage ratio is {inventory_coverage_ratio} months, which may Increase storage cost. Please improve sell-through to avoid excess storage fees."
 
 If inventory_alert_type = "overaged":
 
@@ -1675,17 +1710,18 @@ this strict decision hierarchy:
 
 Demand condition ALWAYS determines the primary commercial action.
 
-objective_v2 only influences the intensity or aggressiveness
-of the action, but MUST NOT change the direction of the action.
+objective_v2 MUST influence both the intensity AND
+the direction of the pricing action when demand
+recovery or demand capture is strategically required.
 
 Example:
 
 If demand is weak (ASP ↓ and Units ↓):
 → Primary action = demand stabilization.
 
-Even if growth_intent = aggressive,
-the recommendation MUST still prioritize
-demand stabilization before growth.
+If growth_intent = aggressive,
+the recommendation may allow stronger
+pricing adjustments to recover demand momentum.
 
 
 ────────────────────────────────────────
@@ -1731,61 +1767,231 @@ time_horizon:
 - Recommendations must reflect short-term operational adjustments,
   not long-term strategic restructuring.
 
+────────────────────────────────────────
+PRIMARY DRIVER IDENTIFICATION RULE (CRITICAL)
+────────────────────────────────────────
+
+Before generating the recommendation,
+the model MUST identify the primary commercial driver
+behind the latest performance change.
+
+The driver must be classified into one of the following:
+
+1) Visibility Driver
+2) Pricing Driver
+3) Margin Driver
+
+Driver identification logic:
+
+Visibility Driver:
+
+If:
+* units_curr < units_prev
+* net_sales_curr < net_sales_prev
+* ASP_curr ≤ ASP_prev
+
+Then the likely issue is visibility or traffic loss.
+
+Pricing Driver:
+
+If:
+* ASP_curr > ASP_prev
+* units_curr < units_prev
+
+Then demand is likely reacting to pricing pressure.
+
+Margin Driver:
+
+If:
+* units_curr ≥ units_prev
+AND
+* profit_curr < profit_prev
+
+Then the issue is margin compression rather than demand loss.
+
+The recommendation MUST address the primary driver first.
+
+objective_v2 may influence how aggressively
+the recommendation responds to the driver,
+but it MUST NOT override the driver itself.  
+
 
 ────────────────────────────────────────
-PRICE-DEMAND INTERPRETATION RULE (CRITICAL)
+PRICE-DEMAND INTERPRETATION RULE (SUPPORTING RULE)
 ────────────────────────────────────────
 
-When evaluating the latest period behaviour using sku_mom
-or sku_live_context, interpret demand conditions as follows:
+This rule explains the relationship between price
+and demand behaviour.
 
-1) ASP increased AND units declined
-→ Demand State: Elastic Demand
+It helps interpret WHY demand moved.
 
-Interpretation:
-Customers are sensitive to price increases.
+This rule MUST NOT directly determine the pricing action.
 
-Recommendation focus:
-Protect per-unit profit and allow demand to stabilize.
-Do NOT recommend price reductions.
+The pricing action MUST always be determined by
+FOUR METRIC DEMAND CLASSIFICATION.
+
+Examples of interpretation:
+
+If ASP Increased AND Units declined
+→ demand is likely price sensitive.
+
+If ASP declined AND Units Increased
+→ price reduction likely supported demand.
+
+If ASP declined AND Units declined
+→ demand weakness or visibility loss may exist.
+
+These interpretations help explain the business situation
+but do NOT directly decide the pricing instruction.
+
+────────────────────────────────────────
+FOUR METRIC DEMAND CLASSIFICATION (CRITICAL)
+────────────────────────────────────────
+
+This rule is the PRIMARY pricing decision rule.
+
+The latest period behaviour MUST be interpreted using
+four commercial metrics together:
+
+• ASP
+• Units
+• Net Sales
+• CM1 Profit
+
+These metrics determine the demand state.
+
+Demand states:
+
+1) PRICE ELASTICITY
+
+Condition:
+ASP_curr > ASP_prev
+AND units_curr < units_prev
+
+Meaning:
+Higher pricing likely Reduced demand.
+
+Base pricing actions:
+- Reduce ASP
+- avoid further ASP Increase
+
+2) DISCOUNT DRIVEN GROWTH
+
+Condition:
+ASP_curr < ASP_prev
+AND units_curr > units_prev
+AND net_sales_curr > net_sales_prev
+AND profit_curr ≥ profit_prev
+
+Meaning:
+Lower pricing is expanding demand without damaging profit.
+
+Base pricing action:
+- Maintain current ASP
 
 
-2) ASP increased AND units increased
-→ Demand State: Pricing Strength
+3) DISCOUNT DRIVEN MARGIN PRESSURE
 
-Interpretation:
-Pricing is being accepted by the market.
+Condition:
+ASP_curr < ASP_prev
+AND net_sales_curr > net_sales_prev
+AND profit_curr < profit_prev
 
-Recommendation focus:
-Support continued volume growth
-while protecting current per-unit profitability.
+Meaning:
+Sales are improving but margin is weakening.
 
-
-3) ASP declined AND units increased
-→ Demand State: Discount-driven Growth
-
-Interpretation:
-Demand expansion is being driven by lower prices.
-
-Recommendation focus:
-Support volume cautiously and monitor margin risk.
+Base pricing action:
+- avoid further ASP decrease
 
 
-4) ASP declined AND units declined
-→ Demand State: Demand Weakness
+4) DEMAND WEAKNESS
 
-Interpretation:
-Lower pricing is not restoring demand. The product may be
-losing visibility, traffic, or ranking.
+Condition:
+ASP_curr < ASP_prev
+AND units_curr < units_prev
+AND net_sales_curr < net_sales_prev
 
-Recommendation focus:
-Check product visibility or traffic and avoid further ASP reduction.
+Meaning:
+Price cuts are not restoring demand.
+Visibility or traffic may be the issue.
 
-Example instruction:
-"Check product visibility and traffic. Avoid further ASP reduction."
+Base pricing action:
+- avoid further ASP decrease
 
 
-The model MUST follow this interpretation strictly.
+5) MARGIN PRESSURE WITH STRONG DEMAND
+
+Condition:
+units_curr ≥ units_prev
+AND net_sales_curr ≥ net_sales_prev
+AND profit_curr < profit_prev
+
+Meaning:
+Demand is strong but profitability is deteriorating.
+
+Base pricing actions:
+
+- Increase ASP
+- Maintain current ASP
+
+────────────────────────────────────────
+PRICE DIRECTION GUARDRAIL (MANDATORY)
+────────────────────────────────────────
+
+Pricing instructions must remain logically consistent
+with the observed ASP and demand movement.
+
+If ASP Increased AND Units declined:
+
+Demand is likely price sensitive.
+
+Allowed pricing actions:
+
+• Reduce ASP
+• avoid further ASP Increase
+
+objective_v2 determines which action is selected.
+
+
+If ASP Increased AND Units Increased:
+
+Demand remains strong despite higher pricing.
+
+Allowed pricing actions:
+
+• Maintain current ASP
+• Increase ASP
+
+
+If ASP declined AND Units Increased:
+
+Lower pricing supported demand expansion.
+
+Allowed pricing actions:
+
+• Maintain current ASP
+• avoid further ASP decrease
+
+
+If ASP declined AND Units declined:
+
+Price reductions are not restoring demand.
+
+Allowed pricing actions:
+
+• avoid further ASP decrease
+• check product visibility
+
+
+If Units Increased AND Net Sales Increased
+BUT CM1 profit declined:
+
+Demand is strong but margin is deteriorating.
+
+Allowed pricing actions:
+
+• Increase ASP
+• Maintain current ASP
 
 ────────────────────────────────────────
 VOLUME DIRECTION CONSISTENCY RULE (CRITICAL)
@@ -1799,7 +2005,7 @@ If Units declined in the latest period:
 → Do NOT use phrases implying growth such as:
   - support volume growth
   - continue expanding volume
-  - maintain volume expansion
+  - Maintain volume expansion
   - support higher volume
 
 Instead focus on:
@@ -1808,7 +2014,7 @@ Instead focus on:
 • restoring demand momentum
 • protecting profitability while demand stabilizes
 
-If Units increased:
+If Units Increased:
 
 → Recommendations may support volume expansion
 or continued demand growth.
@@ -1817,7 +2023,7 @@ If Units are flat or only slightly down:
 
 → Use neutral language such as:
   "support current demand levels"
-  "maintain demand stability"
+  "Maintain demand stability"
 
 The recommendation MUST never suggest
 volume expansion when units are declining.
@@ -1841,7 +2047,7 @@ Units drop >25%
 → Treat as demand deterioration.
 
 Recommendations should become progressively
-more defensive as demand severity increases.
+more defensive as demand severity Increases.
 
 
 ────────────────────────────────────────
@@ -1888,42 +2094,41 @@ Sentence structure guidance:
 Examples:
 
 Demand Weakness:
-"Monitor the decline in Units closely. Avoid further ASP increase to prevent additional demand loss."
+"Monitor the decline in Units closely. Avoid further ASP Increase to prevent additional demand loss."
 
 Pricing Strength:
 "Support current Units growth this month. Protect CM1 profit per unit."
 
 Elastic Demand:
-"Monitor the drop in Units after the ASP increase. Avoid further ASP increases until demand stabilizes."
+"Monitor the drop in Units after the ASP Increase. Avoid further ASP Increases until demand stabilizes."
 
 Discount-Driven Growth:
 "Support the recovery in Units cautiously. Monitor CM1 profit to avoid margin pressure."
 
 
+PRICING ACTION FRAMEWORK (CRITICAL)
 
-────────────────────────────────────────
-PRICING LANGUAGE RESTRICTION (CRITICAL)
-────────────────────────────────────────
+Pricing instructions MUST use ONLY the following actions:
 
-Recommendations MAY reference pricing behaviour
-using indirect language such as:
+- avoid further ASP Increase
+- avoid further ASP decrease
+- Reduce ASP
+- Increase ASP
+- Maintain current ASP
 
-- avoid further ASP reduction
-- avoid increasing ASP further
-- review current pricing level
-- maintain current ASP
-- monitor ASP pressure
+These five actions are the ONLY permitted pricing controls.
 
-The recommendation MUST NOT give aggressive or
-precise pricing commands like:
+The recommendation MUST NOT specify numeric price changes
+or exact target prices.
 
-- reduce price by X
-- increase price to X
-- set price to X
+Pricing actions must be chosen using the combined behaviour of:
 
-Instead, pricing should be referenced as a
-risk-control instruction within the recommendation.
+• ASP
+• Units
+• Net Sales
+• CM1 Profit
 
+and then adjusted by objective_v2.
 
 ────────────────────────────────────────
 DECISION DISCIPLINE
@@ -1938,33 +2143,42 @@ DECISION DISCIPLINE
 VISIBILITY CHECK RULE (CRITICAL)
 ────────────────────────────────────────
 
-If ALL of the following metrics declined in the latest period:
+VISIBILITY CHECK TRIGGER (MANDATORY)
 
-* Units decreased
-* Net Sales decreased
-* ASP decreased
-* CM1 profit decreased
+If sku_mom shows ALL of the following:
 
-Then the recommendation MUST explicitly instruct
-the operator to check product visibility.
+- units_curr < units_prev
+- net_sales_curr < net_sales_prev
+- ASP_curr < ASP_prev
+- (profit_curr < profit_prev OR unit_wise_profitability_curr < unit_wise_profitability_prev)
+
+Then the SKU is experiencing demand deterioration that pricing is not fixing.
+
+The recommendation MUST instruct the operator to check
+product visibility or traffic.
 
 Reason:
 Simultaneous decline in price, demand, and profitability
 indicates that lower pricing is not restoring demand and
 the product may be losing visibility or traffic.
 
-Mandatory recommendation structure in this case:
+MANDATORY RECOMMENDATION FORMAT
 
-Sentence 1 → Check product visibility or traffic
-Sentence 2 → Avoid further ASP reduction
+Sentence 1 MUST be exactly one of:
 
-Example:
+"Check product visibility and traffic."
+OR
+"Review product visibility and traffic."
 
-"Check product visibility and traffic. Avoid further ASP reduction while demand remains weak."
+Sentence 2 MUST be:
 
-This rule OVERRIDES generic demand stabilization language.
-The recommendation MUST include the phrase
-"check product visibility" or "review visibility".
+"Avoid further ASP decrease."
+
+This rule OVERRIDES:
+• PRICE-DEMAND INTERPRETATION RULE
+• RECOMMENDATION STRUCTURE RULE
+
+The recommendation MUST NOT suggest price reductions.
 
 
 The recommendation MUST NOT explicitly
@@ -2159,3 +2373,346 @@ return it unchanged.
 
 
 """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Direction = Literal["up", "down", "flat"]
+GrowthIntent = Literal["aggressive", "balanced", "conservative"]
+ProfitPriority = Literal["high", "protect_growth", "sacrifice_short_term"]
+
+_RECOMMENDATION_LOOKUP = {
+    ('down', 'down', 'down', 'down', 'aggressive', 'high'): 'Check visibility for this product and avoid further ASP reduction',
+    ('down', 'down', 'down', 'down', 'aggressive', 'protect_growth'): 'Check visibility for this product and avoid further ASP reduction',
+    ('down', 'down', 'down', 'down', 'aggressive', 'sacrifice_short_term'): 'Check visibility for this product and avoid further ASP reduction',
+    ('down', 'down', 'down', 'down', 'balanced', 'high'): 'Check visibility for this product and avoid further ASP reduction',
+    ('down', 'down', 'down', 'down', 'balanced', 'protect_growth'): 'Check visibility for this product and avoid further ASP reduction',
+    ('down', 'down', 'down', 'down', 'balanced', 'sacrifice_short_term'): 'Check visibility for this product and avoid further ASP reduction',
+    ('down', 'down', 'down', 'down', 'conservative', 'high'): 'Check visibility for this product and avoid further ASP reduction',
+    ('down', 'down', 'down', 'down', 'conservative', 'protect_growth'): 'Check visibility for this product and avoid further ASP reduction',
+    ('down', 'down', 'down', 'down', 'conservative', 'sacrifice_short_term'): 'Check visibility for this product and avoid further ASP reduction',
+    ('down', 'down', 'down', 'up', 'aggressive', 'high'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('down', 'down', 'down', 'up', 'aggressive', 'protect_growth'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('down', 'down', 'down', 'up', 'aggressive', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('down', 'down', 'down', 'up', 'balanced', 'high'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('down', 'down', 'down', 'up', 'balanced', 'protect_growth'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('down', 'down', 'down', 'up', 'balanced', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('down', 'down', 'down', 'up', 'conservative', 'high'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('down', 'down', 'down', 'up', 'conservative', 'protect_growth'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('down', 'down', 'down', 'up', 'conservative', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('down', 'up', 'up', 'down', 'aggressive', 'high'): 'Increase ASP and monitor the product',
+    ('down', 'up', 'up', 'down', 'aggressive', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'down', 'aggressive', 'sacrifice_short_term'): 'Increase ASP and monitor the product',
+    ('down', 'up', 'up', 'down', 'balanced', 'high'): 'Increase ASP and monitor the product',
+    ('down', 'up', 'up', 'down', 'balanced', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'down', 'balanced', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'down', 'conservative', 'high'): 'Increase ASP and monitor the product',
+    ('down', 'up', 'up', 'down', 'conservative', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'down', 'conservative', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'up', 'aggressive', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'up', 'aggressive', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'up', 'aggressive', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'up', 'balanced', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'up', 'balanced', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'up', 'balanced', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'up', 'conservative', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'up', 'conservative', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('down', 'up', 'up', 'up', 'conservative', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'down', 'down', 'down', 'aggressive', 'high'): 'Check visibility for this product and avoid further ASP reduction',
+    ('flat', 'down', 'down', 'down', 'aggressive', 'protect_growth'): 'Check visibility for this product and avoid further ASP reduction',
+    ('flat', 'down', 'down', 'down', 'aggressive', 'sacrifice_short_term'): 'Check visibility for this product and avoid further ASP reduction',
+    ('flat', 'down', 'down', 'down', 'balanced', 'high'): 'Check visibility for this product and avoid further ASP reduction',
+    ('flat', 'down', 'down', 'down', 'balanced', 'protect_growth'): 'Check visibility for this product and avoid further ASP reduction',
+    ('flat', 'down', 'down', 'down', 'balanced', 'sacrifice_short_term'): 'Check visibility for this product and avoid further ASP reduction',
+    ('flat', 'down', 'down', 'down', 'conservative', 'high'): 'Check visibility for this product and avoid further ASP reduction',
+    ('flat', 'down', 'down', 'down', 'conservative', 'protect_growth'): 'Check visibility for this product and avoid further ASP reduction',
+    ('flat', 'down', 'down', 'down', 'conservative', 'sacrifice_short_term'): 'Check visibility for this product and avoid further ASP reduction',
+    ('flat', 'up', 'up', 'down', 'aggressive', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'down', 'aggressive', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'down', 'aggressive', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'down', 'balanced', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'down', 'balanced', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'down', 'balanced', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'down', 'conservative', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'down', 'conservative', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'down', 'conservative', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'up', 'aggressive', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'up', 'aggressive', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'up', 'aggressive', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'up', 'balanced', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'up', 'balanced', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'up', 'balanced', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'up', 'conservative', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'up', 'conservative', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('flat', 'up', 'up', 'up', 'conservative', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'down', 'down', 'down', 'aggressive', 'high'): 'Reduce ASP and monitor the decline of units , net sales and CM1 profit',
+    ('up', 'down', 'down', 'down', 'aggressive', 'protect_growth'): 'Reduce ASP and monitor the decline of units , net sales and CM1 profit',
+    ('up', 'down', 'down', 'down', 'aggressive', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline of units , net sales and CM1 profit',
+    ('up', 'down', 'down', 'down', 'balanced', 'high'): 'Reduce ASP and monitor the decline of units , net sales and CM1 profit',
+    ('up', 'down', 'down', 'down', 'balanced', 'protect_growth'): 'Reduce ASP and monitor the decline of units , net sales and CM1 profit',
+    ('up', 'down', 'down', 'down', 'balanced', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline of units , net sales and CM1 profit',
+    ('up', 'down', 'down', 'down', 'conservative', 'high'): 'Reduce ASP and monitor the decline of units , net sales and CM1 profit',
+    ('up', 'down', 'down', 'down', 'conservative', 'protect_growth'): 'Reduce ASP and monitor the decline of units , net sales and CM1 profit',
+    ('up', 'down', 'down', 'down', 'conservative', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline of units , net sales and CM1 profit',
+    ('up', 'down', 'down', 'up', 'aggressive', 'high'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('up', 'down', 'down', 'up', 'aggressive', 'protect_growth'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('up', 'down', 'down', 'up', 'aggressive', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline of units and net sales',
+    ('up', 'down', 'down', 'up', 'balanced', 'high'): 'Reduce ASP and monitor the decline in units and net sales',
+    ('up', 'down', 'down', 'up', 'balanced', 'protect_growth'): 'Reduce ASP and monitor the decline in units and net sales',
+    ('up', 'down', 'down', 'up', 'balanced', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline in units and net sales',
+    ('up', 'down', 'down', 'up', 'conservative', 'high'): 'Reduce ASP and monitor the decline in units and net sales',
+    ('up', 'down', 'down', 'up', 'conservative', 'protect_growth'): 'Reduce ASP and monitor the decline in units and net sales',
+    ('up', 'down', 'down', 'up', 'conservative', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline in units and net sales',
+    ('up', 'down', 'up', 'down', 'aggressive', 'high'): 'Reduce ASP to improve CM1 profitability',
+    ('up', 'down', 'up', 'down', 'aggressive', 'protect_growth'): 'Reduce ASP and monitor the decline in units and CM1 profitability',
+    ('up', 'down', 'up', 'down', 'aggressive', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline in units and CM1 profitability',
+    ('up', 'down', 'up', 'down', 'balanced', 'high'): 'Reduce ASP and monitor the decline in units and CM1 profitability',
+    ('up', 'down', 'up', 'down', 'balanced', 'protect_growth'): 'Reduce ASP and monitor the decline in units and CM1 profitability',
+    ('up', 'down', 'up', 'down', 'balanced', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline in units and CM1 profitability',
+    ('up', 'down', 'up', 'down', 'conservative', 'high'): 'Reduce ASP and monitor the decline in units and CM1 profitability',
+    ('up', 'down', 'up', 'down', 'conservative', 'protect_growth'): 'Reduce ASP and monitor the decline in units and CM1 profitability',
+    ('up', 'down', 'up', 'down', 'conservative', 'sacrifice_short_term'): 'Reduce ASP and monitor the decline in units and CM1 profitability',
+    ('up', 'up', 'up', 'down', 'aggressive', 'high'): 'Increase ASP to improve CM1 profitability',
+    ('up', 'up', 'up', 'down', 'aggressive', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'down', 'aggressive', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'down', 'balanced', 'high'): 'Reduce ASP to improve CM1 profitability',
+    ('up', 'up', 'up', 'down', 'balanced', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'down', 'balanced', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'down', 'conservative', 'high'): 'Reduce ASP and monitor the performance',
+    ('up', 'up', 'up', 'down', 'conservative', 'protect_growth'): 'Reduce ASP and monitor the performance',
+    ('up', 'up', 'up', 'down', 'conservative', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'up', 'aggressive', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'up', 'aggressive', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'up', 'aggressive', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'up', 'balanced', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'up', 'balanced', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'up', 'balanced', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'up', 'conservative', 'high'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'up', 'conservative', 'protect_growth'): 'Maintain current ASP and monitor the performance of this product',
+    ('up', 'up', 'up', 'up', 'conservative', 'sacrifice_short_term'): 'Maintain current ASP and monitor the performance of this product',
+}
+
+def _to_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+def movement_direction(current: Any, previous: Any, *, tolerance: float = 1e-9) -> Direction:
+    cur = _to_float(current)
+    prev = _to_float(previous)
+
+    if cur is None or prev is None:
+        return "flat"
+
+    delta = cur - prev
+    if abs(delta) <= tolerance:
+        return "flat"
+    return "up" if delta > 0 else "down"
+
+def get_excel_recommendation(
+    *,
+    asp_direction: Direction,
+    units_direction: Direction,
+    net_sales_direction: Direction,
+    cm1_profit_direction: Direction,
+    growth_intent: GrowthIntent,
+    profit_priority: ProfitPriority,
+) -> str:
+    key = (
+        asp_direction.lower(),
+        units_direction.lower(),
+        net_sales_direction.lower(),
+        cm1_profit_direction.lower(),
+        growth_intent.lower(),
+        profit_priority.lower(),
+    )
+    return _RECOMMENDATION_LOOKUP.get(
+        key,
+        "Maintain current ASP and monitor the performance of this product",
+    )
+
+def get_excel_recommendation_from_metrics(
+    *,
+    asp_current: Any,
+    asp_previous: Any,
+    units_current: Any,
+    units_previous: Any,
+    net_sales_current: Any,
+    net_sales_previous: Any,
+    cm1_profit_current: Any,
+    cm1_profit_previous: Any,
+    growth_intent: GrowthIntent,
+    profit_priority: ProfitPriority,
+) -> str:
+    return get_excel_recommendation(
+        asp_direction=movement_direction(asp_current, asp_previous),
+        units_direction=movement_direction(units_current, units_previous),
+        net_sales_direction=movement_direction(net_sales_current, net_sales_previous),
+        cm1_profit_direction=movement_direction(cm1_profit_current, cm1_profit_previous),
+        growth_intent=growth_intent,
+        profit_priority=profit_priority,
+    )
+
+def build_sku_recommendations_from_excel_logic(
+    sku_mom: Dict[str, Dict[str, Any]],
+    objective_v2: Dict[str, Any],
+) -> Dict[str, Dict[str, str]]:
+    growth_intent = str(objective_v2.get("growth_intent", "balanced")).lower()
+    profit_priority = str(objective_v2.get("profit_priority", "protect_growth")).lower()
+
+    output: Dict[str, Dict[str, str]] = {}
+
+    for sku, metrics in (sku_mom or {}).items():
+        asp = metrics.get("asp", {}) or {}
+        units = metrics.get("total_quantity", {}) or {}
+        net_sales = metrics.get("net_sales", {}) or {}
+        cm1_profit = metrics.get("profit", {}) or {}
+
+        output[sku] = {
+            "recommendation": get_excel_recommendation_from_metrics(
+                asp_current=asp.get("current"),
+                asp_previous=asp.get("previous"),
+                units_current=units.get("current"),
+                units_previous=units.get("previous"),
+                net_sales_current=net_sales.get("current"),
+                net_sales_previous=net_sales.get("previous"),
+                cm1_profit_current=cm1_profit.get("current"),
+                cm1_profit_previous=cm1_profit.get("previous"),
+                growth_intent=growth_intent,   # type: ignore[arg-type]
+                profit_priority=profit_priority,  # type: ignore[arg-type]
+            )
+        }
+
+    return output
+
+
+def get_excel_recommendation_from_live_context(
+    sku_live_row: dict,
+    growth_intent: str,
+    profit_priority: str
+):
+    """
+    Convert live BI context → Excel rule engine inputs
+    """
+
+    asp = sku_live_row.get("asp", {})
+    units = sku_live_row.get("quantity", {})
+    net_sales = sku_live_row.get("net_sales", {})
+    profit = sku_live_row.get("cm1_profit", {})
+
+    return get_excel_recommendation_from_metrics(
+        asp_current=asp.get("current"),
+        asp_previous=asp.get("previous"),
+
+        units_current=units.get("current"),
+        units_previous=units.get("previous"),
+
+        net_sales_current=net_sales.get("current"),
+        net_sales_previous=net_sales.get("previous"),
+
+        cm1_profit_current=profit.get("current"),
+        cm1_profit_previous=profit.get("previous"),
+
+        growth_intent=growth_intent,
+        profit_priority=profit_priority,
+    )

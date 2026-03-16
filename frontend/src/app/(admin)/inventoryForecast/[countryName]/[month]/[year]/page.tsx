@@ -396,14 +396,47 @@ useEffect(() => {
         const blob = await res.blob();
         const buffer = await blob.arrayBuffer();
         const workbook = XLSX.read(buffer, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonRows = XLSX.utils.sheet_to_json<ForecastRow>(sheet);
+const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-        setExcelData(jsonRows);
-        localStorage.setItem(`forecast-${countryName}`, JSON.stringify(jsonRows));
-        localStorage.setItem(`forecast-time-${countryName}`, Date.now().toString());
-        setLoading(false);
-        return;
+// Read as rows first
+const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
+  header: 1,
+  defval: '',
+});
+
+if (!rows || rows.length < 7) {
+  setError('Forecast file format is invalid.');
+  setLoading(false);
+  return;
+}
+
+// Excel row 7 = index 6
+const headerRowIndex = 6;
+const rawHeaders = (rows[headerRowIndex] || []).map((h) =>
+  String(h ?? '').trim().replace(/\s+Sold$/i, '')
+);
+
+const dataRows = rows.slice(headerRowIndex + 1);
+
+// Convert rows to objects using row 7 headers
+const jsonRows: ForecastRow[] = dataRows
+  .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''))
+  .map((row) => {
+    const obj: ForecastRow = {};
+    rawHeaders.forEach((header, idx) => {
+      if (header) obj[header] = row[idx] ?? '';
+    });
+    return obj;
+  });
+
+console.log('Parsed forecast rows:', jsonRows.slice(0, 5));
+console.log('Parsed headers:', rawHeaders);
+
+setExcelData(jsonRows);
+localStorage.setItem(`forecast-${countryName}`, JSON.stringify(jsonRows));
+localStorage.setItem(`forecast-time-${countryName}`, Date.now().toString());
+setLoading(false);
+return;
       }
 
       // JSON (fallbacks / messages)

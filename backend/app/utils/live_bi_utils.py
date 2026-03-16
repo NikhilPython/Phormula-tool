@@ -3127,3 +3127,6 @@ def generate_live_insight(item, country, prev_label, curr_label, user_id, month2
         "key_used": key,
         "is_new_or_reviving": is_new_or_reviving
     }
+
+
+

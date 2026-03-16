@@ -111,11 +111,11 @@ export default function DispatchPage({
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile?country=${countryName}&month=${monthdpValue}&year=${yeardpValue}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile2?country=${countryName}&month=${monthdpValue}&year=${yeardpValue}`,
         {
           method: 'GET',
           headers: {
-            Authorization: ` Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
           },
           // cache: 'no-store', // uncomment if the result changes frequently
         },
@@ -139,13 +139,45 @@ export default function DispatchPage({
         return
       }
 
-      const blob = await response.blob()
-      const data = await blob.arrayBuffer()
-      const workbook = XLSX.read(new Uint8Array(data), { type: 'array' })
-      const sheetName = workbook.SheetNames[0]
-      const sheet = workbook.Sheets[sheetName]
-      const jsonData: SkuRow[] = XLSX.utils.sheet_to_json(sheet)
-      setSkuData(jsonData)
+      const blob = await response.blob();
+const data = await blob.arrayBuffer();
+const workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
+const sheetName = workbook.SheetNames[0];
+const sheet = workbook.Sheets[sheetName];
+
+// Read all rows first
+const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
+  header: 1,
+  defval: '',
+});
+
+if (!rows || rows.length < 7) {
+  throw new Error('Dispatch file format is invalid');
+}
+
+// Excel row 7 = index 6
+const headerRowIndex = 6;
+
+const rawHeaders = (rows[headerRowIndex] || []).map((h) =>
+  String(h ?? '').trim()
+);
+
+const dataRows = rows.slice(headerRowIndex + 1);
+
+const jsonData: SkuRow[] = dataRows
+  .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''))
+  .map((row) => {
+    const obj: SkuRow = {};
+    rawHeaders.forEach((header, idx) => {
+      if (header) obj[header] = row[idx] ?? '';
+    });
+    return obj;
+  });
+
+console.log('Dispatch headers:', rawHeaders);
+console.log('Dispatch sample rows:', jsonData.slice(0, 5));
+
+setSkuData(jsonData);
     } catch (err: any) {
       console.error('Fetch error:', err)
       setError(err?.message ?? 'Unknown error')
@@ -200,23 +232,23 @@ export default function DispatchPage({
 
   const displayedColumns = (countryName || '').toLowerCase() === 'global'
     ? [
-        'Sno.',
-        'Product Name',
-        'Inventory at Month End',
-        'Projected Sales Total',
-        'Dispatch',
-        'Current Inventory + Dispatch',
-        'Inventory Coverage Ratio Before Dispatch',
-      ]
+  'Sno.',
+  'Product Name',
+  'sku',
+  'Inventory at Month End',
+  'Inventory Coverage Ratio Before Dispatch',
+  'Dispatch',
+  'Current Inventory + Dispatch',
+]
     : [
-        'Sno.',
-        'Product Name',
-        'Inventory at Month End',
-        'Projected Sales Total',
-        'Dispatch',
-        'Current Inventory + Dispatch',
-        'Inventory Coverage Ratio Before Dispatch',
-      ]
+  'Sno.',
+  'Product Name',
+  'sku',
+  'Inventory at Month End',
+  'Inventory Coverage Ratio Before Dispatch',
+  'Dispatch',
+  'Current Inventory + Dispatch',
+];
 
   function handleExportToExcel() {
     const worksheetData = skuData.map((row, index) => {
@@ -298,16 +330,16 @@ const tableRows = skuData.map((row, index) => {
       obj[col] = calculateColumnTotal(col).toLocaleString("en-US")
     }else {
   // ✅ Fix Total row text duplication
-  if (isTotal) {
-    if (col === "sku") {
-      obj[col] = "Total"                // SKU blank
-      return
-    }
-    if (col === "Product Name") {
-      obj[col] = ""           // Total only here
-      return
-    }
+if (isTotal) {
+  if (col === "sku") {
+    obj[col] = "";
+    return;
   }
+  if (col === "Product Name") {
+    obj[col] = "Total";
+    return;
+  }
+}
 
   const v = row[col]
   obj[col] =
