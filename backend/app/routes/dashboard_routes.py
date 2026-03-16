@@ -1594,8 +1594,6 @@ def cashflow():
         db_session.close()
 
 
-
-
 @dashboard_bp.route('/target-summary', methods=['GET', 'POST'])
 def target_summary():
     auth_header = request.headers.get('Authorization')
@@ -1610,14 +1608,20 @@ def target_summary():
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
 
-    # POST -> body, GET -> query params
+    # ---------------------------
+    # Request input handling
+    # POST  -> only country + target_sales required
+    # GET   -> month + year + country required
+    # ---------------------------
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
-        month = data.get('month')
-        year = data.get('year')
         country_param = data.get('country', '')
         currency_param = (data.get('currency') or '').lower()
         target_sales = data.get('target_sales')
+
+        now = datetime.now(ZoneInfo("Asia/Kolkata"))
+        month_name = now.strftime("%B")
+        year = now.year
     else:
         month = request.args.get('month')
         year = request.args.get('year')
@@ -1625,43 +1629,25 @@ def target_summary():
         currency_param = (request.args.get('currency') or '').lower()
         target_sales = request.args.get('target_sales')
 
+        if not month:
+            return jsonify({'error': 'Month is required'}), 400
+        if not year:
+            return jsonify({'error': 'Year is required'}), 400
+
+        try:
+            year = int(year)
+        except ValueError:
+            return jsonify({'error': 'Invalid year format'}), 400
+
+        try:
+            month_name = datetime.strptime(month.capitalize(), "%B").strftime("%B")
+        except ValueError:
+            return jsonify({'error': 'Invalid month format. Use full month name like January'}), 400
+
     country = resolve_country(country_param, currency_param)
 
-    if not month:
-        return jsonify({'error': 'Month is required'}), 400
-    if not year:
-        return jsonify({'error': 'Year is required'}), 400
     if not country:
         return jsonify({'error': 'country is required'}), 400
-
-    try:
-        year = int(year)
-    except ValueError:
-        return jsonify({'error': 'Invalid year format'}), 400
-
-    try:
-        month_name = datetime.strptime(month.capitalize(), "%B").strftime("%B")
-    except ValueError:
-        return jsonify({'error': 'Invalid month format. Use full month name like January'}), 400
-
-    # POST should only allow current month and current year
-    if request.method == 'POST':
-        now = datetime.now(ZoneInfo("Asia/Kolkata"))
-        current_month = now.strftime("%B")
-        current_year = now.year
-
-        if month_name != current_month or year != current_year:
-            return jsonify({
-                'error': 'POST is allowed only for the current month and year',
-                'allowed': {
-                    'month': current_month,
-                    'year': current_year
-                },
-                'received': {
-                    'month': month_name,
-                    'year': year
-                }
-            }), 400
 
     engine = create_engine(db_url)
     SessionLocal = sessionmaker(bind=engine)
@@ -1704,10 +1690,12 @@ def target_summary():
         }).fetchall()
 
         for result in upload_results:
-            countries_with_data.add(result[0])
+            if result[0]:
+                countries_with_data.add(result[0])
 
+        # If no upload_history row exists, still try direct table lookup
         if not countries_with_data:
-            return combined_totals, []
+            countries_with_data.add(country)
 
         all_cashflow_data = []
 
@@ -1732,12 +1720,14 @@ def target_summary():
             }).fetchone()
 
             if upload_values_result:
-                if upload_values_result[0]:
+                if upload_values_result[0] is not None:
                     total_otherwplatform += float(upload_values_result[0])
-                if upload_values_result[1]:
+                if upload_values_result[1] is not None:
                     total_taxncredit_from_upload += float(upload_values_result[1])
 
-            suffix = f"{month_name.lower()}{year}"
+            # Table format: skuwisemonthly_1_uk_march_2026
+            suffix = f"{month_name.lower()}_{year}"
+
             table_name = (
                 f"skuwisemonthly_{user_id}_{record_country.lower()}_{suffix}_table"
                 if record_country.lower().startswith("global")
@@ -1752,6 +1742,13 @@ def target_summary():
                 if cashflow_df.empty:
                     continue
 
+                # Map alternate column names
+                if 'cost_of_unit_sold' not in cashflow_df.columns and 'cogs' in cashflow_df.columns:
+                    cashflow_df['cost_of_unit_sold'] = cashflow_df['cogs']
+
+                if 'cm2_profit' not in cashflow_df.columns and 'profit' in cashflow_df.columns:
+                    cashflow_df['cm2_profit'] = cashflow_df['profit']
+
                 numeric_cols = [
                     'net_sales', 'gross_sales', 'advertising_total', 'amazon_fee',
                     'cm2_profit', 'cost_of_unit_sold', 'taxncredit', 'rembursement_fee',
@@ -1763,21 +1760,31 @@ def target_summary():
                         cashflow_df[col] = pd.to_numeric(cashflow_df[col], errors='coerce').fillna(0)
 
                 def find_total_row(df):
-                    if 'product_name' not in df.columns:
-                        return None
-                    for variation in ['TOTAL', 'Total', 'total', 'TOTALS', 'Totals', 'totals']:
-                        total_row = df[df['product_name'] == variation]
-                        if not total_row.empty:
-                            return total_row
-                    return df[df['product_name'].str.contains('total', case=False, na=False)]
+                    if 'product_name' in df.columns:
+                        for variation in ['TOTAL', 'Total', 'total', 'TOTALS', 'Totals', 'totals']:
+                            total_row = df[df['product_name'] == variation]
+                            if not total_row.empty:
+                                return total_row
 
-                total_row = find_total_row(cashflow_df) if 'product_name' in cashflow_df.columns else None
+                        contains_total = df[df['product_name'].astype(str).str.contains('total', case=False, na=False)]
+                        if not contains_total.empty:
+                            return contains_total.tail(1)
+
+                    if 'sku' in df.columns:
+                        contains_total = df[df['sku'].astype(str).str.contains('total', case=False, na=False)]
+                        if not contains_total.empty:
+                            return contains_total.tail(1)
+
+                    return None
+
+                total_row = find_total_row(cashflow_df)
 
                 if total_row is not None and not total_row.empty:
-                    net_sales_total = float(total_row['net_sales'].iloc[0]) if 'net_sales' in total_row else 0
-                    cm2_profit_total = float(total_row['cm2_profit'].iloc[0]) if 'cm2_profit' in total_row else 0
-                    cost_of_unit_sold_total = float(total_row['cost_of_unit_sold'].iloc[0]) if 'cost_of_unit_sold' in total_row else 0
+                    net_sales_total = float(total_row['net_sales'].iloc[0]) if 'net_sales' in total_row.columns else 0
+                    cm2_profit_total = float(total_row['cm2_profit'].iloc[0]) if 'cm2_profit' in total_row.columns else 0
+                    cost_of_unit_sold_total = float(total_row['cost_of_unit_sold'].iloc[0]) if 'cost_of_unit_sold' in total_row.columns else 0
                 else:
+                    # If no TOTAL row found, use full sum
                     net_sales_total = float(cashflow_df['net_sales'].sum()) if 'net_sales' in cashflow_df.columns else 0
                     cm2_profit_total = float(cashflow_df['cm2_profit'].sum()) if 'cm2_profit' in cashflow_df.columns else 0
                     cost_of_unit_sold_total = float(cashflow_df['cost_of_unit_sold'].sum()) if 'cost_of_unit_sold' in cashflow_df.columns else 0
@@ -1798,7 +1805,8 @@ def target_summary():
                     'cashflow_total': round(cashflow_total, 2)
                 })
 
-            except Exception:
+            except Exception as e:
+                print(f"Error reading table {table_name}: {e}")
                 continue
 
         for k in combined_totals:
@@ -1828,7 +1836,11 @@ def target_summary():
         db_session.execute(create_table_sql)
         db_session.commit()
 
+        # ---------------------------
         # POST
+        # Current month row updates many times
+        # Next month inserts a new row automatically
+        # ---------------------------
         if request.method == 'POST':
             if target_sales is None:
                 return jsonify({'error': 'target_sales is required for POST'}), 400
@@ -1845,16 +1857,8 @@ def target_summary():
                 month_name=month_name
             )
 
-
-            # If no cashflow data exists, treat totals as 0
             net_sales_total = round(summary_totals.get('net_sales', 0), 2)
             cashflow_total = round(summary_totals.get('cashflow', 0), 2)
-
-            # If no details found, still allow saving target
-            if not details:
-                net_sales_total = 0
-                cashflow_total = 0
-
             shortfall_total = round(target_sales - net_sales_total, 2)
 
             upsert_sql = text(f"""
@@ -1881,9 +1885,24 @@ def target_summary():
             })
             db_session.commit()
 
+            saved_row_sql = text(f"""
+                SELECT id, created_at, updated_at
+                FROM {target_table_name}
+                WHERE LOWER(month) = LOWER(:month)
+                  AND year = :year
+                  AND LOWER(country) = LOWER(:country)
+                LIMIT 1
+            """)
+            saved_row = db_session.execute(saved_row_sql, {
+                'month': month_name,
+                'year': year,
+                'country': country
+            }).fetchone()
+
             return jsonify({
                 'message': 'Target summary saved successfully',
                 'data': {
+                    'id': saved_row[0] if saved_row else None,
                     'user_id': user_id,
                     'month': month_name,
                     'year': year,
@@ -1892,11 +1911,17 @@ def target_summary():
                     'cashflow_total': cashflow_total,
                     'net_sales_total': net_sales_total,
                     'shortfall_total': shortfall_total,
-                    'table_name': target_table_name
+                    'created_at': saved_row[1].isoformat() if saved_row and saved_row[1] else None,
+                    'updated_at': saved_row[2].isoformat() if saved_row and saved_row[2] else None,
+                    'table_name': target_table_name,
+                    'source_details': details
                 }
             }), 200
 
+        # ---------------------------
         # GET
+        # Fetch saved target row, recalculate totals from sku table
+        # ---------------------------
         get_sql = text(f"""
             SELECT id, month, year, country, target_sales, cashflow_total,
                    net_sales_total, shortfall_total, created_at, updated_at
@@ -1924,6 +1949,18 @@ def target_summary():
                 'table_name': target_table_name
             }), 404
 
+        summary_totals, details = compute_monthly_cashflow_summary(
+            user_id=user_id,
+            year=year,
+            country=country,
+            month_name=month_name
+        )
+
+        fresh_net_sales_total = round(summary_totals.get('net_sales', 0), 2)
+        fresh_cashflow_total = round(summary_totals.get('cashflow', 0), 2)
+        target_sales_value = float(row[4])
+        fresh_shortfall_total = round(target_sales_value - fresh_net_sales_total, 2)
+
         return jsonify({
             'message': 'Target summary fetched successfully',
             'data': {
@@ -1931,106 +1968,21 @@ def target_summary():
                 'month': row[1],
                 'year': row[2],
                 'country': row[3],
-                'target_sales': float(row[4]),
-                'cashflow_total': float(row[5]),
-                'net_sales_total': float(row[6]),
-                'shortfall_total': float(row[7]),
+                'target_sales': target_sales_value,
+                'cashflow_total': fresh_cashflow_total,
+                'net_sales_total': fresh_net_sales_total,
+                'shortfall_total': fresh_shortfall_total,
                 'created_at': row[8].isoformat() if row[8] else None,
                 'updated_at': row[9].isoformat() if row[9] else None,
-                'table_name': target_table_name
+                'table_name': target_table_name,
+                'source_details': details
             }
         }), 200
 
     except Exception as e:
         db_session.rollback()
         return jsonify({'error': f'Database error: {str(e)}'}), 500
+
     finally:
         db_session.close()
 
-
-
-@dashboard_bp.route('/target-summary-history', methods=['GET'])
-def target_summary_history():
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-    token = auth_header.split(' ')[1]
-    try:
-        payload, user_id, member_id = get_effective_user_id_from_token(token)
-    except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token has expired'}), 401
-    except jwt.InvalidTokenError:
-        return jsonify({'error': 'Invalid token'}), 401
-
-    year = request.args.get('year')
-    country_param = request.args.get('country', '')
-    currency_param = (request.args.get('currency') or '').lower()
-
-    country = resolve_country(country_param, currency_param)
-
-    if not year:
-        return jsonify({'error': 'Year is required'}), 400
-    if not country:
-        return jsonify({'error': 'country is required'}), 400
-
-    try:
-        year = int(year)
-    except ValueError:
-        return jsonify({'error': 'Invalid year format'}), 400
-
-    engine = create_engine(db_url)
-    SessionLocal = sessionmaker(bind=engine)
-    db_session = SessionLocal()
-
-    try:
-        safe_country = country.lower().replace(" ", "_").replace("-", "_")
-        target_table_name = f"target_{user_id}_{safe_country}_data"
-
-        inspector = inspect(engine)
-        if not inspector.has_table(target_table_name):
-            return jsonify({
-                'message': 'No target history found',
-                'data': []
-            }), 200
-
-        rows = db_session.execute(text(f"""
-            SELECT month, year, country, target_sales, net_sales_total, cashflow_total, shortfall_total
-            FROM {target_table_name}
-            WHERE year = :year
-              AND LOWER(country) = LOWER(:country)
-        """), {
-            'year': year,
-            'country': country
-        }).fetchall()
-
-        month_order = {
-            "January": 1, "February": 2, "March": 3, "April": 4,
-            "May": 5, "June": 6, "July": 7, "August": 8,
-            "September": 9, "October": 10, "November": 11, "December": 12
-        }
-
-        result = []
-        for row in rows:
-            result.append({
-                'month': row[0],
-                'year': row[1],
-                'country': row[2],
-                'target_sales': float(row[3] or 0),
-                'monthwise_sales': float(row[4] or 0),   # use net_sales_total as actual sales
-                'cashflow_total': float(row[5] or 0),
-                'shortfall_total': float(row[6] or 0),
-            })
-
-        result.sort(key=lambda x: month_order.get(x['month'], 99))
-
-        return jsonify({
-            'message': 'Target summary history fetched successfully',
-            'data': result
-        }), 200
-
-    except Exception as e:
-        db_session.rollback()
-        return jsonify({'error': f'Database error: {str(e)}'}), 500
-    finally:
-        db_session.close()
