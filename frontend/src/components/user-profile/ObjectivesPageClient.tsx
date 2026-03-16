@@ -1302,7 +1302,24 @@ export default function ObjectivesPageClient({
                       className="h-full w-full"
                     /> */}
 
+                    {/* <TargetVsSalesChart
+                      currencySymbol={
+                        homeCurrencyCode === "GBP"
+                          ? "£"
+                          : homeCurrencyCode === "USD"
+                            ? "$"
+                            : homeCurrencyCode === "EUR"
+                              ? "€"
+                              : homeCurrencyCode
+                      }
+                    /> */}
+
                     <TargetVsSalesChart
+                      country={resolvedTargetCountry}
+                      token={token || ""}
+                      apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
+                      monthsToLoad={12}
+                      className="h-full w-full"
                       currencySymbol={
                         homeCurrencyCode === "GBP"
                           ? "£"

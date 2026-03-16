@@ -4225,7 +4225,7 @@ export default function DashboardPage() {
                                             formatter={fmtInt}
                                             bottomLabel={prevLabel}
                                             // className="border-[#FDD36F] bg-[#FDD36F4D]"
-                                            className="border-[#FDD36F] border-t-4 border-t-[#75BBDA]"
+                                            className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
                                         />
 
                                         <AmazonStatCard
@@ -4255,7 +4255,7 @@ export default function DashboardPage() {
                                             previousFormatter={formatDisplayAmount}
                                             bottomLabel={prevLabel}
                                             // className="border-[#75BBDA] bg-[#75BBDA4D]"
-                                            className="border-[#75BBDA] border-t-4 border-t-[#75BBDA4D]"
+                                            className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                         />
 
                                         <AmazonStatCard
