@@ -1284,7 +1284,7 @@ export default function ObjectivesPageClient({
                   }
                 >
                   <div className="h-[420px] w-full">
-                    <TargetVsSalesChart
+                    {/* <TargetVsSalesChart
                       year={new Date().getFullYear()}
                       country={resolvedTargetCountry}
                       currency={homeCurrencyCode.toLowerCase()}
@@ -1300,6 +1300,18 @@ export default function ObjectivesPageClient({
                       token={token || ""}
                       apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
                       className="h-full w-full"
+                    /> */}
+
+                    <TargetVsSalesChart
+                      currencySymbol={
+                        homeCurrencyCode === "GBP"
+                          ? "£"
+                          : homeCurrencyCode === "USD"
+                            ? "$"
+                            : homeCurrencyCode === "EUR"
+                              ? "€"
+                              : homeCurrencyCode
+                      }
                     />
                   </div>
                 </InfoCard>
