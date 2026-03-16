@@ -640,7 +640,7 @@ export default function CurrentInventorySection({
         cellClassName: "text-left",
         headerClassName: "text-left break-words",
       },
-      { key: "skuAsin", header: "SKU", width: responsiveWidth, cellClassName: "text-center" },
+      { key: "skuAsin", header: "SKU", width: "w-[120px]", cellClassName: "text-center",  },
       { key: "mtdSales", header: "MTD Sales", width: responsiveWidth, cellClassName: "text-center" },
       {
         key: "sales30",
