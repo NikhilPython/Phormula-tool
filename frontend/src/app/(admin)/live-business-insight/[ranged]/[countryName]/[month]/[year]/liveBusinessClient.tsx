@@ -3046,22 +3046,24 @@ export default function LiveBusinessClient({
 
                       {remainingSkusBlock?.trim() && (() => {
                         const parsedOther = parseOtherSkusBlock(remainingSkusBlock);
+                        const otherIdx = Object.keys(recommendedActions).length;
+                        const borderColor = topBorderColors[otherIdx % topBorderColors.length];
 
                         return (
                           <motion.div
                             key="other-skus-card"
                             initial={{ opacity: 0, y: 16 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.35, delay: 0.06 * Object.keys(recommendedActions).length }}
+                            transition={{ duration: 0.35, delay: 0.06 * otherIdx }}
                             className={[
-                              "bg-white rounded-xl border border-[#D9D9D9] shadow-sm hover:shadow-md transition-shadow",
+                              "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
                               "border-t-4",
                               "p-3 space-y-3",
                             ].join(" ")}
                           >
-                            <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-start justify-between gap-3">
                               <div className="text-sm font-semibold text-slate-800 line-clamp-2">
-                                {Object.keys(recommendedActions).length + 1}. {parsedOther.productName}
+                                {otherIdx + 1}. {parsedOther.productName}
                               </div>
 
                               <button
@@ -3078,7 +3080,7 @@ export default function LiveBusinessClient({
                                   });
                                   setRecDrawerOpen(true);
                                 }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-[#F8EDCE] hover:bg-slate-700 transition whitespace-nowrap"
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-700 text-yellow-200 hover:bg-slate-700 transition whitespace-nowrap"
                               >
                                 Detailed View
                               </button>
@@ -3087,12 +3089,15 @@ export default function LiveBusinessClient({
                             {parsedOther.metrics?.length > 0 && (
                               <div className="grid grid-cols-3 gap-2">
                                 {parsedOther.metrics.map((m, i) => (
-                                  <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0">
+                                  <div
+                                    key={i}
+                                    className="rounded-lg border border-slate-200 bg-slate-50 py-2 px-1 min-w-0"
+                                  >
                                     <div className="text-[10px] 2xl:text-xs text-slate-500 leading-none truncate">
                                       {m.label}
                                     </div>
 
-                                    <div className="mt-1 flex flex-col 2xl:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
+                                    <div className="mt-1 flex flex-col min-[1700px]:flex-row 2xl:items-baseline gap-0.5 2xl:gap-1 min-w-0 font-bold text-[10px] 2xl:text-xs">
                                       {(() => {
                                         const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
                                         const mainValue = match?.[1]?.trim() || m.value;
@@ -3102,9 +3107,14 @@ export default function LiveBusinessClient({
 
                                         return (
                                           <>
-                                            <span className="text-slate-900 truncate">{mainValue}</span>
+                                            <span className="text-slate-900 truncate">
+                                              {mainValue}
+                                            </span>
                                             {percentPart && (
-                                              <span className="shrink-0" style={{ color: percentColor }}>
+                                              <span
+                                                className="shrink-0"
+                                                style={{ color: percentColor }}
+                                              >
                                                 {percentPart}
                                               </span>
                                             )}
@@ -3117,13 +3127,13 @@ export default function LiveBusinessClient({
                               </div>
                             )}
 
-                            <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
-                              <div className="line-clamp-2">
-                                {parsedOther.recommendationPoints?.[0] ||
-                                  remainingSkusBlock.split("\n").filter(Boolean)[0] ||
-                                  "—"}
+                            {parsedOther.recommendationPoints?.length > 0 && (
+                              <div className="text-xs 2xl:text-sm text-slate-700 leading-relaxed">
+                                <div className="line-clamp-2">
+                                  {parsedOther.recommendationPoints[0]}
+                                </div>
                               </div>
-                            </div>
+                            )}
                           </motion.div>
                         );
                       })()}
@@ -3320,162 +3330,6 @@ export default function LiveBusinessClient({
           </div>
         </div>
       )}
-      {/* <Drawer
-        anchor="right"
-        open={recDrawerOpen}
-        onClose={() => setRecDrawerOpen(false)}
-        PaperProps={{
-          sx: {
-            width: { xs: "100vw", sm: "70vw", md: "50vw", lg: "55vw" },
-            maxWidth: 900,
-
-          },
-        }}
-      >
-        <div className="flex flex-col gap-4 h-full ">
-         
-          <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm text-slate-500">Detailed View</div>
-              <div className="text-lg font-semibold text-slate-900">{selectedRec?.productName || "Details"}</div>
-            </div>
-            <button
-              onClick={() => setRecDrawerOpen(false)}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-            >
-              ✕
-            </button>
-          </div>
-
-          
-          <div className="flex-1 overflow-y-auto  space-y-4 px-3 ">
-            {objectiveContext && (
-              <div className="mt-1">
-                <div className="text-sm font-semibold text-charcoal-700 mb-3">Objective</div>
-                <ObjectiveCards objective={objectiveContext} />
-              </div>
-            )}
-           
-            <div className="">
-              <div className="text-sm font-semibold text-charcoal-700 mb-3">Metrics</div>
-
-              <div className="grid grid-cols-3 gap-3">
-                {(selectedRec?.metrics || []).map((m, i) => (
-                  <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <div className="text-[11px] 2xl:text-xs text-charcoal-400">{m.label}</div>
-                    <div className="text-sm 2xl:text-base font-bold flex items-baseline gap-1">
-                      {(() => {
-                        const match = m.value.match(/^([^\(]+)\s*(\(.+\))?$/);
-                        const mainValue = match?.[1]?.trim() || m.value;
-                        const percentPart = match?.[2] || "";
-
-                        const isNegative = percentPart.includes("-");
-                        const percentColor = isNegative ? "#FF5C5C" : "#5EA68E";
-
-                        return (
-                          <>
-                           
-                            <span style={{ color: "#414042" }}>
-                              {mainValue}
-                            </span>
-
-                          
-                            {percentPart && (
-                              <span style={{ color: percentColor }}>
-                                {percentPart}
-                              </span>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          
-            <div className="">
-              <div className="text-sm font-semibold text-charcoal-700 mb-3">
-                Recommendation
-              </div>
-
-              {selectedRec?.recommendationPoints?.length ? (
-                <div>
-                  <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
-                  <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-                    {selectedRec.recommendationPoints.map((p, i) => <li key={i}>{p}</li>)}
-                  </ul>
-                </div>
-              ) : (
-                <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
-              )}
-
-              {selectedRec?.advertisingPoints?.length ? (
-                <div className="mt-4">
-                  <div className="text-xs font-semibold text-purple-900 mb-1">📢 Advertising</div>
-                  <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-                    {selectedRec.advertisingPoints.map((p, i) => <li key={i}>{p}</li>)}
-                  </ul>
-                </div>
-              ) : null}
-
-              {selectedRec?.inventoryPoints?.length ? (
-                <div className="mt-4">
-                  <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
-                  <ul className="list-disc pl-5 space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-                    {selectedRec.inventoryPoints.map((p, i) => <li key={i}>{p}</li>)}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-
-           
-            {selectedRec?.showChart && selectedRec?.productName && (
-              <div className="w-full overflow-hidden rounded-lg border border-slate-200 p-3 bg-white">
-                <div className="w-full">
-                  <Productinfoinpopup
-                    productname={selectedRec.productName}
-                    countryName={countryName}
-                  />
-                </div>
-              </div>
-            )}
-
-            
-            <div className='pb-4'>
-              <div className="text-sm font-semibold text-charcoal-700 mb-3">
-                Product Journey
-              </div>
-
-              {selectedRec?.journeyPoints?.length ? (
-                <ul className="space-y-1 text-xs 2xl:text-sm text-charcoal-600">
-                  {selectedRec.journeyPoints.map((p, i) => (
-                    <li key={i} className="flex items-start gap-2">
-
-                      
-                      <span className=" text-charcoal-400">
-                        →
-                      </span>
-
-                    
-                      // <span>
-                      //   {p
-                      //     .replace(/^\d+\.\s*-\s, "")
-                      //     .replace(/^\d+\.\s, "")
-                      //     .replace(/^-+\s, "")}
-                      // </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
-              )}
-            </div>
-          </div>
-        </div>
-      </Drawer> */}
-
       <SkuRecommendationDrawer
         open={recDrawerOpen}
         onClose={() => setRecDrawerOpen(false)}
