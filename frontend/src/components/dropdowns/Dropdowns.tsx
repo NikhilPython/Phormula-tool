@@ -2620,6 +2620,30 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return "h-[375px] 2xl:h-[500px]";
   };
 
+  const FINANCE_TAB_TO_HASH: Record<DashboardTab, string> = {
+    graphs: "finance-dashboard",
+    businessSummary: "ai-insights",
+    skuBreakdown: "pnl-breakdown",
+    skuwiseProfit: "skuwise-profit",
+    cashFlow: "cash-flow",
+  };
+
+  const syncTabToHash = (tab: DashboardTab) => {
+    if (typeof window === "undefined") return;
+
+    const hash = FINANCE_TAB_TO_HASH[tab];
+    if (!hash) return;
+
+    const nextUrl = `${window.location.pathname}#${hash}`;
+    window.history.pushState(null, "", nextUrl);
+
+    window.dispatchEvent(
+      new CustomEvent("page-hash-navigate", {
+        detail: { hash },
+      })
+    );
+  };
+
   return (
     <div ref={layoutRef} className="space-y-3 relative">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4 ">
@@ -2659,9 +2683,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           value={activeTab}
           options={TAB_OPTIONS}
           onChange={(t) => {
-            // optional: prevent switching if disabled
             if (tabsDisabled?.[t]) return;
+
             setActiveTab(t);
+            syncTabToHash(t);
           }}
           className="w-full"
           textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
