@@ -210,7 +210,7 @@ export default function RegionSelect({
             ))}
 
             <button
-              onClick={() => handleSelect('add_more_countries')}
+              // onClick={() => handleSelect('add_more_countries')}
               className="
         block w-full text-left px-3 py-1 text-xs font-semibold
         text-green-500 border-t border-gray-400/40

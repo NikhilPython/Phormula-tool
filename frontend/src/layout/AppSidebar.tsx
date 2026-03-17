@@ -766,7 +766,7 @@ const AppSidebar: React.FC = () => {
             )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
         },
         {
-          name: "Objectives & Targets",
+          name: "Targets & Objectives",
           path: `/objectives-targets/${currentParams.countryName}`,
         },
       ],
