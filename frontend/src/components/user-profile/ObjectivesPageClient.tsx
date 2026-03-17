@@ -1141,15 +1141,6 @@ export default function ObjectivesPageClient({
                                     : "No file selected"}
                                 </span>
                               </div>
-
-                              {/* remove this button if you do not want a template action */}
-                              {/* <button
-                          type="button"
-                          onClick={onDownloadTemplate}
-                          className="mx-auto mt-6 flex items-center gap-1 text-[13px] font-medium text-[#5EA68E] hover:text-[#4a907a]"
-                        >
-                          Download format here <FiDownload className="relative top-[1px]" />
-                        </button> */}
                             </div>
                           ) : hasFiles ? (
                             <div className="space-y-3">
