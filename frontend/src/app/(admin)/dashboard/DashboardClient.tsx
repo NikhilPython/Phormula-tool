@@ -4936,8 +4936,7 @@ export default function DashboardPage() {
 
 
             {
-                platform === "global" && showLiveBI && (
-                    // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
+                activeTab === "live" && platform === "global" && showLiveBI && (
                     <div
                         id="ai-insights"
                         className="mt-6 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
@@ -4957,22 +4956,6 @@ export default function DashboardPage() {
                 )
             }
 
-
-            {/* {activeTab === "summary" && (
-                <div className="w-full overflow-x-hidden">
-                    {showLiveBI && liveBiPayload && (
-                        <LiveBusinessClient
-                            countryName={countryName}
-                            ranged="MTD"
-                            month={(currMonthName || "").toLowerCase()}
-                            year={String(currYear)}
-                            initialData={liveBiPayload}
-                            disableAutoFetch
-                            onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
-                        />
-                    )}
-                </div>
-            )} */}
 
             {activeTab === "summary" && (
                 <div className="w-full overflow-x-hidden">
