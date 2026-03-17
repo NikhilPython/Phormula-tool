@@ -708,47 +708,6 @@ export default function CurrentInventorySection({
         />
       </div>
 
-      {/* {invLoading ? (
-        <div className="py-10 flex justify-center">
-          <Loader fullscreen transparent />
-        </div>
-      ) : invError ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {invError}
-        </div>
-      ) : (
-        <div className="w-full min-w-0 rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
-          <div className="min-w-0">
-            <DataTable
-              columns={columns}
-              data={tableRows}
-              loading={false}
-              paginate={true}
-              pageSize={15}
-              scrollY={false}
-              maxHeight="none"
-              emptyMessage="No inventory data."
-              rowClassName={(row) => {
-                if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
-                if (row.rowType === "others") return "!bg-[#FFFFFF]";
-                return "bg-white";
-              }}
-              tableClassName="
-                table-fixed w-full
-                [&_th]:whitespace-normal
-                [&_th]:break-words
-                [&_th]:leading-snug
-                [&_th>div]:[display:-webkit-box]
-                [&_th>div]:[-webkit-box-orient:vertical]
-                [&_th>div]:[-webkit-line-clamp:3]
-                [&_th>div]:overflow-hidden
-                [&_th>div]:text-ellipsis
-              "
-            />
-          </div>
-        </div>
-      )} */}
-
       {invError ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
           {invError}
@@ -758,13 +717,13 @@ export default function CurrentInventorySection({
           <div className="min-w-0">
             <DataTable
               columns={columns}
-              data={invLoading ? [] : tableRows}   // 👈 keep table empty while loading
-              loading={false}                     // 👈 no internal loader
+              data={invLoading ? [] : tableRows}   
+              loading={false}                    
               paginate={true}
               pageSize={15}
               scrollY={false}
               maxHeight="none"
-              emptyMessage={invLoading ? "" : "No inventory data."}  // 👈 avoid “No data” flicker
+              emptyMessage={invLoading ? "" : "No inventory data."}  
               rowClassName={(row) => {
                 if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
                 if (row.rowType === "others") return "!bg-[#FFFFFF]";
