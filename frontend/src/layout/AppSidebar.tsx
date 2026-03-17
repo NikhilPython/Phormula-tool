@@ -57,6 +57,9 @@ const AppSidebar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   const routeParams = useParams();
+  const [lastNonGlobalPlatform, setLastNonGlobalPlatform] = useState<string | null>(null);
+
+  
 
   // ✅ Auth info (client vs member)
   const authUser = useAppSelector((s: any) => s.auth.user);
@@ -134,26 +137,31 @@ const AppSidebar: React.FC = () => {
 
   const countryFromRoute = routeParams?.countryName as string | undefined;
 
-  const regionOptions: RegionOption[] = React.useMemo(() => {
-    const opts = buildPlatformOptions(connectedPlatforms);
+const regionOptions: RegionOption[] = React.useMemo(() => {
+  const opts = buildPlatformOptions(connectedPlatforms);
+  const countryFromRoute = routeParams?.countryName as string | undefined;
 
-    const countryFromRoute = routeParams?.countryName as string | undefined;
+  const ensureOption = (value: string) => {
+    if (!value.startsWith("amazon-")) return;
+    if (opts.some((o) => o.value === value)) return;
 
-    // ✅ ONLY force Amazon country if NOT global
-    if (countryFromRoute && countryFromRoute !== "global") {
-      const forcedValue = `amazon-${countryFromRoute}`;
+    const country = value.replace("amazon-", "").toUpperCase();
+    opts.unshift({
+      value,
+      label: `Amazon ${country}`,
+    });
+  };
 
-      const exists = opts.some((o) => o.value === forcedValue);
-      if (!exists) {
-        opts.unshift({
-          value: forcedValue,
-          label: `Amazon ${countryFromRoute.toUpperCase()}`,
-        });
-      }
-    }
+  if (countryFromRoute && countryFromRoute !== "global") {
+    ensureOption(`amazon-${countryFromRoute}`);
+  }
 
-    return opts;
-  }, [connectedPlatforms, routeParams?.countryName]);
+  if (lastNonGlobalPlatform) {
+    ensureOption(lastNonGlobalPlatform);
+  }
+
+  return opts;
+}, [connectedPlatforms, routeParams?.countryName, lastNonGlobalPlatform]);
 
   // ===== Selected platform =====
   const [selectedPlatform, setSelectedPlatform] = useState<string>(() => {
@@ -165,6 +173,27 @@ const AppSidebar: React.FC = () => {
 
     return `amazon-${countryFromRoute}`;
   });
+
+  useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const saved = localStorage.getItem("lastNonGlobalPlatform");
+  if (saved && saved.startsWith("amazon-")) {
+    setLastNonGlobalPlatform(saved);
+  }
+}, []);
+
+useEffect(() => {
+  if (
+    selectedPlatform &&
+    selectedPlatform !== "global" &&
+    selectedPlatform !== "shopify" &&
+    selectedPlatform.startsWith("amazon-")
+  ) {
+    setLastNonGlobalPlatform(selectedPlatform);
+    localStorage.setItem("lastNonGlobalPlatform", selectedPlatform);
+  }
+}, [selectedPlatform]);
 
   const decodeJwtUserId = (jwt: string): string | null => {
     try {

@@ -766,7 +766,7 @@ export default function IntegrationDashboard(_: IntegrationDashboardProps) {
 
   return (
 
-    <div className="font-lato bg-white box-border">
+    <div className="font-lato box-border">
       <PageBreadcrumb
         pageTitle="Start your Journey with Phormula!"
         variant="page"
