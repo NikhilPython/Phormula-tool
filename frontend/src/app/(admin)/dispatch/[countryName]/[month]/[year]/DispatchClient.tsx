@@ -3,14 +3,13 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
-import '@/app/(admin)/pnlforecast/[countryName]/[month]/[year]/Styles.css';
-import { Modal } from '@/components/ui/modal';
-import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm';
-import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
-import DataTable, { ColumnDef } from "@/components/ui/table/DataTable"
-import { IoDownload } from "react-icons/io5";
-import DownloadIconButton from '@/components/ui/button/DownloadButton';
-import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import '@/app/(admin)/pnlforecast/[countryName]/[month]/[year]/Styles.css'
+import { Modal } from '@/components/ui/modal'
+import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm'
+import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable'
+import DataTable, { ColumnDef } from '@/components/ui/table/DataTable'
+import DownloadIconButton from '@/components/ui/button/DownloadButton'
+import PageBreadcrumb from '@/components/common/PageBreadCrumb'
 
 interface SkuRow {
   [key: string]: string | number | undefined
@@ -19,11 +18,11 @@ interface SkuRow {
 }
 
 type DispatchPageProps = {
-  embedded?: boolean;
-  countryNameProp?: string;
-  selectedMonthProp?: string;
-  selectedYearProp?: string;
-};
+  embedded?: boolean
+  countryNameProp?: string
+  selectedMonthProp?: string
+  selectedYearProp?: string
+}
 
 const monthNames = [
   'January',
@@ -57,6 +56,56 @@ function getCurrentYear() {
   return String(nextMonth.getFullYear())
 }
 
+const DISPLAYED_COLUMNS = [
+  'Sno.',
+  'Product Name',
+  'sku',
+  'Inventory at Month End',
+  'Inventory Coverage Ratio Before Dispatch',
+  'Dispatch',
+  'Current Inventory + Dispatch',
+] as const
+
+const NUMERIC_COLUMNS = [
+  'Inventory at Month End',
+  'Inventory Coverage Ratio Before Dispatch',
+  'Dispatch',
+  'Current Inventory + Dispatch',
+] as const
+
+function normalizeHeader(header: unknown): string {
+  const cleaned = String(header ?? '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+
+  const headerMap: Record<string, string> = {
+    sku: 'sku',
+    'product name': 'Product Name',
+    'inventory at month end': 'Inventory at Month End',
+    'inventory coverage ratio before dispatch': 'Inventory Coverage Ratio Before Dispatch',
+    dispatch: 'Dispatch',
+    'current inventory + dispatch': 'Current Inventory + Dispatch',
+  }
+
+  return headerMap[cleaned] || String(header ?? '').trim()
+}
+
+function parseCellValue(header: string, value: unknown): string | number {
+  if (value === null || value === undefined || value === '') return ''
+
+  if (NUMERIC_COLUMNS.includes(header as (typeof NUMERIC_COLUMNS)[number])) {
+    if (typeof value === 'number') return value
+
+    const cleaned = String(value).replace(/,/g, '').trim()
+    const num = Number(cleaned)
+    return Number.isFinite(num) ? num : ''
+  }
+
+  return String(value).trim()
+}
+
 export default function DispatchPage({
   embedded = false,
   countryNameProp,
@@ -69,17 +118,17 @@ export default function DispatchPage({
   const countryName = useMemo(
     () => (countryNameProp ?? params?.countryName ?? '').toString(),
     [countryNameProp, params]
-  );
+  )
 
   const month = useMemo(
     () => (selectedMonthProp ?? params?.month ?? '').toString(),
     [selectedMonthProp, params]
-  );
+  )
 
   const year = useMemo(
     () => (selectedYearProp ?? params?.year ?? '').toString(),
     [selectedYearProp, params]
-  );
+  )
 
   const [monthdp, setMonthDp] = useState<string>(getCurrentMonthPlus1())
   const [yeardp, setYearDp] = useState<string>(getCurrentYear())
@@ -88,10 +137,9 @@ export default function DispatchPage({
   const [skuData, setSkuData] = useState<SkuRow[]>([])
   const [showForecastMessage, setShowForecastMessage] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
-  const [showUpload, setShowUpload] = useState(false);
+  const [showUpload, setShowUpload] = useState(false)
 
   const monthdps = monthNames as unknown as string[]
-  const yeardps = useMemo(() => Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - i), [])
 
   async function fetchDispatchFile(monthdpValue: string, yeardpValue: string) {
     if (!monthdpValue || !yeardpValue) {
@@ -111,73 +159,86 @@ export default function DispatchPage({
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile2?country=${countryName}&month=${monthdpValue}&year=${yeardpValue}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile?country=${countryName}&month=${monthdpValue}&year=${yeardpValue}`,
         {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
           },
-          // cache: 'no-store', // uncomment if the result changes frequently
-        },
+        }
       )
 
       if (!response.ok) {
-        // Try to parse error body; if not JSON, fall back
         let errorData: any = {}
         try {
           errorData = await response.json()
-        } catch {}
+        } catch { }
 
-        setShowForecastMessage(true)
+        const msg = String(errorData?.error || 'Failed to fetch dispatch file')
 
-        if (errorData?.error && String(errorData.error).includes('Forecast file not found')) {
+        if (
+          msg.includes('Forecast file not found') ||
+          msg.includes('Please generate inventory forecast first') ||
+          msg.includes('No UK or US dispatch files found')
+        ) {
           setShowForecastMessage(true)
           setError('')
-        } else {
-          throw new Error(errorData?.error || 'Failed to fetch dispatch file')
+          return
         }
-        return
+
+        throw new Error(msg)
       }
 
-      const blob = await response.blob();
-const data = await blob.arrayBuffer();
-const workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
-const sheetName = workbook.SheetNames[0];
-const sheet = workbook.Sheets[sheetName];
+      const blob = await response.blob()
+      const data = await blob.arrayBuffer()
+      const workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
 
-// Read all rows first
-const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
-  header: 1,
-  defval: '',
-});
+      const sheetName =
+        workbook.SheetNames.find((name) => name.trim().toLowerCase() === 'dispatch') ||
+        workbook.SheetNames[0];
 
-if (!rows || rows.length < 7) {
-  throw new Error('Dispatch file format is invalid');
-}
+      const sheet = workbook.Sheets[sheetName];
 
-// Excel row 7 = index 6
-const headerRowIndex = 6;
+      if (!sheet) {
+        throw new Error(`Sheet "${sheetName}" not found in workbook`);
+      }
 
-const rawHeaders = (rows[headerRowIndex] || []).map((h) =>
-  String(h ?? '').trim()
-);
+      const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
+        header: 1,
+        defval: '',
+        raw: true,
+      })
 
-const dataRows = rows.slice(headerRowIndex + 1);
+      if (!rows || rows.length < 7) {
+        throw new Error('Dispatch file format is invalid')
+      }
 
-const jsonData: SkuRow[] = dataRows
-  .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''))
-  .map((row) => {
-    const obj: SkuRow = {};
-    rawHeaders.forEach((header, idx) => {
-      if (header) obj[header] = row[idx] ?? '';
-    });
-    return obj;
-  });
+      const headerRowIndex = 6
+      const rawHeaders = (rows[headerRowIndex] || []).map((h) => normalizeHeader(h))
+      const dataRows = rows.slice(headerRowIndex + 1)
 
-console.log('Dispatch headers:', rawHeaders);
-console.log('Dispatch sample rows:', jsonData.slice(0, 5));
+      const jsonData: SkuRow[] = dataRows
+        .filter(
+          (row) =>
+            Array.isArray(row) &&
+            row.some((cell) => String(cell ?? '').trim() !== '')
+        )
+        .map((row) => {
+          const obj: SkuRow = {}
 
-setSkuData(jsonData);
+          rawHeaders.forEach((header, idx) => {
+            if (!header) return
+            obj[header] = parseCellValue(header, row[idx])
+          })
+
+          return obj
+        })
+
+      console.log('Dispatch headers:', rawHeaders)
+      console.log('First parsed row:', jsonData[0])
+      console.log('Dispatch sample rows:', jsonData.slice(0, 5))
+
+      setSkuData(jsonData)
     } catch (err: any) {
       console.error('Fetch error:', err)
       setError(err?.message ?? 'Unknown error')
@@ -203,14 +264,12 @@ setSkuData(jsonData);
       setYearDp(getCurrentYear())
       setIsInitialized(true)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, year])
+  }, [month, year, monthdps])
 
   useEffect(() => {
     if (isInitialized && monthdp && yeardp) {
       void fetchDispatchFile(monthdp, yeardp)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isInitialized, monthdp, yeardp])
 
   function isTotalRow(row: SkuRow) {
@@ -226,67 +285,50 @@ setSkuData(jsonData);
       .filter((row) => !isTotalRow(row))
       .reduce((sum, row) => {
         const value = row[columnName]
-        return sum + (typeof value === 'number' ? value : 0)
+        const num =
+          typeof value === 'number'
+            ? value
+            : Number(String(value ?? '').replace(/,/g, '').trim())
+
+        return sum + (Number.isFinite(num) ? num : 0)
       }, 0)
   }
 
-  const displayedColumns = (countryName || '').toLowerCase() === 'global'
-    ? [
-  'Sno.',
-  'Product Name',
-  'sku',
-  'Inventory at Month End',
-  'Inventory Coverage Ratio Before Dispatch',
-  'Dispatch',
-  'Current Inventory + Dispatch',
-]
-    : [
-  'Sno.',
-  'Product Name',
-  'sku',
-  'Inventory at Month End',
-  'Inventory Coverage Ratio Before Dispatch',
-  'Dispatch',
-  'Current Inventory + Dispatch',
-];
+  const displayedColumns = [...DISPLAYED_COLUMNS]
 
   function handleExportToExcel() {
     const worksheetData = skuData.map((row, index) => {
-      const formattedRow: Record<string, string | number> = { 'Sno.': isTotalRow(row) ? '' : index + 1 }
+      const formattedRow: Record<string, string | number> = {
+        'Sno.': isTotalRow(row) ? '' : index + 1,
+      }
+
       displayedColumns.forEach((col) => {
-        if (col !== 'Sno.') {
-          if (col === 'sku' && isTotalRow(row)) {
-            formattedRow[col] = ''
-          } else if (
-            isTotalRow(row) &&
-            [
-              'Inventory at Month End',
-              'Projected Sales Total',
-              'Dispatch',
-              'Current Inventory + Dispatch',
-              'Inventory Coverage Ratio Before Dispatch',
-            ].includes(col)
-          ) {
-            formattedRow[col] = calculateColumnTotal(col)
-          } else {
-            const v = row[col]
-            formattedRow[col] = (typeof v === 'number' || typeof v === 'string') ? v : ''
-          }
+        if (col === 'Sno.') return
+
+        if (col === 'sku' && isTotalRow(row)) {
+          formattedRow[col] = ''
+        } else if (
+          isTotalRow(row) &&
+          [
+            'Inventory at Month End',
+            'Dispatch',
+            'Current Inventory + Dispatch',
+            'Inventory Coverage Ratio Before Dispatch',
+          ].includes(col)
+        ) {
+          formattedRow[col] = calculateColumnTotal(col)
+        } else {
+          const v = row[col]
+          formattedRow[col] =
+            typeof v === 'number' || typeof v === 'string' ? v : ''
         }
       })
+
       return formattedRow
     })
 
     const worksheet = XLSX.utils.json_to_sheet(worksheetData)
 
-    // Number formatting
-    const numericColumns = [
-      'Inventory at Month End',
-      'Projected Sales Total',
-      'Dispatch',
-      'Current Inventory + Dispatch',
-      'Inventory Coverage Ratio Before Dispatch',
-    ]
     if (worksheet['!ref']) {
       const range = XLSX.utils.decode_range(worksheet['!ref'])
       for (let R = range.s.r; R <= range.e.r; ++R) {
@@ -294,7 +336,7 @@ setSkuData(jsonData);
           const cellAddress = XLSX.utils.encode_cell({ r: R, c: C })
           const cell = (worksheet as any)[cellAddress]
           if (cell && typeof cell.v === 'number') {
-            cell.z = '#,##0'
+            cell.z = '#,##0.##'
           }
         }
       }
@@ -305,91 +347,80 @@ setSkuData(jsonData);
     XLSX.writeFile(workbook, `Dispatch Report ${monthdp}-${yeardp}.xlsx`)
   }
 
-  // ---- build rows for DataTable ----
-const tableRows = skuData.map((row, index) => {
-  const isTotal = isTotalRow(row)
+  const tableRows = skuData.map((row, index) => {
+    const isTotal = isTotalRow(row)
 
-  const obj: Record<string, any> = {
-    __isTotal: isTotal,
-    sno: isTotal ? "" : index + 1,
-  }
+    const obj: Record<string, any> = {
+      __isTotal: isTotal,
+      sno: isTotal ? '' : index + 1,
+    }
 
-  displayedColumns.forEach((col) => {
-    if (col === "Sno.") return
+    displayedColumns.forEach((col) => {
+      if (col === 'Sno.') return
 
-    if (
-      isTotal &&
-      [
-        "Inventory at Month End",
-        "Projected Sales Total",
-        "Dispatch",
-        "Current Inventory + Dispatch",
-        "Inventory Coverage Ratio Before Dispatch",
-      ].includes(col)
-    ) {
-      obj[col] = calculateColumnTotal(col).toLocaleString("en-US")
-    }else {
-  // ✅ Fix Total row text duplication
-if (isTotal) {
-  if (col === "sku") {
-    obj[col] = "";
-    return;
-  }
-  if (col === "Product Name") {
-    obj[col] = "Total";
-    return;
-  }
-}
+      if (
+        isTotal &&
+        [
+          'Inventory at Month End',
+          'Dispatch',
+          'Current Inventory + Dispatch',
+          'Inventory Coverage Ratio Before Dispatch',
+        ].includes(col)
+      ) {
+        obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+        return
+      }
 
-  const v = row[col]
-  obj[col] =
-    typeof v === "number"
-      ? v.toLocaleString("en-US")
-      : v ?? ""
-}
+      if (isTotal) {
+        if (col === 'sku') {
+          obj[col] = ''
+          return
+        }
+        if (col === 'Product Name') {
+          obj[col] = 'Total'
+          return
+        }
+      }
+
+      const v = row[col]
+      obj[col] =
+        typeof v === 'number'
+          ? v.toLocaleString('en-US')
+          : v !== undefined && v !== null
+            ? String(v)
+            : ''
+    })
+
+    return obj
   })
 
-  return obj
-})
+  const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
+    const isCoverage = col === 'Inventory Coverage Ratio Before Dispatch'
 
-const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
-  const isCoverage =
-    col === "Inventory Coverage Ratio Before Dispatch";
-
-  return {
-    key: col === "Sno." ? "sno" : col,
-
-    header: isCoverage ? (
-      <div
-        className="one-line-ellipsis"
-        title={col}
-      >
-        {col}
-      </div>
-    ) : (
-      col
-    ),
-
-    width:
-      isCoverage ? "200px" : col === "Sno." ? "60px" : undefined,
-
-    cellClassName:
-      col === "Product Name"
-        ? "text-left whitespace-nowrap"
-        : isCoverage
-        ? "text-center whitespace-nowrap"
-        : col === "Sno."
-        ? "text-center whitespace-nowrap"
-        : "text-center",
-  };
-});
-
-
+    return {
+      key: col === 'Sno.' ? 'sno' : col,
+      header: isCoverage ? (
+        <div className="one-line-ellipsis" title={col}>
+          {col}
+        </div>
+      ) : (
+        col
+      ),
+      width: isCoverage ? '200px' : col === 'Sno.' ? '60px' : undefined,
+      cellClassName:
+        col === 'Product Name'
+          ? 'text-left whitespace-nowrap'
+          : isCoverage
+            ? 'text-center whitespace-nowrap'
+            : col === 'Sno.'
+              ? 'text-center whitespace-nowrap'
+              : 'text-center',
+    }
+  })
 
   return (
     <>
       <style jsx>{`
-        /* ---------- Layout & Flex Containers ---------- */
         .inline-dropdowns {
           display: flex;
           flex-wrap: nowrap;
@@ -419,7 +450,6 @@ const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
           }
         }
 
-        /* ---------- Table Styles ---------- */
         .dropdown-table,
         .uploads-table {
           border-collapse: collapse;
@@ -445,25 +475,35 @@ const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
           font-size: clamp(12px, 0.729vw, 16px);
         }
 
-        /* ---------- Main Data Table Styles (Enhanced for Better Application) ---------- */
         .tablec tbody tr:last-child {
-  background-color: #ccc !important;
-  color: #414042;
-  text-align: center;
-  font-weight: bold;
-}
-        .tablec td:first-child, .tablec th:first-child { text-align: center; width: 19px; }
-        .tablec thead th {
-  background-color: #5EA68E !important;
-  color: #f8edcf !important;
-  font-weight: bold !important;
-  text-align: center !important;
-  font-size: clamp(12px, 0.729vw, 16px) !important;
-}
-  .tablec tbody tr:nth-child(even) { background-color: #5EA68E33; }
-        .tablec tbody tr:nth-child(odd) { background-color: #ffffff; }
+          background-color: #ccc !important;
+          color: #414042;
+          text-align: center;
+          font-weight: bold;
+        }
 
-        /* ---------- Select Dropdowns ---------- */
+        .tablec td:first-child,
+        .tablec th:first-child {
+          text-align: center;
+          width: 19px;
+        }
+
+        .tablec thead th {
+          background-color: #5EA68E !important;
+          color: #f8edcf !important;
+          font-weight: bold !important;
+          text-align: center !important;
+          font-size: clamp(12px, 0.729vw, 16px) !important;
+        }
+
+        .tablec tbody tr:nth-child(even) {
+          background-color: #5EA68E33;
+        }
+
+        .tablec tbody tr:nth-child(odd) {
+          background-color: #ffffff;
+        }
+
         .dropdown-select {
           font-size: clamp(12px, 0.729vw, 16px);
           text-align: center;
@@ -581,7 +621,6 @@ const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
           font-size: 14px;
           color: #414042;
           border-radius: 4px;
-          
         }
 
         .forecast-banner i.fa-circle-exclamation {
@@ -663,125 +702,118 @@ const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
         }
 
         .ellipsis {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
 
-.ellipsis-center {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: center;
-}
+        .ellipsis-center {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-align: center;
+        }
 
-.one-line-ellipsis {
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  text-align: center;
-  display: block;
-  width: 100%;
-}
+        .one-line-ellipsis {
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          text-align: center;
+          display: block;
+          width: 100%;
+        }
       `}</style>
-      <div className='flex justify-between items-start'>
-         <div className="flex flex-wrap items-baseline gap-2 justify-start">
-              <PageBreadcrumb
-                pageTitle="Dispatch Report - "
-                variant="page"
-                align="left"
-                className=""
-              />
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                Amazon {countryName?.toLowerCase() === "global"
-                  ? "Global"
-                  : countryName?.toUpperCase()}
-              </span>
-            </div>
- 
-     <div className="inline-dropdowns">
-      <MonthYearPickerTable
-                      month={month}
-                      year={year}
-                      yearOptions={[
-                        new Date().getFullYear(),
-                        new Date().getFullYear() - 1,
-                      ]}
-                      onMonthChange={(v) => setMonthDp(v)}
-                      onYearChange={(v) => setYearDp(v)}
-                      valueMode="lower"
-                    />
 
-      <div className="centralised-fetch-button">
-        <button className="fetch-button" onClick={() => fetchDispatchFile(monthdp, yeardp)}>
-          Get Report
-        </button>
-      </div>
-      <DownloadIconButton onClick={handleExportToExcel} size="md" />
-    </div>
-      </div>
-    
-
-   
-
-    {loading ? (
-      <div className="loading-wrapper">
-        <p>Loading...</p>
-      </div>
-    ) : error ? (
-      <div className="alert-container">
-        <div className="alert-message">
-          <i className="fa-solid fa-circle-exclamation alert-icon"></i>
-          <span>{error}</span>
+      <div className="flex justify-between items-start">
+        <div className="flex flex-wrap items-baseline gap-2 justify-start">
+          <PageBreadcrumb
+            pageTitle="Dispatch Report - "
+            variant="page"
+            align="left"
+            className=""
+          />
+          <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+            Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
+          </span>
         </div>
-        <button className="alert-button" onClick={() => setShowUpload(true)}>
-          Run Now <i className="fa-solid fa-chevron-right"></i>
-        </button>
-      </div>
-    ) : showForecastMessage ? (
-      <div className="forecast-banner lg:w-[40%]  w-full">
-        <i className="fa-solid fa-circle-exclamation"></i>
-        <span>Run the Inventory Forecast to view dispatch reports.</span>
-        <button className="forecast-action" onClick={handleRedirectToForecast}>
-          Run Now <i className="fa-solid fa-chevron-right"></i>
-        </button>
-      </div>
-    ) : (
-      <div className="forecast-data">
-        {skuData.length > 0 ? (
-          <>
-           <DataTable
-  columns={columns}
-  data={tableRows}
-  paginate={false}          // ❗ pagination OFF so Total row stays visible
-  scrollY
-  maxHeight="90vh"
-  stickyHeader
-  loading={loading}
-  rowClassName={(row: any) =>
-    row.__isTotal ? "bg-[#D9D9D9] font-bold" : ""
-  }
-/>
-    
-            
-          </>
-        ) : (
-          <p>Select Month and Year to see Dispatch!</p>
-        )}
-      </div>
-    )}
 
-    <Modal
-      isOpen={showUpload}
-      onClose={() => setShowUpload(false)}
-      showCloseButton
-      className="max-w-4xl w-full mx-auto p-0"
-    >
-      <FileUploadForm initialCountry={''} onClose={function (): void {
-        throw new Error('Function not implemented.');
-      } } onComplete={function (): void {
-        throw new Error('Function not implemented.');
-      } } />
-    </Modal>
-  </>
-)}
+        <div className="inline-dropdowns">
+          <MonthYearPickerTable
+            month={month}
+            year={year}
+            yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
+            onMonthChange={(v) => setMonthDp(v)}
+            onYearChange={(v) => setYearDp(v)}
+            valueMode="lower"
+          />
+
+          <div className="centralised-fetch-button">
+            <button className="fetch-button" onClick={() => fetchDispatchFile(monthdp, yeardp)}>
+              Get Report
+            </button>
+          </div>
+
+          <DownloadIconButton onClick={handleExportToExcel} size="md" />
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="loading-wrapper">
+          <p>Loading...</p>
+        </div>
+      ) : error ? (
+        <div className="alert-container">
+          <div className="alert-message">
+            <i className="fa-solid fa-circle-exclamation alert-icon"></i>
+            <span>{error}</span>
+          </div>
+          <button className="alert-button" onClick={() => setShowUpload(true)}>
+            Run Now <i className="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      ) : showForecastMessage ? (
+        <div className="forecast-banner lg:w-[40%]  w-full">
+          <i className="fa-solid fa-circle-exclamation"></i>
+          <span>Run the Inventory Forecast to view dispatch reports.</span>
+          <button className="forecast-action" onClick={handleRedirectToForecast}>
+            Run Now <i className="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      ) : (
+        <div className="forecast-data">
+          {skuData.length > 0 ? (
+            <DataTable
+              columns={columns}
+              data={tableRows}
+              paginate={false}
+              scrollY
+              maxHeight="90vh"
+              stickyHeader
+              loading={loading}
+              rowClassName={(row: any) => (row.__isTotal ? 'bg-[#D9D9D9] font-bold' : '')}
+            />
+          ) : (
+            <p>Select Month and Year to see Dispatch!</p>
+          )}
+        </div>
+      )}
+
+      <Modal
+        isOpen={showUpload}
+        onClose={() => setShowUpload(false)}
+        showCloseButton
+        className="max-w-4xl w-full mx-auto p-0"
+      >
+        <FileUploadForm
+          initialCountry={''}
+          onClose={function (): void {
+            throw new Error('Function not implemented.')
+          }}
+          onComplete={function (): void {
+            throw new Error('Function not implemented.')
+          }}
+        />
+      </Modal>
+    </>
+  )
+}
