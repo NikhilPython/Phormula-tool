@@ -40,7 +40,7 @@ import "react-date-range/dist/styles.css";
 import "react-date-range/dist/theme/default.css";
 import { FaCalendarAlt } from "react-icons/fa";
 import LiveBusinessClient from "@/app/(admin)/live-business-insight/[ranged]/[countryName]/[month]/[year]/liveBusinessClient";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import Cm1ProfitBreakdownPie from "@/components/dashboard/Cm1ProfitBreakdownPie";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import GroupedCollapsibleTable, { ColGroup } from "@/components/ui/table/GroupedCollapsibleTable";
@@ -1060,7 +1060,22 @@ const sliceByDayRange = (
 
 export default function DashboardPage() {
     const router = useRouter();
+    const params = useParams();
+
+const urlMonthParam = Array.isArray(params?.month)
+    ? params.month[0]
+    : params?.month;
+
+const urlYearParam = Array.isArray(params?.year)
+    ? params.year[0]
+    : params?.year;
+
+const isMonthYearNA =
+    String(urlMonthParam ?? "").toUpperCase() === "NA" &&
+    String(urlYearParam ?? "").toUpperCase() === "NA";
     const [isMtdPlExpanded, setIsMtdPlExpanded] = useState(false);
+
+    const shouldShowDummyUi = isMonthYearNA;
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -1253,6 +1268,13 @@ export default function DashboardPage() {
     }, [inventoryAlerts, top5Skus]);
 
     const fetchMonthlySp = useCallback(async () => {
+        if (isMonthYearNA) {
+        setMonthlySpLoading(false);
+        setMonthlySpError(null);
+        setMonthlySpRows([]);
+        setMonthlySpTotalSpend(null);
+        return;
+    }
         try {
             setMonthlySpLoading(true);
             setMonthlySpError(null);
@@ -1318,7 +1340,7 @@ export default function DashboardPage() {
         } finally {
             setMonthlySpLoading(false);
         }
-    }, [platform]);
+    }, [platform ,isMonthYearNA]);
 
 
     useEffect(() => {
@@ -1700,6 +1722,13 @@ export default function DashboardPage() {
     }, []);
 
     const fetchInventory = useCallback(async () => {
+        if (isMonthYearNA) {
+        setInvLoading(false);
+        setInvError("");
+        setInvRows([]);
+        setInventoryAlerts({});
+        return;
+    }
         const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
         if (!token) {
             setInvError("Authorization token is missing");
@@ -1727,7 +1756,7 @@ export default function DashboardPage() {
         } finally {
             setInvLoading(false);
         }
-    }, [inventoryCountry, invMonthYear.month, invMonthYear.year]);
+    }, [inventoryCountry, invMonthYear.month, invMonthYear.year ,isMonthYearNA]);
 
     useEffect(() => {
         fetchInventory();
@@ -2061,6 +2090,13 @@ export default function DashboardPage() {
 
     /* ===================== AMAZON FETCH ===================== */
     const fetchAmazon = useCallback(async () => {
+        if (isMonthYearNA) {
+        setLoading(false);
+        setUnauthorized(false);
+        setError(null);
+        setData(null);
+        return;
+    }
         setLoading(true);
         setUnauthorized(false);
         setError(null);
@@ -2121,7 +2157,7 @@ export default function DashboardPage() {
         } finally {
             setLoading(false);
         }
-    }, [platform, amazonConnections]);
+    }, [platform, amazonConnections , isMonthYearNA]);
 
     const renderMoneyWithPerUnit = (amount: number, units: number, fmt: (v: number) => string) => {
         const totalText = fmt(amount);
@@ -2262,6 +2298,16 @@ export default function DashboardPage() {
 
     const fetchBiSeries = useCallback(
         async (startDay?: number | null, endDay?: number | null) => {
+            if (isMonthYearNA) {
+            setBiError(null);
+            setBiLoading(false);
+            setBiStatus("ready");
+            setBiDailySeries(null);
+            setBiPeriods(null);
+            setBiAlignedTotals(null);
+            setLiveBiPayload(null);
+            return;
+        }
             if (!showLiveBI) return;
             const normalized = (biCountryName || "").toLowerCase();
             if (!normalized || normalized === "global") return;
@@ -2350,7 +2396,7 @@ export default function DashboardPage() {
                 setBiLoading(false);
             }
         },
-        [showLiveBI, biCountryName, currMonthName, currYear]
+        [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA]
 
     );
 
@@ -2394,6 +2440,7 @@ export default function DashboardPage() {
 
     /* ===================== REFRESH ALL ===================== */
     const refreshAll = useCallback(async () => {
+         if (isMonthYearNA) return;
         await fetchAmazon();
         if (shopifyStore?.shop_name && shopifyStore?.access_token) {
             await Promise.all([fetchShopify(), fetchShopifyPrev()]);
@@ -2827,6 +2874,39 @@ export default function DashboardPage() {
         chooseLastMonthTotal,
         prorateToDate,
     ]);
+
+
+   function DummyPreviewWrapper({
+    enabled,
+    children,
+    className = "",
+    badgeText = "Dummy Preview",
+}: {
+    enabled: boolean;
+    children: React.ReactNode;
+    className?: string;
+    badgeText?: string;
+}) {
+    return (
+        <div className={`relative ${className}`}>
+            <div
+                className={
+                    enabled
+                        ? "opacity-30 pointer-events-none transition-opacity duration-300"
+                        : "opacity-100 transition-opacity duration-300"
+                }
+            >
+                {children}
+            </div>
+
+            {enabled && (
+                <div className="absolute top-2 right-2 z-10 rounded-md bg-black/70 px-2 py-1 text-[10px] sm:text-xs text-white shadow">
+                    {badgeText}
+                </div>
+            )}
+        </div>
+    );
+}
 
     const anyLoading = loading || shopifyLoading;
 
@@ -3689,8 +3769,8 @@ export default function DashboardPage() {
 
     /* ===================== RENDER FLAGS ===================== */
     const hasAnyGraphData = amazonIntegrated || shopifyIntegrated;
-    const hasGlobalCard = !noIntegrations;
-    const hasAmazonCard = amazonIntegrated;
+    const hasGlobalCard = shouldShowDummyUi ? true : !noIntegrations;
+    const hasAmazonCard = shouldShowDummyUi ? true : amazonIntegrated;
     const hasShopifyCard = !shopifyNotConnected;
     const leftColumnHeightClass = !hasShopifyCard ? "lg:min-h-[520px]" : "";
     const prevShort = getShort(biPeriods?.previous?.label);
@@ -4091,6 +4171,157 @@ export default function DashboardPage() {
         return () => clearTimeout(timer);
     }, [activeTab, pendingHash]);
 
+    const dummyStatData = {
+    units: { current: 1240, previous: 980, deltaPct: 26.53 },
+    grossSales: { current: 18500, previous: 14900, deltaPct: 24.16 },
+    netSales: { current: 16200, previous: 13100, deltaPct: 23.66 },
+    asp: { current: 13.06, previous: 13.37, deltaPct: -2.32 },
+    costOfAds: { current: 2100, previous: 1760, deltaPct: 19.32 },
+    tacos: { current: 12.96, previous: 13.43, deltaPct: -0.47 },
+    cm2Profit: { current: 3250, previous: 2480, deltaPct: 31.05 },
+    cm2ProfitPct: { current: 20.06, previous: 18.93, deltaPct: 1.13 },
+};
+
+const dummyBiDailySeriesHome: DailySeries = {
+    previous: [
+        { date: "2026-03-01", net_sales: 420, gross_sales: 470, quantity: 30, profit: 80, cm2_profit: 62 },
+        { date: "2026-03-02", net_sales: 510, gross_sales: 560, quantity: 37, profit: 94, cm2_profit: 71 },
+        { date: "2026-03-03", net_sales: 480, gross_sales: 535, quantity: 34, profit: 88, cm2_profit: 66 },
+        { date: "2026-03-04", net_sales: 560, gross_sales: 620, quantity: 40, profit: 102, cm2_profit: 78 },
+        { date: "2026-03-05", net_sales: 590, gross_sales: 650, quantity: 42, profit: 111, cm2_profit: 84 },
+    ],
+    current_mtd: [
+        { date: "2026-03-01", net_sales: 530, gross_sales: 590, quantity: 38, profit: 102, cm2_profit: 79 },
+        { date: "2026-03-02", net_sales: 610, gross_sales: 670, quantity: 44, profit: 118, cm2_profit: 91 },
+        { date: "2026-03-03", net_sales: 590, gross_sales: 648, quantity: 41, profit: 112, cm2_profit: 87 },
+        { date: "2026-03-04", net_sales: 680, gross_sales: 742, quantity: 49, profit: 130, cm2_profit: 101 },
+        { date: "2026-03-05", net_sales: 710, gross_sales: 775, quantity: 52, profit: 138, cm2_profit: 108 },
+    ],
+};
+
+const dummyBiPeriods = {
+    previous: {
+        label: "Feb MTD",
+        start_date: "2026-02-01",
+        end_date: "2026-02-05",
+    },
+    current_mtd: {
+        label: "Mar MTD",
+        start_date: "2026-03-01",
+        end_date: "2026-03-05",
+    },
+};
+
+const dummyMonthlySkuwiseRowsForTable: MonthlySkuwiseTableRow[] = [
+    {
+        sno: 1,
+        sku: "SKU-001",
+        product_name: "Dummy Product 1",
+        quantity: 120,
+        asp: 12.5,
+        net_sales: 1500,
+        cogs: 620,
+        fba_fees: 110,
+        selling_fees: 95,
+        tax: 30,
+        credits: 15,
+        tax_and_credits: 45,
+        cm1_profit_per: 28,
+        cm1_profit_per_unit: 3.5,
+        cm2_profit_per: 21,
+        cm2_profit_per_unit: 2.6,
+        ads_spend: 180,
+        cm2_profit: 315,
+        profit: 420,
+    },
+    {
+        sno: 2,
+        sku: "SKU-002",
+        product_name: "Dummy Product 2",
+        quantity: 98,
+        asp: 14.2,
+        net_sales: 1391.6,
+        cogs: 570,
+        fba_fees: 105,
+        selling_fees: 88,
+        tax: 22,
+        credits: 9,
+        tax_and_credits: 31,
+        cm1_profit_per: 26,
+        cm1_profit_per_unit: 3.1,
+        cm2_profit_per: 19,
+        cm2_profit_per_unit: 2.2,
+        ads_spend: 160,
+        cm2_profit: 264,
+        profit: 362,
+    },
+    {
+        sno: undefined,
+        sku: "GRAND_TOTAL",
+        product_name: "Total",
+        quantity: 218,
+        asp: 13.26,
+        net_sales: 2891.6,
+        cogs: 1190,
+        fba_fees: 215,
+        selling_fees: 183,
+        tax: 52,
+        credits: 24,
+        tax_and_credits: 76,
+        cm1_profit_per: 27,
+        cm1_profit_per_unit: 3.3,
+        cm2_profit_per: 20,
+        cm2_profit_per_unit: 2.4,
+        ads_spend: 340,
+        cm2_profit: 579,
+        profit: 782,
+        isTotal: true,
+    },
+];
+
+
+const dummyCm1ProfitPieData: Cm1PieSlice[] = [
+    { name: "Product A", value: 1200, prevValue: 980, pct: 36.92, deltaPct: 22.45 },
+    { name: "Product B", value: 860, prevValue: 720, pct: 26.46, deltaPct: 19.44 },
+    { name: "Product C", value: 640, prevValue: 590, pct: 19.69, deltaPct: 8.47 },
+    { name: "Product D", value: 320, prevValue: 280, pct: 9.85, deltaPct: 14.29 },
+    { name: "Others", value: 230, prevValue: 190, pct: 7.08, deltaPct: 21.05 },
+];
+
+const dummyInventoryRows: InventoryRow[] = [
+    {
+        "Product Name": "Dummy Product 1",
+        "SKU": "DUMMY-SKU-001",
+        "Current Inventory": 540,
+        "Current Month Units Sold": 120,
+        "Days in Hand": 44,
+        "Status": "Healthy",
+    } as InventoryRow,
+    {
+        "Product Name": "Dummy Product 2",
+        "SKU": "DUMMY-SKU-002",
+        "Current Inventory": 210,
+        "Current Month Units Sold": 98,
+        "Days in Hand": 19,
+        "Status": "Low Stock",
+    } as InventoryRow,
+    {
+        "Product Name": "Dummy Product 3",
+        "SKU": "DUMMY-SKU-003",
+        "Current Inventory": 95,
+        "Current Month Units Sold": 76,
+        "Days in Hand": 10,
+        "Status": "High Alert",
+    } as InventoryRow,
+];
+
+const dummyInventoryAlerts: InventoryAlertRecord = {
+    "DUMMY-SKU-002": { alert: "Low alert", alert_type: "warning" },
+    "DUMMY-SKU-003": { alert: "High alert", alert_type: "error" },
+};
+
+
+
     const syncTabToHash = useCallback((tab: TopTab) => {
         if (typeof window === "undefined") return;
 
@@ -4107,70 +4338,90 @@ export default function DashboardPage() {
         );
     }, []);
 
-    const stickyKpiItems = [
-        {
-            label: "Units",
-            current: useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0),
-            previous: useBiForAmazonCards ? biCardKpis.prev.units : prev.quantity,
-            deltaPct: useBiForAmazonCards ? biCardKpis.deltas.units : deltas.quantityPct,
-            loading: loading || biLoading,
-            formatter: fmtInt,
-            bottomLabel: prevLabel,
-            className: "bg-white border-[#FDD36F] border-t-4 border-t-[#FDD36F]",
-        },
-        {
-            label: "Net Sales",
-            current:
-                showLiveBI && rangeActive
-                    ? biCardKpis.curr.netSales
-                    : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency),
-            previous:
-                showLiveBI && rangeActive
-                    ? biCardKpis.prev.netSales
-                    : convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency),
-            deltaPct: useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct,
-            loading: loading || biLoading,
-            formatter: moneyPerUnitFormatter,
-            previousFormatter: formatDisplayAmount,
-            bottomLabel: prevLabel,
-            className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
-        },
-        {
-            label: "ASP",
-            current:
-                showLiveBI && rangeActive
-                    ? biCardKpis.curr.asp
-                    : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency),
-            previous:
-                showLiveBI && rangeActive
-                    ? biCardKpis.prev.asp
-                    : convertToDisplayCurrency(prev.asp ?? 0, amazonDataCurrency),
-            deltaPct: useBiForAmazonCards ? biCardKpis.deltas.asp : deltas.aspPct,
-            loading: loading || biLoading,
-            formatter: formatDisplayAmount,
-            bottomLabel: prevLabel,
-            className: "bg-white border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
-        },
-        {
-            label: "Cost of Ads",
-            current: useBiForAmazonCards
-                ? cm2Ready
+const stickyKpiItems = [
+    {
+        label: "Units",
+        current: shouldShowDummyUi
+            ? dummyStatData.units.current
+            : (useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0)),
+        previous: shouldShowDummyUi
+            ? dummyStatData.units.previous
+            : (useBiForAmazonCards ? biCardKpis.prev.units : prev.quantity),
+        deltaPct: shouldShowDummyUi
+            ? dummyStatData.units.deltaPct
+            : (useBiForAmazonCards ? biCardKpis.deltas.units : deltas.quantityPct),
+        loading: !shouldShowDummyUi && (loading || biLoading),
+        formatter: fmtInt,
+        bottomLabel: prevLabel,
+        className: "bg-white border-[#FDD36F] border-t-4 border-t-[#FDD36F]",
+    },
+    {
+        label: "Net Sales",
+        current: shouldShowDummyUi
+            ? dummyStatData.netSales.current
+            : (showLiveBI && rangeActive
+                ? biCardKpis.curr.netSales
+                : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)),
+        previous: shouldShowDummyUi
+            ? dummyStatData.netSales.previous
+            : (showLiveBI && rangeActive
+                ? biCardKpis.prev.netSales
+                : convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency)),
+        deltaPct: shouldShowDummyUi
+            ? dummyStatData.netSales.deltaPct
+            : (useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct),
+        loading: !shouldShowDummyUi && (loading || biLoading),
+        formatter: moneyPerUnitFormatter,
+        previousFormatter: formatDisplayAmount,
+        bottomLabel: prevLabel,
+        className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
+    },
+    {
+        label: "ASP",
+        current: shouldShowDummyUi
+            ? dummyStatData.asp.current
+            : (showLiveBI && rangeActive
+                ? biCardKpis.curr.asp
+                : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)),
+        previous: shouldShowDummyUi
+            ? dummyStatData.asp.previous
+            : (showLiveBI && rangeActive
+                ? biCardKpis.prev.asp
+                : convertToDisplayCurrency(prev.asp ?? 0, amazonDataCurrency)),
+        deltaPct: shouldShowDummyUi
+            ? dummyStatData.asp.deltaPct
+            : (useBiForAmazonCards ? biCardKpis.deltas.asp : deltas.aspPct),
+        loading: !shouldShowDummyUi && (loading || biLoading),
+        formatter: formatDisplayAmount,
+        bottomLabel: prevLabel,
+        className: "bg-white border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
+    },
+    {
+        label: "Cost of Ads",
+        current: shouldShowDummyUi
+            ? dummyStatData.costOfAds.current
+            : (useBiForAmazonCards
+                ? (cm2Ready
                     ? convertToDisplayCurrency(
                         biAlignedTotals?.total_current_advertising ?? 0,
                         biSourceCurrency
                     )
-                    : 0
-                : adsSpendTotal,
-            previous: useBiForAmazonCards
-                ? cm2Ready
+                    : 0)
+                : adsSpendTotal),
+        previous: shouldShowDummyUi
+            ? dummyStatData.costOfAds.previous
+            : (useBiForAmazonCards
+                ? (cm2Ready
                     ? convertToDisplayCurrency(
                         biAlignedTotals?.total_previous_advertising ?? 0,
                         biSourceCurrency
                     )
-                    : 0
-                : amazonPrevAdsDisp,
-            deltaPct: useBiForAmazonCards
-                ? cm2Ready
+                    : 0)
+                : amazonPrevAdsDisp),
+        deltaPct: shouldShowDummyUi
+            ? dummyStatData.costOfAds.deltaPct
+            : (useBiForAmazonCards
+                ? (cm2Ready
                     ? safeDeltaPct(
                         convertToDisplayCurrency(
                             biAlignedTotals?.total_current_advertising ?? 0,
@@ -4181,112 +4432,178 @@ export default function DashboardPage() {
                             biSourceCurrency
                         )
                     )
-                    : null
-                : amazonAdsDeltaPct,
-            loading: loading || (useBiForAmazonCards ? biLoading : false),
-            formatter: (v: any) =>
-                renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
-            previousFormatter: formatDisplayAmount,
-            bottomLabel: prevLabel,
-            className: "bg-white border-[#C49466] border-t-4 border-t-[#C49466]",
-        },
-        {
-            label: "TACoS",
-            current: useBiForAmazonCards
-                ? cm2Ready
-                    ? (() => {
+                    : null)
+                : amazonAdsDeltaPct),
+        loading: !shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false)),
+        formatter: (v: any) =>
+            renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
+        previousFormatter: formatDisplayAmount,
+        bottomLabel: prevLabel,
+        className: "bg-white border-[#C49466] border-t-4 border-t-[#C49466]",
+    },
+    {
+    label: "TACoS",
+    current: shouldShowDummyUi
+        ? dummyStatData.tacos.current
+        : useBiForAmazonCards
+            ? cm2Ready
+                ? (() => {
+                    const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                    const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                    return sales > 0 ? (ads / sales) * 100 : 0;
+                })()
+                : 0
+            : amazonCurrRoasPct,
+    previous: shouldShowDummyUi
+        ? dummyStatData.tacos.previous
+        : useBiForAmazonCards
+            ? cm2Ready
+                ? (() => {
+                    const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                    const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                    return sales > 0 ? (ads / sales) * 100 : 0;
+                })()
+                : 0
+            : amazonPrevRoasPct,
+    deltaPct: shouldShowDummyUi
+        ? dummyStatData.tacos.deltaPct
+        : useBiForAmazonCards
+            ? cm2Ready
+                ? deltaPctAbs(
+                    (() => {
                         const ads = biAlignedTotals?.total_current_advertising ?? 0;
                         const sales = biAlignedTotals?.total_current_net_sales ?? 0;
                         return sales > 0 ? (ads / sales) * 100 : 0;
-                    })()
-                    : 0
-                : amazonCurrRoasPct,
-            previous: useBiForAmazonCards
-                ? cm2Ready
-                    ? (() => {
+                    })(),
+                    (() => {
                         const ads = biAlignedTotals?.total_previous_advertising ?? 0;
                         const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
                         return sales > 0 ? (ads / sales) * 100 : 0;
                     })()
-                    : 0
-                : amazonPrevRoasPct,
-            deltaPct: useBiForAmazonCards
-                ? cm2Ready
-                    ? deltaPctAbs(
-                        (() => {
-                            const ads = biAlignedTotals?.total_current_advertising ?? 0;
-                            const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                            return sales > 0 ? (ads / sales) * 100 : 0;
-                        })(),
-                        (() => {
-                            const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                            const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                            return sales > 0 ? (ads / sales) * 100 : 0;
-                        })()
-                    )
-                    : null
-                : deltaPctAbs(amazonCurrRoasPct, amazonPrevRoasPct),
-            inverseDelta: true,
-            loading: loading || (useBiForAmazonCards ? biLoading : false),
-            formatter: fmtPct2,
-            bottomLabel: prevLabel,
-            className: "bg-white border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
-        },
-        {
-            label: "CM2 Profit",
-            current: useBiCm2
-                ? cm2Ready
-                    ? convertToDisplayCurrency(
-                        biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                        rangeCurrency
-                    )
-                    : 0
-                : cm2Profit,
-            previous: useBiCm2
-                ? cm2Ready
-                    ? convertToDisplayCurrency(
-                        biAlignedTotals?.total_previous_profit_cm2 ?? 0,
-                        rangeCurrency
-                    )
-                    : 0
-                : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency),
-            deltaPct: useBiCm2
-                ? cm2Ready
-                    ? safeDeltaPct(
-                        biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                        biAlignedTotals?.total_previous_profit_cm2 ?? 0
-                    )
-                    : null
-                : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0),
-            loading: loading || (useBiCm2 ? biLoading : false),
-            formatter: (v: any) =>
-                renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
-            previousFormatter: formatDisplayAmount,
-            bottomLabel: prevLabel,
-            className: "bg-white border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-        },
-        {
-            label: "Target",
-            current: stats_targetHome ?? 0,
-            previous: targets_lastMonthTotalHome ?? 0,
-            deltaPct: safeDeltaPct(stats_targetHome ?? 0, targets_lastMonthTotalHome ?? 0),
-            loading: loading,
-            formatter: formatDisplayAmount,
-            previousFormatter: formatDisplayAmount,
-            bottomLabel: "Last Month",
-            className: "bg-white border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
-        },
-        {
-            label: "Target Trend",
-            current: stats_targetTrendPct ?? 0,
-            previous: stats_targetTrendPrevPct ?? 0,
-            deltaPct: deltaPctAbs(stats_targetTrendPct ?? 0, stats_targetTrendPrevPct ?? 0),
-            loading: loading,
-            formatter: fmtPct,
-            bottomLabel: "Last Month",
-            className: "bg-white border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
-        },
-    ];
+                )
+                : null
+            : deltaPctAbs(amazonCurrRoasPct, amazonPrevRoasPct),
+    inverseDelta: true,
+    loading: !shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false)),
+    formatter: fmtPct2,
+    bottomLabel: prevLabel,
+    className: "bg-white border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
+},
+{
+    label: "CM2 Profit",
+    current: shouldShowDummyUi
+        ? dummyStatData.cm2Profit.current
+        : useBiCm2
+            ? cm2Ready
+                ? convertToDisplayCurrency(
+                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                    rangeCurrency
+                )
+                : 0
+            : cm2Profit,
+    previous: shouldShowDummyUi
+        ? dummyStatData.cm2Profit.previous
+        : useBiCm2
+            ? cm2Ready
+                ? convertToDisplayCurrency(
+                    biAlignedTotals?.total_previous_profit_cm2 ?? 0,
+                    rangeCurrency
+                )
+                : 0
+            : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency),
+    deltaPct: shouldShowDummyUi
+        ? dummyStatData.cm2Profit.deltaPct
+        : useBiCm2
+            ? cm2Ready
+                ? safeDeltaPct(
+                    biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                    biAlignedTotals?.total_previous_profit_cm2 ?? 0
+                )
+                : null
+            : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0),
+    loading: !shouldShowDummyUi && (loading || (useBiCm2 ? biLoading : false)),
+    formatter: (v: any) =>
+        renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
+    previousFormatter: formatDisplayAmount,
+    bottomLabel: prevLabel,
+    className: "bg-white border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
+},
+{
+    label: "Target",
+    current: shouldShowDummyUi
+        ? 18000
+        : (stats_targetHome ?? 0),
+    previous: shouldShowDummyUi
+        ? 16500
+        : (targets_lastMonthTotalHome ?? 0),
+    deltaPct: shouldShowDummyUi
+        ? safeDeltaPct(18000, 16500)
+        : safeDeltaPct(stats_targetHome ?? 0, targets_lastMonthTotalHome ?? 0),
+    loading: !shouldShowDummyUi && loading,
+    formatter: formatDisplayAmount,
+    previousFormatter: formatDisplayAmount,
+    bottomLabel: "Last Month",
+    className: "bg-white border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+},
+{
+    label: "Target Trend",
+    current: shouldShowDummyUi
+        ? 8.5
+        : (stats_targetTrendPct ?? 0),
+    previous: shouldShowDummyUi
+        ? 5.2
+        : (stats_targetTrendPrevPct ?? 0),
+    deltaPct: shouldShowDummyUi
+        ? deltaPctAbs(8.5, 5.2)
+        : deltaPctAbs(stats_targetTrendPct ?? 0, stats_targetTrendPrevPct ?? 0),
+    loading: !shouldShowDummyUi && loading,
+    formatter: fmtPct,
+    bottomLabel: "Last Month",
+    className: "bg-white border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
+},
+];
+
+    const dummyBarLabels = [
+    "Net Sales",
+    "COGS",
+    "Marketplace Fees",
+    "Tax & Credits",
+    "CM1 Profit",
+    "Advertisements",
+    "Others",
+    "CM2 Profit",
+];
+
+const dummyBarValues = [16200, 6200, 2100, 420, 7480, 2100, 530, 3250];
+const dummyPrevBarValues = [13100, 5400, 1800, 360, 5540, 1760, 470, 2480];
+
+const finalBarLabels = shouldShowDummyUi ? dummyBarLabels : labels;
+const finalBarValues = shouldShowDummyUi ? dummyBarValues : valuesPatched;
+const finalPrevBarValues = shouldShowDummyUi ? dummyPrevBarValues : prevValues;
+const finalAllValuesZero = shouldShowDummyUi ? false : allValuesZero;
+
+
+    const finalBiDailySeriesHome = shouldShowDummyUi ? dummyBiDailySeriesHome : biDailySeriesHome;
+const finalBiPeriods = shouldShowDummyUi ? dummyBiPeriods : biPeriods;
+const finalMonthlySkuwiseRowsForTable = shouldShowDummyUi
+    ? dummyMonthlySkuwiseRowsForTable
+    : monthlySkuwiseRowsForTable;
+
+
+    const isUsingDummyData = shouldShowDummyUi;
+
+const finalCm1ProfitPieData = isUsingDummyData
+    ? dummyCm1ProfitPieData
+    : cm1ProfitPieData;
+
+const finalInventoryRows = isUsingDummyData
+    ? dummyInventoryRows
+    : invRows;
+
+const finalInventoryAlerts = isUsingDummyData
+    ? dummyInventoryAlerts
+    : inventoryAlerts;
+
 
     return (
         <div className="relative w-full">
@@ -4296,12 +4613,13 @@ export default function DashboardPage() {
             )} */}
 
             {activeTab === "live" &&
-                (loading || shopifyLoading || biLoading) &&
-                !data && !shopify && !liveBiPayload && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80">
-                        <Loader backgroundClass="bg-transparent" />
-                    </div>
-                )}
+    !shouldShowDummyUi &&
+    (loading || shopifyLoading || biLoading) &&
+    !data && !shopify && !liveBiPayload && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80">
+            <Loader backgroundClass="bg-transparent" />
+        </div>
+)}
 
 
             <div className="sticky top-0 z-40 bg-[#F7F7F7] ">
@@ -4368,8 +4686,10 @@ export default function DashboardPage() {
             </div>
 
             {["summary", "productwise", "inventory"].includes(activeTab) && (
-                <DashboardStickyKpis items={stickyKpiItems} />
-            )}
+    <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy KPI Preview">
+        <DashboardStickyKpis items={stickyKpiItems} />
+    </DummyPreviewWrapper>
+)}
 
             {/* Top 5 alerts */}
             {/* <div className="my-2 md:my-4 space-y-3">
@@ -4442,233 +4762,296 @@ export default function DashboardPage() {
                                             </div>
                                         )}
                                     </div>
-
+<DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy KPI Preview">
                                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-3 auto-rows-fr">
 
-                                        <AmazonStatCard
-                                            label="Units"
-                                            current={globalUseBi ? biCardKpis.curr.units : globalCurrUnits}
-                                            previous={globalUseBi ? biCardKpis.prev.units : globalPrevUnits}
-                                            deltaPct={globalUseBi ? biCardKpis.deltas.units : globalDeltas.units}
-                                            loading={loading || shopifyLoading || biLoading}
-                                            formatter={fmtInt}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#FDD36F] bg-[#FDD36F4D]"
-                                            className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
-                                        />
+                                       <AmazonStatCard
+    label="Units"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.units.current
+            : (globalUseBi ? biCardKpis.curr.units : globalCurrUnits)
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.units.previous
+            : (globalUseBi ? biCardKpis.prev.units : globalPrevUnits)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.units.deltaPct
+            : (globalUseBi ? biCardKpis.deltas.units : globalDeltas.units)
+    }
+    loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
+    formatter={fmtInt}
+    bottomLabel={prevLabel}
+    className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
+/>
 
-                                        <AmazonStatCard
-                                            label="Gross Sales"
-                                            current={globalUseBi ? biCardKpis.curr.grossSales : globalCurrGrossDisp}
-                                            previous={globalUseBi ? biCardKpis.prev.grossSales : globalPrevGrossDisp}
+<AmazonStatCard
+    label="Gross Sales"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.grossSales.current
+            : (globalUseBi ? biCardKpis.curr.grossSales : globalCurrGrossDisp)
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.grossSales.previous
+            : (globalUseBi ? biCardKpis.prev.grossSales : globalPrevGrossDisp)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.grossSales.deltaPct
+            : (globalUseBi
+                ? biCardKpis.deltas.grossSales
+                : safeDeltaPct(combinedGrossUSD, prevGlobalGrossUSD))
+    }
+    loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
+    formatter={moneyPerUnitFormatter}
+    previousFormatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
+/>
 
-                                            deltaPct={globalUseBi ? biCardKpis.deltas.grossSales : safeDeltaPct(combinedGrossUSD, prevGlobalGrossUSD)}
-                                            loading={loading || shopifyLoading || biLoading}
-                                            formatter={moneyPerUnitFormatter}
-                                            previousFormatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
+<AmazonStatCard
+    label="Net Sales"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.netSales.current
+            : (globalUseBi ? biCardKpis.curr.netSales : globalCurrNetSalesDisp)
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.netSales.previous
+            : (globalUseBi ? biCardKpis.prev.netSales : globalPrevNetSalesDisp)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.netSales.deltaPct
+            : (globalUseBi
+                ? biCardKpis.deltas.netSales
+                : safeDeltaPct(globalCurrNetSalesDisp, globalPrevNetSalesDisp))
+    }
+    loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
+    formatter={moneyPerUnitFormatter}
+    previousFormatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
+/>
 
-                                            // className="border-[#ED9F50] bg-[#ED9F504D]"
-                                            className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
-                                        />
+<AmazonStatCard
+    label="ASP"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.asp.current
+            : (globalUseBi ? biCardKpis.curr.asp : globalCurrAspDisp)
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.asp.previous
+            : (globalUseBi ? biCardKpis.prev.asp : globalPrevAspDisp)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.asp.deltaPct
+            : (globalUseBi
+                ? biCardKpis.deltas.asp
+                : safeDeltaPct(globalCurrAspDisp, globalPrevAspDisp))
+    }
+    loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading)}
+    formatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
+/>
 
+<AmazonStatCard
+    label="Cost of Ads"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.costOfAds.current
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_current_advertising ?? 0,
+                        biSourceCurrency
+                    )
+                    : 0)
+                : globalCurrAdsDisp
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.costOfAds.previous
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_previous_advertising ?? 0,
+                        biSourceCurrency
+                    )
+                    : 0)
+                : globalPrevAdsDisp
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.costOfAds.deltaPct
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? safeDeltaPct(
+                        convertToDisplayCurrency(
+                            biAlignedTotals?.total_current_advertising ?? 0,
+                            biSourceCurrency
+                        ),
+                        convertToDisplayCurrency(
+                            biAlignedTotals?.total_previous_advertising ?? 0,
+                            biSourceCurrency
+                        )
+                    )
+                    : null)
+                : globalAdsDeltaPct
+    }
+    loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
+    formatter={formatDisplayAmount}
+    previousFormatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#C49466] border-t-4 border-t-[#C49466]"
+/>
 
-                                        <AmazonStatCard
-                                            label="Net Sales"
-                                            current={globalUseBi ? biCardKpis.curr.netSales : globalCurrNetSalesDisp}
-                                            previous={globalUseBi ? biCardKpis.prev.netSales : globalPrevNetSalesDisp}
+<AmazonStatCard
+    label="TACoS"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.tacos.current
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? (() => {
+                        const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                        const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                        return sales > 0 ? (ads / sales) * 100 : 0;
+                    })()
+                    : 0)
+                : globalCurrRoasPct
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.tacos.previous
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? (() => {
+                        const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                        const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                        return sales > 0 ? (ads / sales) * 100 : 0;
+                    })()
+                    : 0)
+                : globalPrevRoasPct
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.tacos.deltaPct
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? deltaPctAbs(
+                        (() => {
+                            const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                            const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                            return sales > 0 ? (ads / sales) * 100 : 0;
+                        })(),
+                        (() => {
+                            const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                            const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                            return sales > 0 ? (ads / sales) * 100 : 0;
+                        })()
+                    )
+                    : null)
+                : deltaPctAbs(globalCurrRoasPct, globalPrevRoasPct)
+    }
+    inverseDelta
+    loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
+    formatter={fmtPct2}
+    bottomLabel={prevLabel}
+    className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
+/>
 
-                                            deltaPct={globalUseBi ? biCardKpis.deltas.netSales : safeDeltaPct(globalCurrNetSalesDisp, globalPrevNetSalesDisp)}
-                                            loading={loading || shopifyLoading || biLoading}
-                                            formatter={moneyPerUnitFormatter}
-                                            previousFormatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#75BBDA] bg-[#75BBDA4D]"
-                                            className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
-                                        />
+<AmazonStatCard
+    label="CM2 Profit"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.cm2Profit.current
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                        biSourceCurrency
+                    )
+                    : 0)
+                : globalCurrCm2Disp
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.cm2Profit.previous
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.previous_cm2_profit ?? 0,
+                        biSourceCurrency
+                    )
+                    : 0)
+                : globalPrevCm2Disp
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.cm2Profit.deltaPct
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? safeDeltaPct(
+                        biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                        biAlignedTotals?.previous_cm2_profit ?? 0
+                    )
+                    : null)
+                : safeDeltaPct(globalCurrCm2Disp, globalPrevCm2Disp)
+    }
+    loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
+    formatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
+/>
 
-                                        <AmazonStatCard
-                                            label="ASP"
-                                            current={globalUseBi ? biCardKpis.curr.asp : globalCurrAspDisp}
-                                            previous={globalUseBi ? biCardKpis.prev.asp : globalPrevAspDisp}
-                                            deltaPct={
-                                                globalUseBi
-                                                    ? biCardKpis.deltas.asp
-                                                    : safeDeltaPct(globalCurrAspDisp, globalPrevAspDisp)
-                                            }
-                                            loading={loading || shopifyLoading || biLoading}
-                                            formatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#B75A5A] bg-[#B75A5A4D]"
-                                            className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
-                                        />
-
-                                        <AmazonStatCard
-                                            label="Cost of Ads"
-                                            current={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? convertToDisplayCurrency(
-                                                            biAlignedTotals?.total_current_advertising ?? 0,
-                                                            biSourceCurrency
-                                                        )
-                                                        : 0)
-                                                    : globalCurrAdsDisp
-                                            }
-                                            previous={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? convertToDisplayCurrency(
-                                                            biAlignedTotals?.total_previous_advertising ?? 0,
-                                                            biSourceCurrency
-                                                        )
-                                                        : 0)
-                                                    : globalPrevAdsDisp
-                                            }
-                                            deltaPct={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? safeDeltaPct(
-                                                            // delta should be computed on converted values (home currency) to avoid FX noise
-                                                            convertToDisplayCurrency(
-                                                                biAlignedTotals?.total_current_advertising ?? 0,
-                                                                biSourceCurrency
-                                                            ),
-                                                            convertToDisplayCurrency(
-                                                                biAlignedTotals?.total_previous_advertising ?? 0,
-                                                                biSourceCurrency
-                                                            )
-                                                        )
-                                                        : null)
-                                                    : globalAdsDeltaPct
-                                            }
-                                            loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
-                                            formatter={formatDisplayAmount}
-                                            previousFormatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#C49466] bg-[#C494664D]"
-                                            className="border-[#C49466] border-t-4 border-t-[#C49466]"
-                                        />
-
-                                        <AmazonStatCard
-                                            label="TACoS"
-                                            current={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? (() => {
-                                                            const ads = biAlignedTotals?.total_current_advertising ?? 0;
-                                                            const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                                            return sales > 0 ? (ads / sales) * 100 : 0;
-                                                        })()
-                                                        : 0)
-                                                    : globalCurrRoasPct
-                                            }
-                                            previous={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? (() => {
-                                                            const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                                                            const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                                                            return sales > 0 ? (ads / sales) * 100 : 0;
-                                                        })()
-                                                        : 0)
-                                                    : globalPrevRoasPct
-                                            }
-                                            deltaPct={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? deltaPctAbs(
-                                                            (() => {
-                                                                const ads = biAlignedTotals?.total_current_advertising ?? 0;
-                                                                const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                                                return sales > 0 ? (ads / sales) * 100 : 0;
-                                                            })(),
-                                                            (() => {
-                                                                const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                                                                const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                                                                return sales > 0 ? (ads / sales) * 100 : 0;
-                                                            })()
-                                                        )
-                                                        : null)
-                                                    : deltaPctAbs(globalCurrRoasPct, globalPrevRoasPct)
-                                            }
-                                            inverseDelta
-                                            loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
-                                            formatter={fmtPct2}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#3A8EA4] bg-[#3A8EA44D]"
-                                            className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
-                                        />
-
-
-                                        <AmazonStatCard
-                                            label="CM2 Profit"
-                                            current={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? convertToDisplayCurrency(biAlignedTotals?.total_current_profit_cm2 ?? 0, biSourceCurrency)
-                                                        : 0)
-                                                    : globalCurrCm2Disp
-                                            }
-                                            previous={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? convertToDisplayCurrency(biAlignedTotals?.previous_cm2_profit ?? 0, biSourceCurrency)
-                                                        : 0)
-                                                    : globalPrevCm2Disp
-                                            }
-
-                                            deltaPct={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? safeDeltaPct(
-                                                            biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                                            biAlignedTotals?.previous_cm2_profit ?? 0
-                                                        )
-                                                        : null)
-                                                    : safeDeltaPct(globalCurrCm2Disp, globalPrevCm2Disp)
-                                            }
-                                            loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
-                                            formatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#B8C78C] bg-[#B8C78C4D]"
-                                            className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
-                                        />
-
-
-                                        <AmazonStatCard
-                                            label="CM2 Profit %"
-                                            current={
-                                                globalUseBi
-                                                    ? (globalCm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
-                                                    : curr.profitPct
-                                            }
-                                            previous={
-                                                globalUseBi
-                                                    ? (globalCm2Ready ? (biAlignedTotals?.total_previous_profit_percentage ?? 0) : 0)
-                                                    : prev.profitPct
-                                            }
-                                            deltaPct={
-                                                globalUseBi
-                                                    ? (globalCm2Ready
-                                                        ? deltaPctPoints(
-                                                            biAlignedTotals?.total_current_profit_percentage ?? 0,
-                                                            biAlignedTotals?.total_previous_profit_percentage ?? 0
-                                                        )
-                                                        : null)
-                                                    : deltaPctPoints(curr.profitPct ?? 0, prev.profitPct ?? 0)
-                                            }
-
-
-                                            loading={loading || shopifyLoading || (globalUseBi ? biLoading : false)}
-                                            formatter={fmtPct}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#7B9A6D] bg-[#7B9A6D4D]"
-                                            className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
-                                        />
+<AmazonStatCard
+    label="CM2 Profit %"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.cm2ProfitPct.current
+            : globalUseBi
+                ? (globalCm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
+                : curr.profitPct
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.cm2ProfitPct.previous
+            : globalUseBi
+                ? (globalCm2Ready ? (biAlignedTotals?.total_previous_profit_percentage ?? 0) : 0)
+                : prev.profitPct
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.cm2ProfitPct.deltaPct
+            : globalUseBi
+                ? (globalCm2Ready
+                    ? deltaPctPoints(
+                        biAlignedTotals?.total_current_profit_percentage ?? 0,
+                        biAlignedTotals?.total_previous_profit_percentage ?? 0
+                    )
+                    : null)
+                : deltaPctPoints(curr.profitPct ?? 0, prev.profitPct ?? 0)
+    }
+    loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
+    formatter={fmtPct}
+    bottomLabel={prevLabel}
+    className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
+/>
 
 
                                     </div>
+                                    </DummyPreviewWrapper>
                                 </div>
                             </div>
                         )}
@@ -4704,255 +5087,302 @@ export default function DashboardPage() {
                                             </div>
                                         )}
                                     </div>
-
+<DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy KPI Preview">
                                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
 
-                                        <AmazonStatCard
-                                            label="Units"
-                                            current={useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0)}
-                                            previous={useBiForAmazonCards ? biCardKpis.prev.units : prev.quantity}
-                                            deltaPct={useBiForAmazonCards ? biCardKpis.deltas.units : deltas.quantityPct}
-                                            loading={loading || biLoading}
-                                            formatter={fmtInt}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#FDD36F] bg-[#FDD36F4D]"
-                                            className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
+                                       <AmazonStatCard
+    label="Units"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.units.current
+            : (useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0))
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.units.previous
+            : (useBiForAmazonCards ? biCardKpis.prev.units : prev.quantity)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.units.deltaPct
+            : (useBiForAmazonCards ? biCardKpis.deltas.units : deltas.quantityPct)
+    }
+    loading={!shouldShowDummyUi && (loading || biLoading)}
+    formatter={fmtInt}
+    bottomLabel={prevLabel}
+    className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
+/>
 
-                                        />
+<AmazonStatCard
+    label="Gross Sales"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.grossSales.current
+            : showLiveBI && rangeActive
+                ? biCardKpis.curr.grossSales
+                : convertToDisplayCurrency(uk.grossSalesGBP ?? 0, amazonDataCurrency)
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.grossSales.previous
+            : showLiveBI && rangeActive
+                ? biCardKpis.prev.grossSales
+                : convertToDisplayCurrency(prev.grossSales ?? 0, amazonDataCurrency)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.grossSales.deltaPct
+            : (useBiForAmazonCards
+                ? biCardKpis.deltas.grossSales
+                : safeDeltaPct(uk.grossSalesGBP ?? 0, prev.grossSales ?? 0))
+    }
+    loading={!shouldShowDummyUi && (loading || biLoading)}
+    formatter={moneyPerUnitFormatter}
+    previousFormatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
+/>
 
-                                        <AmazonStatCard
-                                            label="Gross Sales"
-                                            current={
-                                                showLiveBI && rangeActive
-                                                    ? biCardKpis.curr.grossSales                 // ✅ no conversion
-                                                    : convertToDisplayCurrency(uk.grossSalesGBP ?? 0, amazonDataCurrency)
-                                            }
-                                            previous={
-                                                showLiveBI && rangeActive
-                                                    ? biCardKpis.prev.grossSales                 // ✅ no conversion
-                                                    : convertToDisplayCurrency(prev.grossSales ?? 0, amazonDataCurrency)
-                                            }
-                                            deltaPct={useBiForAmazonCards ? biCardKpis.deltas.grossSales : safeDeltaPct(uk.grossSalesGBP ?? 0, prev.grossSales ?? 0)}
-                                            loading={loading || biLoading}
-                                            formatter={moneyPerUnitFormatter}
-                                            previousFormatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#ED9F50] bg-[#ED9F504D]"
-                                            className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
-                                        />
+<AmazonStatCard
+    label="Net Sales"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.netSales.current
+            : showLiveBI && rangeActive
+                ? biCardKpis.curr.netSales
+                : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.netSales.previous
+            : showLiveBI && rangeActive
+                ? biCardKpis.prev.netSales
+                : convertToDisplayCurrency(prev.netSales, amazonDataCurrency)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.netSales.deltaPct
+            : (useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct)
+    }
+    loading={!shouldShowDummyUi && (loading || biLoading)}
+    formatter={moneyPerUnitFormatter}
+    previousFormatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
+/>
 
-                                        <AmazonStatCard
-                                            label="Net Sales"
-                                            current={
-                                                showLiveBI && rangeActive
-                                                    ? biCardKpis.curr.netSales                   // ✅ no conversion
-                                                    : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)
-                                            }
-                                            previous={
-                                                showLiveBI && rangeActive
-                                                    ? biCardKpis.prev.netSales                   // ✅ no conversion
-                                                    : convertToDisplayCurrency(prev.netSales, amazonDataCurrency)
-                                            }
-                                            deltaPct={useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct}
-                                            loading={loading || biLoading}
-                                            formatter={moneyPerUnitFormatter}
-                                            previousFormatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#75BBDA] bg-[#75BBDA4D]"
-                                            className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
-                                        />
+<AmazonStatCard
+    label="ASP"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.asp.current
+            : showLiveBI && rangeActive
+                ? biCardKpis.curr.asp
+                : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.asp.previous
+            : showLiveBI && rangeActive
+                ? biCardKpis.prev.asp
+                : convertToDisplayCurrency(prev.asp, amazonDataCurrency)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.asp.deltaPct
+            : (useBiForAmazonCards ? biCardKpis.deltas.asp : deltas.aspPct)
+    }
+    loading={!shouldShowDummyUi && (loading || biLoading)}
+    formatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
+/>
 
-                                        <AmazonStatCard
-                                            label="ASP"
-                                            current={
-                                                showLiveBI && rangeActive
-                                                    ? biCardKpis.curr.asp
-                                                    : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)
-                                            }
-                                            previous={
-                                                showLiveBI && rangeActive
-                                                    ? biCardKpis.prev.asp
-                                                    : convertToDisplayCurrency(prev.asp, amazonDataCurrency)
-                                            }
-                                            deltaPct={useBiForAmazonCards ? biCardKpis.deltas.asp : deltas.aspPct}
-                                            loading={loading || biLoading}
-                                            formatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#B75A5A] bg-[#B75A5A4D]"
-                                            className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
-                                        />
+<AmazonStatCard
+    label="Cost of Ads"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.costOfAds.current
+            : useBiForAmazonCards
+                ? (cm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_current_advertising ?? 0,
+                        biSourceCurrency
+                    )
+                    : 0)
+                : adsSpendTotal
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.costOfAds.previous
+            : useBiForAmazonCards
+                ? (cm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_previous_advertising ?? 0,
+                        biSourceCurrency
+                    )
+                    : 0)
+                : amazonPrevAdsDisp
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.costOfAds.deltaPct
+            : useBiForAmazonCards
+                ? (cm2Ready
+                    ? safeDeltaPct(
+                        convertToDisplayCurrency(
+                            biAlignedTotals?.total_current_advertising ?? 0,
+                            biSourceCurrency
+                        ),
+                        convertToDisplayCurrency(
+                            biAlignedTotals?.total_previous_advertising ?? 0,
+                            biSourceCurrency
+                        )
+                    )
+                    : null)
+                : amazonAdsDeltaPct
+    }
+    loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
+    formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
+    previousFormatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#C49466] border-t-4 border-t-[#C49466]"
+/>
 
-                                        <AmazonStatCard
-                                            label="Cost of Ads"
-                                            current={
-                                                useBiForAmazonCards
-                                                    ?
-                                                    (cm2Ready
-                                                        ? convertToDisplayCurrency(
-                                                            biAlignedTotals?.total_current_advertising ?? 0,
-                                                            biSourceCurrency
-                                                        )
-                                                        : 0)
+<AmazonStatCard
+    label="TACoS"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.tacos.current
+            : useBiForAmazonCards
+                ? (cm2Ready
+                    ? (() => {
+                        const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                        return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                    })()
+                    : 0)
+                : amazonCurrRoasPct
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.tacos.previous
+            : useBiForAmazonCards
+                ? (cm2Ready
+                    ? (() => {
+                        const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                        const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                        return sales > 0 ? (ads / sales) * 100 : 0;
+                    })()
+                    : 0)
+                : amazonPrevRoasPct
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.tacos.deltaPct
+            : useBiForAmazonCards
+                ? (cm2Ready
+                    ? deltaPctAbs(
+                        (() => {
+                            const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                            const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                            return sales > 0 ? (ads / sales) * 100 : 0;
+                        })(),
+                        (() => {
+                            const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                            const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                            return sales > 0 ? (ads / sales) * 100 : 0;
+                        })()
+                    )
+                    : null)
+                : deltaPctAbs(amazonCurrRoasPct, amazonPrevRoasPct)
+    }
+    inverseDelta
+    loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
+    formatter={fmtPct2}
+    bottomLabel={prevLabel}
+    className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
+/>
 
-                                                    : adsSpendTotal
+<AmazonStatCard
+    label="CM2 Profit"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.cm2Profit.current
+            : useBiCm2
+                ? (cm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                        rangeCurrency
+                    )
+                    : 0)
+                : cm2Profit
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.cm2Profit.previous
+            : useBiCm2
+                ? (cm2Ready
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_previous_profit_cm2 ?? 0,
+                        rangeCurrency
+                    )
+                    : 0)
+                : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.cm2Profit.deltaPct
+            : useBiCm2
+                ? (cm2Ready
+                    ? safeDeltaPct(
+                        biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                        biAlignedTotals?.total_previous_profit_cm2 ?? 0
+                    )
+                    : null)
+                : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0)
+    }
+    loading={!shouldShowDummyUi && (loading || (useBiCm2 ? biLoading : false))}
+    formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
+    previousFormatter={formatDisplayAmount}
+    bottomLabel={prevLabel}
+    className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
+/>
 
-                                            }
-                                            previous={
-                                                useBiForAmazonCards
-                                                    ? (cm2Ready
-                                                        ? convertToDisplayCurrency(
-                                                            biAlignedTotals?.total_previous_advertising ?? 0,
-                                                            biSourceCurrency
-                                                        )
-                                                        : 0)
-                                                    : amazonPrevAdsDisp
-                                            }
-                                            deltaPct={
-                                                useBiForAmazonCards
-                                                    ? (cm2Ready
-                                                        ? safeDeltaPct(
-                                                            convertToDisplayCurrency(
-                                                                biAlignedTotals?.total_current_advertising ?? 0,
-                                                                biSourceCurrency
-                                                            ),
-                                                            convertToDisplayCurrency(
-                                                                biAlignedTotals?.total_previous_advertising ?? 0,
-                                                                biSourceCurrency
-                                                            )
-                                                        )
-                                                        : null)
-                                                    : amazonAdsDeltaPct
-                                            }
-                                            loading={loading || (useBiForAmazonCards ? biLoading : false)}
-                                            formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
-                                            previousFormatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#C49466] bg-[#C494664D]"
-                                            className="border-[#C49466] border-t-4 border-t-[#C49466]"
-                                        />
-
-                                        <AmazonStatCard
-                                            label="TACoS"
-                                            current={
-                                                useBiForAmazonCards
-                                                    ? (cm2Ready
-                                                        ? (() => {
-                                                            // const ads = biAlignedTotals?.total_current_advertising ?? 0;
-
-                                                            const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                                            return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
-                                                        })()
-                                                        : 0)
-                                                    : amazonCurrRoasPct
-                                            }
-                                            previous={
-                                                useBiForAmazonCards
-                                                    ? (cm2Ready
-                                                        ? (() => {
-                                                            const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                                                            const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                                                            return sales > 0 ? (ads / sales) * 100 : 0;
-                                                        })()
-                                                        : 0)
-                                                    : amazonPrevRoasPct
-                                            }
-                                            deltaPct={
-                                                useBiForAmazonCards
-                                                    ? (cm2Ready
-                                                        ? deltaPctAbs(
-                                                            (() => {
-                                                                const ads = biAlignedTotals?.total_current_advertising ?? 0;
-                                                                const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                                                                return sales > 0 ? (ads / sales) * 100 : 0;
-                                                            })(),
-                                                            (() => {
-                                                                const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                                                                const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                                                                return sales > 0 ? (ads / sales) * 100 : 0;
-                                                            })()
-                                                        )
-                                                        : null)
-                                                    : deltaPctAbs(amazonCurrRoasPct, amazonPrevRoasPct)
-                                            }
-                                            inverseDelta
-                                            loading={loading || (useBiForAmazonCards ? biLoading : false)}
-                                            formatter={fmtPct2}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#3A8EA4] bg-[#3A8EA44D]"
-                                            className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
-                                        />
-
-
-                                        <AmazonStatCard
-                                            label="CM2 Profit"
-                                            current={
-                                                useBiCm2
-                                                    ?
-                                                    (cm2Ready
-                                                        ? convertToDisplayCurrency(biAlignedTotals?.total_current_profit_cm2 ?? 0, rangeCurrency)
-                                                        : 0)
-                                                    : cm2Profit
-                                                // convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency) // ✅ MTD Transactions prev
-                                                // cm2Profit
-                                            }
-                                            previous={
-                                                useBiCm2
-                                                    ? (cm2Ready
-                                                        ? convertToDisplayCurrency(biAlignedTotals?.total_previous_profit_cm2 ?? 0, rangeCurrency)
-                                                        : 0)
-                                                    : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency) // ✅ MTD Transactions prev
-                                            }
-                                            deltaPct={
-                                                useBiCm2
-                                                    ? (cm2Ready
-                                                        ? safeDeltaPct(
-                                                            biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                                            biAlignedTotals?.total_previous_profit_cm2 ?? 0
-                                                        )
-                                                        : null)
-                                                    : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0) // ✅ MTD Transactions delta
-                                            }
-                                            loading={loading || (useBiCm2 ? biLoading : false)}
-                                            formatter={(v) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount)}
-                                            previousFormatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#B8C78C] bg-[#B8C78C4D]"
-                                            className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
-                                        />
-
-                                        <AmazonStatCard
-                                            label="CM2 Profit %"
-                                            current={
-                                                useBiCm2
-                                                    ? (cm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
-                                                    :
-                                                    // (prev.profitPct ?? 0)
-                                                    cm2MarginPctForSummary
-
-                                            }
-                                            previous={
-                                                useBiCm2
-                                                    ? (cm2Ready ? (biAlignedTotals?.total_previous_profit_percentage ?? 0) : 0)
-                                                    : (prev.profitPct ?? 0)
-                                            }
-                                            deltaPct={
-                                                useBiCm2
-                                                    ? (cm2Ready
-                                                        ? deltaPctPoints(
-                                                            biAlignedTotals?.total_current_profit_percentage ?? 0,
-                                                            biAlignedTotals?.total_previous_profit_percentage ?? 0
-                                                        )
-                                                        : null)
-                                                    : deltaPctPoints(curr.profitPct ?? 0, prev.profitPct ?? 0)
-                                            }
-
-                                            loading={loading || (useBiCm2 ? biLoading : false)}
-                                            formatter={fmtPct}
-                                            bottomLabel={prevLabel}
-                                            // className="border-[#7B9A6D] bg-[#7B9A6D4D]"
-                                            className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
-                                        />
+<AmazonStatCard
+    label="CM2 Profit %"
+    current={
+        shouldShowDummyUi
+            ? dummyStatData.cm2ProfitPct.current
+            : useBiCm2
+                ? (cm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
+                : cm2MarginPctForSummary
+    }
+    previous={
+        shouldShowDummyUi
+            ? dummyStatData.cm2ProfitPct.previous
+            : useBiCm2
+                ? (cm2Ready ? (biAlignedTotals?.total_previous_profit_percentage ?? 0) : 0)
+                : (prev.profitPct ?? 0)
+    }
+    deltaPct={
+        shouldShowDummyUi
+            ? dummyStatData.cm2ProfitPct.deltaPct
+            : useBiCm2
+                ? (cm2Ready
+                    ? deltaPctPoints(
+                        biAlignedTotals?.total_current_profit_percentage ?? 0,
+                        biAlignedTotals?.total_previous_profit_percentage ?? 0
+                    )
+                    : null)
+                : deltaPctPoints(curr.profitPct ?? 0, prev.profitPct ?? 0)
+    }
+    loading={!shouldShowDummyUi && (loading || (useBiCm2 ? biLoading : false))}
+    formatter={fmtPct}
+    bottomLabel={prevLabel}
+    className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
+/>
                                     </div>
+                                    </DummyPreviewWrapper>
                                 </div>
 
 
@@ -4963,37 +5393,39 @@ export default function DashboardPage() {
                                         <div className="w-full max-w-full min-w-0">
 
                                             {/* ✅ CASE 1: 202 → processing */}
-                                            {biStatus === "processing" && (
+{!shouldShowDummyUi && biStatus === "processing" && (
                                                 <div className="flex justify-center items-center py-10">
                                                     <Loader label="Preparing your Amazon data, this may take a moment…" />
                                                 </div>
                                             )}
 
-                                            {biStatus === "error" && (
+{!shouldShowDummyUi && biStatus === "error" && (
                                                 <div className="text-center py-10 text-sm text-red-500">
                                                     Taking longer than expected. Please refresh once.
                                                 </div>
                                             )}
 
                                             {/* ✅ CASE 2: 200 but empty */}
-                                            {biStatus === "ready" && !biDailySeriesHome && (
+{!shouldShowDummyUi && biStatus === "ready" && !biDailySeriesHome && (
                                                 <div className="text-center py-10 text-sm text-gray-500">
                                                     No data available for the selected period
                                                 </div>
                                             )}
 
                                             {/* ✅ CASE 3: 200 + data */}
-                                            {biStatus === "ready" && biDailySeriesHome && (
-                                                <LiveBiLineGraph
-                                                    dailySeries={biDailySeriesHome}
-                                                    periods={biPeriods}
-                                                    loading={biUiLoading}
-                                                    error={biError}
-                                                    selectedStartDay={selectedStartDay}
-                                                    selectedEndDay={selectedEndDay}
-                                                    currencySymbol={currencySymbol}
-                                                />
-                                            )}
+                                           {(shouldShowDummyUi || biStatus === "ready") && finalBiDailySeriesHome && (
+    <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Graph Preview">
+        <LiveBiLineGraph
+            dailySeries={finalBiDailySeriesHome}
+            periods={finalBiPeriods}
+            loading={!shouldShowDummyUi && biUiLoading}
+            error={shouldShowDummyUi ? null : biError}
+            selectedStartDay={selectedStartDay}
+            selectedEndDay={selectedEndDay}
+            currencySymbol={currencySymbol}
+        />
+    </DummyPreviewWrapper>
+)}
 
                                         </div>
                                     </div>
@@ -5112,53 +5544,57 @@ export default function DashboardPage() {
 
                     {/* RIGHT COLUMN – Sales Target */}
                     <aside className="col-span-12 lg:col-span-4 order-1 lg:order-2 h-auto min-h-0 self-auto lg:h-full lg:min-h-full lg:self-stretch">
-                        <div className="grid gap-4 h-auto lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
-                            {/* Top card = only as tall as content */}
-                            <div className="w-full self-start">
-                                <SalesTargetStatsCard
-                                    regions={regions}
-                                    value={targetRegion}
-                                    onChange={setTargetRegion}
-                                    hideTabs={isCountryMode}
-                                    homeCurrency={displayCurrency}
-                                    formatHomeK={formatDisplayK}
-                                    todayHome={targets_todayHome}
-                                    mtdHome={targets_mtdHome}
-                                    targetHome={stats_targetHome}
-                                    lastMonthTotalHome={targets_lastMonthTotalHome}
-                                    salesTrendPct={stats_salesTrendPct}
-                                    targetTrendPct={stats_targetTrendPct}
-                                    currentReimbursement={targets_reimbursement.current}
-                                    previousReimbursement={targets_reimbursement.previous}
-                                    biAlignedTotals={biAlignedTotalsHome}
-                                    biEnabled={biCardsReady}
-                                />
-                            </div>
+    <div className="grid gap-4 h-auto lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
 
-                            {/* Bottom card = fills remaining height */}
-                            {/* <div className="w-full min-h-0"> */}
-                            <div className="h-auto lg:h-full lg:sticky lg:top-4 2xl:top-6">
-                                <SalesTargetCard
-                                    data={targetData}
-                                    homeCurrency={displayCurrency}
-                                    convertToHomeCurrency={identityConvert}
-                                    formatHomeK={formatDisplayK}
-                                    todaySales={targets_todayHome}
-                                    targetHome={stats_targetHome}
-                                    mtdHome={targets_mtdHome}
-                                    lastMonthTotalHome={targets_lastMonthTotalHome}
-                                    lastMonthToDateHome={targets_lastMonthToDateHome}
-                                    currentReimbursement={targets_reimbursement.current}
-                                    previousReimbursement={targets_reimbursement.previous}
-                                    biAlignedTotals={biAlignedTotalsHome}
-                                    biEnabled={biCardsReady}
-                                    periodCompletedPct={rangeCompletedPct}
-                                    periodCompletedLabel="Range"
-                                />
-                            </div>
-                            {/* </div> */}
-                        </div>
-                    </aside>
+        {/* Top card */}
+        <div className="w-full self-start">
+            <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Target Preview">
+                <SalesTargetStatsCard
+                    regions={regions}
+                    value={targetRegion}
+                    onChange={setTargetRegion}
+                    hideTabs={isCountryMode}
+                    homeCurrency={displayCurrency}
+                    formatHomeK={formatDisplayK}
+                    todayHome={targets_todayHome}
+                    mtdHome={targets_mtdHome}
+                    targetHome={stats_targetHome}
+                    lastMonthTotalHome={targets_lastMonthTotalHome}
+                    salesTrendPct={stats_salesTrendPct}
+                    targetTrendPct={stats_targetTrendPct}
+                    currentReimbursement={targets_reimbursement.current}
+                    previousReimbursement={targets_reimbursement.previous}
+                    biAlignedTotals={biAlignedTotalsHome}
+                    biEnabled={biCardsReady}
+                />
+            </DummyPreviewWrapper>
+        </div>
+
+        {/* Bottom card */}
+        <div className="h-auto lg:h-full lg:sticky lg:top-4 2xl:top-6">
+            <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Target Preview">
+                <SalesTargetCard
+                    data={targetData}
+                    homeCurrency={displayCurrency}
+                    convertToHomeCurrency={identityConvert}
+                    formatHomeK={formatDisplayK}
+                    todaySales={targets_todayHome}
+                    targetHome={stats_targetHome}
+                    mtdHome={targets_mtdHome}
+                    lastMonthTotalHome={targets_lastMonthTotalHome}
+                    lastMonthToDateHome={targets_lastMonthToDateHome}
+                    currentReimbursement={targets_reimbursement.current}
+                    previousReimbursement={targets_reimbursement.previous}
+                    biAlignedTotals={biAlignedTotalsHome}
+                    biEnabled={biCardsReady}
+                    periodCompletedPct={rangeCompletedPct}
+                    periodCompletedLabel="Range"
+                />
+            </DummyPreviewWrapper>
+        </div>
+
+    </div>
+</aside>
                 </div >
 
             )}
@@ -5171,15 +5607,17 @@ export default function DashboardPage() {
                         className="mt-6 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
                     >
                         <div className="w-full max-w-full min-w-0">
-                            <LiveBiLineGraph
-                                dailySeries={biDailySeriesHome}
-                                periods={biPeriods}
-                                loading={biUiLoading}
-                                error={biError}
-                                selectedStartDay={selectedStartDay}
-                                selectedEndDay={selectedEndDay}
-                                currencySymbol={currencySymbol}
-                            />
+<DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Graph Preview">
+    <LiveBiLineGraph
+        dailySeries={finalBiDailySeriesHome}
+        periods={finalBiPeriods}
+        loading={!shouldShowDummyUi && biUiLoading}
+        error={shouldShowDummyUi ? null : biError}
+        selectedStartDay={selectedStartDay}
+        selectedEndDay={selectedEndDay}
+        currencySymbol={currencySymbol}
+    />
+</DummyPreviewWrapper>
                         </div>
                     </div>
                 )
@@ -5188,24 +5626,27 @@ export default function DashboardPage() {
 
             {activeTab === "summary" && (
                 <div className="w-full overflow-x-hidden">
-                    {summaryLoading || !liveBiPayload ? (
-                        <div className="flex min-h-[300px] items-center justify-center py-12 text-center">
-                            <Loader />
-                        </div>
-                    ) : (
-                        showLiveBI && (
-                            <LiveBusinessClient
-                                countryName={countryName}
-                                sourceCountryName={biCountryName}
-                                ranged="MTD"
-                                month={(currMonthName || "").toLowerCase()}
-                                year={String(currYear)}
-                                initialData={liveBiPayload}
-                                disableAutoFetch
-                                onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
-                            />
-                        )
-                    )}
+                    {shouldShowDummyUi ? (
+    <div className="flex min-h-[300px] items-center justify-center py-12 text-center text-gray-500">
+        Dummy insights preview shown because URL month/year is NA/NA.
+    </div>
+) : summaryLoading || !liveBiPayload ? (
+    <div className="flex min-h-[300px] items-center justify-center py-12 text-center">
+        <Loader />
+    </div>
+) : (
+    showLiveBI && (
+        <LiveBusinessClient
+            countryName={countryName}
+            ranged="MTD"
+            month={(currMonthName || "").toLowerCase()}
+            year={String(currYear)}
+            initialData={liveBiPayload}
+            disableAutoFetch
+            onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
+        />
+    )
+)}
                 </div>
             )}
 
@@ -5250,13 +5691,14 @@ export default function DashboardPage() {
 
                         {error ? (
                             <div className="text-sm text-red-600">{error}</div>
-                        ) : loading && monthlySkuwiseRows.length === 0 ? (
+                        ) : !shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
                             <div className="text-sm text-gray-500">Loading…</div>
                         ) : (
+                            <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Table Preview">
                             <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
                                 <div className="min-w-full">
                                     <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
-                                        rows={monthlySkuwiseRowsForTable}
+                                        rows={finalMonthlySkuwiseRowsForTable}
                                         getRowKey={(row, idx) => (row.isTotal ? "GRAND_TOTAL" : row.isOthers ? "OTHERS" : row.sku || String(idx))}
                                         leftCols={SKUWISE_LEFT_COLS}
                                         groups={SKUWISE_GROUPS}
@@ -5337,7 +5779,7 @@ export default function DashboardPage() {
                                             return (row as any)[colKey] ?? "";
                                         }}
                                         summary={{
-                                            enabled: monthlySkuwiseRowsForTable.length > 0,
+                                            enabled: finalMonthlySkuwiseRowsForTable.length > 0,
 
                                             sections: [
                                                 {
@@ -5459,13 +5901,14 @@ export default function DashboardPage() {
                                     />
                                 </div>
                             </div>
+                            </DummyPreviewWrapper>
                         )}
 
                     </div>
                     <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
                         <div
                             className={[
-                                "grid grid-cols-1 gap-4 items-start min-[1700px]:items-stretch",
+                                "grid grid-cols-1 gap-4 items-stretch",
                                 isMtdPlExpanded ? "lg:grid-cols-1" : "lg:grid-cols-2",
                             ].join(" ")}
                         >
@@ -5570,65 +6013,83 @@ export default function DashboardPage() {
 
                                 <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
                                     <div className="w-full max-w-full min-w-0 h-full">
-                                        <DashboardBargraphCard
-                                            countryName={countryNameForGraph}
-                                            formattedMonthYear={formattedMonthYear}
-                                            currencySymbol={currencySymbol}
-                                            labels={labels}
-                                            values={valuesPatched}
-                                            prevValues={prevValues}
-                                            expanded={isMtdPlExpanded}
-                                            colors={colors}
-                                            loading={loading}
-                                            allValuesZero={allValuesZero}
-                                        />
+                                       <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Chart Preview">
+    <DashboardBargraphCard
+        countryName={countryNameForGraph}
+        formattedMonthYear={formattedMonthYear}
+        currencySymbol={currencySymbol}
+        labels={finalBarLabels}
+        values={finalBarValues}
+        prevValues={finalPrevBarValues}
+        expanded={isMtdPlExpanded}
+        colors={colors}
+        loading={!shouldShowDummyUi && loading}
+        allValuesZero={finalAllValuesZero}
+    />
+</DummyPreviewWrapper>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* RIGHT: CM1 Profit Breakdown Pie (hide when expanded) */}
-                            {!isMtdPlExpanded && (
-                                <div className="min-w-0 h-full flex flex-col">
-                                    <Cm1ProfitBreakdownPie
-                                        title="CM1 Profit Breakdown"
-                                        data={cm1ProfitPieData}
-                                        currency={displayCurrency}
-                                        height={320}
-                                    />
-                                </div>
-                            )}
+ {!isMtdPlExpanded && (
+    <div
+        className={
+            isUsingDummyData
+                ? "min-w-0 h-full flex flex-col opacity-40 pointer-events-none select-none transition-opacity duration-300"
+                : "min-w-0 h-full flex flex-col transition-opacity duration-300"
+        }
+    >
+        <Cm1ProfitBreakdownPie
+            title="CM1 Profit Breakdown"
+            data={finalCm1ProfitPieData}
+            currency={displayCurrency}
+            height={320}
+        />
+    </div>
+)}
                         </div>
                     </div>
                 </>
             )}
 
-            {/* {activeTab === "inventory" && amazonIntegrated && graphRegionToUse === "Global" && (
-                <div id="current-inventory" className="scroll-mt-[80px]">
-                    <CurrentInventorySection
-                        region={graphRegionToUse}
-                        invLoading={invLoading}
-                        invError={invError}
-                        invRows={invRows}
-                        inventoryAlerts={inventoryAlerts}
-                        userData={userData}
-                    />
-                </div>
-            )} */}
-
-            {activeTab === "inventory" && amazonIntegrated && (
-                <div id="current-inventory" className="scroll-mt-[80px]">
-                    <CurrentInventorySection
-                        region={graphRegionToUse}
-                        invLoading={invLoading}
-                        invError={invError}
-                        invRows={invRows}
-                        inventoryAlerts={inventoryAlerts}
-                        userData={userData}
-                    />
-                </div>
-            )}
+            {/* {amazonIntegrated && graphRegionToUse !== "Global" && ( */}
+          {activeTab === "inventory" &&
+  (isUsingDummyData || amazonIntegrated) && (
+  
+    <div id="current-inventory" className="scroll-mt-[80px]">
+      <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Inventory Preview">
+        <CurrentInventorySection
+          region={isUsingDummyData ? "UK" : graphRegionToUse}
+          invLoading={!shouldShowDummyUi && invLoading}
+          invError={shouldShowDummyUi ? "" : invError}
+          invRows={invRows}
+          inventoryAlerts={inventoryAlerts}
+          userData={userData}
+        />
+      </DummyPreviewWrapper>
+    </div>
+)}
 
         </div >
 
     );
 }
+
+
+// {activeTab === "inventory" && amazonIntegrated && (
+//                 <div id="current-inventory" className="scroll-mt-[80px]">
+//                     <CurrentInventorySection
+//                         region={graphRegionToUse}
+//                         invLoading={invLoading}
+//                         invError={invError}
+//                         invRows={invRows}
+//                         inventoryAlerts={inventoryAlerts}
+//                         userData={userData}
+//                     />
+//                 </div>
+//             )}
+
+//         </div >
+
+//     );
+// }

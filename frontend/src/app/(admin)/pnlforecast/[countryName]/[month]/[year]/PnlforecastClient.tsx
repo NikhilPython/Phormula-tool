@@ -585,6 +585,36 @@ const Pnlforecast: React.FC = () => {
     chartImageBase64: dataUrl,
   });
 };
+
+const DummyBlurWrapper = ({
+  enabled,
+  children,
+  badgeText = "Demo Data",
+}: {
+  enabled: boolean;
+  children: React.ReactNode;
+  badgeText?: string;
+}) => {
+  return (
+    <div className="relative w-full rounded-xl">
+      {enabled && (
+        <div className="absolute top-2 right-2 z-10 rounded-md bg-black/70 px-2 py-1 text-[10px] 2xl:text-xs font-medium text-white">
+          {badgeText}
+        </div>
+      )}
+
+      <div
+        className={
+          enabled
+            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
+            : "opacity-100 transition-opacity duration-300"
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
   
   const monthGroup = (
     id: string,
@@ -828,6 +858,7 @@ const Pnlforecast: React.FC = () => {
       )}
 
       {data && chartData.length > 0 && (
+        <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Chart Preview">
   <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between w-full gap-3">
@@ -864,9 +895,11 @@ const Pnlforecast: React.FC = () => {
       </div>
     </div>
   </div>
+  </DummyBlurWrapper>
 )}
 
       {data && (
+         <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Table Preview">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
           <PageBreadcrumb
             pageTitle="Detailed P&L Forecast Data"
@@ -923,6 +956,7 @@ const Pnlforecast: React.FC = () => {
             </div>
           </div>
         </div>
+        </DummyBlurWrapper>
       )}
     </div>
   );

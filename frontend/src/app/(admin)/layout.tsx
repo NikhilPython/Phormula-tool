@@ -88,6 +88,7 @@ import Backdrop from "@/layout/Backdrop";
 import React from "react";
 import { useParams, useRouter } from "next/navigation";
 import ChatbotWidget from "@/components/chatbot/ChatbotWidget";
+import PreviewModeNotice from "@/components/amazon/PreviewModeNotice";
 
 export default function AdminLayout({
   children,
@@ -141,6 +142,7 @@ export default function AdminLayout({
         </div>
 
         <ChatbotWidget />
+        <PreviewModeNotice />
       </div>
     </AuthGuard>
   );
