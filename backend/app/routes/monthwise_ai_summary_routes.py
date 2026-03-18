@@ -1,7 +1,7 @@
 import traceback
 from flask import Blueprint, json, request, jsonify
 import jwt
-from datetime import datetime
+from datetime import datetime, date
 from config import Config
 from app import db
 from app.models.user_models import HistoricAISummary, UserObjective
@@ -10,7 +10,7 @@ from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.history_graph_utils import get_performance_trend
 
 summary_bp = Blueprint("summary_bp", __name__)
-SECRET_KEY = Config.SECRET_KEY
+
 
 ALLOWED_PRIMARY_GOALS = {"profit", "growth", "rank", "inventory_clearance", "balanced"}
 ALLOWED_RISK_LEVELS = {"conservative", "balanced", "aggressive"}
@@ -187,70 +187,23 @@ def summary():
 
 
 
-# @summary_bp.route("/objective", methods=["POST"])
-# def save_user_objective():
-#     auth_header = request.headers.get("Authorization")
-#     if not auth_header or not auth_header.startswith("Bearer "):
-#         return jsonify({"error": "Authorization token is missing or invalid"}), 401
+def get_month_start(value=None):
+    if not value:
+        now = datetime.utcnow()
+        return date(now.year, now.month, 1)
 
-#     token = auth_header.split(" ")[1]
+    if isinstance(value, date):
+        return date(value.year, value.month, 1)
 
-#     try:
-#         payload, user_id, member_id = get_effective_user_id_from_token(token)
-#         user_id = payload.get("user_id")
-#         if not user_id:
-#             return jsonify({"error": "Invalid token payload"}), 401
-
-#         body = request.get_json() or {}
-
-#         # ✅ safe country handling
-#         country_raw = body.get("country", "")
-#         country = country_raw.strip().lower()
-#         if not country:
-#             return jsonify({"error": "country is required"}), 400
-
-#         # ✅ match your model fields
-#         growth_intent = body.get("growth_intent", "balanced")
-#         profit_priority = body.get("profit_priority", "protect_growth")
-#         inventory_clearance_priority = body.get("inventory_clearance_priority", False)
-#         business_context = body.get("business_context")
-
-#         # ✅ upsert (because unique constraint user_id+country)
-#         objective = UserObjective.query.filter_by(user_id=user_id, country=country).first()
-
-#         if objective:
-#             objective.growth_intent = growth_intent
-#             objective.profit_priority = profit_priority
-#             objective.inventory_clearance_priority = inventory_clearance_priority
-#             objective.business_context = business_context
-#         else:
-#             objective = UserObjective(
-#                 user_id=user_id,
-#                 country=country,
-#                 growth_intent=growth_intent,
-#                 profit_priority=profit_priority,
-#                 inventory_clearance_priority=inventory_clearance_priority,
-#                 business_context=business_context,
-#             )
-#             db.session.add(objective)
-
-#         db.session.commit()
-
-#         return jsonify({
-#             "message": "Objective saved successfully",
-#             "objective": {
-#                 "user_id": user_id,
-#                 "country": objective.country,
-#                 "growth_intent": objective.growth_intent,
-#                 "profit_priority": objective.profit_priority,
-#                 "inventory_clearance_priority": objective.inventory_clearance_priority,
-#                 "business_context": objective.business_context,
-#             }
-#         }), 200
-
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({"error": "Server error", "details": str(e)}), 500
+    value = str(value).strip()
+    try:
+        if len(value) == 7:
+            dt = datetime.strptime(value, "%Y-%m")
+        else:
+            dt = datetime.strptime(value, "%Y-%m-%d")
+        return date(dt.year, dt.month, 1)
+    except ValueError:
+        raise ValueError("month must be in 'YYYY-MM' or 'YYYY-MM-DD'")
     
 
 @summary_bp.route("/objective", methods=["POST"])
@@ -264,49 +217,153 @@ def save_user_objective():
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload.get("user_id")
+
         if not user_id:
             return jsonify({"error": "Invalid token payload"}), 401
 
         body = request.get_json() or {}
 
-        # Safe country handling
-        country_raw = body.get("country", "")
-        country = country_raw.strip().lower()
+        # -------- Country --------
+        country = (body.get("country") or "").strip().lower()
         if not country:
             return jsonify({"error": "country is required"}), 400
 
-        # Fields
+        # -------- Month --------
+        try:
+            objective_month = get_month_start(body.get("month"))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+        # -------- Fields --------
         growth_intent = body.get("growth_intent", "balanced")
         profit_priority = body.get("profit_priority", "protect_growth")
         inventory_clearance_priority = body.get("inventory_clearance_priority", False)
         business_context = body.get("business_context")
+        website_url = body.get("website_url")
+        ppt_file_name = body.get("ppt_file_name")
 
-        # ALWAYS create new row
-        objective = UserObjective(
+        # -------- CHECK EXISTING --------
+        existing = UserObjective.query.filter_by(
             user_id=user_id,
             country=country,
+            objective_month=objective_month
+        ).first()
+
+        if existing:
+            # UPDATE
+            existing.growth_intent = growth_intent
+            existing.profit_priority = profit_priority
+            existing.inventory_clearance_priority = inventory_clearance_priority
+            existing.business_context = business_context
+            existing.website_url = website_url
+            existing.ppt_file_name = ppt_file_name
+
+            db.session.commit()
+
+            return jsonify({
+                "message": "Objective updated successfully",
+                "objective": {
+                    "id": existing.id,
+                    "month": existing.objective_month.strftime("%Y-%m"),
+                }
+            }), 200
+
+        # -------- CREATE NEW --------
+        new_obj = UserObjective(
+            user_id=user_id,
+            country=country,
+            objective_month=objective_month,
             growth_intent=growth_intent,
             profit_priority=profit_priority,
             inventory_clearance_priority=inventory_clearance_priority,
             business_context=business_context,
+            website_url=website_url,
+            ppt_file_name=ppt_file_name,
         )
 
-        db.session.add(objective)
+        db.session.add(new_obj)
         db.session.commit()
 
         return jsonify({
             "message": "Objective created successfully",
             "objective": {
-                "id": objective.id,
-                "user_id": user_id,
-                "country": objective.country,
-                "growth_intent": objective.growth_intent,
-                "profit_priority": objective.profit_priority,
-                "inventory_clearance_priority": objective.inventory_clearance_priority,
-                "business_context": objective.business_context,
+                "id": new_obj.id,
+                "month": new_obj.objective_month.strftime("%Y-%m"),
             }
         }), 201
 
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
-        return jsonify({"error": "Server error", "details": str(e)}), 500    
+        return jsonify({"error": "Server error", "details": str(e)}), 500
+    
+
+@summary_bp.route("/objective", methods=["GET"])
+def get_user_objective():
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"error": "Authorization token is missing or invalid"}), 401
+
+    token = auth_header.split(" ")[1]
+
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = payload.get("user_id")
+
+        if not user_id:
+            return jsonify({"error": "Invalid token payload"}), 401
+
+        country = (request.args.get("country") or "").strip().lower()
+        if not country:
+            return jsonify({"error": "country is required"}), 400
+
+        month = request.args.get("month")
+        get_all = str(request.args.get("all", "false")).lower() in ("true", "1", "yes")
+
+        query = UserObjective.query.filter_by(user_id=user_id, country=country)
+
+        # -------- ALL DATA --------
+        if get_all:
+            rows = query.order_by(UserObjective.objective_month.desc()).all()
+
+            return jsonify({
+                "objectives": [
+                    {
+                        "id": r.id,
+                        "month": r.objective_month.strftime("%Y-%m"),
+                        "growth_intent": r.growth_intent,
+                        "profit_priority": r.profit_priority,
+                        "inventory_clearance_priority": r.inventory_clearance_priority,
+                        "business_context": r.business_context,
+                    }
+                    for r in rows
+                ]
+            }), 200
+
+        # -------- SINGLE MONTH --------
+        if month:
+            objective_month = get_month_start(month)
+        else:
+            objective_month = get_month_start()
+
+        row = query.filter_by(objective_month=objective_month).first()
+
+        if not row:
+            return jsonify({"message": "No data found"}), 404
+
+        return jsonify({
+            "objective": {
+                "id": row.id,
+                "month": row.objective_month.strftime("%Y-%m"),
+                "growth_intent": row.growth_intent,
+                "profit_priority": row.profit_priority,
+                "inventory_clearance_priority": row.inventory_clearance_priority,
+                "business_context": row.business_context,
+            }
+        }), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": "Server error", "details": str(e)}), 500
+    
+

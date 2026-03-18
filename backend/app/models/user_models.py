@@ -314,7 +314,6 @@ class LiveAISummary(db.Model):
         return f"<LiveAISummary user_id={self.user_id}, start={self.start_date}, end={self.end_date}>"
 
 
-
 class UserObjective(db.Model):
     __tablename__ = "user_objectives"
     __bind_key__ = "chatbot"
@@ -324,35 +323,27 @@ class UserObjective(db.Model):
     user_id = Column(Integer, nullable=False)
     country = Column(String(50), nullable=False)
 
-    # ---------------- STRATEGIC AXES ----------------
-
     growth_intent = Column(String(50), nullable=False, default="balanced")
-    profit_priority = Column(String(50), nullable=False, default="protect_growth")
+    profit_priority = Column(String(100), nullable=False, default="protect_growth")
     inventory_clearance_priority = Column(Boolean, nullable=False, default=False)
 
-    # ✅ AI generated business overview
     business_context = Column(Text, nullable=True)
-
-    # ✅ NEW: Website URL
     website_url = Column(String(500), nullable=True)
-
-    # ✅ NEW: PPT stored as BYTEA (binary)
     ppt_file_data = Column(db.LargeBinary, nullable=True)
-
-    # ✅ NEW: store filename (important)
     ppt_file_name = Column(String(255), nullable=True)
 
-    created_at = Column(
-        DateTime,
-        nullable=False,
-        default=datetime.utcnow
-    )
+    # first day of month, e.g. 2026-03-01
+    objective_month = Column(Date, nullable=False)
+
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     __table_args__ = (
         db.UniqueConstraint(
             "user_id",
             "country",
-            name="unique_user_country_objective"
+            "objective_month",
+            name="unique_user_country_objective_month"
         ),
     )
 
@@ -360,11 +351,11 @@ class UserObjective(db.Model):
         return (
             f"<UserObjective user_id={self.user_id}, "
             f"country={self.country}, "
-            f"growth_intent={self.growth_intent}, "
-            f"profit_priority={self.profit_priority}, "
-            f"website_url={self.website_url}>"
+            f"objective_month={self.objective_month}, "
+            f"growth_intent={self.growth_intent}>"
         )
-    
+
+
 # ------------------------------------------------- Shopify Models -------------------------------------------------
 
 class ShopifyStore(db.Model):
