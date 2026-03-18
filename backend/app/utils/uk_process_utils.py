@@ -1381,7 +1381,7 @@ def process_skuwise_data(user_id, country, month, year):
                     user_id INTEGER
                 )
             """))
-        for tbl in (target_table_nse):
+        for tbl in (target_table_nse,):
             conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS {target_table_nse} (
                     id SERIAL PRIMARY KEY,
@@ -1960,10 +1960,9 @@ def process_skuwise_data(user_id, country, month, year):
 def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
     engine = create_engine(db_url)
     conn = engine.connect()
-    country = "uk"  
+    country = "uk"
 
     try:
-        # Define quarter months (same logic)
         quarter_months = {
             "quarter1": ["january", "february", "march"],
             "quarter2": ["april", "may", "june"],
@@ -1975,29 +1974,23 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
         quarter_key = None
         months_for_quarter = None
 
-        # ⬇️ yahi logic tha, sirf quarter_key / months_for_quarter store kar liya
         for q_name, months in quarter_months.items():
             if month in months:
-                quarter_key = q_name            # e.g. "quarter2"
-                months_for_quarter = months     # e.g. ["april","may","june"]
+                quarter_key = q_name
+                months_for_quarter = months
                 break
         else:
             print("Invalid month provided.")
             return
 
-        # 4 source tables + unka "country" name jo quarterly table me use hoga
         config_list = [
-            (f"skuwisemonthly_{user_id}_{country}",      "uk"),       # existing (USD)
-            (f"skuwisemonthly_{user_id}_{country}_usd",  "uk_usd"),   # INR
-              # GBP base
+            (f"skuwisemonthly_{user_id}_{country}", "uk"),
+            (f"skuwisemonthly_{user_id}_{country}_usd", "uk_usd"),
         ]
 
-        # ---------- LOOP: same logic har currency table ke liye ----------
         for source_table, logical_country in config_list:
-            
             quarter_table = f"{quarter_key}_{user_id}_{logical_country}_{year}_table"
 
-            # Get only available months from THIS source table
             month_params = {f"m{i}": m for i, m in enumerate(months_for_quarter)}
             placeholders = ', '.join(f":m{i}" for i in range(len(months_for_quarter)))
             available_months_query = text(f"""
@@ -2013,49 +2006,47 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 print(f"No available months found in {source_table} for quarter {quarter_key}.")
                 continue
 
-            # Read full data for selected months from THIS source
             placeholders = ', '.join(['%s'] * len(selected_months))
             query = f"""
                 SELECT "sku",
-                "product_name",
-                "quantity",
-                "return_quantity",
-                "total_quantity",
-                "asp",
-                "gross_sales",
-                "refund_sales",
-                "tex_and_credits",
-                "net_sales",
-                "promotional_rebates",
-                "promotional_rebates_percentage",
-                "cost_of_unit_sold",
-                "selling_fees",
-                "fba_fees",
-                "amazon_fee",
-                "net_taxes",
-                "net_credits",
-                "misc_transaction",
-                "other_transaction_fees",
-                "profit",
-                "unit_wise_profitability",
-                "profit_percentage",
-                "visible_ads",
-                "dealsvouchar_ads",
-                "advertising_total",
-                "platformfeenew",
-                "platform_fee",
-                "platform_fee_inventory_storage",
-                "cm2_profit",
-                "cm2_profit_percentage",
-                "acos",
-                "rembursement_fee",
-                "rembursment_vs_cm2_margins",
-                "reimbursement_vs_sales",
-                "lost_total",
-                "sales_mix",
-                "profit_mix",
-                "user_id"
-
+                       "product_name",
+                       "quantity",
+                       "return_quantity",
+                       "total_quantity",
+                       "asp",
+                       "gross_sales",
+                       "refund_sales",
+                       "tex_and_credits",
+                       "net_sales",
+                       "promotional_rebates",
+                       "promotional_rebates_percentage",
+                       "cost_of_unit_sold",
+                       "selling_fees",
+                       "fba_fees",
+                       "amazon_fee",
+                       "net_taxes",
+                       "net_credits",
+                       "misc_transaction",
+                       "other_transaction_fees",
+                       "profit",
+                       "unit_wise_profitability",
+                       "profit_percentage",
+                       "visible_ads",
+                       "dealsvouchar_ads",
+                       "advertising_total",
+                       "platformfeenew",
+                       "platform_fee",
+                       "platform_fee_inventory_storage",
+                       "cm2_profit",
+                       "cm2_profit_percentage",
+                       "acos",
+                       "rembursement_fee",
+                       "rembursment_vs_cm2_margins",
+                       "reimbursement_vs_sales",
+                       "lost_total",
+                       "sales_mix",
+                       "profit_mix",
+                       "user_id"
                 FROM {source_table}
                 WHERE LOWER(month) IN ({placeholders}) AND year = %s
             """
@@ -2065,50 +2056,46 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 print(f"No data for selected months in {source_table}.")
                 continue
 
-            # ---------- AGGREGATION (same as tumhara) ----------
             sku_grouped = df.groupby('product_name').agg({
-                "sku": "first", 
+                "sku": "first",
                 "quantity": "sum",
-                    "return_quantity": "sum",
-                    "total_quantity": "sum",
-                    "asp": "mean",
-                    "gross_sales": "sum",
-                    "refund_sales": "sum",
-                    "tex_and_credits": "sum",
-                    "net_sales": "sum",
-                    "promotional_rebates": "sum",
-                    "promotional_rebates_percentage": "mean",
-                    "cost_of_unit_sold": "sum",
-                    "selling_fees": "sum",
-                    "fba_fees": "sum",
-                    "amazon_fee": "sum",
-                    "net_taxes": "sum",
-                    "net_credits": "sum",
-                    "misc_transaction": "sum",
-                    "other_transaction_fees": "sum",
-                    "profit": "sum",
-                    "unit_wise_profitability": "mean",
-                    "profit_percentage": "mean",
-                    "visible_ads": "sum",
-                    "dealsvouchar_ads": "sum",
-                    "advertising_total": "sum",
-                    "platformfeenew": "sum",
-                    "platform_fee": "sum",
-                    "platform_fee_inventory_storage": "sum",
-                    "cm2_profit": "sum",
-                    "cm2_profit_percentage": "mean",
-                    "acos": "mean",
-                    "rembursement_fee": "sum",
-                    "rembursment_vs_cm2_margins": "mean",
-                    "reimbursement_vs_sales": "mean",
-                    "lost_total": "sum",
-                    "sales_mix": "mean",
-                    "profit_mix": "mean",
-                    "user_id": "first"
+                "return_quantity": "sum",
+                "total_quantity": "sum",
+                "asp": "mean",
+                "gross_sales": "sum",
+                "refund_sales": "sum",
+                "tex_and_credits": "sum",
+                "net_sales": "sum",
+                "promotional_rebates": "sum",
+                "promotional_rebates_percentage": "mean",
+                "cost_of_unit_sold": "sum",
+                "selling_fees": "sum",
+                "fba_fees": "sum",
+                "amazon_fee": "sum",
+                "net_taxes": "sum",
+                "net_credits": "sum",
+                "misc_transaction": "sum",
+                "other_transaction_fees": "sum",
+                "profit": "sum",
+                "unit_wise_profitability": "mean",
+                "profit_percentage": "mean",
+                "visible_ads": "sum",
+                "dealsvouchar_ads": "sum",
+                "advertising_total": "sum",
+                "platformfeenew": "sum",
+                "platform_fee": "sum",
+                "platform_fee_inventory_storage": "sum",
+                "cm2_profit": "sum",
+                "cm2_profit_percentage": "mean",
+                "acos": "mean",
+                "rembursement_fee": "sum",
+                "rembursment_vs_cm2_margins": "mean",
+                "reimbursement_vs_sales": "mean",
+                "lost_total": "sum",
+                "sales_mix": "mean",
+                "profit_mix": "mean",
+                "user_id": "first"
             }).reset_index()
-
-
-
 
             sku_grouped["product_name"] = sku_grouped["product_name"].astype(str).str.strip()
 
@@ -2132,27 +2119,23 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 lambda row: (row["profit"] / row["net_sales"]) * 100 if row["net_sales"] != 0 else 0,
                 axis=1
             )
-
             sku_grouped["asp"] = sku_grouped.apply(
-                lambda row: (row["net_sales"] / row["quantity"])  if row["quantity"] != 0 else 0,
+                lambda row: (row["net_sales"] / row["quantity"]) if row["quantity"] != 0 else 0,
                 axis=1
             )
             sku_grouped["unit_wise_profitability"] = sku_grouped.apply(
-                lambda row: (row["profit"] / row["quantity"])  if row["quantity"] != 0 else 0,
+                lambda row: (row["profit"] / row["quantity"]) if row["quantity"] != 0 else 0,
                 axis=1
             )
 
             temp = sku_grouped[sku_grouped["product_name"].str.lower() != "total"]
-
             total_sales = abs(temp["net_sales"].sum())
             total_profit = abs(temp["profit"].sum())
-
 
             sku_grouped["profit_mix"] = sku_grouped.apply(
                 lambda row: (row["profit"] / total_profit) * 100 if total_profit != 0 else 0,
                 axis=1
             )
-
             sku_grouped["sales_mix"] = sku_grouped.apply(
                 lambda row: (row["net_sales"] / total_sales) * 100 if total_sales != 0 else 0,
                 axis=1
@@ -2163,73 +2146,65 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
             other_rows = other_rows.sort_values(by="profit", ascending=False)
             sku_grouped = pd.concat([other_rows, total_row], ignore_index=True)
 
-            # ---------- Create + Insert into quarterly table for this currency ----------
             with engine.begin() as conn_inner:
                 conn_inner.execute(text(f"DROP TABLE IF EXISTS {quarter_table}"))
 
                 conn_inner.execute(text(f"""
                     CREATE TABLE IF NOT EXISTS {quarter_table} (
                         id SERIAL PRIMARY KEY,
-
                         sku TEXT,
                         product_name TEXT,
-
                         quantity INTEGER,
                         return_quantity INTEGER,
                         total_quantity INTEGER,
-
                         asp DOUBLE PRECISION,
                         gross_sales DOUBLE PRECISION,
                         refund_sales DOUBLE PRECISION,
                         tex_and_credits DOUBLE PRECISION,
-
                         net_sales DOUBLE PRECISION,
                         promotional_rebates DOUBLE PRECISION,
                         promotional_rebates_percentage DOUBLE PRECISION,
-
                         cost_of_unit_sold DOUBLE PRECISION,
                         selling_fees DOUBLE PRECISION,
                         fba_fees DOUBLE PRECISION,
                         amazon_fee DOUBLE PRECISION,
-
                         net_taxes DOUBLE PRECISION,
                         net_credits DOUBLE PRECISION,
-
                         misc_transaction DOUBLE PRECISION,
                         other_transaction_fees DOUBLE PRECISION,
-
                         profit DOUBLE PRECISION,
                         unit_wise_profitability DOUBLE PRECISION,
                         profit_percentage DOUBLE PRECISION,
-
                         visible_ads DOUBLE PRECISION,
                         dealsvouchar_ads DOUBLE PRECISION,
                         advertising_total DOUBLE PRECISION,
-
                         platformfeenew DOUBLE PRECISION,
                         platform_fee DOUBLE PRECISION,
                         platform_fee_inventory_storage DOUBLE PRECISION,
-
                         cm2_profit DOUBLE PRECISION,
                         cm2_profit_percentage DOUBLE PRECISION,
+                        cm2_margins DOUBLE PRECISION,
                         acos DOUBLE PRECISION,
-
                         rembursement_fee DOUBLE PRECISION,
                         rembursment_vs_cm2_margins DOUBLE PRECISION,
                         reimbursement_vs_sales DOUBLE PRECISION,
-
                         profit_mix DOUBLE PRECISION,
                         sales_mix DOUBLE PRECISION,
                         lost_total DOUBLE PRECISION,
-
                         user_id INTEGER
                     )
                 """))
 
                 sku_grouped.columns = sku_grouped.columns.str.lower()
-                
-
-                sku_grouped.to_sql(quarter_table, conn_inner, if_exists="replace", index=False)
+                sku_grouped.to_sql(
+                    quarter_table,
+                    conn_inner,
+                    if_exists="append",
+                    index=False,
+                    schema="public",
+                    method="multi",
+                    chunksize=1000
+                )
 
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -2238,72 +2213,66 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
 
 
 def process_yearly_skuwise_data(user_id, country, year):
-
     from sqlalchemy import create_engine, text
     import pandas as pd
     import numpy as np
-    # Connect to PostgreSQL database
+
     engine = create_engine(db_url)
     conn = engine.connect()
-    config_list = [
-        (f"skuwisemonthly_{user_id}_{country}",      "uk"),       # USD (pehle se)
-        (f"skuwisemonthly_{user_id}_{country}_usd",  "uk_usd"),   # INR
-        
-    ]
- 
 
-    
+    config_list = [
+        (f"skuwisemonthly_{user_id}_{country}", "uk"),
+        (f"skuwisemonthly_{user_id}_{country}_usd", "uk_usd"),
+    ]
+
     try:
         for source_table, logical_country in config_list:
             quarter_table = f"skuwiseyearly_{user_id}_{logical_country}_{year}_table"
 
-        # Fetch yearly data - using parameterized query for PostgreSQL
             yearly_query = f"""
                 SELECT "sku",
-                "product_name",
-                "quantity",
-                "return_quantity",
-                "total_quantity",
-                "asp",
-                "gross_sales",
-                "refund_sales",
-                "tex_and_credits",
-                "net_sales",
-                "promotional_rebates",
-                "promotional_rebates_percentage",
-                "cost_of_unit_sold",
-                "selling_fees",
-                "fba_fees",
-                "amazon_fee",
-                "net_taxes",
-                "net_credits",
-                "misc_transaction",
-                "other_transaction_fees",
-                "profit",
-                "unit_wise_profitability",
-                "profit_percentage",
-                "visible_ads",
-                "dealsvouchar_ads",
-                "advertising_total",
-                "platformfeenew",
-                "platform_fee",
-                "platform_fee_inventory_storage",
-                "cm2_profit",
-                "cm2_profit_percentage",
-                "acos",
-                "rembursement_fee",
-                "rembursment_vs_cm2_margins",
-                "reimbursement_vs_sales",
-                "lost_total",
-                "sales_mix",
-                "profit_mix",
-                "user_id"
-
+                       "product_name",
+                       "quantity",
+                       "return_quantity",
+                       "total_quantity",
+                       "asp",
+                       "gross_sales",
+                       "refund_sales",
+                       "tex_and_credits",
+                       "net_sales",
+                       "promotional_rebates",
+                       "promotional_rebates_percentage",
+                       "cost_of_unit_sold",
+                       "selling_fees",
+                       "fba_fees",
+                       "amazon_fee",
+                       "net_taxes",
+                       "net_credits",
+                       "misc_transaction",
+                       "other_transaction_fees",
+                       "profit",
+                       "unit_wise_profitability",
+                       "profit_percentage",
+                       "visible_ads",
+                       "dealsvouchar_ads",
+                       "advertising_total",
+                       "platformfeenew",
+                       "platform_fee",
+                       "platform_fee_inventory_storage",
+                       "cm2_profit",
+                       "cm2_profit_percentage",
+                       "acos",
+                       "rembursement_fee",
+                       "rembursment_vs_cm2_margins",
+                       "reimbursement_vs_sales",
+                       "lost_total",
+                       "sales_mix",
+                       "profit_mix",
+                       "user_id"
                 FROM {source_table}
                 WHERE "year" = '{year}'
             """
-        
-        # Execute query directly without parameters argument
+
             try:
                 df = pd.read_sql(yearly_query, conn)
             except Exception as e:
@@ -2313,51 +2282,50 @@ def process_yearly_skuwise_data(user_id, country, year):
             if df.empty:
                 print(f"⚠️ No yearly data found for user={user_id}, country={logical_country}, year={year} in {source_table}")
                 continue
-        
-    
-        # Group by SKU for aggregation
+
             sku_grouped = df.groupby('product_name').agg({
-                    "sku": "first", 
-                
-                    "quantity": "sum",
-                    "return_quantity": "sum",
-                    "total_quantity": "sum",
-                    "asp": "mean",
-                    "gross_sales": "sum",
-                    "refund_sales": "sum",
-                    "tex_and_credits": "sum",
-                    "net_sales": "sum",
-                    "promotional_rebates": "sum",
-                    "promotional_rebates_percentage": "mean",
-                    "cost_of_unit_sold": "sum",
-                    "selling_fees": "sum",
-                    "fba_fees": "sum",
-                    "amazon_fee": "sum",
-                    "net_taxes": "sum",
-                    "net_credits": "sum",
-                    "misc_transaction": "sum",
-                    "other_transaction_fees": "sum",
-                    "profit": "sum",
-                    "unit_wise_profitability": "mean",
-                    "profit_percentage": "mean",
-                    "visible_ads": "sum",
-                    "dealsvouchar_ads": "sum",
-                    "advertising_total": "sum",
-                    "platformfeenew": "sum",
-                    "platform_fee": "sum",
-                    "platform_fee_inventory_storage": "sum",
-                    "cm2_profit": "sum",
-                    "cm2_profit_percentage": "mean",
-                    "acos": "mean",
-                    "rembursement_fee": "sum",
-                    "rembursment_vs_cm2_margins": "mean",
-                    "reimbursement_vs_sales": "mean",
-                    "lost_total": "sum",
-                    "sales_mix": "mean",
-                    "profit_mix": "mean",
-                    "user_id": "first", # or "sum" if you want to repeat user_id for each group
+                "sku": "first",
+                "quantity": "sum",
+                "return_quantity": "sum",
+                "total_quantity": "sum",
+                "asp": "mean",
+                "gross_sales": "sum",
+                "refund_sales": "sum",
+                "tex_and_credits": "sum",
+                "net_sales": "sum",
+                "promotional_rebates": "sum",
+                "promotional_rebates_percentage": "mean",
+                "cost_of_unit_sold": "sum",
+                "selling_fees": "sum",
+                "fba_fees": "sum",
+                "amazon_fee": "sum",
+                "net_taxes": "sum",
+                "net_credits": "sum",
+                "misc_transaction": "sum",
+                "other_transaction_fees": "sum",
+                "profit": "sum",
+                "unit_wise_profitability": "mean",
+                "profit_percentage": "mean",
+                "visible_ads": "sum",
+                "dealsvouchar_ads": "sum",
+                "advertising_total": "sum",
+                "platformfeenew": "sum",
+                "platform_fee": "sum",
+                "platform_fee_inventory_storage": "sum",
+                "cm2_profit": "sum",
+                "cm2_profit_percentage": "mean",
+                "acos": "mean",
+                "rembursement_fee": "sum",
+                "rembursment_vs_cm2_margins": "mean",
+                "reimbursement_vs_sales": "mean",
+                "lost_total": "sum",
+                "sales_mix": "mean",
+                "profit_mix": "mean",
+                "user_id": "first",
             }).reset_index()
+
             sku_grouped["product_name"] = sku_grouped["product_name"].astype(str).str.strip()
+
             sku_grouped["cm2_margins"] = sku_grouped.apply(
                 lambda row: (row["cm2_profit"] / row["net_sales"]) * 100 if row["net_sales"] != 0 else 0,
                 axis=1
@@ -2374,118 +2342,98 @@ def process_yearly_skuwise_data(user_id, country, year):
                 lambda row: (row["rembursement_fee"] / row["net_sales"]) * 100 if row["net_sales"] != 0 else 0,
                 axis=1
             )
-
             sku_grouped["profit_percentage"] = sku_grouped.apply(
                 lambda row: (row["profit"] / row["net_sales"]) * 100 if row["net_sales"] != 0 else 0,
                 axis=1
             )
-
             sku_grouped["asp"] = sku_grouped.apply(
-                lambda row: (row["net_sales"] / row["quantity"])  if row["quantity"] != 0 else 0,
+                lambda row: (row["net_sales"] / row["quantity"]) if row["quantity"] != 0 else 0,
                 axis=1
             )
             sku_grouped["unit_wise_profitability"] = sku_grouped.apply(
-                lambda row: (row["profit"] / row["quantity"])  if row["quantity"] != 0 else 0,
+                lambda row: (row["profit"] / row["quantity"]) if row["quantity"] != 0 else 0,
                 axis=1
             )
 
             temp = sku_grouped[sku_grouped["product_name"].str.lower() != "total"]
-
             total_sales = abs(temp["net_sales"].sum())
             total_profit = abs(temp["profit"].sum())
-
 
             sku_grouped["profit_mix"] = sku_grouped.apply(
                 lambda row: (row["profit"] / total_profit) * 100 if total_profit != 0 else 0,
                 axis=1
             )
-
             sku_grouped["sales_mix"] = sku_grouped.apply(
                 lambda row: (row["net_sales"] / total_sales) * 100 if total_sales != 0 else 0,
                 axis=1
             )
+
             total_row = sku_grouped[sku_grouped["product_name"].str.lower() == "total"]
             other_rows = sku_grouped[sku_grouped["product_name"].str.lower() != "total"]
-
-    # Sort other rows by profit in ascending order
             other_rows = other_rows.sort_values(by="profit", ascending=False)
-
-    # Concatenate the sorted rows with the total row at the end
             sku_grouped = pd.concat([other_rows, total_row], ignore_index=True)
 
-            # Drop existing table if it exists
             conn.execute(text(f"DROP TABLE IF EXISTS {quarter_table}"))
 
-            # Create table with proper PostgreSQL syntax
             create_table_query = f"""
                 CREATE TABLE IF NOT EXISTS {quarter_table} (
                     id SERIAL PRIMARY KEY,
-
                     sku TEXT,
                     product_name TEXT,
-
                     quantity INTEGER,
                     return_quantity INTEGER,
                     total_quantity INTEGER,
-
                     asp DOUBLE PRECISION,
                     gross_sales DOUBLE PRECISION,
                     refund_sales DOUBLE PRECISION,
                     tex_and_credits DOUBLE PRECISION,
-
                     net_sales DOUBLE PRECISION,
                     promotional_rebates DOUBLE PRECISION,
                     promotional_rebates_percentage DOUBLE PRECISION,
-
                     cost_of_unit_sold DOUBLE PRECISION,
                     selling_fees DOUBLE PRECISION,
                     fba_fees DOUBLE PRECISION,
                     amazon_fee DOUBLE PRECISION,
-
                     net_taxes DOUBLE PRECISION,
                     net_credits DOUBLE PRECISION,
-
                     misc_transaction DOUBLE PRECISION,
                     other_transaction_fees DOUBLE PRECISION,
-
                     profit DOUBLE PRECISION,
                     unit_wise_profitability DOUBLE PRECISION,
                     profit_percentage DOUBLE PRECISION,
-
                     visible_ads DOUBLE PRECISION,
                     dealsvouchar_ads DOUBLE PRECISION,
                     advertising_total DOUBLE PRECISION,
-
                     platformfeenew DOUBLE PRECISION,
                     platform_fee DOUBLE PRECISION,
                     platform_fee_inventory_storage DOUBLE PRECISION,
-
                     cm2_profit DOUBLE PRECISION,
                     cm2_profit_percentage DOUBLE PRECISION,
+                    cm2_margins DOUBLE PRECISION,
                     acos DOUBLE PRECISION,
-
                     rembursement_fee DOUBLE PRECISION,
                     rembursment_vs_cm2_margins DOUBLE PRECISION,
                     reimbursement_vs_sales DOUBLE PRECISION,
-
                     profit_mix DOUBLE PRECISION,
                     sales_mix DOUBLE PRECISION,
                     lost_total DOUBLE PRECISION,
-
                     user_id INTEGER
                 )
             """
             conn.execute(text(create_table_query))
-            
-            # Ensure column names match the database (PostgreSQL is case-sensitive)
-            sku_grouped.columns = [col.lower() for col in sku_grouped.columns]
-            
-            # Use to_sql with correct parameters for PostgreSQL
-            
 
-            sku_grouped.to_sql(quarter_table, conn, if_exists="replace", index=False, 
-                            schema="public", method="multi", chunksize=1000)
-            
+            sku_grouped.columns = [col.lower() for col in sku_grouped.columns]
+
+            sku_grouped.to_sql(
+                quarter_table,
+                conn,
+                if_exists="append",
+                index=False,
+                schema="public",
+                method="multi",
+                chunksize=1000
+            )
+
             conn.commit()
 
     except Exception as e:
