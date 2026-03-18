@@ -529,6 +529,38 @@ def send_live_bi_email(
         {html.escape(str(summary_text))}
     </p>
     """
+    portfolio_html = ""
+    if portfolio_recommendation:
+        if isinstance(portfolio_recommendation, (list, tuple)):
+            portfolio_body = "".join(
+                f'<div style="margin-bottom:6px;">• {html.escape(str(item))}</div>'
+                for item in portfolio_recommendation if str(item).strip()
+            )
+        elif isinstance(portfolio_recommendation, dict):
+            portfolio_body = "".join(
+                f'<div style="margin-bottom:6px;"><strong>{html.escape(str(k))}:</strong> {html.escape(str(v))}</div>'
+                for k, v in portfolio_recommendation.items()
+                if str(v).strip()
+            )
+        else:
+            portfolio_body = html.escape(str(portfolio_recommendation))
+
+        portfolio_html = f"""
+        <div style="
+            margin-top:14px;
+            background:#F8FAFC;
+            border:1px solid #E4E7EC;
+            border-radius:10px;
+            padding:14px 16px;
+        ">
+          <div style="font-size:13px; font-weight:700; color:#37455F; margin-bottom:6px;">
+            Portfolio recommendation
+          </div>
+          <div style="font-size:13px; color:#555; line-height:1.7;">
+            {portfolio_body}
+          </div>
+        </div>
+        """
 
     # ---------------------------
     # Helpers
@@ -626,10 +658,10 @@ def send_live_bi_email(
                 if p:
                     journey_points.append(p)
 
-        # -------- Recommendation --------
+                # -------- Recommendation --------
         recommendation = ""
         rm = re.search(
-            r"Recommendation:\s*(.*?)(?=\s+Advertising:|\s+Inventory:|$)",
+            r"Recommendation:\s*(.*?)(?=\s+Advertising:|\s+Inventory(?:\s+action)?:|$)",
             text,
             flags=re.I,
         )
@@ -639,16 +671,16 @@ def send_live_bi_email(
         # -------- Advertising --------
         advertising = ""
         am = re.search(
-            r"Advertising:\s*(.*?)(?=\s+Inventory:|$)",
+            r"Advertising:\s*(.*?)(?=\s+Inventory(?:\s+action)?:|$)",
             text,
             flags=re.I,
         )
         if am:
             advertising = am.group(1).strip()
 
-        # -------- Inventory --------
+        # -------- Inventory / Inventory action --------
         inventory = ""
-        im = re.search(r"Inventory:\s*(.*)$", text, flags=re.I)
+        im = re.search(r"Inventory(?:\s+action)?:\s*(.*)$", text, flags=re.I)
         if im:
             inventory = im.group(1).strip()
 
@@ -669,24 +701,75 @@ def send_live_bi_email(
         delta_value = (m.group(2) or "").strip() if m else ""
 
         is_negative = bool(re.search(r"\(\s*-\s*\d", delta_value))
-        delta_color = "#D92D20" if is_negative else "#16A34A"
+        delta_color = "#E53935" if is_negative else "#56A38D"
 
-        delta_html = (
-            f'<span style="color:{delta_color}; font-weight:600;"> {html.escape(delta_value)}</span>'
-            if delta_value else ""
-        )
+        # short labels so everything stays on one line
+        label_display_map = {
+            "Units": "Units",
+            "Net sales": "Net Sales",
+            "ASP": "ASP",
+            "CM1 profit": "CM1 Profit",
+            "CM1 profit per unit": "CM1 Profit Per Unit",
+        }
+        display_label = label_display_map.get(label, label)
+
+        border_map = {
+            "Units": "#E9B949",
+            "Net sales": "#73B8D8",
+            "ASP": "#C65B5B",
+            "CM1 profit": "#7BA05B",
+            "CM1 profit per unit": "#C78B52",
+        }
+        border_color = border_map.get(label, "#D0D5DD")
 
         return f"""
-        <td valign="top" style="padding:0 8px 8px 0;">
+        <td valign="top" width="20%" style="width:20%; padding:0 8px 0 0;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                 style="border-collapse:separate; background:#F8FAFC; border:1px solid #E5E7EB; border-radius:8px;">
+                 style="
+                    width:100%;
+                    border-collapse:separate;
+                    background:#F3F4F6;
+                    border:1px solid {border_color};
+                    border-top:3px solid {border_color};
+                    border-radius:10px;
+                    height:88px;
+                 ">
             <tr>
-              <td style="padding:7px 9px; text-align:left; vertical-align:top;">
-                <div style="font-size:11px; line-height:1.2; color:#667085; font-weight:700; margin-bottom:3px;">
-                  {html.escape(label)}
+              <td style="padding:10px 12px 8px 12px; vertical-align:top; text-align:left; height:88px;">
+                <div style="
+                    font-size:12px;
+                    line-height:1.15;
+                    color:#414042;
+                    font-weight:500;
+                    white-space:nowrap;
+                    overflow:hidden;
+                    text-overflow:ellipsis;
+                    margin-bottom:8px;
+                ">
+                  {html.escape(display_label)}
                 </div>
-                <div style="font-size:12px; line-height:1.25; font-weight:600;">
-                  <span style="color:#414042;">{html.escape(main_value)}</span>{delta_html}
+
+                <div style="
+                    font-size:17px;
+                    line-height:1.2;
+                    font-weight:700;
+                    color:#414042;
+                    white-space:nowrap;
+                    overflow:hidden;
+                    text-overflow:ellipsis;
+                    margin-bottom:8px;
+                ">
+                  {html.escape(main_value)}
+                </div>
+
+                <div style="
+                    font-size:11px;
+                    line-height:1.15;
+                    font-weight:700;
+                    color:{delta_color};
+                    white-space:nowrap;
+                ">
+                  {html.escape(delta_value)}
                 </div>
               </td>
             </tr>
@@ -705,7 +788,8 @@ def send_live_bi_email(
         metrics_html = ""
         if metric_cells:
             metrics_html = f"""
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                   style="width:100%; table-layout:fixed; margin:0 0 18px 0;">
               <tr>
                 {''.join(metric_cells)}
               </tr>
@@ -727,7 +811,7 @@ def send_live_bi_email(
             )
 
             journey_html = f"""
-            <div style="font-size:11px; font-weight:800; color:#667085; text-transform:uppercase; margin:14px 0 8px 0; letter-spacing:0.4px;">
+            <div style="font-size:13px; font-weight:700; color:#37455F; margin:14px 0 8px 0;">
               Performance Journey
             </div>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -743,7 +827,7 @@ def send_live_bi_email(
 
             return f"""
             <div style="margin-top:12px;">
-              <div style="font-size:11px; font-weight:800; color:#667085; text-transform:uppercase; letter-spacing:0.3px; margin-bottom:6px;">
+              <div style="font-size:13px; font-weight:700; color:#37455F; margin-bottom:6px;">
                 {html.escape(title)}
               </div>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -900,80 +984,115 @@ def send_live_bi_email(
       <meta charset="UTF-8">
       <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;800&display=swap" rel="stylesheet">
     </head>
-    <body style="font-family:'Lato', Arial, sans-serif; background:#f4f4f4; padding:20px;">
-      <div style="max-width:780px; margin:0 auto; background:#fff;
-           padding:28px; border-radius:10px; border:2px solid #5EA68E; box-sizing:border-box;">
+    <body style="font-family:'Lato', Arial, sans-serif; background:#f4f4f4; padding:20px; margin:0;">
+      <div style="
+           max-width:780px;
+           margin:0 auto;
+           background:#fff;
+           border:1px solid #D0D5DD;
+           box-sizing:border-box;
+           overflow:hidden;
+      ">
 
-        <img src="https://i.postimg.cc/43T3k86Z/logo.png"
-             style="width:180px; display:block; margin:0 auto 16px;" />
+        <!-- Top green header -->
+        <div style="
+          background:#7FB5A5;
+          padding:18px 24px;
+        ">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td style="vertical-align:middle; text-align:left;">
+                <div style="font-size:28px; font-weight:300; color:#FFFFFF; letter-spacing:1px;">
+                  |p|
+                </div>
+              </td>
+              <td style="vertical-align:middle; text-align:right;">
+                <div style="font-size:16px; color:#F8EDCF; font-weight:500;">
+                  Business Insights Report
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
 
-        <h2 style="text-align:center; color:#37455F;">
-          Live MTD vs Previous Period – Business Insights
-        </h2>
+        <!-- Main content -->
+        <div style="padding:34px 32px 28px 32px; text-align:center;">
 
-        <div style="text-align:center; margin-bottom:16px;">
+          <!-- Brand -->
+          <div style="font-size:60px; line-height:1; font-weight:300; color:#2F6476; margin-bottom:8px;">
+            |phormula|
+          </div>
+
+          <div style="font-size:20px; color:#414042; font-weight:500; margin-bottom:24px;">
+            Live MTD vs Previous Period – Business Insights
+          </div>
+
+          <!-- Combined pill -->
           <div style="
-            font-size:18px;
-            font-weight:700;
-            color:#37455F;
-            background:#EAF3F0;
             display:inline-block;
-            padding:6px 16px;
-            border-radius:20px;
-            margin-bottom:8px;">
-            Country: {html.escape(str(country).upper())}
+            background:#D1D3D4;
+            border-radius:24px;
+            overflow:hidden;
+            margin-bottom:30px;
+          ">
+            <span style="
+              display:inline-block;
+              padding:10px 20px;
+              font-size:16px;
+              font-weight:700;
+              color:#414042;
+              border-right:1px solid #B8BABC;
+            ">
+              {html.escape(str(country).upper())}
+            </span>
+            <span style="
+              display:inline-block;
+              padding:10px 20px;
+              font-size:16px;
+              font-weight:500;
+              color:#414042;
+            ">
+              {html.escape(str(prev_label))} vs {html.escape(str(curr_label))}
+            </span>
           </div>
 
-          <div style="margin-top:10px;">
-            <span style="
-              font-size:14px;
-              font-weight:600;
-              color:#37455F;
-              background:#F3F4F6;
-              padding:4px 10px;
-              border-radius:12px;
-              margin-right:6px;
-              display:inline-block;">
-              Previous: {html.escape(str(prev_label))}
-            </span>
+          <hr style="margin:14px 0 26px 0; border:none; border-top:1px solid #D0D5DD;" />
 
-            <span style="
-              font-size:14px;
-              font-weight:600;
-              color:#ffffff;
-              background:#37455F;
-              padding:4px 10px;
-              border-radius:12px;
-              display:inline-block;">
-              Current: {html.escape(str(curr_label))}
-            </span>
+          <!-- Summary section -->
+          <div style="text-align:left;">
+            <h3 style="color:#37455F; margin:0 0 12px 0; font-size:18px;">
+              Overall Summary
+            </h3>
+
+            <div style="font-size:14px; color:#555; margin-bottom:8px;">
+              {summary_html}
+              {portfolio_html}
+            </div>
+          </div>
+
+          <!-- Recommendation section -->
+          <div style="text-align:left; margin-top:28px;">
+            <h3 style="color:#37455F; margin:0 0 14px 0; font-size:18px;">
+              Recommendation
+            </h3>
+
+            {sku_section_html}
+          </div>
+
+          {deep_link_html}
+
+          <div style="text-align:left; margin-top:24px;">
+            <p style="font-size:12px; color:#999; margin:0 0 6px 0;">
+              This email was auto-generated from Live BI.
+            </p>
+            <p style="font-size:12px; color:#999; margin:0;">
+              Support: <a href="mailto:care@phormula.io" style="color:#37455F;">care@phormula.io</a>
+            </p>
           </div>
         </div>
 
-        <hr style="margin:20px 0; border:none; border-top:1px solid #eee;" />
-
-        <h3 style="color:#37455F; display:flex; align-items:center;">
-          <span style="margin-left:8px;">Overall Summary</span>
-        </h3>
-
-        <div style="font-size:14px; color:#555; margin-bottom:8px;">
-          {summary_html}
-        </div>
-
-        <h3 style="color:#37455F; margin-top:28px;">
-          Recommendation
-        </h3>
-
-        {sku_section_html}
-
-        {deep_link_html}
-
-        <p style="font-size:12px; color:#999; margin-top:24px;">
-          This email was auto-generated from Live BI.
-        </p>
-        <p style="font-size:12px; color:#999;">
-          Support: <a href="mailto:care@phormula.io">care@phormula.io</a>
-        </p>
+        <!-- Bottom green footer strip -->
+        <div style="background:#7FB5A5; height:26px;"></div>
       </div>
     </body>
     </html>

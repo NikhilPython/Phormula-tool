@@ -1267,6 +1267,7 @@ def live_mtd_vs_previous():
                             prev_label=prev_label,
                             curr_label=curr_label,
                             deep_link_token=email_token,
+                            portfolio_recommendation=response_payload.get("portfolio_recommendation"),
                         )
 
 
