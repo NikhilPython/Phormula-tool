@@ -313,6 +313,8 @@ class LiveAISummary(db.Model):
     def __repr__(self):
         return f"<LiveAISummary user_id={self.user_id}, start={self.start_date}, end={self.end_date}>"
 
+
+
 class UserObjective(db.Model):
     __tablename__ = "user_objectives"
     __bind_key__ = "chatbot"
@@ -324,17 +326,21 @@ class UserObjective(db.Model):
 
     # ---------------- STRATEGIC AXES ----------------
 
-    # conservative | balanced | aggressive
     growth_intent = Column(String(50), nullable=False, default="balanced")
-
-    # high | protect_growth | sacrifice_short_term
     profit_priority = Column(String(50), nullable=False, default="protect_growth")
-
-    # True if user wants to dilute 180+ day inventory
     inventory_clearance_priority = Column(Boolean, nullable=False, default=False)
 
-    # Free text business strategy context
+    # ✅ AI generated business overview
     business_context = Column(Text, nullable=True)
+
+    # ✅ NEW: Website URL
+    website_url = Column(String(500), nullable=True)
+
+    # ✅ NEW: PPT stored as BYTEA (binary)
+    ppt_file_data = Column(db.LargeBinary, nullable=True)
+
+    # ✅ NEW: store filename (important)
+    ppt_file_name = Column(String(255), nullable=True)
 
     created_at = Column(
         DateTime,
@@ -355,7 +361,8 @@ class UserObjective(db.Model):
             f"<UserObjective user_id={self.user_id}, "
             f"country={self.country}, "
             f"growth_intent={self.growth_intent}, "
-            f"profit_priority={self.profit_priority}>"
+            f"profit_priority={self.profit_priority}, "
+            f"website_url={self.website_url}>"
         )
     
 # ------------------------------------------------- Shopify Models -------------------------------------------------

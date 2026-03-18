@@ -225,50 +225,7 @@ def fetch_monthwise_series(conn, user_id, country, months, year):
     }
 
 
-# ---------- MAIN FUNCTION ----------
 
-# def get_performance_trend(user_id, country, period, timeline, year):
-#     targets = build_targets(period, timeline, year)
-
-#     result = {
-#         "xType": None,
-#         "x": [],          # only used for monthly daily chart
-#         "series": []
-#     }
-
-#     with phormula_engine.connect() as conn:
-#         for t in targets:
-#             if t["type"] == "monthly":
-#                 data = fetch_monthly_daily(conn, user_id, country, t["month"], t["year"])
-
-#             elif t["type"] == "quarterly":
-#                 months = QUARTER_MONTHS[t["quarter"]]
-#                 data = fetch_monthwise_series(conn, user_id, country, months, t["year"])
-
-#             else:  # yearly
-#                 data = fetch_monthwise_series(conn, user_id, country, range(1, 13), t["year"])
-
-#             if not data:
-#                 continue
-
-#             # Set xType once
-#             if result["xType"] is None:
-#                 result["xType"] = data["xType"]
-
-#             # ✅ Only monthly needs x-axis list (days 1..N)
-#             if data["xType"] == "day" and not result["x"]:
-#                 result["x"] = data["x"]
-
-#             result["series"].append({
-#                 "label": t["label"],
-#                 "net_sales": data["net_sales"],  # for month charts: this is a dict {"Feb": 123}
-#                 "units": data["units"],          # for month charts: dict {"Feb": 45}
-#             })
-
-#     if result["xType"] is None:
-#         result["xType"] = "day" if period == "monthly" else "month"
-
-#     return result
 def get_performance_trend(user_id, country, period, timeline, year):
     targets = build_targets(period, timeline, year)
 
