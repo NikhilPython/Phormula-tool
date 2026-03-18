@@ -272,13 +272,16 @@ const handlePurchaseOrderAccess = () => {
   };
 
   return (
-    <div className="flex flex-col justify-center items-center font-lato px-4 py-10 relative">
-      <div className="mb-5">
-  <InventoryFlowTabs
-    value={activeTab}
-    onChange={handleTabChange}
-  />
-</div>
+     <div className="font-lato relative">
+
+    {/* Tabs - LEFT TOP */}
+    <div className="w-full px-6 pt-6">
+      <InventoryFlowTabs
+        value={activeTab}
+        onChange={handleTabChange}
+      />
+    </div>
+     <div className="flex justify-center px-4 py-10">
       {isPopupOpen ? (
         <div className="fixed inset-0 z-99999 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
@@ -502,6 +505,7 @@ const handlePurchaseOrderAccess = () => {
 )}
         </div>
       )}
+    </div>
     </div>
   );
 }

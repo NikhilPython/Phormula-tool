@@ -13,6 +13,7 @@ export type UserData = {
   onboarding_complete?: boolean;
   homeCurrency?: string;
   target_sales?: number;
+  amazon_user_exist?: boolean;
 };
 
 

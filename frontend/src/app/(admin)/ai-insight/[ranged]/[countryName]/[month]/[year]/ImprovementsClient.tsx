@@ -253,6 +253,40 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
 
   const effectiveCountry = isPreviewMode ? "global" : countryName;
 
+  const isUsingDummyData = isPreviewMode;
+
+  const DummyBlurWrapper = ({
+  enabled,
+  badgeText = "Dummy Preview",
+  children,
+  className = "",
+}: {
+  enabled: boolean;
+  badgeText?: string;
+  children: React.ReactNode;
+  className?: string;
+}) => {
+  return (
+    <div className={`relative w-full ${className}`}>
+      {enabled && (
+        <div className="absolute right-2 top-2 z-20 rounded-md bg-black/70 px-2 py-1 text-[10px] sm:text-xs text-white shadow">
+          {badgeText}
+        </div>
+      )}
+
+      <div
+        className={
+          enabled
+            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
+            : "opacity-100 transition-opacity duration-300"
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
+
 
   // =========================
   // PREVIEW / DUMMY DATA
@@ -3242,9 +3276,11 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
           </div>
 
           {/* chart */}
-          <div className=" h-[320px] sm:h-[360px] md:h-[400px] lg:h-[420px] w-full mt-2 sm:mt-3">
-            <Line data={totalsLine.data as any} options={totalsLine.options as any} />
-          </div>
+         <DummyBlurWrapper enabled={isUsingDummyData} badgeText="Dummy Profitability Preview">
+  <div className="h-[320px] sm:h-[360px] md:h-[400px] lg:h-[420px] w-full mt-2 sm:mt-3">
+    <Line data={totalsLine.data as any} options={totalsLine.options as any} />
+  </div>
+</DummyBlurWrapper>
 
         </div>
 
@@ -3252,29 +3288,29 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
         {/* ✅ ONE BOX */}
         <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-4">
 
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-            <div>
-              <PageBreadcrumb pageTitle="Units Sold" variant="page" align="left" textSize="2xl" />
-              <div ref={unitsChartRef} className="h-[320px] w-full" />
-            </div>
+         <DummyBlurWrapper enabled={isUsingDummyData} badgeText="Dummy Charts Preview">
+  <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+    <div>
+      <PageBreadcrumb pageTitle="Units Sold" variant="page" align="left" textSize="2xl" />
+      <div ref={unitsChartRef} className="h-[320px] w-full" />
+    </div>
 
-            <div>
-              <PageBreadcrumb pageTitle="Units Sold" variant="page" align="left" textSize="2xl" />
-              <div ref={chartRef} className="h-[320px] w-full" />
-            </div>
+    <div>
+      <PageBreadcrumb pageTitle="Net Sales" variant="page" align="left" textSize="2xl" />
+      <div ref={chartRef} className="h-[320px] w-full" />
+    </div>
 
+    <div className="mt-3">
+      <PageBreadcrumb pageTitle="CM1 Profit" variant="page" align="left" textSize="2xl" />
+      <div ref={profitChartRef} className="h-[320px] w-full" />
+    </div>
 
-            {/* Row 2: Profit */}
-            <div className="mt-3">
-              <PageBreadcrumb pageTitle="CM1 Profit" variant="page" align="left" textSize="2xl" />
-              <div ref={profitChartRef} className="h-[320px] w-full" />
-            </div>
-
-            <div className="mt-3">
-              <PageBreadcrumb pageTitle="Average Selling Price" variant="page" align="left" textSize="2xl" />
-              <div ref={aspChartRef} className="h-[320px] w-full" />
-            </div>
-          </div>
+    <div className="mt-3">
+      <PageBreadcrumb pageTitle="Average Selling Price" variant="page" align="left" textSize="2xl" />
+      <div ref={aspChartRef} className="h-[320px] w-full" />
+    </div>
+  </div>
+</DummyBlurWrapper>
 
           {/* Shared legend bottom center */}
           <div className="mt-3 flex flex-wrap justify-center gap-4 2xl:text-xs text-[10px] font-semibold text-[#414042]">
@@ -3302,6 +3338,7 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
 {(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).some(
   (k) => (categorizedGrowth[k] || []).length > 0
 ) && (
+  <DummyBlurWrapper enabled={isUsingDummyData} badgeText="Dummy SKU Preview">
   <div className="mt-4 rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
     <div className="flex flex-col gap-4 min-w-0">
       {/* MOBILE HEADER */}
@@ -3499,6 +3536,7 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
       </div>
     </div>
   </div>
+  </DummyBlurWrapper>
 )}
       </div>
 
