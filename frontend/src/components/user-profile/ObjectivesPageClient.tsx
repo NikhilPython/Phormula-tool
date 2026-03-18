@@ -573,6 +573,13 @@ export default function ObjectivesPageClient({
     strategicTargetCountry
   );
 
+  const getObjectiveMonth = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    return `${year}-${month}`; // e.g. 2026-03
+  };
+
   const getCurrentMonthYear = () => {
     const now = new Date();
 
@@ -637,6 +644,115 @@ export default function ObjectivesPageClient({
     }
   };
 
+  // const handleBusinessSummarySave = async () => {
+  //   try {
+  //     const website = objectiveDraft.website?.trim();
+  //     const pptFile = objectiveDraft.uploaded_files.find(
+  //       (f) =>
+  //         f.uploadStatus === "ready" &&
+  //         f.rawFile &&
+  //         f.name.toLowerCase().endsWith(".pptx")
+  //     );
+
+  //     let nextBusinessContext = objectiveDraft.business_context;
+
+  //     if (website) {
+  //       if (!pptFile?.rawFile) {
+  //         alert("Please upload a PPTX file.");
+  //         return;
+  //       }
+
+  //       setIsGeneratingSummary(true);
+
+  //       const formData = new FormData();
+  //       formData.append("website", website);
+  //       formData.append("ppt", pptFile.rawFile);
+
+  //       const analyzeRes = await fetch(
+  //         `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
+  //         {
+  //           method: "POST",
+  //           headers: {
+  //             Authorization: `Bearer ${token}`,
+  //           },
+  //           body: formData,
+  //         }
+  //       );
+
+  //       const analyzeJson = await analyzeRes.json();
+
+  //       if (!analyzeRes.ok) {
+  //         throw new Error(
+  //           analyzeJson?.details ||
+  //           analyzeJson?.error ||
+  //           "Failed to analyze website"
+  //         );
+  //       }
+
+  //       nextBusinessContext = analyzeJson?.data?.overview || "";
+  //     }
+
+  //     const { month, year } = getCurrentMonthYear();
+
+  //     // send ONLY business summary related fields
+  //     const objectivePayload = {
+  //       business_context: nextBusinessContext,
+  //       country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
+  //       month,
+  //       year,
+  //     };
+
+  //     const objectiveRes = await fetch(
+  //       `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`,
+  //       {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         body: JSON.stringify(objectivePayload),
+  //       }
+  //     );
+
+  //     const objectiveJson = await objectiveRes.json().catch(() => null);
+
+  //     if (!objectiveRes.ok) {
+  //       throw new Error(objectiveJson?.error || "Failed to save business summary");
+  //     }
+
+  //     const finalObjective = {
+  //       ...objective,
+  //       ...objectiveDraft,
+  //       business_context: nextBusinessContext,
+  //     };
+
+  //     setObjective(finalObjective);
+  //     setObjectiveDraft(finalObjective);
+  //     setIsBusinessSummaryEditMode(false);
+
+  //     localStorage.setItem(
+  //       "user_objective",
+  //       JSON.stringify({
+  //         ...finalObjective,
+  //         uploaded_files: finalObjective.uploaded_files.map((file) => ({
+  //           id: file.id,
+  //           name: file.name,
+  //           size: file.size,
+  //           type: file.type,
+  //           extractedText: file.extractedText,
+  //           uploadStatus: file.uploadStatus,
+  //           error: file.error,
+  //         })),
+  //       })
+  //     );
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     alert(err?.message || "Failed to save business summary");
+  //   } finally {
+  //     setIsGeneratingSummary(false);
+  //   }
+  // };
+
   const handleBusinessSummarySave = async () => {
     try {
       const website = objectiveDraft.website?.trim();
@@ -685,14 +801,12 @@ export default function ObjectivesPageClient({
         nextBusinessContext = analyzeJson?.data?.overview || "";
       }
 
-      const { month, year } = getCurrentMonthYear();
-
-      // send ONLY business summary related fields
       const objectivePayload = {
-        business_context: nextBusinessContext,
         country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
-        month,
-        year,
+        month: getObjectiveMonth(),
+        business_context: nextBusinessContext || "",
+        website_url: website || null,
+        ppt_file_name: pptFile?.name || null,
       };
 
       const objectiveRes = await fetch(
@@ -746,107 +860,105 @@ export default function ObjectivesPageClient({
     }
   };
 
+  // const handleStrategicObjectivesSave = async () => {
+  //   try {
+  //     const nextTarget = Number(objectiveTargetDraft);
 
+  //     if (!Number.isFinite(nextTarget) || nextTarget < 0) {
+  //       alert("Please enter a valid target.");
+  //       return;
+  //     }
 
-  const handleStrategicObjectivesSave = async () => {
-    try {
-      const nextTarget = Number(objectiveTargetDraft);
+  //     const { month, year } = getCurrentMonthYear();
+  //     const countryToSave = (objectiveDraft.country || resolvedTargetCountry).toLowerCase();
 
-      if (!Number.isFinite(nextTarget) || nextTarget < 0) {
-        alert("Please enter a valid target.");
-        return;
-      }
+  //     // send ONLY strategic fields
+  //     const objectivePayload = {
+  //       growth_intent: objectiveDraft.growth_intent,
+  //       profit_priority: objectiveDraft.profit_priority,
+  //       inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
+  //       country: countryToSave,
+  //       month,
+  //       year,
+  //     };
 
-      const { month, year } = getCurrentMonthYear();
-      const countryToSave = (objectiveDraft.country || resolvedTargetCountry).toLowerCase();
+  //     const targetPayload = {
+  //       month,
+  //       year,
+  //       country: countryToSave,
+  //       target_sales: nextTarget,
+  //     };
 
-      // send ONLY strategic fields
-      const objectivePayload = {
-        growth_intent: objectiveDraft.growth_intent,
-        profit_priority: objectiveDraft.profit_priority,
-        inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
-        country: countryToSave,
-        month,
-        year,
-      };
+  //     const [objectiveRes, targetSummaryRes] = await Promise.all([
+  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         body: JSON.stringify(objectivePayload),
+  //       }),
+  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         body: JSON.stringify(targetPayload),
+  //       }),
+  //     ]);
 
-      const targetPayload = {
-        month,
-        year,
-        country: countryToSave,
-        target_sales: nextTarget,
-      };
+  //     const objectiveJson = await objectiveRes.json().catch(() => null);
+  //     const targetSummaryJson = await targetSummaryRes.json().catch(() => null);
 
-      const [objectiveRes, targetSummaryRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(objectivePayload),
-        }),
-        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(targetPayload),
-        }),
-      ]);
+  //     if (!objectiveRes.ok) {
+  //       throw new Error(objectiveJson?.error || "Failed to save objective");
+  //     }
 
-      const objectiveJson = await objectiveRes.json().catch(() => null);
-      const targetSummaryJson = await targetSummaryRes.json().catch(() => null);
+  //     if (!targetSummaryRes.ok) {
+  //       throw new Error(
+  //         targetSummaryJson?.error || "Failed to save monthly target summary."
+  //       );
+  //     }
 
-      if (!objectiveRes.ok) {
-        throw new Error(objectiveJson?.error || "Failed to save objective");
-      }
+  //     await updateProfile({ target_sales: nextTarget } as any).unwrap();
+  //     dispatch(setUser({ target_sales: nextTarget } as any));
 
-      if (!targetSummaryRes.ok) {
-        throw new Error(
-          targetSummaryJson?.error || "Failed to save monthly target summary."
-        );
-      }
+  //     // preserve existing business summary
+  //     const finalObjective = {
+  //       ...objective,
+  //       growth_intent: objectiveDraft.growth_intent,
+  //       profit_priority: objectiveDraft.profit_priority,
+  //       inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
+  //       country: objectiveDraft.country,
+  //     };
 
-      await updateProfile({ target_sales: nextTarget } as any).unwrap();
-      dispatch(setUser({ target_sales: nextTarget } as any));
+  //     setObjective(finalObjective);
+  //     setObjectiveDraft(finalObjective);
+  //     setIsStrategicEditMode(false);
+  //     setObjectiveTargetDraft("");
+  //     setObjectiveEditingPid(null);
 
-      // preserve existing business summary
-      const finalObjective = {
-        ...objective,
-        growth_intent: objectiveDraft.growth_intent,
-        profit_priority: objectiveDraft.profit_priority,
-        inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
-        country: objectiveDraft.country,
-      };
-
-      setObjective(finalObjective);
-      setObjectiveDraft(finalObjective);
-      setIsStrategicEditMode(false);
-      setObjectiveTargetDraft("");
-      setObjectiveEditingPid(null);
-
-      localStorage.setItem(
-        "user_objective",
-        JSON.stringify({
-          ...finalObjective,
-          uploaded_files: finalObjective.uploaded_files.map((file) => ({
-            id: file.id,
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            extractedText: file.extractedText,
-            uploadStatus: file.uploadStatus,
-            error: file.error,
-          })),
-        })
-      );
-    } catch (err: any) {
-      console.error(err);
-      alert(err?.message || "Failed to save section");
-    }
-  };
+  //     localStorage.setItem(
+  //       "user_objective",
+  //       JSON.stringify({
+  //         ...finalObjective,
+  //         uploaded_files: finalObjective.uploaded_files.map((file) => ({
+  //           id: file.id,
+  //           name: file.name,
+  //           size: file.size,
+  //           type: file.type,
+  //           extractedText: file.extractedText,
+  //           uploadStatus: file.uploadStatus,
+  //           error: file.error,
+  //         })),
+  //       })
+  //     );
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     alert(err?.message || "Failed to save section");
+  //   }
+  // };
 
   // const handleInlineObjectiveSave = async () => {
   //   try {
@@ -992,6 +1104,102 @@ export default function ObjectivesPageClient({
   //     setIsGeneratingSummary(false);
   //   }
   // };
+
+  const handleStrategicObjectivesSave = async () => {
+    try {
+      const nextTarget = Number(objectiveTargetDraft);
+
+      if (!Number.isFinite(nextTarget) || nextTarget < 0) {
+        alert("Please enter a valid target.");
+        return;
+      }
+
+      const countryToSave = (objectiveDraft.country || resolvedTargetCountry).toLowerCase();
+
+      const objectivePayload = {
+        country: countryToSave,
+        month: getObjectiveMonth(),
+        growth_intent: objectiveDraft.growth_intent,
+        profit_priority: objectiveDraft.profit_priority,
+        inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
+      };
+
+      const targetPayload = {
+        month: new Date().toLocaleString("en-US", { month: "long" }),
+        year: new Date().getFullYear(),
+        country: countryToSave,
+        target_sales: nextTarget,
+      };
+
+      const [objectiveRes, targetSummaryRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(objectivePayload),
+        }),
+        fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(targetPayload),
+        }),
+      ]);
+
+      const objectiveJson = await objectiveRes.json().catch(() => null);
+      const targetSummaryJson = await targetSummaryRes.json().catch(() => null);
+
+      if (!objectiveRes.ok) {
+        throw new Error(objectiveJson?.error || "Failed to save objective");
+      }
+
+      if (!targetSummaryRes.ok) {
+        throw new Error(
+          targetSummaryJson?.error || "Failed to save monthly target summary."
+        );
+      }
+
+      await updateProfile({ target_sales: nextTarget } as any).unwrap();
+      dispatch(setUser({ target_sales: nextTarget } as any));
+
+      const finalObjective = {
+        ...objective,
+        growth_intent: objectiveDraft.growth_intent,
+        profit_priority: objectiveDraft.profit_priority,
+        inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
+        country: objectiveDraft.country,
+      };
+
+      setObjective(finalObjective);
+      setObjectiveDraft(finalObjective);
+      setIsStrategicEditMode(false);
+      setObjectiveTargetDraft("");
+      setObjectiveEditingPid(null);
+
+      localStorage.setItem(
+        "user_objective",
+        JSON.stringify({
+          ...finalObjective,
+          uploaded_files: finalObjective.uploaded_files.map((file) => ({
+            id: file.id,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            extractedText: file.extractedText,
+            uploadStatus: file.uploadStatus,
+            error: file.error,
+          })),
+        })
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Failed to save section");
+    }
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem("user_objective");
@@ -1506,7 +1714,13 @@ export default function ObjectivesPageClient({
                   }
                 >
                   <div className="h-[420px] w-full">
-                    <ObjectiveMoMChart title="Objective MoM Trend" />
+                    <ObjectiveMoMChart
+                      title="Objective MoM Trend"
+                      country={resolvedTargetCountry}
+                      token={token || ""}
+                      apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
+                      className="h-full w-full"
+                    />
                   </div>
                 </InfoCard>
               </div>

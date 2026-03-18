@@ -1412,6 +1412,20 @@ export default function TargetVsSalesChart({
     );
   }, [chartData, chartMetric]);
 
+  const shouldDuplicateSinglePoint = xAxisData.length === 1;
+
+  const adjustedXAxisData = shouldDuplicateSinglePoint
+    ? [xAxisData[0], ""]
+    : xAxisData;
+
+  const adjustedTargetSeriesData = shouldDuplicateSinglePoint
+    ? [targetSeriesData[0], targetSeriesData[0]]
+    : targetSeriesData;
+
+  const adjustedActualSeriesData = shouldDuplicateSinglePoint
+    ? [actualSeriesData[0], actualSeriesData[0]]
+    : actualSeriesData;
+
   const yAxisName =
     chartMetric === "sales"
       ? currencySymbol
@@ -1423,6 +1437,8 @@ export default function TargetVsSalesChart({
     chartMetric === "sales"
       ? ["Target Set", "Monthwise Sales"]
       : ["Target Set", "Monthwise Units"];
+
+
 
   const option = useMemo(
     () => ({
@@ -1495,7 +1511,7 @@ export default function TargetVsSalesChart({
 
       xAxis: {
         type: "category",
-        data: xAxisData,
+        data: adjustedXAxisData,
         boundaryGap: false,
         axisLine: {
           lineStyle: {
@@ -1551,8 +1567,8 @@ export default function TargetVsSalesChart({
           moveOnMouseMove: true,
           moveOnMouseWheel: true,
           preventDefaultMouseMove: true,
-          startValue: Math.max(0, xAxisData.length - 12),
-          endValue: xAxisData.length - 1,
+          startValue: Math.max(0, adjustedXAxisData.length - 12),
+          endValue: adjustedXAxisData.length - 1,
         },
       ],
 
@@ -1576,7 +1592,7 @@ export default function TargetVsSalesChart({
             color: ORANGE,
             borderWidth: 0,
           },
-          data: targetSeriesData,
+          data: adjustedTargetSeriesData,
         },
         {
           name: chartMetric === "sales" ? "Monthwise Sales" : "Monthwise Units",
@@ -1597,11 +1613,18 @@ export default function TargetVsSalesChart({
             color: GREY,
             borderWidth: 0,
           },
-          data: actualSeriesData,
+          data: adjustedActualSeriesData,
         },
       ],
     }),
-    [actualSeriesData, chartMetric, currencySymbol, targetSeriesData, xAxisData, yAxisName]
+    [
+      adjustedActualSeriesData,
+      adjustedTargetSeriesData,
+      adjustedXAxisData,
+      chartMetric,
+      currencySymbol,
+      yAxisName,
+    ]
   );
 
   if (loading) {
