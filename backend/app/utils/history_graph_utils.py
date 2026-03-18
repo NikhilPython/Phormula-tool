@@ -96,42 +96,67 @@ def build_targets(period: str, timeline: str, year: int):
     raise ValueError(f"Unsupported period: {period}")
 
 
+def get_raw_sales_table(user_id, country, month=None, year=None):
+    country = str(country).strip().lower()
+
+    if country == "global":
+        return f"user_{user_id}_total_country_global_data"
+
+    if month is None or year is None:
+        raise ValueError("month and year are required for non-global raw tables")
+
+    return f"user_{user_id}_{country}_{MONTH_MAP[month]}{year}_data"
+
+
+def get_skuwise_monthly_table(user_id, country, month, year):
+    country = str(country).strip().lower()
+
+    if country == "global":
+        return f"skuwisemonthly_{user_id}_global_{MONTH_MAP[month]}{year}_table"
+
+    return f"skuwisemonthly_{user_id}_{country}_{MONTH_MAP[month]}{year}"
+
+
+
 # ---------- DATA FETCHERS ----------
 
 def fetch_monthly_daily(conn, user_id, country, month, year):
-    table = f"user_{user_id}_{country}_{MONTH_MAP[month]}{year}_data"
+    country = str(country).strip().lower()
+    table = get_raw_sales_table(user_id, country, month, year)
+
     if not table_exists(conn, table):
         return None
 
-    q = f"""
-        SELECT *
-        FROM {table}
-    """
+    if country == "global":
+        q = text(f"""
+            SELECT *
+            FROM public.{table}
+            WHERE EXTRACT(MONTH FROM NULLIF(NULLIF(date_time, '0'), '')::timestamp) = :month
+              AND EXTRACT(YEAR FROM NULLIF(NULLIF(date_time, '0'), '')::timestamp) = :year
+        """)
+        df = pd.read_sql(q, conn, params={"month": month, "year": year})
+    else:
+        q = text(f"""
+            SELECT *
+            FROM public.{table}
+        """)
+        df = pd.read_sql(q, conn)
 
-    df = pd.read_sql(q, conn)
     if df.empty:
         return None
 
-    # Normalize date (required for daily grouping)
     df["__day__"] = pd.to_datetime(df["date_time"], errors="coerce").dt.date
     df = df.dropna(subset=["__day__"])
 
-    # Units rule:
-    # - ONLY Shipment rows
-    # - Quantity coerced safely
     df["__ship_qty__"] = pd.to_numeric(df.get("quantity"), errors="coerce").fillna(0)
     df.loc[
-        ~df.get("type", "")
-          .astype(str)
-          .str.contains("Shipment", case=False, na=False),
+        ~df.get("type", "").astype(str).str.contains("Shipment", case=False, na=False),
         "__ship_qty__"
     ] = 0
 
     rows = []
     for day, g in df.groupby("__day__", sort=True):
-        # Centralized net sales logic
         net_sales_total, _, _ = uk_sales(g)
-
         units_total = float(g["__ship_qty__"].sum())
 
         rows.append({
@@ -140,7 +165,6 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
             "units": units_total
         })
 
-    # Even if no rows (no activity), still return full month with zeros
     last_day = calendar.monthrange(year, month)[1]
     full_days = list(range(1, last_day + 1))
 
@@ -155,7 +179,6 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
     out = pd.DataFrame(rows)
     out["day_num"] = pd.to_datetime(out["day"]).dt.day
 
-    # Create maps and pad missing days with 0
     ns_map = dict(zip(out["day_num"].tolist(), out["net_sales"].tolist()))
     un_map = dict(zip(out["day_num"].tolist(), out["units"].tolist()))
 
@@ -170,34 +193,47 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
     }
 
 def fetch_month_totals(conn, user_id, country, month, year):
-    table = f"skuwisemonthly_{user_id}_{country}_{MONTH_MAP[month]}{year}"
+    country = str(country).strip().lower()
+    table = get_skuwise_monthly_table(user_id, country, month, year)
+
     if not table_exists(conn, table):
         return None
 
-    # ✅ Use the TOTAL row only (pre-calculated overall totals)
-    q = f"""
+    units_col = "quantity" if country == "global" else "total_quantity"
+
+    if country == "global":
+        total_where = "LOWER(COALESCE(product_name, '')) = 'total'"
+        non_total_where = "LOWER(COALESCE(product_name, '')) <> 'total'"
+    else:
+        total_where = """
+            LOWER(COALESCE(sku, '')) = 'total'
+            OR LOWER(COALESCE(product_name, '')) = 'total'
+        """
+        non_total_where = """
+            LOWER(COALESCE(sku, '')) <> 'total'
+            AND LOWER(COALESCE(product_name, '')) <> 'total'
+        """
+
+    q = text(f"""
         SELECT
             COALESCE(net_sales, 0) AS net_sales,
-            COALESCE(total_quantity, 0) AS units
-        FROM {table}
-        WHERE LOWER(COALESCE(sku, '')) = 'total'
-           OR LOWER(COALESCE(product_name, '')) = 'total'
+            COALESCE({units_col}, 0) AS units
+        FROM public."{table}"
+        WHERE {total_where}
         LIMIT 1
-    """
+    """)
 
-    row = conn.execute(text(q)).mappings().first()
+    row = conn.execute(q).mappings().first()
 
-    # If TOTAL row not found, fallback to sum of SKUs excluding TOTAL
     if not row:
-        q2 = f"""
+        q2 = text(f"""
             SELECT
                 COALESCE(SUM(net_sales), 0) AS net_sales,
-                COALESCE(SUM(total_quantity), 0) AS units
-            FROM {table}
-            WHERE LOWER(COALESCE(sku, '')) <> 'total'
-              AND LOWER(COALESCE(product_name, '')) <> 'total'
-        """
-        row2 = conn.execute(text(q2)).mappings().first()
+                COALESCE(SUM({units_col}), 0) AS units
+            FROM public."{table}"
+            WHERE {non_total_where}
+        """)
+        row2 = conn.execute(q2).mappings().first()
         return float(row2["net_sales"]), float(row2["units"])
 
     return float(row["net_sales"]), float(row["units"])
