@@ -368,7 +368,10 @@ export default function ObjectivesPageClient({
   const [editingPid, setEditingPid] = useState<PlatformId | null>(null);
   const [draftTarget, setDraftTarget] = useState<string>("");
   const [isTargetEditMode, setIsTargetEditMode] = useState(false);
-  const [isObjectiveEditMode, setIsObjectiveEditMode] = useState(false);
+
+  const [isBusinessSummaryEditMode, setIsBusinessSummaryEditMode] = useState(false);
+  const [isStrategicEditMode, setIsStrategicEditMode] = useState(false);
+
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "aggressive",
     profit_priority: "protect_growth",
@@ -536,28 +539,29 @@ export default function ObjectivesPageClient({
     cancelEditTarget();
   };
 
-  // const startObjectiveEdit = () => {
-  //   setObjectiveDraft(objective);
-  //   setIsObjectiveEditMode(true);
-  // };
 
-  const startObjectiveEdit = () => {
+  const startBusinessSummaryEdit = () => {
+    setObjectiveDraft(objective);
+    setIsBusinessSummaryEditMode(true);
+  };
+
+  const cancelBusinessSummaryEdit = () => {
+    setObjectiveDraft(objective);
+    setIsBusinessSummaryEditMode(false);
+  };
+
+  const startStrategicEdit = () => {
     setObjectiveDraft(objective);
     setObjectiveTargetDraft(String(Number((data as any)?.target_sales ?? 0)));
     setObjectiveEditingPid(pagePlatform);
-    setIsObjectiveEditMode(true);
+    setIsStrategicEditMode(true);
   };
 
-  // const cancelObjectiveEdit = () => {
-  //   setObjectiveDraft(objective);
-  //   setIsObjectiveEditMode(false);
-  // };
-
-  const cancelObjectiveEdit = () => {
+  const cancelStrategicEdit = () => {
     setObjectiveDraft(objective);
     setObjectiveTargetDraft("");
     setObjectiveEditingPid(null);
-    setIsObjectiveEditMode(false);
+    setIsStrategicEditMode(false);
   };
 
   const strategicTargetPid = objectiveEditingPid || pagePlatform;
@@ -633,89 +637,8 @@ export default function ObjectivesPageClient({
     }
   };
 
-
-  // const handleInlineObjectiveSave = async () => {
-  //   try {
-  //     const nextTarget = Number(objectiveTargetDraft);
-
-  //     if (!Number.isFinite(nextTarget) || nextTarget < 0) {
-  //       alert("Please enter a valid target.");
-  //       return;
-  //     }
-
-  //     const objectivePayload = {
-  //       ...objectiveDraft,
-  //       country: objectiveDraft.country.toLowerCase(),
-  //       uploaded_files: objectiveDraft.uploaded_files.map((file) => ({
-  //         name: file.name,
-  //         size: file.size,
-  //         type: file.type,
-  //         extracted_text: file.extractedText,
-  //       })),
-  //     };
-
-  //     const { month, year } = getCurrentMonthYear();
-
-  //     const targetPayload = {
-  //       month,
-  //       year,
-  //       country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
-  //       target_sales: nextTarget,
-  //     };
-
-  //     const [objectiveRes, targetSummaryRes] = await Promise.all([
-  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //         body: JSON.stringify(objectivePayload),
-  //       }),
-  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //         body: JSON.stringify(targetPayload),
-  //       }),
-  //     ]);
-
-  //     if (!objectiveRes.ok) {
-  //       throw new Error("Failed to save objective");
-  //     }
-
-  //     const targetSummaryJson = await targetSummaryRes.json();
-  //     if (!targetSummaryRes.ok) {
-  //       throw new Error(targetSummaryJson?.error || "Failed to save monthly target summary.");
-  //     }
-
-  //     await updateProfile({ target_sales: nextTarget } as any).unwrap();
-  //     dispatch(setUser({ target_sales: nextTarget } as any));
-
-  //     setObjective(objectiveDraft);
-  //     setIsObjectiveEditMode(false);
-  //     setObjectiveTargetDraft("");
-  //     setObjectiveEditingPid(null);
-
-  //     localStorage.setItem("user_objective", JSON.stringify(objectiveDraft));
-  //     localStorage.setItem("user_objective_backend", JSON.stringify(objectivePayload));
-  //   } catch (err) {
-  //     console.error(err);
-  //     alert("Failed to save section");
-  //   }
-  // };
-
-  const handleInlineObjectiveSave = async () => {
+  const handleBusinessSummarySave = async () => {
     try {
-      const nextTarget = Number(objectiveTargetDraft);
-
-      if (!Number.isFinite(nextTarget) || nextTarget < 0) {
-        alert("Please enter a valid target.");
-        return;
-      }
-
       const website = objectiveDraft.website?.trim();
       const pptFile = objectiveDraft.uploaded_files.find(
         (f) =>
@@ -726,7 +649,6 @@ export default function ObjectivesPageClient({
 
       let nextBusinessContext = objectiveDraft.business_context;
 
-      // If website exists, run auto-summary and let backend save it
       if (website) {
         if (!pptFile?.rawFile) {
           alert("Please upload a PPTX file.");
@@ -763,24 +685,95 @@ export default function ObjectivesPageClient({
         nextBusinessContext = analyzeJson?.data?.overview || "";
       }
 
+      const { month, year } = getCurrentMonthYear();
+
+      // send ONLY business summary related fields
       const objectivePayload = {
-        ...objectiveDraft,
         business_context: nextBusinessContext,
         country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
-        uploaded_files: objectiveDraft.uploaded_files.map((file) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          extracted_text: file.extractedText,
-        })),
+        month,
+        year,
       };
 
+      const objectiveRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(objectivePayload),
+        }
+      );
+
+      const objectiveJson = await objectiveRes.json().catch(() => null);
+
+      if (!objectiveRes.ok) {
+        throw new Error(objectiveJson?.error || "Failed to save business summary");
+      }
+
+      const finalObjective = {
+        ...objective,
+        ...objectiveDraft,
+        business_context: nextBusinessContext,
+      };
+
+      setObjective(finalObjective);
+      setObjectiveDraft(finalObjective);
+      setIsBusinessSummaryEditMode(false);
+
+      localStorage.setItem(
+        "user_objective",
+        JSON.stringify({
+          ...finalObjective,
+          uploaded_files: finalObjective.uploaded_files.map((file) => ({
+            id: file.id,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            extractedText: file.extractedText,
+            uploadStatus: file.uploadStatus,
+            error: file.error,
+          })),
+        })
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Failed to save business summary");
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
+
+
+
+  const handleStrategicObjectivesSave = async () => {
+    try {
+      const nextTarget = Number(objectiveTargetDraft);
+
+      if (!Number.isFinite(nextTarget) || nextTarget < 0) {
+        alert("Please enter a valid target.");
+        return;
+      }
+
       const { month, year } = getCurrentMonthYear();
+      const countryToSave = (objectiveDraft.country || resolvedTargetCountry).toLowerCase();
+
+      // send ONLY strategic fields
+      const objectivePayload = {
+        growth_intent: objectiveDraft.growth_intent,
+        profit_priority: objectiveDraft.profit_priority,
+        inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
+        country: countryToSave,
+        month,
+        year,
+      };
 
       const targetPayload = {
         month,
         year,
-        country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
+        country: countryToSave,
         target_sales: nextTarget,
       };
 
@@ -819,38 +812,186 @@ export default function ObjectivesPageClient({
       await updateProfile({ target_sales: nextTarget } as any).unwrap();
       dispatch(setUser({ target_sales: nextTarget } as any));
 
+      // preserve existing business summary
       const finalObjective = {
-        ...objectiveDraft,
-        business_context: nextBusinessContext,
+        ...objective,
+        growth_intent: objectiveDraft.growth_intent,
+        profit_priority: objectiveDraft.profit_priority,
+        inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
+        country: objectiveDraft.country,
       };
 
       setObjective(finalObjective);
       setObjectiveDraft(finalObjective);
-      setIsObjectiveEditMode(false);
+      setIsStrategicEditMode(false);
       setObjectiveTargetDraft("");
       setObjectiveEditingPid(null);
 
-      localStorage.setItem("user_objective", JSON.stringify({
-        ...finalObjective,
-        uploaded_files: finalObjective.uploaded_files.map((file) => ({
-          id: file.id,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          extractedText: file.extractedText,
-          uploadStatus: file.uploadStatus,
-          error: file.error,
-        })),
-      }));
-
-      localStorage.setItem("user_objective_backend", JSON.stringify(objectivePayload));
+      localStorage.setItem(
+        "user_objective",
+        JSON.stringify({
+          ...finalObjective,
+          uploaded_files: finalObjective.uploaded_files.map((file) => ({
+            id: file.id,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            extractedText: file.extractedText,
+            uploadStatus: file.uploadStatus,
+            error: file.error,
+          })),
+        })
+      );
     } catch (err: any) {
       console.error(err);
       alert(err?.message || "Failed to save section");
-    } finally {
-      setIsGeneratingSummary(false);
     }
   };
+
+  // const handleInlineObjectiveSave = async () => {
+  //   try {
+  //     const nextTarget = Number(objectiveTargetDraft);
+
+  //     if (!Number.isFinite(nextTarget) || nextTarget < 0) {
+  //       alert("Please enter a valid target.");
+  //       return;
+  //     }
+
+  //     const website = objectiveDraft.website?.trim();
+  //     const pptFile = objectiveDraft.uploaded_files.find(
+  //       (f) =>
+  //         f.uploadStatus === "ready" &&
+  //         f.rawFile &&
+  //         f.name.toLowerCase().endsWith(".pptx")
+  //     );
+
+  //     let nextBusinessContext = objectiveDraft.business_context;
+
+  //     // If website exists, run auto-summary and let backend save it
+  //     if (website) {
+  //       if (!pptFile?.rawFile) {
+  //         alert("Please upload a PPTX file.");
+  //         return;
+  //       }
+
+  //       setIsGeneratingSummary(true);
+
+  //       const formData = new FormData();
+  //       formData.append("website", website);
+  //       formData.append("ppt", pptFile.rawFile);
+
+  //       const analyzeRes = await fetch(
+  //         `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
+  //         {
+  //           method: "POST",
+  //           headers: {
+  //             Authorization: `Bearer ${token}`,
+  //           },
+  //           body: formData,
+  //         }
+  //       );
+
+  //       const analyzeJson = await analyzeRes.json();
+
+  //       if (!analyzeRes.ok) {
+  //         throw new Error(
+  //           analyzeJson?.details ||
+  //           analyzeJson?.error ||
+  //           "Failed to analyze website"
+  //         );
+  //       }
+
+  //       nextBusinessContext = analyzeJson?.data?.overview || "";
+  //     }
+
+  //     const objectivePayload = {
+  //       ...objectiveDraft,
+  //       business_context: nextBusinessContext,
+  //       country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
+  //       uploaded_files: objectiveDraft.uploaded_files.map((file) => ({
+  //         name: file.name,
+  //         size: file.size,
+  //         type: file.type,
+  //         extracted_text: file.extractedText,
+  //       })),
+  //     };
+
+  //     const { month, year } = getCurrentMonthYear();
+
+  //     const targetPayload = {
+  //       month,
+  //       year,
+  //       country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
+  //       target_sales: nextTarget,
+  //     };
+
+  //     const [objectiveRes, targetSummaryRes] = await Promise.all([
+  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         body: JSON.stringify(objectivePayload),
+  //       }),
+  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         body: JSON.stringify(targetPayload),
+  //       }),
+  //     ]);
+
+  //     const objectiveJson = await objectiveRes.json().catch(() => null);
+  //     const targetSummaryJson = await targetSummaryRes.json().catch(() => null);
+
+  //     if (!objectiveRes.ok) {
+  //       throw new Error(objectiveJson?.error || "Failed to save objective");
+  //     }
+
+  //     if (!targetSummaryRes.ok) {
+  //       throw new Error(
+  //         targetSummaryJson?.error || "Failed to save monthly target summary."
+  //       );
+  //     }
+
+  //     await updateProfile({ target_sales: nextTarget } as any).unwrap();
+  //     dispatch(setUser({ target_sales: nextTarget } as any));
+
+  //     const finalObjective = {
+  //       ...objectiveDraft,
+  //       business_context: nextBusinessContext,
+  //     };
+
+  //     setObjective(finalObjective);
+  //     setObjectiveDraft(finalObjective);
+  //     setIsObjectiveEditMode(false);
+  //     setObjectiveTargetDraft("");
+  //     setObjectiveEditingPid(null);
+
+  //     localStorage.setItem("user_objective", JSON.stringify({
+  //       ...finalObjective,
+  //       uploaded_files: finalObjective.uploaded_files.map((file) => ({
+  //         id: file.id,
+  //         name: file.name,
+  //         size: file.size,
+  //         type: file.type,
+  //         extractedText: file.extractedText,
+  //         uploadStatus: file.uploadStatus,
+  //         error: file.error,
+  //       })),
+  //     }));
+
+  //     localStorage.setItem("user_objective_backend", JSON.stringify(objectivePayload));
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     alert(err?.message || "Failed to save section");
+  //   } finally {
+  //     setIsGeneratingSummary(false);
+  //   }
+  // };
 
   useEffect(() => {
     const saved = localStorage.getItem("user_objective");
@@ -1004,112 +1145,52 @@ export default function ObjectivesPageClient({
   };
 
   const handleFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
 
     setIsExtractingFiles(true);
 
     try {
-      const processed = await Promise.all(
-        files.map(async (file) => {
-          const id = `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const id = `${file.name}-${file.size}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
 
-          try {
-            const extractedText = await extractTextFromSupportedFile(file);
+      let processed: UploadedSummaryFile;
 
-            return {
-              id,
-              name: file.name,
-              size: file.size,
-              type: file.type || "application/octet-stream",
-              extractedText,
-              uploadStatus: "ready" as const,
-              rawFile: file,
-            };
-          } catch (error: any) {
-            return {
-              id,
-              name: file.name,
-              size: file.size,
-              type: file.type || "application/octet-stream",
-              extractedText: "",
-              uploadStatus: "error" as const,
-              error: error?.message || "Failed to extract text",
-              rawFile: file,
-            };
-          }
-        })
-      );
+      try {
+        const extractedText = await extractTextFromSupportedFile(file);
+
+        processed = {
+          id,
+          name: file.name,
+          size: file.size,
+          type: file.type || "application/octet-stream",
+          extractedText,
+          uploadStatus: "ready",
+          rawFile: file,
+        };
+      } catch (error: any) {
+        processed = {
+          id,
+          name: file.name,
+          size: file.size,
+          type: file.type || "application/octet-stream",
+          extractedText: "",
+          uploadStatus: "error",
+          error: error?.message || "Failed to extract text",
+          rawFile: file,
+        };
+      }
 
       setObjectiveDraft((prev) => ({
         ...prev,
-        uploaded_files: [...prev.uploaded_files, ...processed],
+        uploaded_files: [processed],
       }));
     } finally {
       setIsExtractingFiles(false);
       e.target.value = "";
     }
   };
-
-  // const handleGenerateBusinessSummary = async () => {
-  //   const website = objectiveDraft.website?.trim();
-
-  //   if (!website) {
-  //     alert("Please enter a website first.");
-  //     return;
-  //   }
-
-  //   const pptFile = objectiveDraft.uploaded_files.find(
-  //     (f) =>
-  //       f.uploadStatus === "ready" &&
-  //       f.rawFile &&
-  //       f.name.toLowerCase().endsWith(".pptx")
-  //   );
-
-  //   if (!pptFile?.rawFile) {
-  //     alert("Please upload a PPTX file");
-  //     return;
-  //   }
-
-  //   try {
-  //     setIsGeneratingSummary(true);
-
-  //     const formData = new FormData();
-  //     formData.append("website", website);
-  //     formData.append("ppt", pptFile.rawFile);
-
-  //     const res = await fetch(
-  //       `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
-  //       {
-  //         method: "POST",
-  //         headers: {
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //         body: formData,
-  //       }
-  //     );
-
-  //     const json = await res.json();
-
-  //     if (!res.ok) {
-  //       throw new Error(
-  //         json?.details ||
-  //         json?.error ||
-  //         "Failed to generate business summary"
-  //       );
-  //     }
-
-  //     setObjectiveDraft((prev) => ({
-  //       ...prev,
-  //       business_context: json?.data?.overview || "",
-  //     }));
-  //   } catch (err: any) {
-  //     console.error("Generate summary error:", err);
-  //     alert(err?.message || "Failed to generate business summary");
-  //   } finally {
-  //     setIsGeneratingSummary(false);
-  //   }
-  // };
 
   useEffect(() => {
     const saved = localStorage.getItem("user_objective");
@@ -1153,10 +1234,10 @@ export default function ObjectivesPageClient({
           <InfoCard
             title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
             action={
-              !isObjectiveEditMode ? (
+              !isBusinessSummaryEditMode ? (
                 <button
                   type="button"
-                  onClick={startObjectiveEdit}
+                  onClick={startBusinessSummaryEdit}
                   className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
                   aria-label="Enable business summary edit mode"
                   title="Edit business summary"
@@ -1167,7 +1248,7 @@ export default function ObjectivesPageClient({
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
-                    onClick={handleInlineObjectiveSave}
+                    onClick={handleBusinessSummarySave}
                     size="icon"
                     title="Save"
                     disabled={isGeneratingSummary || isSaving}
@@ -1177,7 +1258,7 @@ export default function ObjectivesPageClient({
 
                   <Button
                     type="button"
-                    onClick={cancelObjectiveEdit}
+                    onClick={cancelBusinessSummaryEdit}
                     size="icon"
                     variant="outline"
                     title="Cancel"
@@ -1191,41 +1272,20 @@ export default function ObjectivesPageClient({
           >
             <> {isGeneratingSummary && (
               <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-white/80 ">
-                {/* <div className="flex items-center gap-4 rounded-xl bg-white px-5 py-4 shadow-lg dark:bg-gray-800">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" /> */}
-                  <Loader backgroundClass="bg-transparent" />
-                   {/* <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      Generating Business Summary
-                    </p>
-                    <p className="text-xs text-gray-600 dark:text-gray-300">
-                      Please wait...
-                    </p>
-                  </div> */}
-                {/* </div> */}
+                <Loader backgroundClass="bg-transparent" />
               </div>
             )}
               {(() => {
-                const visibleFiles = isObjectiveEditMode
-                  ? objectiveDraft.uploaded_files
-                  : objective.uploaded_files;
-
-                const hasWebsite = Boolean(
-                  (isObjectiveEditMode ? objectiveDraft.website : objective.website)?.trim()
-                );
-
-                const hasFiles = Boolean(visibleFiles?.length);
-
                 return (
                   <div className="grid grid-cols-1 gap-5">
                     <div>
                       <div className="mb-1 flex items-center justify-end">
-                        {isObjectiveEditMode && (
+                        {isBusinessSummaryEditMode && (
                           <p className="text-xs text-gray-500">Max 250 characters</p>
                         )}
                       </div>
 
-                      {isObjectiveEditMode ? (
+                      {isBusinessSummaryEditMode ? (
                         <textarea
                           rows={5}
                           maxLength={250}
@@ -1254,7 +1314,7 @@ export default function ObjectivesPageClient({
                       )}
                     </div>
 
-                    {isObjectiveEditMode && (
+                    {isBusinessSummaryEditMode && (
                       <div className="flex items-center gap-3 py-3">
                         <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
 
@@ -1266,7 +1326,7 @@ export default function ObjectivesPageClient({
                       </div>
                     )}
 
-                    {isObjectiveEditMode && (
+                    {isBusinessSummaryEditMode && (
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
                           <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Website</p>
@@ -1291,43 +1351,51 @@ export default function ObjectivesPageClient({
                         <div>
                           <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Files</p>
 
-                          <div className="w-full rounded-md border border-gray-300 bg-white flex items-center gap-2 px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
-                            <label
-                              htmlFor="business-summary-file"
-                              className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                            >
-                              Upload File
-                            </label>
-                            <input
-                              id="business-summary-file"
-                              ref={fileInputRef}
-                              type="file"
-                              accept=".docx,.pptx"
-                              multiple
-                              onChange={handleFilesSelected}
-                              className="hidden"
-                            />
-                            <span className="block w-full truncate px-2 text-xs text-gray-500 dark:text-gray-400">
-                              {objectiveDraft.uploaded_files?.length
-                                ? objectiveDraft.uploaded_files.map((f) => f.name).join(", ")
-                                : "No file selected"}
-                            </span>
+                          <div className="w-full rounded-md border border-gray-300 bg-white px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
+                            <div className="flex items-center gap-2">
+                              <label
+                                htmlFor="business-summary-file"
+                                className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                              >
+                                Upload File
+                              </label>
+
+                              <input
+                                id="business-summary-file"
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".docx,.pptx"
+                                onChange={handleFilesSelected}
+                                className="hidden"
+                              />
+
+                              <div className="min-w-0 flex-1">
+                                {objectiveDraft.uploaded_files?.[0] ? (
+                                  <div className="inline-flex max-w-full items-center gap-2 rounded-md bg-gray-50 px-2 py-1 dark:bg-gray-700/60">
+                                    <FiFileText className="shrink-0 text-gray-500 dark:text-gray-300" />
+                                    <span className="truncate text-xs text-gray-600 dark:text-gray-300 max-w-[180px] sm:max-w-[220px]">
+                                      {objectiveDraft.uploaded_files[0].name}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveUploadedFile(objectiveDraft.uploaded_files[0].id)}
+                                      className="shrink-0 text-gray-400 hover:text-red-500"
+                                      title="Remove file"
+                                    >
+                                      <FiTrash2 size={14} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="block truncate px-2 text-xs text-gray-500 dark:text-gray-400">
+                                    No file selected
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
                     )}
-
-                    {/* {isObjectiveEditMode && (
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        onClick={handleGenerateBusinessSummary}
-                        disabled={isGeneratingSummary || !objectiveDraft.website?.trim()}
-                      >
-                        {isGeneratingSummary ? "Generating..." : "Generate Summary"}
-                      </Button>
-                    </div>
-                  )} */}
 
                     {isExtractingFiles && (
                       <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
@@ -1335,47 +1403,6 @@ export default function ObjectivesPageClient({
                       </div>
                     )}
 
-                    {isObjectiveEditMode && hasFiles && (
-                      <div className="space-y-3">
-                        {visibleFiles.map((file) => (
-                          <div
-                            key={file.id}
-                            className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <FiFileText className="shrink-0 text-charcoal-500" />
-                                  <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
-                                    {file.name}
-                                  </p>
-                                </div>
-                                <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
-                                  {formatFileSize(file.size)}
-                                </p>
-
-                                {file.uploadStatus === "error" ? (
-                                  <p className="mt-2 text-xs text-red-500">{file.error}</p>
-                                ) : (
-                                  <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
-                                    {file.extractedText || "No text extracted"}
-                                  </p>
-                                )}
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveUploadedFile(file.id)}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 dark:hover:bg-gray-700"
-                                title="Remove file"
-                              >
-                                <FiTrash2 />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 );
               })()} </>
@@ -1423,36 +1450,6 @@ export default function ObjectivesPageClient({
                   }
                 >
                   <div className="h-[420px] w-full">
-                    {/* <TargetVsSalesChart
-                      year={new Date().getFullYear()}
-                      country={resolvedTargetCountry}
-                      currency={homeCurrencyCode.toLowerCase()}
-                      currencySymbol={
-                        homeCurrencyCode === "GBP"
-                          ? "£"
-                          : homeCurrencyCode === "USD"
-                            ? "$"
-                            : homeCurrencyCode === "EUR"
-                              ? "€"
-                              : homeCurrencyCode
-                      }
-                      token={token || ""}
-                      apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
-                      className="h-full w-full"
-                    /> */}
-
-                    {/* <TargetVsSalesChart
-                      currencySymbol={
-                        homeCurrencyCode === "GBP"
-                          ? "£"
-                          : homeCurrencyCode === "USD"
-                            ? "$"
-                            : homeCurrencyCode === "EUR"
-                              ? "€"
-                              : homeCurrencyCode
-                      }
-                    /> */}
-
                     <TargetVsSalesChart
                       country={resolvedTargetCountry}
                       token={token || ""}
@@ -1520,191 +1517,6 @@ export default function ObjectivesPageClient({
 
       {activeTab === "targets_and_objectives" && (
         <div className="grid grid-cols-1 gap-4">
-          {/* <InfoCard
-            title={<PageBreadcrumb pageTitle="Monthly Targets" variant="table" align="left" />}
-            action={
-              <div className="flex items-center gap-2">
-                {!isTargetEditMode ? (
-                  <button
-                    type="button"
-                    onClick={openTargetEditMode}
-                    className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
-                    aria-label="Enable edit mode"
-                    title="Edit targets"
-                  >
-                    <FiEdit className="text-lg" />
-                  </button>
-                ) : (
-                  <>
-                    <Button
-                      type="button"
-                      onClick={saveInlineTarget}
-                      size="icon"
-                      disabled={isSaving || !editingPid}
-                      title="Save"
-                    >
-                      <FiCheck />
-                    </Button>
-
-                    <Button
-                      type="button"
-                      onClick={closeTargetEditMode}
-                      size="icon"
-                      variant="outline"
-                      disabled={isSaving}
-                      title="Cancel"
-                    >
-                      <FiX />
-                    </Button>
-                  </>
-                )}
-              </div>
-            }
-          >
-            <DataTable
-              columns={monthlyTargetColumns}
-              data={monthlyTargetData}
-              paginate={false}
-              scrollY={false}
-              stickyHeader={false}
-              emptyMessage={
-                ratesLoading ? "Loading currency rates..." : "No connected marketplaces."
-              }
-              className="rounded-xl"
-              rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-semibold" : "")}
-            />
-          </InfoCard>
-
-          <InfoCard
-            title={<PageBreadcrumb pageTitle="Strategic Objectives" variant="table" align="left" />}
-            action={
-              !isObjectiveEditMode ? (
-                <button
-                  onClick={startObjectiveEdit}
-                  className="h-9 w-9 text-gray-700"
-                  type="button"
-                >
-                  <FiEdit className="text-lg" />
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Button size="icon" onClick={handleInlineObjectiveSave}>
-                    <FiCheck />
-                  </Button>
-                  <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
-                    <FiX />
-                  </Button>
-                </div>
-              )
-            }
-          >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <InfoItem
-                label="Growth"
-                value={
-                  isObjectiveEditMode ? (
-                    <select
-                      value={objectiveDraft.growth_intent}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
-                        }))
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      {GROWTH_OPTIONS.map((v) => (
-                        <option key={v} value={v}>
-                          {v.charAt(0).toUpperCase() + v.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    prettifyObjectiveValue(objective.growth_intent)
-                  )
-                }
-              />
-
-              <InfoItem
-                label="Profit"
-                value={
-                  isObjectiveEditMode ? (
-                    <select
-                      value={objectiveDraft.profit_priority}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
-                        }))
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      {PROFIT_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    prettifyObjectiveValue(objective.profit_priority)
-                  )
-                }
-              />
-
-              <InfoItem
-                label="Inventory Dilution"
-                value={
-                  isObjectiveEditMode ? (
-                    <select
-                      value={objectiveDraft.inventory_clearance_priority ? "yes" : "no"}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          inventory_clearance_priority: e.target.value === "yes",
-                        }))
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  ) : (
-                    objective.inventory_clearance_priority ? "Yes" : "No"
-                  )
-                }
-              />
-
-              <InfoItem
-                label="Country"
-                value={
-                  isObjectiveEditMode ? (
-                    <select
-                      value={objectiveDraft.country}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          country: e.target.value,
-                        }))
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      <option value="" disabled>
-                        Select Country
-                      </option>
-                      {integratedCountries.map((c) => (
-                        <option key={c} value={c}>
-                          {c.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    objective.country?.toUpperCase() || "-"
-                  )
-                }
-              />
-            </div>
-          </InfoCard> */}
-
           <InfoCard
             title={
               <PageBreadcrumb
@@ -1714,9 +1526,9 @@ export default function ObjectivesPageClient({
               />
             }
             action={
-              !isObjectiveEditMode ? (
+              !isStrategicEditMode ? (
                 <button
-                  onClick={startObjectiveEdit}
+                  onClick={startStrategicEdit}
                   className="h-9 w-9 text-gray-700"
                   type="button"
                 >
@@ -1724,10 +1536,10 @@ export default function ObjectivesPageClient({
                 </button>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Button size="icon" onClick={handleInlineObjectiveSave}>
+                  <Button size="icon" onClick={handleStrategicObjectivesSave}>
                     <FiCheck />
                   </Button>
-                  <Button size="icon" variant="outline" onClick={cancelObjectiveEdit}>
+                  <Button size="icon" variant="outline" onClick={cancelStrategicEdit}>
                     <FiX />
                   </Button>
                 </div>
@@ -1738,7 +1550,7 @@ export default function ObjectivesPageClient({
               <InfoItem
                 label="Growth"
                 value={
-                  isObjectiveEditMode ? (
+                  isStrategicEditMode ? (
                     <select
                       value={objectiveDraft.growth_intent}
                       onChange={(e) =>
@@ -1764,7 +1576,7 @@ export default function ObjectivesPageClient({
               <InfoItem
                 label="Profit"
                 value={
-                  isObjectiveEditMode ? (
+                  isStrategicEditMode ? (
                     <select
                       value={objectiveDraft.profit_priority}
                       onChange={(e) =>
@@ -1790,7 +1602,7 @@ export default function ObjectivesPageClient({
               <InfoItem
                 label="Inventory Dilution"
                 value={
-                  isObjectiveEditMode ? (
+                  isStrategicEditMode ? (
                     <select
                       value={objectiveDraft.inventory_clearance_priority ? "yes" : "no"}
                       onChange={(e) =>
@@ -1813,7 +1625,7 @@ export default function ObjectivesPageClient({
               <InfoItem
                 label="Country"
                 value={
-                  isObjectiveEditMode ? (
+                  isStrategicEditMode ? (
                     <select
                       value={objectiveDraft.country}
                       onChange={(e) =>
@@ -1842,7 +1654,7 @@ export default function ObjectivesPageClient({
               <InfoItem
                 label={`Target (${strategicNativeCurrency})`}
                 value={
-                  isObjectiveEditMode ? (
+                  isStrategicEditMode ? (
                     <input
                       type="number"
                       min={0}
