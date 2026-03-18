@@ -29,6 +29,7 @@ import {
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import JSZip from "jszip";
 import mammoth from "mammoth";
+import Loader from "@/components/loader/Loader";
 
 type ObjectivesPageClientProps = {
   country?: string;
@@ -66,6 +67,7 @@ type UploadedSummaryFile = {
   extractedText: string;
   uploadStatus: "ready" | "processing" | "error";
   error?: string;
+  rawFile?: File;
 };
 
 type UserObjectiveForm = {
@@ -94,7 +96,6 @@ const PLATFORM_TARGET_META: Partial<
   shopify: { marketplace: "Shopify", currencySymbol: "" },
 };
 
-// Target vs Slaes graph Dummy Data - To be removed when real API is integrated
 const dummyTargetVsSalesData = [
   { month: "Jan", target: 12000, sales: 9800 },
   { month: "Feb", target: 12000, sales: 10450 },
@@ -117,7 +118,6 @@ const shortMoney = (value: number, currency = "USD") =>
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
-
 
 const prettifyObjectiveValue = (v?: string | null) => {
   const s = (v ?? "").trim();
@@ -156,7 +156,7 @@ function InfoCard({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="h-full rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+    <div className=" relative h-full rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between px-4 py-3">
         <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">{title}</h3>
         {action}
@@ -385,6 +385,7 @@ export default function ObjectivesPageClient({
 
   const [objectiveTargetDraft, setObjectiveTargetDraft] = useState<string>("");
   const [objectiveEditingPid, setObjectiveEditingPid] = useState<PlatformId | null>(null);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
 
   const toggleChartExpand = (chart: "targetSales" | "objectiveMoM") => {
     setExpandedChart((prev) => (prev === chart ? null : chart));
@@ -632,9 +633,17 @@ export default function ObjectivesPageClient({
     }
   };
 
-  //  const handleInlineObjectiveSave = async () => {
+
+  // const handleInlineObjectiveSave = async () => {
   //   try {
-  //     const payload = {
+  //     const nextTarget = Number(objectiveTargetDraft);
+
+  //     if (!Number.isFinite(nextTarget) || nextTarget < 0) {
+  //       alert("Please enter a valid target.");
+  //       return;
+  //     }
+
+  //     const objectivePayload = {
   //       ...objectiveDraft,
   //       country: objectiveDraft.country.toLowerCase(),
   //       uploaded_files: objectiveDraft.uploaded_files.map((file) => ({
@@ -645,25 +654,56 @@ export default function ObjectivesPageClient({
   //       })),
   //     };
 
-  //     const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //         Authorization: `Bearer ${token}`,
-  //       },
-  //       body: JSON.stringify(payload),
-  //     });
+  //     const { month, year } = getCurrentMonthYear();
 
-  //     if (!res.ok) throw new Error("Failed to save objective");
+  //     const targetPayload = {
+  //       month,
+  //       year,
+  //       country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
+  //       target_sales: nextTarget,
+  //     };
+
+  //     const [objectiveRes, targetSummaryRes] = await Promise.all([
+  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         body: JSON.stringify(objectivePayload),
+  //       }),
+  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         body: JSON.stringify(targetPayload),
+  //       }),
+  //     ]);
+
+  //     if (!objectiveRes.ok) {
+  //       throw new Error("Failed to save objective");
+  //     }
+
+  //     const targetSummaryJson = await targetSummaryRes.json();
+  //     if (!targetSummaryRes.ok) {
+  //       throw new Error(targetSummaryJson?.error || "Failed to save monthly target summary.");
+  //     }
+
+  //     await updateProfile({ target_sales: nextTarget } as any).unwrap();
+  //     dispatch(setUser({ target_sales: nextTarget } as any));
 
   //     setObjective(objectiveDraft);
   //     setIsObjectiveEditMode(false);
+  //     setObjectiveTargetDraft("");
+  //     setObjectiveEditingPid(null);
 
   //     localStorage.setItem("user_objective", JSON.stringify(objectiveDraft));
-  //     localStorage.setItem("user_objective_backend", JSON.stringify(payload));
+  //     localStorage.setItem("user_objective_backend", JSON.stringify(objectivePayload));
   //   } catch (err) {
   //     console.error(err);
-  //     alert("Failed to save objective");
+  //     alert("Failed to save section");
   //   }
   // };
 
@@ -676,9 +716,57 @@ export default function ObjectivesPageClient({
         return;
       }
 
+      const website = objectiveDraft.website?.trim();
+      const pptFile = objectiveDraft.uploaded_files.find(
+        (f) =>
+          f.uploadStatus === "ready" &&
+          f.rawFile &&
+          f.name.toLowerCase().endsWith(".pptx")
+      );
+
+      let nextBusinessContext = objectiveDraft.business_context;
+
+      // If website exists, run auto-summary and let backend save it
+      if (website) {
+        if (!pptFile?.rawFile) {
+          alert("Please upload a PPTX file.");
+          return;
+        }
+
+        setIsGeneratingSummary(true);
+
+        const formData = new FormData();
+        formData.append("website", website);
+        formData.append("ppt", pptFile.rawFile);
+
+        const analyzeRes = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+          }
+        );
+
+        const analyzeJson = await analyzeRes.json();
+
+        if (!analyzeRes.ok) {
+          throw new Error(
+            analyzeJson?.details ||
+            analyzeJson?.error ||
+            "Failed to analyze website"
+          );
+        }
+
+        nextBusinessContext = analyzeJson?.data?.overview || "";
+      }
+
       const objectivePayload = {
         ...objectiveDraft,
-        country: objectiveDraft.country.toLowerCase(),
+        business_context: nextBusinessContext,
+        country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
         uploaded_files: objectiveDraft.uploaded_files.map((file) => ({
           name: file.name,
           size: file.size,
@@ -715,28 +803,52 @@ export default function ObjectivesPageClient({
         }),
       ]);
 
+      const objectiveJson = await objectiveRes.json().catch(() => null);
+      const targetSummaryJson = await targetSummaryRes.json().catch(() => null);
+
       if (!objectiveRes.ok) {
-        throw new Error("Failed to save objective");
+        throw new Error(objectiveJson?.error || "Failed to save objective");
       }
 
-      const targetSummaryJson = await targetSummaryRes.json();
       if (!targetSummaryRes.ok) {
-        throw new Error(targetSummaryJson?.error || "Failed to save monthly target summary.");
+        throw new Error(
+          targetSummaryJson?.error || "Failed to save monthly target summary."
+        );
       }
 
       await updateProfile({ target_sales: nextTarget } as any).unwrap();
       dispatch(setUser({ target_sales: nextTarget } as any));
 
-      setObjective(objectiveDraft);
+      const finalObjective = {
+        ...objectiveDraft,
+        business_context: nextBusinessContext,
+      };
+
+      setObjective(finalObjective);
+      setObjectiveDraft(finalObjective);
       setIsObjectiveEditMode(false);
       setObjectiveTargetDraft("");
       setObjectiveEditingPid(null);
 
-      localStorage.setItem("user_objective", JSON.stringify(objectiveDraft));
+      localStorage.setItem("user_objective", JSON.stringify({
+        ...finalObjective,
+        uploaded_files: finalObjective.uploaded_files.map((file) => ({
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          extractedText: file.extractedText,
+          uploadStatus: file.uploadStatus,
+          error: file.error,
+        })),
+      }));
+
       localStorage.setItem("user_objective_backend", JSON.stringify(objectivePayload));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Failed to save section");
+      alert(err?.message || "Failed to save section");
+    } finally {
+      setIsGeneratingSummary(false);
     }
   };
 
@@ -912,6 +1024,7 @@ export default function ObjectivesPageClient({
               type: file.type || "application/octet-stream",
               extractedText,
               uploadStatus: "ready" as const,
+              rawFile: file,
             };
           } catch (error: any) {
             return {
@@ -922,6 +1035,7 @@ export default function ObjectivesPageClient({
               extractedText: "",
               uploadStatus: "error" as const,
               error: error?.message || "Failed to extract text",
+              rawFile: file,
             };
           }
         })
@@ -937,12 +1051,65 @@ export default function ObjectivesPageClient({
     }
   };
 
+  // const handleGenerateBusinessSummary = async () => {
+  //   const website = objectiveDraft.website?.trim();
 
+  //   if (!website) {
+  //     alert("Please enter a website first.");
+  //     return;
+  //   }
 
+  //   const pptFile = objectiveDraft.uploaded_files.find(
+  //     (f) =>
+  //       f.uploadStatus === "ready" &&
+  //       f.rawFile &&
+  //       f.name.toLowerCase().endsWith(".pptx")
+  //   );
 
+  //   if (!pptFile?.rawFile) {
+  //     alert("Please upload a PPTX file");
+  //     return;
+  //   }
 
+  //   try {
+  //     setIsGeneratingSummary(true);
 
+  //     const formData = new FormData();
+  //     formData.append("website", website);
+  //     formData.append("ppt", pptFile.rawFile);
 
+  //     const res = await fetch(
+  //       `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
+  //       {
+  //         method: "POST",
+  //         headers: {
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         body: formData,
+  //       }
+  //     );
+
+  //     const json = await res.json();
+
+  //     if (!res.ok) {
+  //       throw new Error(
+  //         json?.details ||
+  //         json?.error ||
+  //         "Failed to generate business summary"
+  //       );
+  //     }
+
+  //     setObjectiveDraft((prev) => ({
+  //       ...prev,
+  //       business_context: json?.data?.overview || "",
+  //     }));
+  //   } catch (err: any) {
+  //     console.error("Generate summary error:", err);
+  //     alert(err?.message || "Failed to generate business summary");
+  //   } finally {
+  //     setIsGeneratingSummary(false);
+  //   }
+  // };
 
   useEffect(() => {
     const saved = localStorage.getItem("user_objective");
@@ -965,9 +1132,12 @@ export default function ObjectivesPageClient({
 
   return (
     <div className="w-full">
+
+
       {(isLoading || ratesLoading) && (
         <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">Loading…</div>
       )}
+
 
       {isError && (
         <div className="mb-4 text-sm text-red-500">Failed to load objectives page.</div>
@@ -1000,6 +1170,7 @@ export default function ObjectivesPageClient({
                     onClick={handleInlineObjectiveSave}
                     size="icon"
                     title="Save"
+                    disabled={isGeneratingSummary || isSaving}
                   >
                     <FiCheck />
                   </Button>
@@ -1010,6 +1181,7 @@ export default function ObjectivesPageClient({
                     size="icon"
                     variant="outline"
                     title="Cancel"
+                    disabled={isGeneratingSummary || isSaving}
                   >
                     <FiX />
                   </Button>
@@ -1017,203 +1189,180 @@ export default function ObjectivesPageClient({
               )
             }
           >
-            {(() => {
-              const visibleFiles = isObjectiveEditMode
-                ? objectiveDraft.uploaded_files
-                : objective.uploaded_files;
+            <> {isGeneratingSummary && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-white/80 ">
+                {/* <div className="flex items-center gap-4 rounded-xl bg-white px-5 py-4 shadow-lg dark:bg-gray-800">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" /> */}
+                  <Loader backgroundClass="bg-transparent" />
+                   {/* <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Generating Business Summary
+                    </p>
+                    <p className="text-xs text-gray-600 dark:text-gray-300">
+                      Please wait...
+                    </p>
+                  </div> */}
+                {/* </div> */}
+              </div>
+            )}
+              {(() => {
+                const visibleFiles = isObjectiveEditMode
+                  ? objectiveDraft.uploaded_files
+                  : objective.uploaded_files;
 
-              const hasWebsite = Boolean(
-                (isObjectiveEditMode ? objectiveDraft.website : objective.website)?.trim()
-              );
+                const hasWebsite = Boolean(
+                  (isObjectiveEditMode ? objectiveDraft.website : objective.website)?.trim()
+                );
 
-              const hasFiles = Boolean(visibleFiles?.length);
+                const hasFiles = Boolean(visibleFiles?.length);
 
-              return (
-                <div className="grid grid-cols-1 gap-5">
-                  <div>
-                    <div className="mb-1 flex items-center justify-end">
-                      {isObjectiveEditMode && (
-                        <p className="text-xs text-gray-500">Max 250 characters</p>
+                return (
+                  <div className="grid grid-cols-1 gap-5">
+                    <div>
+                      <div className="mb-1 flex items-center justify-end">
+                        {isObjectiveEditMode && (
+                          <p className="text-xs text-gray-500">Max 250 characters</p>
+                        )}
+                      </div>
+
+                      {isObjectiveEditMode ? (
+                        <textarea
+                          rows={5}
+                          maxLength={250}
+                          value={objectiveDraft.business_context || ""}
+                          onChange={(e) =>
+                            setObjectiveDraft((prev) => ({
+                              ...prev,
+                              business_context: e.target.value,
+                            }))
+                          }
+                          className="w-full resize-none rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          placeholder="Describe your business context..."
+                        />
+                      ) : objective.business_context ? (
+                        <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
+                          {objective.business_context}
+                        </p>
+                      ) : (
+                        <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
+                          Example:
+                          Our business primarily sells premium skincare products across Amazon US and Shopify.
+                          We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
+                          Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
+                          while maintaining bestseller stock is a key priority.
+                        </p>
                       )}
                     </div>
 
-                    {isObjectiveEditMode ? (
-                      <textarea
-                        rows={5}
-                        maxLength={250}
-                        value={objectiveDraft.business_context || ""}
-                        onChange={(e) =>
-                          setObjectiveDraft((prev) => ({
-                            ...prev,
-                            business_context: e.target.value,
-                          }))
-                        }
-                        className="w-full resize-none rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                        placeholder="Describe your business context..."
-                      />
-                    ) : objective.business_context ? (
-                      <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
-                        {objective.business_context}
-                      </p>
-                    ) : (
-                      <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
-                        Example:
-                        Our business primarily sells premium skincare products across Amazon US and Shopify.
-                        We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
-                        Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
-                        while maintaining bestseller stock is a key priority.
-                      </p>
+                    {isObjectiveEditMode && (
+                      <div className="flex items-center gap-3 py-3">
+                        <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+
+                        <span className="whitespace-nowrap text-[10px] sm:text-xs font-medium tracking-widest text-gray-400 dark:text-gray-500">
+                          OR AUTO-EXTRACT YOUR BUSINESS SUMMARY
+                        </span>
+
+                        <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                      </div>
                     )}
-                  </div>
 
-                  {isObjectiveEditMode && (
-                    <div className="flex items-center gap-3 py-3">
-                      <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-
-                      <span className="whitespace-nowrap text-[10px] sm:text-xs font-medium tracking-widest text-gray-400 dark:text-gray-500">
-                        OR AUTO-EXTRACT YOUR BUSINESS SUMMARY
-                      </span>
-
-                      <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-                    </div>
-                  )}
-
-                  {(isObjectiveEditMode || hasWebsite || hasFiles) && (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      {(isObjectiveEditMode || hasWebsite) && (
+                    {isObjectiveEditMode && (
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
                           <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Website</p>
 
-                          {isObjectiveEditMode ? (
-                            <div className="relative">
-                              <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                              <input
-                                type="url"
-                                placeholder="https://yourwebsite.com"
-                                value={objectiveDraft.website || ""}
-                                onChange={(e) =>
-                                  setObjectiveDraft((prev) => ({
-                                    ...prev,
-                                    website: e.target.value,
-                                  }))
-                                }
-                                className="w-full rounded-md border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                              />
-                            </div>
-                          ) : (
-                            <a
-                              href={objective.website}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-sm font-medium text-blue-600 hover:underline break-all"
-                            >
-                              {objective.website}
-                            </a>
-                          )}
+                          <div className="relative">
+                            <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                              type="url"
+                              placeholder="https://yourwebsite.com"
+                              value={objectiveDraft.website || ""}
+                              onChange={(e) =>
+                                setObjectiveDraft((prev) => ({
+                                  ...prev,
+                                  website: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-md border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            />
+                          </div>
                         </div>
-                      )}
 
-                      {(isObjectiveEditMode || hasFiles) && (
                         <div>
                           <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Files</p>
 
-                          {isObjectiveEditMode ? (
-                            <div className="">
-                              <div className="w-full rounded-md border border-gray-300 bg-white flex items-center gap-2  px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
-                                <label
-                                  htmlFor="business-summary-file"
-                                  className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                                >
-                                  Upload File
-                                </label>
-                                <input
-                                  id="business-summary-file"
-                                  ref={fileInputRef}
-                                  type="file"
-                                  accept=".docx,.pptx"
-                                  multiple
-                                  onChange={handleFilesSelected}
-                                  className="hidden"
-                                />
-                                <span className="block w-full truncate px-2 text-xs text-gray-500 dark:text-gray-400">
-                                  {visibleFiles?.length
-                                    ? visibleFiles.map((f) => f.name).join(", ")
-                                    : "No file selected"}
-                                </span>
-                              </div>
-                            </div>
-                          ) : hasFiles ? (
-                            <div className="space-y-3">
-                              {visibleFiles.map((file) => (
-                                <div
-                                  key={file.id}
-                                  className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-2">
-                                        <FiFileText className="shrink-0 text-charcoal-500" />
-                                        <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
-                                          {file.name}
-                                        </p>
-                                      </div>
-                                      <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
-                                        {formatFileSize(file.size)}
-                                      </p>
-
-                                      {file.uploadStatus === "error" ? (
-                                        <p className="mt-2 text-xs text-red-500">{file.error}</p>
-                                      ) : (
-                                        <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
-                                          {file.extractedText || "No text extracted"}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
+                          <div className="w-full rounded-md border border-gray-300 bg-white flex items-center gap-2 px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
+                            <label
+                              htmlFor="business-summary-file"
+                              className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                            >
+                              Upload File
+                            </label>
+                            <input
+                              id="business-summary-file"
+                              ref={fileInputRef}
+                              type="file"
+                              accept=".docx,.pptx"
+                              multiple
+                              onChange={handleFilesSelected}
+                              className="hidden"
+                            />
+                            <span className="block w-full truncate px-2 text-xs text-gray-500 dark:text-gray-400">
+                              {objectiveDraft.uploaded_files?.length
+                                ? objectiveDraft.uploaded_files.map((f) => f.name).join(", ")
+                                : "No file selected"}
+                            </span>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    )}
 
-                  {isExtractingFiles && (
-                    <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                      Extracting text from files...
+                    {/* {isObjectiveEditMode && (
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        onClick={handleGenerateBusinessSummary}
+                        disabled={isGeneratingSummary || !objectiveDraft.website?.trim()}
+                      >
+                        {isGeneratingSummary ? "Generating..." : "Generate Summary"}
+                      </Button>
                     </div>
-                  )}
+                  )} */}
 
-                  {hasFiles && (
-                    <div className="space-y-3">
-                      {visibleFiles.map((file) => (
-                        <div
-                          key={file.id}
-                          className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <FiFileText className="shrink-0 text-charcoal-500" />
-                                <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
-                                  {file.name}
+                    {isExtractingFiles && (
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                        Extracting text from files...
+                      </div>
+                    )}
+
+                    {isObjectiveEditMode && hasFiles && (
+                      <div className="space-y-3">
+                        {visibleFiles.map((file) => (
+                          <div
+                            key={file.id}
+                            className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <FiFileText className="shrink-0 text-charcoal-500" />
+                                  <p className="truncate text-sm font-medium text-gray-800 dark:text-white/90">
+                                    {file.name}
+                                  </p>
+                                </div>
+                                <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
+                                  {formatFileSize(file.size)}
                                 </p>
+
+                                {file.uploadStatus === "error" ? (
+                                  <p className="mt-2 text-xs text-red-500">{file.error}</p>
+                                ) : (
+                                  <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
+                                    {file.extractedText || "No text extracted"}
+                                  </p>
+                                )}
                               </div>
-                              <p className="mt-1 text-xs text-charcoal-500 dark:text-gray-400">
-                                {formatFileSize(file.size)}
-                              </p>
 
-                              {file.uploadStatus === "error" ? (
-                                <p className="mt-2 text-xs text-red-500">{file.error}</p>
-                              ) : (
-                                <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
-                                  {file.extractedText || "No text extracted"}
-                                </p>
-                              )}
-                            </div>
-
-                            {isObjectiveEditMode && (
                               <button
                                 type="button"
                                 onClick={() => handleRemoveUploadedFile(file.id)}
@@ -1222,15 +1371,14 @@ export default function ObjectivesPageClient({
                               >
                                 <FiTrash2 />
                               </button>
-                            )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()} </>
           </InfoCard>
 
           <InfoCard
