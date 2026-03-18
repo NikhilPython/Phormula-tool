@@ -506,13 +506,17 @@ def PO_generated():
     if isinstance(data_bytes, memoryview):
         data_bytes = data_bytes.tobytes()
 
-    inventory_df = pd.read_excel(BytesIO(data_bytes))
+    try:
+        inventory_df = pd.read_excel(BytesIO(data_bytes), sheet_name='Dispatch', header=6)
+    except Exception as e:
+        return jsonify({'error': f'Unable to read Dispatch sheet: {str(e)}'}), 400
 
-    # ---------------- CLEAN FORECAST DATA ----------------
     inventory_df.columns = inventory_df.columns.str.strip()
 
     if 'sku' not in inventory_df.columns or 'Dispatch' not in inventory_df.columns:
-        return jsonify({'error': 'Required columns missing in forecast file'}), 400
+        return jsonify({
+            'error': f"Required columns missing in Dispatch sheet. Found: {list(inventory_df.columns)}"
+        }), 400
 
     inventory_df['sku'] = inventory_df['sku'].astype(str).str.strip()
     inventory_df['Dispatch'] = pd.to_numeric(

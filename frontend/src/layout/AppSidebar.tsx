@@ -24,7 +24,7 @@ import { useShopifyStore } from "@/lib/utils/useShopifyStore";
 import { usePlatform } from "@/components/context/PlatformContext";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { buildCountryMarketplaceMap } from "@/lib/utils/countryMarketplace";
-import { useAppSelector } from "@/lib/hooks"; // ✅ add
+import { useAppSelector } from "@/lib/hooks";
 
 type NavSubItem = {
   name: string;
@@ -57,6 +57,31 @@ const AppSidebar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   const routeParams = useParams();
+
+  const [currentHash, setCurrentHash] = useState("");
+
+  useEffect(() => {
+    const updateHash = () => {
+      if (typeof window === "undefined") return;
+
+      const hash = window.location.hash || "";
+      setCurrentHash(hash);
+    };
+
+    updateHash();
+
+    window.addEventListener("hashchange", updateHash);
+    window.addEventListener("page-hash-navigate", updateHash as EventListener);
+
+    return () => {
+      window.removeEventListener("hashchange", updateHash);
+      window.removeEventListener("page-hash-navigate", updateHash as EventListener);
+    };
+  }, [pathname]);
+
+  const [lastNonGlobalPlatform, setLastNonGlobalPlatform] = useState<string | null>(null);
+
+
 
   // ✅ Auth info (client vs member)
   const authUser = useAppSelector((s: any) => s.auth.user);
@@ -136,24 +161,29 @@ const AppSidebar: React.FC = () => {
 
   const regionOptions: RegionOption[] = React.useMemo(() => {
     const opts = buildPlatformOptions(connectedPlatforms);
-
     const countryFromRoute = routeParams?.countryName as string | undefined;
 
-    // ✅ ONLY force Amazon country if NOT global
-    if (countryFromRoute && countryFromRoute !== "global") {
-      const forcedValue = `amazon-${countryFromRoute}`;
+    const ensureOption = (value: string) => {
+      if (!value.startsWith("amazon-")) return;
+      if (opts.some((o) => o.value === value)) return;
 
-      const exists = opts.some((o) => o.value === forcedValue);
-      if (!exists) {
-        opts.unshift({
-          value: forcedValue,
-          label: `Amazon ${countryFromRoute.toUpperCase()}`,
-        });
-      }
+      const country = value.replace("amazon-", "").toUpperCase();
+      opts.unshift({
+        value,
+        label: `Amazon ${country}`,
+      });
+    };
+
+    if (countryFromRoute && countryFromRoute !== "global") {
+      ensureOption(`amazon-${countryFromRoute}`);
+    }
+
+    if (lastNonGlobalPlatform) {
+      ensureOption(lastNonGlobalPlatform);
     }
 
     return opts;
-  }, [connectedPlatforms, routeParams?.countryName]);
+  }, [connectedPlatforms, routeParams?.countryName, lastNonGlobalPlatform]);
 
   // ===== Selected platform =====
   const [selectedPlatform, setSelectedPlatform] = useState<string>(() => {
@@ -165,6 +195,27 @@ const AppSidebar: React.FC = () => {
 
     return `amazon-${countryFromRoute}`;
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const saved = localStorage.getItem("lastNonGlobalPlatform");
+    if (saved && saved.startsWith("amazon-")) {
+      setLastNonGlobalPlatform(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      selectedPlatform &&
+      selectedPlatform !== "global" &&
+      selectedPlatform !== "shopify" &&
+      selectedPlatform.startsWith("amazon-")
+    ) {
+      setLastNonGlobalPlatform(selectedPlatform);
+      localStorage.setItem("lastNonGlobalPlatform", selectedPlatform);
+    }
+  }, [selectedPlatform]);
 
   const decodeJwtUserId = (jwt: string): string | null => {
     try {
@@ -658,10 +709,10 @@ const AppSidebar: React.FC = () => {
         //   name: "Chatbot",
         //   path: `/chatbot/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         // },
-       {
-  name: "Inventory Forecast",
-  path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-forecast`,
-},
+        {
+          name: "Inventory Forecast",
+          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-forecast`,
+        },
         {
           name: "P&L Forecast",
           path: `/pnlforecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
@@ -692,21 +743,21 @@ const AppSidebar: React.FC = () => {
           path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
         {
-  name: "Dispatch Planning",
-  path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#dispatch`,
-},
+          name: "Dispatch Planning",
+          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#dispatch`,
+        },
         {
-  name: "Purchase Order (PO) Planning",
-  path: ({ countryName, month, year }) =>
-    `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`,
-  onClick: async () => {
-    await triggerPurchaseOrderApi(
-      currentParams.countryName,
-      currentParams.month,
-      currentParams.year
-    );
-  },
-},
+          name: "Purchase Order (PO) Planning",
+          path: ({ countryName, month, year }) =>
+            `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`,
+          onClick: async () => {
+            await triggerPurchaseOrderApi(
+              currentParams.countryName,
+              currentParams.month,
+              currentParams.year
+            );
+          },
+        },
         {
           name: "Expense Reconcilliation",
           path: ({ countryName, month, year }) =>
@@ -715,7 +766,7 @@ const AppSidebar: React.FC = () => {
             )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
         },
         {
-          name: "Objectives & Targets",
+          name: "Targets & Objectives",
           path: `/objectives-targets/${currentParams.countryName}`,
         },
       ],
@@ -750,12 +801,26 @@ const AppSidebar: React.FC = () => {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  // const isActive = useCallback(
+  //   (path: string | ((params: typeof currentParams) => string)) => {
+  //     const resolvedPath = typeof path === "function" ? path(currentParams) : path;
+  //     return pathname === resolvedPath;
+  //   },
+  //   [pathname, currentParams]
+  // );
+
   const isActive = useCallback(
     (path: string | ((params: typeof currentParams) => string)) => {
       const resolvedPath = typeof path === "function" ? path(currentParams) : path;
+      const [targetPath, targetHash = ""] = resolvedPath.split("#");
+
+      if (targetHash) {
+        return pathname === targetPath && currentHash === `#${targetHash}`;
+      }
+
       return pathname === resolvedPath;
     },
-    [pathname, currentParams]
+    [pathname, currentHash, currentParams]
   );
 
   const showText = isExpanded || isMobileOpen;
@@ -808,7 +873,7 @@ const AppSidebar: React.FC = () => {
               alt="Close sidebar"
               width={20}
               height={20}
-             className="2xl:w-[20px] 2xl:h-[20px] w-[18px] h-[18px]"
+              className="2xl:w-[20px] 2xl:h-[20px] w-[18px] h-[18px]"
             />
           ) : (
             <Image
@@ -816,7 +881,7 @@ const AppSidebar: React.FC = () => {
               alt="Open sidebar"
               width={20}
               height={20}
-             className="2xl:w-[20px] 2xl:h-[20px] w-[18px] h-[18px]"
+              className="2xl:w-[20px] 2xl:h-[20px] w-[18px] h-[18px]"
             />
           )}
         </button>
@@ -895,19 +960,23 @@ const AppSidebar: React.FC = () => {
                                 return;
                               }
 
-                              // ✅ same page, only hash changed
                               if (targetHash && targetPathOnly === currentPathOnly) {
                                 e.preventDefault();
 
-                                // update hash manually
-                                window.history.pushState(null, "", `#${targetHash}`);
+                                const nextHash = `#${targetHash}`;
+                                window.history.pushState(null, "", `${targetPathOnly}${nextHash}`);
+                                setCurrentHash(nextHash);
 
-                                // notify page explicitly
                                 window.dispatchEvent(
                                   new CustomEvent("page-hash-navigate", {
                                     detail: { hash: targetHash },
                                   })
                                 );
+
+                                const el = document.getElementById(targetHash);
+                                if (el) {
+                                  el.scrollIntoView({ behavior: "smooth", block: "start" });
+                                }
 
                                 return;
                               }

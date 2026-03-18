@@ -3562,11 +3562,6 @@ export default function DashboardPage() {
     }, [plSummaryTotals.cm2_profit, plSummaryTotals.net_sales]);
 
 
-    const netReimbursementPctForSummary = useMemo(() => {
-        const mtdSales = toNumber(stats_mtdHome);
-        return mtdSales ? (reimbursementForSummary / mtdSales) * 100 : 0;
-    }, [reimbursementForSummary, stats_mtdHome]);
-
     const reimbursementVsCm2PctForSummary = useMemo(() => {
         const cm2 = cm2Profit;
         return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
@@ -3576,7 +3571,6 @@ export default function DashboardPage() {
         const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
     }, [reimbursementForSummary, plSummaryTotals.net_sales, stats_mtdHome]);
-
 
     const { todayDay: statsTodayDay } = getISTDayInfo();
 
@@ -3794,7 +3788,6 @@ export default function DashboardPage() {
 
     const targets_reimbursement = targetKpisFromBi ? targetKpisFromBi.reimbursement : reimbursementHome;
 
-    // Calculate the percentage of the month completed (for range display)
     const rangeCompletedPct = useMemo(() => {
         if (!selectedStartDay || !selectedEndDay) return 0;
         const daysInMonth = getDaysInMonthIST();
@@ -3821,6 +3814,13 @@ export default function DashboardPage() {
         // "mtd-pl": "productwise",
         "pnl-mtd": "productwise",
         "current-inventory": "inventory",
+    };
+
+    const TAB_TO_HASH: Record<TopTab, string> = {
+        live: "live-sales",
+        summary: "ai-insights",
+        productwise: "pnl-mtd",
+        inventory: "current-inventory",
     };
 
     const handleHashNavigation = useCallback((rawHash?: string) => {
@@ -3876,6 +3876,22 @@ export default function DashboardPage() {
 
         return () => clearTimeout(timer);
     }, [activeTab, pendingHash]);
+
+    const syncTabToHash = useCallback((tab: TopTab) => {
+        if (typeof window === "undefined") return;
+
+        const hash = TAB_TO_HASH[tab];
+        if (!hash) return;
+
+        const nextUrl = `${window.location.pathname}#${hash}`;
+        window.history.pushState(null, "", nextUrl);
+
+        window.dispatchEvent(
+            new CustomEvent("page-hash-navigate", {
+                detail: { hash },
+            })
+        );
+    }, []);
 
     const stickyKpiItems = [
         {
@@ -4058,7 +4074,6 @@ export default function DashboardPage() {
         },
     ];
 
-
     return (
         <div className="relative w-full">
             <HashScroll offset={80} />
@@ -4128,7 +4143,10 @@ export default function DashboardPage() {
                 <SegmentedToggle<TopTab>
                     value={activeTab}
                     options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
-                    onChange={setActiveTab}
+                    onChange={(tab) => {
+                        setActiveTab(tab);
+                        syncTabToHash(tab);
+                    }}
                     className="mt-2 w-full"
                     compact
                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
@@ -4225,7 +4243,7 @@ export default function DashboardPage() {
                                             formatter={fmtInt}
                                             bottomLabel={prevLabel}
                                             // className="border-[#FDD36F] bg-[#FDD36F4D]"
-                                            className="border-[#FDD36F] border-t-4 border-t-[#75BBDA]"
+                                            className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
                                         />
 
                                         <AmazonStatCard
@@ -4255,7 +4273,7 @@ export default function DashboardPage() {
                                             previousFormatter={formatDisplayAmount}
                                             bottomLabel={prevLabel}
                                             // className="border-[#75BBDA] bg-[#75BBDA4D]"
-                                            className="border-[#75BBDA] border-t-4 border-t-[#75BBDA4D]"
+                                            className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                         />
 
                                         <AmazonStatCard
@@ -4936,8 +4954,7 @@ export default function DashboardPage() {
 
 
             {
-                platform === "global" && showLiveBI && (
-                    // <div className="mt-6 w-full rounded-2xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden">
+                activeTab === "live" && platform === "global" && showLiveBI && (
                     <div
                         id="ai-insights"
                         className="mt-6 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
@@ -4957,22 +4974,6 @@ export default function DashboardPage() {
                 )
             }
 
-
-            {/* {activeTab === "summary" && (
-                <div className="w-full overflow-x-hidden">
-                    {showLiveBI && liveBiPayload && (
-                        <LiveBusinessClient
-                            countryName={countryName}
-                            ranged="MTD"
-                            month={(currMonthName || "").toLowerCase()}
-                            year={String(currYear)}
-                            initialData={liveBiPayload}
-                            disableAutoFetch
-                            onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
-                        />
-                    )}
-                </div>
-            )} */}
 
             {activeTab === "summary" && (
                 <div className="w-full overflow-x-hidden">
