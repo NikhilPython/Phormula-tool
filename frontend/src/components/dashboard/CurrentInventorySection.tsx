@@ -276,10 +276,12 @@ export default function CurrentInventorySection({
   inventoryAlerts,
   userData,
 }: CurrentInventorySectionProps) {
-  // ✅ follow graphRegion, but send lowercase/“global” to backend
-  const inventoryCountry = useMemo(() => {
-    const v = (region || "").toString().trim().toLowerCase();
-    return v.length ? v : "global";
+
+  const displayRegion = useMemo(() => {
+    if (region === "UK") return "UK";
+    if (region === "US") return "US";
+    if (region === "CA") return "CA";
+    return "Global";
   }, [region]);
 
   // ✅ current month/year in IST
@@ -339,10 +341,7 @@ export default function CurrentInventorySection({
     // ✅ normalize headers
     const cleanedRows = normalizeExportRows(rowsToExport);
 
-    const displayCountry =
-      inventoryCountry.toLowerCase() === "global"
-        ? "Global"
-        : inventoryCountry.toUpperCase();
+    const displayCountry = displayRegion;
 
     const abbr = getAbbr(invMonthYear.month);
     const yy = invMonthYear.year.slice(2);
@@ -409,7 +408,7 @@ export default function CurrentInventorySection({
     });
 
     saveAs(blob, fileName);
-  }, [invRows, inventoryCountry, invMonthYear, userData, homeCurrencyCodeForExcel]);
+  }, [invRows, displayRegion, invMonthYear, userData, homeCurrencyCodeForExcel]);
 
   /* -------- Transform backend rows → UI rows for DataTable -------- */
 
@@ -640,7 +639,7 @@ export default function CurrentInventorySection({
         cellClassName: "text-left",
         headerClassName: "text-left break-words",
       },
-      { key: "skuAsin", header: "SKU", width: "w-[120px]", cellClassName: "text-center",  },
+      { key: "skuAsin", header: "SKU", width: "w-[120px]", cellClassName: "text-center", },
       { key: "mtdSales", header: "MTD Sales", width: responsiveWidth, cellClassName: "text-center" },
       {
         key: "sales30",
@@ -717,13 +716,13 @@ export default function CurrentInventorySection({
           <div className="min-w-0">
             <DataTable
               columns={columns}
-              data={invLoading ? [] : tableRows}   
-              loading={false}                    
+              data={invLoading ? [] : tableRows}
+              loading={false}
               paginate={true}
               pageSize={15}
               scrollY={false}
               maxHeight="none"
-              emptyMessage={invLoading ? "" : "No inventory data."}  
+              emptyMessage={invLoading ? "" : "No inventory data."}
               rowClassName={(row) => {
                 if (row.rowType === "total") return "bg-[#EFEFEF] font-semibold";
                 if (row.rowType === "others") return "!bg-[#FFFFFF]";

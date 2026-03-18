@@ -299,95 +299,7 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
     chart.destroy();
     return imageDataUrl;
   };
-  // ---------- DOWNLOAD: Excel + chart image ----------
-  // const handleDownload = async () => {
-  //   try {
-  //     if (!chartDataList) return;
-
-  //     // Build both tabs' datasets (does NOT depend on activeTab)
-  //     const salesCm1Data = buildChartDataForTab("sales_cm1");
-  //     const unitsData = buildChartDataForTab("units");
-  //     if (!salesCm1Data && !unitsData) return;
-
-  //     // Use the same options you already pass to the visible chart
-  //     const opts = processedChartOptions;
-
-  //     // Render both charts to base64 images offscreen
-  //     const [salesImg, unitsImg] = await Promise.all([
-  //       salesCm1Data ? renderChartToImage(salesCm1Data, opts) : Promise.resolve(null),
-  //       unitsData ? renderChartToImage(unitsData, opts) : Promise.resolve(null),
-  //     ]);
-
-  //     // Create Excel workbook
-  //     const workbook = new ExcelJS.Workbook();
-
-  //     // Sheet 1: Data (optional - keep your current table export here if you want)
-  //     const dataSheet = workbook.addWorksheet("Data");
-  //     dataSheet.getCell("A1").value = `${productname} - ${title}`;
-  //     dataSheet.getCell("A1").font = { bold: true, size: 14 };
-  //     dataSheet.getRow(1).height = 22;
-
-  //     // If you want: keep your existing "dump data table" logic here
-  //     // (you can dump BOTH tables or just the active one)
-
-  //     // Sheet 2: Charts (what you asked)
-  //     const chartsSheet = workbook.addWorksheet("Charts");
-
-  //     chartsSheet.mergeCells("A1", "H1");
-  //     chartsSheet.getCell("A1").value = `${productname} - ${title} (Charts)`;
-  //     chartsSheet.getCell("A1").font = { bold: true, size: 14 };
-  //     chartsSheet.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
-  //     chartsSheet.getRow(1).height = 24;
-
-  //     let rowCursor = 3;
-
-  //     const addChartBlock = (heading: string, imageDataUrl: string | null) => {
-  //       chartsSheet.mergeCells(`A${rowCursor}`, `H${rowCursor}`);
-  //       chartsSheet.getCell(`A${rowCursor}`).value = heading;
-  //       chartsSheet.getCell(`A${rowCursor}`).font = { bold: true, size: 12 };
-  //       chartsSheet.getCell(`A${rowCursor}`).alignment = { horizontal: "left" };
-  //       rowCursor += 1;
-
-  //       if (!imageDataUrl) {
-  //         chartsSheet.mergeCells(`A${rowCursor}`, `H${rowCursor}`);
-  //         chartsSheet.getCell(`A${rowCursor}`).value = "Chart not available";
-  //         rowCursor += 2;
-  //         return;
-  //       }
-
-  //       const base64 = imageDataUrl.replace(/^data:image\/(png|jpe?g);base64,/, "");
-  //       const imgId = workbook.addImage({ base64, extension: "png" });
-
-  //       // Insert image
-  //       chartsSheet.addImage(imgId, {
-  //         tl: { col: 0, row: rowCursor - 1 },
-  //         ext: { width: 1000, height: 420 },
-  //       });
-
-  //       // Advance cursor (roughly matches image height)
-  //       rowCursor += 24;
-  //     };
-
-  //     addChartBlock(getTitleByTabLocal("sales_cm1"), salesImg);
-  //     addChartBlock(getTitleByTabLocal("units"), unitsImg);
-
-  //     // A little formatting
-  //     chartsSheet.columns.forEach((col) => {
-  //       if (!col.width || col.width < 14) col.width = 14;
-  //     });
-
-  //     // Save workbook
-  //     const buffer = await workbook.xlsx.writeBuffer();
-  //     const blob = new Blob([buffer], {
-  //       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  //     });
-
-  //     const filename = `${productname}-${title}-charts.xlsx`;
-  //     saveAs(blob, filename);
-  //   } catch (err) {
-  //     console.error("Failed to export Excel with both charts", err);
-  //   }
-  // };
+  
 
   const handleDownload = async () => {
     try {
@@ -407,8 +319,8 @@ const TrendChartSection: React.FC<TrendChartSectionProps> = ({
         salesCm1Data ? renderChartToImage(salesCm1Data, opts, EXPORT_W, EXPORT_H) : Promise.resolve(null),
         unitsData ? renderChartToImage(unitsData, opts, EXPORT_W, EXPORT_H) : Promise.resolve(null),
       ]);
-      // Optional table data (Sheet 1)
-      // We'll export table for CURRENT active tab (processedChartData)
+      
+      
       const labels: string[] = (processedChartData as any)?.labels || [];
       const datasets: any[] = (processedChartData as any)?.datasets || [];
 

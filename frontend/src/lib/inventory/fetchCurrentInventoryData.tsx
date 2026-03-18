@@ -29,17 +29,21 @@ async function hitAgedInventoryOnce(baseURL: string, jwtToken: string) {
     try {
       const j = await res.json();
       if (j?.error) msg = j.error;
-    } catch {}
+    } catch { }
     throw new Error(msg);
   }
 
   return res.json().catch(() => ({}));
 }
 
-function getCurrentInventoryEndpoint(baseURL: string, inventoryCountry: string) {
-  return inventoryCountry === "global"
-    ? `${baseURL}/current_inventory_global`
-    : `${baseURL}/current_inventory`;
+// function getCurrentInventoryEndpoint(baseURL: string, inventoryCountry: string) {
+//   return inventoryCountry === "global"
+//     ? `${baseURL}/current_inventory`
+//     : `${baseURL}/current_inventory`;
+// }
+
+function getCurrentInventoryEndpoint(baseURL: string) {
+  return `${baseURL}/current_inventory`;
 }
 
 function base64ToArrayBuffer(base64: string) {
@@ -71,11 +75,9 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
 }> {
   const { baseURL, token, country, month, year, XLSX } = args;
 
-  // 1) ALWAYS hit aged inventory first
   await hitAgedInventoryOnce(baseURL, token);
 
-  // 2) THEN hit current inventory endpoint
-  const endpoint = getCurrentInventoryEndpoint(baseURL, country);
+  const endpoint = getCurrentInventoryEndpoint(baseURL);
 
   const res = await fetch(endpoint, {
     method: "POST",

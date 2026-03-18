@@ -16,26 +16,34 @@ import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import { motion } from "framer-motion";
 import SkuRecommendationDrawer from '@/components/dashboard/SkuRecommendationDrawer';
-// import Drawer from '@mui/material/Drawer';
-// import IconButton from '@mui/material/IconButton';
-// import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
 
+type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
-// type MonthsforBIProps = {
-//   countryName: string; // "uk" | "us" | "ca"
-//   ranged: string; // "QTD", "MTD", etc
-//   month: string; // "november"
-//   year: string; // "2025"
-//   initialData?: any;
-// };
+const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
+const INR_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_INR_TO_USD || "0.01128");
+const CAD_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_CAD_TO_USD || "0.74");
+
+const currencyForCountry = (countryName: string): CurrencyCode => {
+  const c = (countryName || "").toLowerCase();
+  if (c === "uk") return "GBP";
+  if (c === "us") return "USD";
+  if (c === "ca") return "CAD";
+  if (c === "india") return "INR";
+  return "USD";
+};
+
+const toNumberSafe = (v: any) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 type MonthsforBIProps = {
   countryName: string; // "uk" | "us" | "ca" | "global"
+  sourceCountryName?: string;
   ranged: string;      // "QTD", "MTD", etc
   month: string;       // "november"
   year: string;        // "2025"
   initialData?: ApiResponse | null;
-
   disableAutoFetch?: boolean; // when true, LiveBusinessClient will NOT fetch
   onGenerateInsights?: () => Promise<ApiResponse | void>; // optional: parent fetch
 };
@@ -59,8 +67,6 @@ interface SkuItem {
   sales_mix?: number;
   unit_wise_profitability?: number;
   profit?: number;
-
-  // raw fields for Excel (may be null with live API)
   quantity_prev?: number;
   quantity_curr?: number;
   asp_prev?: number;
@@ -73,8 +79,6 @@ interface SkuItem {
   unit_wise_profitability_curr?: number;
   profit_prev?: number;
   profit_curr?: number;
-
-  // mapped fields for Excel export
   quantity_month1?: number;
   quantity_month2?: number;
   asp_month1?: number;
@@ -89,19 +93,14 @@ interface SkuItem {
   profit_month2?: number;
   product_sales_prev?: number;
   product_sales_curr?: number;
-
   product_sales_month1?: number;
   product_sales_month2?: number;
-
   profit_percentage_month1?: number;
   profit_percentage_month2?: number;
-
   'Gross Sales Growth (%)'?: {
     category: string;
     value: number;
   };
-
-
   [key: string]: any;
 }
 
@@ -147,7 +146,6 @@ interface ApiResponse {
     summary_text: string;
     metric_bullets: string[];
   };
-
   objective_context?: {
     growth_intent?: string;
     inventory_clearance_priority?: boolean;
@@ -160,18 +158,15 @@ interface ApiResponse {
     journey_summary?: string[];
     recommendation?: string;
   };
-
-  // ✅ ADD THESE (top-level)
   ads_recommendation?: string;
   inventory_summary?: {
     alert_bullets?: string[];
     summary_text?: string;
   };
-
   overall_actions?: string[];
   recommended_actions_mtd?: Record<string, string>;
   remaining_skus_recommendation?: string;
-  remaining_skus_block?: string; // ✅ ADD
+  remaining_skus_block?: string;
   portfolio_recommendation?: string;
 }
 
@@ -207,11 +202,6 @@ const getTodayKey = (): string => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-const getAbbr = (m?: string) => {
-  if (!m) return '';
-  return m.slice(0, 3);
-};
-
 const capitalizeWords = (value: string) =>
   (value || "")
     .toString()
@@ -222,16 +212,9 @@ const capitalizeWords = (value: string) =>
 // Main Component
 // =========================
 
-// export default function LiveBusinessClient({
-//   countryName,
-//   ranged,
-//   month,
-//   year,
-//   initialData,
-// }: MonthsforBIProps) {
-
 export default function LiveBusinessClient({
   countryName,
+  sourceCountryName,
   ranged,
   month,
   year,
@@ -240,6 +223,93 @@ export default function LiveBusinessClient({
   onGenerateInsights,
 }: MonthsforBIProps) {
   const { data: userData } = useGetUserDataQuery();
+
+  const [gbpToUsd, setGbpToUsd] = useState(GBP_TO_USD_ENV);
+  const [inrToUsd, setInrToUsd] = useState(INR_TO_USD_ENV);
+  const [cadToUsd, setCadToUsd] = useState(CAD_TO_USD_ENV);
+
+  const profileHomeCurrency = ((userData?.homeCurrency || "USD").toUpperCase() as CurrencyCode);
+
+  const sourceCurrency: CurrencyCode = useMemo(() => {
+    return currencyForCountry(sourceCountryName || countryName);
+  }, [sourceCountryName, countryName]);
+
+  const displayCurrency: CurrencyCode = useMemo(() => {
+    const c = (countryName || "").toLowerCase();
+
+    if (c === "global") return profileHomeCurrency;
+    if (c === "uk") return "GBP";
+    if (c === "us") return "USD";
+    if (c === "ca") return "CAD";
+
+    return profileHomeCurrency;
+  }, [countryName, profileHomeCurrency]);
+
+  const convertToDisplayCurrency = useMemo(() => {
+    return (value: number | null | undefined, from: CurrencyCode) => {
+      const n = toNumberSafe(value ?? 0);
+      if (!n) return 0;
+
+      let usd = n;
+      if (from === "GBP") usd = n * gbpToUsd;
+      if (from === "INR") usd = n * inrToUsd;
+      if (from === "CAD") usd = n * cadToUsd;
+
+      if (displayCurrency === "USD") return usd;
+      if (displayCurrency === "GBP") return gbpToUsd ? usd / gbpToUsd : usd;
+      if (displayCurrency === "INR") return inrToUsd ? usd / inrToUsd : usd;
+      if (displayCurrency === "CAD") return cadToUsd ? usd / cadToUsd : usd;
+
+      return usd;
+    };
+  }, [displayCurrency, gbpToUsd, inrToUsd, cadToUsd]);
+
+  const formatDisplayAmount = useMemo(() => {
+    return (value: number | null | undefined) => {
+      const n = toNumberSafe(value ?? 0);
+
+      switch (displayCurrency) {
+        case "USD":
+          return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+        case "GBP":
+          return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(n);
+        case "CAD":
+          return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(n);
+        case "INR":
+          return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(n);
+        default:
+          return n.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+      }
+    };
+  }, [displayCurrency]);
+
+  const convertMetricValueString = useMemo(() => {
+    return (rawValue: string, label: string) => {
+      const value = String(rawValue || "").trim();
+      if (!value) return value;
+
+      // Units should not be currency-converted
+      if (label.toLowerCase() === "units") return value;
+
+      // Match: "£10.32 (+8.19%)" or "$433.54 (-9.67%)" or "10.32 (+8.19%)"
+      const match = value.match(/^([£$₹€A-Z$C]*\s*[-+]?[0-9,]*\.?[0-9]+)\s*(\(.+\))?$/i);
+      if (!match) return value;
+
+      const mainPart = match[1] || "";
+      const percentPart = match[2] || "";
+
+      const numeric = Number(mainPart.replace(/[^\d.-]/g, ""));
+      if (!Number.isFinite(numeric)) return value;
+
+      const converted = convertToDisplayCurrency(numeric, sourceCurrency);
+      const formatted = formatDisplayAmount(converted);
+
+      return `${formatted}${percentPart ? ` ${percentPart}` : ""}`;
+    };
+  }, [convertToDisplayCurrency, formatDisplayAmount, sourceCurrency]);
 
   const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>(
     {
@@ -252,6 +322,69 @@ export default function LiveBusinessClient({
       all_skus_total: null,
     }
   );
+
+  type CurrencyRateRow = {
+    conversion_rate: number;
+    country: string;
+    month: string;
+    selected_currency: string;
+    user_currency: string;
+    year: number;
+  };
+
+  const FX_RATES_GET_ENDPOINT = `${API_BASE}/currency-rates`;
+
+  const fetchFxRates = async () => {
+    try {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+      const headers: HeadersInit = { Accept: "application/json" };
+      if (token) (headers as any).Authorization = `Bearer ${token}`;
+
+      const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
+      if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
+
+      const rows: CurrencyRateRow[] = await res.json();
+
+      const currentMonth = String(month || "").toLowerCase();
+      const currentYear = Number(year);
+
+      const cur = (rows || []).filter(
+        (r) =>
+          String(r.month || "").toLowerCase() === currentMonth &&
+          Number(r.year) === currentYear
+      );
+
+      const getRate = (from: string, to: string) => {
+        const row = cur.find(
+          (r) =>
+            String(r.user_currency).toLowerCase() === from &&
+            String(r.selected_currency).toLowerCase() === to
+        );
+        const rate = Number(row?.conversion_rate);
+        return Number.isFinite(rate) && rate > 0 ? rate : null;
+      };
+
+      const gbpUsd = getRate("gbp", "usd");
+      const inrUsd = getRate("inr", "usd");
+      const cadUsd = getRate("cad", "usd");
+
+      if (gbpUsd != null) setGbpToUsd(gbpUsd);
+      if (inrUsd != null) setInrToUsd(inrUsd);
+      if (cadUsd != null) setCadToUsd(cadUsd);
+    } catch (err) {
+      console.error("Failed to fetch FX from DB, keeping env defaults", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchFxRates();
+  }, [month, year]);
+
+  const getCurrencySymbolForExcel = () => {
+    return currencyCodeToSymbol(displayCurrency);
+  };
 
   const titleCountry = useMemo(() => {
     const c = (countryName || "").toLowerCase();
@@ -538,37 +671,25 @@ export default function LiveBusinessClient({
         clone['Sales Growth'] = clone['Net Sales Growth'];
       }
 
-
       clone.quantity_month1 = row.quantity_prev ?? null;
       clone.quantity_month2 = row.quantity_curr ?? null;
-
       clone.asp_month1 = row.asp_prev ?? null;
       clone.asp_month2 = row.asp_curr ?? null;
-
       clone.net_sales_month1 = row.net_sales_prev ?? null;
       clone.net_sales_month2 = row.net_sales_curr ?? null;
-
-      // ✅ ADD THIS
       clone.product_sales_month1 = row.product_sales_prev ?? null;
       clone.product_sales_month2 = row.product_sales_curr ?? null;
-
       if (row['Gross Sales Growth (%)'] != null) {
         clone['Gross Sales Growth'] = row['Gross Sales Growth (%)'];
       }
-
       clone.sales_mix_month1 = row.sales_mix_prev ?? null;
       clone.sales_mix_month2 = row.sales_mix_curr ?? row['Sales Mix (Current)'] ?? null;
-
       clone.unit_wise_profitability_month1 = row.unit_wise_profitability_prev ?? null;
       clone.unit_wise_profitability_month2 = row.unit_wise_profitability_curr ?? null;
-
       clone.profit_month1 = row.profit_prev ?? null;
       clone.profit_month2 = row.profit_curr ?? null;
-
       clone.profit_percentage_month1 = row.profit_pct_prev ?? null;
       clone.profit_percentage_month2 = row.profit_pct_curr ?? null;
-
-
       return clone;
     };
 
@@ -606,42 +727,28 @@ export default function LiveBusinessClient({
     };
 
     const normalized = normalizeCategorizedGrowth(rawCat);
-
     setPeriods(newPeriods);
     setCategorizedGrowth(normalized);
-
     const currentLabel = newPeriods?.current_mtd?.label || '';
     setMonth2Label(currentLabel);
-
     const summaryObj = payload.overall_summary;
     setSummaryText(summaryObj?.summary_text || "");
     setOverallSummary(summaryObj?.metric_bullets || []);
-
     setOverallActions(payload.overall_actions || []);
     setRecommendedActions(payload.recommended_actions_mtd || {});
     setRemainingSkusBlock(payload.remaining_skus_block || payload.remaining_skus_recommendation || "");
     setPortfolioRecommendation((payload as any).portfolio_recommendation || "");
-
-    // these are in your type under objective_context
     setObjectiveContext(payload.objective_context || null);
-
-    // these seem top-level in your current code
     setAdsRecommendation((payload as any).ads_recommendation || "");
     setInventorySummary((payload as any).inventory_summary || null);
-
     const liveInsights = payload.ai_insights || {};
     if (liveInsights && Object.keys(liveInsights).length) {
       setSkuInsights(liveInsights);
       saveInsightsToStorage(liveInsights);
     }
-
-
-    // setPageLoading(false);
   };
 
-
   useEffect(() => {
-    // If data already passed from parent
     if (initialData) {
       hydrateFromPayload(initialData);
       setPageLoading(false);
@@ -668,7 +775,7 @@ export default function LiveBusinessClient({
         if (saved.summaryText) setSummaryText(saved.summaryText);
         if (saved.overallSummary) setOverallSummary(saved.overallSummary);
         if (saved.objectiveContext) {
-          setObjectiveContext(saved.objectiveContext); // ✅ HERE
+          setObjectiveContext(saved.objectiveContext);
         }
 
         setInsightDate(todayKey);
@@ -693,8 +800,6 @@ export default function LiveBusinessClient({
 
   const fetchLiveBi = async (generateInsights: boolean = false) => {
     setError(null);
-
-    // normal fetch: clear per-SKU AI insights & show full loader
     if (!generateInsights) {
       setSkuInsights({});
       saveInsightsToStorage({});
@@ -1019,20 +1124,20 @@ export default function LiveBusinessClient({
     return c; // fallback: show code if symbol unknown
   };
 
-  const getCurrencySymbolForExcel = () => {
-    const isGlobal = (countryName || "").toLowerCase() === "global";
+  // const getCurrencySymbolForExcel = () => {
+  //   const isGlobal = (countryName || "").toLowerCase() === "global";
 
-    // your profile field (adjust the key if your API uses a different name)
-    const homeCode =
-      (userData as any)?.homeCurrency ||
-      (userData as any)?.home_currency ||
-      "";
+  //   // your profile field (adjust the key if your API uses a different name)
+  //   const homeCode =
+  //     (userData as any)?.homeCurrency ||
+  //     (userData as any)?.home_currency ||
+  //     "";
 
-    const countryCode = countryToCurrencyCode(countryName);
+  //   const countryCode = countryToCurrencyCode(countryName);
 
-    const codeToUse = isGlobal ? homeCode : countryCode || homeCode;
-    return currencyCodeToSymbol(codeToUse);
-  };
+  //   const codeToUse = isGlobal ? homeCode : countryCode || homeCode;
+  //   return currencyCodeToSymbol(codeToUse);
+  // };
 
   const parseISODateSafe = (iso?: string) => {
     if (!iso) return null;
@@ -1147,36 +1252,28 @@ export default function LiveBusinessClient({
     const headerOrder = [
       "SKU",
       "Product",
-
       `Qty ${newLbl}`,
       `Qty ${oldLbl}`,
       "Change in Qty (%age)",
-
       `Gross Sales ${newLbl}`,
       `Gross Sales ${oldLbl}`,
       "Change in Gross Sales (%age)",
-
       `Net Sales ${newLbl}`,
       `Net Sales ${oldLbl}`,
       "Change in Net Sales (%age)",
-
       `ASP ${newLbl}`,
       `ASP ${oldLbl}`,
       "Change in ASP (%age)",
-
       `Sales Mix ${newLbl}`,
       `Profit Mix ${newLbl}`,
       `Sales Mix ${oldLbl}`,
       `Profit Mix ${oldLbl}`,
       "Change in Sales Mix (%age)",
-
       `CM1 Profit ${newLbl}`,
       `CM1 Profit ${oldLbl}`,
       "Change in CM1 Profit",
-
       `CM1 Profit %age(${newLbl})`,
       `CM1 Profit %age(${oldLbl})`,
-
       `CM1 Unit Profit ${newLbl}`,
       `CM1 Unit Profit ${oldLbl}`,
       "Change in CM1 Unit Profit (%age)",
@@ -1312,31 +1409,44 @@ export default function LiveBusinessClient({
         const qtyOld = pickOld(row, "quantity_month1", "quantity_month2");
         const qtyNew = pickNew(row, "quantity_month1", "quantity_month2");
 
-        const gsOld = pickOld(row, "product_sales_month1", "product_sales_month2");
-        const gsNew = pickNew(row, "product_sales_month1", "product_sales_month2");
+        const gsOldRaw = pickOld(row, "product_sales_month1", "product_sales_month2");
+        const gsNewRaw = pickNew(row, "product_sales_month1", "product_sales_month2");
 
-        const nsOld = pickOld(row, "net_sales_month1", "net_sales_month2");
-        const nsNew = pickNew(row, "net_sales_month1", "net_sales_month2");
+        const nsOldRaw = pickOld(row, "net_sales_month1", "net_sales_month2");
+        const nsNewRaw = pickNew(row, "net_sales_month1", "net_sales_month2");
 
-        const aspOld = pickOld(row, "asp_month1", "asp_month2");
-        const aspNew = pickNew(row, "asp_month1", "asp_month2");
+        const aspOldRaw = pickOld(row, "asp_month1", "asp_month2");
+        const aspNewRaw = pickNew(row, "asp_month1", "asp_month2");
 
-        // ✅ Sales mix from section net sales totals
+        const cm1OldRaw = pickOld(row, "profit_month1", "profit_month2");
+        const cm1NewRaw = pickNew(row, "profit_month1", "profit_month2");
+
+        const upOldRaw = pickOld(row, "unit_wise_profitability_month1", "unit_wise_profitability_month2");
+        const upNewRaw = pickNew(row, "unit_wise_profitability_month1", "unit_wise_profitability_month2");
+
+        const gsOld = convertToDisplayCurrency(gsOldRaw, sourceCurrency);
+        const gsNew = convertToDisplayCurrency(gsNewRaw, sourceCurrency);
+
+        const nsOld = convertToDisplayCurrency(nsOldRaw, sourceCurrency);
+        const nsNew = convertToDisplayCurrency(nsNewRaw, sourceCurrency);
+
+        const aspOld = convertToDisplayCurrency(aspOldRaw, sourceCurrency);
+        const aspNew = convertToDisplayCurrency(aspNewRaw, sourceCurrency);
+
+        const cm1Old = convertToDisplayCurrency(cm1OldRaw, sourceCurrency);
+        const cm1New = convertToDisplayCurrency(cm1NewRaw, sourceCurrency);
+
+        const upOld = convertToDisplayCurrency(upOldRaw, sourceCurrency);
+        const upNew = convertToDisplayCurrency(upNewRaw, sourceCurrency);
+
         const mixOld = totalNsOld ? (num(nsOld) / totalNsOld) * 100 : null;
         const mixNew = totalNsNew ? (num(nsNew) / totalNsNew) * 100 : null;
 
-        const cm1Old = pickOld(row, "profit_month1", "profit_month2");
-        const cm1New = pickNew(row, "profit_month1", "profit_month2");
-
-        // ✅ Profit mix from denom (grand in Sheet 2; section in Sheet 1)
         const profitMixNew = denomProfitNew ? (num(cm1New) / denomProfitNew) * 100 : null;
         const profitMixOld = denomProfitOld ? (num(cm1Old) / denomProfitOld) * 100 : null;
 
         const cm1PctOld = pickOld(row, "profit_percentage_month1", "profit_percentage_month2");
         const cm1PctNew = pickNew(row, "profit_percentage_month1", "profit_percentage_month2");
-
-        const upOld = pickOld(row, "unit_wise_profitability_month1", "unit_wise_profitability_month2");
-        const upNew = pickNew(row, "unit_wise_profitability_month1", "unit_wise_profitability_month2");
 
         return {
           SKU: row.sku || "",
@@ -1380,23 +1490,46 @@ export default function LiveBusinessClient({
         };
       });
 
-      // totals
       const totals = clean.reduce(
         (acc, r) => {
           acc.qtyOld += num(pickOld(r, "quantity_month1", "quantity_month2"));
           acc.qtyNew += num(pickNew(r, "quantity_month1", "quantity_month2"));
 
-          acc.gsOld += num(pickOld(r, "product_sales_month1", "product_sales_month2"));
-          acc.gsNew += num(pickNew(r, "product_sales_month1", "product_sales_month2"));
+          acc.gsOld += convertToDisplayCurrency(
+            pickOld(r, "product_sales_month1", "product_sales_month2"),
+            sourceCurrency
+          );
+          acc.gsNew += convertToDisplayCurrency(
+            pickNew(r, "product_sales_month1", "product_sales_month2"),
+            sourceCurrency
+          );
 
-          acc.nsOld += num(pickOld(r, "net_sales_month1", "net_sales_month2"));
-          acc.nsNew += num(pickNew(r, "net_sales_month1", "net_sales_month2"));
+          acc.nsOld += convertToDisplayCurrency(
+            pickOld(r, "net_sales_month1", "net_sales_month2"),
+            sourceCurrency
+          );
+          acc.nsNew += convertToDisplayCurrency(
+            pickNew(r, "net_sales_month1", "net_sales_month2"),
+            sourceCurrency
+          );
 
-          acc.cm1Old += num(pickOld(r, "profit_month1", "profit_month2"));
-          acc.cm1New += num(pickNew(r, "profit_month1", "profit_month2"));
+          acc.cm1Old += convertToDisplayCurrency(
+            pickOld(r, "profit_month1", "profit_month2"),
+            sourceCurrency
+          );
+          acc.cm1New += convertToDisplayCurrency(
+            pickNew(r, "profit_month1", "profit_month2"),
+            sourceCurrency
+          );
 
-          acc.upOld += num(pickOld(r, "unit_wise_profitability_month1", "unit_wise_profitability_month2"));
-          acc.upNew += num(pickNew(r, "unit_wise_profitability_month1", "unit_wise_profitability_month2"));
+          acc.upOld += convertToDisplayCurrency(
+            pickOld(r, "unit_wise_profitability_month1", "unit_wise_profitability_month2"),
+            sourceCurrency
+          );
+          acc.upNew += convertToDisplayCurrency(
+            pickNew(r, "unit_wise_profitability_month1", "unit_wise_profitability_month2"),
+            sourceCurrency
+          );
 
           return acc;
         },
@@ -1964,8 +2097,6 @@ export default function LiveBusinessClient({
     });
   };
 
-
-
   const parseRecommendedAction = (raw: string) => {
     const lines = (raw || "")
       .split("\n")
@@ -1978,14 +2109,15 @@ export default function LiveBusinessClient({
     const metricRegex =
       /^(ASP|Units|Net sales|CM1 profit per unit|CM1 profit)\s*:\s*(.+)$/i;
 
-    // collect everything after metrics into one insightText
     const insightParts: string[] = [];
 
     for (const line of lines.slice(1)) {
       const metricMatch = line.match(metricRegex);
       if (metricMatch) {
         const label = metricMatch[1];
-        const value = metricMatch[2];
+        const rawMetricValue = metricMatch[2];
+        const value = convertMetricValueString(rawMetricValue, label);
+
         metrics.push({
           label,
           value,
@@ -1996,8 +2128,7 @@ export default function LiveBusinessClient({
       insightParts.push(line);
     }
 
-    const insightText = insightParts.join("\n").trim(); // keep newlines (important for sections)
-
+    const insightText = insightParts.join("\n").trim();
     const sections = extractSections(insightText);
 
     return {
@@ -2017,7 +2148,6 @@ export default function LiveBusinessClient({
       .map((l) => l.trim())
       .filter(Boolean);
 
-    // first line should be "Other SKUs"
     const productName = lines[0] || "Other SKUs";
 
     const metrics: { label: string; value: string; color?: string }[] = [];
@@ -2030,7 +2160,9 @@ export default function LiveBusinessClient({
       const metricMatch = line.match(metricRegex);
       if (metricMatch) {
         const label = metricMatch[1];
-        const value = metricMatch[2];
+        const rawMetricValue = metricMatch[2];
+        const value = convertMetricValueString(rawMetricValue, label);
+
         metrics.push({
           label,
           value,
@@ -2053,8 +2185,7 @@ export default function LiveBusinessClient({
       inventoryPoints: sections.inventoryPoints,
     };
   };
-
-
+  
   const formatBulletLine = (line: string) => {
     if (!line) return null;
 
@@ -2177,8 +2308,18 @@ export default function LiveBusinessClient({
 
     currentTabData.forEach((r) => {
       const q = Number((r as any).quantity_month2 ?? (r as any).quantity_curr ?? r.quantity ?? 0) || 0;
-      const ns = Number((r as any).net_sales_month2 ?? (r as any).net_sales_curr ?? r.net_sales ?? 0) || 0;
-      const p = Number((r as any).profit_month2 ?? (r as any).profit_curr ?? r.profit ?? 0) || 0;
+      // const ns = Number((r as any).net_sales_month2 ?? (r as any).net_sales_curr ?? r.net_sales ?? 0) || 0;
+      // const p = Number((r as any).profit_month2 ?? (r as any).profit_curr ?? r.profit ?? 0) || 0;
+
+      const ns = convertToDisplayCurrency(
+        (r as any).net_sales_month2 ?? (r as any).net_sales_curr ?? r.net_sales ?? 0,
+        sourceCurrency
+      );
+
+      const p = convertToDisplayCurrency(
+        (r as any).profit_month2 ?? (r as any).profit_curr ?? r.profit ?? 0,
+        sourceCurrency
+      );
 
       const mix =
         Number(
@@ -2194,14 +2335,18 @@ export default function LiveBusinessClient({
       profit += p;
       salesMix += mix;
 
-      const aspVal = Number((r as any).asp_month2 ?? (r as any).asp_curr ?? r.asp ?? 0) || 0;
-      const upVal =
-        Number(
-          (r as any).unit_wise_profitability_month2 ??
-          (r as any).unit_wise_profitability_curr ??
-          r.unit_wise_profitability ??
-          0
-        ) || 0;
+      const aspVal = convertToDisplayCurrency(
+        (r as any).asp_month2 ?? (r as any).asp_curr ?? r.asp ?? 0,
+        sourceCurrency
+      );
+
+      const upVal = convertToDisplayCurrency(
+        (r as any).unit_wise_profitability_month2 ??
+        (r as any).unit_wise_profitability_curr ??
+        r.unit_wise_profitability ??
+        0,
+        sourceCurrency
+      );
 
       aspWeighted += aspVal * q;
       unitProfitWeighted += upVal * q;
@@ -2238,6 +2383,12 @@ export default function LiveBusinessClient({
     let profit = 0;
     let aspWeighted = 0;
     let unitProfitWeighted = 0;
+
+    const totalNetSalesMonth1 = allSkuRows.reduce(
+      (s, r: any) =>
+        s + convertToDisplayCurrency(r?.net_sales_month1 ?? r?.net_sales_prev ?? 0, sourceCurrency),
+      0
+    );
 
     // ✅ compute sales mix ONCE (and correctly)
     const totalNetSalesAll = allSkuRows.reduce(
@@ -2515,7 +2666,7 @@ export default function LiveBusinessClient({
 
     const totalCm1ProfitMonth2 = allSkuRows.reduce(
       (s, r: any) =>
-        s + Number(r?.profit_month2 ?? r?.profit_curr ?? r?.profit ?? 0),
+        s + convertToDisplayCurrency(r?.profit_month2 ?? r?.profit_curr ?? r?.profit ?? 0, sourceCurrency),
       0
     );
 
@@ -2608,20 +2759,21 @@ export default function LiveBusinessClient({
 
       const othersNetSales = others.reduce(
         (s, r: any) =>
-          s + Number(r?.net_sales_month2 ?? r?.net_sales_curr ?? r?.net_sales ?? 0),
+          s + convertToDisplayCurrency(r?.net_sales_month2 ?? r?.net_sales_curr ?? r?.net_sales ?? 0, sourceCurrency),
         0
       );
 
-      // ✅ month1 totals (for mix change)
+      const othersNetSalesMonth1 = others.reduce(
+        (s, r: any) =>
+          s + convertToDisplayCurrency(r?.net_sales_month1 ?? r?.net_sales_prev ?? 0, sourceCurrency),
+        0
+      );
+
       const totalNetSalesMonth1 = allSkuRows.reduce(
         (s, r: any) => s + Number(r?.net_sales_month1 ?? r?.net_sales_prev ?? 0),
         0
       );
 
-      const othersNetSalesMonth1 = others.reduce(
-        (s, r: any) => s + Number(r?.net_sales_month1 ?? r?.net_sales_prev ?? 0),
-        0
-      );
 
       const othersMix1 =
         totalNetSalesMonth1 > 0 ? (othersNetSalesMonth1 / totalNetSalesMonth1) * 100 : 0;
@@ -2684,6 +2836,18 @@ export default function LiveBusinessClient({
     const sum = (rows: any[], keys: string[]) =>
       rows.reduce((acc, r) => acc + Number(pickFirstNumber(r, keys) ?? 0), 0);
 
+    const sumMoneyPrevOnly = (rows: any[], keys: string[]) =>
+      rows.reduce(
+        (acc, r) => acc + convertToDisplayCurrency(pickPrevNumber(r, keys) ?? 0, sourceCurrency),
+        0
+      );
+
+    const sumMoneyCurrOnly = (rows: any[], keys: string[]) =>
+      rows.reduce(
+        (acc, r) => acc + convertToDisplayCurrency(pickCurrNumber(r, keys) ?? 0, sourceCurrency),
+        0
+      );
+
     const pickPrevNumber = (r: any, keys: string[]) => {
       for (const k of keys) {
         const v = r?.[k];
@@ -2736,15 +2900,26 @@ export default function LiveBusinessClient({
           // Use allSkuRows so totals are correct even when UI shows only 5 + "Others"
           const rows = allSkuRows;
 
-          // ✅ PREVIOUS: ONLY previous keys (no current fallback)
+
           const qtyPrev = sumPrevOnly(rows, ["quantity_month1", "quantity_prev"]);
-          const nsPrev = sumPrevOnly(rows, ["net_sales_month1", "net_sales_prev"]);
-          const profitPrev = sumPrevOnly(rows, ["profit_month1", "profit_prev"]);
+          const qtyCurr = sumCurrOnly(rows, ["quantity_month2", "quantity_curr", "quantity"]);
+
+          const nsPrev = sumMoneyPrevOnly(rows, ["net_sales_month1", "net_sales_prev"]);
+          const nsCurr = sumMoneyCurrOnly(rows, ["net_sales_month2", "net_sales_curr", "net_sales"]);
+
+          const profitPrev = sumMoneyPrevOnly(rows, ["profit_month1", "profit_prev"]);
+          const profitCurr = sumMoneyCurrOnly(rows, ["profit_month2", "profit_curr", "profit"]);
+
+
+          // ✅ PREVIOUS: ONLY previous keys (no current fallback)
+          // const qtyPrev = sumPrevOnly(rows, ["quantity_month1", "quantity_prev"]);
+          // const nsPrev = sumPrevOnly(rows, ["net_sales_month1", "net_sales_prev"]);
+          // const profitPrev = sumPrevOnly(rows, ["profit_month1", "profit_prev"]);
 
           // ✅ CURRENT: current keys + allowed generic current fallbacks
-          const qtyCurr = sumCurrOnly(rows, ["quantity_month2", "quantity_curr", "quantity"]);
-          const nsCurr = sumCurrOnly(rows, ["net_sales_month2", "net_sales_curr", "net_sales"]);
-          const profitCurr = sumCurrOnly(rows, ["profit_month2", "profit_curr", "profit"]);
+          // const qtyCurr = sumCurrOnly(rows, ["quantity_month2", "quantity_curr", "quantity"]);
+          // const nsCurr = sumCurrOnly(rows, ["net_sales_month2", "net_sales_curr", "net_sales"]);
+          // const profitCurr = sumCurrOnly(rows, ["profit_month2", "profit_curr", "profit"]);
 
           // ✅ ASP must be weighted: ΣNetSales / ΣQty
           const aspPrev = qtyPrev > 0 ? nsPrev / qtyPrev : null;
@@ -3330,12 +3505,21 @@ export default function LiveBusinessClient({
           </div>
         </div>
       )}
+      {/* <SkuRecommendationDrawer
+        open={recDrawerOpen}
+        onClose={() => setRecDrawerOpen(false)}
+        selectedRec={selectedRec}
+        objectiveContext={objectiveContext}
+        countryName={countryName}
+      /> */}
       <SkuRecommendationDrawer
         open={recDrawerOpen}
         onClose={() => setRecDrawerOpen(false)}
         selectedRec={selectedRec}
         objectiveContext={objectiveContext}
         countryName={countryName}
+        sourceCountryName={sourceCountryName}
+        displayCurrency={displayCurrency}
       />
     </>
   );

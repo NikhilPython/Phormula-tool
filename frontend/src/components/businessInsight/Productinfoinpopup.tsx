@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useRouter, useParams, usePathname } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -31,9 +31,9 @@ ChartJS.register(
   zoomPlugin
 );
 
-type CountryKey = "uk" | "global" | "us";
-
+type CountryKey = "uk" | "global" | "us" | "ca";
 type TrendTab = "sales_cm1" | "units_asp" | "mix";
+type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
 interface ProductMetricPoint {
   month: string;
@@ -68,17 +68,19 @@ interface ApiResponse {
 interface ProductinfoinpopupProps {
   productname?: string;
   countryName?: string;
+  sourceCountryName?: string;
+  displayCurrency?: CurrencyCode;
   onClose?: () => void;
 }
 
 const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
-  productname = "Menthol",
+  productname,
   countryName = "global",
-  onClose,
+  sourceCountryName,
+  displayCurrency,
 }) => {
   const params = useParams();
   const pathname = usePathname();
-  const router = useRouter();
 
   const { month, year } = params as {
     month?: string;
@@ -94,12 +96,14 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     uk: true,
     global: true,
     us: false,
+    ca: false,
   });
 
   const [journeyData, setJourneyData] = useState<Record<CountryKey, ProductMetricPoint[]>>({
     uk: [],
     global: [],
     us: [],
+    ca: [],
   });
 
   const authToken =
@@ -109,17 +113,43 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   useEffect(() => {
     if (scope === "uk") {
-      setSelectedCountries({ uk: true, global: false, us: false });
+      setSelectedCountries({ uk: true, global: false, us: false, ca: false });
     } else if (scope === "global") {
-      setSelectedCountries({ uk: false, global: true, us: false });
+      setSelectedCountries({ uk: false, global: true, us: false, ca: false });
     } else if (scope === "us") {
-      setSelectedCountries({ uk: false, global: false, us: true });
+      setSelectedCountries({ uk: false, global: false, us: true, ca: false });
+    } else if (scope === "ca") {
+      setSelectedCountries({ uk: false, global: false, us: false, ca: true });
     }
   }, [scope]);
 
   const pageScope = (countryName || "global").toLowerCase();
-  const baseCurrency: "GBP" | "USD" = pageScope === "uk" ? "GBP" : "USD";
-  const currencySymbol = baseCurrency === "GBP" ? "£" : "$";
+
+  const chartCurrency: CurrencyCode = useMemo(() => {
+    if (displayCurrency) return displayCurrency;
+
+    if (pageScope === "uk") return "GBP";
+    if (pageScope === "us") return "USD";
+    if (pageScope === "ca") return "CAD";
+    if (pageScope === "india") return "INR";
+
+    return "USD";
+  }, [displayCurrency, pageScope]);
+
+  const currencySymbol = useMemo(() => {
+    switch (chartCurrency) {
+      case "GBP":
+        return "£";
+      case "USD":
+        return "$";
+      case "CAD":
+        return "C$";
+      case "INR":
+        return "₹";
+      default:
+        return "$";
+    }
+  }, [chartCurrency]);
 
   const getMetricColor = (metric: string) => {
     const colors: Record<string, string> = {
@@ -135,9 +165,18 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   };
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat(baseCurrency === "GBP" ? "en-GB" : "en-US", {
+    const locale =
+      chartCurrency === "GBP"
+        ? "en-GB"
+        : chartCurrency === "CAD"
+          ? "en-CA"
+          : chartCurrency === "INR"
+            ? "en-IN"
+            : "en-US";
+
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: baseCurrency,
+      currency: chartCurrency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(value);
@@ -150,9 +189,18 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   };
 
   const formatAsp = (value: number) => {
-    return new Intl.NumberFormat(baseCurrency === "GBP" ? "en-GB" : "en-US", {
+    const locale =
+      chartCurrency === "GBP"
+        ? "en-GB"
+        : chartCurrency === "CAD"
+          ? "en-CA"
+          : chartCurrency === "INR"
+            ? "en-IN"
+            : "en-US";
+
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: baseCurrency,
+      currency: chartCurrency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(value);
@@ -183,13 +231,20 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     december: 11,
   };
 
-  const backendKeyFor = (country: CountryKey) => {
-    if (country === "uk") return "uk";
-    if (country === "us") return "us";
+  const backendKeysFor = (country: CountryKey) => {
+    if (country === "uk") return ["uk"];
+    if (country === "us") return ["us"];
+    if (country === "ca") return ["ca"];
+
     if (country === "global") {
-      return baseCurrency === "GBP" ? "global_gbp" : "global_usd";
+      if (chartCurrency === "GBP") return ["global_gbp", "global"];
+      if (chartCurrency === "USD") return ["global", "global_gbp"];
+      if (chartCurrency === "CAD") return ["global_cad", "global", "global_gbp"];
+      if (chartCurrency === "INR") return ["global_inr", "global", "global_gbp"];
+      return ["global", "global_gbp"];
     }
-    return country;
+
+    return [country];
   };
 
   const normalizeRows = (countryBlock: any): ApiMonthRow[] => {
@@ -202,6 +257,16 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   };
 
   const fetchJourneyData = async () => {
+    if (!productname) {
+      setJourneyData({
+        uk: [],
+        global: [],
+        us: [],
+        ca: [],
+      });
+      return;
+    }
+
     setLoading(true);
     setError("");
 
@@ -210,7 +275,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       const currentYear = today.getFullYear();
       const START_YEAR = 2023;
 
-      const countriesToRequest: CountryKey[] = ["uk", "global", "us"];
+      const countriesToRequest: CountryKey[] = ["uk", "global", "us", "ca"];
       const yearsToFetch = Array.from(
         { length: currentYear - START_YEAR + 1 },
         (_, i) => START_YEAR + i
@@ -224,7 +289,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             year: yr,
             quarter: null,
             countries: countriesToRequest,
-            home_currency: baseCurrency,
+            home_currency: chartCurrency,
           };
 
           const response = await fetch(
@@ -244,7 +309,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             try {
               const errJson = await response.json();
               msg = errJson.error || errJson.message || msg;
-            } catch { }
+            } catch {
+              // ignore
+            }
             throw new Error(msg);
           }
 
@@ -255,7 +322,6 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
       const todayEnd = new Date(today.getFullYear(), today.getMonth() - 1, 1);
       const startDate = new Date(START_YEAR, 0, 1);
-
 
       const valueMaps: Record<
         CountryKey,
@@ -292,14 +358,33 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           sales_mix: new Map(),
           profit_mix: new Map(),
         },
+        ca: {
+          net_sales: new Map(),
+          cm1_profit: new Map(),
+          units_sold: new Map(),
+          asp: new Map(),
+          sales_mix: new Map(),
+          profit_mix: new Map(),
+        },
       };
 
       for (const { year: responseYear, json } of responses) {
         if (!json?.success || !json?.data) continue;
 
-        (["uk", "global", "us"] as CountryKey[]).forEach((country) => {
-          const key = backendKeyFor(country);
-          const rows = normalizeRows(json.data?.[key]);
+        (["uk", "global", "us", "ca"] as CountryKey[]).forEach((country) => {
+          const keys = backendKeysFor(country);
+
+          let rows: ApiMonthRow[] = [];
+
+          for (const key of keys) {
+            const candidate = normalizeRows(json.data?.[key]);
+            if (candidate.length) {
+              rows = candidate;
+              break;
+            }
+          }
+
+          if (!rows.length) return;
 
           rows.forEach((row) => {
             const monthIndex = monthNameToIndex[String(row.month || "").toLowerCase()];
@@ -310,16 +395,15 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
             const label = monthLabel(date);
 
-            valueMaps[country].net_sales.set(label, Number(row.net_sales ?? 0));
-            valueMaps[country].cm1_profit.set(
-              label,
-              Number(row.cm1_profit ?? row.cm1 ?? row.profit ?? 0)
-            );
-            valueMaps[country].units_sold.set(
-              label,
-              Number(row.quantity ?? row.units_sold ?? row.units ?? 0)
-            );
-            valueMaps[country].asp.set(label, Number(row.asp ?? 0));
+            const netSales = Number(row.net_sales ?? 0);
+            const cm1Profit = Number(row.cm1_profit ?? row.cm1 ?? row.profit ?? 0);
+            const unitsRaw = Number(row.quantity ?? row.units_sold ?? row.units ?? 0);
+            const asp = Number(row.asp ?? 0);
+
+            valueMaps[country].net_sales.set(label, Number.isFinite(netSales) ? netSales : 0);
+            valueMaps[country].cm1_profit.set(label, Number.isFinite(cm1Profit) ? cm1Profit : 0);
+            valueMaps[country].units_sold.set(label, Number.isFinite(unitsRaw) ? unitsRaw : 0);
+            valueMaps[country].asp.set(label, Number.isFinite(asp) ? asp : 0);
             valueMaps[country].sales_mix.set(label, Number(row.sales_mix ?? 0));
             valueMaps[country].profit_mix.set(label, Number(row.profit_mix ?? 0));
           });
@@ -371,6 +455,18 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             profit_mix: valueMaps.us.profit_mix.get(label) ?? 0,
           };
         }),
+        ca: months.map((m) => {
+          const label = monthLabel(m);
+          return {
+            month: label,
+            net_sales: valueMaps.ca.net_sales.get(label) ?? 0,
+            cm1_profit: valueMaps.ca.cm1_profit.get(label) ?? 0,
+            units_sold: valueMaps.ca.units_sold.get(label) ?? 0,
+            asp: valueMaps.ca.asp.get(label) ?? 0,
+            sales_mix: valueMaps.ca.sales_mix.get(label) ?? 0,
+            profit_mix: valueMaps.ca.profit_mix.get(label) ?? 0,
+          };
+        }),
       };
 
       setJourneyData(finalData);
@@ -381,6 +477,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         uk: [],
         global: [],
         us: [],
+        ca: [],
       });
     } finally {
       setLoading(false);
@@ -389,7 +486,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   useEffect(() => {
     fetchJourneyData();
-  }, [productname, baseCurrency]);
+  }, [productname, chartCurrency]);
 
   const visibleCountries: CountryKey[] =
     scope === "uk"
@@ -398,7 +495,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         ? ["global"]
         : scope === "us"
           ? ["us"]
-          : ["uk", "global", "us"];
+          : scope === "ca"
+            ? ["ca"]
+            : ["uk", "global", "us", "ca"];
 
   const trimmedJourneyData = useMemo(() => {
     const activeCountries = (Object.keys(selectedCountries) as CountryKey[])
@@ -421,24 +520,14 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         if (!point) return false;
 
         if (activeTab === "units_asp") {
-          return (
-            Number(point.units_sold || 0) > 0 ||
-            Number(point.asp || 0) > 0
-          );
+          return Number(point.units_sold || 0) > 0 || Number(point.asp || 0) > 0;
         }
 
         if (activeTab === "mix") {
-          return (
-            Number(point.sales_mix || 0) > 0 ||
-            Number(point.profit_mix || 0) > 0
-          );
+          return Number(point.sales_mix || 0) > 0 || Number(point.profit_mix || 0) > 0;
         }
 
-        return (
-          Number(point.net_sales || 0) > 0 ||
-          Number(point.cm1_profit || 0) > 0
-        );
-
+        return Number(point.net_sales || 0) > 0 || Number(point.cm1_profit || 0) > 0;
       });
     };
 
@@ -453,6 +542,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   const allLabels = trimmedJourneyData.labels;
 
+  const formatCountry = (c: string) =>
+    c ? c.charAt(0).toUpperCase() + c.slice(1).toLowerCase() : "";
+
   const chartJSData = useMemo(() => {
     const labels = allLabels;
     const activeCountries = (Object.keys(selectedCountries) as CountryKey[])
@@ -461,7 +553,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
     if (activeTab === "sales_cm1") {
       const salesDatasets = activeCountries.map((country) => ({
-        label: `${country.toUpperCase()} Net Sales`,
+        label: `${formatCountry(country)} Net Sales`,
         data: labels.map((label) => {
           const found = journeyData[country]?.find((d) => d.month === label);
           return found ? found.net_sales : 0;
@@ -478,7 +570,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       }));
 
       const cm1Datasets = activeCountries.map((country) => ({
-        label: `${country.toUpperCase()} CM1 Profit`,
+        label: `${formatCountry(country)} CM1 Profit`,
         data: labels.map((label) => {
           const found = journeyData[country]?.find((d) => d.month === label);
           return found ? found.cm1_profit : 0;
@@ -502,7 +594,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
     if (activeTab === "units_asp") {
       const unitDatasets = activeCountries.map((country) => ({
-        label: `${country.toUpperCase()} Units`,
+        label: `${formatCountry(country)} Units`,
         data: labels.map((label) => {
           const found = journeyData[country]?.find((d) => d.month === label);
           return found ? found.units_sold : 0;
@@ -519,7 +611,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       }));
 
       const aspDatasets = activeCountries.map((country) => ({
-        label: `${country.toUpperCase()} ASP`,
+        label: `${formatCountry(country)} ASP`,
         data: labels.map((label) => {
           const found = journeyData[country]?.find((d) => d.month === label);
           return found ? found.asp : 0;
@@ -540,8 +632,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         datasets: [...unitDatasets, ...aspDatasets],
       };
     }
+
     const salesMixDatasets = activeCountries.map((country) => ({
-      label: `${country.toUpperCase()} Sales Mix`,
+      label: `${formatCountry(country)} Sales Mix`,
       data: labels.map((label) => {
         const found = journeyData[country]?.find((d) => d.month === label);
         return found ? found.sales_mix : 0;
@@ -558,7 +651,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     }));
 
     const profitMixDatasets = activeCountries.map((country) => ({
-      label: `${country.toUpperCase()} Profit Mix`,
+      label: `${formatCountry(country)} Profit Mix`,
       data: labels.map((label) => {
         const found = journeyData[country]?.find((d) => d.month === label);
         return found ? found.profit_mix : 0;
@@ -708,9 +801,8 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
 
   const isImprovementsPage = pathname?.includes("mprovements") || false;
 
-
   return (
-    <div className="w-full ">
+    <div className="w-full">
       {loading && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <Loader fullscreen transparent />
@@ -731,7 +823,6 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           <div>
             <div className="mb-4 w-full">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col items-start">
                     <div className="flex items-center gap-1 flex-wrap">
@@ -761,7 +852,6 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     ]}
                   />
                 </div>
-
               </div>
             </div>
 
@@ -787,7 +877,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     <span>Net Sales</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="h-0 w-9 border-t-2 border-[#7B9A6D]" />
+                    <span className="w-9 border-t-2 border-dashed border-[#7B9A6D]" />
                     <span>CM1 Profit</span>
                   </div>
                 </>
@@ -800,7 +890,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     <span>Units</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="h-0 w-9 border-t-2  border-[#B75A5A]" />
+                    <span className="w-9 border-t-2 border-dashed border-[#B75A5A]" />
                     <span>ASP</span>
                   </div>
                 </>
@@ -813,7 +903,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     <span>Sales Mix</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="h-0 w-9 border-t-2 border-[#ED9F50]" />
+                    <span className="w-9 border-t-2 border-dashed border-[#ED9F50]" />
                     <span>Profit Mix</span>
                   </div>
                 </>
@@ -823,7 +913,6 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         </div>
       )}
     </div>
-
   );
 };
 
