@@ -187,6 +187,72 @@ def summary():
 
 
 
+# @summary_bp.route("/objective", methods=["POST"])
+# def save_user_objective():
+#     auth_header = request.headers.get("Authorization")
+#     if not auth_header or not auth_header.startswith("Bearer "):
+#         return jsonify({"error": "Authorization token is missing or invalid"}), 401
+
+#     token = auth_header.split(" ")[1]
+
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#         user_id = payload.get("user_id")
+#         if not user_id:
+#             return jsonify({"error": "Invalid token payload"}), 401
+
+#         body = request.get_json() or {}
+
+#         # ✅ safe country handling
+#         country_raw = body.get("country", "")
+#         country = country_raw.strip().lower()
+#         if not country:
+#             return jsonify({"error": "country is required"}), 400
+
+#         # ✅ match your model fields
+#         growth_intent = body.get("growth_intent", "balanced")
+#         profit_priority = body.get("profit_priority", "protect_growth")
+#         inventory_clearance_priority = body.get("inventory_clearance_priority", False)
+#         business_context = body.get("business_context")
+
+#         # ✅ upsert (because unique constraint user_id+country)
+#         objective = UserObjective.query.filter_by(user_id=user_id, country=country).first()
+
+#         if objective:
+#             objective.growth_intent = growth_intent
+#             objective.profit_priority = profit_priority
+#             objective.inventory_clearance_priority = inventory_clearance_priority
+#             objective.business_context = business_context
+#         else:
+#             objective = UserObjective(
+#                 user_id=user_id,
+#                 country=country,
+#                 growth_intent=growth_intent,
+#                 profit_priority=profit_priority,
+#                 inventory_clearance_priority=inventory_clearance_priority,
+#                 business_context=business_context,
+#             )
+#             db.session.add(objective)
+
+#         db.session.commit()
+
+#         return jsonify({
+#             "message": "Objective saved successfully",
+#             "objective": {
+#                 "user_id": user_id,
+#                 "country": objective.country,
+#                 "growth_intent": objective.growth_intent,
+#                 "profit_priority": objective.profit_priority,
+#                 "inventory_clearance_priority": objective.inventory_clearance_priority,
+#                 "business_context": objective.business_context,
+#             }
+#         }), 200
+
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({"error": "Server error", "details": str(e)}), 500
+    
+
 @summary_bp.route("/objective", methods=["POST"])
 def save_user_objective():
     auth_header = request.headers.get("Authorization")
@@ -203,42 +269,35 @@ def save_user_objective():
 
         body = request.get_json() or {}
 
-        # ✅ safe country handling
+        # Safe country handling
         country_raw = body.get("country", "")
         country = country_raw.strip().lower()
         if not country:
             return jsonify({"error": "country is required"}), 400
 
-        # ✅ match your model fields
+        # Fields
         growth_intent = body.get("growth_intent", "balanced")
         profit_priority = body.get("profit_priority", "protect_growth")
         inventory_clearance_priority = body.get("inventory_clearance_priority", False)
         business_context = body.get("business_context")
 
-        # ✅ upsert (because unique constraint user_id+country)
-        objective = UserObjective.query.filter_by(user_id=user_id, country=country).first()
+        # ALWAYS create new row
+        objective = UserObjective(
+            user_id=user_id,
+            country=country,
+            growth_intent=growth_intent,
+            profit_priority=profit_priority,
+            inventory_clearance_priority=inventory_clearance_priority,
+            business_context=business_context,
+        )
 
-        if objective:
-            objective.growth_intent = growth_intent
-            objective.profit_priority = profit_priority
-            objective.inventory_clearance_priority = inventory_clearance_priority
-            objective.business_context = business_context
-        else:
-            objective = UserObjective(
-                user_id=user_id,
-                country=country,
-                growth_intent=growth_intent,
-                profit_priority=profit_priority,
-                inventory_clearance_priority=inventory_clearance_priority,
-                business_context=business_context,
-            )
-            db.session.add(objective)
-
+        db.session.add(objective)
         db.session.commit()
 
         return jsonify({
-            "message": "Objective saved successfully",
+            "message": "Objective created successfully",
             "objective": {
+                "id": objective.id,
                 "user_id": user_id,
                 "country": objective.country,
                 "growth_intent": objective.growth_intent,
@@ -246,8 +305,8 @@ def save_user_objective():
                 "inventory_clearance_priority": objective.inventory_clearance_priority,
                 "business_context": objective.business_context,
             }
-        }), 200
+        }), 201
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": "Server error", "details": str(e)}), 500
+        return jsonify({"error": "Server error", "details": str(e)}), 500    

@@ -315,9 +315,7 @@ def build_rolling_monthly_series(
     
     series = []
 
-    # ❌ REMOVED auto-latest override
-    # anchor_year, anchor_month = resolve_latest_available_month(...)
-
+  
     for y, m in rolling_months(anchor_year, anchor_month, 24):
         df = fetch_precalc_table(
             user_id=user_id,
@@ -408,46 +406,7 @@ def fetch_month_end_inventory_lookup(user_id: int):
 
     return lookup
 
-# def build_rolling_sku_series(
-#     user_id: int,
-#     country: str,
-#     sku: str,
-#     anchor_year: int,
-#     anchor_month: int
-# ):
-#     series = []
 
-#     for y, m in rolling_months(anchor_year, anchor_month, 24):
-#         df = fetch_precalc_table(
-#             user_id=user_id,
-#             country=country,
-#             period="monthly",
-#             timeline=str(m),
-#             year=y
-#         )
-
-#         if df.empty:
-#             continue
-
-#         df = _normalize_sku_col(df)
-#         row = df[df["sku"] == sku]
-
-#         if row.empty:
-#             continue
-
-#         series.append({
-#             "year": y,
-#             "month": m,
-#             "units": float(safe_num(row["total_quantity"].iloc[0]).iloc[0]),
-#             "asp": round(float(safe_num(row["asp"].iloc[0]).iloc[0]), 2),
-#             "cm1_profit": float(safe_num(row["profit"].iloc[0]).iloc[0]),
-#             "net_sales": float(safe_num(row["net_sales"].iloc[0]).iloc[0]),
-#             "unit_wise_profitability": float(safe_num(row["unit_wise_profitability"].iloc[0]).iloc[0]),
-#             "sales_mix": float(safe_num(row["sales_mix"].iloc[0]).iloc[0]),
-#             "profit_mix": float(safe_num(row["profit_mix"].iloc[0]).iloc[0]),
-#         })
-
-#     return series
 
 def build_rolling_sku_series(
     user_id: int,
