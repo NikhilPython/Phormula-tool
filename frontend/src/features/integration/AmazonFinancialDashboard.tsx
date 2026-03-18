@@ -127,6 +127,34 @@ async function apiJson(path: string, options: RequestInit = {}) {
   return data;
 }
 
+async function fetchInventoryLedgerSummary(params: {
+  marketplace_id: string;
+  month?: string;
+  start_date?: string;
+  end_date?: string;
+  store_in_db?: boolean;
+  keep_first_last?: boolean;
+}) {
+  const qs = new URLSearchParams();
+
+  qs.set("marketplace_id", params.marketplace_id);
+  qs.set("store_in_db", String(params.store_in_db ?? true));
+  qs.set("keep_first_last", String(params.keep_first_last ?? false));
+
+  if (params.month) {
+    qs.set("month", params.month);
+  }
+
+  if (params.start_date && params.end_date) {
+    qs.set("start_date", params.start_date);
+    qs.set("end_date", params.end_date);
+  }
+
+  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+    method: "GET",
+  });
+}
+
 /** ---------------- localStorage run-once guards ---------------- */
 function lsKeyFees(country: string) {
   return `feesSynced:${country}`;
@@ -289,6 +317,38 @@ function addMonthsUTC(year: number, month1to12: number, delta: number) {
   const y = Math.floor(v / 12);
   const m1 = (v % 12) + 1;
   return { y, m1 };
+}
+
+function formatYMDUTC(d: Date) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function startOfMonthUTC(year: number, month1: number) {
+  return new Date(Date.UTC(year, month1 - 1, 1));
+}
+
+function endOfMonthUTC(year: number, month1: number) {
+  return new Date(Date.UTC(year, month1, 0));
+}
+
+function buildLedgerRange(period: number | "lifetime") {
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth1 = now.getUTCMonth() + 1;
+
+  const totalMonths = period === "lifetime" ? 24 : Number(period);
+
+  const start = addMonthsUTC(currentYear, currentMonth1, -(totalMonths - 1));
+  const startDate = startOfMonthUTC(start.y, start.m1);
+  const endDate = endOfMonthUTC(currentYear, currentMonth1);
+
+  return {
+    start_date: formatYMDUTC(startDate),
+    end_date: formatYMDUTC(endDate),
+  };
 }
 
 function getEarliestAllowedMonthUTC() {
@@ -585,9 +645,21 @@ const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
       markStepComplete(3);
 
       // Step 4: Inventory
-      setStep(4, "Inventory", 0, "Syncing inventory data...");
-      await syncInventoryAgedOnce(countryUsed);
-      markStepComplete(4);
+      // Step 4: Inventory
+setStep(4, "Inventory", 0, "Syncing inventory data...");
+
+// ye existing API as-is hit hogi
+await syncInventoryAgedOnce(countryUsed);
+
+// iske alawa ledger-summary bhi hit hogi
+await fetchInventoryLedgerSummary({
+  marketplace_id: marketplaceIdUsed,
+  month: `${y}-${two(mNum)}`,
+  store_in_db: true,
+  keep_first_last: false,
+});
+
+markStepComplete(4);
 
       // Step 5: Historic Data (per month, ~20 seconds)
       setStep(5, "Historic Data", 0, `Fetching data for ${y}-${two(mNum)}...`);
@@ -689,13 +761,30 @@ await new Promise((r) => setTimeout(r, 600));
       markStepComplete(3);
 
       // Step 4: Inventory
-      setStep(4, "Inventory", 0, "Syncing inventory data...");
-      try {
-        await syncInventoryAgedOnce(countryUsed);
-        markStepComplete(4);
-      } catch (e) {
-        console.error("inventory sync failed", e);
-      }
+      // Step 4: Inventory
+setStep(4, "Inventory", 0, "Syncing inventory data...");
+try {
+  // existing API as-is
+  await syncInventoryAgedOnce(countryUsed);
+
+  // additional ledger-summary API
+  const ledgerRange = buildLedgerRange(
+    selectedPeriod === "lifetime" ? "lifetime" : Number(selectedPeriod)
+  );
+
+  await fetchInventoryLedgerSummary({
+    marketplace_id: marketplaceIdUsed,
+    start_date: ledgerRange.start_date,
+    end_date: ledgerRange.end_date,
+    store_in_db: true,
+    keep_first_last: false,
+  });
+
+  markStepComplete(4);
+} catch (e) {
+  console.error("inventory sync failed", e);
+  throw e;
+}
 
       // Step 5: Historic Data (per month, ~20 seconds each)
       setStep(5, "Historic Data", 0, `Fetching data for ${months.length} months...`);
