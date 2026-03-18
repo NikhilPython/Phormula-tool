@@ -158,7 +158,7 @@ export default function PreviewModeNotice() {
               </div>
 
               <p className="mt-1 text-xs sm:text-sm text-[#414042] leading-5">
-                You're viewing dummy data. Connect your Amazon account and fetch
+                You&apos;re viewing dummy data. Connect your Amazon account and fetch
                 real data to unlock full insights.
               </p>
 
