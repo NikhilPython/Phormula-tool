@@ -1475,12 +1475,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const router = useRouter();
 
-  const ranged = initialRanged;
-  const countryName = initialCountryName;
-  const month = initialMonth;
-  const year = initialYear;
+  // const ranged = initialRanged;
+  // const countryName = initialCountryName;
+  // const month = initialMonth;
+  // const year = initialYear;
 
-  const isGlobalPage = countryName.toLowerCase() === "global";
+  const ranged = initialRanged;
+  const countryName = initialCountryName || "";
+  const month = initialMonth || "";
+  const year = initialYear || "";
+
+  // const isGlobalPage = countryName.toLowerCase() === "global";
+  const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
   const globalHomeCurrency = isGlobalPage ? homeCurrency : undefined;
 
@@ -1558,9 +1564,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return url.toString();
   };
 
+  // const currencySymbol = isGlobalPage
+  //   ? getCurrencySymbol(homeCurrency)
+  //   : getCurrencySymbol(countryName || "");
+
   const currencySymbol = isGlobalPage
     ? getCurrencySymbol(homeCurrency)
     : getCurrencySymbol(countryName || "");
+
   const [collapsed, setCollapsed] = useState(false);
 
   const [range, setRange] = useState<RangeType>("");
@@ -2563,9 +2574,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   ]);
 
 
-  if (month === "NA" || year === "NA") {
-    return <IntegrationDashboard />;
-  }
+  // if (month === "NA" || year === "NA") {
+  //   return <IntegrationDashboard />;
+  // }
 
   const hasAnyContent = !!uploadsData?.summary;
   const initialLoading = loading && !hasAnyContent;
