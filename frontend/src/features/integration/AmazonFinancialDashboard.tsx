@@ -464,20 +464,20 @@ const AmazonFinancialDashboard: React.FC<Props> = ({ region, country, onClose })
     };
   }, [user]);
 
-   let countryUsed = (country || "uk").toLowerCase();
-let marketplaceIdUsed = countryMarketplaceMap[countryUsed];
+  let countryUsed = (country || "uk").toLowerCase();
+  let marketplaceIdUsed = countryMarketplaceMap[countryUsed];
 
 
-const regionUsed = FORCE.enabled ? FORCE.region : region;
-if (FORCE.enabled) {
-  countryUsed = FORCE.country;
-  marketplaceIdUsed = FORCE.marketplaceId;
-}
+  const regionUsed = FORCE.enabled ? FORCE.region : region;
+  if (FORCE.enabled) {
+    countryUsed = FORCE.country;
+    marketplaceIdUsed = FORCE.marketplaceId;
+  }
 
-// ✅ NOW validate
-if (!marketplaceIdUsed) {
-  throw new Error(`Marketplace not configured for ${countryUsed}`);
-}
+  // ✅ NOW validate
+  if (!marketplaceIdUsed) {
+    throw new Error(`Marketplace not configured for ${countryUsed}`);
+  }
 
   const earliest = useMemo(() => getEarliestAllowedMonthUTC(), []);
   const latest = useMemo(() => getLatestAllowedMonthUTC(), []);
@@ -493,8 +493,8 @@ if (!marketplaceIdUsed) {
 
   const TOTAL_FETCH_SECONDS = 15 * 60;
 
-const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
-  
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+
   // 6-step progress tracking
   const [currentStep, setCurrentStep] = useState<number>(0); // 0 = not started, 1-6 = active step
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
@@ -523,25 +523,25 @@ const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   });
 
   useEffect(() => {
-  if (!busy) {
-    setRemainingSeconds(null);
-    return;
-  }
+    if (!busy) {
+      setRemainingSeconds(null);
+      return;
+    }
 
-  setRemainingSeconds(TOTAL_FETCH_SECONDS);
+    setRemainingSeconds(TOTAL_FETCH_SECONDS);
 
-  const interval = setInterval(() => {
-    setRemainingSeconds((prev) => {
-      if (!prev || prev <= 1) {
-        clearInterval(interval);
-        return 0;
-      }
-      return prev - 1;
-    });
-  }, 1000);
+    const interval = setInterval(() => {
+      setRemainingSeconds((prev) => {
+        if (!prev || prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-  return () => clearInterval(interval);
-}, [busy]);
+    return () => clearInterval(interval);
+  }, [busy]);
 
   const markStepComplete = (step: number) => {
     setCompletedSteps((prev) => new Set([...prev, step]));
@@ -557,8 +557,7 @@ const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
     });
   };
 
-
-  const [selectedPeriod, setSelectedPeriod] = useState<number | "lifetime" | null>(12);
+  const [selectedPeriod, setSelectedPeriod] = useState<number | null>(24);
 
   const wrap = async (fn: () => Promise<void>) => {
     try {
@@ -611,7 +610,7 @@ const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
 
       // Step 2: Category Fees (takes ~4 minutes)
       setStep(2, "Category Fees", 0, "Syncing category fees...");
-      
+
       // Simulate progress for ~4 minutes (240000ms)
       const progressInterval = setInterval(() => {
         setStepProgress((prev) => {
@@ -646,20 +645,20 @@ const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
 
       // Step 4: Inventory
       // Step 4: Inventory
-setStep(4, "Inventory", 0, "Syncing inventory data...");
+      setStep(4, "Inventory", 0, "Syncing inventory data...");
 
-// ye existing API as-is hit hogi
-await syncInventoryAgedOnce(countryUsed);
+      // ye existing API as-is hit hogi
+      await syncInventoryAgedOnce(countryUsed);
 
-// iske alawa ledger-summary bhi hit hogi
-await fetchInventoryLedgerSummary({
-  marketplace_id: marketplaceIdUsed,
-  month: `${y}-${two(mNum)}`,
-  store_in_db: true,
-  keep_first_last: false,
-});
+      // iske alawa ledger-summary bhi hit hogi
+      await fetchInventoryLedgerSummary({
+        marketplace_id: marketplaceIdUsed,
+        month: `${y}-${two(mNum)}`,
+        store_in_db: true,
+        keep_first_last: false,
+      });
 
-markStepComplete(4);
+      markStepComplete(4);
 
       // Step 5: Historic Data (per month, ~20 seconds)
       setStep(5, "Historic Data", 0, `Fetching data for ${y}-${two(mNum)}...`);
@@ -679,10 +678,10 @@ markStepComplete(4);
       markStepComplete(6);
 
       setStep(7, "Plotting Graph", 0, "Preparing charts...");
-await new Promise((resolve) => setTimeout(resolve, 1000));
-markStepComplete(7);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      markStepComplete(7);
 
-await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 600));
 
       const monthSlug = fullMonthNames[mNum - 1].toLowerCase();
       updateLatestFetchedPeriod(monthSlug, String(y));
@@ -698,7 +697,7 @@ await new Promise((r) => setTimeout(r, 600));
 
   const handleFetchRange = () =>
     wrap(async () => {
-      const isLifetime = selectedPeriod === "lifetime";
+      const isLifetime = selectedPeriod === 24;
 
       // Note: buildLifetimeRange already clamps to allowed window
       const months = isLifetime
@@ -710,7 +709,7 @@ await new Promise((r) => setTimeout(r, 600));
         return;
       }
 
-      if (!isLifetime && ![3, 6, 12].includes(selectedPeriod as number)) {
+      if (![3, 6, 12, 24].includes(selectedPeriod as number)) {
         setMessage("Please select 3, 6, 12, or Lifetime.");
         return;
       }
@@ -727,7 +726,7 @@ await new Promise((r) => setTimeout(r, 600));
 
       // Step 2: Category Fees (takes ~4 minutes, only once)
       setStep(2, "Category Fees", 0, "Syncing category fees...");
-      
+
       // Simulate progress for ~4 minutes
       const progressInterval = setInterval(() => {
         setStepProgress((prev) => {
@@ -762,29 +761,29 @@ await new Promise((r) => setTimeout(r, 600));
 
       // Step 4: Inventory
       // Step 4: Inventory
-setStep(4, "Inventory", 0, "Syncing inventory data...");
-try {
-  // existing API as-is
-  await syncInventoryAgedOnce(countryUsed);
+      setStep(4, "Inventory", 0, "Syncing inventory data...");
+      try {
+        // existing API as-is
+        await syncInventoryAgedOnce(countryUsed);
 
-  // additional ledger-summary API
-  const ledgerRange = buildLedgerRange(
-    selectedPeriod === "lifetime" ? "lifetime" : Number(selectedPeriod)
-  );
+        // additional ledger-summary API
+        const ledgerRange = buildLedgerRange(
+          selectedPeriod === 24 ? "lifetime" : Number(selectedPeriod)
+        );
 
-  await fetchInventoryLedgerSummary({
-    marketplace_id: marketplaceIdUsed,
-    start_date: ledgerRange.start_date,
-    end_date: ledgerRange.end_date,
-    store_in_db: true,
-    keep_first_last: false,
-  });
+        await fetchInventoryLedgerSummary({
+          marketplace_id: marketplaceIdUsed,
+          start_date: ledgerRange.start_date,
+          end_date: ledgerRange.end_date,
+          store_in_db: true,
+          keep_first_last: false,
+        });
 
-  markStepComplete(4);
-} catch (e) {
-  console.error("inventory sync failed", e);
-  throw e;
-}
+        markStepComplete(4);
+      } catch (e) {
+        console.error("inventory sync failed", e);
+        throw e;
+      }
 
       // Step 5: Historic Data (per month, ~20 seconds each)
       setStep(5, "Historic Data", 0, `Fetching data for ${months.length} months...`);
@@ -794,7 +793,7 @@ try {
       for (let i = 0; i < months.length; i++) {
         const { y, mNum, mIdx } = months[i];
         const monthProgress = Math.round(((i + 1) / months.length) * 100);
-        
+
         setStep(5, "Historic Data", monthProgress, `Month ${i + 1}/${months.length}: ${y}-${two(mNum)}`);
         setRangeProgress({ currentMonth: i + 1, totalMonths: months.length, ok, fail });
 
@@ -826,10 +825,10 @@ try {
       markStepComplete(6);
 
       setStep(7, "Plotting Graph", 0, "Preparing charts...");
-await new Promise((resolve) => setTimeout(resolve, 1000));
-markStepComplete(7);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      markStepComplete(7);
 
-await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 600));
 
       const last = months[months.length - 1];
       const latestMonthSlug = fullMonthNames[last.mIdx].toLowerCase();
@@ -859,9 +858,9 @@ await new Promise((r) => setTimeout(r, 600));
             <p className="text-charcoal-500 text-sm mt-1">
               Link your Amazon Seller Central to sync your sales data
             </p>
-            <p className="text-xs text-slate-500 mt-2">
+            {/* <p className="text-xs text-slate-500 mt-2">
               Allowed window: {earliest.y}-{two(earliest.m1)} to {latest.y}-{two(latest.m1)}
-            </p>
+            </p> */}
           </div>
         </div>
 
@@ -871,19 +870,19 @@ await new Promise((r) => setTimeout(r, 600));
 
         {/* Period Buttons */}
         <div className="mt-2 grid grid-cols-5 gap-2 sm:grid-cols-5 sm:gap-3 max-w-xl mx-auto">
-          {[1, 3, 6, 12, "lifetime"].map((m) => {
+          {[1, 3, 6, 12, 24].map((m) => {
             const isActive = selectedPeriod === m;
 
             return (
               <div key={String(m)} className="relative w-full">
-                {m === 12 && (
+                {m === 24 && (
                   <div
                     className={[
                       "absolute -top-2 left-1/2 -translate-x-1/2",
                       "text-[10px] px-2 py-0.5 rounded-full z-10",
-                      selectedPeriod !== 12
-                        ? "bg-green-500 text-yellow-200"
-                        : "bg-gray-200 text-gray-700",
+                      isActive
+                        ? "bg-[#FEF2D4] text-charcoal-500"
+                        : "bg-gray-200 text-charcoal-500",
                     ].join(" ")}
                   >
                     Recommended
@@ -892,22 +891,20 @@ await new Promise((r) => setTimeout(r, 600));
 
                 <button
                   type="button"
-                  onClick={() => setSelectedPeriod(m as any)}
+                  onClick={() => setSelectedPeriod(m)}
                   className={[
                     "w-full rounded-lg border p-2 sm:p-3 text-center transition",
                     isActive
-                      ? "border-green-500 bg-green-500 text-yellow-200"
+                      ? "border-blue-700 bg-blue-700 text-yellow-200"
                       : "border-slate-200 bg-slate-50 hover:bg-white text-charcoal-500",
                   ].join(" ")}
                 >
                   <div className="w-full text-base sm:text-lg font-semibold flex items-center justify-center tabular-nums">
-                    <span className="inline-flex w-[1.6em] justify-center">
-                      {m === "lifetime" ? <ImInfinite className="text-xl sm:text-2xl" /> : m}
-                    </span>
+                    <span className="inline-flex w-[1.6em] justify-center">{m}</span>
                   </div>
 
                   <div className="text-[10px] sm:text-xs uppercase tracking-wide mt-1">
-                    {m === "lifetime" ? "Lifetime" : m === 1 ? "Month" : "Months"}
+                    {m === 1 ? "Month" : "Months"}
                   </div>
                 </button>
               </div>
@@ -917,15 +914,15 @@ await new Promise((r) => setTimeout(r, 600));
 
         {/* Note Section */}
         <div
-          className="mt-4 max-w-xl mx-auto rounded-lg bg-[#D9D9D9E5] p-2 text-[12px] sm:p-3 sm:text-sm border border-[#D9D9D9]"
-          style={{ borderLeft: "6px solid #5EA68E" }}
+          className="mt-4 max-w-xl mx-auto rounded-lg bg-[#FDD36F4D] p-2 text-[12px] sm:p-3 sm:text-sm border border-[#FDD36F]"
+          style={{ borderLeft: "6px solid #FDD36F" }}
         >
-          Note:&nbsp; Amazon SP-API finances transactions supports roughly a 2-year rolling window.
-          Older months are disabled automatically.
+          Note:&nbsp; Your Amazon credentials are encrypted and stored securely. We only access data necessary for
+analytics.
         </div>
 
         {/* Progress UI with 6-Step Stepper */}
-       
+
 
         {/* 1 month controls */}
         {selectedPeriod === 1 && (
@@ -1004,7 +1001,7 @@ await new Promise((r) => setTimeout(r, 600));
 
 
         {/* >1 month controls (includes Lifetime) */}
-        {selectedPeriod && (selectedPeriod === "lifetime" || selectedPeriod > 1) && (
+        {selectedPeriod && selectedPeriod > 1 && (
           <div className="w-full flex justify-center gap-3 mt-4">
             <Button onClick={onClose} variant="outline" size="sm">
               Cancel
@@ -1017,16 +1014,16 @@ await new Promise((r) => setTimeout(r, 600));
         )}
 
         {busy && remainingSeconds !== null && (
-  <div className="mt-2 text-center text-xs text-slate-500">
-    Estimated time remaining:{" "}
-    <span className="font-medium tabular-nums">
-      {Math.floor(remainingSeconds / 60)}:
-      {String(remainingSeconds % 60).padStart(2, "0")}
-    </span>
-  </div>
-)}
+          <div className="mt-2 text-center text-xs text-slate-500">
+            Estimated time remaining:{" "}
+            <span className="font-medium tabular-nums">
+              {Math.floor(remainingSeconds / 60)}:
+              {String(remainingSeconds % 60).padStart(2, "0")}
+            </span>
+          </div>
+        )}
 
-         {busy && stepProgress.active && currentStep > 0 && (
+        {busy && stepProgress.active && currentStep > 0 && (
           <div className="mt-6 max-w-4xl mx-auto">
             {/* Current Step Progress Bar */}
             <div className="rounded-lg border border-slate-200 bg-white p-4 mb-4">
@@ -1042,7 +1039,7 @@ await new Promise((r) => setTimeout(r, 600));
                   className="h-full  transition-all duration-300 shin"
                   style={{
                     width: `${stepProgress.percentage}%`,
-                        background: "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
+                    background: "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
 
                   }}
                 />
@@ -1053,12 +1050,12 @@ await new Promise((r) => setTimeout(r, 600));
               )}
 
               {/* Range progress for Historic Data step */}
-              
+
             </div>
 
             {/* 6-Step Stepper */}
 
- <div className="flex items-center justify-between relative">
+            <div className="flex items-center justify-between relative">
               {/* Connecting lines - spans from first to last step */}
               <div className="absolute top-6 left-[4%] right-[4%] h-1.5 bg-[#D9D9D9] -z-10">
                 {completedSteps.size > 0 && (() => {
@@ -1074,36 +1071,35 @@ await new Promise((r) => setTimeout(r, 600));
               </div>
 
               {[
-  { num: 1, label: "Currency Conversion" },
-  { num: 2, label: "Category Fees" },
-  { num: 3, label: "Fee Preview" },
-  { num: 4, label: "Inventory Data" },
-  { num: 5, label: "Historic Data" },
-  { num: 6, label: "Live Data" },
-  { num: 7, label: "Plotting Graph" },
-].map((step) => {
+                { num: 1, label: "Currency Conversion" },
+                { num: 2, label: "Category Fees" },
+                { num: 3, label: "Fee Preview" },
+                { num: 4, label: "Inventory Data" },
+                { num: 5, label: "Historic Data" },
+                { num: 6, label: "Live Data" },
+                { num: 7, label: "Plotting Graph" },
+              ].map((step) => {
                 const isCompleted = completedSteps.has(step.num);
                 const isActive = currentStep === step.num;
                 const isPast = currentStep > step.num;
 
                 return (
-                 <div key={step.num} className="flex flex-col items-center flex-1 relative z-10">
+                  <div key={step.num} className="flex flex-col items-center flex-1 relative z-10">
                     <StepBadge
                       completed={isCompleted}
                       label={step.num}
                     />
                     <div className="mt-2 text-center">
-                    <div
-  className={`text-[10px] sm:text-xs font-medium leading-tight text-center w-20 h-8 flex flex-col justify-center ${
-    isActive || isCompleted ? "text-[#5EA68E]" : "text-[#414042]"
-  }`}
->
-  {step.label.split(" ").map((word, i) => (
-    <span key={i} className="block">
-      {word}
-    </span>
-  ))}
-</div>
+                      <div
+                        className={`text-[10px] sm:text-xs font-medium leading-tight text-center w-20 h-8 flex flex-col justify-center ${isActive || isCompleted ? "text-[#5EA68E]" : "text-[#414042]"
+                          }`}
+                      >
+                        {step.label.split(" ").map((word, i) => (
+                          <span key={i} className="block">
+                            {word}
+                          </span>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 );
