@@ -5395,7 +5395,7 @@ const finalInventoryAlerts = isUsingDummyData
                                             {/* ✅ CASE 1: 202 → processing */}
 {!shouldShowDummyUi && biStatus === "processing" && (
                                                 <div className="flex justify-center items-center py-10">
-                                                    <Loader label="Preparing your Amazon data, this may take a moment…" />
+                                                    <Loader className="bg-transparent" />
                                                 </div>
                                             )}
 

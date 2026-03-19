@@ -820,6 +820,10 @@ export default function SignUpForm() {
         label: "2 alphabets",
         ok: (form.password.match(/[a-zA-Z]/g) || []).length >= 2,
       },
+      {
+        label: "1 special character",
+        ok: /[^A-Za-z0-9]/.test(form.password),
+      },
     ];
   }, [form.password]);
 
@@ -1046,11 +1050,10 @@ export default function SignUpForm() {
                                   className="flex items-center gap-2 text-xs"
                                 >
                                   <span
-                                    className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${
-                                      rule.ok
+                                    className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${rule.ok
                                         ? "border-green-500 text-green-600"
                                         : "border-red-500 text-red-600"
-                                    }`}
+                                      }`}
                                     aria-hidden="true"
                                   >
                                     {rule.ok ? "✓" : "×"}

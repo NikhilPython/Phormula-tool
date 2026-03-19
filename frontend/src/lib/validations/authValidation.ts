@@ -26,6 +26,8 @@ export const limitPhoneByDialCode = (digits: string, dialCode: string) => {
   return digits.slice(0, maxLen);
 };
 
+const specialCharRegex = /[^A-Za-z0-9]/;
+
 /* -------------------- SIGN UP -------------------- */
 
 export const signUpSchema = z
@@ -59,6 +61,9 @@ export const signUpSchema = z
       })
       .refine((val) => (val.match(/[a-zA-Z]/g) || []).length >= 2, {
         message: "At least 2 alphabets",
+      })
+      .refine((val) => specialCharRegex.test(val), {
+        message: "At least 1 special character",
       }),
 
     confirm: z.string().min(1, "Confirm password is required"),

@@ -1358,6 +1358,8 @@ export default function TargetVsSalesChart({
             const data = await fetchTargetSummary(month, year);
 
             return {
+              month,
+              year,
               monthLabel: formatMonthLabel(month, year),
               apiData: data,
             };
@@ -1366,15 +1368,47 @@ export default function TargetVsSalesChart({
 
         if (ignore) return;
 
-        const mapped: TargetVsSalesPoint[] = results.map(({ monthLabel, apiData }) => ({
+        const availableMonths = results
+          .filter(({ apiData }) => apiData) // only keep months that actually exist
+          .map(({ month, year, monthLabel, apiData }) => ({
+            month,
+            year,
+            monthLabel,
+            apiData,
+          }));
+
+        let mapped: TargetVsSalesPoint[] = availableMonths.map(({ monthLabel, apiData }) => ({
           month: monthLabel,
           target_sales: Number(apiData?.target_sales ?? 0),
           monthwise_sales: Number(apiData?.net_sales_total ?? 0),
-
-          // This API does not provide units, so keep them 0 unless backend adds them
           target_units: 0,
           monthwise_units: 0,
         }));
+
+        // If only one month is present, prepend previous month with zero values
+        if (availableMonths.length === 1) {
+          const { month, year } = availableMonths[0];
+          const monthIndex = MONTH_NAMES.indexOf(month);
+
+          const prevDate = new Date(year, monthIndex - 1, 1);
+          const prevMonthLabel = formatMonthLabel(
+            MONTH_NAMES[prevDate.getMonth()],
+            prevDate.getFullYear()
+          );
+
+          mapped = [
+            {
+              month: prevMonthLabel,
+              target_sales: 0,
+              monthwise_sales: 0,
+              target_units: 0,
+              monthwise_units: 0,
+            },
+            ...mapped,
+          ];
+        }
+
+        setChartData(mapped);
 
         setChartData(mapped);
       } catch (err: any) {
@@ -1412,19 +1446,9 @@ export default function TargetVsSalesChart({
     );
   }, [chartData, chartMetric]);
 
-  const shouldDuplicateSinglePoint = xAxisData.length === 1;
-
-  const adjustedXAxisData = shouldDuplicateSinglePoint
-    ? [xAxisData[0], ""]
-    : xAxisData;
-
-  const adjustedTargetSeriesData = shouldDuplicateSinglePoint
-    ? [targetSeriesData[0], targetSeriesData[0]]
-    : targetSeriesData;
-
-  const adjustedActualSeriesData = shouldDuplicateSinglePoint
-    ? [actualSeriesData[0], actualSeriesData[0]]
-    : actualSeriesData;
+  const adjustedXAxisData = xAxisData;
+  const adjustedTargetSeriesData = targetSeriesData;
+  const adjustedActualSeriesData = actualSeriesData;
 
   const yAxisName =
     chartMetric === "sales"
@@ -1576,7 +1600,7 @@ export default function TargetVsSalesChart({
         {
           name: "Target Set",
           type: "line",
-          smooth: true,
+          smooth: 0.35,
           showSymbol: true,
           symbol: "circle",
           symbolSize: 7,
@@ -1597,7 +1621,7 @@ export default function TargetVsSalesChart({
         {
           name: chartMetric === "sales" ? "Monthwise Sales" : "Monthwise Units",
           type: "line",
-          smooth: true,
+          smooth: 0.3,
           showSymbol: true,
           symbol: "circle",
           symbolSize: 7,

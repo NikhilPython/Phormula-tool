@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSelector } from "react-redux";
-// import { FiEdit, FiCheck, FiX } from "react-icons/fi";
 import Button from "@/components/ui/button/Button";
 import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataTable";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
@@ -19,12 +18,9 @@ import {
   FiEdit,
   FiCheck,
   FiX,
-  FiPlus,
   FiGlobe,
   FiFileText,
   FiTrash2,
-  FiMaximize2,
-  FiMinimize2,
 } from "react-icons/fi";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import JSZip from "jszip";
@@ -96,29 +92,6 @@ const PLATFORM_TARGET_META: Partial<
   shopify: { marketplace: "Shopify", currencySymbol: "" },
 };
 
-const dummyTargetVsSalesData = [
-  { month: "Jan", target: 12000, sales: 9800 },
-  { month: "Feb", target: 12000, sales: 10450 },
-  { month: "Mar", target: 12000, sales: 11700 },
-  { month: "Apr", target: 14000, sales: 12600 },
-  { month: "May", target: 14000, sales: 13250 },
-  { month: "Jun", target: 14000, sales: 13800 },
-  { month: "Jul", target: 16000, sales: 14900 },
-  { month: "Aug", target: 16000, sales: 15400 },
-  { month: "Sep", target: 16000, sales: 15150 },
-  { month: "Oct", target: 18000, sales: 16900 },
-  { month: "Nov", target: 18000, sales: 17600 },
-  { month: "Dec", target: 18000, sales: 18500 },
-];
-
-const shortMoney = (value: number, currency = "USD") =>
-  new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency,
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value);
-
 const prettifyObjectiveValue = (v?: string | null) => {
   const s = (v ?? "").trim();
   if (!s) return "-";
@@ -145,6 +118,17 @@ const platformToCountry = (pid: PlatformId) => {
   if (pid === "amazon-ca") return "ca";
   return "global";
 };
+
+const countryToPlatform = (country: string): PlatformId => {
+  const c = (country || "").toLowerCase();
+
+  if (c === "uk") return "amazon-uk";
+  if (c === "us") return "amazon-us";
+  if (c === "ca") return "amazon-ca";
+  return "shopify";
+};
+
+
 
 function InfoCard({
   title,
@@ -271,12 +255,6 @@ function PlaceholderPanel({ title }: { title: string }) {
   );
 }
 
-const formatFileSize = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
 const readFileAsArrayBuffer = (file: File) =>
   new Promise<ArrayBuffer>((resolve, reject) => {
     const reader = new FileReader();
@@ -362,6 +340,7 @@ export default function ObjectivesPageClient({
       setActiveTab(tab);
     }
   }, [searchParams]);
+
   const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
   const [ratesLoading, setRatesLoading] = useState(false);
 
@@ -373,7 +352,7 @@ export default function ObjectivesPageClient({
   const [isStrategicEditMode, setIsStrategicEditMode] = useState(false);
 
   const [objective, setObjective] = useState<UserObjectiveForm>({
-    growth_intent: "aggressive",
+    growth_intent: "balanced",
     profit_priority: "protect_growth",
     inventory_clearance_priority: false,
     business_context: "",
@@ -390,10 +369,12 @@ export default function ObjectivesPageClient({
   const [objectiveEditingPid, setObjectiveEditingPid] = useState<PlatformId | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isFetchingBusinessSummary, setIsFetchingBusinessSummary] = useState(false);
+  const [isFetchingObjective, setIsFetchingObjective] = useState(false);
 
   const toggleChartExpand = (chart: "targetSales" | "objectiveMoM") => {
     setExpandedChart((prev) => (prev === chart ? null : chart));
   };
+
   const { data, isLoading, isError } = useGetUserDataQuery();
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
 
@@ -419,6 +400,10 @@ export default function ObjectivesPageClient({
     if (connected.shopify) countries.push("global");
     return countries;
   }, [connected]);
+
+  const nonGlobalIntegratedCountries = useMemo(() => {
+    return integratedCountries.filter((c) => c !== "global");
+  }, [integratedCountries]);
 
   const pagePlatform: PlatformId = useMemo(() => {
     const c = (country || "").toLowerCase();
@@ -494,30 +479,64 @@ export default function ObjectivesPageClient({
     fetchRates();
   }, [token]);
 
+  const monthName = (date = new Date()) =>
+    date.toLocaleString("en-US", { month: "long" }).toLowerCase();
+
+  const currentYear = (date = new Date()) => date.getFullYear();
+
   const rateMap = useMemo(() => {
     const map = new Map<string, number>();
+
     for (const r of currencyRates) {
-      const key = `${r.user_currency}|${r.selected_currency}|${r.country}`;
+      const key = [
+        (r.user_currency || "").toLowerCase(),
+        (r.selected_currency || "").toLowerCase(),
+        (r.country || "").toLowerCase(),
+        (r.month || "").toLowerCase(),
+        Number(r.year),
+      ].join("|");
+
       map.set(key, Number(r.conversion_rate));
     }
+
     return map;
   }, [currencyRates]);
 
-  const getFxDb = (from: string, to: string, country: string) => {
+  const getFxDb = (
+    from: string,
+    to: string,
+    country: string,
+    month: string = monthName(),
+    year: number = currentYear()
+  ) => {
     const f = (from || "").toLowerCase();
     const t = (to || "").toLowerCase();
     const c = (country || "").toLowerCase();
+    const m = (month || "").toLowerCase();
+    const y = Number(year);
 
     if (f === t) return 1;
 
-    const direct = rateMap.get(`${f}|${t}|${c}`);
+    const directKey = `${f}|${t}|${c}|${m}|${y}`;
+    const inverseKey = `${t}|${f}|${c}|${m}|${y}`;
+
+    const direct = rateMap.get(directKey);
     if (direct != null) return direct;
 
-    const inv = rateMap.get(`${t}|${f}|${c}`);
+    const inv = rateMap.get(inverseKey);
     if (inv != null && inv !== 0) return 1 / inv;
 
     return 1;
   };
+
+  const resolvedTargetCountry = useMemo(() => {
+    if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
+    if (objective.country) return objective.country.toLowerCase();
+    if (country) return country.toLowerCase();
+    return "uk";
+  }, [objectiveDraft.country, objective.country, country]);
+
+  const isGlobalPage = resolvedTargetCountry === "global";
 
   const startEditTarget = (pid: PlatformId) => {
     setEditingPid(pid);
@@ -539,7 +558,6 @@ export default function ObjectivesPageClient({
     setIsTargetEditMode(false);
     cancelEditTarget();
   };
-
 
   const startBusinessSummaryEdit = () => {
     setObjectiveDraft(objective);
@@ -566,19 +584,89 @@ export default function ObjectivesPageClient({
   };
 
   const strategicTargetPid = objectiveEditingPid || pagePlatform;
-  const strategicNativeCurrency = platformToCurrencyCode(strategicTargetPid) || homeCurrencyCode;
-  const strategicTargetCountry = platformToCountry(strategicTargetPid);
-  const strategicConversionRate = getFxDb(
-    strategicNativeCurrency,
+
+  const targetSourceCountry = useMemo(() => {
+    if (!isGlobalPage) {
+      return resolvedTargetCountry;
+    }
+
+    // On global page, source country must be the country where target was originally entered.
+    // Prefer a non-global saved country; otherwise fallback to first connected marketplace country.
+    if (objectiveDraft.country && objectiveDraft.country.toLowerCase() !== "global") {
+      return objectiveDraft.country.toLowerCase();
+    }
+
+    if (objective.country && objective.country.toLowerCase() !== "global") {
+      return objective.country.toLowerCase();
+    }
+
+    return nonGlobalIntegratedCountries[0] || "uk";
+  }, [
+    isGlobalPage,
+    objectiveDraft.country,
+    objective.country,
+    resolvedTargetCountry,
+    nonGlobalIntegratedCountries,
+  ]);
+
+  const targetSourcePlatform = useMemo(() => {
+    return countryToPlatform(targetSourceCountry);
+  }, [targetSourceCountry]);
+
+  const targetSourceCurrency = useMemo(() => {
+    return platformToCurrencyCode(targetSourcePlatform) || homeCurrencyCode;
+  }, [targetSourcePlatform, homeCurrencyCode]);
+
+  const strategicDisplayCurrency = useMemo(() => {
+    if (isGlobalPage) {
+      return homeCurrencyCode;
+    }
+
+    return platformToCurrencyCode(strategicTargetPid) || homeCurrencyCode;
+  }, [isGlobalPage, strategicTargetPid, homeCurrencyCode]);
+
+  const homeCountryForFx = useMemo(() => {
+    if (homeCurrencyCode === "USD") return "us";
+    if (homeCurrencyCode === "GBP") return "uk";
+    if (homeCurrencyCode === "CAD") return "ca";
+    if (homeCurrencyCode === "INR") return "india";
+    return resolvedTargetCountry;
+  }, [homeCurrencyCode, resolvedTargetCountry]);
+
+  const strategicConversionRate = useMemo(() => {
+    if (!isGlobalPage) return null;
+
+    return getFxDb(
+      targetSourceCurrency,
+      homeCurrencyCode,
+      homeCountryForFx,
+      monthName(),
+      currentYear()
+    );
+  }, [
+    isGlobalPage,
+    targetSourceCurrency,
     homeCurrencyCode,
-    strategicTargetCountry
-  );
+    homeCountryForFx,
+    rateMap,
+  ]);
+
+  const strategicDisplayTargetValue = useMemo(() => {
+    const rawTarget = Number((data as any)?.target_sales ?? 0);
+
+    if (!isGlobalPage) {
+      return rawTarget;
+    }
+
+    const fx = strategicConversionRate ?? 1;
+    return rawTarget * fx;
+  }, [isGlobalPage, strategicConversionRate, data]);
 
   const getObjectiveMonth = () => {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
-    return `${year}-${month}`; // e.g. 2026-03
+    return `${year}-${month}`;
   };
 
   const getCurrentMonthYear = () => {
@@ -589,14 +677,6 @@ export default function ObjectivesPageClient({
       year: now.getFullYear(),
     };
   };
-
-  const resolvedTargetCountry = useMemo(() => {
-    if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
-    if (objective.country) return objective.country.toLowerCase();
-    if (country) return country.toLowerCase();
-    return "uk";
-  }, [objectiveDraft.country, objective.country, country]);
-
 
   const saveInlineTarget = async () => {
     const next = Number(draftTarget);
@@ -644,115 +724,6 @@ export default function ObjectivesPageClient({
       alert(err?.message || "Failed to update target.");
     }
   };
-
-  // const handleBusinessSummarySave = async () => {
-  //   try {
-  //     const website = objectiveDraft.website?.trim();
-  //     const pptFile = objectiveDraft.uploaded_files.find(
-  //       (f) =>
-  //         f.uploadStatus === "ready" &&
-  //         f.rawFile &&
-  //         f.name.toLowerCase().endsWith(".pptx")
-  //     );
-
-  //     let nextBusinessContext = objectiveDraft.business_context;
-
-  //     if (website) {
-  //       if (!pptFile?.rawFile) {
-  //         alert("Please upload a PPTX file.");
-  //         return;
-  //       }
-
-  //       setIsGeneratingSummary(true);
-
-  //       const formData = new FormData();
-  //       formData.append("website", website);
-  //       formData.append("ppt", pptFile.rawFile);
-
-  //       const analyzeRes = await fetch(
-  //         `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
-  //         {
-  //           method: "POST",
-  //           headers: {
-  //             Authorization: `Bearer ${token}`,
-  //           },
-  //           body: formData,
-  //         }
-  //       );
-
-  //       const analyzeJson = await analyzeRes.json();
-
-  //       if (!analyzeRes.ok) {
-  //         throw new Error(
-  //           analyzeJson?.details ||
-  //           analyzeJson?.error ||
-  //           "Failed to analyze website"
-  //         );
-  //       }
-
-  //       nextBusinessContext = analyzeJson?.data?.overview || "";
-  //     }
-
-  //     const { month, year } = getCurrentMonthYear();
-
-  //     // send ONLY business summary related fields
-  //     const objectivePayload = {
-  //       business_context: nextBusinessContext,
-  //       country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
-  //       month,
-  //       year,
-  //     };
-
-  //     const objectiveRes = await fetch(
-  //       `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`,
-  //       {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //         body: JSON.stringify(objectivePayload),
-  //       }
-  //     );
-
-  //     const objectiveJson = await objectiveRes.json().catch(() => null);
-
-  //     if (!objectiveRes.ok) {
-  //       throw new Error(objectiveJson?.error || "Failed to save business summary");
-  //     }
-
-  //     const finalObjective = {
-  //       ...objective,
-  //       ...objectiveDraft,
-  //       business_context: nextBusinessContext,
-  //     };
-
-  //     setObjective(finalObjective);
-  //     setObjectiveDraft(finalObjective);
-  //     setIsBusinessSummaryEditMode(false);
-
-  //     localStorage.setItem(
-  //       "user_objective",
-  //       JSON.stringify({
-  //         ...finalObjective,
-  //         uploaded_files: finalObjective.uploaded_files.map((file) => ({
-  //           id: file.id,
-  //           name: file.name,
-  //           size: file.size,
-  //           type: file.type,
-  //           extractedText: file.extractedText,
-  //           uploadStatus: file.uploadStatus,
-  //           error: file.error,
-  //         })),
-  //       })
-  //     );
-  //   } catch (err: any) {
-  //     console.error(err);
-  //     alert(err?.message || "Failed to save business summary");
-  //   } finally {
-  //     setIsGeneratingSummary(false);
-  //   }
-  // };
 
   const handleBusinessSummarySave = async () => {
     try {
@@ -837,22 +808,6 @@ export default function ObjectivesPageClient({
       setObjective(finalObjective);
       setObjectiveDraft(finalObjective);
       setIsBusinessSummaryEditMode(false);
-
-      localStorage.setItem(
-        "user_objective",
-        JSON.stringify({
-          ...finalObjective,
-          uploaded_files: finalObjective.uploaded_files.map((file) => ({
-            id: file.id,
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            extractedText: file.extractedText,
-            uploadStatus: file.uploadStatus,
-            error: file.error,
-          })),
-        })
-      );
     } catch (err: any) {
       console.error(err);
       alert(err?.message || "Failed to save business summary");
@@ -860,251 +815,6 @@ export default function ObjectivesPageClient({
       setIsGeneratingSummary(false);
     }
   };
-
-  // const handleStrategicObjectivesSave = async () => {
-  //   try {
-  //     const nextTarget = Number(objectiveTargetDraft);
-
-  //     if (!Number.isFinite(nextTarget) || nextTarget < 0) {
-  //       alert("Please enter a valid target.");
-  //       return;
-  //     }
-
-  //     const { month, year } = getCurrentMonthYear();
-  //     const countryToSave = (objectiveDraft.country || resolvedTargetCountry).toLowerCase();
-
-  //     // send ONLY strategic fields
-  //     const objectivePayload = {
-  //       growth_intent: objectiveDraft.growth_intent,
-  //       profit_priority: objectiveDraft.profit_priority,
-  //       inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
-  //       country: countryToSave,
-  //       month,
-  //       year,
-  //     };
-
-  //     const targetPayload = {
-  //       month,
-  //       year,
-  //       country: countryToSave,
-  //       target_sales: nextTarget,
-  //     };
-
-  //     const [objectiveRes, targetSummaryRes] = await Promise.all([
-  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //         body: JSON.stringify(objectivePayload),
-  //       }),
-  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //         body: JSON.stringify(targetPayload),
-  //       }),
-  //     ]);
-
-  //     const objectiveJson = await objectiveRes.json().catch(() => null);
-  //     const targetSummaryJson = await targetSummaryRes.json().catch(() => null);
-
-  //     if (!objectiveRes.ok) {
-  //       throw new Error(objectiveJson?.error || "Failed to save objective");
-  //     }
-
-  //     if (!targetSummaryRes.ok) {
-  //       throw new Error(
-  //         targetSummaryJson?.error || "Failed to save monthly target summary."
-  //       );
-  //     }
-
-  //     await updateProfile({ target_sales: nextTarget } as any).unwrap();
-  //     dispatch(setUser({ target_sales: nextTarget } as any));
-
-  //     // preserve existing business summary
-  //     const finalObjective = {
-  //       ...objective,
-  //       growth_intent: objectiveDraft.growth_intent,
-  //       profit_priority: objectiveDraft.profit_priority,
-  //       inventory_clearance_priority: objectiveDraft.inventory_clearance_priority,
-  //       country: objectiveDraft.country,
-  //     };
-
-  //     setObjective(finalObjective);
-  //     setObjectiveDraft(finalObjective);
-  //     setIsStrategicEditMode(false);
-  //     setObjectiveTargetDraft("");
-  //     setObjectiveEditingPid(null);
-
-  //     localStorage.setItem(
-  //       "user_objective",
-  //       JSON.stringify({
-  //         ...finalObjective,
-  //         uploaded_files: finalObjective.uploaded_files.map((file) => ({
-  //           id: file.id,
-  //           name: file.name,
-  //           size: file.size,
-  //           type: file.type,
-  //           extractedText: file.extractedText,
-  //           uploadStatus: file.uploadStatus,
-  //           error: file.error,
-  //         })),
-  //       })
-  //     );
-  //   } catch (err: any) {
-  //     console.error(err);
-  //     alert(err?.message || "Failed to save section");
-  //   }
-  // };
-
-  // const handleInlineObjectiveSave = async () => {
-  //   try {
-  //     const nextTarget = Number(objectiveTargetDraft);
-
-  //     if (!Number.isFinite(nextTarget) || nextTarget < 0) {
-  //       alert("Please enter a valid target.");
-  //       return;
-  //     }
-
-  //     const website = objectiveDraft.website?.trim();
-  //     const pptFile = objectiveDraft.uploaded_files.find(
-  //       (f) =>
-  //         f.uploadStatus === "ready" &&
-  //         f.rawFile &&
-  //         f.name.toLowerCase().endsWith(".pptx")
-  //     );
-
-  //     let nextBusinessContext = objectiveDraft.business_context;
-
-  //     // If website exists, run auto-summary and let backend save it
-  //     if (website) {
-  //       if (!pptFile?.rawFile) {
-  //         alert("Please upload a PPTX file.");
-  //         return;
-  //       }
-
-  //       setIsGeneratingSummary(true);
-
-  //       const formData = new FormData();
-  //       formData.append("website", website);
-  //       formData.append("ppt", pptFile.rawFile);
-
-  //       const analyzeRes = await fetch(
-  //         `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
-  //         {
-  //           method: "POST",
-  //           headers: {
-  //             Authorization: `Bearer ${token}`,
-  //           },
-  //           body: formData,
-  //         }
-  //       );
-
-  //       const analyzeJson = await analyzeRes.json();
-
-  //       if (!analyzeRes.ok) {
-  //         throw new Error(
-  //           analyzeJson?.details ||
-  //           analyzeJson?.error ||
-  //           "Failed to analyze website"
-  //         );
-  //       }
-
-  //       nextBusinessContext = analyzeJson?.data?.overview || "";
-  //     }
-
-  //     const objectivePayload = {
-  //       ...objectiveDraft,
-  //       business_context: nextBusinessContext,
-  //       country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
-  //       uploaded_files: objectiveDraft.uploaded_files.map((file) => ({
-  //         name: file.name,
-  //         size: file.size,
-  //         type: file.type,
-  //         extracted_text: file.extractedText,
-  //       })),
-  //     };
-
-  //     const { month, year } = getCurrentMonthYear();
-
-  //     const targetPayload = {
-  //       month,
-  //       year,
-  //       country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
-  //       target_sales: nextTarget,
-  //     };
-
-  //     const [objectiveRes, targetSummaryRes] = await Promise.all([
-  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //         body: JSON.stringify(objectivePayload),
-  //       }),
-  //       fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`, {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //         body: JSON.stringify(targetPayload),
-  //       }),
-  //     ]);
-
-  //     const objectiveJson = await objectiveRes.json().catch(() => null);
-  //     const targetSummaryJson = await targetSummaryRes.json().catch(() => null);
-
-  //     if (!objectiveRes.ok) {
-  //       throw new Error(objectiveJson?.error || "Failed to save objective");
-  //     }
-
-  //     if (!targetSummaryRes.ok) {
-  //       throw new Error(
-  //         targetSummaryJson?.error || "Failed to save monthly target summary."
-  //       );
-  //     }
-
-  //     await updateProfile({ target_sales: nextTarget } as any).unwrap();
-  //     dispatch(setUser({ target_sales: nextTarget } as any));
-
-  //     const finalObjective = {
-  //       ...objectiveDraft,
-  //       business_context: nextBusinessContext,
-  //     };
-
-  //     setObjective(finalObjective);
-  //     setObjectiveDraft(finalObjective);
-  //     setIsObjectiveEditMode(false);
-  //     setObjectiveTargetDraft("");
-  //     setObjectiveEditingPid(null);
-
-  //     localStorage.setItem("user_objective", JSON.stringify({
-  //       ...finalObjective,
-  //       uploaded_files: finalObjective.uploaded_files.map((file) => ({
-  //         id: file.id,
-  //         name: file.name,
-  //         size: file.size,
-  //         type: file.type,
-  //         extractedText: file.extractedText,
-  //         uploadStatus: file.uploadStatus,
-  //         error: file.error,
-  //       })),
-  //     }));
-
-  //     localStorage.setItem("user_objective_backend", JSON.stringify(objectivePayload));
-  //   } catch (err: any) {
-  //     console.error(err);
-  //     alert(err?.message || "Failed to save section");
-  //   } finally {
-  //     setIsGeneratingSummary(false);
-  //   }
-  // };
 
   const handleStrategicObjectivesSave = async () => {
     try {
@@ -1180,44 +890,11 @@ export default function ObjectivesPageClient({
       setIsStrategicEditMode(false);
       setObjectiveTargetDraft("");
       setObjectiveEditingPid(null);
-
-      localStorage.setItem(
-        "user_objective",
-        JSON.stringify({
-          ...finalObjective,
-          uploaded_files: finalObjective.uploaded_files.map((file) => ({
-            id: file.id,
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            extractedText: file.extractedText,
-            uploadStatus: file.uploadStatus,
-            error: file.error,
-          })),
-        })
-      );
     } catch (err: any) {
       console.error(err);
       alert(err?.message || "Failed to save section");
     }
   };
-
-  useEffect(() => {
-    const saved = localStorage.getItem("user_objective");
-    if (!saved) return;
-
-    try {
-      const parsed = JSON.parse(saved);
-      setObjective((prev) => ({
-        ...prev,
-        ...parsed,
-        profit_priority: parsed.profit_priority ?? parsed.primary_goal ?? prev.profit_priority,
-        growth_intent: parsed.growth_intent ?? parsed.risk_level ?? prev.growth_intent,
-      }));
-    } catch (e) {
-      console.error("Failed to parse objective from localStorage");
-    }
-  }, []);
 
   useEffect(() => {
     if (!objective.country) {
@@ -1239,8 +916,8 @@ export default function ObjectivesPageClient({
       };
 
       const nativeCurrency = platformToCurrencyCode(pid) || homeCurrencyCode;
-      const country = platformToCountry(pid);
-      const nativeToHome = getFxDb(nativeCurrency, homeCurrencyCode, country);
+      const rowCountry = platformToCountry(pid);
+      const nativeToHome = getFxDb(nativeCurrency, homeCurrencyCode, rowCountry);
       const homeTarget = currentTarget * nativeToHome;
 
       return {
@@ -1339,13 +1016,6 @@ export default function ObjectivesPageClient({
     [homeCurrencyCode, editingPid, draftTarget, isTargetEditMode, data]
   );
 
-
-
-
-  const handleOpenFilePicker = () => {
-    fileInputRef.current?.click();
-  };
-
   const handleRemoveUploadedFile = (id: string) => {
     setObjectiveDraft((prev) => ({
       ...prev,
@@ -1400,26 +1070,6 @@ export default function ObjectivesPageClient({
       e.target.value = "";
     }
   };
-
-  useEffect(() => {
-    const saved = localStorage.getItem("user_objective");
-    if (!saved) return;
-
-    try {
-      const parsed = JSON.parse(saved);
-      setObjective((prev) => ({
-        ...prev,
-        ...parsed,
-        website: parsed.website ?? "",
-        uploaded_files: Array.isArray(parsed.uploaded_files) ? parsed.uploaded_files : [],
-        profit_priority: parsed.profit_priority ?? parsed.primary_goal ?? prev.profit_priority,
-        growth_intent: parsed.growth_intent ?? parsed.risk_level ?? prev.growth_intent,
-      }));
-    } catch (e) {
-      console.error("Failed to parse objective from localStorage");
-    }
-  }, []);
-
 
   useEffect(() => {
     const fetchBusinessSummary = async () => {
@@ -1483,14 +1133,89 @@ export default function ObjectivesPageClient({
     fetchBusinessSummary();
   }, [token]);
 
+  useEffect(() => {
+    const fetchObjective = async () => {
+      if (!token) return;
+
+      const countryToFetch =
+        (country || objective.country || integratedCountries[0] || "").toLowerCase();
+
+      if (!countryToFetch) return;
+
+      try {
+        setIsFetchingObjective(true);
+
+        const month = getObjectiveMonth();
+
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective?country=${encodeURIComponent(
+            countryToFetch
+          )}&month=${encodeURIComponent(month)}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          if (res.status !== 404) {
+            throw new Error(json?.error || "Failed to fetch objective");
+          }
+
+          setObjective((prev) => ({
+            ...prev,
+            country: countryToFetch,
+          }));
+
+          setObjectiveDraft((prev) => ({
+            ...prev,
+            country: countryToFetch,
+          }));
+
+          return;
+        }
+
+        const serverObjective = json?.objective;
+        if (!serverObjective) return;
+
+        setObjective((prev) => ({
+          ...prev,
+          country: countryToFetch,
+          growth_intent: serverObjective.growth_intent ?? prev.growth_intent,
+          profit_priority: serverObjective.profit_priority ?? prev.profit_priority,
+          inventory_clearance_priority:
+            serverObjective.inventory_clearance_priority ?? prev.inventory_clearance_priority,
+          business_context: serverObjective.business_context ?? prev.business_context,
+        }));
+
+        setObjectiveDraft((prev) => ({
+          ...prev,
+          country: countryToFetch,
+          growth_intent: serverObjective.growth_intent ?? prev.growth_intent,
+          profit_priority: serverObjective.profit_priority ?? prev.profit_priority,
+          inventory_clearance_priority:
+            serverObjective.inventory_clearance_priority ?? prev.inventory_clearance_priority,
+          business_context: serverObjective.business_context ?? prev.business_context,
+        }));
+      } catch (error) {
+        console.error("Failed to fetch objective:", error);
+      } finally {
+        setIsFetchingObjective(false);
+      }
+    };
+
+    fetchObjective();
+  }, [token, country, integratedCountries]);
+
   return (
     <div className="w-full">
-
-
-      {(isLoading || ratesLoading || isFetchingBusinessSummary) && (
+      {(isLoading || ratesLoading || isFetchingBusinessSummary || isFetchingObjective) && (
         <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">Loading…</div>
       )}
-
 
       {isError && (
         <div className="mb-4 text-sm text-red-500">Failed to load objectives page.</div>
@@ -1501,6 +1226,7 @@ export default function ObjectivesPageClient({
       </div>
 
       <SummaryTabs activeTab={activeTab} onChange={setActiveTab} />
+
       {activeTab === "business_summary" && (
         <div className="grid grid-cols-1 gap-4">
           <InfoCard
@@ -1542,142 +1268,140 @@ export default function ObjectivesPageClient({
               )
             }
           >
-            <> {isGeneratingSummary && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-white/80 ">
-                <Loader backgroundClass="bg-transparent" />
-              </div>
-            )}
-              {(() => {
-                return (
-                  <div className="grid grid-cols-1 gap-5">
-                    <div>
-                      <div className="mb-1 flex items-center justify-end">
-                        {isBusinessSummaryEditMode && (
-                          <p className="text-xs text-gray-500">Max 250 characters</p>
-                        )}
-                      </div>
+            <>
+              {isGeneratingSummary && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-white/80 ">
+                  <Loader backgroundClass="bg-transparent" />
+                </div>
+              )}
 
-                      {isBusinessSummaryEditMode ? (
-                        <textarea
-                          rows={5}
-                          maxLength={250}
-                          value={objectiveDraft.business_context || ""}
+              <div className="grid grid-cols-1 gap-5">
+                <div>
+                  <div className="mb-1 flex items-center justify-end">
+                    {isBusinessSummaryEditMode && (
+                      <p className="text-xs text-gray-500">Max 250 characters</p>
+                    )}
+                  </div>
+
+                  {isBusinessSummaryEditMode ? (
+                    <textarea
+                      rows={5}
+                      maxLength={250}
+                      value={objectiveDraft.business_context || ""}
+                      onChange={(e) =>
+                        setObjectiveDraft((prev) => ({
+                          ...prev,
+                          business_context: e.target.value,
+                        }))
+                      }
+                      className="w-full resize-none rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      placeholder="Describe your business context..."
+                    />
+                  ) : objective.business_context ? (
+                    <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
+                      {objective.business_context}
+                    </p>
+                  ) : (
+                    <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
+                      Example:
+                      Our business primarily sells premium skincare products across Amazon US and Shopify.
+                      We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
+                      Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
+                      while maintaining bestseller stock is a key priority.
+                    </p>
+                  )}
+                </div>
+
+                {isBusinessSummaryEditMode && (
+                  <div className="flex items-center gap-3 py-3">
+                    <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+
+                    <span className="whitespace-nowrap text-[10px] sm:text-xs font-medium tracking-widest text-gray-400 dark:text-gray-500">
+                      OR AUTO-EXTRACT YOUR BUSINESS SUMMARY
+                    </span>
+
+                    <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                  </div>
+                )}
+
+                {isBusinessSummaryEditMode && (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Website</p>
+
+                      <div className="relative">
+                        <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="url"
+                          placeholder="https://yourwebsite.com"
+                          value={objectiveDraft.website || ""}
                           onChange={(e) =>
                             setObjectiveDraft((prev) => ({
                               ...prev,
-                              business_context: e.target.value,
+                              website: e.target.value,
                             }))
                           }
-                          className="w-full resize-none rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          placeholder="Describe your business context..."
+                          className="w-full rounded-md border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                         />
-                      ) : objective.business_context ? (
-                        <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
-                          {objective.business_context}
-                        </p>
-                      ) : (
-                        <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
-                          Example:
-                          Our business primarily sells premium skincare products across Amazon US and Shopify.
-                          We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
-                          Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
-                          while maintaining bestseller stock is a key priority.
-                        </p>
-                      )}
+                      </div>
                     </div>
 
-                    {isBusinessSummaryEditMode && (
-                      <div className="flex items-center gap-3 py-3">
-                        <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                    <div>
+                      <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Files</p>
 
-                        <span className="whitespace-nowrap text-[10px] sm:text-xs font-medium tracking-widest text-gray-400 dark:text-gray-500">
-                          OR AUTO-EXTRACT YOUR BUSINESS SUMMARY
-                        </span>
+                      <div className="w-full rounded-md border border-gray-300 bg-white px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
+                        <div className="flex items-center gap-2">
+                          <label
+                            htmlFor="business-summary-file"
+                            className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                          >
+                            Upload File
+                          </label>
 
-                        <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-                      </div>
-                    )}
+                          <input
+                            id="business-summary-file"
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".docx,.pptx"
+                            onChange={handleFilesSelected}
+                            className="hidden"
+                          />
 
-                    {isBusinessSummaryEditMode && (
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                          <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Website</p>
-
-                          <div className="relative">
-                            <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                              type="url"
-                              placeholder="https://yourwebsite.com"
-                              value={objectiveDraft.website || ""}
-                              onChange={(e) =>
-                                setObjectiveDraft((prev) => ({
-                                  ...prev,
-                                  website: e.target.value,
-                                }))
-                              }
-                              className="w-full rounded-md border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Files</p>
-
-                          <div className="w-full rounded-md border border-gray-300 bg-white px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
-                            <div className="flex items-center gap-2">
-                              <label
-                                htmlFor="business-summary-file"
-                                className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                              >
-                                Upload File
-                              </label>
-
-                              <input
-                                id="business-summary-file"
-                                ref={fileInputRef}
-                                type="file"
-                                accept=".docx,.pptx"
-                                onChange={handleFilesSelected}
-                                className="hidden"
-                              />
-
-                              <div className="min-w-0 flex-1">
-                                {objectiveDraft.uploaded_files?.[0] ? (
-                                  <div className="inline-flex max-w-full items-center gap-2 rounded-md bg-gray-50 px-2 py-1 dark:bg-gray-700/60">
-                                    <FiFileText className="shrink-0 text-gray-500 dark:text-gray-300" />
-                                    <span className="truncate text-xs text-gray-600 dark:text-gray-300 max-w-[180px] sm:max-w-[220px]">
-                                      {objectiveDraft.uploaded_files[0].name}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveUploadedFile(objectiveDraft.uploaded_files[0].id)}
-                                      className="shrink-0 text-gray-400 hover:text-red-500"
-                                      title="Remove file"
-                                    >
-                                      <FiTrash2 size={14} />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="block truncate px-2 text-xs text-gray-500 dark:text-gray-400">
-                                    No file selected
-                                  </span>
-                                )}
+                          <div className="min-w-0 flex-1">
+                            {objectiveDraft.uploaded_files?.[0] ? (
+                              <div className="inline-flex max-w-full items-center gap-2 rounded-md bg-gray-50 px-2 py-1 dark:bg-gray-700/60">
+                                <FiFileText className="shrink-0 text-gray-500 dark:text-gray-300" />
+                                <span className="truncate text-xs text-gray-600 dark:text-gray-300 max-w-[180px] sm:max-w-[220px]">
+                                  {objectiveDraft.uploaded_files[0].name}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveUploadedFile(objectiveDraft.uploaded_files[0].id)}
+                                  className="shrink-0 text-gray-400 hover:text-red-500"
+                                  title="Remove file"
+                                >
+                                  <FiTrash2 size={14} />
+                                </button>
                               </div>
-                            </div>
+                            ) : (
+                              <span className="block truncate px-2 text-xs text-gray-500 dark:text-gray-400">
+                                No file selected
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
-                    )}
-
-                    {isExtractingFiles && (
-                      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                        Extracting text from files...
-                      </div>
-                    )}
-
+                    </div>
                   </div>
-                );
-              })()} </>
+                )}
+
+                {isExtractingFiles && (
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    Extracting text from files...
+                  </div>
+                )}
+              </div>
+            </>
           </InfoCard>
 
           <InfoCard
@@ -1930,7 +1654,7 @@ export default function ObjectivesPageClient({
               />
 
               <InfoItem
-                label={`Target (${strategicNativeCurrency})`}
+                label={`Target (${strategicDisplayCurrency})`}
                 value={
                   isStrategicEditMode ? (
                     <input
@@ -1943,21 +1667,21 @@ export default function ObjectivesPageClient({
                       placeholder="Enter target"
                     />
                   ) : (
-                    money(Number((data as any)?.target_sales ?? 0), strategicNativeCurrency)
+                    money(strategicDisplayTargetValue, strategicDisplayCurrency)
                   )
                 }
               />
 
-              <InfoItem
-                label={`Conversion Rate (${homeCurrencyCode})`}
-                value={
-                  <span>
-                    {strategicNativeCurrency === homeCurrencyCode
-                      ? "-"
-                      : strategicConversionRate.toFixed(3)}
-                  </span>
-                }
-              />
+              {isGlobalPage && (
+                <InfoItem
+                  label={`Conversion Rate (${targetSourceCurrency} → ${homeCurrencyCode})`}
+                  value={
+                    <span>
+                      {strategicConversionRate == null ? "-" : strategicConversionRate.toFixed(3)}
+                    </span>
+                  }
+                />
+              )}
             </div>
           </InfoCard>
         </div>

@@ -781,6 +781,14 @@ function labelToValue(label: YLabel) {
     return yLabels.indexOf(label);
 }
 
+function getPreviousMonthString(month: string) {
+    const [year, monthNum] = month.split("-").map(Number);
+    const date = new Date(year, monthNum - 2, 1); // previous month
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+}
+
 export default function ObjectiveMoMChart({
     className = "",
     country,
@@ -792,16 +800,22 @@ export default function ObjectiveMoMChart({
 
     const [objectiveData, setObjectiveData] = useState<ObjectiveApiItem[]>([]);
 
-    const adjustedData =
-        objectiveData.length === 1
-            ? [
-                objectiveData[0],
+    const adjustedData = useMemo(() => {
+        if (objectiveData.length === 1) {
+            const current = objectiveData[0];
+
+            return [
                 {
-                    ...objectiveData[0],
-                    __isDuplicate: true,
+                    ...current,
+                    month: getPreviousMonthString(current.month),
+                    __isPrepended: true,
                 } as any,
-            ]
-            : objectiveData;
+                current,
+            ];
+        }
+
+        return objectiveData;
+    }, [objectiveData]);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -1059,7 +1073,6 @@ export default function ObjectiveMoMChart({
                     smooth: true,
                     showSymbol: true,
                     symbol: "circle",
-                    symbolSize: 7,
                     emphasis: {
                         scale: true,
                         itemStyle: {
@@ -1072,7 +1085,10 @@ export default function ObjectiveMoMChart({
                         color: GREEN,
                         borderWidth: 0,
                     },
-                    data: profitSeriesData,
+                    data: profitSeriesData.map((point, index) => ({
+                        ...point,
+                        symbolSize: (adjustedData[index] as any).__isPrepended ? 0 : 7,
+                    })),
                 },
                 {
                     name: "Sale",
@@ -1080,7 +1096,6 @@ export default function ObjectiveMoMChart({
                     smooth: true,
                     showSymbol: true,
                     symbol: "circle",
-                    symbolSize: 7,
                     emphasis: {
                         scale: true,
                         itemStyle: {
@@ -1093,9 +1108,12 @@ export default function ObjectiveMoMChart({
                         color: ORANGE,
                         borderWidth: 0,
                     },
-                    data: saleSeriesData,
+                    data: saleSeriesData.map((point, index) => ({
+                        ...point,
+                        symbolSize: (adjustedData[index] as any).__isPrepended ? 0 : 7,
+                    })),
                 },
-            ],
+            ]
         }),
         [profitSeriesData, saleSeriesData, xAxisData]
     );
