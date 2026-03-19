@@ -160,7 +160,7 @@ router.replace("/choose-country?onboard=1");
               <input
                 type="text"
                 className="xl:h-12 w-full rounded-lg border border-charcoal-500 bg-white px-4 py-2.5 text-sm  placeholder:text-gray-400 outline-green-500"
-                placeholder="Acme Corp"
+                placeholder="Enter your Company Name here"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 autoComplete="organization"
@@ -175,7 +175,7 @@ router.replace("/choose-country?onboard=1");
               <input
                 type="text"
                 className="xl:h-12 w-full rounded-lg border border-charcoal-500 bg-white px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 outline-green-500 "
-                placeholder="Acme"
+                placeholder="Enter your Brand Name here"
                 value={brandName}
                 onChange={(e) => setBrandName(e.target.value)}
                 required
