@@ -82,6 +82,7 @@ def create_app():
     from app.routes.member_auth import member_auth_bp
     from app.routes.inventory_breakup_routes import inventory_breakup_bp
     from app.routes.website_scrapper_routes import website_scrapper_bp
+    from app.routes.business_journey_routes import business_journey_bp
 
     app.register_blueprint(user_bp)
     app.register_blueprint(upload_bp)
@@ -112,6 +113,7 @@ def create_app():
     app.register_blueprint(member_auth_bp)
     app.register_blueprint(inventory_breakup_bp)
     app.register_blueprint(website_scrapper_bp)
+    app.register_blueprint(business_journey_bp)
 
     with app.app_context():
         db.create_all()

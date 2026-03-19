@@ -328,6 +328,7 @@ class UserObjective(db.Model):
     inventory_clearance_priority = Column(Boolean, nullable=False, default=False)
 
     business_context = Column(Text, nullable=True)
+    ai_business_journey = Column(Text, nullable=True)
     website_url = Column(String(500), nullable=True)
     ppt_file_data = Column(db.LargeBinary, nullable=True)
     ppt_file_name = Column(String(255), nullable=True)
