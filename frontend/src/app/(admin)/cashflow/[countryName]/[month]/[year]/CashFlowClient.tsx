@@ -256,11 +256,10 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
 
   const isPreviewMode =
-    !embedded &&
-    (!paramMonth ||
-      !paramYear ||
-      paramMonth.toLowerCase() === "na" ||
-      paramYear.toLowerCase() === "na");
+  !paramMonth ||
+  !paramYear ||
+  String(paramMonth).toLowerCase() === "na" ||
+  String(paramYear).toLowerCase() === "na";
 
   const effectiveCountryForCurrency = isPreviewMode
     ? "global"
@@ -311,16 +310,16 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   );
 
   const [month, setMonth] = useState<string>(
-    embedded
-      ? capitalize(selectedMonthProp || "")
-      : (initialMonth || defaultMonth)
-  );
+  embedded
+    ? (isPreviewMode ? defaultMonth : capitalize(selectedMonthProp || ""))
+    : (initialMonth || defaultMonth)
+);
 
-  const [year, setYear] = useState<string>(
-    embedded
-      ? String(selectedYearProp || "")
-      : (initialYear || defaultYear)
-  );
+const [year, setYear] = useState<string>(
+  embedded
+    ? (isPreviewMode ? defaultYear : String(selectedYearProp || ""))
+    : (initialYear || defaultYear)
+);
 
   const [periodType, setPeriodType] = useState<PeriodType>(
     embedded ? (rangeProp || "yearly") : "monthly"
@@ -349,13 +348,30 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   };
 
   useEffect(() => {
-    if (!embedded) return;
+  if (!embedded) return;
 
-    setPeriodType(rangeProp || "yearly");
-    setMonth(capitalize(selectedMonthProp || ""));
-    setSelectedQuarter(selectedQuarterProp || "");
-    setYear(String(selectedYearProp || ""));
-  }, [embedded, rangeProp, selectedMonthProp, selectedQuarterProp, selectedYearProp]);
+  setPeriodType(rangeProp || "yearly");
+
+  if (isPreviewMode) {
+    setMonth(defaultMonth);
+    setSelectedQuarter("");
+    setYear(defaultYear);
+    return;
+  }
+
+  setMonth(capitalize(selectedMonthProp || ""));
+  setSelectedQuarter(selectedQuarterProp || "");
+  setYear(String(selectedYearProp || ""));
+}, [
+  embedded,
+  rangeProp,
+  selectedMonthProp,
+  selectedQuarterProp,
+  selectedYearProp,
+  isPreviewMode,
+  defaultMonth,
+  defaultYear,
+]);
 
   const DUMMY_CASHFLOW_SUMMARY: SummaryShape = {
     quantity_total: 1050,
@@ -592,6 +608,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   } | null>(null);
 
   useEffect(() => {
+    if (isPreviewMode) return;
     const fetchUserData = async () => {
       if (!token) {
         setError("No token found. Please log in.");

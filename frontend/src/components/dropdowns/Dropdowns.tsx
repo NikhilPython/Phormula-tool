@@ -805,6 +805,36 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   );
 };
 
+const DummyBlurWrapper = ({
+  enabled,
+  children,
+  badgeText = "Demo Data",
+}: {
+  enabled: boolean;
+  children: React.ReactNode;
+  badgeText?: string;
+}) => {
+  return (
+    <div className="relative w-full rounded-xl">
+      {enabled && (
+        <div className="absolute top-2 right-2 z-10 rounded-md bg-black/70 px-2 py-1 text-[10px] 2xl:text-xs font-medium text-white">
+          {badgeText}
+        </div>
+      )}
+
+      <div
+        className={
+          enabled
+            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
+            : "opacity-100 transition-opacity duration-300"
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
+
 const ProductInsightsSection = ({
   blocks,
   objective,
@@ -1460,6 +1490,278 @@ const HASH_TO_FINANCE_TAB: Record<string, DashboardTab> = {
   "cash-flow": "cashFlow",
 };
 
+const DEMO_SUMMARY: Summary = {
+  unit_sold: 1170,
+  total_sales: 157000,
+  gross_sales: 165500,
+  total_product_sales: 165500,
+  total_expense: 38200,
+  cm2_profit: 43500,
+  total_cous: 52000,
+  otherwplatform: 9600,
+  advertising_total: 12500,
+  total_amazon_fee: 16100,
+};
+
+const DEMO_SUMMARY_COMPARISONS: SummaryComparisons = {
+  lastMonth: {
+    unit_sold: 1080,
+    total_sales: 145000,
+    gross_sales: 151000,
+    total_product_sales: 151000,
+    total_expense: 36000,
+    cm2_profit: 39800,
+    total_cous: 48000,
+    otherwplatform: 9000,
+    advertising_total: 11800,
+    total_amazon_fee: 15200,
+  },
+  lastQuarter: {
+    unit_sold: 980,
+    total_sales: 132000,
+    gross_sales: 138500,
+    total_product_sales: 138500,
+    total_expense: 33800,
+    cm2_profit: 35200,
+    total_cous: 45200,
+    otherwplatform: 8400,
+    advertising_total: 10600,
+    total_amazon_fee: 14400,
+  },
+  lastYear: {
+    unit_sold: 910,
+    total_sales: 121000,
+    gross_sales: 126000,
+    total_product_sales: 126000,
+    total_expense: 32000,
+    cm2_profit: 30100,
+    total_cous: 41800,
+    otherwplatform: 7900,
+    advertising_total: 9800,
+    total_amazon_fee: 13600,
+  },
+};
+
+const DEMO_UPLOAD_HISTORY: UploadHistoryResponse = {
+  summary: DEMO_SUMMARY,
+  summaryComparisons: DEMO_SUMMARY_COMPARISONS,
+};
+
+const DEMO_AI_PANEL: AiPanelData = {
+  summaryBullets: [
+    "Business performance remained healthy (Jan 26 vs Dec 25)",
+    "Net sales improved due to better conversion and stronger contribution from hero SKUs.",
+    "CM2 remained positive, though ad costs increased slightly as spend was pushed on scaling products.",
+  ],
+  skuInsightsBullets: [
+    "Demo Product A",
+    "ASP: $125.00 (+4.2%)",
+    "Units: 420 (+8.5%)",
+    "Net sales: $54,000 (+9.4%)",
+    "CM1 profit: $15,500 (+10.1%)",
+    "CM1 profit per unit: $36.90 (+1.4%)",
+    "Product Journey",
+    "- Demo Product A maintained momentum with better pricing and stable returns.",
+    "Recommendation: Continue scaling on high-converting keywords and protect margin.",
+    "Inventory Action: Maintain healthy stock cover for next cycle.",
+
+    "Demo Product B",
+    "ASP: $137.30 (+3.1%)",
+    "Units: 750 (+12.3%)",
+    "Net sales: $103,000 (+11.8%)",
+    "CM1 profit: $28,000 (+13.2%)",
+    "CM1 profit per unit: $37.33 (+0.8%)",
+    "Product Journey",
+    "- Demo Product B showed strong revenue growth and healthy profitability.",
+    "Recommendation: Push top-performing campaigns and monitor TACoS closely.",
+    "Inventory Action: Replenish aggressively to avoid stock-outs.",
+  ],
+  recommendationBullets: [],
+  inventoryBullets: [
+    "Estimated healthy stock cover available for the next cycle.",
+    "Unfulfillable inventory (Low and manageable)",
+    "For detailed SKU-level replenishment planning, refer to inventory module.",
+  ],
+  objective: {
+    growth_intent: "scale_profitable_growth",
+    profit_priority: "balanced",
+    inventory_clearance_priority: false,
+  },
+  recommendationsMap: {
+    "Demo Product A": {
+      recommendation: "Continue scaling while keeping TACoS in control.",
+      inventory_recommendation: "Maintain 30-45 days cover.",
+      ads_recommendation: "Increase spend only on high-converting search terms.",
+    },
+    "Demo Product B": {
+      recommendation: "Prioritize hero placement and conversion-led traffic.",
+      inventory_recommendation: "Replenish early to prevent stock-outs.",
+      ads_recommendation: "Defend branded traffic and scale profitable campaigns.",
+    },
+  },
+  portfolioRecommendation:
+    "Focus on scaling hero SKUs while maintaining margin discipline and healthy stock depth.",
+};
+
+const DEMO_PERFORMANCE_TREND: PerformanceTrendPayload = {
+  x: [1, 2, 3, 4, 5, 6],
+  xType: "month",
+  series: [
+    {
+      label: "Sales Trend",
+      net_sales: [42000, 45000, 47000, 52000, 56000, 60000],
+      units: [340, 390, 420, 480, 520, 570],
+    },
+  ],
+};
+
+const DEMO_UPLOADS: UploadRow[] = [
+  {
+    country: "global",
+    month: "january",
+    year: 2026,
+    total_sales: 45000,
+    total_amazon_fee: 4200,
+    total_cous: 15000,
+    advertising_total: 3500,
+    otherwplatform: 1800,
+    cm2_profit: 12100,
+    total_profit: 12100,
+  },
+  {
+    country: "global",
+    month: "february",
+    year: 2026,
+    total_sales: 52000,
+    total_amazon_fee: 4700,
+    total_cous: 17500,
+    advertising_total: 4200,
+    otherwplatform: 2200,
+    cm2_profit: 14600,
+    total_profit: 14600,
+  },
+  {
+    country: "global",
+    month: "march",
+    year: 2026,
+    total_sales: 60000,
+    total_amazon_fee: 5200,
+    total_cous: 19500,
+    advertising_total: 4800,
+    otherwplatform: 2600,
+    cm2_profit: 17000,
+    total_profit: 17000,
+  },
+];
+
+const DEMO_SKU_ROWS: TableRow[] = [
+  {
+    product_name: "Demo Product A",
+    sku: "SKU-DEMO-1",
+    quantity: 120,
+    return_quantity: 8,
+    total_quantity: 112,
+    units_sold: 120,
+    return_units: 8,
+    net_units_sold: 112,
+    asp: 125,
+    product_sales: 15000,
+    refund_sales: 500,
+    net_sales: 14500,
+    lost_total: 0,
+    cost_of_unit_sold: 5200,
+    shipment_charges: 800,
+    selling_fees: 1200,
+    fba_fees: 950,
+    amazon_fee: 2150,
+    tex_and_credits: 300,
+    net_taxes: 200,
+    net_credits: 100,
+    promotional_rebates: 450,
+    promotional_rebates_percentage: 3.1,
+    misc_transaction: 120,
+    other_transaction_fees: 100,
+    other_transactions: 100,
+    profit: 4200,
+    profit_percentage: 28,
+    unit_wise_profitability: 37.5,
+    profit_mix: 35,
+    sales_mix: 34,
+  },
+  {
+    product_name: "Demo Product B",
+    sku: "SKU-DEMO-2",
+    quantity: 220,
+    return_quantity: 10,
+    total_quantity: 210,
+    units_sold: 220,
+    return_units: 10,
+    net_units_sold: 210,
+    asp: 136.36,
+    product_sales: 30000,
+    refund_sales: 700,
+    net_sales: 29300,
+    lost_total: 0,
+    cost_of_unit_sold: 9800,
+    shipment_charges: 1200,
+    selling_fees: 2200,
+    fba_fees: 1700,
+    amazon_fee: 3900,
+    tex_and_credits: 450,
+    net_taxes: 260,
+    net_credits: 190,
+    promotional_rebates: 600,
+    promotional_rebates_percentage: 2.9,
+    misc_transaction: 180,
+    other_transaction_fees: 150,
+    other_transactions: 150,
+    profit: 7800,
+    profit_percentage: 26,
+    unit_wise_profitability: 37.14,
+    profit_mix: 65,
+    sales_mix: 66,
+  },
+  {
+    product_name: "Total",
+    sku: "Total",
+    quantity: 340,
+    return_quantity: 18,
+    total_quantity: 322,
+    units_sold: 340,
+    return_units: 18,
+    net_units_sold: 322,
+    asp: 132.35,
+    product_sales: 45000,
+    refund_sales: 1200,
+    net_sales: 43800,
+    lost_total: 0,
+    cost_of_unit_sold: 15000,
+    shipment_charges: 2000,
+    selling_fees: 3400,
+    fba_fees: 2650,
+    amazon_fee: 6050,
+    tex_and_credits: 750,
+    net_taxes: 460,
+    net_credits: 290,
+    promotional_rebates: 1050,
+    promotional_rebates_percentage: 3.0,
+    misc_transaction: 300,
+    other_transaction_fees: 250,
+    other_transactions: 250,
+    profit: 12000,
+    profit_percentage: 26.6,
+    unit_wise_profitability: 37.27,
+    profit_mix: 100,
+    sales_mix: 100,
+  },
+];
+
+const DEMO_TARGET_SUMMARY = {
+  target_sales: 175000,
+  shortfall_total: 18000,
+  cashflow_total: 24000,
+};
+
 
 
 /* ---------------------- Component ---------------------- */
@@ -1564,13 +1866,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return url.toString();
   };
 
-  // const currencySymbol = isGlobalPage
-  //   ? getCurrencySymbol(homeCurrency)
-  //   : getCurrencySymbol(countryName || "");
+  const isDemoMode =
+  String(month).toUpperCase() === "NA" ||
+  String(year).toUpperCase() === "NA";
 
-  const currencySymbol = isGlobalPage
+const effectiveCountryName = isDemoMode ? "global" : countryName;
+const effectiveHomeCurrency = isDemoMode ? "usd" : globalHomeCurrency;
+
+const currencySymbol = isDemoMode
+  ? getCurrencySymbol("global")
+  : isGlobalPage
     ? getCurrencySymbol(homeCurrency)
     : getCurrencySymbol(countryName || "");
+
+  
 
   const [collapsed, setCollapsed] = useState(false);
 
@@ -1579,33 +1888,42 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter | "">("");
   const [uploadsData, setUploadsData] = useState<UploadHistoryResponse | null>(
-    null
-  );
-  const [allDropdownsSelected, setAllDropdownsSelected] = useState(false);
+  isDemoMode ? DEMO_UPLOAD_HISTORY : null
+);
+
+  const [allDropdownsSelected, setAllDropdownsSelected] = useState(isDemoMode);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showNoDataOverlay, setShowNoDataOverlay] = useState(false);
-  const [performanceTrend, setPerformanceTrend] = useState<PerformanceTrendPayload | null>(null);
+  const [performanceTrend, setPerformanceTrend] = useState<PerformanceTrendPayload | null>(
+  isDemoMode ? DEMO_PERFORMANCE_TREND : null
+);
   const [performanceTrendMetric, setPerformanceTrendMetric] = useState<"net_sales" | "units">("net_sales");
   const [performanceTrendBase64, setPerformanceTrendBase64] = useState<string | null>(null);
   const [trendExportApi, setTrendExportApi] = useState<TrendChartExportApi | null>(null);
   const [focusedChart, setFocusedChart] = useState<FocusedChart>(null);
-  const [bargraphUploads, setBargraphUploads] = useState<UploadRow[]>([]);
+  const [bargraphUploads, setBargraphUploads] = useState<UploadRow[]>(
+  isDemoMode ? DEMO_UPLOADS : []
+);
   const [bargraphLoading, setBargraphLoading] = useState(false);
   const [bargraphUserMeta, setBargraphUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
-  const [graphPageUploads, setGraphPageUploads] = useState<UploadRow[]>([]);
+  const [graphPageUploads, setGraphPageUploads] = useState<UploadRow[]>(
+  isDemoMode ? DEMO_UPLOADS : []
+);
   const [graphPageLoading, setGraphPageLoading] = useState(false);
   const [graphPageUserMeta, setGraphPageUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
   const [graphPageError, setGraphPageError] = useState<string | null>(null);
-  const [skuRows, setSkuRows] = useState<TableRow[]>([]);
+  const [skuRows, setSkuRows] = useState<TableRow[]>(
+  isDemoMode ? DEMO_SKU_ROWS : []
+);
 
   const [activeTab, setActiveTab] = useState<DashboardTab>("graphs");
   const [pendingHash, setPendingHash] = useState<string>("");
   const [targetSummary, setTargetSummary] = useState<{
-    target_sales?: number;
-    shortfall_total?: number;
-    cashflow_total?: number;
-  } | null>(null);
+  target_sales?: number;
+  shortfall_total?: number;
+  cashflow_total?: number;
+} | null>(isDemoMode ? DEMO_TARGET_SUMMARY : null);
 
   const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
@@ -1668,15 +1986,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [activeTab, pendingHash, allDropdownsSelected]);
 
   const tabsDisabled: Partial<Record<DashboardTab, boolean>> = useMemo(() => {
-    const disabled = !allDropdownsSelected;
+  if (isDemoMode) {
     return {
-      graphs: disabled,
-      businessSummary: disabled,
-      skuBreakdown: disabled,
-      skuwiseProfit: disabled,
-      cashFlow: disabled,
+      graphs: false,
+      businessSummary: false,
+      skuBreakdown: false,
+      skuwiseProfit: false,
+      cashFlow: false,
     };
-  }, [allDropdownsSelected]);
+  }
+
+  const disabled = !allDropdownsSelected;
+  return {
+    graphs: disabled,
+    businessSummary: disabled,
+    skuBreakdown: disabled,
+    skuwiseProfit: disabled,
+    cashFlow: disabled,
+  };
+}, [allDropdownsSelected, isDemoMode]);
 
   const nameToSkuMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -1700,7 +2028,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const pnlCollapsed = focusedChart !== "pnl";
 
   // ---------------- AI Summary Panel state ----------------
-  const [aiPanel, setAiPanel] = useState<AiPanelData | null>(null);
+  const [aiPanel, setAiPanel] = useState<AiPanelData | null>(
+  isDemoMode ? DEMO_AI_PANEL : null
+);
   const [aiPanelLoading, setAiPanelLoading] = useState(false);
   const [aiPanelError, setAiPanelError] = useState<string | null>(null);
 
@@ -1798,17 +2128,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [topData]);
 
   useEffect(() => {
-    setShowNoDataOverlay(false);
-    setFocusedChart(null);
-    setChartExportApi(null);
-    setSkuExportPayload(null);
-    setExpenseBreakdownPieBase64(null);
-    setProductWiseCm1PieBase64(null);
-    setPerformanceTrend(null);
-    setPerformanceTrendBase64(null);
-    setTrendExportApi(null);
-    setSkuRows([]);
-  }, [range, selectedMonth, selectedQuarter, selectedYear]);
+  setShowNoDataOverlay(false);
+  setFocusedChart(null);
+  setChartExportApi(null);
+  setSkuExportPayload(null);
+  setExpenseBreakdownPieBase64(null);
+  setProductWiseCm1PieBase64(null);
+  setPerformanceTrendBase64(null);
+  setTrendExportApi(null);
+
+  if (isDemoMode) {
+    setPerformanceTrend(DEMO_PERFORMANCE_TREND);
+    setSkuRows(DEMO_SKU_ROWS);
+    return;
+  }
+
+  setPerformanceTrend(null);
+  setSkuRows([]);
+}, [range, selectedMonth, selectedQuarter, selectedYear, isDemoMode]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1856,18 +2193,32 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   const displayData: Summary =
-    allDropdownsSelected && uploadsData?.summary
+  isDemoMode
+    ? DEMO_SUMMARY
+    : allDropdownsSelected && uploadsData?.summary
       ? uploadsData.summary
       : zeroData;
 
   // range: "monthly" | "quarterly" | "yearly"
-  const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
-    setRange(v);
-    setSelectedMonth("");
-    setSelectedQuarter("");
-    setSelectedYear("");
-    setUploadsData(null);
-  };
+const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
+  setRange(v);
+  setSelectedMonth("");
+  setSelectedQuarter("");
+  setSelectedYear(isDemoMode ? String(new Date().getFullYear()) : "");
+
+  if (isDemoMode) {
+    setUploadsData(DEMO_UPLOAD_HISTORY);
+    setAiPanel(DEMO_AI_PANEL);
+    setPerformanceTrend(DEMO_PERFORMANCE_TREND);
+    setBargraphUploads(DEMO_UPLOADS);
+    setGraphPageUploads(DEMO_UPLOADS);
+    setSkuRows(DEMO_SKU_ROWS);
+    setTargetSummary(DEMO_TARGET_SUMMARY);
+    return;
+  }
+
+  setUploadsData(null);
+};
 
   const fetchUploadHistory = async (
     rangeType: RangeType,
@@ -1876,6 +2227,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     yearVal: string,
     country: string
   ) => {
+    if (isDemoMode) {
+      setLoading(false);
+      setUploadsData(DEMO_UPLOAD_HISTORY);
+      return;
+    }
     if (!rangeType || !yearVal) return;
 
     setLoading(true);
@@ -1932,6 +2288,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   const fetchAiSummary = async (rangeType: RangeType) => {
+    if (isDemoMode) {
+      setAiPanelLoading(false);
+      setAiPanelError(null);
+      setAiPanel(DEMO_AI_PANEL);
+      return;
+    }
     if (!countryName || !rangeType || !selectedYear) return;
 
     const requestId = ++aiRequestIdRef.current;
@@ -2024,22 +2386,32 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   useEffect(() => {
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
+  if (isDemoMode) {
+    setTargetSummary(DEMO_TARGET_SUMMARY);
+    return;
+  }
 
-    if (!ready) {
-      setTargetSummary(null);
-      return;
-    }
+  const ready =
+    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+    (range === "yearly" && !!selectedYear);
 
-    fetchTargetSummary();
-  }, [range, selectedMonth, selectedQuarter, selectedYear, initialCountryName]);
+  if (!ready) {
+    setTargetSummary(null);
+    return;
+  }
+
+  fetchTargetSummary();
+}, [range, selectedMonth, selectedQuarter, selectedYear, initialCountryName, isDemoMode]);
 
 
 
   const fetchPerformanceTrendFromHistory = async (rangeType: RangeType) => {
+    if (isDemoMode) {
+      setPerformanceTrend(DEMO_PERFORMANCE_TREND);
+      setPerformanceTrendMetric("net_sales");
+      return;
+    }
     if (!countryName || !rangeType || !selectedYear) return;
 
     const timeline =
@@ -2088,6 +2460,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const fetchTargetSummary = async () => {
+    if (isDemoMode) {
+      setTargetSummaryLoading(false);
+      setTargetSummary(DEMO_TARGET_SUMMARY);
+      return;
+    }
     if (!selectedYear || !initialCountryName) return;
 
     const ready =
@@ -2148,106 +2525,142 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const handleMonthChange = (v: string) => {
-    setSelectedMonth(v);
+  setSelectedMonth(v);
 
-    if (selectedYear) {
-      fetchUploadHistory(range, v, selectedQuarter || "", selectedYear, countryName);
-    } else {
-      setUploadsData(null);
-    }
-  };
+  if (isDemoMode) {
+    setUploadsData(DEMO_UPLOAD_HISTORY);
+    return;
+  }
+
+  if (selectedYear) {
+    fetchUploadHistory(range, v, selectedQuarter || "", selectedYear, countryName);
+  } else {
+    setUploadsData(null);
+  }
+};
 
   // quarter is "Q1" | "Q2" | "Q3" | "Q4"
   const handleQuarterChange = (v: string) => {
-    const q = isQuarter(v) ? v : "";
-    setSelectedQuarter(q);
+  const q = isQuarter(v) ? v : "";
+  setSelectedQuarter(q);
 
-    if (selectedYear && q) {
-      fetchUploadHistory(range, selectedMonth, q, selectedYear, countryName);
-    } else {
-      setUploadsData(null);
-    }
-  };
+  if (isDemoMode) {
+    setUploadsData(DEMO_UPLOAD_HISTORY);
+    return;
+  }
+
+  if (selectedYear && q) {
+    fetchUploadHistory(range, selectedMonth, q, selectedYear, countryName);
+  } else {
+    setUploadsData(null);
+  }
+};
 
   const handleYearChange = (v: string) => {
-    setSelectedYear(v);
+  setSelectedYear(v);
 
-    if (
-      (range === "monthly" && selectedMonth) ||
-      (range === "quarterly" && selectedQuarter) ||
-      range === "yearly"
-    ) {
-      fetchUploadHistory(range, selectedMonth, selectedQuarter || "", v, countryName);
-    } else {
-      setUploadsData(null);
-    }
-  };
+  if (isDemoMode) {
+    setUploadsData(DEMO_UPLOAD_HISTORY);
+    return;
+  }
+
+  if (
+    (range === "monthly" && selectedMonth) ||
+    (range === "quarterly" && selectedQuarter) ||
+    range === "yearly"
+  ) {
+    fetchUploadHistory(range, selectedMonth, selectedQuarter || "", v, countryName);
+  } else {
+    setUploadsData(null);
+  }
+};
 
   useEffect(() => {
+  if (isDemoMode) {
     setRange("yearly");
     setSelectedMonth("");
     setSelectedQuarter("");
+    setSelectedYear(String(new Date().getFullYear()));
+    setUploadsData(DEMO_UPLOAD_HISTORY);
+    setAiPanel(DEMO_AI_PANEL);
+    setPerformanceTrend(DEMO_PERFORMANCE_TREND);
+    setBargraphUploads(DEMO_UPLOADS);
+    setGraphPageUploads(DEMO_UPLOADS);
+    setSkuRows(DEMO_SKU_ROWS);
+    setTargetSummary(DEMO_TARGET_SUMMARY);
+    setAllDropdownsSelected(true);
+    return;
+  }
 
-    const y = computeDefaultYearlyYear();
-    setSelectedYear(y);
-  }, []);
+  setRange("yearly");
+  setSelectedMonth("");
+  setSelectedQuarter("");
+
+  const y = computeDefaultYearlyYear();
+  setSelectedYear(y);
+}, [isDemoMode]);
 
 
   const fetchCurrencyKey = isGlobalPage ? homeCurrency : "country";
 
+ useEffect(() => {
+  if (isDemoMode) return;
+  if (!countryName) return;
+  if (range === "" || !selectedYear) return;
+
+  fetchUploadHistory(
+    range,
+    selectedMonth,
+    selectedQuarter || "",
+    selectedYear,
+    countryName
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [range, selectedMonth, selectedQuarter, selectedYear, countryName, fetchCurrencyKey, isDemoMode]);
+
+ useEffect(() => {
+  if (isDemoMode) return;
+
+  if (!range || !selectedYear) {
+    setAiPanel(null);
+    return;
+  }
+
+  const ready =
+    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+    (range === "yearly" && !!selectedYear);
+
+  if (!ready) {
+    setAiPanel(null);
+    return;
+  }
+
+  fetchAiSummary(range);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [range, selectedMonth, selectedQuarter, selectedYear, countryName, isDemoMode]);
+
+
   useEffect(() => {
-    if (!countryName) return;
-    if (range === "" || !selectedYear) return;
+  if (isDemoMode) return;
 
-    fetchUploadHistory(
-      range,
-      selectedMonth,
-      selectedQuarter || "",
-      selectedYear,
-      countryName
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, fetchCurrencyKey]);
+  if (!range || !selectedYear) {
+    setPerformanceTrend(null);
+    return;
+  }
 
-  useEffect(() => {
-    if (!range || !selectedYear) {
-      setAiPanel(null);
-      return;
-    }
+  const ready =
+    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+    (range === "yearly" && !!selectedYear);
 
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
+  if (!ready) {
+    setPerformanceTrend(null);
+    return;
+  }
 
-    if (!ready) {
-      setAiPanel(null);
-      return;
-    }
-
-    fetchAiSummary(range);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
-
-
-  useEffect(() => {
-    if (!range || !selectedYear) {
-      setPerformanceTrend(null);
-      return;
-    }
-
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
-
-    if (!ready) {
-      setPerformanceTrend(null);
-      return;
-    }
-
-    fetchPerformanceTrendFromHistory(range);
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric]);
+  fetchPerformanceTrendFromHistory(range);
+}, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric, isDemoMode]);
 
   const handleDownloadSkuSheet1 = async () => {
     try {
@@ -2276,6 +2689,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   useEffect(() => {
+    if (isDemoMode) {
+    setAllDropdownsSelected(true);
+    return;
+  }
     if (range === "monthly") {
       setAllDropdownsSelected(!!selectedMonth && !!selectedYear);
     } else if (range === "quarterly") {
@@ -2285,7 +2702,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     } else {
       setAllDropdownsSelected(false);
     }
-  }, [range, selectedMonth, selectedQuarter, selectedYear]);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, isDemoMode]);
 
 
   useEffect(() => {
@@ -2306,6 +2723,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   useEffect(() => {
+    if (isDemoMode) {
+    setBargraphUploads(DEMO_UPLOADS);
+    setBargraphUserMeta({
+      company_name: "Demo Company",
+      brand_name: "Demo Brand",
+    });
+    setBargraphLoading(false);
+    return;
+  }
     if (!range || !selectedYear) return;
 
     const ready =
@@ -2377,9 +2803,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     selectedYear,
     countryName,
     homeCurrency,
+    isDemoMode,
   ]);
 
   useEffect(() => {
+    if (isDemoMode) {
+      setGraphPageUploads(DEMO_UPLOADS);
+      setGraphPageUserMeta({
+        company_name: "Demo Company",
+        brand_name: "Demo Brand",
+      });
+      setGraphPageError(null);
+      setGraphPageLoading(false);
+      return;
+    }
     if (!range || !selectedYear) return;
 
     const ready =
@@ -2443,10 +2880,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
 
     fetchGraphPageUploads();
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency]);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency ,isDemoMode]);
 
 
   useEffect(() => {
+    if (isDemoMode) {
+      setSkuRows(DEMO_SKU_ROWS);
+      return;
+    }
     const ready =
       (range === "monthly" && !!selectedMonth && !!selectedYear) ||
       (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
@@ -2571,12 +3012,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     globalHomeCurrency,
     userid,
     token,
+    isDemoMode,
   ]);
 
 
   // if (month === "NA" || year === "NA") {
   //   return <IntegrationDashboard />;
   // }
+  
+
+  
 
   const hasAnyContent = !!uploadsData?.summary;
   const initialLoading = loading && !hasAnyContent;
@@ -2663,7 +3108,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             <PageBreadcrumb pageTitle="Financial Metrics -" variant="page" align="left" textSize="2xl" />
             <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
               Amazon{" "}
-              {countryName?.toLowerCase() === "global" ? "Global" : countryName?.toUpperCase()}
+{effectiveCountryName?.toLowerCase() === "global"
+  ? "Global"
+  : effectiveCountryName?.toUpperCase()}
             </span>
           </div>
           <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
@@ -2707,6 +3154,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
       {activeTab !== "cashFlow" && (
+        <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Summary Preview">
         <div className="flex flex-col gap-5 w-full mt-4">
           {/* Summary Cards */}
           {uploadsData?.summary &&
@@ -3203,12 +3651,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               );
             })()}
         </div>
+        </DummyBlurWrapper>
       )}
 
       {/* ===================== TAB CONTENT AREA ===================== */}
       <div className="w-full">
         {/* ---------- TAB 1: GRAPHS ---------- */}
         {activeTab === "graphs" && (
+          <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Graph Preview">
           <div id="finance-dashboard" className="scroll-mt-[80px]">
             {/* Monthly */}
             {range === "monthly" && selectedMonth && selectedYear && (
@@ -3598,10 +4048,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               </>
             )}
           </div>
+          </DummyBlurWrapper>
         )}
 
         {/* ---------- TAB 2: BUSINESS SUMMARY ---------- */}
         {activeTab === "businessSummary" && allDropdownsSelected && (
+          <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy AI Insights Preview">
           <div
             id="ai-insights"
             className="scroll-mt-[80px] space-y-5"
@@ -3652,10 +4104,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               </>
             )}
           </div>
+          </DummyBlurWrapper>
         )}
 
         {/* ---------- TAB 3: SKU / PRODUCTWISE P&L ---------- */}
         {activeTab === "skuBreakdown" && allDropdownsSelected && (
+          <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy SKU Breakdown Preview">
           <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
             <SKUtable
               range={range as Exclude<RangeType, "">}
@@ -3678,9 +4132,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               />
             )}
           </div>
+            </DummyBlurWrapper>
         )}
 
         {activeTab === "skuwiseProfit" && allDropdownsSelected && (
+           <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Product Performance Preview">
           <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
             {/* <ProductwisePerformance
               embedded
@@ -3709,20 +4165,23 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               initialProductName={defaultTopProductName}
             />
           </div>
+          </DummyBlurWrapper>
         )}
 
         {activeTab === "cashFlow" && allDropdownsSelected && (
-          <div id="cash-flow" className="mt-4 scroll-mt-[80px]">
-            <CashFlowPage
-              embedded
-              countryNameProp={initialCountryName}
-              rangeProp={range as "monthly" | "quarterly" | "yearly"}
-              selectedMonthProp={range === "monthly" ? selectedMonth : ""}
-              selectedQuarterProp={range === "quarterly" ? selectedQuarter : ""}
-              selectedYearProp={selectedYear}
-            />
-          </div>
-        )}
+  <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Cash Flow Preview">
+    <div id="cash-flow" className="mt-4 scroll-mt-[80px]">
+      <CashFlowPage
+        embedded
+        countryNameProp={isDemoMode ? "global" : initialCountryName}
+        rangeProp={range as "monthly" | "quarterly" | "yearly"}
+        selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
+        selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
+        selectedYearProp={isDemoMode ? "NA" : selectedYear}
+      />
+    </div>
+  </DummyBlurWrapper>
+)}
       </div>
 
       {/* ===================== YOUR EXISTING OVERLAYS / MODALS (KEEP) ===================== */}

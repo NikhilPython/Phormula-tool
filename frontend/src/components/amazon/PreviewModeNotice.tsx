@@ -31,7 +31,7 @@ export default function PreviewModeNotice() {
   }, [params]);
 
   const isPnlPreviewRoute = useMemo(() => {
-    return pathname === `/pnl-dashboard/QTD/${routeCountry}/NA/NA`;
+    return pathname === `/integration-dashboard/${routeCountry}/NA/NA`;
   }, [pathname, routeCountry]);
 
   useEffect(() => {
@@ -117,7 +117,7 @@ export default function PreviewModeNotice() {
   };
 
   const handleConnectAmazon = () => {
-    router.push(`/pnl-dashboard/QTD/${routeCountry}/NA/NA`);
+    router.push(`/integration-dashboard/${routeCountry}/NA/NA`);
   };
 
   if (!shouldShow) return null;

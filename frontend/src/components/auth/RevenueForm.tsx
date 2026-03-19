@@ -192,7 +192,7 @@ submitSelectForm({
   const month = String(now.getMonth() + 1).padStart(2, "0"); // "01".."12"
   const year = String(now.getFullYear());
 
-  const profitPath = `/pnl-dashboard/QTD/${countryName}/NA/NA`;
+  const profitPath = `/integration-dashboard/${countryName}/NA/NA`;
 
   // (Optional) store that user has already seen first-time Profits
   localStorage.setItem("hasSeenFirstTimeRoute", "true");
