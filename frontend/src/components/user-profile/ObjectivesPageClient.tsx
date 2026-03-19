@@ -389,6 +389,7 @@ export default function ObjectivesPageClient({
   const [objectiveTargetDraft, setObjectiveTargetDraft] = useState<string>("");
   const [objectiveEditingPid, setObjectiveEditingPid] = useState<PlatformId | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isFetchingBusinessSummary, setIsFetchingBusinessSummary] = useState(false);
 
   const toggleChartExpand = (chart: "targetSales" | "objectiveMoM") => {
     setExpandedChart((prev) => (prev === chart ? null : chart));
@@ -1419,11 +1420,74 @@ export default function ObjectivesPageClient({
     }
   }, []);
 
+
+  useEffect(() => {
+    const fetchBusinessSummary = async () => {
+      if (!token) return;
+
+      try {
+        setIsFetchingBusinessSummary(true);
+
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          if (res.status !== 404) {
+            throw new Error(json?.error || "Failed to fetch business summary");
+          }
+          return;
+        }
+
+        const serverFiles = json?.ppt_file_name
+          ? [
+            {
+              id: `server-${json.ppt_file_name}`,
+              name: json.ppt_file_name,
+              size: 0,
+              type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              extractedText: "",
+              uploadStatus: "ready" as const,
+            },
+          ]
+          : [];
+
+        setObjective((prev) => ({
+          ...prev,
+          business_context: json?.overview || "",
+          website: json?.website || "",
+          uploaded_files: serverFiles,
+        }));
+
+        setObjectiveDraft((prev) => ({
+          ...prev,
+          business_context: json?.overview || "",
+          website: json?.website || "",
+          uploaded_files: serverFiles,
+        }));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsFetchingBusinessSummary(false);
+      }
+    };
+
+    fetchBusinessSummary();
+  }, [token]);
+
   return (
     <div className="w-full">
 
 
-      {(isLoading || ratesLoading) && (
+      {(isLoading || ratesLoading || isFetchingBusinessSummary) && (
         <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">Loading…</div>
       )}
 
