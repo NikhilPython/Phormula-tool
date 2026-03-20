@@ -27,3 +27,5 @@ backend/env
 .env.*
 
 backend/uploads/*.xlsx
+
+flask_session/

@@ -1161,22 +1161,14 @@ def check_user_country_table_exists():
         data = request.get_json(silent=True) or {}
 
         user_id = data.get('user_id')
-        country = data.get('country')
 
-        if not user_id or not country:
+        if not user_id:
             return jsonify({
                 "success": False,
-                "message": "user_id and country are required"
+                "message": "user_id is required"
             }), 400
 
-        country = str(country).strip().lower()
-        table_name = f"user_{user_id}_{country}_merge_data_of_all_months"
-
-        engine = create_engine(db_url)
-        inspector = inspect(engine)
-
-        table_exists = inspector.has_table(table_name)
-
+        # Fetch user
         user = User.query.filter_by(id=user_id).first()
         if not user:
             return jsonify({
@@ -1184,11 +1176,30 @@ def check_user_country_table_exists():
                 "message": "User not found"
             }), 404
 
+        if not user.country:
+            return jsonify({
+                "success": False,
+                "message": "User country not set"
+            }), 400
+
+        # Use country from DB
+        country = user.country.strip().lower()
+
+        table_name = f"user_{user_id}_{country}_merge_data_of_all_months"
+
+        engine = create_engine(db_url)
+        inspector = inspect(engine)
+
+        table_exists = inspector.has_table(table_name)
+
+        # Update column
         user.user_table_exists = table_exists
         db.session.commit()
 
         return jsonify({
             "success": True,
+            "user_id": user_id,
+            "country": country,
             "table_name": table_name,
             "exists": table_exists
         }), 200
@@ -1199,4 +1210,4 @@ def check_user_country_table_exists():
             "success": False,
             "message": str(e)
         }), 500
-    
+     
