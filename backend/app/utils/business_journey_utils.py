@@ -178,10 +178,6 @@ def prepare_ai_sku_data(sku_df):
         "platform_fee",
         "platform_fee_inventory_storage",
         "cm2_profit",
-        "cm2_profit_percentage",
-        "rembursement_fee",
-        "rembursment_vs_cm2_margins",
-        "reimbursement_vs_sales",
         "acos"
     ]
 
@@ -338,24 +334,21 @@ def generate_business_journey(
     except OpenAIError as e:
         return f"OpenAI Error: {str(e)}"
     
-def save_business_journey_by_id(chatbot_engine, objective_id, business_journey):
+def save_business_journey_by_id(objective_id, business_journey):
+    obj = UserObjective.query.filter_by(id=objective_id).first()
 
-    query = text("""
-        UPDATE user_objectives
-        SET ai_business_journey = :business_journey,
-            updated_at = NOW()
-        WHERE id = :id
-    """)
+    if not obj:
+        print("❌ No row found with ID:", objective_id)
+        return
 
-    with chatbot_engine.connect() as conn:
-        result = conn.execute(query, {
-            "business_journey": business_journey,
-            "id": objective_id
-        })
-        print("ROWS UPDATED:", result.rowcount)  # 🔥 DEBUG
-        conn.commit()
+    obj.ai_business_journey = business_journey
+    obj.updated_at = datetime.utcnow()
 
-        
+    db.session.commit()
+
+    print("✅ SAVED SUCCESSFULLY")
+
+
 def fetch_existing_business_journey(
     chatbot_engine,
     user_id,
