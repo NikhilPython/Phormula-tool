@@ -18,7 +18,6 @@ import { exportInventoryForecastViewExcel } from "@/lib/excel/exportCurrentInven
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import "@/lib/chartSetup";
 
-
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 type YM = { y: number; m: number };
@@ -118,77 +117,86 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     return `${MONTH_ABBR[p.m]}'${String(p.y).slice(-2)}`;
   };
 
+  // FIXED:
+  // Selected month remains in actuals.
+  // Forecast starts from next month.
   const selectedForecastStart = useMemo<YM | null>(() => {
-  const fullMonthIndex = FULL_MONTHS.findIndex(
-    (m) => m.toLowerCase() === String(month).toLowerCase()
-  );
+    const fullMonthIndex = FULL_MONTHS.findIndex(
+      (m) => m.toLowerCase() === String(month).toLowerCase()
+    );
 
-  if (fullMonthIndex === -1) return null;
+    if (fullMonthIndex === -1) return null;
 
-  const yr = parseInt(String(year), 10);
-  if (!Number.isFinite(yr)) return null;
+    const yr = parseInt(String(year), 10);
+    if (!Number.isFinite(yr)) return null;
 
-  return { y: yr, m: fullMonthIndex };
-}, [month, year]);
+    const nextMonth = fullMonthIndex + 1;
 
-const monthColsSorted = useMemo(() => {
-  const arr: Array<{ key: string; ym: YM }> = [];
-
-  for (const k of allKeys) {
-    const normalizedKey = String(k).replace(/\s+Sold$/i, '').trim();
-    const parsed = parseMonthHeaderToDate(normalizedKey);
-    if (parsed) {
-      arr.push({ key: k, ym: parsed });
+    if (nextMonth <= 11) {
+      return { y: yr, m: nextMonth };
     }
-  }
 
-  arr.sort((a, b) => compareYM(a.ym, b.ym));
-  return arr;
-}, [allKeys]);
+    return { y: yr + 1, m: 0 };
+  }, [month, year]);
 
-const last3SoldOldestFirst = useMemo<string[]>(() => {
-  if (!monthColsSorted.length) return [];
+  const monthColsSorted = useMemo(() => {
+    const arr: Array<{ key: string; ym: YM }> = [];
 
-  if (!selectedForecastStart) {
-    return monthColsSorted.slice(0, 3).map((x) => x.key);
-  }
+    for (const k of allKeys) {
+      const normalizedKey = String(k).replace(/\s+Sold$/i, '').trim();
+      const parsed = parseMonthHeaderToDate(normalizedKey);
+      if (parsed) {
+        arr.push({ key: k, ym: parsed });
+      }
+    }
 
-  const actuals = monthColsSorted.filter(
-    (x) => compareYM(x.ym, selectedForecastStart) < 0
+    arr.sort((a, b) => compareYM(a.ym, b.ym));
+    return arr;
+  }, [allKeys]);
+
+  const last3SoldOldestFirst = useMemo<string[]>(() => {
+    if (!monthColsSorted.length) return [];
+
+    if (!selectedForecastStart) {
+      return monthColsSorted.slice(0, 3).map((x) => x.key);
+    }
+
+    const actuals = monthColsSorted.filter(
+      (x) => compareYM(x.ym, selectedForecastStart) < 0
+    );
+
+    return actuals.slice(-3).map((x) => x.key);
+  }, [monthColsSorted, selectedForecastStart]);
+
+  const forecast3 = useMemo<string[]>(() => {
+    if (!monthColsSorted.length) return [];
+
+    if (!selectedForecastStart) {
+      return monthColsSorted.slice(3, 6).map((x) => x.key);
+    }
+
+    const forecasts = monthColsSorted.filter(
+      (x) => compareYM(x.ym, selectedForecastStart) >= 0
+    );
+
+    return forecasts.slice(0, 3).map((x) => x.key);
+  }, [monthColsSorted, selectedForecastStart]);
+
+  const soldLabels = useMemo(
+    () =>
+      last3SoldOldestFirst.map((k) =>
+        monthWithYearLabel(String(k).replace(/\s+Sold$/i, '').trim())
+      ),
+    [last3SoldOldestFirst]
   );
 
-  return actuals.slice(-3).map((x) => x.key);
-}, [monthColsSorted, selectedForecastStart]);
-
-const forecast3 = useMemo<string[]>(() => {
-  if (!monthColsSorted.length) return [];
-
-  if (!selectedForecastStart) {
-    return monthColsSorted.slice(3, 6).map((x) => x.key);
-  }
-
-  const forecasts = monthColsSorted.filter(
-    (x) => compareYM(x.ym, selectedForecastStart) >= 0
+  const forecastLabels = useMemo(
+    () =>
+      forecast3.map((k) =>
+        monthWithYearLabel(String(k).replace(/\s+Sold$/i, '').trim())
+      ),
+    [forecast3]
   );
-
-  return forecasts.slice(0, 3).map((x) => x.key);
-}, [monthColsSorted, selectedForecastStart]);
-
-const soldLabels = useMemo(
-  () =>
-    last3SoldOldestFirst.map((k) =>
-      monthWithYearLabel(String(k).replace(/\s+Sold$/i, '').trim())
-    ),
-  [last3SoldOldestFirst]
-);
-
-const forecastLabels = useMemo(
-  () =>
-    forecast3.map((k) =>
-      monthWithYearLabel(String(k).replace(/\s+Sold$/i, '').trim())
-    ),
-  [forecast3]
-);
 
   const tableRows = useMemo(
     () =>
@@ -259,7 +267,10 @@ const forecastLabels = useMemo(
   );
 
   const palette = ["#FDD36F", "#5EA49B", "#ED9F50", "#00627D", "#87AD12", "#C49466"];
-  const forecastStartIndex = 3;
+
+  // FIXED:
+  // dynamic forecast start index
+  const forecastStartIndex = soldLabels.length;
 
   const datasets = useMemo(() => {
     const skuDatasets = top5Rows.map((t, i) => ({
@@ -297,7 +308,7 @@ const forecastLabels = useMemo(
     };
 
     return [...skuDatasets, totalDs].filter((ds) => selectedSeries[ds.key] !== false);
-  }, [top5Rows, grandTotalSeries, selectedSeries]);
+  }, [top5Rows, grandTotalSeries, selectedSeries, forecastStartIndex]);
 
   const chartData = useMemo(() => ({ labels: chartLabels, datasets }), [chartLabels, datasets]);
 
@@ -346,7 +357,7 @@ const forecastLabels = useMemo(
 
       ctx.save();
       ctx.fillStyle = 'rgba(217,217,217,0.35)';
-      ctx.fillRect(startX, chartArea.top, chartArea.right - startX, chartArea.bottom - chartArea.top);
+      ctx.fillRect(startX, chartArea.top, chartArea.right - startX, chartArea.bottom - startX + startX - chartArea.top);
       ctx.restore();
     },
   };
@@ -456,16 +467,6 @@ const forecastLabels = useMemo(
 
   return (
     <div>
-      {/* <div className='flex justify-between items-center gap-4'>
-<h3 className="2xl:text-2xl text-[18px] font-bold text-[#414042]">
-        Forecasted Data -{' '}
-        {monthRange && (
-          <span className="text-[#5EA68E]">
-            {countryName.toUpperCase()} <strong>({monthRange})</strong>
-          </span>
-        )}
-      </h3>
-    </div> */}
       <div className="flex flex-col gap-3">
         <div className="flex justify-between items-center gap-4 flex-wrap">
           <div className="flex items-baseline gap-2">
@@ -486,16 +487,12 @@ const forecastLabels = useMemo(
             />
           </div>
         </div>
-
-        
       </div>
 
-      {/* Chart: Top 5 SKUs + Total */}
       <div className="flex flex-col gap-6 mt-5 ">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between w-full gap-3">
-
               <div className="flex flex-col leading-tight">
                 <div className="flex items-baseline gap-2">
                   <PageBreadcrumb
@@ -516,17 +513,10 @@ const forecastLabels = useMemo(
                   disabled={demoMode}
                 />
               </div>
-
             </div>
-
           </div>
 
-          <div
-            className="
-    shrink-0 mt-4 md:mt-2 flex flex-wrap items-center justify-center
-    gap-4 w-full transition-opacity duration-300
-  "
-          >
+          <div className="shrink-0 mt-4 md:mt-2 flex flex-wrap items-center justify-center gap-4 w-full transition-opacity duration-300">
             {[
               ...top5Rows.map((t, i) => ({
                 name: `top${i + 1}`,
@@ -543,12 +533,7 @@ const forecastLabels = useMemo(
               return (
                 <label
                   key={name}
-                  className="
-          shrink-0 flex items-center gap-1 sm:gap-1.5
-          font-semibold select-none whitespace-nowrap
-          text-[10px] 2xl:text-xs my-1 2xl:my-3
-          text-charcoal-500 cursor-pointer
-        "
+                  className="shrink-0 flex items-center gap-1 sm:gap-1.5 font-semibold select-none whitespace-nowrap text-[10px] 2xl:text-xs my-1 2xl:my-3 text-charcoal-500 cursor-pointer"
                 >
                   <span
                     className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
@@ -596,49 +581,71 @@ const forecastLabels = useMemo(
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-          {/* <h2 className='2xl:text-2xl text-[18px] font-bold text-[#414042]'>Detailed Forecast Data (All SKUs)</h2> */}
           <PageBreadcrumb
             pageTitle="Detailed Forecast Data (All SKUs)"
             variant="page"
             align="left"
             textSize="2xl"
           />
+
           <div className="mt-4 w-full overflow-x-auto">
             <div className="rounded-xl border border-gray-300 overflow-hidden min-w-[900px]">
               <table className="w-full 2xl:text-sm text-xs text-[#414042]">
                 <thead>
                   <tr className="font-normal">
-                    <th rowSpan={2} className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle">
+                    <th
+                      rowSpan={2}
+                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle"
+                    >
                       S.No
                     </th>
-                    <th rowSpan={2} className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE]  font-semibold text-left align-middle">
+                    <th
+                      rowSpan={2}
+                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-left align-middle"
+                    >
                       Product Name
                     </th>
-                    <th rowSpan={2} className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle">
+                    <th
+                      rowSpan={2}
+                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center align-middle"
+                    >
                       SKU
                     </th>
 
-
-                    {/* Last 3 Months */}
-                    <th className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold" colSpan={3}>
+                    <th
+                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold"
+                      colSpan={3}
+                    >
                       Last 3 Months
                     </th>
 
-                    {/* Forecasted Months */}
-                    <th className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold" colSpan={3}>
+                    <th
+                      className="p-3 border border-gray-300 bg-[#5EA68E] text-[#F8EDCE] font-semibold"
+                      colSpan={3}
+                    >
                       Forecasted Months
                     </th>
                   </tr>
 
                   <tr>
-
-                    {/* Dynamic month labels */}
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{soldLabels[0] || ''}</th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{soldLabels[1] || ''}</th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{soldLabels[2] || ''}</th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{forecastLabels[0] || ''}</th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{forecastLabels[1] || ''}</th>
-                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">{forecastLabels[2] || ''}</th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                      {soldLabels[0] || ''}
+                    </th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                      {soldLabels[1] || ''}
+                    </th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                      {soldLabels[2] || ''}
+                    </th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                      {forecastLabels[0] || ''}
+                    </th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                      {forecastLabels[1] || ''}
+                    </th>
+                    <th className="p-2 border border-gray-300 bg-[#5EA68E] text-[#f8edcf]">
+                      {forecastLabels[2] || ''}
+                    </th>
                   </tr>
                 </thead>
 
@@ -647,7 +654,7 @@ const forecastLabels = useMemo(
                     <tr key={i} className="text-center border-t border-gray-300 bg-white">
                       <td className="p-2 border border-gray-300">{row.sNo}</td>
                       <td className="p-2 border border-gray-300 text-left">{row.product}</td>
-                      <td className="p-2 border border-gray-300 ">{row.sku}</td>
+                      <td className="p-2 border border-gray-300">{row.sku}</td>
                       <td className="p-2 border border-gray-300">{row.sold1}</td>
                       <td className="p-2 border border-gray-300">{row.sold2}</td>
                       <td className="p-2 border border-gray-300">{row.sold3}</td>
@@ -656,6 +663,7 @@ const forecastLabels = useMemo(
                       <td className="p-2 border border-gray-300">{row.f3}</td>
                     </tr>
                   ))}
+
                   <tr className="text-center border-t border-gray-300 bg-[#EFEFEF] font-semibold">
                     <td className="p-2 border border-gray-300"></td>
                     <td className="p-2 border border-gray-300 text-left">Total</td>
@@ -672,11 +680,7 @@ const forecastLabels = useMemo(
             </div>
           </div>
         </div>
-
-
       </div>
-
-
     </div>
   );
 };

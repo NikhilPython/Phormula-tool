@@ -1515,7 +1515,10 @@ def upload_history():
         # - if homeCurrency is provided => only return global_<currency>
         # - else => only return base global
         if country_param == "global":
-            if home_currency:
+            if home_currency == "usd":
+                if upload_country != "global":
+                    continue
+            elif home_currency:
                 if upload_country != f"global_{home_currency}":
                     continue
             else:

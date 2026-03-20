@@ -258,6 +258,7 @@ def process_global_monthly_skuwise_data(user_id, country, year, month):
             try:
                 total_row_data = sku_grouped[sku_grouped["product_name"].str.lower() == "total"].iloc[0]
                 total_sales_val = convert_value(total_row_data.get("net_sales", 0))
+                total_product_sales_val = convert_value(total_row_data.get("gross_sales", 0))
                 total_profit_val = convert_value(total_row_data.get("profit", 0))
                 fba_fees_val = convert_value(total_row_data.get("fba_fees", 0))
                 platform_fee_val = convert_value(total_row_data.get("platform_fee", 0))
@@ -340,6 +341,7 @@ def process_global_monthly_skuwise_data(user_id, country, year, month):
                     ytd_pie_chart=None,
                     profit_chart_img=None,
                     total_sales=total_sales_val,
+                    total_product_sales=total_product_sales_val,
                     total_profit=total_profit_val,
                     otherwplatform=otherwplatform_val,
                     taxncredit=taxncredit_val,
