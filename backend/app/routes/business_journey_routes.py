@@ -109,7 +109,6 @@ def generate_business_journey_route():
         # ---------------------------
         if objective_id:
             save_business_journey_by_id(
-                chatbot_engine,
                 objective_id,
                 business_journey
             )
