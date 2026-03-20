@@ -805,35 +805,72 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   );
 };
 
-const DummyBlurWrapper = ({
+
+
+const PreviewLockedSection = ({
   enabled,
   children,
-  badgeText = "Demo Data",
+  title,
+  description,
+  buttonText,
+  onAction,
 }: {
   enabled: boolean;
   children: React.ReactNode;
-  badgeText?: string;
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onAction?: () => void;
 }) => {
   return (
-    <div className="relative w-full rounded-xl">
-      {enabled && (
-        <div className="absolute top-2 right-2 z-10 rounded-md bg-black/70 px-2 py-1 text-[10px] 2xl:text-xs font-medium text-white">
-          {badgeText}
-        </div>
-      )}
-
+    <div className="relative w-full">
       <div
         className={
           enabled
-            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
-            : "opacity-100 transition-opacity duration-300"
+            ? "pointer-events-none select-none opacity-45  transition-all duration-300"
+            : "opacity-100 transition-all duration-300"
         }
       >
         {children}
       </div>
+
+      {enabled && (
+        <>
+          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                <div className="mb-4 text-3xl">🔒</div>
+
+                <h3 className="text-lg font-semibold text-[#414042]">
+                  {title}
+                </h3>
+
+                <p className="mt-2 text-sm text-gray-600 leading-6">
+                  {description}
+                </p>
+
+                <button
+                  onClick={onAction}
+                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                >
+                  {buttonText}
+                </button>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Demo data is shown for preview only.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
+
+
 
 const ProductInsightsSection = ({
   blocks,
@@ -1491,54 +1528,54 @@ const HASH_TO_FINANCE_TAB: Record<string, DashboardTab> = {
 };
 
 const DEMO_SUMMARY: Summary = {
-  unit_sold: 1170,
-  total_sales: 157000,
-  gross_sales: 165500,
-  total_product_sales: 165500,
-  total_expense: 38200,
-  cm2_profit: 43500,
-  total_cous: 52000,
-  otherwplatform: 9600,
-  advertising_total: 12500,
-  total_amazon_fee: 16100,
+  unit_sold: 0,
+  total_sales: 0,
+  gross_sales: 0,
+  total_product_sales: 0,
+  total_expense: 0,
+  cm2_profit: 0,
+  total_cous: 0,
+  otherwplatform: 0,
+  advertising_total: 0,
+  total_amazon_fee: 0,
 };
 
 const DEMO_SUMMARY_COMPARISONS: SummaryComparisons = {
   lastMonth: {
-    unit_sold: 1080,
-    total_sales: 145000,
-    gross_sales: 151000,
-    total_product_sales: 151000,
-    total_expense: 36000,
-    cm2_profit: 39800,
-    total_cous: 48000,
-    otherwplatform: 9000,
-    advertising_total: 11800,
-    total_amazon_fee: 15200,
+    unit_sold: 0,
+    total_sales: 0,
+    gross_sales: 0,
+    total_product_sales: 0,
+    total_expense: 0,
+    cm2_profit: 0,
+    total_cous: 0,
+    otherwplatform: 0,
+    advertising_total: 0,
+    total_amazon_fee: 0,
   },
   lastQuarter: {
-    unit_sold: 980,
-    total_sales: 132000,
-    gross_sales: 138500,
-    total_product_sales: 138500,
-    total_expense: 33800,
-    cm2_profit: 35200,
-    total_cous: 45200,
-    otherwplatform: 8400,
-    advertising_total: 10600,
-    total_amazon_fee: 14400,
+    unit_sold: 0,
+    total_sales: 0,
+    gross_sales: 0,
+    total_product_sales: 0,
+    total_expense: 0,
+    cm2_profit: 0,
+    total_cous: 0,
+    otherwplatform: 0,
+    advertising_total: 0,
+    total_amazon_fee: 0,
   },
   lastYear: {
-    unit_sold: 910,
-    total_sales: 121000,
-    gross_sales: 126000,
-    total_product_sales: 126000,
-    total_expense: 32000,
-    cm2_profit: 30100,
-    total_cous: 41800,
-    otherwplatform: 7900,
-    advertising_total: 9800,
-    total_amazon_fee: 13600,
+    unit_sold: 0,
+    total_sales: 0,
+    gross_sales: 0,
+    total_product_sales: 0,
+    total_expense: 0,
+    cm2_profit: 0,
+    total_cous: 0,
+    otherwplatform: 0,
+    advertising_total: 0,
+    total_amazon_fee: 0,
   },
 };
 
@@ -1583,7 +1620,7 @@ const DEMO_AI_PANEL: AiPanelData = {
     "For detailed SKU-level replenishment planning, refer to inventory module.",
   ],
   objective: {
-    growth_intent: "scale_profitable_growth",
+    growth_intent: "growth",
     profit_priority: "balanced",
     inventory_clearance_priority: false,
   },
@@ -1609,8 +1646,8 @@ const DEMO_PERFORMANCE_TREND: PerformanceTrendPayload = {
   series: [
     {
       label: "Sales Trend",
-      net_sales: [42000, 45000, 47000, 52000, 56000, 60000],
-      units: [340, 390, 420, 480, 520, 570],
+      net_sales: [0, 0, 0, 0, 0, 0],
+      units: [0, 0, 0, 0, 0, 0],
     },
   ],
 };
@@ -1620,146 +1657,146 @@ const DEMO_UPLOADS: UploadRow[] = [
     country: "global",
     month: "january",
     year: 2026,
-    total_sales: 45000,
-    total_amazon_fee: 4200,
-    total_cous: 15000,
-    advertising_total: 3500,
-    otherwplatform: 1800,
-    cm2_profit: 12100,
-    total_profit: 12100,
+    total_sales: 0,
+    total_amazon_fee: 0,
+    total_cous: 0,
+    advertising_total: 0,
+    otherwplatform: 0,
+    cm2_profit: 0,
+    total_profit: 0,
   },
   {
     country: "global",
     month: "february",
     year: 2026,
-    total_sales: 52000,
-    total_amazon_fee: 4700,
-    total_cous: 17500,
-    advertising_total: 4200,
-    otherwplatform: 2200,
-    cm2_profit: 14600,
-    total_profit: 14600,
+    total_sales: 0,
+    total_amazon_fee: 0,
+    total_cous: 0,
+    advertising_total: 0,
+    otherwplatform: 0,
+    cm2_profit: 0,
+    total_profit: 0,
   },
   {
     country: "global",
     month: "march",
     year: 2026,
-    total_sales: 60000,
-    total_amazon_fee: 5200,
-    total_cous: 19500,
-    advertising_total: 4800,
-    otherwplatform: 2600,
-    cm2_profit: 17000,
-    total_profit: 17000,
+    total_sales: 0,
+    total_amazon_fee: 0,
+    total_cous: 0,
+    advertising_total: 0,
+    otherwplatform: 0,
+    cm2_profit: 0,
+    total_profit: 0,
   },
 ];
 
 const DEMO_SKU_ROWS: TableRow[] = [
   {
-    product_name: "Demo Product A",
+    product_name: "Sample Product A",
     sku: "SKU-DEMO-1",
-    quantity: 120,
-    return_quantity: 8,
-    total_quantity: 112,
-    units_sold: 120,
-    return_units: 8,
-    net_units_sold: 112,
-    asp: 125,
-    product_sales: 15000,
-    refund_sales: 500,
-    net_sales: 14500,
+    quantity: 0,
+    return_quantity: 0,
+    total_quantity: 0,
+    units_sold: 0,
+    return_units: 0,
+    net_units_sold: 0,
+    asp: 0,
+    product_sales: 0,
+    refund_sales: 0,
+    net_sales: 0,
     lost_total: 0,
-    cost_of_unit_sold: 5200,
-    shipment_charges: 800,
-    selling_fees: 1200,
-    fba_fees: 950,
-    amazon_fee: 2150,
-    tex_and_credits: 300,
-    net_taxes: 200,
-    net_credits: 100,
-    promotional_rebates: 450,
-    promotional_rebates_percentage: 3.1,
-    misc_transaction: 120,
-    other_transaction_fees: 100,
-    other_transactions: 100,
-    profit: 4200,
-    profit_percentage: 28,
-    unit_wise_profitability: 37.5,
-    profit_mix: 35,
-    sales_mix: 34,
+    cost_of_unit_sold: 0,
+    shipment_charges: 0,
+    selling_fees: 0,
+    fba_fees: 0,
+    amazon_fee: 0,
+    tex_and_credits: 0,
+    net_taxes: 0,
+    net_credits: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
+    misc_transaction: 0,
+    other_transaction_fees: 0,
+    other_transactions: 0,
+    profit: 0,
+    profit_percentage: 0,
+    unit_wise_profitability: 0,
+    profit_mix: 0,
+    sales_mix: 0,
   },
   {
-    product_name: "Demo Product B",
+    product_name: "Sample Product B",
     sku: "SKU-DEMO-2",
-    quantity: 220,
-    return_quantity: 10,
-    total_quantity: 210,
-    units_sold: 220,
-    return_units: 10,
-    net_units_sold: 210,
-    asp: 136.36,
-    product_sales: 30000,
-    refund_sales: 700,
-    net_sales: 29300,
+    quantity: 0,
+    return_quantity: 0,
+    total_quantity: 0,
+    units_sold: 0,
+    return_units: 0,
+    net_units_sold: 0,
+    asp: 0,
+    product_sales: 0,
+    refund_sales: 0,
+    net_sales: 0,
     lost_total: 0,
-    cost_of_unit_sold: 9800,
-    shipment_charges: 1200,
-    selling_fees: 2200,
-    fba_fees: 1700,
-    amazon_fee: 3900,
-    tex_and_credits: 450,
-    net_taxes: 260,
-    net_credits: 190,
-    promotional_rebates: 600,
-    promotional_rebates_percentage: 2.9,
-    misc_transaction: 180,
-    other_transaction_fees: 150,
-    other_transactions: 150,
-    profit: 7800,
-    profit_percentage: 26,
-    unit_wise_profitability: 37.14,
-    profit_mix: 65,
-    sales_mix: 66,
+    cost_of_unit_sold: 0,
+    shipment_charges: 0,
+    selling_fees: 0,
+    fba_fees: 0,
+    amazon_fee: 0,
+    tex_and_credits: 0,
+    net_taxes: 0,
+    net_credits: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
+    misc_transaction: 0,
+    other_transaction_fees: 0,
+    other_transactions: 0,
+    profit: 0,
+    profit_percentage: 0,
+    unit_wise_profitability: 0,
+    profit_mix: 0,
+    sales_mix: 0,
   },
   {
     product_name: "Total",
     sku: "Total",
-    quantity: 340,
-    return_quantity: 18,
-    total_quantity: 322,
-    units_sold: 340,
-    return_units: 18,
-    net_units_sold: 322,
-    asp: 132.35,
-    product_sales: 45000,
-    refund_sales: 1200,
-    net_sales: 43800,
+    quantity: 0,
+    return_quantity: 0,
+    total_quantity: 0,
+    units_sold: 0,
+    return_units: 0,
+    net_units_sold: 0,
+    asp: 0,
+    product_sales: 0,
+    refund_sales: 0,
+    net_sales: 0,
     lost_total: 0,
-    cost_of_unit_sold: 15000,
-    shipment_charges: 2000,
-    selling_fees: 3400,
-    fba_fees: 2650,
-    amazon_fee: 6050,
-    tex_and_credits: 750,
-    net_taxes: 460,
-    net_credits: 290,
-    promotional_rebates: 1050,
-    promotional_rebates_percentage: 3.0,
-    misc_transaction: 300,
-    other_transaction_fees: 250,
-    other_transactions: 250,
-    profit: 12000,
-    profit_percentage: 26.6,
-    unit_wise_profitability: 37.27,
-    profit_mix: 100,
-    sales_mix: 100,
+    cost_of_unit_sold: 0,
+    shipment_charges: 0,
+    selling_fees: 0,
+    fba_fees: 0,
+    amazon_fee: 0,
+    tex_and_credits: 0,
+    net_taxes: 0,
+    net_credits: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
+    misc_transaction: 0,
+    other_transaction_fees: 0,
+    other_transactions: 0,
+    profit: 0,
+    profit_percentage: 0,
+    unit_wise_profitability: 0,
+    profit_mix: 0,
+    sales_mix: 0,
   },
 ];
 
 const DEMO_TARGET_SUMMARY = {
-  target_sales: 175000,
-  shortfall_total: 18000,
-  cashflow_total: 24000,
+  target_sales: 0,
+  shortfall_total: 0,
+  cashflow_total: 0,
 };
 
 
@@ -1968,22 +2005,27 @@ const currencySymbol = isDemoMode
   }, []);
 
   useEffect(() => {
-    if (!pendingHash) return;
-    if (!allDropdownsSelected) return;
+  if (!pendingHash) return;
+  if (!allDropdownsSelected) return;
 
-    const timer = setTimeout(() => {
-      const el = document.getElementById(pendingHash);
-      if (el) {
-        el.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
-      setPendingHash("");
-    }, 250);
+  if (isDemoMode) {
+    setPendingHash("");
+    return;
+  }
 
-    return () => clearTimeout(timer);
-  }, [activeTab, pendingHash, allDropdownsSelected]);
+  const timer = setTimeout(() => {
+    const el = document.getElementById(pendingHash);
+    if (el) {
+      el.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+    setPendingHash("");
+  }, 250);
+
+  return () => clearTimeout(timer);
+}, [activeTab, pendingHash, allDropdownsSelected, isDemoMode]);
 
   const tabsDisabled: Partial<Record<DashboardTab, boolean>> = useMemo(() => {
   if (isDemoMode) {
@@ -3085,20 +3127,31 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
   };
 
   const syncTabToHash = (tab: DashboardTab) => {
-    if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return;
 
-    const hash = FINANCE_TAB_TO_HASH[tab];
-    if (!hash) return;
+  const hash = FINANCE_TAB_TO_HASH[tab];
+  if (!hash) return;
 
-    const nextUrl = `${window.location.pathname}#${hash}`;
-    window.history.pushState(null, "", nextUrl);
+  const nextUrl = `${window.location.pathname}#${hash}`;
 
-    window.dispatchEvent(
-      new CustomEvent("page-hash-navigate", {
-        detail: { hash },
-      })
-    );
-  };
+  if (isDemoMode) {
+    window.history.replaceState(null, "", nextUrl);
+    return;
+  }
+
+  window.history.pushState(null, "", nextUrl);
+
+  window.dispatchEvent(
+    new CustomEvent("page-hash-navigate", {
+      detail: { hash },
+    })
+  );
+};
+
+  const handleConnectAmazonPreview = () => {
+  const connectCountry = effectiveCountryName === "global" ? "uk" : effectiveCountryName;
+  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+};
 
   return (
     <div ref={layoutRef} className="space-y-3 relative">
@@ -3151,10 +3204,16 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
           compact
         />
       </div>
-
+<PreviewLockedSection
+  enabled={isDemoMode}
+  title="Preview mode"
+  description="You're viewing demo financial data. Connect your Amazon to unlock your real dashboard, profitability insights, cash flow."
+  buttonText="Connect Amazon"
+  onAction={handleConnectAmazonPreview}
+>
       {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
       {activeTab !== "cashFlow" && (
-        <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Summary Preview">
+       
         <div className="flex flex-col gap-5 w-full mt-4">
           {/* Summary Cards */}
           {uploadsData?.summary &&
@@ -3635,7 +3694,6 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
                   className={[
                     "w-full grid gap-2 2xl:gap-3",
                     "grid-cols-2 sm:grid-cols-4 min-[1700px]:grid-cols-8",
-                    isSummaryZero ? "opacity-30" : "opacity-100",
                   ].join(" ")}
                 >
                   {cards.map((c) => (
@@ -3651,14 +3709,14 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
               );
             })()}
         </div>
-        </DummyBlurWrapper>
+       
       )}
 
       {/* ===================== TAB CONTENT AREA ===================== */}
-      <div className="w-full">
+      <div className="w-full mt-4">
         {/* ---------- TAB 1: GRAPHS ---------- */}
         {activeTab === "graphs" && (
-          <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Graph Preview">
+          
           <div id="finance-dashboard" className="scroll-mt-[80px]">
             {/* Monthly */}
             {range === "monthly" && selectedMonth && selectedYear && (
@@ -4032,6 +4090,7 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
                       countryName={initialCountryName}
                       homeCurrency={globalHomeCurrency}
                       onExportBase64Ready={setExpenseBreakdownPieBase64}
+                      disableInternalFade={isDemoMode}
                     />
 
                     <CMchartofsku
@@ -4048,12 +4107,12 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
               </>
             )}
           </div>
-          </DummyBlurWrapper>
+         
         )}
 
         {/* ---------- TAB 2: BUSINESS SUMMARY ---------- */}
         {activeTab === "businessSummary" && allDropdownsSelected && (
-          <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy AI Insights Preview">
+         
           <div
             id="ai-insights"
             className="scroll-mt-[80px] space-y-5"
@@ -4104,12 +4163,12 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
               </>
             )}
           </div>
-          </DummyBlurWrapper>
+         
         )}
 
         {/* ---------- TAB 3: SKU / PRODUCTWISE P&L ---------- */}
         {activeTab === "skuBreakdown" && allDropdownsSelected && (
-          <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy SKU Breakdown Preview">
+         
           <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
             <SKUtable
               range={range as Exclude<RangeType, "">}
@@ -4122,6 +4181,7 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
               onExportPayloadChange={setSkuExportPayload}
               onDownload={handleDownloadSkuSheet1}
               onRowsChange={setSkuRows}
+              disableInternalFade={isDemoMode}
             />
 
             {skuRows.length > 0 && (
@@ -4132,11 +4192,11 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
               />
             )}
           </div>
-            </DummyBlurWrapper>
+            
         )}
 
         {activeTab === "skuwiseProfit" && allDropdownsSelected && (
-           <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Product Performance Preview">
+          
           <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
             {/* <ProductwisePerformance
               embedded
@@ -4148,28 +4208,29 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
               initialProductName={defaultTopProductName}
             /> */}
             <ProductwisePerformance
-              key={[
-                initialCountryName,
-                range,
-                selectedMonth,
-                selectedQuarter,
-                selectedYear,
-                defaultTopProductName,
-              ].join("-")}
-              embedded
-              countryNameProp={initialCountryName}
-              rangeProp={range as "monthly" | "quarterly" | "yearly"}
-              selectedMonthProp={range === "monthly" ? selectedMonth : ""}
-              selectedQuarterProp={range === "quarterly" ? selectedQuarter : ""}
-              selectedYearProp={selectedYear ? Number(selectedYear) : ""}
-              initialProductName={defaultTopProductName}
-            />
+  key={[
+    initialCountryName,
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    defaultTopProductName,
+    isDemoMode ? "demo" : "live",
+  ].join("-")}
+  embedded
+  countryNameProp={isDemoMode ? "global" : initialCountryName}
+  rangeProp={range as "monthly" | "quarterly" | "yearly"}
+  selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
+  selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
+  selectedYearProp={isDemoMode ? "NA" as any : selectedYear ? Number(selectedYear) : ""}
+  initialProductName={defaultTopProductName || "Demo Product A"}
+/>
           </div>
-          </DummyBlurWrapper>
+         
         )}
 
         {activeTab === "cashFlow" && allDropdownsSelected && (
-  <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Cash Flow Preview">
+ 
     <div id="cash-flow" className="mt-4 scroll-mt-[80px]">
       <CashFlowPage
         embedded
@@ -4180,10 +4241,10 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
         selectedYearProp={isDemoMode ? "NA" : selectedYear}
       />
     </div>
-  </DummyBlurWrapper>
+  
 )}
       </div>
-
+</PreviewLockedSection>
       {/* ===================== YOUR EXISTING OVERLAYS / MODALS (KEEP) ===================== */}
       {showNoDataOverlay && (
         <div

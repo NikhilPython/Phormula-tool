@@ -45,7 +45,7 @@ type MonthsforBIProps = {
   year: string;        // "2025"
   initialData?: ApiResponse | null;
   disableAutoFetch?: boolean; // when true, LiveBusinessClient will NOT fetch
-  onGenerateInsights?: () => Promise<ApiResponse | void>; // optional: parent fetch
+ onGenerateInsights?: () => Promise<void>;
 };
 
 // =========================
@@ -949,21 +949,19 @@ export default function LiveBusinessClient({
   // };
 
   const analyzeSkus = async () => {
-    setLoadingInsight(true);
-    try {
-      // ✅ prefer parent fetch in Dashboard mode
-      if (onGenerateInsights) {
-        const updated = await onGenerateInsights();
-        if (updated) hydrateFromPayload(updated as ApiResponse);
-        return;
-      }
-      await fetchLiveBi(true);
-    } catch (err: any) {
-      console.error('generate insights error:', err?.response?.data || err.message);
-    } finally {
-      setLoadingInsight(false);
+  setLoadingInsight(true);
+  try {
+    if (onGenerateInsights) {
+      await onGenerateInsights();
+      return;
     }
-  };
+    await fetchLiveBi(true);
+  } catch (err: any) {
+    console.error('generate insights error:', err?.response?.data || err.message);
+  } finally {
+    setLoadingInsight(false);
+  }
+};
 
   // =========================
   // Insight helpers

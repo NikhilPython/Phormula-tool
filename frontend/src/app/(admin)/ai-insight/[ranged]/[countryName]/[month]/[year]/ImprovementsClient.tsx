@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { useParams } from 'next/navigation'; // Next.js uses next/navigation for app router
-import * as XLSX from 'xlsx';
+import { useParams, useRouter } from 'next/navigation';import * as XLSX from 'xlsx';
 import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
 import Drawer from '@mui/material/Drawer';
@@ -165,134 +164,7 @@ const MonthsforBI: React.FC = () => {
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   };
 
-
-  // Month/year form
-  const [month1, setMonth1] = useState<string>('');
-  const [year1, setYear1] = useState<string>('');
-  const [month2, setMonth2] = useState<string>('');
-  const [year2, setYear2] = useState<string>('');
-  const [isMobile, setIsMobile] = useState(false);
-
-  const [is2xlUp, setIs2xlUp] = useState(false);
-
-useEffect(() => {
-  const check = () => {
-    setIsMobile(window.innerWidth < 768);
-    setIs2xlUp(window.innerWidth >= 1536);
-  };
-  check();
-  window.addEventListener("resize", check);
-  return () => window.removeEventListener("resize", check);
-}, []);
-
-const axisTickFontSize = is2xlUp ? 14 : 12;
-const axisNameFontSize = is2xlUp ? 14 : 12;
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-
-  // Data + UI state
-  const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>({
-    top_80_skus: [],
-    new_or_reviving_skus: [],
-    other_skus: [],
-    all_skus: [],              // ✅ add
-    top_80_total: null,
-    new_or_reviving_total: null,
-    other_total: null,
-    all_skus_total: null,
-  });
-
-
-  const [activeTab, setActiveTab] = useState<TabKey>('all_skus');
-  const [month2Label, setMonth2Label] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
-
-  // Insights + modal
-  const [loadingInsight, setLoadingInsight] = useState<boolean>(false);
-  const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsight>>({});
-  const [selectedSku, setSelectedSku] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState<boolean>(false);
-
-  // Feedback (Summary)
-  const [fbType, setFbType] = useState<'like' | 'dislike' | null>(null);
-  const [fbText, setFbText] = useState<string>('');
-  const [fbSubmitting, setFbSubmitting] = useState<boolean>(false);
-  const [fbSuccess, setFbSuccess] = useState<boolean>(false);
-  const [expandAllSkusOthers, setExpandAllSkusOthers] = useState(true);
-  const [reimbursementTotals, setReimbursementTotals] = useState<{ month1: number; month2: number } | null>(null);
-  const [advertisingTotals, setAdvertisingTotals] = useState<{ month1: number; month2: number } | null>(null);
-  const [expenseTotals, setExpenseTotals] = useState<{ month1: number; month2: number } | null>(null);
-  const [autoCompared, setAutoCompared] = useState(false);
-  const [introReady, setIntroReady] = useState(false);
-
-
-
-
-  // ✅ NEW: available periods from backend (['YYYY-MM'])
-  const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
-  const [showTotalsModal, setShowTotalsModal] = useState(false);
-
-  const [selectedTotals, setSelectedTotals] = useState<Record<string, boolean>>({
-    netSales: true,
-    cm1Profit: true,
-    otherExpense: true,
-    advertising: true,
-    reimbursement: true,
-  });
-
-  const year1Ref = React.useRef<HTMLSelectElement | null>(null);
-  const month1Ref = React.useRef<HTMLDivElement | null>(null);
-  const compareBtnRef = React.useRef<HTMLButtonElement | null>(null);
-
-  const isPreviewMode =
-    params?.month === "NA" || params?.year === "NA";
-
-  const effectiveCountry = isPreviewMode ? "global" : countryName;
-
-  const isUsingDummyData = isPreviewMode;
-
-  const DummyBlurWrapper = ({
-  enabled,
-  badgeText = "Dummy Preview",
-  children,
-  className = "",
-}: {
-  enabled: boolean;
-  badgeText?: string;
-  children: React.ReactNode;
-  className?: string;
-}) => {
-  return (
-    <div className={`relative w-full ${className}`}>
-      {enabled && (
-        <div className="absolute right-2 top-2 z-20 rounded-md bg-black/70 px-2 py-1 text-[10px] sm:text-xs text-white shadow">
-          {badgeText}
-        </div>
-      )}
-
-      <div
-        className={
-          enabled
-            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
-            : "opacity-100 transition-opacity duration-300"
-        }
-      >
-        {children}
-      </div>
-    </div>
-  );
-};
-
-
-  // =========================
-  // PREVIEW / DUMMY DATA
-  // =========================
-
-  const TOP_80_DUMMY: SkuItem[] = [
+   const TOP_80_DUMMY: SkuItem[] = [
     {
       product_name: "Demo Product A",
       sku: "DEMO-A",
@@ -391,6 +263,235 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
     all_skus_total: null,
   };
 
+  const PREVIEW_MONTH1 = "01";
+const PREVIEW_YEAR1 = "2025";
+const PREVIEW_MONTH2 = "02";
+const PREVIEW_YEAR2 = "2025";
+
+
+  const isPreviewMode =
+    params?.month === "NA" || params?.year === "NA";
+
+
+  // Month/year form
+  const [month1, setMonth1] = useState<string>(isPreviewMode ? PREVIEW_MONTH1 : '');
+const [year1, setYear1] = useState<string>(isPreviewMode ? PREVIEW_YEAR1 : '');
+const [month2, setMonth2] = useState<string>(isPreviewMode ? PREVIEW_MONTH2 : '');
+const [year2, setYear2] = useState<string>(isPreviewMode ? PREVIEW_YEAR2 : '');
+  const [isMobile, setIsMobile] = useState(false);
+
+  const [is2xlUp, setIs2xlUp] = useState(false);
+
+useEffect(() => {
+  const check = () => {
+    setIsMobile(window.innerWidth < 768);
+    setIs2xlUp(window.innerWidth >= 1536);
+  };
+  check();
+  window.addEventListener("resize", check);
+  return () => window.removeEventListener("resize", check);
+}, []);
+
+const axisTickFontSize = is2xlUp ? 14 : 12;
+const axisNameFontSize = is2xlUp ? 14 : 12;
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  // Data + UI state
+  const [categorizedGrowth, setCategorizedGrowth] = useState<CategorizedGrowth>({
+    top_80_skus: [],
+    new_or_reviving_skus: [],
+    other_skus: [],
+    all_skus: [],              // ✅ add
+    top_80_total: null,
+    new_or_reviving_total: null,
+    other_total: null,
+    all_skus_total: null,
+  });
+
+
+  const [activeTab, setActiveTab] = useState<TabKey>('all_skus');
+  const [month2Label, setMonth2Label] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  // Insights + modal
+  const [loadingInsight, setLoadingInsight] = useState<boolean>(false);
+  const [skuInsights, setSkuInsights] = useState<Record<string, SkuInsight>>({});
+  const [selectedSku, setSelectedSku] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+
+  // Feedback (Summary)
+  const [fbType, setFbType] = useState<'like' | 'dislike' | null>(null);
+  const [fbText, setFbText] = useState<string>('');
+  const [fbSubmitting, setFbSubmitting] = useState<boolean>(false);
+  const [fbSuccess, setFbSuccess] = useState<boolean>(false);
+  const [expandAllSkusOthers, setExpandAllSkusOthers] = useState(true);
+  const [reimbursementTotals, setReimbursementTotals] = useState<{ month1: number; month2: number } | null>(null);
+  const [advertisingTotals, setAdvertisingTotals] = useState<{ month1: number; month2: number } | null>(null);
+  const [expenseTotals, setExpenseTotals] = useState<{ month1: number; month2: number } | null>(null);
+  const [introReady, setIntroReady] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+  if (!isPreviewMode) return;
+
+  setActiveTab('top_80_skus');
+  handleSubmit();
+}, [isPreviewMode]);
+
+
+
+
+  // ✅ NEW: available periods from backend (['YYYY-MM'])
+  const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
+  const [showTotalsModal, setShowTotalsModal] = useState(false);
+
+  const [selectedTotals, setSelectedTotals] = useState<Record<string, boolean>>({
+    netSales: true,
+    cm1Profit: true,
+    otherExpense: true,
+    advertising: true,
+    reimbursement: true,
+  });
+
+  const year1Ref = React.useRef<HTMLSelectElement | null>(null);
+  const month1Ref = React.useRef<HTMLDivElement | null>(null);
+  const compareBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const didInitialFetchRef = React.useRef(false);
+
+  useEffect(() => {
+  if (!isPreviewMode) return;
+
+  setMonth1(PREVIEW_MONTH1);
+  setYear1(PREVIEW_YEAR1);
+  setMonth2(PREVIEW_MONTH2);
+  setYear2(PREVIEW_YEAR2);
+
+  setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
+  setAdvertisingTotals({ month1: 4200, month2: 5200 });
+  setExpenseTotals({ month1: 3800, month2: 4100 });
+  setReimbursementTotals({ month1: 900, month2: 1100 });
+  setMonth2Label("Preview");
+  setActiveTab("all_skus");
+  setError(null);
+}, [isPreviewMode]);
+
+  
+
+  const effectiveCountry = isPreviewMode ? "global" : countryName;
+
+  const isUsingDummyData = isPreviewMode;
+
+  const DummyBlurWrapper = ({
+  enabled,
+  badgeText = "Dummy Preview",
+  children,
+  className = "",
+}: {
+  enabled: boolean;
+  badgeText?: string;
+  children: React.ReactNode;
+  className?: string;
+}) => {
+  return (
+    <div className={`relative w-full ${className}`}>
+      {/* {enabled && (
+        <div className="absolute right-2 top-2 z-20 rounded-md bg-black/70 px-2 py-1 text-[10px] sm:text-xs text-white shadow">
+          {badgeText}
+        </div>
+      )} */}
+
+      <div
+        className={
+          enabled
+            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
+            : "opacity-100 transition-opacity duration-300"
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
+
+const PreviewLockedSection = ({
+  enabled,
+  children,
+  title,
+  description,
+  buttonText,
+  onAction,
+}: {
+  enabled: boolean;
+  children: React.ReactNode;
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onAction?: () => void;
+}) => {
+  return (
+    <div className="relative w-full">
+      <div
+        className={
+          enabled
+            ? "pointer-events-none select-none opacity-45 transition-all duration-300"
+            : "opacity-100 transition-all duration-300"
+        }
+      >
+        {children}
+      </div>
+
+      {enabled && (
+        <>
+          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                <div className="mb-4 text-3xl">🔒</div>
+
+                <h3 className="text-lg font-semibold text-[#414042]">
+                  {title}
+                </h3>
+
+                <p className="mt-2 text-sm text-gray-600 leading-6">
+                  {description}
+                </p>
+
+                <button
+                  onClick={onAction}
+                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                >
+                  {buttonText}
+                </button>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Demo data is shown for preview only.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+const handleConnectAmazonPreview = () => {
+  const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
+  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+};
+
+
+  // =========================
+  // PREVIEW / DUMMY DATA
+  // =========================
+
+ 
 
 
 
@@ -434,18 +535,9 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
     intro.start();
   }, [introReady]);
 
-  useEffect(() => {
-    if (isPreviewMode) {
-      setActiveTab('top_80_skus');
-    }
-  }, [isPreviewMode]);
+  
 
-  useEffect(() => {
-    if (isPreviewMode) {
-      handleSubmit();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPreviewMode]);
+  
 
 
   const toggleTotalsMetric = (key: string) => {
@@ -508,28 +600,30 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
 
 
   const buildCompareSeries = (
-    metricKeyBase: 'net_sales' | 'profit' | 'total_quantity' | 'rembursement_fee' | 'asp'
-  ) => {
-    if (isPreviewMode) {
-      const x = ["Jan'24", "", "Feb'24"];
+  metricKeyBase: 'net_sales' | 'profit' | 'total_quantity' | 'rembursement_fee' | 'asp'
+) => {
+  const safeM1 = month1 || (isPreviewMode ? PREVIEW_MONTH1 : "");
+  const safeY1 = year1 || (isPreviewMode ? PREVIEW_YEAR1 : "");
+  const safeM2 = month2 || (isPreviewMode ? PREVIEW_MONTH2 : "");
+  const safeY2 = year2 || (isPreviewMode ? PREVIEW_YEAR2 : "");
 
-      return {
-        x,
-        values: {
-          top80_m1: 12000,
-          top80_m2: 16500,
+  const m1Label = `${getAbbr(safeM1)}'${String(safeY1).slice(2)}`;
+  const m2Label = `${getAbbr(safeM2)}'${String(safeY2).slice(2)}`;
+  const x = [m1Label, "", m2Label];
 
-          newRev_m1: 4000,
-          newRev_m2: 7200,
-
-          other_m1: 8000,
-          other_m2: 6500,
-        },
-      };
-    }
-    const m1Label = `${getAbbr(month1)}'${String(year1).slice(2)}`;
-    const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
-    const x = [`${m1Label}`, '', `${m2Label}`];
+  if (isPreviewMode) {
+    return {
+      x,
+      values: {
+        top80_m1: 12000,
+        top80_m2: 16500,
+        newRev_m1: 4000,
+        newRev_m2: 7200,
+        other_m1: 8000,
+        other_m2: 6500,
+      },
+    };
+  }
 
     const top80Rows = categorizedGrowth.top_80_skus || [];
     const newRevRows = categorizedGrowth.new_or_reviving_skus || [];
@@ -1607,21 +1701,35 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
   // Load persisted state on mount
   // =========================
   useEffect(() => {
-    const saved = loadCompareFromStorage();
-    if (saved) {
-      setMonth1(saved.month1 || '');
-      setYear1(saved.year1 || '');
-      setMonth2(saved.month2 || '');
-      setYear2(saved.year2 || '');
-      setCategorizedGrowth(saved.categorizedGrowth || { top_80_skus: [], new_or_reviving_skus: [], other_skus: [] });
-      setMonth2Label(saved.month2Label || '');
-      setActiveTab(saved.activeTab || 'all_skus');
-    }
-    const cachedInsights = loadInsightsFromStorage();
-    if (cachedInsights && Object.keys(cachedInsights).length) {
-      setSkuInsights(cachedInsights);
-    }
-  }, []);
+  if (isPreviewMode) return;
+
+  const saved = loadCompareFromStorage();
+  if (saved) {
+    setMonth1(saved.month1 || '');
+    setYear1(saved.year1 || '');
+    setMonth2(saved.month2 || '');
+    setYear2(saved.year2 || '');
+    setCategorizedGrowth(
+      saved.categorizedGrowth || {
+        top_80_skus: [],
+        new_or_reviving_skus: [],
+        other_skus: [],
+        all_skus: [],
+        top_80_total: null,
+        new_or_reviving_total: null,
+        other_total: null,
+        all_skus_total: null,
+      }
+    );
+    setMonth2Label(saved.month2Label || '');
+    setActiveTab(saved.activeTab || 'all_skus');
+  }
+
+  const cachedInsights = loadInsightsFromStorage();
+  if (cachedInsights && Object.keys(cachedInsights).length) {
+    setSkuInsights(cachedInsights);
+  }
+}, [isPreviewMode]);
 
   // Also persist activeTab changes (lightweight)
   useEffect(() => {
@@ -1708,7 +1816,18 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
 
     e?.preventDefault?.();
     setError(null);
-    setCategorizedGrowth({ top_80_skus: [], new_or_reviving_skus: [], other_skus: [] });
+    if (!isPreviewMode) {
+  setCategorizedGrowth({
+    top_80_skus: [],
+    new_or_reviving_skus: [],
+    other_skus: [],
+    all_skus: [],
+    top_80_total: null,
+    new_or_reviving_total: null,
+    other_total: null,
+    all_skus_total: null,
+  });
+}
 
     setMonth2Label('');
     setSkuInsights({});
@@ -1759,21 +1878,20 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
   };
 
   useEffect(() => {
-    // auto compare only after defaults are set AND only once
-    if (autoCompared) return;
+  if (isPreviewMode) return;
+  if (!countryName) return;
 
-    if (!month1 || !year1 || !month2 || !year2) return;
+  if (!month1 || !year1 || !month2 || !year2) return;
 
-    // make sure chosen periods are valid
-    if (!isPeriodAvailable(year1, month1) || !isPeriodAvailable(year2, month2)) return;
+  if (!isPeriodAvailable(year1, month1) || !isPeriodAvailable(year2, month2)) return;
 
-    // run compare automatically
-    handleSubmit();
-    setAutoCompared(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month1, year1, month2, year2, availablePeriods, autoCompared]);
+  if (didInitialFetchRef.current) return;
 
+  didInitialFetchRef.current = true;
+  handleSubmit();
+}, [countryName, month1, year1, month2, year2, isPreviewMode, availablePeriods]);
 
+ 
   // =====================
   // AI insights generate
   // =====================
@@ -3134,6 +3252,13 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
           </div>
 
         </div>
+        <PreviewLockedSection
+  enabled={isUsingDummyData}
+  title="Preview mode"
+  description="You're viewing demo business insights data. Connect your Amazon account to unlock your real SKU analysis, growth trends, AI insights, and exports."
+  buttonText="Connect Amazon"
+  onAction={handleConnectAmazonPreview}
+>
 
 
         <form onSubmit={handleSubmit} className="month-form ">
@@ -3222,9 +3347,10 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
             Compare
           </button>
         </div>
+        
 
         {error && <p style={{ color: 'red' }}>{error}</p>}
-
+ 
         <div className="mt-4 mb-3 rounded-xl border border-gray-200 p-4 w-full bg-white">
           <div className="2xl:text-2xl text-[18px] font-bold text-[#414042]">Profitability</div>
 
@@ -3276,19 +3402,20 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
           </div>
 
           {/* chart */}
-         <DummyBlurWrapper enabled={isUsingDummyData} badgeText="Dummy Profitability Preview">
+        
   <div className="h-[320px] sm:h-[360px] md:h-[400px] lg:h-[420px] w-full mt-2 sm:mt-3">
     <Line data={totalsLine.data as any} options={totalsLine.options as any} />
   </div>
-</DummyBlurWrapper>
+
 
         </div>
+       
 
 
         {/* ✅ ONE BOX */}
         <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-4">
 
-         <DummyBlurWrapper enabled={isUsingDummyData} badgeText="Dummy Charts Preview">
+        
   <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
     <div>
       <PageBreadcrumb pageTitle="Units Sold" variant="page" align="left" textSize="2xl" />
@@ -3310,7 +3437,7 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
       <div ref={aspChartRef} className="h-[320px] w-full" />
     </div>
   </div>
-</DummyBlurWrapper>
+
 
           {/* Shared legend bottom center */}
           <div className="mt-3 flex flex-wrap justify-center gap-4 2xl:text-xs text-[10px] font-semibold text-[#414042]">
@@ -3329,6 +3456,7 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
               New/Reviving
             </span>
           </div>
+         
         </div>
 
 
@@ -3338,7 +3466,7 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
 {(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).some(
   (k) => (categorizedGrowth[k] || []).length > 0
 ) && (
-  <DummyBlurWrapper enabled={isUsingDummyData} badgeText="Dummy SKU Preview">
+ 
   <div className="mt-4 rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
     <div className="flex flex-col gap-4 min-w-0">
       {/* MOBILE HEADER */}
@@ -3536,9 +3664,11 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
       </div>
     </div>
   </div>
-  </DummyBlurWrapper>
+  
 )}
+ </PreviewLockedSection>
       </div>
+     
 
 
 

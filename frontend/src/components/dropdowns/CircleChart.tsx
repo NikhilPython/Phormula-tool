@@ -41,6 +41,7 @@ type CircleChartProps = {
   countryName: string;
   homeCurrency?: string;
   onExportBase64Ready?: (base64: string | null) => void;
+  disableInternalFade?: boolean;
 };
 
 type Summary = {
@@ -120,6 +121,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
   countryName,
   homeCurrency,
   onExportBase64Ready,
+  disableInternalFade = false,
 }) => {
   const normalizedHomeCurrency = (homeCurrency || "usd").toLowerCase();
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
@@ -434,9 +436,10 @@ const CircleChart: React.FC<CircleChartProps> = ({
 
       {/* Chart */}
       <div
-        className={`flex-1 min-h-0 w-full ${allValuesZero ? "opacity-30" : "opacity-100"
-          } transition-opacity duration-300`}
-      >
+  className={`flex-1 min-h-0 w-full ${
+    !disableInternalFade && allValuesZero ? "opacity-30" : "opacity-100"
+  } transition-opacity duration-300`}
+>
         {displayChartData && legendModel ? (
           <div className="relative w-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
             {/* LEFT: PIE */}

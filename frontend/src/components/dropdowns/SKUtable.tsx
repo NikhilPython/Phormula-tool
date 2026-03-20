@@ -49,6 +49,7 @@ type SKUtableProps = {
   hideDownloadButton?: boolean;
   onDownload?: () => void;
   onRowsChange?: (rows: TableRow[]) => void;
+  disableInternalFade?: boolean;
 };
 
 type TopBottomRow = {
@@ -356,6 +357,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   hideDownloadButton = false,
   onDownload,
   onRowsChange,
+  disableInternalFade = false,
 }) => {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -1241,7 +1243,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
           </div>
         </div>
 
-        <div className={`transition-opacity ${noDataFound ? "opacity-30" : "opacity-100"}`}>
+        <div
+  className={`transition-opacity ${
+    !disableInternalFade && noDataFound ? "opacity-30" : "opacity-100"
+  }`}
+>
           {showModal2 && (
             <CustomModal onClose={() => setShowModal2(false)}>
               <SkuMultiCountryUpload onClose={() => setShowModal2(false)} onComplete={() => setShowModal2(false)} />

@@ -539,22 +539,25 @@ const AppSidebar: React.FC = () => {
     const month = (params.month as string) || currentParams.month;
     const year = (params.year as string) || currentParams.year;
 
-    if ((params as any).countryName || segments[0] === "country") {
-      switch (segments[0]) {
-        case "pnl-dashboard":
-          newPath = `/pnl-dashboard/${ranged}/${newCountryName}/${month}/${year}`;
-          break;
-        case "live-business-insight":
-          newPath = `/live-business-insight/${ranged}/${newCountryName}/${month}/${year}`;
-          break;
-        case "ai-insight":
-          newPath = `/ai-insight/${ranged}/${newCountryName}/${month}/${year}`;
-          break;
-        case "chatbot":
-          newPath = `/chatbot/${ranged}/${newCountryName}/${month}/${year}`;
-          break;
-      }
-    }
+if ((params as any).countryName || segments[0] === "country") {
+  switch (segments[0]) {
+    case "live-dashboard":
+      newPath = `/live-dashboard/${newCountryName}/${month}/${year}`;
+      break;
+    case "pnl-dashboard":
+      newPath = `/pnl-dashboard/${ranged}/${newCountryName}/${month}/${year}`;
+      break;
+    case "live-business-insight":
+      newPath = `/live-business-insight/${ranged}/${newCountryName}/${month}/${year}`;
+      break;
+    case "ai-insight":
+      newPath = `/ai-insight/${ranged}/${newCountryName}/${month}/${year}`;
+      break;
+    case "chatbot":
+      newPath = `/chatbot/${ranged}/${newCountryName}/${month}/${year}`;
+      break;
+  }
+}
 
     if (!newPath) {
       switch (segments[0]) {
@@ -767,7 +770,7 @@ const AppSidebar: React.FC = () => {
         },
         {
           name: "Targets & Objectives",
-          path: `/objectives-targets/${currentParams.countryName}`,
+          path: `/objectives-targets/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
       ],
     },

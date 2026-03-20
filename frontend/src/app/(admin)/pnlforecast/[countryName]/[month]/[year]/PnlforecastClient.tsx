@@ -586,34 +586,74 @@ const Pnlforecast: React.FC = () => {
   });
 };
 
-const DummyBlurWrapper = ({
+
+
+const PreviewLockedSection = ({
   enabled,
   children,
-  badgeText = "Demo Data",
+  title,
+  description,
+  buttonText,
+  onAction,
 }: {
   enabled: boolean;
   children: React.ReactNode;
-  badgeText?: string;
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onAction?: () => void;
 }) => {
   return (
-    <div className="relative w-full rounded-xl">
-      {enabled && (
-        <div className="absolute top-2 right-2 z-10 rounded-md bg-black/70 px-2 py-1 text-[10px] 2xl:text-xs font-medium text-white">
-          {badgeText}
-        </div>
-      )}
-
+    <div className="relative w-full">
       <div
         className={
           enabled
-            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
-            : "opacity-100 transition-opacity duration-300"
+            ? "pointer-events-none select-none opacity-45  transition-all duration-300"
+            : "opacity-100 transition-all duration-300"
         }
       >
         {children}
       </div>
+
+      {enabled && (
+        <>
+          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                <div className="mb-4 text-3xl">🔒</div>
+
+                <h3 className="text-lg font-semibold text-[#414042]">
+                  {title}
+                </h3>
+
+                <p className="mt-2 text-sm text-gray-600 leading-6">
+                  {description}
+                </p>
+
+                <button
+                  onClick={onAction}
+                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                >
+                  {buttonText}
+                </button>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Demo data is shown for preview only.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
+};
+
+const handleConnectAmazonPreview = () => {
+  const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
+  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
 };
   
   const monthGroup = (
@@ -856,9 +896,15 @@ const DummyBlurWrapper = ({
           {error}
         </div>
       )}
-
+<PreviewLockedSection
+  enabled={isDemoMode}
+  title="Preview mode"
+  description="You're viewing demo P&L forecast data. Connect your Amazon account to unlock your real chart, forecast table, and exports."
+  buttonText="Connect Amazon"
+  onAction={handleConnectAmazonPreview}
+>
       {data && chartData.length > 0 && (
-        <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Chart Preview">
+       
   <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between w-full gap-3">
@@ -895,11 +941,11 @@ const DummyBlurWrapper = ({
       </div>
     </div>
   </div>
-  </DummyBlurWrapper>
+  
 )}
 
       {data && (
-         <DummyBlurWrapper enabled={isDemoMode} badgeText="Dummy Table Preview">
+         
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
           <PageBreadcrumb
             pageTitle="Detailed P&L Forecast Data"
@@ -956,8 +1002,9 @@ const DummyBlurWrapper = ({
             </div>
           </div>
         </div>
-        </DummyBlurWrapper>
+        
       )}
+      </PreviewLockedSection>
     </div>
   );
 };

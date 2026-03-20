@@ -29,6 +29,8 @@ import Loader from "@/components/loader/Loader";
 
 type ObjectivesPageClientProps = {
   country?: string;
+  month?: string;
+  year?: string;
 };
 
 type CurrencyRateRow = {
@@ -91,6 +93,59 @@ const PLATFORM_TARGET_META: Partial<
   "amazon-ca": { marketplace: "Amazon CA", currencySymbol: "C$" },
   shopify: { marketplace: "Shopify", currencySymbol: "" },
 };
+
+const dummyTargetVsSalesData = [
+  { month: "Jan'25", target: 12000, sales: 9800, target_units: 900, monthwise_units: 760 },
+  { month: "Feb'25", target: 12000, sales: 10450, target_units: 900, monthwise_units: 810 },
+  { month: "Mar'25", target: 13000, sales: 11700, target_units: 950, monthwise_units: 870 },
+  { month: "Apr'25", target: 14000, sales: 12600, target_units: 980, monthwise_units: 910 },
+  { month: "May'25", target: 14500, sales: 13250, target_units: 1020, monthwise_units: 940 },
+  { month: "Jun'25", target: 15000, sales: 13800, target_units: 1080, monthwise_units: 990 },
+];
+
+const dummyMonthlyTargetData: TargetRow[] = [
+  {
+    __pid: "amazon-us",
+    sno: "1.",
+    marketplace: "Amazon US",
+    targetNative: "$12,000.00",
+    conversion: "1.000",
+    targetHome: "$12,000.00",
+  },
+  {
+    __pid: "amazon-uk",
+    sno: "2.",
+    marketplace: "Amazon UK",
+    targetNative: "£8,500.00",
+    conversion: "1.270",
+    targetHome: "$10,795.00",
+  },
+  {
+    __pid: "shopify",
+    sno: "3.",
+    marketplace: "Shopify",
+    targetNative: "$6,000.00",
+    conversion: "-",
+    targetHome: "$6,000.00",
+  },
+  {
+    __pid: "global",
+    sno: "",
+    marketplace: "Total",
+    targetNative: "",
+    conversion: "",
+    targetHome: "$28,795.00",
+    __isTotal: true,
+  },
+];
+
+const shortMoney = (value: number, currency = "USD") =>
+  new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
 
 const prettifyObjectiveValue = (v?: string | null) => {
   const s = (v ?? "").trim();
@@ -255,6 +310,44 @@ function PlaceholderPanel({ title }: { title: string }) {
   );
 }
 
+function DummyBlurWrapper({
+  enabled,
+  badgeText = "Dummy Preview",
+  children,
+  className = "",
+}: {
+  enabled: boolean;
+  badgeText?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`relative w-full ${className}`}>
+      {/* {enabled && (
+        <div className="absolute right-2 top-2 z-20 rounded-md bg-black/70 px-2 py-1 text-[10px] sm:text-xs text-white shadow">
+          {badgeText}
+        </div>
+      )} */}
+
+      <div
+        className={
+          enabled
+            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
+            : "opacity-100 transition-opacity duration-300"
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 const readFileAsArrayBuffer = (file: File) =>
   new Promise<ArrayBuffer>((resolve, reject) => {
     const reader = new FileReader();
@@ -323,10 +416,14 @@ const extractTextFromSupportedFile = async (file: File) => {
 
 export default function ObjectivesPageClient({
   country,
+  month,
+  year
 }: ObjectivesPageClientProps) {
   const dispatch = useAppDispatch();
   const searchParams = useSearchParams();
   const token = useSelector((state: any) => state.auth?.token);
+
+  const isPreviewMode = month === "NA" || year === "NA";
 
   const [activeTab, setActiveTab] = useState<SummaryTab>("business_summary");
   useEffect(() => {
@@ -363,6 +460,24 @@ export default function ObjectivesPageClient({
   });
 
   const [objectiveDraft, setObjectiveDraft] = useState<UserObjectiveForm>(objective);
+  useEffect(() => {
+  if (!isPreviewMode) return;
+
+  const dummyObjective: UserObjectiveForm = {
+    growth_intent: "aggressive",
+    profit_priority: "protect_growth",
+    inventory_clearance_priority: true,
+    business_context:
+      "This is a dummy business summary preview. The business focuses on premium skincare products across marketplace and D2C channels, with emphasis on growth, margin discipline, and healthy inventory turnover.",
+    country: "global",
+    time_horizon: "1_month",
+    website: "",
+    uploaded_files: [],
+  };
+
+  setObjective(dummyObjective);
+  setObjectiveDraft(dummyObjective);
+}, [isPreviewMode]);
   const [expandedChart, setExpandedChart] = useState<"targetSales" | "objectiveMoM" | null>(null);
 
   const [objectiveTargetDraft, setObjectiveTargetDraft] = useState<string>("");
@@ -452,7 +567,7 @@ export default function ObjectivesPageClient({
     ];
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || isPreviewMode) return;
 
     const fetchRates = async () => {
       try {
@@ -529,12 +644,13 @@ export default function ObjectivesPageClient({
     return 1;
   };
 
-  const resolvedTargetCountry = useMemo(() => {
-    if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
-    if (objective.country) return objective.country.toLowerCase();
-    if (country) return country.toLowerCase();
-    return "uk";
-  }, [objectiveDraft.country, objective.country, country]);
+ const resolvedTargetCountry = useMemo(() => {
+  if (isPreviewMode) return "global";
+  if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
+  if (objective.country) return objective.country.toLowerCase();
+  if (country) return country.toLowerCase();
+  return "uk";
+}, [isPreviewMode, objectiveDraft.country, objective.country, country]);
 
   const isGlobalPage = resolvedTargetCountry === "global";
 
@@ -677,6 +793,8 @@ export default function ObjectivesPageClient({
       year: now.getFullYear(),
     };
   };
+
+  
 
   const saveInlineTarget = async () => {
     const next = Number(draftTarget);
@@ -897,6 +1015,24 @@ export default function ObjectivesPageClient({
   };
 
   useEffect(() => {
+    if (isPreviewMode) return;
+    const saved = localStorage.getItem("user_objective");
+    if (!saved) return;
+
+    try {
+      const parsed = JSON.parse(saved);
+      setObjective((prev) => ({
+        ...prev,
+        ...parsed,
+        profit_priority: parsed.profit_priority ?? parsed.primary_goal ?? prev.profit_priority,
+        growth_intent: parsed.growth_intent ?? parsed.risk_level ?? prev.growth_intent,
+      }));
+    } catch (e) {
+      console.error("Failed to parse objective from localStorage");
+    }
+  }, []);
+
+  useEffect(() => {
     if (!objective.country) {
       if (country) {
         setObjective((prev) => ({ ...prev, country: country.toLowerCase() }));
@@ -907,48 +1043,50 @@ export default function ObjectivesPageClient({
   }, [country, integratedCountries, objective.country]);
 
   const monthlyTargetData: TargetRow[] = useMemo(() => {
-    const currentTarget = Number((data as any)?.target_sales ?? 0);
+  if (isPreviewMode) return dummyMonthlyTargetData;
 
-    const rows: TargetRow[] = connectedPlatformsForTargets.map((pid, idx) => {
-      const meta = PLATFORM_TARGET_META[pid] ?? {
-        marketplace: String(pid),
-        currencySymbol: "",
-      };
+  const currentTarget = Number((data as any)?.target_sales ?? 0);
+
+  const rows: TargetRow[] = connectedPlatformsForTargets.map((pid, idx) => {
+    const meta = PLATFORM_TARGET_META[pid] ?? {
+      marketplace: String(pid),
+      currencySymbol: "",
+    };
 
       const nativeCurrency = platformToCurrencyCode(pid) || homeCurrencyCode;
       const rowCountry = platformToCountry(pid);
       const nativeToHome = getFxDb(nativeCurrency, homeCurrencyCode, rowCountry);
       const homeTarget = currentTarget * nativeToHome;
 
-      return {
-        __pid: pid,
-        sno: `${idx + 1}.`,
-        marketplace: meta.marketplace,
-        targetNative: money(currentTarget, nativeCurrency),
-        conversion: nativeCurrency === homeCurrencyCode ? "-" : nativeToHome.toFixed(3),
-        targetHome: money(homeTarget, homeCurrencyCode),
-      };
+    return {
+      __pid: pid,
+      sno: `${idx + 1}.`,
+      marketplace: meta.marketplace,
+      targetNative: money(currentTarget, nativeCurrency),
+      conversion: nativeCurrency === homeCurrencyCode ? "-" : nativeToHome.toFixed(3),
+      targetHome: money(homeTarget, homeCurrencyCode),
+    };
+  });
+
+  if (rows.length) {
+    const totalHome = rows.reduce((sum, row: any) => {
+      const num = Number(String(row.targetHome).replace(/[^0-9.-]+/g, ""));
+      return sum + (Number.isFinite(num) ? num : 0);
+    }, 0);
+
+    rows.push({
+      __pid: "global",
+      sno: "",
+      marketplace: "Total",
+      targetNative: "",
+      conversion: "",
+      targetHome: money(totalHome, homeCurrencyCode),
+      __isTotal: true,
     });
+  }
 
-    if (rows.length) {
-      const totalHome = rows.reduce((sum, row: any) => {
-        const num = Number(String(row.targetHome).replace(/[^0-9.-]+/g, ""));
-        return sum + (Number.isFinite(num) ? num : 0);
-      }, 0);
-
-      rows.push({
-        __pid: "global",
-        sno: "",
-        marketplace: "Total",
-        targetNative: "",
-        conversion: "",
-        targetHome: money(totalHome, homeCurrencyCode),
-        __isTotal: true,
-      });
-    }
-
-    return rows;
-  }, [connectedPlatformsForTargets, data, homeCurrencyCode, rateMap]);
+  return rows;
+}, [isPreviewMode, connectedPlatformsForTargets, data, homeCurrencyCode, rateMap]);
 
   const monthlyTargetColumns: ColumnDef<TargetRow>[] = useMemo(
     () => [
@@ -1073,7 +1211,7 @@ export default function ObjectivesPageClient({
 
   useEffect(() => {
     const fetchBusinessSummary = async () => {
-      if (!token) return;
+      if (!token || isPreviewMode) return;
 
       try {
         setIsFetchingBusinessSummary(true);
@@ -1211,21 +1349,104 @@ export default function ObjectivesPageClient({
     fetchObjective();
   }, [token, country, integratedCountries]);
 
+  useEffect(() => {
+    const fetchObjective = async () => {
+      if (!token) return;
+
+      const countryToFetch =
+        (country || objective.country || integratedCountries[0] || "").toLowerCase();
+
+      if (!countryToFetch) return;
+
+      try {
+        setIsFetchingObjective(true);
+
+        const month = getObjectiveMonth();
+
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective?country=${encodeURIComponent(
+            countryToFetch
+          )}&month=${encodeURIComponent(month)}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          if (res.status !== 404) {
+            throw new Error(json?.error || "Failed to fetch objective");
+          }
+
+          setObjective((prev) => ({
+            ...prev,
+            country: countryToFetch,
+          }));
+
+          setObjectiveDraft((prev) => ({
+            ...prev,
+            country: countryToFetch,
+          }));
+
+          return;
+        }
+
+        const serverObjective = json?.objective;
+        if (!serverObjective) return;
+
+        setObjective((prev) => ({
+          ...prev,
+          country: countryToFetch,
+          growth_intent: serverObjective.growth_intent ?? prev.growth_intent,
+          profit_priority: serverObjective.profit_priority ?? prev.profit_priority,
+          inventory_clearance_priority:
+            serverObjective.inventory_clearance_priority ?? prev.inventory_clearance_priority,
+          business_context: serverObjective.business_context ?? prev.business_context,
+        }));
+
+        setObjectiveDraft((prev) => ({
+          ...prev,
+          country: countryToFetch,
+          growth_intent: serverObjective.growth_intent ?? prev.growth_intent,
+          profit_priority: serverObjective.profit_priority ?? prev.profit_priority,
+          inventory_clearance_priority:
+            serverObjective.inventory_clearance_priority ?? prev.inventory_clearance_priority,
+          business_context: serverObjective.business_context ?? prev.business_context,
+        }));
+      } catch (error) {
+        console.error("Failed to fetch objective:", error);
+      } finally {
+        setIsFetchingObjective(false);
+      }
+    };
+
+    fetchObjective();
+  }, [token, country, integratedCountries]);
+
   return (
     <div className="w-full">
-      {(isLoading || ratesLoading || isFetchingBusinessSummary || isFetchingObjective) && (
-        <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">Loading…</div>
-      )}
+
+
+      {!isPreviewMode && (isLoading || ratesLoading || isFetchingBusinessSummary) && (
+  <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">Loading…</div>
+)}
+
 
       {isError && (
         <div className="mb-4 text-sm text-red-500">Failed to load objectives page.</div>
       )}
-
+ 
       <div className="mb-1">
         <PageBreadcrumb pageTitle="Business Overview" variant="page" align="left" textSize="2xl" />
       </div>
+      
 
       <SummaryTabs activeTab={activeTab} onChange={setActiveTab} />
+      <DummyBlurWrapper enabled={isPreviewMode} badgeText="Dummy Targets Preview">
 
       {activeTab === "business_summary" && (
         <div className="grid grid-cols-1 gap-4">
@@ -1233,13 +1454,14 @@ export default function ObjectivesPageClient({
             title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
             action={
               !isBusinessSummaryEditMode ? (
-                <button
-                  type="button"
-                  onClick={startBusinessSummaryEdit}
-                  className="inline-flex h-9 w-9 items-center justify-center text-gray-700"
-                  aria-label="Enable business summary edit mode"
-                  title="Edit business summary"
-                >
+  <button
+    type="button"
+    onClick={startBusinessSummaryEdit}
+    disabled={isPreviewMode}
+    className="inline-flex h-9 w-9 items-center justify-center text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+    aria-label="Enable business summary edit mode"
+    title="Edit business summary"
+  >
                   <FiEdit className="text-lg" />
                 </button>
               ) : (
@@ -1446,22 +1668,24 @@ export default function ObjectivesPageClient({
                   }
                 >
                   <div className="h-[420px] w-full">
-                    <TargetVsSalesChart
-                      country={resolvedTargetCountry}
-                      token={token || ""}
-                      apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
-                      monthsToLoad={12}
-                      className="h-full w-full"
-                      currencySymbol={
-                        homeCurrencyCode === "GBP"
-                          ? "£"
-                          : homeCurrencyCode === "USD"
-                            ? "$"
-                            : homeCurrencyCode === "EUR"
-                              ? "€"
-                              : homeCurrencyCode
-                      }
-                    />
+                   <TargetVsSalesChart
+  country={isPreviewMode ? "global" : resolvedTargetCountry}
+  token={token || ""}
+  apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
+  monthsToLoad={12}
+  className="h-full w-full"
+  isPreviewMode={isPreviewMode}
+  dummyData={dummyTargetVsSalesData}
+  currencySymbol={
+    homeCurrencyCode === "GBP"
+      ? "£"
+      : homeCurrencyCode === "USD"
+        ? "$"
+        : homeCurrencyCode === "EUR"
+          ? "€"
+          : homeCurrencyCode
+  }
+/>
                   </div>
                 </InfoCard>
               </div>
@@ -1502,22 +1726,34 @@ export default function ObjectivesPageClient({
                   }
                 >
                   <div className="h-[420px] w-full">
-                    <ObjectiveMoMChart
-                      title="Objective MoM Trend"
-                      country={resolvedTargetCountry}
-                      token={token || ""}
-                      apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
-                      className="h-full w-full"
-                    />
+<ObjectiveMoMChart
+  title="Objective MoM Trend"
+  country={isPreviewMode ? "global" : resolvedTargetCountry}
+  token={token || ""}
+  apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
+  className="h-full w-full"
+  isPreviewMode={isPreviewMode}
+  dummyData={[
+    { month: "2025-01", growth_intent: "balanced", profit_priority: "protect_growth" },
+    { month: "2025-02", growth_intent: "aggressive", profit_priority: "protect_growth" },
+    { month: "2025-03", growth_intent: "balanced", profit_priority: "high" },
+    { month: "2025-04", growth_intent: "aggressive", profit_priority: "high" },
+    { month: "2025-05", growth_intent: "balanced", profit_priority: "sacrifice_short_term" },
+    { month: "2025-06", growth_intent: "aggressive", profit_priority: "protect_growth" },
+  ]}
+/>
                   </div>
                 </InfoCard>
               </div>
             )}
           </div>
+          
         </div>
       )}
+      </DummyBlurWrapper>
 
       {activeTab === "targets_and_objectives" && (
+        <DummyBlurWrapper enabled={isPreviewMode} badgeText="Dummy Targets Preview">
         <div className="grid grid-cols-1 gap-4">
           <InfoCard
             title={
@@ -1530,10 +1766,11 @@ export default function ObjectivesPageClient({
             action={
               !isStrategicEditMode ? (
                 <button
-                  onClick={startStrategicEdit}
-                  className="h-9 w-9 text-gray-700"
-                  type="button"
-                >
+  onClick={startStrategicEdit}
+  className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+  type="button"
+  disabled={isPreviewMode}
+>
                   <FiEdit className="text-lg" />
                 </button>
               ) : (
@@ -1685,6 +1922,7 @@ export default function ObjectivesPageClient({
             </div>
           </InfoCard>
         </div>
+        </DummyBlurWrapper>
       )}
     </div>
   );

@@ -724,6 +724,12 @@ type ObjectiveMoMChartProps = {
     country: string;
     token?: string;
     apiBaseUrl?: string;
+    isPreviewMode?: boolean;
+    dummyData?: Array<{
+        month: string;
+        growth_intent: string;
+        profit_priority: string;
+    }>;
 };
 
 type ObjectiveApiItem = {
@@ -794,6 +800,8 @@ export default function ObjectiveMoMChart({
     country,
     token,
     apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "",
+    isPreviewMode = false,
+    dummyData = [],
 }: ObjectiveMoMChartProps) {
     const echartsInstanceRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -835,66 +843,97 @@ export default function ObjectiveMoMChart({
     }, []);
 
     useEffect(() => {
-        let ignore = false;
+    let ignore = false;
 
-        const loadChartData = async () => {
-            try {
-                setLoading(true);
-                setError("");
+    const loadChartData = async () => {
+        try {
+            setLoading(true);
+            setError("");
 
-                const authToken =
-                    token || (typeof window !== "undefined" ? localStorage.getItem("token") : null);
+            if (isPreviewMode) {
+                const previewSource =
+                    dummyData.length > 0
+                        ? dummyData
+                        : [
+                              { month: "2025-01", growth_intent: "balanced", profit_priority: "protect_growth" },
+                              { month: "2025-02", growth_intent: "aggressive", profit_priority: "protect_growth" },
+                              { month: "2025-03", growth_intent: "balanced", profit_priority: "high" },
+                              { month: "2025-04", growth_intent: "aggressive", profit_priority: "high" },
+                              { month: "2025-05", growth_intent: "balanced", profit_priority: "sacrifice_short_term" },
+                              { month: "2025-06", growth_intent: "aggressive", profit_priority: "protect_growth" },
+                              { month: "2025-07", growth_intent: "balanced", profit_priority: "protect_growth" },
+                              { month: "2025-08", growth_intent: "aggressive", profit_priority: "high" },
+                              { month: "2025-09", growth_intent: "balanced", profit_priority: "protect_growth" },
+                              { month: "2025-10", growth_intent: "aggressive", profit_priority: "high" },
+                              { month: "2025-11", growth_intent: "conservative", profit_priority: "protect_growth" },
+                              { month: "2025-12", growth_intent: "balanced", profit_priority: "high" },
+                          ];
 
-                if (!authToken) {
-                    throw new Error("Authorization token not found");
-                }
-
-                const params = new URLSearchParams({
-                    country,
-                    all: "true",
-                });
-
-                const res = await fetch(`${apiBaseUrl}/objective?${params.toString()}`, {
-                    method: "GET",
-                    headers: {
-                        Authorization: `Bearer ${authToken}`,
-                        "Content-Type": "application/json",
-                    },
-                });
-
-                const json: ObjectiveApiResponse = await res.json();
-
-                if (!res.ok) {
-                    throw new Error(json?.error || json?.message || "Failed to load chart data");
-                }
-
-                const objectives = Array.isArray(json?.objectives) ? json.objectives : [];
-
-                const sorted = [...objectives].sort((a, b) => a.month.localeCompare(b.month));
+                const previewObjectives: ObjectiveApiItem[] = previewSource.map((item, index) => ({
+                    id: index + 1,
+                    month: item.month,
+                    growth_intent: item.growth_intent,
+                    profit_priority: item.profit_priority,
+                    inventory_clearance_priority: false,
+                    business_context: "",
+                }));
 
                 if (!ignore) {
-                    setObjectiveData(sorted);
+                    setObjectiveData(previewObjectives);
                 }
-            } catch (err: any) {
-                if (!ignore) {
-                    setError(err?.message || "Failed to load chart data");
-                    setObjectiveData([]);
-                }
-            } finally {
-                if (!ignore) {
-                    setLoading(false);
-                }
+                return;
             }
-        };
 
-        if (country) {
-            loadChartData();
+            const authToken =
+                token || (typeof window !== "undefined" ? localStorage.getItem("token") : null);
+
+            if (!authToken) {
+                throw new Error("Authorization token not found");
+            }
+
+            const params = new URLSearchParams({
+                country,
+                all: "true",
+            });
+
+            const res = await fetch(`${apiBaseUrl}/objective?${params.toString()}`, {
+                method: "GET",
+                headers: {
+                    Authorization: `Bearer ${authToken}`,
+                    "Content-Type": "application/json",
+                },
+            });
+
+            const json: ObjectiveApiResponse = await res.json();
+
+            if (!res.ok) {
+                throw new Error(json?.error || json?.message || "Failed to load chart data");
+            }
+
+            const objectives = Array.isArray(json?.objectives) ? json.objectives : [];
+            const sorted = [...objectives].sort((a, b) => a.month.localeCompare(b.month));
+
+            if (!ignore) {
+                setObjectiveData(sorted);
+            }
+        } catch (err: any) {
+            if (!ignore) {
+                setError(err?.message || "Failed to load chart data");
+                setObjectiveData([]);
+            }
+        } finally {
+            if (!ignore) {
+                setLoading(false);
+            }
         }
+    };
 
-        return () => {
-            ignore = true;
-        };
-    }, [apiBaseUrl, country, token]);
+    loadChartData();
+
+    return () => {
+        ignore = true;
+    };
+}, [apiBaseUrl, country, token, isPreviewMode, dummyData]);
 
     const xAxisData = useMemo(
         () =>

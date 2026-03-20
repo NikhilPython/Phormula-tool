@@ -119,7 +119,7 @@ if (
             <h1 className="text-[#414042] text-xl sm:text-xl lg:text-4xl xl:text-5xl min-[1700px]:text-6xl font-medium leading-tight text-right xl:pr-12">
              Control Expenses with
               <br className="" />
-              <span className="text-[#F8EDCE] px-1">Auto Marketplace Recons</span>
+              <span className="text-[#F8EDCE] text-xl sm:text-xl lg:text-4xl xl:text-5xl min-[1700px]:text-6xl font-medium leading-tight text-right ">Auto Marketplace Recons</span>
             </h1>
          
 

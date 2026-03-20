@@ -2876,37 +2876,72 @@ const isMonthYearNA =
     ]);
 
 
-   function DummyPreviewWrapper({
-    enabled,
-    children,
-    className = "",
-    badgeText = "Dummy Preview",
-}: {
-    enabled: boolean;
-    children: React.ReactNode;
-    className?: string;
-    badgeText?: string;
-}) {
-    return (
-        <div className={`relative ${className}`}>
-            <div
-                className={
-                    enabled
-                        ? "opacity-30 pointer-events-none transition-opacity duration-300"
-                        : "opacity-100 transition-opacity duration-300"
-                }
-            >
-                {children}
-            </div>
+   
 
-            {enabled && (
-                <div className="absolute top-2 right-2 z-10 rounded-md bg-black/70 px-2 py-1 text-[10px] sm:text-xs text-white shadow">
-                    {badgeText}
-                </div>
-            )}
-        </div>
-    );
-}
+const PreviewLockedSection = ({
+  enabled,
+  children,
+  title,
+  description,
+  buttonText,
+  onAction,
+}: {
+  enabled: boolean;
+  children: React.ReactNode;
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onAction?: () => void;
+}) => {
+  return (
+    <div className="relative w-full">
+      <div
+        className={
+          enabled
+            ? "pointer-events-none select-none opacity-45 transition-all duration-300"
+            : "opacity-100 transition-all duration-300"
+        }
+      >
+        {children}
+      </div>
+
+      {enabled && (
+        <>
+          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                <div className="mb-4 text-3xl">🔒</div>
+
+                <h3 className="text-lg font-semibold text-[#414042]">
+                  {title}
+                </h3>
+
+                <p className="mt-2 text-sm text-gray-600 leading-6">
+                  {description}
+                </p>
+
+                <button
+                  onClick={onAction}
+                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                >
+                  {buttonText}
+                </button>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Demo data is shown for preview only.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+
 
     const anyLoading = loading || shopifyLoading;
 
@@ -3184,6 +3219,8 @@ const isMonthYearNA =
             .filter(Boolean)
             .join(", ");
     };
+
+    
 
 
     const monthlySkuwiseRowsForTable = useMemo<MonthlySkuwiseTableRow[]>(() => {
@@ -4117,6 +4154,11 @@ const isMonthYearNA =
         inventory: "current-inventory",
     };
 
+    const handleConnectAmazonPreview = () => {
+  const connectCountry = countryName === "global" ? "uk" : countryName;
+  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+};
+
     const handleHashNavigation = useCallback((rawHash?: string) => {
         if (typeof window === "undefined") return;
 
@@ -4130,73 +4172,445 @@ const isMonthYearNA =
         setActiveTab(targetTab);
     }, []);
 
-    useEffect(() => {
-        if (typeof window === "undefined") return;
+   useEffect(() => {
+    if (typeof window === "undefined") return;
 
-        const onHashChange = () => {
-            handleHashNavigation(window.location.hash);
-        };
+    // ✅ ADD THIS LINE
+    if (shouldShowDummyUi) return;
 
-        const onCustomHashNavigate = (event: Event) => {
-            const customEvent = event as CustomEvent<{ hash?: string }>;
-            if (!customEvent.detail?.hash) return;
-            handleHashNavigation(`#${customEvent.detail.hash}`);
-        };
-
+    const onHashChange = () => {
         handleHashNavigation(window.location.hash);
+    };
 
-        window.addEventListener("hashchange", onHashChange);
-        window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+    const onCustomHashNavigate = (event: Event) => {
+        const customEvent = event as CustomEvent<{ hash?: string }>;
+        if (!customEvent.detail?.hash) return;
+        handleHashNavigation(`#${customEvent.detail.hash}`);
+    };
 
-        return () => {
-            window.removeEventListener("hashchange", onHashChange);
-            window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
-        };
-    }, [handleHashNavigation]);
+    handleHashNavigation(window.location.hash);
 
-    useEffect(() => {
-        if (!pendingHash) return;
+    window.addEventListener("hashchange", onHashChange);
+    window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
 
-        const timer = setTimeout(() => {
-            const el = document.getElementById(pendingHash);
-            if (el) {
-                el.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                });
-            }
-            setPendingHash("");
-        }, 250);
+    return () => {
+        window.removeEventListener("hashchange", onHashChange);
+        window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+    };
+}, [handleHashNavigation, shouldShowDummyUi]);
 
-        return () => clearTimeout(timer);
-    }, [activeTab, pendingHash]);
+ useEffect(() => {
+    if (!pendingHash) return;
 
-    const dummyStatData = {
-    units: { current: 1240, previous: 980, deltaPct: 26.53 },
-    grossSales: { current: 18500, previous: 14900, deltaPct: 24.16 },
-    netSales: { current: 16200, previous: 13100, deltaPct: 23.66 },
-    asp: { current: 13.06, previous: 13.37, deltaPct: -2.32 },
-    costOfAds: { current: 2100, previous: 1760, deltaPct: 19.32 },
-    tacos: { current: 12.96, previous: 13.43, deltaPct: -0.47 },
-    cm2Profit: { current: 3250, previous: 2480, deltaPct: 31.05 },
-    cm2ProfitPct: { current: 20.06, previous: 18.93, deltaPct: 1.13 },
+    // ✅ ADD THIS LINE
+    if (shouldShowDummyUi) return;
+
+    const timer = setTimeout(() => {
+        const el = document.getElementById(pendingHash);
+        if (el) {
+            el.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        }
+        setPendingHash("");
+    }, 250);
+
+    return () => clearTimeout(timer);
+}, [activeTab, pendingHash, shouldShowDummyUi]);
+
+ const dummyStatData = {
+  units: { current: 0, previous: 0, deltaPct: 0 },
+  grossSales: { current: 0, previous: 0, deltaPct: 0 },
+  netSales: { current: 0, previous: 0, deltaPct: 0 },
+  asp: { current: 0, previous: 0, deltaPct: 0 },
+  costOfAds: { current: 0, previous: 0, deltaPct: 0 },
+  tacos: { current: 0, previous: 0, deltaPct: 0 },
+  cm2Profit: { current: 0, previous: 0, deltaPct: 0 },
+  cm2ProfitPct: { current: 0, previous: 0, deltaPct: 0 },
+};
+
+const dummyLiveBusinessClientData: ApiResponse = {
+  periods: {
+    previous: {
+      label: "Feb MTD",
+      start_date: "2026-02-01",
+      end_date: "2026-02-05",
+    },
+    current_mtd: {
+      label: "Mar MTD",
+      start_date: "2026-03-01",
+      end_date: "2026-03-05",
+    },
+  },
+
+  overall_summary: {
+    summary_text:
+      "Business delivered healthy month-to-date growth driven by stronger unit movement, better sales conversion, and stable contribution margins across core SKUs.",
+    metric_bullets: [
+      "Net sales increased by 23.66% versus the comparable previous period.",
+      "Units increased by 26.53%, indicating stronger volume movement.",
+      "CM1 profitability improved on key SKUs, helping overall margin quality.",
+      "Advertising remained under control, though a few SKUs still need efficiency improvement.",
+    ],
+  },
+
+  overall_actions: [
+    "Increase focus on top-performing SKUs with strong unit velocity and stable profitability.",
+    "Reduce inefficient ad spend on low-contribution SKUs.",
+    "Monitor low-stock products to avoid losing momentum during the current period.",
+  ],
+
+  portfolio_recommendation:
+    "Keep scaling winning SKUs while protecting margin on mid-tier products and correcting slow-moving inventory pockets.",
+
+  objective_context: {
+    growth_intent: "aggressive",
+    inventory_clearance_priority: true,
+    profit_priority: "protect_growth",
+  },
+
+  ads_recommendation:
+    "Shift budget toward high-conversion SKUs and reduce exposure on products with weak sales-to-spend efficiency.",
+
+  inventory_summary: {
+    alert_bullets: [
+      "Dummy Product 2 is approaching low stock threshold.",
+      "Dummy Product 3 is in high alert and may require urgent replenishment.",
+    ],
+    summary_text:
+      "Inventory health is mixed. A few hero SKUs are healthy, but 2 products need replenishment attention to avoid sales loss.",
+  },
+
+  recommended_actions_mtd: {
+    "1": `Dummy Product 1
+Units: 152 (+18.40%)
+ASP: £12.80 (+3.20%)
+Net sales: £1,945.00 (+22.10%)
+CM1 profit per unit: £3.40 (+9.30%)
+CM1 profit: £516.80 (+28.40%)
+
+Product Journey:
+Dummy Product 1 has maintained steady momentum and gained share through stronger conversion and stable pricing.
+
+Recommendation:
+Continue scaling this SKU with controlled inventory support and sustained ad investment.
+
+Advertising:
+Increase spend moderately on top-performing keywords and branded placements.
+
+Inventory:
+Maintain healthy stock cover and avoid under-ordering during high velocity weeks.`,
+
+    "2": `Dummy Product 2
+Units: 121 (+11.20%)
+ASP: £14.10 (-1.50%)
+Net sales: £1,706.00 (+8.60%)
+CM1 profit per unit: £2.95 (+6.20%)
+CM1 profit: £356.95 (+15.80%)
+
+Product Journey:
+Dummy Product 2 is growing, though ASP softness indicates price pressure.
+
+Recommendation:
+Protect profitability by limiting discount dependency and improving listing conversion.
+
+Advertising:
+Reduce non-performing spend and prioritize campaigns with stronger ROAS.
+
+Inventory:
+Replenish conservatively and align purchase planning with recent sell-through.`,
+
+    "3": `Other SKUs
+Units: 340 (+5.20%)
+ASP: £11.90 (-2.10%)
+Net sales: £4,046.00 (+3.80%)
+CM1 profit per unit: £2.10 (-1.40%)
+CM1 profit: £714.00 (+1.90%)
+
+Product Journey:
+The remaining SKU portfolio is contributing moderate growth but with weaker profitability consistency.
+
+Recommendation:
+Clean up weak SKUs, focus on margin-positive products, and improve assortment efficiency.
+
+Advertising:
+Consolidate spend toward better converting products and pause weak ad groups.
+
+Inventory:
+Use tighter replenishment rules on slow-moving items to avoid inventory drag.`,
+  },
+
+  remaining_skus_block: `Other SKUs
+Units: 340 (+5.20%)
+ASP: £11.90 (-2.10%)
+Net sales: £4,046.00 (+3.80%)
+CM1 profit per unit: £2.10 (-1.40%)
+CM1 profit: £714.00 (+1.90%)
+
+Product Journey:
+The remaining SKU portfolio is contributing moderate growth but with weaker profitability consistency.
+
+Recommendation:
+Clean up weak SKUs, focus on margin-positive products, and improve assortment efficiency.
+
+Advertising:
+Consolidate spend toward better converting products and pause weak ad groups.
+
+Inventory:
+Use tighter replenishment rules on slow-moving items to avoid inventory drag.`,
+
+  categorized_growth: {
+    top_80_skus: [
+      {
+        product_name: "Dummy Product 1",
+        sku: "DUMMY-SKU-001",
+        quantity_month1: 128,
+        quantity_month2: 152,
+        asp_month1: 12.4,
+        asp_month2: 12.8,
+        product_sales_month1: 1780,
+        product_sales_month2: 2125,
+        net_sales_month1: 1593,
+        net_sales_month2: 1945,
+        sales_mix_month1: 34.2,
+        sales_mix_month2: 36.9,
+        unit_wise_profitability_month1: 3.11,
+        unit_wise_profitability_month2: 3.4,
+        profit_month1: 398,
+        profit_month2: 517,
+        profit_percentage_month1: 24.98,
+        profit_percentage_month2: 26.58,
+        "Sales Mix (Month2)": 36.9,
+        "Unit Growth": { category: "growth", value: 18.75 },
+        "ASP Growth": { category: "growth", value: 3.23 },
+        "Sales Growth": { category: "growth", value: 22.10 },
+        "Net Sales Growth": { category: "growth", value: 22.10 },
+        "Sales Mix Change": { category: "growth", value: 2.70 },
+        "Profit Per Unit": { category: "growth", value: 9.32 },
+        "CM1 Profit Impact": { category: "growth", value: 29.90 },
+      },
+      {
+        product_name: "Dummy Product 2",
+        sku: "DUMMY-SKU-002",
+        quantity_month1: 109,
+        quantity_month2: 121,
+        asp_month1: 14.3,
+        asp_month2: 14.1,
+        product_sales_month1: 1640,
+        product_sales_month2: 1825,
+        net_sales_month1: 1571,
+        net_sales_month2: 1706,
+        sales_mix_month1: 28.6,
+        sales_mix_month2: 30.4,
+        unit_wise_profitability_month1: 2.78,
+        unit_wise_profitability_month2: 2.95,
+        profit_month1: 308,
+        profit_month2: 357,
+        profit_percentage_month1: 19.61,
+        profit_percentage_month2: 20.93,
+        "Sales Mix (Month2)": 30.4,
+        "Unit Growth": { category: "growth", value: 11.01 },
+        "ASP Growth": { category: "growth", value: -1.40 },
+        "Sales Growth": { category: "growth", value: 8.59 },
+        "Net Sales Growth": { category: "growth", value: 8.59 },
+        "Sales Mix Change": { category: "growth", value: 1.80 },
+        "Profit Per Unit": { category: "growth", value: 6.12 },
+        "CM1 Profit Impact": { category: "growth", value: 15.91 },
+      },
+    ],
+
+    new_or_reviving_skus: [
+      {
+        product_name: "Dummy Product 3",
+        sku: "DUMMY-SKU-003",
+        quantity_month1: 0,
+        quantity_month2: 76,
+        asp_month1: 0,
+        asp_month2: 13.6,
+        product_sales_month1: 0,
+        product_sales_month2: 1088,
+        net_sales_month1: 0,
+        net_sales_month2: 1034,
+        sales_mix_month1: 0,
+        sales_mix_month2: 18.3,
+        unit_wise_profitability_month1: 0,
+        unit_wise_profitability_month2: 2.42,
+        profit_month1: 0,
+        profit_month2: 184,
+        profit_percentage_month1: 0,
+        profit_percentage_month2: 17.79,
+        "Sales Mix (Month2)": 18.3,
+      },
+    ],
+
+    other_skus: [
+      {
+        product_name: "Dummy Product 4",
+        sku: "DUMMY-SKU-004",
+        quantity_month1: 82,
+        quantity_month2: 88,
+        asp_month1: 11.8,
+        asp_month2: 11.5,
+        product_sales_month1: 1040,
+        product_sales_month2: 1086,
+        net_sales_month1: 965,
+        net_sales_month2: 1012,
+        sales_mix_month1: 17.2,
+        sales_mix_month2: 14.4,
+        unit_wise_profitability_month1: 1.96,
+        unit_wise_profitability_month2: 2.05,
+        profit_month1: 161,
+        profit_month2: 180,
+        profit_percentage_month1: 16.68,
+        profit_percentage_month2: 17.79,
+        "Sales Mix (Month2)": 14.4,
+        "Unit Growth": { category: "growth", value: 7.32 },
+        "ASP Growth": { category: "growth", value: -2.54 },
+        "Sales Growth": { category: "growth", value: 4.87 },
+        "Net Sales Growth": { category: "growth", value: 4.87 },
+        "Sales Mix Change": { category: "growth", value: -2.80 },
+        "Profit Per Unit": { category: "growth", value: 4.59 },
+        "CM1 Profit Impact": { category: "growth", value: 11.80 },
+      },
+      {
+        product_name: "Dummy Product 5",
+        sku: "DUMMY-SKU-005",
+        quantity_month1: 65,
+        quantity_month2: 59,
+        asp_month1: 10.9,
+        asp_month2: 10.6,
+        product_sales_month1: 760,
+        product_sales_month2: 702,
+        net_sales_month1: 715,
+        net_sales_month2: 664,
+        sales_mix_month1: 14.0,
+        sales_mix_month2: 12.0,
+        unit_wise_profitability_month1: 1.88,
+        unit_wise_profitability_month2: 1.61,
+        profit_month1: 122,
+        profit_month2: 95,
+        profit_percentage_month1: 17.06,
+        profit_percentage_month2: 14.31,
+        "Sales Mix (Month2)": 12.0,
+        "Unit Growth": { category: "growth", value: -9.23 },
+        "ASP Growth": { category: "growth", value: -2.75 },
+        "Sales Growth": { category: "growth", value: -7.13 },
+        "Net Sales Growth": { category: "growth", value: -7.13 },
+        "Sales Mix Change": { category: "growth", value: -2.00 },
+        "Profit Per Unit": { category: "growth", value: -14.36 },
+        "CM1 Profit Impact": { category: "growth", value: -22.13 },
+      },
+    ],
+
+    top_80_total: {
+      product_name: "Total",
+      "Sales Mix (Month2)": 67.3,
+      "Unit Growth": { category: "growth", value: 15.1 },
+      "ASP Growth": { category: "growth", value: 1.2 },
+      "Sales Growth": { category: "growth", value: 16.7 },
+      "Net Sales Growth": { category: "growth", value: 16.7 },
+      "Sales Mix Change": { category: "growth", value: 4.5 },
+      "Profit Per Unit": { category: "growth", value: 7.8 },
+      "CM1 Profit Impact": { category: "growth", value: 23.6 },
+    },
+
+    new_or_reviving_total: {
+      product_name: "Total",
+      "Sales Mix (Month2)": 18.3,
+    },
+
+    other_total: {
+      product_name: "Total",
+      "Sales Mix (Month2)": 26.4,
+      "Unit Growth": { category: "growth", value: -1.3 },
+      "ASP Growth": { category: "growth", value: -2.6 },
+      "Sales Growth": { category: "growth", value: -1.9 },
+      "Net Sales Growth": { category: "growth", value: -1.9 },
+      "Sales Mix Change": { category: "growth", value: -4.8 },
+      "Profit Per Unit": { category: "growth", value: -6.4 },
+      "CM1 Profit Impact": { category: "growth", value: -9.2 },
+    },
+
+    all_skus_total: {
+      product_name: "Total",
+      "Sales Mix (Month2)": 100,
+      "Unit Growth": { category: "growth", value: 12.8 },
+      "ASP Growth": { category: "growth", value: 0.9 },
+      "Sales Growth": { category: "growth", value: 13.9 },
+      "Net Sales Growth": { category: "growth", value: 13.9 },
+      "Sales Mix Change": { category: "growth", value: 0 },
+      "Profit Per Unit": { category: "growth", value: 5.6 },
+      "CM1 Profit Impact": { category: "growth", value: 19.4 },
+    },
+  },
+
+  ai_insights: {
+    "DUMMY-SKU-001": {
+      product_name: "Dummy Product 1",
+      sku: "DUMMY-SKU-001",
+      insight: `Product Journey:
+Dummy Product 1 has shown strong and stable growth with better unit movement and improved contribution.
+
+Recommendation:
+Scale this SKU further with controlled aggressiveness and maintain inventory readiness.
+
+Advertising:
+Increase bids on best-performing search terms and keep branded traffic protected.
+
+Inventory:
+Maintain healthy stock cover and monitor weekly velocity.`,
+    },
+
+    "DUMMY-SKU-002": {
+      product_name: "Dummy Product 2",
+      sku: "DUMMY-SKU-002",
+      insight: `Product Journey:
+Dummy Product 2 continues to grow, though ASP pressure suggests pricing sensitivity in the current period.
+
+Recommendation:
+Improve listing efficiency and protect margin instead of chasing aggressive discount-led growth.
+
+Advertising:
+Reduce weak campaign spend and reallocate to higher-conversion traffic.
+
+Inventory:
+Plan replenishment conservatively with close watch on stock aging.`,
+    },
+
+    "DUMMY-SKU-003": {
+      product_name: "Dummy Product 3",
+      sku: "DUMMY-SKU-003",
+      insight: `Product Journey:
+Dummy Product 3 is a new or reviving SKU and has started contributing positively to sales and profit.
+
+Recommendation:
+Support early momentum but validate consistency before scaling too aggressively.
+
+Advertising:
+Test campaigns in a measured way and double down only where conversion quality is stable.
+
+Inventory:
+Keep enough stock for validation but avoid over-committing too early.`,
+    },
+  },
 };
 
 const dummyBiDailySeriesHome: DailySeries = {
-    previous: [
-        { date: "2026-03-01", net_sales: 420, gross_sales: 470, quantity: 30, profit: 80, cm2_profit: 62 },
-        { date: "2026-03-02", net_sales: 510, gross_sales: 560, quantity: 37, profit: 94, cm2_profit: 71 },
-        { date: "2026-03-03", net_sales: 480, gross_sales: 535, quantity: 34, profit: 88, cm2_profit: 66 },
-        { date: "2026-03-04", net_sales: 560, gross_sales: 620, quantity: 40, profit: 102, cm2_profit: 78 },
-        { date: "2026-03-05", net_sales: 590, gross_sales: 650, quantity: 42, profit: 111, cm2_profit: 84 },
-    ],
-    current_mtd: [
-        { date: "2026-03-01", net_sales: 530, gross_sales: 590, quantity: 38, profit: 102, cm2_profit: 79 },
-        { date: "2026-03-02", net_sales: 610, gross_sales: 670, quantity: 44, profit: 118, cm2_profit: 91 },
-        { date: "2026-03-03", net_sales: 590, gross_sales: 648, quantity: 41, profit: 112, cm2_profit: 87 },
-        { date: "2026-03-04", net_sales: 680, gross_sales: 742, quantity: 49, profit: 130, cm2_profit: 101 },
-        { date: "2026-03-05", net_sales: 710, gross_sales: 775, quantity: 52, profit: 138, cm2_profit: 108 },
-    ],
+  previous: [
+    { date: "2026-03-01", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+    { date: "2026-03-02", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+    { date: "2026-03-03", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+    { date: "2026-03-04", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+    { date: "2026-03-05", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+  ],
+  current_mtd: [
+    { date: "2026-03-01", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+    { date: "2026-03-02", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+    { date: "2026-03-03", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+    { date: "2026-03-04", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+    { date: "2026-03-05", net_sales: 0, gross_sales: 0, quantity: 0, profit: 0, cm2_profit: 0 },
+  ],
 };
 
 const dummyBiPeriods = {
@@ -4213,106 +4627,127 @@ const dummyBiPeriods = {
 };
 
 const dummyMonthlySkuwiseRowsForTable: MonthlySkuwiseTableRow[] = [
-    {
-        sno: 1,
-        sku: "SKU-001",
-        product_name: "Dummy Product 1",
-        quantity: 120,
-        asp: 12.5,
-        net_sales: 1500,
-        cogs: 620,
-        fba_fees: 110,
-        selling_fees: 95,
-        tax: 30,
-        credits: 15,
-        tax_and_credits: 45,
-        cm1_profit_per: 28,
-        cm1_profit_per_unit: 3.5,
-        cm2_profit_per: 21,
-        cm2_profit_per_unit: 2.6,
-        ads_spend: 180,
-        cm2_profit: 315,
-        profit: 420,
-    },
-    {
-        sno: 2,
-        sku: "SKU-002",
-        product_name: "Dummy Product 2",
-        quantity: 98,
-        asp: 14.2,
-        net_sales: 1391.6,
-        cogs: 570,
-        fba_fees: 105,
-        selling_fees: 88,
-        tax: 22,
-        credits: 9,
-        tax_and_credits: 31,
-        cm1_profit_per: 26,
-        cm1_profit_per_unit: 3.1,
-        cm2_profit_per: 19,
-        cm2_profit_per_unit: 2.2,
-        ads_spend: 160,
-        cm2_profit: 264,
-        profit: 362,
-    },
-    {
-        sno: undefined,
-        sku: "GRAND_TOTAL",
-        product_name: "Total",
-        quantity: 218,
-        asp: 13.26,
-        net_sales: 2891.6,
-        cogs: 1190,
-        fba_fees: 215,
-        selling_fees: 183,
-        tax: 52,
-        credits: 24,
-        tax_and_credits: 76,
-        cm1_profit_per: 27,
-        cm1_profit_per_unit: 3.3,
-        cm2_profit_per: 20,
-        cm2_profit_per_unit: 2.4,
-        ads_spend: 340,
-        cm2_profit: 579,
-        profit: 782,
-        isTotal: true,
-    },
+  {
+    sno: 1,
+    sku: "SKU-001",
+    product_name: "Dummy Product 1",
+    quantity: 0,
+    asp: 0,
+    net_sales: 0,
+    cogs: 0,
+    fba_fees: 0,
+    selling_fees: 0,
+    tax: 0,
+    credits: 0,
+    tax_and_credits: 0,
+    cm1_profit_per: 0,
+    cm1_profit_per_unit: 0,
+    cm2_profit_per: 0,
+    cm2_profit_per_unit: 0,
+    ads_spend: 0,
+    cm2_profit: 0,
+    profit: 0,
+  },
+  {
+    sno: 2,
+    sku: "SKU-002",
+    product_name: "Dummy Product 2",
+    quantity: 0,
+    asp: 0,
+    net_sales: 0,
+    cogs: 0,
+    fba_fees: 0,
+    selling_fees: 0,
+    tax: 0,
+    credits: 0,
+    tax_and_credits: 0,
+    cm1_profit_per: 0,
+    cm1_profit_per_unit: 0,
+    cm2_profit_per: 0,
+    cm2_profit_per_unit: 0,
+    ads_spend: 0,
+    cm2_profit: 0,
+    profit: 0,
+  },
+  {
+    sno: undefined,
+    sku: "GRAND_TOTAL",
+    product_name: "Total",
+    quantity: 0,
+    asp: 0,
+    net_sales: 0,
+    cogs: 0,
+    fba_fees: 0,
+    selling_fees: 0,
+    tax: 0,
+    credits: 0,
+    tax_and_credits: 0,
+    cm1_profit_per: 0,
+    cm1_profit_per_unit: 0,
+    cm2_profit_per: 0,
+    cm2_profit_per_unit: 0,
+    ads_spend: 0,
+    cm2_profit: 0,
+    profit: 0,
+    isTotal: true,
+  },
+];
+
+const dummySalesTargetStats = {
+  todayHome: 0,
+  mtdHome: 0,
+  targetHome: 0,
+  lastMonthTotalHome: 0,
+  lastMonthToDateHome: 0,
+  salesTrendPct: 0,
+  targetTrendPct: 0,
+  reimbursement: {
+    current: 0,
+    previous: 0,
+  },
+  periodCompletedPct: 0,
+};
+
+const dummyTargetData = [
+  { label: "Amazon US", target: 0, achieved: 0 },
+  { label: "Amazon UK", target: 0, achieved: 0 },
+  { label: "Shopify", target: 0, achieved: 0 },
 ];
 
 
 const dummyCm1ProfitPieData: Cm1PieSlice[] = [
-    { name: "Product A", value: 1200, prevValue: 980, pct: 36.92, deltaPct: 22.45 },
-    { name: "Product B", value: 860, prevValue: 720, pct: 26.46, deltaPct: 19.44 },
-    { name: "Product C", value: 640, prevValue: 590, pct: 19.69, deltaPct: 8.47 },
-    { name: "Product D", value: 320, prevValue: 280, pct: 9.85, deltaPct: 14.29 },
-    { name: "Others", value: 230, prevValue: 190, pct: 7.08, deltaPct: 21.05 },
+  { name: "Product A", value: 0, prevValue: 0, pct: 0, deltaPct: 0 },
+  { name: "Product B", value: 0, prevValue: 0, pct: 0, deltaPct: 0 },
+  { name: "Product C", value: 0, prevValue: 0, pct: 0, deltaPct: 0 },
+  { name: "Product D", value: 0, prevValue: 0, pct: 0, deltaPct: 0 },
+  { name: "Others", value: 0, prevValue: 0, pct: 0, deltaPct: 0 },
 ];
 
 const dummyInventoryRows: InventoryRow[] = [
-    {
-        "Product Name": "Dummy Product 1",
-        "SKU": "DUMMY-SKU-001",
-        "Current Inventory": 540,
-        "Current Month Units Sold": 120,
-        "Days in Hand": 44,
-        "Status": "Healthy",
-    } as InventoryRow,
-    {
-        "Product Name": "Dummy Product 2",
-        "SKU": "DUMMY-SKU-002",
-        "Current Inventory": 210,
-        "Current Month Units Sold": 98,
-        "Days in Hand": 19,
-        "Status": "Low Stock",
-    } as InventoryRow,
-    {
-        "Product Name": "Dummy Product 3",
-        "SKU": "DUMMY-SKU-003",
-        "Current Inventory": 95,
-        "Current Month Units Sold": 76,
-        "Days in Hand": 10,
-        "Status": "High Alert",
-    } as InventoryRow,
+  {
+    "Product Name": "Dummy Product 1",
+    "SKU": "DUMMY-SKU-001",
+    "Current Inventory": 0,
+    "Current Month Units Sold": 0,
+    "Days in Hand": 0,
+    "Status": "Healthy",
+  } as InventoryRow,
+  {
+    "Product Name": "Dummy Product 2",
+    "SKU": "DUMMY-SKU-002",
+    "Current Inventory": 0,
+    "Current Month Units Sold": 0,
+    "Days in Hand": 0,
+    "Status": "Low Stock",
+  } as InventoryRow,
+  {
+    "Product Name": "Dummy Product 3",
+    "SKU": "DUMMY-SKU-003",
+    "Current Inventory": 0,
+    "Current Month Units Sold": 0,
+    "Days in Hand": 0,
+    "Status": "High Alert",
+  } as InventoryRow,
 ];
 
 const dummyInventoryAlerts: InventoryAlertRecord = {
@@ -4322,21 +4757,24 @@ const dummyInventoryAlerts: InventoryAlertRecord = {
 
 
 
-    const syncTabToHash = useCallback((tab: TopTab) => {
-        if (typeof window === "undefined") return;
+  const syncTabToHash = useCallback((tab: TopTab) => {
+    if (typeof window === "undefined") return;
 
-        const hash = TAB_TO_HASH[tab];
-        if (!hash) return;
+    // ✅ ADD THIS LINE
+    if (shouldShowDummyUi) return;
 
-        const nextUrl = `${window.location.pathname}#${hash}`;
-        window.history.pushState(null, "", nextUrl);
+    const hash = TAB_TO_HASH[tab];
+    if (!hash) return;
 
-        window.dispatchEvent(
-            new CustomEvent("page-hash-navigate", {
-                detail: { hash },
-            })
-        );
-    }, []);
+    const nextUrl = `${window.location.pathname}#${hash}`;
+    window.history.pushState(null, "", nextUrl);
+
+    window.dispatchEvent(
+        new CustomEvent("page-hash-navigate", {
+            detail: { hash },
+        })
+    );
+}, [shouldShowDummyUi]); // ✅ dependency add karo
 
 const stickyKpiItems = [
     {
@@ -4604,6 +5042,48 @@ const finalInventoryAlerts = isUsingDummyData
     ? dummyInventoryAlerts
     : inventoryAlerts;
 
+    const finalTargetData = shouldShowDummyUi ? dummyTargetData : targetData;
+
+const finalTargetsTodayHome = shouldShowDummyUi
+  ? dummySalesTargetStats.todayHome
+  : targets_todayHome;
+
+const finalTargetsMtdHome = shouldShowDummyUi
+  ? dummySalesTargetStats.mtdHome
+  : targets_mtdHome;
+
+const finalStatsTargetHome = shouldShowDummyUi
+  ? dummySalesTargetStats.targetHome
+  : stats_targetHome;
+
+const finalTargetsLastMonthTotalHome = shouldShowDummyUi
+  ? dummySalesTargetStats.lastMonthTotalHome
+  : targets_lastMonthTotalHome;
+
+const finalTargetsLastMonthToDateHome = shouldShowDummyUi
+  ? dummySalesTargetStats.lastMonthToDateHome
+  : targets_lastMonthToDateHome;
+
+const finalStatsSalesTrendPct = shouldShowDummyUi
+  ? dummySalesTargetStats.salesTrendPct
+  : stats_salesTrendPct;
+
+const finalStatsTargetTrendPct = shouldShowDummyUi
+  ? dummySalesTargetStats.targetTrendPct
+  : stats_targetTrendPct;
+
+const finalTargetsReimbursement = shouldShowDummyUi
+  ? dummySalesTargetStats.reimbursement
+  : targets_reimbursement;
+
+const finalRangeCompletedPct = shouldShowDummyUi
+  ? dummySalesTargetStats.periodCompletedPct
+  : rangeCompletedPct;
+
+  const finalLiveBiPayload = shouldShowDummyUi
+  ? dummyLiveBusinessClientData
+  : liveBiPayload;
+
 
     return (
         <div className="relative w-full">
@@ -4685,10 +5165,16 @@ const finalInventoryAlerts = isUsingDummyData
                 />
             </div>
 
+<PreviewLockedSection
+  enabled={isUsingDummyData}
+  title="Preview mode"
+  description="You're viewing demo business insights data. Connect your Amazon account to unlock your real SKU analysis, growth trends, AI insights, and exports."
+  buttonText="Connect Amazon"
+  onAction={handleConnectAmazonPreview}
+>
+
             {["summary", "productwise", "inventory"].includes(activeTab) && (
-    <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy KPI Preview">
         <DashboardStickyKpis items={stickyKpiItems} />
-    </DummyPreviewWrapper>
 )}
 
             {/* Top 5 alerts */}
@@ -4762,7 +5248,7 @@ const finalInventoryAlerts = isUsingDummyData
                                             </div>
                                         )}
                                     </div>
-<DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy KPI Preview">
+
                                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-3 auto-rows-fr">
 
                                        <AmazonStatCard
@@ -5051,13 +5537,14 @@ const finalInventoryAlerts = isUsingDummyData
 
 
                                     </div>
-                                    </DummyPreviewWrapper>
+                                   
                                 </div>
                             </div>
                         )}
 
                         {/* AMAZON SECTION */}
                         {hasAmazonCard && (
+                           
                             <div className="flex flex-col lg:flex-1 gap-4 2xl:gap-4">
                                 {/* Amazon KPI Box */}
                                 <div className="w-full rounded-xl border bg-white p-3 2xl:p-5 shadow-sm">
@@ -5087,7 +5574,7 @@ const finalInventoryAlerts = isUsingDummyData
                                             </div>
                                         )}
                                     </div>
-<DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy KPI Preview">
+
                                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
 
                                        <AmazonStatCard
@@ -5382,7 +5869,7 @@ const finalInventoryAlerts = isUsingDummyData
     className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
 />
                                     </div>
-                                    </DummyPreviewWrapper>
+                                    
                                 </div>
 
 
@@ -5414,7 +5901,7 @@ const finalInventoryAlerts = isUsingDummyData
 
                                             {/* ✅ CASE 3: 200 + data */}
                                            {(shouldShowDummyUi || biStatus === "ready") && finalBiDailySeriesHome && (
-    <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Graph Preview">
+   
         <LiveBiLineGraph
             dailySeries={finalBiDailySeriesHome}
             periods={finalBiPeriods}
@@ -5424,7 +5911,7 @@ const finalInventoryAlerts = isUsingDummyData
             selectedEndDay={selectedEndDay}
             currencySymbol={currencySymbol}
         />
-    </DummyPreviewWrapper>
+   
 )}
 
                                         </div>
@@ -5433,6 +5920,7 @@ const finalInventoryAlerts = isUsingDummyData
 
 
                             </div>
+                            
                         )}
 
                         {/* Shopify Block */}
@@ -5548,66 +6036,65 @@ const finalInventoryAlerts = isUsingDummyData
 
         {/* Top card */}
         <div className="w-full self-start">
-            <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Target Preview">
+            
                 <SalesTargetStatsCard
-                    regions={regions}
-                    value={targetRegion}
-                    onChange={setTargetRegion}
-                    hideTabs={isCountryMode}
-                    homeCurrency={displayCurrency}
-                    formatHomeK={formatDisplayK}
-                    todayHome={targets_todayHome}
-                    mtdHome={targets_mtdHome}
-                    targetHome={stats_targetHome}
-                    lastMonthTotalHome={targets_lastMonthTotalHome}
-                    salesTrendPct={stats_salesTrendPct}
-                    targetTrendPct={stats_targetTrendPct}
-                    currentReimbursement={targets_reimbursement.current}
-                    previousReimbursement={targets_reimbursement.previous}
-                    biAlignedTotals={biAlignedTotalsHome}
-                    biEnabled={biCardsReady}
-                />
-            </DummyPreviewWrapper>
+  regions={regions}
+  value={targetRegion}
+  onChange={setTargetRegion}
+  hideTabs={isCountryMode}
+  homeCurrency={displayCurrency}
+  formatHomeK={formatDisplayK}
+  todayHome={finalTargetsTodayHome}
+  mtdHome={finalTargetsMtdHome}
+  targetHome={finalStatsTargetHome}
+  lastMonthTotalHome={finalTargetsLastMonthTotalHome}
+  salesTrendPct={finalStatsSalesTrendPct}
+  targetTrendPct={finalStatsTargetTrendPct}
+  currentReimbursement={finalTargetsReimbursement.current}
+  previousReimbursement={finalTargetsReimbursement.previous}
+  biAlignedTotals={shouldShowDummyUi ? null : biAlignedTotalsHome}
+  biEnabled={shouldShowDummyUi ? false : biCardsReady}
+/>
+          
         </div>
 
         {/* Bottom card */}
         <div className="h-auto lg:h-full lg:sticky lg:top-4 2xl:top-6">
-            <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Target Preview">
+           
                 <SalesTargetCard
-                    data={targetData}
-                    homeCurrency={displayCurrency}
-                    convertToHomeCurrency={identityConvert}
-                    formatHomeK={formatDisplayK}
-                    todaySales={targets_todayHome}
-                    targetHome={stats_targetHome}
-                    mtdHome={targets_mtdHome}
-                    lastMonthTotalHome={targets_lastMonthTotalHome}
-                    lastMonthToDateHome={targets_lastMonthToDateHome}
-                    currentReimbursement={targets_reimbursement.current}
-                    previousReimbursement={targets_reimbursement.previous}
-                    biAlignedTotals={biAlignedTotalsHome}
-                    biEnabled={biCardsReady}
-                    periodCompletedPct={rangeCompletedPct}
-                    periodCompletedLabel="Range"
-                />
-            </DummyPreviewWrapper>
+                                    data={targetData}
+                                    homeCurrency={displayCurrency}
+                                    convertToHomeCurrency={identityConvert}
+                                    formatHomeK={formatDisplayK}
+                                    todaySales={targets_todayHome}
+                                    targetHome={stats_targetHome}
+                                    mtdHome={targets_mtdHome}
+                                    lastMonthTotalHome={targets_lastMonthTotalHome}
+                                    lastMonthToDateHome={targets_lastMonthToDateHome}
+                                    currentReimbursement={targets_reimbursement.current}
+                                    previousReimbursement={targets_reimbursement.previous}
+                                    biAlignedTotals={biAlignedTotalsHome}
+                                    biEnabled={biCardsReady}
+                                    periodCompletedPct={rangeCompletedPct}
+                                    periodCompletedLabel="Range"
+                                />
+          
         </div>
 
     </div>
 </aside>
                 </div >
 
-            )}
+            )}           
 
-
-            {
-                activeTab === "live" && platform === "global" && showLiveBI && (
+            {activeTab === "live" && platform === "global" && showLiveBI && (
+                   
                     <div
                         id="ai-insights"
                         className="mt-6 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
                     >
                         <div className="w-full max-w-full min-w-0">
-<DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Graph Preview">
+
     <LiveBiLineGraph
         dailySeries={finalBiDailySeriesHome}
         periods={finalBiPeriods}
@@ -5617,40 +6104,45 @@ const finalInventoryAlerts = isUsingDummyData
         selectedEndDay={selectedEndDay}
         currencySymbol={currencySymbol}
     />
-</DummyPreviewWrapper>
+
                         </div>
                     </div>
+                    
                 )
             }
+          
 
 
-            {activeTab === "summary" && (
-                <div className="w-full overflow-x-hidden">
-                    {shouldShowDummyUi ? (
-    <div className="flex min-h-[300px] items-center justify-center py-12 text-center text-gray-500">
-        Dummy insights preview shown because URL month/year is NA/NA.
-    </div>
-) : summaryLoading || !liveBiPayload ? (
-    <div className="flex min-h-[300px] items-center justify-center py-12 text-center">
-        <Loader />
-    </div>
-) : (
-    showLiveBI && (
-        <LiveBusinessClient
+           {activeTab === "summary" && (
+ 
+    <div className="w-full overflow-x-hidden">
+      {(!shouldShowDummyUi && (summaryLoading || !liveBiPayload)) ? (
+        <div className="flex min-h-[300px] items-center justify-center py-12 text-center">
+          <Loader />
+        </div>
+      ) : (
+        showLiveBI && (
+          <LiveBusinessClient
             countryName={countryName}
+            sourceCountryName={countryName}
             ranged="MTD"
             month={(currMonthName || "").toLowerCase()}
             year={String(currYear)}
-            initialData={liveBiPayload}
+            initialData={finalLiveBiPayload}
             disableAutoFetch
-            onGenerateInsights={() => fetchLiveBiPayload({ generateInsights: true })}
-        />
-    )
+           onGenerateInsights={async () => {
+  if (shouldShowDummyUi) return;
+  await fetchLiveBiPayload({ generateInsights: true });
+}}
+          />
+        )
+      )}
+    </div>
+ 
 )}
-                </div>
-            )}
 
             {activeTab === "productwise" && (
+               
                 <>
                     <div id="pnl-mtd" className="scroll-mt-[80px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-auto">
                         <div className="mb-3 relative flex items-center justify-between gap-3">
@@ -5694,7 +6186,7 @@ const finalInventoryAlerts = isUsingDummyData
                         ) : !shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
                             <div className="text-sm text-gray-500">Loading…</div>
                         ) : (
-                            <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Table Preview">
+                            
                             <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
                                 <div className="min-w-full">
                                     <GroupedCollapsibleTable<MonthlySkuwiseTableRow>
@@ -5901,7 +6393,7 @@ const finalInventoryAlerts = isUsingDummyData
                                     />
                                 </div>
                             </div>
-                            </DummyPreviewWrapper>
+                           
                         )}
 
                     </div>
@@ -6013,7 +6505,7 @@ const finalInventoryAlerts = isUsingDummyData
 
                                 <div ref={chartRef} className="overflow-x-hidden flex-1 min-h-0">
                                     <div className="w-full max-w-full min-w-0 h-full">
-                                       <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Chart Preview">
+                                      
     <DashboardBargraphCard
         countryName={countryNameForGraph}
         formattedMonthYear={formattedMonthYear}
@@ -6026,7 +6518,7 @@ const finalInventoryAlerts = isUsingDummyData
         loading={!shouldShowDummyUi && loading}
         allValuesZero={finalAllValuesZero}
     />
-</DummyPreviewWrapper>
+
                                     </div>
                                 </div>
                             </div>
@@ -6035,7 +6527,7 @@ const finalInventoryAlerts = isUsingDummyData
     <div
         className={
             isUsingDummyData
-                ? "min-w-0 h-full flex flex-col opacity-40 pointer-events-none select-none transition-opacity duration-300"
+                ? "min-w-0 h-full flex flex-col  pointer-events-none select-none transition-opacity duration-300"
                 : "min-w-0 h-full flex flex-col transition-opacity duration-300"
         }
     >
@@ -6050,46 +6542,30 @@ const finalInventoryAlerts = isUsingDummyData
                         </div>
                     </div>
                 </>
+                
             )}
 
             {/* {amazonIntegrated && graphRegionToUse !== "Global" && ( */}
           {activeTab === "inventory" &&
   (isUsingDummyData || amazonIntegrated) && (
-  
     <div id="current-inventory" className="scroll-mt-[80px]">
-      <DummyPreviewWrapper enabled={isUsingDummyData} badgeText="Dummy Inventory Preview">
+     
         <CurrentInventorySection
           region={isUsingDummyData ? "UK" : graphRegionToUse}
           invLoading={!shouldShowDummyUi && invLoading}
           invError={shouldShowDummyUi ? "" : invError}
-          invRows={invRows}
-          inventoryAlerts={inventoryAlerts}
+          invRows={finalInventoryRows}
+          inventoryAlerts={finalInventoryAlerts}
           userData={userData}
         />
-      </DummyPreviewWrapper>
+    
     </div>
 )}
-
+</PreviewLockedSection>
         </div >
 
     );
 }
 
 
-// {activeTab === "inventory" && amazonIntegrated && (
-//                 <div id="current-inventory" className="scroll-mt-[80px]">
-//                     <CurrentInventorySection
-//                         region={graphRegionToUse}
-//                         invLoading={invLoading}
-//                         invError={invError}
-//                         invRows={invRows}
-//                         inventoryAlerts={inventoryAlerts}
-//                         userData={userData}
-//                     />
-//                 </div>
-//             )}
 
-//         </div >
-
-//     );
-// }
