@@ -256,11 +256,9 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
 
   const isPreviewMode =
-  !paramMonth ||
-  !paramYear ||
   String(paramMonth).toLowerCase() === "na" ||
   String(paramYear).toLowerCase() === "na";
-
+  
   const effectiveCountryForCurrency = isPreviewMode
     ? "global"
     : countryName;
@@ -374,15 +372,15 @@ const [year, setYear] = useState<string>(
 ]);
 
   const DUMMY_CASHFLOW_SUMMARY: SummaryShape = {
-    quantity_total: 1050,
-    gross_sales: 160000,
-    net_sales: 140000,
-    amazon_fee: 32000,
-    advertising_total: 18500,
-    taxncredit: 4500,
-    otherwplatform: 2800,
-    rembursement_fee: 3200,
-    cashflow: 82500,
+    quantity_total: 10,
+    gross_sales: 16,
+    net_sales: 14,
+    amazon_fee: 32,
+    advertising_total: 18,
+    taxncredit: 45,
+    otherwplatform: 28,
+    rembursement_fee: 32,
+    cashflow: 82,
   };
 
 

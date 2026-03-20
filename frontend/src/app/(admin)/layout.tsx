@@ -142,7 +142,7 @@ export default function AdminLayout({
         </div>
 
         <ChatbotWidget />
-        <PreviewModeNotice />
+        {/* <PreviewModeNotice /> */}
       </div>
     </AuthGuard>
   );

@@ -276,30 +276,43 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const [selectedProductName, setSelectedProductName] =
     useState(initialProductName);
 
+    const routeCountryName = (params?.countryName as string) || undefined;
+  const monthParam = (params?.month as string) || undefined;
+  const yearParam = (params?.year as string) || undefined;
+
+  const isPreviewMode =
+  String(embedded ? selectedMonthProp : monthParam).toUpperCase() === "NA" &&
+  String(embedded ? selectedYearProp : yearParam).toUpperCase() === "NA";
+
   useEffect(() => {
-    if (!embedded) return;
+  if (!embedded) return;
 
-    setSelectedProductName(initialProductName || "");
-    setSelectedSku(null);
-    setSkuInsights({});
-    setIsDrawerOpen(false);
-  }, [
-    embedded,
-    initialProductName,
-    rangeProp,
-    selectedMonthProp,
-    selectedQuarterProp,
-    selectedYearProp,
-    countryNameProp,
-  ]);
+  setSelectedProductName(
+    isPreviewMode ? (initialProductName || "Demo Product") : (initialProductName || "")
+  );
+  setSelectedSku(null);
+  setSkuInsights({});
+  setIsDrawerOpen(false);
+}, [
+  embedded,
+  initialProductName,
+  rangeProp,
+  selectedMonthProp,
+  selectedQuarterProp,
+  selectedYearProp,
+  countryNameProp,
+  isPreviewMode,
+]);
 
-  const productname = embedded
+  
+
+  const productname = isPreviewMode
+  ? (embedded ? selectedProductName || initialProductName || "Demo Product" : "Demo Product")
+  : embedded
     ? selectedProductName
     : initialProductName || urlProductName || "";
 
-  const routeCountryName = (params?.countryName as string) || undefined;
-  const monthParam = (params?.month as string) || undefined;
-  const yearParam = (params?.year as string) || undefined;
+  
 
   const countryName = embedded ? countryNameProp : routeCountryName;
 
@@ -332,10 +345,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
   const platformCountryName = platformToCountryName(activePlatform);
 
-  const isPreviewMode =
-    !embedded &&
-    monthParam?.toUpperCase() === "NA" &&
-    yearParam?.toUpperCase() === "NA";
+  
 
   const profileHomeCurrency = (
     userData?.homeCurrency || "USD"
@@ -504,7 +514,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     (range === "quarterly" && hasYear && !!selectedQuarter) ||
     (range === "monthly" && hasYear && !!selectedMonth);
 
-  const canShowResults = isProductSelected && isPeriodComplete;
+  const canShowResults = isPreviewMode || (isProductSelected && isPeriodComplete);
   const shouldShowTrendSection = embedded || canShowResults;
 
   const handleCountryChange = (country: CountryKey) => {
@@ -1008,10 +1018,11 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   };
 
   useEffect(() => {
-    if (isPreviewMode) {
-      setData(DUMMY_PRODUCTWISE_DATA);
-    }
-  }, [isPreviewMode]);
+  if (!isPreviewMode) return;
+  setData(DUMMY_PRODUCTWISE_DATA);
+  setError("");
+  setLoading(false);
+}, [isPreviewMode]);
 
   const cards = useMemo(() => {
     const sourceData = isPreviewMode ? DUMMY_PRODUCTWISE_DATA.data : data?.data;
