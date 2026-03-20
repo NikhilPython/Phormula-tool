@@ -207,9 +207,6 @@ def prepare_ai_sku_data(sku_df):
 
     return sku_data, overall_metrics_filtered
 
-
-
-
 AI_BUSINESS_JOURNEY_PROMPT = """
 You are a senior business consultant (like McKinsey/Bain).
 

@@ -6,6 +6,7 @@ from app.utils.token_utils import (
 )
 import os  
 import pandas as pd
+from sqlalchemy import inspect
 from sqlalchemy import and_, or_
 import numpy as np 
 from app.utils.data_utils import  create_user_session
@@ -1153,3 +1154,60 @@ def feepreviewupload():
 
     return jsonify({'message': 'File successfully uploaded and data added to the database.'})
     
+
+@user_bp.route('/check-user-country-table', methods=['POST'])
+def check_user_country_table_exists():
+    try:
+        data = request.get_json(silent=True) or {}
+
+        user_id = data.get('user_id')
+
+        if not user_id:
+            return jsonify({
+                "success": False,
+                "message": "user_id is required"
+            }), 400
+
+        # Fetch user
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            return jsonify({
+                "success": False,
+                "message": "User not found"
+            }), 404
+
+        if not user.country:
+            return jsonify({
+                "success": False,
+                "message": "User country not set"
+            }), 400
+
+        # Use country from DB
+        country = user.country.strip().lower()
+
+        table_name = f"user_{user_id}_{country}_merge_data_of_all_months"
+
+        engine = create_engine(db_url)
+        inspector = inspect(engine)
+
+        table_exists = inspector.has_table(table_name)
+
+        # Update column
+        user.user_table_exists = table_exists
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "user_id": user_id,
+            "country": country,
+            "table_name": table_name,
+            "exists": table_exists
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+     
