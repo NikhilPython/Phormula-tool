@@ -93,6 +93,7 @@ class User(db.Model):
     # ✅ NEW columns
     amazon_user_exists = db.Column(db.Boolean, default=False)  # both tokens exist
     amazon_ads_exists = db.Column(db.Boolean, default=False)   # ads token exists
+    user_table_exists = db.Column(db.Boolean, default=False)
 
 
 class Category(db.Model):
