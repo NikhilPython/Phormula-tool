@@ -17,6 +17,8 @@ from app.utils.business_journey_utils import (
     save_business_journey_by_id,
     get_previous_month_year,
     fetch_month_end_inventory_lookup,
+    build_monthly_trend_from_combined_df,
+    split_latest_month_df,
 )
 
 load_dotenv()
@@ -33,7 +35,6 @@ amazon_engine = create_engine(db_url3)
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 business_journey_bp = Blueprint("business_journey_bp", __name__)
-
 
 @business_journey_bp.route("/generate", methods=["GET"])
 def generate_business_journey_route():
@@ -54,9 +55,16 @@ def generate_business_journey_route():
         month_name = (request.args.get("month", "february") or "february").strip().lower()
         year = int(request.args.get("year", datetime.utcnow().year))
 
-        print("user_id:", user_id)
-        print("country:", country)
-        print("objective month:", month_name, year)
+        # =========================================================
+        # ✅ ADD THIS (CURRENCY LOGIC)
+        # =========================================================
+        currency_map = {
+            "uk": "£",
+            "us": "$"
+        }
+        currency_symbol = currency_map.get(country, "£")
+        # =========================================================
+
 
         existing_journey = fetch_existing_business_journey(
             chatbot_engine=chatbot_engine,
@@ -82,12 +90,6 @@ def generate_business_journey_route():
             year=year
         )
 
-        print("business_context_df empty:", business_context_df.empty)
-        print(
-            "business_context_df:",
-            business_context_df.to_dict(orient="records") if not business_context_df.empty else []
-        )
-
         if business_context_df.empty:
             return jsonify({
                 "error": "No matching user_objectives row found",
@@ -96,32 +98,43 @@ def generate_business_journey_route():
 
         sku_month_name, sku_year = get_previous_month_year(month_name, year)
 
-        print("sku source month:", sku_month_name, sku_year)
-
         try:
-            sku_df = fetch_skuwise_monthly(
+            # ✅ STEP 1: FETCH 24 MONTHS DATA
+            combined_sku_df = fetch_skuwise_monthly(
                 phormula_engine=phormula_engine,
                 user_id=user_id,
                 country=country,
                 month_name=sku_month_name,
+                year=sku_year,
+                months_back=24   # ✅ IMPORTANT
+            )
+
+            # ✅ STEP 2: SPLIT LATEST MONTH
+            latest_sku_df = split_latest_month_df(
+                combined_df=combined_sku_df,
+                month_name=sku_month_name,
                 year=sku_year
             )
+
+            # ✅ STEP 3: BUILD TREND
+            monthly_trend = build_monthly_trend_from_combined_df(combined_sku_df)
+
         except Exception as e:
             return jsonify({
                 "error": "No SKU monthly data found",
                 "details": str(e)
             }), 404
 
-        if sku_df.empty:
+        if combined_sku_df.empty:
             return jsonify({
                 "error": "SKU monthly table is empty",
                 "details": f"No data found in skuwisemonthly_{user_id}_{country}_{sku_month_name}{sku_year}"
             }), 404
 
-        sku_data, overall_metrics = prepare_ai_sku_data(sku_df)
+        sku_data, overall_metrics = prepare_ai_sku_data(latest_sku_df)
 
         # =========================================================
-        # ✅ ADD THIS ENTIRE BLOCK (INVENTORY INJECTION)
+        # ✅ INVENTORY INJECTION (already correct)
         # =========================================================
 
         inventory_lookup = fetch_month_end_inventory_lookup(user_id)
@@ -137,42 +150,53 @@ def generate_business_journey_route():
         for sku in sku_data:
             key = (str(sku.get("sku")), year, month_num)
 
-            inventory = inventory_lookup.get(key, {
-                "sellable_inventory": 0,
-                "damaged_inventory": 0,
-                "expired_inventory": 0
-            })
+            # ✅ ADD DEBUG HERE
+            print("SKU:", sku.get("sku"))
+            print("KEY:", key)
+            print("LOOKUP:", inventory_lookup.get(key))
 
-            # ✅ attach inventory data
-            sku["sellable_inventory"] = inventory["sellable_inventory"]
-            sku["damaged_inventory"] = inventory["damaged_inventory"]
-            sku["expired_inventory"] = inventory["expired_inventory"]
+            inventory = inventory_lookup.get(key)
 
-            # ✅ optional but VERY IMPORTANT (for alerts)
+            if inventory is None:
+                inventory = {
+                    "sellable_inventory": None,
+                    "damaged_inventory": None,
+                    "expired_inventory": None
+                }
+
+            sku["sellable_inventory"] = inventory.get("sellable_inventory")
+            sku["damaged_inventory"] = inventory.get("damaged_inventory")
+            sku["expired_inventory"] = inventory.get("expired_inventory")
+
             try:
-                sku["inventory_coverage_days"] = compute_inventory_coverage_ratio(sku)
+                coverage = compute_inventory_coverage_ratio(sku)
+
+                if coverage is None or coverage == 0:
+                    sku["inventory_coverage_days"] = None
+                else:
+                    sku["inventory_coverage_days"] = coverage
+
             except:
-                sku["inventory_coverage_days"] = 0
+                sku["inventory_coverage_days"] = None
 
         # =========================================================
-
-        row = business_context_df.iloc[0] if not business_context_df.empty else None
-
-        
-
 
         row = business_context_df.iloc[0]
         business_context = row.to_dict()
         objective_id = int(row["id"])
 
-        print("objective_id:", objective_id)
-
+        # =========================================================
+        # ✅ PASS CURRENCY TO AI (IMPORTANT CHANGE)
+        # =========================================================
         business_journey = generate_business_journey(
             business_context=business_context,
             sku_data=sku_data,
             overall_metrics=overall_metrics,
+            currency_symbol=currency_symbol,
+            monthly_trend=monthly_trend,   # ✅ ADD THIS
             openai_client=openai_client
         )
+        # =========================================================
 
         saved = save_business_journey_by_id(
             chatbot_engine=chatbot_engine,
@@ -198,3 +222,5 @@ def generate_business_journey_route():
             "details": str(e)
         }), 500
     
+
+
