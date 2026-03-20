@@ -1,24 +1,11 @@
-from flask import Blueprint, request, jsonify
-import jwt
-import os
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from config import Config
-from calendar import month_abbr, monthrange
-from datetime import date, datetime, timedelta
-from openai import OpenAI
+from datetime import datetime
+from openai import OpenAI, OpenAIError
+import os
 import json
 import pandas as pd
-import numpy as np
-from app.models.user_models import HistoricAISummary, UserObjective
-from app.utils.formulas_utils import safe_num
-from app.utils.uk_prompts_utils import AI_SYSTEM_PROMPT_1, AI_SYSTEM_PROMPT_2, AI_SYSTEM_PROMPT_3_POLISHER, get_excel_recommendation_from_metrics
-from app import db
-from openai import OpenAIError
-from app.utils.uk_coverage_ratio_utils import compute_inventory_coverage_ratio
-
-
-
 
 load_dotenv()
 SECRET_KEY = Config.SECRET_KEY
@@ -26,91 +13,63 @@ SECRET_KEY = Config.SECRET_KEY
 db_url = os.getenv("DATABASE_URL")
 db_url2 = os.getenv("DATABASE_CHATBOT_URL")
 db_url3 = os.getenv("DATABASE_AMAZON_URL")
+
 phormula_engine = create_engine(db_url)
 chatbot_engine = create_engine(db_url2)
 amazon_engine = create_engine(db_url3)
+
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-def fetch_skuwise_monthly(phormula_engine, user_id, country, month_name, year):
-    """
-    Fetch all data from table:
-    skuwisemonthly_{user_id}_{country}_{month_name}{year}
-    """
+def get_previous_month_year(month_name, year):
+    month_map = {
+        "january": 1, "february": 2, "march": 3, "april": 4,
+        "may": 5, "june": 6, "july": 7, "august": 8,
+        "september": 9, "october": 10, "november": 11, "december": 12
+    }
 
+    reverse_month_map = {v: k for k, v in month_map.items()}
+
+    month_num = month_map[month_name.lower()]
+
+    if month_num == 1:
+        prev_month_num = 12
+        prev_year = year - 1
+    else:
+        prev_month_num = month_num - 1
+        prev_year = year
+
+    return reverse_month_map[prev_month_num], prev_year
+
+
+def fetch_skuwise_monthly(phormula_engine, user_id, country, month_name, year):
     table_name = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"
 
-    query = text(f"SELECT * FROM {table_name}")
+    check_query = text("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+        )
+    """)
 
     with phormula_engine.connect() as connection:
+        table_exists = connection.execute(
+            check_query,
+            {"table_name": table_name}
+        ).scalar()
+
+        if not table_exists:
+            raise Exception(f"SKU monthly table not found: {table_name}")
+
+        query = text(f'SELECT * FROM "{table_name}"')
         df = pd.read_sql(query, connection)
 
     return df
 
 
-def fetch_month_end_inventory_lookup(user_id: int):
-
-    query = text("""
-        SELECT
-            msku,
-            disposition,
-            date,
-            ending_warehouse_balance
-        FROM monthwise_inventory
-        WHERE user_id = :user_id
-    """)
-
-    with amazon_engine.connect() as conn:
-        df = pd.read_sql(query, conn, params={"user_id": user_id})
-
-    if df.empty:
-        return {}
-
-    df["date"] = pd.to_datetime(df["date"])
-    df["year"] = df["date"].dt.year
-    df["month"] = df["date"].dt.month
-
-    df = df.sort_values("date")
-
-    # take LAST snapshot per sku + disposition + month
-    month_end = (
-        df.groupby(["msku", "disposition", "year", "month"], as_index=False)
-        .last()
-    )
-
-    lookup = {}
-
-    for _, r in month_end.iterrows():
-
-        key = (str(r["msku"]), int(r["year"]), int(r["month"]))
-
-        if key not in lookup:
-            lookup[key] = {
-                "sellable_inventory": 0,
-                "damaged_inventory": 0,
-                "expired_inventory": 0
-            }
-
-        disp = str(r["disposition"]).upper()
-        units = float(r["ending_warehouse_balance"])
-
-        if disp == "SELLABLE":
-            lookup[key]["sellable_inventory"] += units
-
-        elif disp in ["DEFECTIVE", "WAREHOUSE_DAMAGED", "CUSTOMER_DAMAGED"]:
-            lookup[key]["damaged_inventory"] += units
-
-        elif disp in ["EXPIRED"]:
-            lookup[key]["expired_inventory"] += units
-
-    return lookup
-
-
 def fetch_business_context(chatbot_engine, user_id, country, month_name, year):
-    """
-    Fetch business context from user_objectives
-    """
-
     month_map = {
         "january": 1, "february": 2, "march": 3, "april": 4,
         "may": 5, "june": 6, "july": 7, "august": 8,
@@ -118,20 +77,27 @@ def fetch_business_context(chatbot_engine, user_id, country, month_name, year):
     }
 
     month_num = month_map[month_name.lower()]
-    objective_month = date(year, month_num, 1)
 
     query = text("""
         SELECT
-            id,      
+            id,
+            user_id,
+            country,
             growth_intent,
             profit_priority,
             inventory_clearance_priority,
             business_context,
-            website_url
+            website_url,
+            objective_month,
+            ai_business_journey,
+            created_at,
+            updated_at
         FROM user_objectives
         WHERE user_id = :user_id
-          AND country = :country
-          AND objective_month = :objective_month
+          AND LOWER(country) = :country
+          AND EXTRACT(YEAR FROM objective_month) = :year
+          AND EXTRACT(MONTH FROM objective_month) = :month_num
+        ORDER BY id DESC
         LIMIT 1
     """)
 
@@ -141,8 +107,9 @@ def fetch_business_context(chatbot_engine, user_id, country, month_name, year):
             connection,
             params={
                 "user_id": user_id,
-                "country": country,
-                "objective_month": objective_month
+                "country": country.lower(),
+                "year": year,
+                "month_num": month_num
             }
         )
 
@@ -154,6 +121,7 @@ def prepare_ai_sku_data(sku_df):
     - Select required columns
     - Separate total row
     - Extract overall metrics
+    - Fix negative storage fee (abs)
     """
 
     if sku_df.empty:
@@ -198,15 +166,49 @@ def prepare_ai_sku_data(sku_df):
     # ----------- SELECT ONLY REQUIRED COLUMNS -----------
     sku_clean_df = sku_clean_df[AI_COLUMNS]
 
-    # ----------- FINAL OUTPUT -----------
+    # =====================================================
+    # ✅ FIX 1: ABS FOR STORAGE FEE (SKU LEVEL)
+    # =====================================================
+    if "platform_fee_inventory_storage" in sku_clean_df.columns:
+        sku_clean_df["platform_fee_inventory_storage"] = (
+            sku_clean_df["platform_fee_inventory_storage"].abs()
+        )
+
+    # ----------- CONVERT TO DICT -----------
     sku_data = sku_clean_df.to_dict(orient="records")
 
-    overall_metrics_filtered = {
-        col: overall_metrics.get(col)
-        for col in GLOBAL_COLUMNS
-    }
+    # =====================================================
+    # ✅ FIX 2: ADD DEFAULT FIELDS (STRUCTURE SAFETY)
+    # =====================================================
+    for sku in sku_data:
+        sku["sellable_inventory"] = 0
+        sku["damaged_inventory"] = 0
+        sku["expired_inventory"] = 0
+        sku["inventory_coverage_days"] = 0
 
-    return sku_data, overall_metrics_filtered    
+    # =====================================================
+    # ✅ FIX 3: HANDLE GLOBAL METRICS + ABS
+    # =====================================================
+    overall_metrics_filtered = {}
+
+    for col in GLOBAL_COLUMNS:
+        value = overall_metrics.get(col)
+
+        # ABS fix for storage fee at total level
+        if col == "platform_fee_inventory_storage" and value is not None:
+            value = abs(value)
+
+        overall_metrics_filtered[col] = value
+
+    # =====================================================
+    # ✅ OPTIONAL: ADD STRUCTURE METADATA (FOR AI CLARITY)
+    # =====================================================
+    overall_metrics_filtered["_note"] = "Monthly aggregated totals (not SKU-level)"
+
+    return sku_data, overall_metrics_filtered
+
+
+
 
 AI_BUSINESS_JOURNEY_PROMPT = """
 You are a senior business consultant (like McKinsey/Bain).
@@ -217,46 +219,28 @@ IMPORTANT RULES:
 - All metrics are pre-calculated. DO NOT recompute anything.
 - Always use the numbers provided.
 - Always include percentages and absolute values.
-- Explain cause → effect relationships.
-- Be structured, deep, and analytical (not generic).
-- Do NOT summarize briefly — explain in detail.
+- Explain cause and effect relationships.
+- Be structured, deep, and analytical.
+- Do NOT summarize briefly.
 
 OUTPUT STRUCTURE:
 
 1. Business Overview
-- Understand the business context, goals, and priorities.
-
 2. Revenue & Sales Performance
-- Analyze gross_sales, net_sales, sales_mix
-- Identify concentration, dependency, and revenue drivers
-
 3. Profitability Analysis
-- Use profit, profit_percentage, cm2_profit, cm2_profit_percentage
-- Explain margin health and sustainability
-
 4. Cost & Leakage Analysis
-- Analyze advertising_total, platform_fee, lost_total
-- Identify where money is leaking and why
-
 5. SKU-Level Performance
-- Identify top performing SKUs and loss-making SKUs
-- Explain contribution to revenue and profit
-
 6. Operational Signals
-- Returns, inefficiencies, reimbursement patterns
-
 7. Key Problems
-- Clearly highlight major business risks
-
 8. Strategic Recommendations
-- Actionable steps: what to scale, fix, or stop
 
 STYLE:
 - Write like a business consultant
-- Use clear paragraphs (not bullet spam)
+- Use clear paragraphs
 - Include numbers in explanations
 - Avoid vague statements
-"""    
+"""
+
 
 def generate_business_journey(
     business_context,
@@ -264,12 +248,7 @@ def generate_business_journey(
     overall_metrics,
     openai_client
 ):
-    """
-    Generate full business journey using AI
-    """
-
     try:
-        # -------- SUMMARY METRICS FROM TOTAL ROW --------
         summary_metrics = {
             col: (overall_metrics.get(col) or 0)
             for col in [
@@ -284,7 +263,6 @@ def generate_business_journey(
             ]
         }
 
-        # -------- SIMPLE RANKING --------
         top_skus = sorted(
             sku_data,
             key=lambda x: (x.get("net_sales") or 0),
@@ -296,13 +274,11 @@ def generate_business_journey(
             key=lambda x: (x.get("profit") or 0)
         )[:5]
 
-        # -------- FLAGS --------
         problem_flags = {
             "low_margin": (summary_metrics.get("profit_percentage") or 0) < 10,
             "high_acos": (summary_metrics.get("acos") or 0) > 30,
         }
 
-        # -------- FINAL INPUT --------
         ai_input = {
             "business_overview": business_context,
             "summary_metrics": summary_metrics,
@@ -313,7 +289,6 @@ def generate_business_journey(
             "sku_data": sku_data
         }
 
-        # -------- OPENAI CALL --------
         response = openai_client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
@@ -323,7 +298,7 @@ def generate_business_journey(
                 },
                 {
                     "role": "user",
-                    "content": json.dumps(ai_input)
+                    "content": json.dumps(ai_input, default=str)
                 }
             ],
             temperature=0.3
@@ -332,21 +307,32 @@ def generate_business_journey(
         return response.choices[0].message.content
 
     except OpenAIError as e:
-        return f"OpenAI Error: {str(e)}"
-    
-def save_business_journey_by_id(objective_id, business_journey):
-    obj = UserObjective.query.filter_by(id=objective_id).first()
+        raise Exception(f"OpenAI Error: {str(e)}")
 
-    if not obj:
-        print("❌ No row found with ID:", objective_id)
-        return
 
-    obj.ai_business_journey = business_journey
-    obj.updated_at = datetime.utcnow()
+def save_business_journey_by_id(chatbot_engine, objective_id, business_journey):
+    query = text("""
+        UPDATE user_objectives
+        SET ai_business_journey = :business_journey,
+            updated_at = :updated_at
+        WHERE id = :objective_id
+    """)
 
-    db.session.commit()
+    with chatbot_engine.begin() as conn:
+        result = conn.execute(query, {
+            "business_journey": str(business_journey),
+            "updated_at": datetime.utcnow(),
+            "objective_id": int(objective_id)
+        })
 
-    print("✅ SAVED SUCCESSFULLY")
+    print("rowcount:", result.rowcount)
+
+    if result.rowcount > 0:
+        print("SAVED SUCCESSFULLY")
+        return True
+    else:
+        print(f"No row found with ID: {objective_id}")
+        return False
 
 
 def fetch_existing_business_journey(
@@ -363,25 +349,28 @@ def fetch_existing_business_journey(
     }
 
     month_num = month_map[month_name.lower()]
-    objective_month = date(year, month_num, 1)
 
     query = text("""
         SELECT ai_business_journey
         FROM user_objectives
         WHERE user_id = :user_id
-          AND country = :country
-          AND objective_month = :objective_month
+          AND LOWER(country) = :country
+          AND EXTRACT(YEAR FROM objective_month) = :year
+          AND EXTRACT(MONTH FROM objective_month) = :month_num
+        ORDER BY id DESC
         LIMIT 1
     """)
 
     with chatbot_engine.connect() as conn:
         result = conn.execute(query, {
             "user_id": user_id,
-            "country": country,
-            "objective_month": objective_month
+            "country": country.lower(),
+            "year": year,
+            "month_num": month_num
         }).fetchone()
 
     if result and result[0]:
         return result[0]
 
-    return None            
+    return None
+
