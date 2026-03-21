@@ -88,24 +88,24 @@ export default function InventoryFlowPage() {
   const thisYear = today.getFullYear();
   const previousMonthIndex = currentMonthIndex === 0 ? 11 : currentMonthIndex - 1;
 
- const monthNames = [
-  'january',
-  'february',
-  'march',
-  'april',
-  'may',
-  'june',
-  'july',
-  'august',
-  'september',
-  'october',
-  'november',
-  'december',
-] as const;
+  const monthNames = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
+  ] as const;
 
   const urlMonth = (params.month ?? '').toLowerCase().trim();
 
-const effectiveMonth: string = useMemo(() => {
+  const effectiveMonth: string = useMemo(() => {
     if (!urlMonth) return monthNames[previousMonthIndex];
 
     const mnum = urlMonth.match(/\b(1[0-2]|0?[1-9])\b/);
@@ -157,9 +157,9 @@ const effectiveMonth: string = useMemo(() => {
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [poTriggered, setPoTriggered] = useState(false);
- const [sharedMonth, setSharedMonth] = useState<string>(effectiveMonth);
-const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
-const router = useRouter();
+  const [sharedMonth, setSharedMonth] = useState<string>(effectiveMonth);
+  const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
+  const router = useRouter();
 
   const countryProfileKeyBase = countryName || 'global';
 
@@ -218,9 +218,9 @@ const router = useRouter();
   };
 
   useEffect(() => {
-  setSharedMonth(effectiveMonth);
-  setSharedYear(effectiveYear);
-}, [effectiveMonth, effectiveYear]);
+    setSharedMonth(effectiveMonth);
+    setSharedYear(effectiveYear);
+  }, [effectiveMonth, effectiveYear]);
 
   const getLatestUploadDate = (list: UploadItem[]) => {
     if (list.length === 0) return 0;
@@ -249,7 +249,7 @@ const router = useRouter();
         try {
           const j = await res.json();
           msg = j?.error || j?.message || msg;
-        } catch {}
+        } catch { }
         throw new Error(msg);
       }
 
@@ -257,8 +257,8 @@ const router = useRouter();
 
       const filtered = countryName
         ? data.uploads.filter(
-            (u) => (u.country ?? '').toString().toLowerCase() === countryName
-          )
+          (u) => (u.country ?? '').toString().toLowerCase() === countryName
+        )
         : data.uploads;
 
       setUploads(data.uploads);
@@ -339,11 +339,11 @@ const router = useRouter();
       const endpoint =
         countryName === 'global'
           ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/forecast_global?month=${encodeURIComponent(
-              effectiveMonth
-            )}&year=${encodeURIComponent(effectiveYear)}`
+            effectiveMonth
+          )}&year=${encodeURIComponent(effectiveYear)}`
           : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/forecast?country=${encodeURIComponent(
-              countryName
-            )}&month=${encodeURIComponent(effectiveMonth)}&year=${encodeURIComponent(effectiveYear)}`;
+            countryName
+          )}&month=${encodeURIComponent(effectiveMonth)}&year=${encodeURIComponent(effectiveYear)}`;
 
       const res = await fetch(endpoint, {
         method: 'GET',
@@ -362,7 +362,7 @@ const router = useRouter();
           const errJson = await res.json();
           serverMsg = errJson?.error || errJson?.message || errJson?.warning || '';
           zeroMonths = Array.isArray(errJson?.zero_months) ? errJson.zero_months : [];
-        } catch {}
+        } catch { }
 
         setError(serverMsg || `Server error (${res.status})`);
 
@@ -480,35 +480,35 @@ const router = useRouter();
         >
           {children}
         </div>
-  
+
         {enabled && (
           <>
             <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
-  
+
             <div className="absolute inset-0 z-20 pointer-events-none">
               <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
                 <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-                 <div className="mb-4 flex justify-center">
-                                  <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
-                                                     <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                                                   </div>
-                               </div>
-  
+                  <div className="mb-4 flex justify-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                    </div>
+                  </div>
+
                   <h3 className="text-lg font-semibold text-[#414042]">
                     {title}
                   </h3>
-  
+
                   <p className="mt-2 text-sm text-gray-600 leading-6">
                     {description}
                   </p>
-  
+
                   <button
                     onClick={onAction}
                     className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
                   >
                     {buttonText}
                   </button>
-  
+
                   <p className="mt-3 text-xs text-gray-500">
                     Demo data is shown for preview only.
                   </p>
@@ -521,7 +521,7 @@ const router = useRouter();
     );
   };
 
-  
+
 
   const triggerPurchaseOrderApi = async (country: string, month: string, year: string) => {
     const jwtToken =
@@ -683,15 +683,15 @@ const router = useRouter();
   };
 
   const handleConnectAmazonPreview = () => {
-  const connectCountry = countryName === "global" ? "uk" : countryName;
-  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
-};
+    const connectCountry = countryName === "global" ? "uk" : countryName;
+    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+  };
 
-  
+
 
   return (
     <>
-     <style jsx>{`
+      <style jsx>{`
      .fetch-button {
           font-family: 'Lato', sans-serif;
           font-size: clamp(12px, 0.729vw, 16px) !important;
@@ -732,322 +732,322 @@ const router = useRouter();
           margin-left: auto;
         }
      `}</style>
-     <div className="font-lato px-4 py-6">
-      <div className="flex flex-col justify-start">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
-  <div className="flex items-baseline gap-2">
-    <PageBreadcrumb
-      pageTitle={
-        activeTab === 'dispatch'
-          ? 'Dispatch Report -'
-          : activeTab === 'purchaseOrder'
-          ? 'PO Report -'
-          : 'Inventory Forecast -'
-      }
-      variant="page"
-      align="left"
-      textSize="2xl"
-    />
-    <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-      Amazon{" "}
-      {countryName?.toLowerCase() === "global" ? "Global" : countryName?.toUpperCase()}
-    </span>
-  </div>
-
-  {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
-    <div className="flex flex-wrap items-center gap-3 justify-start md:justify-end">
-      <MonthYearPickerTable
-        month={sharedMonth}
-        year={sharedYear}
-        yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
-        onMonthChange={(v) => setSharedMonth(v)}
-        onYearChange={(v) => setSharedYear(v)}
-        valueMode="lower"
-      />
-
-      {activeTab === 'dispatch' ? (
-        <>
-          <button
-            className="fetch-button"
-            onClick={() => {
-              window.dispatchEvent(
-                new CustomEvent('dispatch-report-refresh', {
-                  detail: { month: sharedMonth, year: sharedYear },
-                })
-              );
-            }}
-          >
-            Get Report
-          </button>
-
-          <DownloadIconButton
-  size="md"
-  onClick={() => {
-    window.dispatchEvent(new CustomEvent('dispatch-report-download'));
-  }}
-/>
-        </>
-      ) : (
-        <>
-          <button
-            className="fetch-button"
-            onClick={() => {
-              window.dispatchEvent(
-                new CustomEvent('po-report-refresh', {
-                  detail: { month: sharedMonth, year: sharedYear },
-                })
-              );
-            }}
-          >
-            {countryName?.toLowerCase() === 'global' ? 'Get Global Report' : 'Get Report'}
-          </button>
-
-          <DownloadIconButton
-  size="md"
-  onClick={() => {
-    window.dispatchEvent(new CustomEvent('po-report-download'));
-  }}
-/>
-        </>
-      )}
-    </div>
-  )}
-</div>
-
-        <div className="mb-6">
-          <InventoryFlowTabs value={activeTab} onChange={handleTabChange} />
-        </div>
-        
-<PreviewLockedSection
-  enabled={isDemoMode}
-  title="Preview mode"
-  description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-  buttonText="Connect Amazon"
-  onAction={handleConnectAmazonPreview}
->
-        {isPopupOpen && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
-              <h2 className="text-xl font-semibold text-charcoal-500 mb-1 text-center">
-                Country Profile
-              </h2>
-              <p className="text-sm text-gray-600 mb-4 text-center">
-                Please fill these details once to continue.
-              </p>
-
-              <form onSubmit={handleSaveProfile} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Country <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value as 'uk' | 'us')}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="uk">UK</option>
-                    <option value="us">US</option>
-                  </select>
-                  {errors.country && <p className="text-xs text-red-500 mt-1">{errors.country}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Marketplace
-                  </label>
-                  <input
-                    type="text"
-                    value={marketplace}
-                    disabled
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Transit Time (months) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={transitTime}
-                    onChange={(e) => setTransitTime(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                    placeholder="e.g. 7"
-                  />
-                  {errors.transit_time && (
-                    <p className="text-xs text-red-500 mt-1">{errors.transit_time}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Stock Unit <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={stockUnit}
-                    onChange={(e) => setStockUnit(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2 text-sm"
-                    placeholder="e.g. 2"
-                  />
-                  {errors.stock_unit && (
-                    <p className="text-xs text-red-500 mt-1">{errors.stock_unit}</p>
-                  )}
-                </div>
-
-                {apiError && (
-                  <p className="text-xs text-red-500 mt-1 text-center">{apiError}</p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="mt-2 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold"
-                >
-                  {isSubmitting ? 'Saving...' : 'Save & Continue'}
-                </button>
-              </form>
+      <div className="font-lato">
+        <div className="flex flex-col justify-start">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
+            <div className="flex items-baseline gap-2">
+              <PageBreadcrumb
+                pageTitle={
+                  activeTab === 'dispatch'
+                    ? 'Dispatch Report -'
+                    : activeTab === 'purchaseOrder'
+                      ? 'PO Report -'
+                      : 'Inventory Forecast -'
+                }
+                variant="page"
+                align="left"
+                textSize="2xl"
+              />
+              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                Amazon{" "}
+                {countryName?.toLowerCase() === "global" ? "Global" : countryName?.toUpperCase()}
+              </span>
             </div>
+
+            {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
+              <div className="flex flex-wrap items-center gap-3 justify-start md:justify-end">
+                <MonthYearPickerTable
+                  month={sharedMonth}
+                  year={sharedYear}
+                  yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
+                  onMonthChange={(v) => setSharedMonth(v)}
+                  onYearChange={(v) => setSharedYear(v)}
+                  valueMode="lower"
+                />
+
+                {activeTab === 'dispatch' ? (
+                  <>
+                    <button
+                      className="fetch-button"
+                      onClick={() => {
+                        window.dispatchEvent(
+                          new CustomEvent('dispatch-report-refresh', {
+                            detail: { month: sharedMonth, year: sharedYear },
+                          })
+                        );
+                      }}
+                    >
+                      Get Report
+                    </button>
+
+                    <DownloadIconButton
+                      size="md"
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('dispatch-report-download'));
+                      }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="fetch-button"
+                      onClick={() => {
+                        window.dispatchEvent(
+                          new CustomEvent('po-report-refresh', {
+                            detail: { month: sharedMonth, year: sharedYear },
+                          })
+                        );
+                      }}
+                    >
+                      {countryName?.toLowerCase() === 'global' ? 'Get Global Report' : 'Get Report'}
+                    </button>
+
+                    <DownloadIconButton
+                      size="md"
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('po-report-download'));
+                      }}
+                    />
+                  </>
+                )}
+              </div>
+            )}
           </div>
-        )}
 
-        <div className="  ">
-         {activeTab === 'inventory' && (
-  <div className="w-full ">
-    
-
-    {!forecastEnabled ? (
-      <div >
-        <div className="flex justify-start items-start gap-2">
-          <div>
-            <h3 className="text-base sm:text-lg font-semibold text-charcoal-500">
-              Automation
-            </h3>
-            <p className="text-xs sm:text-sm text-green-500 mt-1">
-              Setup in 30 seconds
-            </p>
+          <div className="mb-6">
+            <InventoryFlowTabs value={activeTab} onChange={handleTabChange} />
           </div>
-        </div>
 
-        <ul className="space-y-2 text-[#414042] text-sm sm:text-sm md:text-base mt-4">
-          <li className="flex items-center gap-2">
-            <CheckCircle size={16} className="text-green-500 shrink-0" />
-            <span>AI-powered prediction</span>
-          </li>
-          <li className="flex items-center gap-2">
-            <CheckCircle size={16} className="text-green-500 shrink-0" />
-            <span>Historical data analysis</span>
-          </li>
-          <li className="flex items-center gap-2">
-            <CheckCircle size={16} className="text-green-500 shrink-0" />
-            <span>Always up-to-date insights</span>
-          </li>
-          <li className="flex items-center gap-2">
-            <CheckCircle size={16} className="text-green-500 shrink-0" />
-            <span>No manual work required</span>
-          </li>
-        </ul>
-
-        <div className="flex justify-start mt-5">
-  <button
-    onClick={handleAutomation}
-    className="bg-green-500 text-yellow-200 px-6 py-2 rounded-lg font-semibold text-sm sm:text-base hover:bg-[#4e937b] transition"
-  >
-    Enable Automation
-  </button>
-</div>
-      </div>
-    ) : loading ? (
-      <Loading />
-    ) : missingMonths.length > 0 ? (
-      <div className="max-w-3xl">
-        <p className="text-sm sm:text-base mb-4 text-[#414042]">
-          The following monthly files are needed to upload:{' '}
-          <strong className="text-[#60a68e]">{missingMonths.join(', ')}</strong>
-        </p>
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-md border-t-4 border-red-400 bg-gray-100 p-4">
-          <div className="text-sm text-[#414042]">
-            Please fetch at least 4 months&apos; files to see the next two months.
-          </div>
-        </div>
-      </div>
-    ) : error ? (
-      <div className="max-w-3xl">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-md border-t-4 border-red-400 bg-gray-100 p-4">
-          <div className="text-sm text-[#414042]">{error}</div>
-        </div>
-      </div>
-    ) : (
-      <DisplayInventoryForecast
-        countryName={countryName}
-        month={effectiveMonth}
-        year={effectiveYear}
-        data={excelData ?? []}
-        isDemoMode={isDemoMode}
-      />
-    )}
-  </div>
-)}
-
-          {activeTab === 'dispatch' && (
-            <>
-
-              {!profileCompleted ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
-                  <p className="mt-2 text-sm text-slate-600">
-                    Complete inventory setup first, then continue to dispatch planning.
+          <PreviewLockedSection
+            enabled={isDemoMode}
+            title="Preview mode"
+            description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+            buttonText="Connect Amazon"
+            onAction={handleConnectAmazonPreview}
+          >
+            {isPopupOpen && (
+              <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40">
+                <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
+                  <h2 className="text-xl font-semibold text-charcoal-500 mb-1 text-center">
+                    Country Profile
+                  </h2>
+                  <p className="text-sm text-gray-600 mb-4 text-center">
+                    Please fill these details once to continue.
                   </p>
-                  <button
-                    onClick={handleDispatchAccess}
-                    className="mt-5 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold"
-                  >
-                    Continue to Dispatch
-                  </button>
-                </div>
-              ) : (
-                <DispatchPage
-  embedded
-  countryNameProp={countryName}
-  selectedMonthProp={sharedMonth}
-  selectedYearProp={sharedYear}
-/>
-              )}
-            </>
-          )}
 
-          {activeTab === 'purchaseOrder' && (
-            <>
+                  <form onSubmit={handleSaveProfile} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Country <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={country}
+                        onChange={(e) => setCountry(e.target.value as 'uk' | 'us')}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                      >
+                        <option value="uk">UK</option>
+                        <option value="us">US</option>
+                      </select>
+                      {errors.country && <p className="text-xs text-red-500 mt-1">{errors.country}</p>}
+                    </div>
 
-              {!profileCompleted ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
-                  <p className="mt-2 text-sm text-slate-600">
-                    Complete inventory setup first, then continue to purchase order planning.
-                  </p>
-                  <button
-                    onClick={handlePurchaseOrderAccess}
-                    className="mt-5 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold"
-                  >
-                    Continue to Purchase Order
-                  </button>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Marketplace
+                      </label>
+                      <input
+                        type="text"
+                        value={marketplace}
+                        disabled
+                        className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Transit Time (months) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={transitTime}
+                        onChange={(e) => setTransitTime(e.target.value)}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        placeholder="e.g. 7"
+                      />
+                      {errors.transit_time && (
+                        <p className="text-xs text-red-500 mt-1">{errors.transit_time}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Stock Unit <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={stockUnit}
+                        onChange={(e) => setStockUnit(e.target.value)}
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        placeholder="e.g. 2"
+                      />
+                      {errors.stock_unit && (
+                        <p className="text-xs text-red-500 mt-1">{errors.stock_unit}</p>
+                      )}
+                    </div>
+
+                    {apiError && (
+                      <p className="text-xs text-red-500 mt-1 text-center">{apiError}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="mt-2 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold"
+                    >
+                      {isSubmitting ? 'Saving...' : 'Save & Continue'}
+                    </button>
+                  </form>
                 </div>
-              ) : (
-                <PurchaseOrderPage
-  embedded
-  countryNameProp={countryName}
-  selectedMonthProp={sharedMonth}
-  selectedYearProp={sharedYear}
-/>
+              </div>
+            )}
+
+            <div className="bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-100 max-w-xl">
+              {activeTab === 'inventory' && (
+                <div className="w-full">
+
+
+                  {!forecastEnabled ? (
+                    <div className=''>
+                      <div className="flex justify-start items-start gap-2  ">
+                        <div>
+                          <h3 className="text-base sm:text-lg font-semibold text-charcoal-500">
+                            Automation
+                          </h3>
+                          <p className="text-xs sm:text-sm text-green-500 mt-1">
+                            Setup in 30 seconds
+                          </p>
+                        </div>
+                      </div>
+
+                      <ul className="space-y-2 text-[#414042] text-sm sm:text-sm md:text-base mt-4">
+                        <li className="flex items-center gap-2">
+                          <CheckCircle size={16} className="text-green-500 shrink-0" />
+                          <span>AI-powered prediction</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle size={16} className="text-green-500 shrink-0" />
+                          <span>Historical data analysis</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle size={16} className="text-green-500 shrink-0" />
+                          <span>Always up-to-date insights</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle size={16} className="text-green-500 shrink-0" />
+                          <span>No manual work required</span>
+                        </li>
+                      </ul>
+
+                      <div className="flex justify-start mt-5">
+                        <button
+                          onClick={handleAutomation}
+                          className="bg-green-500 text-yellow-200 px-6 py-2 rounded-lg font-semibold text-sm sm:text-base hover:bg-[#4e937b] transition"
+                        >
+                          Enable Automation
+                        </button>
+                      </div>
+                    </div>
+                  ) : loading ? (
+                    <Loading />
+                  ) : missingMonths.length > 0 ? (
+                    <div className="max-w-3xl">
+                      <p className="text-sm sm:text-base mb-4 text-[#414042]">
+                        The following monthly files are needed to upload:{' '}
+                        <strong className="text-[#60a68e]">{missingMonths.join(', ')}</strong>
+                      </p>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-md border-t-4 border-red-400 bg-gray-100 p-4">
+                        <div className="text-sm text-[#414042]">
+                          Please fetch at least 4 months&apos; files to see the next two months.
+                        </div>
+                      </div>
+                    </div>
+                  ) : error ? (
+                    <div className="max-w-3xl">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-md border-t-4 border-red-400 bg-gray-100 p-4">
+                        <div className="text-sm text-[#414042]">{error}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <DisplayInventoryForecast
+                      countryName={countryName}
+                      month={effectiveMonth}
+                      year={effectiveYear}
+                      data={excelData ?? []}
+                      isDemoMode={isDemoMode}
+                    />
+                  )}
+                </div>
               )}
-            </>
-          )}
+
+              {activeTab === 'dispatch' && (
+                <>
+
+                  {!profileCompleted ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
+                      <p className="mt-2 text-sm text-slate-600">
+                        Complete inventory setup first, then continue to dispatch planning.
+                      </p>
+                      <button
+                        onClick={handleDispatchAccess}
+                        className="mt-5 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold"
+                      >
+                        Continue to Dispatch
+                      </button>
+                    </div>
+                  ) : (
+                    <DispatchPage
+                      embedded
+                      countryNameProp={countryName}
+                      selectedMonthProp={sharedMonth}
+                      selectedYearProp={sharedYear}
+                    />
+                  )}
+                </>
+              )}
+
+              {activeTab === 'purchaseOrder' && (
+                <>
+
+                  {!profileCompleted ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
+                      <p className="mt-2 text-sm text-slate-600">
+                        Complete inventory setup first, then continue to purchase order planning.
+                      </p>
+                      <button
+                        onClick={handlePurchaseOrderAccess}
+                        className="mt-5 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold"
+                      >
+                        Continue to Purchase Order
+                      </button>
+                    </div>
+                  ) : (
+                    <PurchaseOrderPage
+                      embedded
+                      countryNameProp={countryName}
+                      selectedMonthProp={sharedMonth}
+                      selectedYearProp={sharedYear}
+                    />
+                  )}
+                </>
+              )}
+            </div>
+          </PreviewLockedSection>
         </div>
-        </PreviewLockedSection>
       </div>
-    </div>
     </>
-   
+
   );
 }
