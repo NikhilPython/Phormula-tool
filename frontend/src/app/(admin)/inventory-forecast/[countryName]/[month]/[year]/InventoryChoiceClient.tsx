@@ -913,9 +913,9 @@ export default function InventoryFlowPage() {
               </div>
             )}
 
-            <div className="bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-100 max-w-xl">
+            <div className="bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-100 ">
               {activeTab === 'inventory' && (
-                <div className="w-full">
+                <div className="w-full ">
 
 
                   {!forecastEnabled ? (
