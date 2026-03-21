@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
 import { CheckCircle } from 'lucide-react';
 import { API_BASE } from '@/config/env';
@@ -159,6 +159,7 @@ const effectiveMonth: string = useMemo(() => {
   const [poTriggered, setPoTriggered] = useState(false);
  const [sharedMonth, setSharedMonth] = useState<string>(effectiveMonth);
 const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
+const router = useRouter();
 
   const countryProfileKeyBase = countryName || 'global';
 
@@ -488,9 +489,9 @@ const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
               <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
                 <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
                  <div className="mb-4 flex justify-center">
-                                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F8EDCE]">
-                                   <IoMdLock className="text-3xl text-[#37455F]" />
-                                 </div>
+                                  <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                                                     <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                                                   </div>
                                </div>
   
                   <h3 className="text-lg font-semibold text-[#414042]">
@@ -681,6 +682,11 @@ const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
     }
   };
 
+  const handleConnectAmazonPreview = () => {
+  const connectCountry = countryName === "global" ? "uk" : countryName;
+  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+};
+
   
 
   return (
@@ -814,12 +820,10 @@ const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
         
 <PreviewLockedSection
   enabled={isDemoMode}
-  title="Preview Mode"
-  description="Select a valid month and year to unlock full features."
-  buttonText="Select Period"
-  onAction={() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }}
+  title="Preview mode"
+  description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+  buttonText="Connect Amazon"
+  onAction={handleConnectAmazonPreview}
 >
         {isPopupOpen && (
           <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40">

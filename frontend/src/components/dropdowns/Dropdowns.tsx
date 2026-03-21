@@ -839,10 +839,10 @@ const PreviewLockedSection = ({
             <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
               <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
                 <div className="mb-4 flex justify-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F8EDCE]">
-                    <IoMdLock className="text-3xl text-[#37455F]" />
-                  </div>
-                </div>
+                                <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                                                   <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                                                 </div>
+                              </div>
 
                 <h3 className="text-lg font-semibold text-[#414042]">
                   {title}
