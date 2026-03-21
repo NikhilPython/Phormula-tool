@@ -360,131 +360,108 @@ function BusinessJourneyPanel({
     setOpenSectionKey((prev) => (prev === key ? null : key));
   };
 
-  if (loading) {
-    return (
-      <div className="rounded-2xl">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Generating business journey...
-        </p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-2xl">
-        <p className="text-sm text-red-500">{error}</p>
-      </div>
-    );
-  }
-
-  if (!journey) {
-    return (
-      <div className="rounded-2xl">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Business Journey will generate after Business Summary is available.
-        </p>
-      </div>
-    );
-  }
-
-  // Case 1: plain string response from API
-  if (typeof journey === "string") {
-    const sections = parseBusinessJourneySections(journey);
-
-    return (
-      <div className="space-y-3">
-        {sections.map((section, idx) => {
-          const key = `${section.title}-${idx}`;
-          const isOpen = openSectionKey === null ? idx === 0 : openSectionKey === key;
-
-          return (
-            <JourneyAccordionSection
-              key={key}
-              title={section.title}
-              isOpen={isOpen}
-              onToggle={() => toggleSection(key)}
-            >
-              <div className="space-y-2">
-                {section.content.map((item, itemIdx) => {
-                  if (item.type === "bullet") {
-                    return (
-                      <div key={itemIdx} className="flex items-start gap-2 pl-2">
-                        <span className="mt-2 min-h-1.5 min-w-1.5 rounded-full bg-charcoal-500 dark:bg-gray-400" />
-                        <p className="text-sm leading-5 text-charcoal-500 dark:text-gray-300">
-                          {item.text}
-                        </p>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <p
-                      key={itemIdx}
-                      className="text-sm leading-6 text-charcoal-500 dark:text-gray-300"
-                    >
-                      {item.text}
-                    </p>
-                  );
-                })}
-              </div>
-            </JourneyAccordionSection>
-          );
-        })}
-      </div>
-    );
-  }
-
-  // Case 2: structured array response
-  if (
-    Array.isArray(journey) &&
-    journey.every(
-      (item) =>
-        typeof item === "object" &&
-        item !== null &&
-        "title" in item &&
-        "points" in item
-    )
-  ) {
-    return (
-      <div className="space-y-3">
-        {(journey as BusinessJourneySection[]).map((section, idx) => {
-          const key = `${section.title}-${idx}`;
-          const isOpen = openSectionKey === null ? idx === 0 : openSectionKey === key;
-
-          return (
-            <JourneyAccordionSection
-              key={key}
-              title={section.title}
-              isOpen={isOpen}
-              onToggle={() => toggleSection(key)}
-            >
-              <div className="space-y-3">
-                {section.points?.map((point, pointIdx) => (
-                  <div key={pointIdx} className="flex items-start gap-2 pl-2">
-                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-gray-500 dark:bg-gray-400" />
-                    <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
-                      {point}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </JourneyAccordionSection>
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
-    <div className="rounded-2xl">
-      <pre className="whitespace-pre-wrap text-sm text-charcoal-500 dark:text-white/90">
-        {JSON.stringify(journey, null, 2)}
-      </pre>
+    <div className="relative min-h-[220px]">
+      {loading && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-white/80 dark:bg-gray-900/80">
+          <Loader backgroundClass="bg-transparent" />
+        </div>
+      )}
+
+      {error ? (
+        <div className="rounded-2xl">
+          <p className="text-sm text-red-500">{error}</p>
+        </div>
+      ) : !journey ? (
+        <div className="rounded-2xl">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Business Journey will generate after Business Summary is available.
+          </p>
+        </div>
+      ) : typeof journey === "string" ? (
+        <div className="space-y-3">
+          {parseBusinessJourneySections(journey).map((section, idx) => {
+            const key = `${section.title}-${idx}`;
+            const isOpen = openSectionKey === null ? idx === 0 : openSectionKey === key;
+
+            return (
+              <JourneyAccordionSection
+                key={key}
+                title={section.title}
+                isOpen={isOpen}
+                onToggle={() => toggleSection(key)}
+              >
+                <div className="space-y-2">
+                  {section.content.map((item, itemIdx) => {
+                    if (item.type === "bullet") {
+                      return (
+                        <div key={itemIdx} className="flex items-start gap-2 pl-2">
+                          <span className="mt-2 min-h-1.5 min-w-1.5 rounded-full bg-charcoal-500 dark:bg-gray-400" />
+                          <p className="text-sm leading-5 text-charcoal-500 dark:text-gray-300">
+                            {item.text}
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <p
+                        key={itemIdx}
+                        className="text-sm leading-6 text-charcoal-500 dark:text-gray-300"
+                      >
+                        {item.text}
+                      </p>
+                    );
+                  })}
+                </div>
+              </JourneyAccordionSection>
+            );
+          })}
+        </div>
+      ) : Array.isArray(journey) &&
+        journey.every(
+          (item) =>
+            typeof item === "object" &&
+            item !== null &&
+            "title" in item &&
+            "points" in item
+        ) ? (
+        <div className="space-y-3">
+          {(journey as BusinessJourneySection[]).map((section, idx) => {
+            const key = `${section.title}-${idx}`;
+            const isOpen = openSectionKey === null ? idx === 0 : openSectionKey === key;
+
+            return (
+              <JourneyAccordionSection
+                key={key}
+                title={section.title}
+                isOpen={isOpen}
+                onToggle={() => toggleSection(key)}
+              >
+                <div className="space-y-3">
+                  {section.points?.map((point, pointIdx) => (
+                    <div key={pointIdx} className="flex items-start gap-2 pl-2">
+                      <span className="mt-2 h-1.5 w-1.5 rounded-full bg-gray-500 dark:bg-gray-400" />
+                      <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
+                        {point}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </JourneyAccordionSection>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-2xl">
+          <pre className="whitespace-pre-wrap text-sm text-charcoal-500 dark:text-white/90">
+            {JSON.stringify(journey, null, 2)}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
-
 
 const PreviewLockedSection = ({
   enabled,
@@ -1657,9 +1634,9 @@ export default function ObjectivesPageClient({
   }, [token, country, integratedCountries]);
 
   const handleConnectAmazonPreview = () => {
-  const connectCountry = country === "global" ? "uk" : country;
-  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
-};
+    const connectCountry = country === "global" ? "uk" : country;
+    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+  };
 
   return (
     <div className="w-full">
@@ -1680,14 +1657,14 @@ export default function ObjectivesPageClient({
 
 
       <SummaryTabs activeTab={activeTab} onChange={setActiveTab} />
-     
-<PreviewLockedSection
-  enabled={isPreviewMode}
-  title="Preview Mode"
-   description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-  buttonText="Connect Amazon"
-  onAction={handleConnectAmazonPreview}
->
+
+      <PreviewLockedSection
+        enabled={isPreviewMode}
+        title="Preview Mode"
+        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+        buttonText="Connect Amazon"
+        onAction={handleConnectAmazonPreview}
+      >
         {activeTab === "business_summary" && (
           <div className="grid grid-cols-1 gap-4">
             <InfoCard
@@ -1994,10 +1971,10 @@ export default function ObjectivesPageClient({
 
           </div>
         )}
-     
 
-      {activeTab === "targets_and_objectives" && (
-        
+
+        {activeTab === "targets_and_objectives" && (
+
           <div className="grid grid-cols-1 gap-4">
             <InfoCard
               title={
@@ -2166,8 +2143,8 @@ export default function ObjectivesPageClient({
               </div>
             </InfoCard>
           </div>
-        
-      )}
+
+        )}
       </PreviewLockedSection>
     </div>
   );
