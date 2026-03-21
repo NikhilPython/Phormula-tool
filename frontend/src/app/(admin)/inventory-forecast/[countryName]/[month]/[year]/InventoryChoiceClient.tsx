@@ -919,7 +919,7 @@ export default function InventoryFlowPage() {
 
 
                   {!forecastEnabled ? (
-                    <div className=''>
+                    <div className='max-w-xl'>
                       <div className="flex justify-start items-start gap-2  ">
                         <div>
                           <h3 className="text-base sm:text-lg font-semibold text-charcoal-500">
