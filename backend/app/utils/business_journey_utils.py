@@ -160,13 +160,40 @@ def build_monthly_trend_from_combined_df(combined_df):
             "cm2_profit_percentage": float(row.get("cm2_profit_percentage", 0) or 0),
             "total_units": float(row.get("total_quantity", 0) or 0),
             "advertising_total": float(row.get("advertising_total", 0) or 0),
-            "platform_fee": float(row.get("platform_fee", 0) or 0),
+            "platform_fee": abs(float(row.get("platform_fee", 0) or 0)),
             "platform_fee_inventory_storage": storage_fee,
             "acos": float(row.get("acos", 0) or 0)
         })
 
     trend = sorted(trend, key=lambda x: (x["year"], x["month_num"]))
     return trend
+
+def build_sku_summary(combined_df):
+    """
+    Aggregate SKU performance across full time window
+    """
+
+    df = combined_df.copy()
+
+    # remove total rows
+    df = df[
+        ~(df["sku"].astype(str).str.lower() == "total") &
+        ~(df["product_name"].astype(str).str.lower() == "total")
+    ]
+
+    grouped = df.groupby(["sku", "product_name"], as_index=False).agg({
+        "net_sales": "sum",
+        "gross_sales": "sum",
+        "profit": "sum",
+        "total_quantity": "sum"
+    })
+
+    # derived metrics
+    grouped["profit_percentage"] = (
+        grouped["profit"] / grouped["net_sales"]
+    ).replace([float("inf"), -float("inf")], 0).fillna(0) * 100
+
+    return grouped.sort_values("net_sales", ascending=False).to_dict("records")
 
 def fetch_month_end_inventory_lookup(user_id: int):
 
@@ -186,13 +213,20 @@ def fetch_month_end_inventory_lookup(user_id: int):
     if df.empty:
         return {}
 
-    df["date"] = pd.to_datetime(df["date"])
+    # =========================================================
+    # ✅ DATE PROCESSING
+    # =========================================================
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+
     df["year"] = df["date"].dt.year
     df["month"] = df["date"].dt.month
 
     df = df.sort_values("date")
 
-    # take LAST snapshot per sku + disposition + month
+    # =========================================================
+    # ✅ TAKE LAST SNAPSHOT PER SKU + DISPOSITION + MONTH
+    # =========================================================
     month_end = (
         df.groupby(["msku", "disposition", "year", "month"], as_index=False)
         .last()
@@ -202,7 +236,14 @@ def fetch_month_end_inventory_lookup(user_id: int):
 
     for _, r in month_end.iterrows():
 
-        key = (str(r["msku"]), int(r["year"]), int(r["month"]))
+        # =========================================================
+        # ✅ KEY FIX (VERY IMPORTANT)
+        # =========================================================
+        sku = str(r["msku"]).strip()
+        year = int(r["year"])
+        month = int(r["month"])
+
+        key = (sku, year, month)
 
         if key not in lookup:
             lookup[key] = {
@@ -211,20 +252,103 @@ def fetch_month_end_inventory_lookup(user_id: int):
                 "expired_inventory": 0
             }
 
-        disp = str(r["disposition"]).upper()
-        units = float(r["ending_warehouse_balance"])
+        # =========================================================
+        # ✅ SAFE VALUE HANDLING
+        # =========================================================
+        disp = str(r["disposition"]).upper().strip()
+        units = float(r["ending_warehouse_balance"] or 0)
 
+        # =========================================================
+        # ✅ CLASSIFICATION
+        # =========================================================
         if disp == "SELLABLE":
             lookup[key]["sellable_inventory"] += units
 
         elif disp in ["DEFECTIVE", "WAREHOUSE_DAMAGED", "CUSTOMER_DAMAGED"]:
             lookup[key]["damaged_inventory"] += units
 
-        elif disp in ["EXPIRED"]:
+        elif disp == "EXPIRED":
             lookup[key]["expired_inventory"] += units
 
     return lookup    
 
+
+def compute_inventory_sales_correlation(monthly_trend, inventory_trend):
+    """
+    Detect relationship between sales and inventory movement
+    """
+
+    if not monthly_trend or not inventory_trend:
+        return []
+
+    # map inventory by month
+    inventory_map = {
+        (x["year"], x["month_num"]): x
+        for x in inventory_trend
+    }
+
+    correlation = []
+
+    for i in range(1, len(monthly_trend)):
+        prev = monthly_trend[i - 1]
+        curr = monthly_trend[i]
+
+        key_prev = (prev["year"], prev["month_num"])
+        key_curr = (curr["year"], curr["month_num"])
+
+        inv_prev = inventory_map.get(key_prev)
+        inv_curr = inventory_map.get(key_curr)
+
+        if not inv_prev or not inv_curr:
+            continue
+
+        # ============================
+        # SALES CHANGE
+        # ============================
+        sales_diff = (curr["net_sales"] or 0) - (prev["net_sales"] or 0)
+
+        # ============================
+        # INVENTORY CHANGE
+        # ============================
+        inv_prev_total = (
+            inv_prev["sellable_inventory"]
+            + inv_prev["damaged_inventory"]
+            + inv_prev["expired_inventory"]
+        )
+
+        inv_curr_total = (
+            inv_curr["sellable_inventory"]
+            + inv_curr["damaged_inventory"]
+            + inv_curr["expired_inventory"]
+        )
+
+        inventory_diff = inv_curr_total - inv_prev_total
+
+        # ============================
+        # CLASSIFY RELATIONSHIP
+        # ============================
+        signal = "stable"
+
+        if sales_diff > 0 and inventory_diff < 0:
+            signal = "strong_sell_through"
+
+        elif sales_diff > 0 and inventory_diff > 0:
+            signal = "scaled_growth"
+
+        elif sales_diff < 0 and inventory_diff > 0:
+            signal = "overstock_risk"
+
+        elif sales_diff > 0 and inventory_diff < 0 and abs(inventory_diff) > abs(sales_diff):
+            signal = "stockout_risk"
+
+        correlation.append({
+            "month": curr["month"],
+            "sales_change": sales_diff,
+            "inventory_change": inventory_diff,
+            "signal": signal
+        })
+
+    return correlation
 
 def fetch_business_context(chatbot_engine, user_id, country, month_name, year):
     month_map = {
@@ -271,6 +395,54 @@ def fetch_business_context(chatbot_engine, user_id, country, month_name, year):
         )
 
     return df
+
+def build_inventory_trend(inventory_lookup):
+    """
+    Convert inventory lookup into monthly inventory trend
+    """
+
+    trend_map = {}
+
+    for (sku, year, month), data in inventory_lookup.items():
+
+        key = (year, month)
+
+        if key not in trend_map:
+            trend_map[key] = {
+                "year": year,
+                "month_num": month,
+                "sellable_inventory": 0,
+                "damaged_inventory": 0,
+                "expired_inventory": 0
+            }
+
+        trend_map[key]["sellable_inventory"] += data.get("sellable_inventory", 0) or 0
+        trend_map[key]["damaged_inventory"] += data.get("damaged_inventory", 0) or 0
+        trend_map[key]["expired_inventory"] += data.get("expired_inventory", 0) or 0
+
+    # convert to list
+    trend = []
+
+    month_map = {
+        1: "January", 2: "February", 3: "March", 4: "April",
+        5: "May", 6: "June", 7: "July", 8: "August",
+        9: "September", 10: "October", 11: "November", 12: "December"
+    }
+
+    for (year, month), data in trend_map.items():
+        trend.append({
+            "month": f"{month_map[month]} {year}",
+            "year": year,
+            "month_num": month,
+            "sellable_inventory": int(data["sellable_inventory"]),
+            "damaged_inventory": int(data["damaged_inventory"]),
+            "expired_inventory": int(data["expired_inventory"])
+        })
+
+    # sort properly
+    trend = sorted(trend, key=lambda x: (x["year"], x["month_num"]))
+
+    return trend
 
 def prepare_ai_sku_data(sku_df):
     """
@@ -378,46 +550,123 @@ IMPORTANT CONTEXT:
 - The available monthly data is a rolling observed period from Amazon SP API.
 - It may not represent the full business history.
 - Do NOT assume that the first available month is the business start, launch, or foundation period.
-- Treat the data as an observed performance window only.
+- Treat the data strictly as an observed performance window only.
 
 IMPORTANT RULES:
-- All metrics are pre-calculated. DO NOT recompute raw source metrics.
+- All metrics are pre-calculated. Do NOT recompute raw source metrics unless deriving change percentages or comparisons directly from the provided monthly_trend or inventory_trend.
 - Always use the numbers provided.
-- Always include percentages and absolute values where relevant.
-- Explain cause-and-effect relationships clearly.
+- Always explain cause-and-effect relationships clearly.
 - Make the output understandable for someone who knows nothing about the business.
 - This must feel like a business journey, not a static overview.
+- Do not make assumptions when data is missing. Clearly state when something is unavailable.
+- Keep the output concise enough to be readable, while still analytical.
+
+PROFIT INTERPRETATION RULE (CRITICAL):
+
+- Whenever referring to "profit", ALWAYS use CM1 Profit (the "profit" field provided in the data).
+- Treat CM1 Profit as the primary profitability metric across all sections.
+
+- Do NOT reinterpret profit using CM2 unless explicitly stated.
+- CM2 should ONLY be used when specifically referring to:
+  - "CM2 Profit"
+  - "CM2 Margin"
+
+- Never mix CM1 and CM2 in the same statement.
+- When mentioning margins:
+  - "profit margin" = CM1 profit_percentage
+  - "CM2 margin" = cm2_profit_percentage
+
+- If both are mentioned, clearly differentiate them.
+
+FORMATTING RULES:
+- Use exactly 2 decimal places for all monetary values, percentages, ratios, and derived metrics.
+- Use whole numbers only for units and inventory quantities.
+- Whenever mentioning a metric, always mention the relevant month and year if that metric belongs to a specific point in time.
+- Never mention a percentage, sales value, margin, profit, cost, or ratio without tying it to a month/year or clearly stating that it refers to the latest month or observed period.
+- If discussing latest SKU-level metrics, explicitly state that they refer to the latest month in the dataset.
+- Always explicitly mention the latest_month_label when referring to latest month performance.
+
+OUTPUT FORMATTING RULES (STRICT):
+- You MUST strictly follow the numbered section format exactly as provided in OUTPUT STRUCTURE.
+- Each section MUST begin with its number and title exactly like:
+  "1. Business Journey Across the Observed Period"
+  "2. Inventory Journey Across the Observed Period"
+- Do NOT skip numbering.
+- Do NOT merge sections.
+- Add a blank line before and after each section.
+- Use clear paragraph spacing between sections.
 
 CURRENCY RULE:
 - Use the currency_symbol provided in input.
 - Do NOT assume $.
-- Format values like: £12,345 or $12,345.
+- Format values like: £12,345.67 or $12,345.67.
 
 DATA INTERPRETATION RULES:
 - monthly_trend is the most important input for journey analysis.
 - monthly_trend is chronological monthly business performance for the observed data window.
+- inventory_trend is chronological monthly inventory totals for the observed data window.
 - sku_data is the latest month's SKU-level breakdown.
 - overall_metrics is the latest month's aggregated total row.
 - summary_metrics is the latest month's key headline metrics.
 - Do NOT assign overall business-level costs directly to individual SKUs unless explicitly present at SKU level.
+- Do NOT assign overall inventory totals directly to individual SKUs.
 
 COST INTERPRETATION RULE:
 - All cost values should be interpreted as positive costs.
 - Higher values mean higher cost burden, not savings.
+- Platform fees and inventory storage fees are both costs.
+- Never describe one cost as offsetting another cost.
+- Inventory storage fees are a cost, not a benefit or offset.
+
+LOST_TOTAL INTERPRETATION RULE:
+- lost_total represents reimbursements received from Amazon for lost or damaged inventory.
+- It is NOT a loss or leakage.
+- It should be treated as a recovery or compensation, not a cost.
+- Do NOT describe lost_total as lost sales or negative business impact.
 
 INVENTORY RULES:
 - Use sellable_inventory, damaged_inventory, expired_inventory, and inventory_coverage_days only when present in the latest SKU data.
-- If inventory coverage is zero or consistently low, highlight stockout risk.
+- Use inventory_trend for monthly inventory history and total inventory movement over time.
+- If inventory_coverage_days is null, missing, or unavailable, do NOT assume stockout risk.
+- Only comment on stockout risk when coverage is explicitly available and clearly low.
+- If sellable inventory is available for a SKU, mention it when it materially supports the analysis.
 - If damaged or expired inventory exists, explain the business impact.
+- If damaged or expired inventory remains consistently low, mention that clearly as a positive operational signal.
+- If inventory data is unavailable for some SKUs, say so clearly rather than making assumptions.
+- Always include actual inventory quantities when discussing inventory. Avoid vague phrases like "inventory looks healthy" without numbers.
+
+INVENTORY TREND ANALYSIS RULES:
+- Use inventory_trend to explain how total sellable, damaged, and expired inventory changed over time.
+- Identify:
+  - highest inventory month
+  - lowest inventory month
+  - inventory build-up periods
+  - inventory drawdown periods
+- Explain the relationship between inventory movement and sales movement where visible.
+- If inventory increased while sales weakened, mention possible overstock risk.
+- If inventory declined while sales remained strong, mention improved sell-through or replenishment pressure as appropriate.
+- Do not invent inventory conclusions if the trend does not clearly support them.
+
+INVENTORY-SALES CORRELATION RULES:
+- Use inventory_sales_correlation to explain the relationship between sales and inventory movement.
+- Each entry represents how sales and inventory changed from the previous month.
+- Interpret signals as:
+  - "strong_sell_through" → sales increased while inventory declined
+  - "scaled_growth" → both sales and inventory increased
+  - "overstock_risk" → inventory increased while sales declined
+  - "stockout_risk" → inventory declined faster than sales increased
+- Mention these signals only when they are clearly present.
+- Always attach month/year when referencing correlation insights.
+- Do NOT invent correlation if data is missing.
 
 TREND ANALYSIS RULES:
 - Use monthly_trend to tell the story of how the business changed over time.
 - Identify:
   - highest month by net sales
-  - highest month by profit
+  - highest month by CM1 profit
   - highest month by units
   - lowest month by net sales
-  - lowest month by profit
+  - lowest month by CM1 profit
   - major rises, declines, volatility, and recovery phases
 - Mention growth and decline percentages wherever meaningful from the observed monthly data.
 - Explicitly mention when the business was strongest and when it was weakest during the observed period.
@@ -425,12 +674,54 @@ TREND ANALYSIS RULES:
 - If the trend improved over time, explain when the improvement started.
 - If the trend worsened over time, explain when the slowdown or decline started.
 
+SKU-LEVEL REQUIREMENTS:
+
+- Use sku_summary for overall SKU performance across the full observed period.
+- Use sku_data ONLY for latest month inventory and current snapshot.
+
+- Identify:
+  - top SKUs by total net sales across the observed period
+  - top SKUs by total profit across the observed period
+  - weakest SKUs across the observed period
+
+- Clearly differentiate:
+  - historical performance (from sku_summary)
+  - latest month performance (from sku_data)
+
+- When discussing historical SKU performance:
+  - refer to the observed period
+  - do NOT attribute it to a single month
+
+- When discussing latest SKU metrics:
+  - explicitly mention the latest month and year
+
+- For important SKUs:
+  - mention total net sales
+  - total CM1 profit
+  - overall CM1 margin across the observed period
+
+- Use latest month inventory ONLY as a supporting signal, not as historical data.
+
+COMPETITION ANALYSIS AND COMPARISON RULES:
+- Identify the business category using business_overview (e.g., skincare, intimate hygiene, supplements, apparel, etc.).
+- Use business_category_hint (if available) to better understand the business type and identify relevant competitors.
+- Based on this category, you may mention well-known and widely recognized competitors that operate in a similar product space.
+
+- Only include competitor names if they are:
+  - widely known brands
+  - relevant to the same category
+  - likely to compete for similar customers
+
+- Do NOT fabricate unknown or obscure competitor names.
+
+- If competitor identification is based on general knowledge and not provided data, explicitly state:
+  "Competitor identification is indicative based on general market knowledge."
+
+
+
 OUTPUT STRUCTURE:
 
-1. Business Context
-- Briefly explain the business, goals, and priorities from business_overview.
-
-2. Business Journey Across the Observed Period
+1. Business Journey Across the Observed Period
 - Tell the chronological story of the business using monthly_trend.
 - Mention the first and last observed month.
 - Highlight major phases in the observed period:
@@ -440,39 +731,59 @@ OUTPUT STRUCTURE:
   - volatile periods
 - Mention the highest and lowest months for sales, profit, and units.
 - Include percentage changes when describing rises and falls.
+- Always attach month/year to every key metric mentioned.
 
-3. Latest Month Performance
+2. Inventory Journey Across the Observed Period
+- Use inventory_trend to explain how sellable, damaged, and expired inventory changed over time.
+- Mention highest and lowest inventory months if available.
+- Explain whether inventory movement supports or conflicts with sales movement.
+- Mention damaged and expired inventory history if meaningful.
+- Mention coverage ratio only where explicitly available.
+
+3. Latest Month Performance Summary
 - Analyze the latest month using summary_metrics and overall_metrics.
-- Clearly state latest gross sales, net sales, profit, margin, CM2, and major cost pressures.
+- Clearly state latest gross sales, net sales, CM1 profit, margin, CM2, advertising cost, platform fees, storage fees, and other major cost pressures.
+- Make clear that these are latest-month numbers and mention the month/year.
 
-4. Revenue & Sales Analysis
-- Explain revenue drivers and sales concentration.
-- Use latest month sku_data to identify which SKUs are driving the business now.
+4. Commercial Performance Analysis
+- Merge revenue, sales, profitability, and cost analysis into one single integrated section.
+- Explain:
+  - revenue drivers
+  - sales concentration
+  - margin strength or weakness
+  - major cost burdens
+  - impact of advertising, platform fees, storage fees, and reimbursements (lost_total)
+- Tie all major points back to month/year.
+- Keep this section concise but analytical.
 
-5. Profitability Analysis
-- Explain margin strength or weakness over the observed period and in the latest month.
-- Identify which products are helping or hurting profitability.
-
-6. Cost & Leakage Analysis
-- Analyze advertising, platform fees, storage fees, and lost_total.
-- Explain how these affect business health.
-
-7. SKU-Level Insights
+5. SKU-Level Insights
 - Identify top-performing and weakest SKUs in the latest month.
 - Explain their contribution to sales and profit.
+- Mention inventory position and coverage ratio for important SKUs if data is available.
+- Whenever a SKU metric is mentioned, state that it refers to the latest month and mention that month/year.
 
-8. Key Problems
-- Clearly prioritize the biggest business issues based on trend + latest month.
+6. Competition Analysis and Comparison
+- Identify the business category using business_overview and business_category_hint.
+- Based on this category, mention well-known and widely recognized competitors operating in the same product space.
 
-9. Strategic Recommendations
-- Give practical recommendations on what to scale, fix, reduce, or stop.
-- Tie every recommendation back to the data.
+- Competitor identification should follow these rules:
+  - Only include widely known and relevant brands
+  - Do NOT fabricate unknown or obscure competitors
+  - If unsure, avoid naming competitors rather than guessing
+
+- Clearly state:
+  "Competitor identification is indicative based on general market knowledge, not dataset-specific."
+
 
 STYLE:
 - Write like a top-tier consultant.
 - Use clear paragraphs, not shallow bullet summaries.
 - Be specific, numeric, and easy to understand.
 - Avoid vague or generic language.
+- Do not include recommendations.
+- Do not include a separate Key Problems section.
+- Do not use markdown symbols like **, #, or bullet markdown.
+- You MUST still use plain text numbering (1., 2., 3.) and hyphen (-) bullet points where required.
 """
 
 
@@ -482,9 +793,15 @@ def generate_business_journey(
     overall_metrics,
     currency_symbol,
     monthly_trend,
+    inventory_trend,
+    sku_summary,
+    inventory_sales_correlation,
     openai_client
 ):
     try:
+        # =========================================================
+        # ✅ SUMMARY METRICS (LATEST MONTH)
+        # =========================================================
         summary_metrics = {
             col: (overall_metrics.get(col) or 0)
             for col in [
@@ -499,37 +816,60 @@ def generate_business_journey(
             ]
         }
 
+        # =========================================================
+        # ✅ GET LATEST MONTH LABEL (VERY IMPORTANT FIX)
+        # =========================================================
+        latest_month_label = None
+        if monthly_trend and len(monthly_trend) > 0:
+            last_row = monthly_trend[-1]
+            latest_month_label = last_row.get("month")
+
+        # =========================================================
+        # ✅ TOP SKUs (LATEST MONTH)
+        # =========================================================
         top_skus = sorted(
             sku_data,
             key=lambda x: (x.get("net_sales") or 0),
             reverse=True
         )[:5]
 
-        worst_skus = sorted(
-            sku_data,
-            key=lambda x: (x.get("profit") or 0)
-        )[:5]
+        # =========================================================
+        # ❌ REMOVE: problem_flags (not needed anymore)
+        # ❌ REMOVE: worst_skus (not needed anymore)
+        # =========================================================
 
-        problem_flags = {
-            "low_margin": (summary_metrics.get("profit_percentage") or 0) < 10,
-            "high_acos": (summary_metrics.get("acos") or 0) > 30,
-        }
-
+        # =========================================================
+        # ✅ FINAL AI INPUT
+        # =========================================================
         ai_input = {
             "business_overview": business_context,
+            "business_category_hint": business_context.get("business_context"),
+
+            # Latest month context
+            "latest_month_label": latest_month_label,
             "summary_metrics": summary_metrics,
             "overall_metrics": overall_metrics,
+            "sku_summary": sku_summary,
+
+            # SKU data
             "top_skus": top_skus,
-            "worst_skus": worst_skus,
-            "problem_flags": problem_flags,
             "sku_data": sku_data,
-            "currency_symbol": currency_symbol,
+
+            # Trends
             "monthly_trend": monthly_trend,
+            "inventory_trend": inventory_trend,
+
+            # Meta
+            "currency_symbol": currency_symbol,
+            "inventory_sales_correlation": inventory_sales_correlation,
             "data_window_note": "This is a rolling observed period from Amazon SP API, not necessarily the full business history."
         }
 
+        # =========================================================
+        # ✅ CALL OPENAI
+        # =========================================================
         response = openai_client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             messages=[
                 {
                     "role": "system",
@@ -547,6 +887,7 @@ def generate_business_journey(
 
     except OpenAIError as e:
         raise Exception(f"OpenAI Error: {str(e)}")
+    
 
 
 def save_business_journey_by_id(chatbot_engine, objective_id, business_journey):
