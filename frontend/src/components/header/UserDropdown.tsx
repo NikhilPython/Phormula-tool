@@ -135,26 +135,31 @@ export default function UserDropdown() {
             <DropdownItem
               onItemClick={closeDropdown}
               tag="a"
-              href={`/objectives-targets/${currentCountryName}`}
+              href={`/objectives-targets/${currentCountryName}/${month || "NA"}/${year || "NA"}`}
               className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               Business Overview
             </DropdownItem>
 
-            {!isMember && (
-              <li>
-                <DropdownItem
-                  onItemClick={() => {
-                    closeDropdown();
-                    setIsAddMemberOpen(true);
-                  }}
-                  tag="button"
-                  className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300 w-full text-left"
-                >
-                  Add Members
-                </DropdownItem>
-              </li>
-            )}
+           {!isMember && (
+  <li>
+    <DropdownItem
+      onItemClick={() => {
+        if (isNAMonthYear) return;
+        closeDropdown();
+        setIsAddMemberOpen(true);
+      }}
+      tag="button"
+      className={`flex items-center gap-3 px-3 py-2 font-medium rounded-lg group text-theme-sm w-full text-left ${
+        isNAMonthYear
+          ? "cursor-not-allowed text-gray-400 bg-gray-100 dark:text-gray-500 dark:bg-white/5"
+          : "text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+      }`}
+    >
+      Add Members
+    </DropdownItem>
+  </li>
+)}
 
             <DropdownItem
               onItemClick={closeDropdown}

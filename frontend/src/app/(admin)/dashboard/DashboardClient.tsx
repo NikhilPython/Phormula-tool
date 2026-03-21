@@ -258,7 +258,7 @@ type BiApiResponse = {
     categorized_growth?: any;
     insights?: Record<string, any>;
     ai_insights?: Record<string, any>;
-    overall_summary?: string[];
+    overall_summary?: string;
     overall_actions?: string[];
     cm1_profit_pie?: Cm1ProfitPieApi;
 };
@@ -4230,7 +4230,23 @@ const PreviewLockedSection = ({
   cm2ProfitPct: { current: 0, previous: 0, deltaPct: 0 },
 };
 
-const dummyLiveBusinessClientData: ApiResponse = {
+const dummyLiveBusinessClientData: ApiResponse & {
+  portfolio_recommendation?: string;
+  objective_context?: {
+    growth_intent: string;
+    inventory_clearance_priority: boolean;
+    profit_priority: string;
+  };
+  ads_recommendation?: string;
+  inventory_summary?: {
+    alert_bullets: string[];
+    summary_text: string;
+  };
+  recommended_actions_mtd?: Record<string, string>;
+  remaining_skus_block?: string;
+  categorized_growth?: any;
+  ai_insights?: Record<string, any>;
+} = {
   periods: {
     previous: {
       label: "Feb MTD",
@@ -4244,16 +4260,9 @@ const dummyLiveBusinessClientData: ApiResponse = {
     },
   },
 
-  overall_summary: {
-    summary_text:
-      "Business delivered healthy month-to-date growth driven by stronger unit movement, better sales conversion, and stable contribution margins across core SKUs.",
-    metric_bullets: [
-      "Net sales increased by 23.66% versus the comparable previous period.",
-      "Units increased by 26.53%, indicating stronger volume movement.",
-      "CM1 profitability improved on key SKUs, helping overall margin quality.",
-      "Advertising remained under control, though a few SKUs still need efficiency improvement.",
-    ],
-  },
+ overall_summary: [
+    "Business delivered healthy month-to-date growth driven by stronger unit movement, better sales conversion, and stable contribution margins across core SKUs.",
+  ],
 
   overall_actions: [
     "Increase focus on top-performing SKUs with strong unit velocity and stable profitability.",
