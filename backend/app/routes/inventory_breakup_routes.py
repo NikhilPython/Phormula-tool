@@ -1075,7 +1075,7 @@ def inventory_lost_compensation():
 
         loss_value = settlement_loss_event_amount
         compensation_value = compensation_reimbursement_amount
-        net_units = compensation_units + total_lost_units
+        net_units = compensation_units - total_lost_units
         net_value = compensation_value + loss_value
 
         product_name = row["product_name"] or inv.get("inventory_product_name", "") or "Unknown"
@@ -1124,7 +1124,7 @@ def inventory_lost_compensation():
         summary["loss_value"] += loss_value
         summary["compensation_value"] += compensation_value
 
-    summary["net_units"] = summary["compensation_units"] + summary["total_lost_units"]
+    summary["net_units"] = summary["compensation_units"] - summary["total_lost_units"]
     summary["net_value"] = summary["compensation_value"] + summary["loss_value"]
 
     summary = {
