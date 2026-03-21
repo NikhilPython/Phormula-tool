@@ -26,6 +26,7 @@ import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import JSZip from "jszip";
 import mammoth from "mammoth";
 import Loader from "@/components/loader/Loader";
+import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 
 type ObjectivesPageClientProps = {
   country?: string;
@@ -150,13 +151,102 @@ const dummyMonthlyTargetData: TargetRow[] = [
   },
 ];
 
-const shortMoney = (value: number, currency = "USD") =>
-  new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency,
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value);
+type JourneySection = {
+  title: string;
+  content: Array<
+    | { type: "paragraph"; text: string }
+    | { type: "bullet"; text: string }
+  >;
+};
+
+function JourneyAccordionSection({
+  title,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  title: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-gray-50"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-charcoal-500 dark:text-gray-400">
+            {isOpen ? <FiChevronDown size={18} /> : <FiChevronRight size={18} />}
+          </span>
+          <h4 className="text-sm font-semibold text-charcoal-500 dark:text-white/90">
+            {title}
+          </h4>
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="border-t border-gray-200 px-4 py-4 dark:border-gray-800">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function parseBusinessJourneySections(input: string): JourneySection[] {
+  if (!input) return [];
+
+  const lines = input
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const sections: JourneySection[] = [];
+  let currentSection: JourneySection | null = null;
+
+  for (const line of lines) {
+    const isHeading = /^\d+\.\s+/.test(line);
+    const isBullet = /^[-•]\s+/.test(line);
+
+    if (isHeading) {
+      if (currentSection) sections.push(currentSection);
+
+      currentSection = {
+        title: line.replace(/^\d+\.\s+/, "").trim(),
+        content: [],
+      };
+      continue;
+    }
+
+    if (!currentSection) {
+      currentSection = {
+        title: "Overview",
+        content: [],
+      };
+    }
+
+    if (isBullet) {
+      currentSection.content.push({
+        type: "bullet",
+        text: line.replace(/^[-•]\s+/, "").trim(),
+      });
+    } else {
+      currentSection.content.push({
+        type: "paragraph",
+        text: line,
+      });
+    }
+  }
+
+  if (currentSection) sections.push(currentSection);
+
+  return sections;
+}
+
 
 const prettifyObjectiveValue = (v?: string | null) => {
   const s = (v ?? "").trim();
@@ -253,46 +343,6 @@ type ParsedJourneyBlock =
   | { type: "paragraph"; text: string }
   | { type: "bullet"; text: string };
 
-function parseBusinessJourneyText(input: string): ParsedJourneyBlock[] {
-  if (!input) return [];
-
-  const lines = input
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const blocks: ParsedJourneyBlock[] = [];
-
-  for (const line of lines) {
-    // Matches: "1. Business Context"
-    if (/^\d+\.\s+/.test(line)) {
-      blocks.push({
-        type: "heading",
-        text: line.replace(/^\d+\.\s+/, "").trim(),
-      });
-      continue;
-    }
-
-    // Matches bullet lines starting with "-" or "•"
-    if (/^[-•]\s+/.test(line)) {
-      blocks.push({
-        type: "bullet",
-        text: line.replace(/^[-•]\s+/, "").trim(),
-      });
-      continue;
-    }
-
-    // Everything else becomes a paragraph
-    blocks.push({
-      type: "paragraph",
-      text: line,
-    });
-  }
-
-  return blocks;
-}
-
 function BusinessJourneyPanel({
   journey,
   loading,
@@ -302,6 +352,12 @@ function BusinessJourneyPanel({
   loading: boolean;
   error: string | null;
 }) {
+  const [openSectionKey, setOpenSectionKey] = useState<string | null>(null);
+
+  const toggleSection = (key: string) => {
+    setOpenSectionKey((prev) => (prev === key ? null : key));
+  };
+
   if (loading) {
     return (
       <div className="rounded-2xl">
@@ -324,77 +380,60 @@ function BusinessJourneyPanel({
     return (
       <div className="rounded-2xl">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Business Journey will appear after Business Summary is available.
+          Business Journey will generate after Business Summary is available.
         </p>
       </div>
     );
   }
 
-  // Case 1: API returns plain string
+  // Case 1: plain string response from API
   if (typeof journey === "string") {
-    const blocks = parseBusinessJourneyText(journey);
+    const sections = parseBusinessJourneySections(journey);
 
     return (
-      <div className="rounded-2xl">
-        <div className="space-y-5">
-          {blocks.map((block, idx) => {
-            if (block.type === "heading") {
-              return (
-                <h4
-                  key={idx}
-                  className="pt-2 text-base font-semibold text-gray-900 dark:text-white"
-                >
-                  {block.text}
-                </h4>
-              );
-            }
+      <div className="space-y-3">
+        {sections.map((section, idx) => {
+          const key = `${section.title}-${idx}`;
+          const isOpen = openSectionKey === null ? idx === 0 : openSectionKey === key;
 
-            if (block.type === "bullet") {
-              return (
-                <div key={idx} className="pl-4">
-                  <div className="flex items-start gap-2">
-                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-gray-500 dark:bg-gray-400" />
-                    <p className="text-sm leading-7 text-gray-700 dark:text-gray-300">
-                      {block.text}
+          return (
+            <JourneyAccordionSection
+              key={key}
+              title={section.title}
+              isOpen={isOpen}
+              onToggle={() => toggleSection(key)}
+            >
+              <div className="space-y-2">
+                {section.content.map((item, itemIdx) => {
+                  if (item.type === "bullet") {
+                    return (
+                      <div key={itemIdx} className="flex items-start gap-2 pl-2">
+                        <span className="mt-2 min-h-1.5 min-w-1.5 rounded-full bg-charcoal-500 dark:bg-gray-400" />
+                        <p className="text-sm leading-5 text-charcoal-500 dark:text-gray-300">
+                          {item.text}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <p
+                      key={itemIdx}
+                      className="text-sm leading-6 text-charcoal-500 dark:text-gray-300"
+                    >
+                      {item.text}
                     </p>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <p
-                key={idx}
-                className="text-sm leading-7 text-gray-700 dark:text-gray-300"
-              >
-                {block.text}
-              </p>
-            );
-          })}
-        </div>
+                  );
+                })}
+              </div>
+            </JourneyAccordionSection>
+          );
+        })}
       </div>
     );
   }
 
-  // Case 2: API returns array of strings
-  if (Array.isArray(journey) && journey.every((item) => typeof item === "string")) {
-    return (
-      <div className="rounded-2xl">
-        <div className="space-y-3">
-          {(journey as string[]).map((item, idx) => (
-            <div key={idx} className="flex items-start gap-2">
-              <span className="mt-2 h-1.5 w-1.5 rounded-full bg-gray-500 dark:bg-gray-400" />
-              <p className="text-sm leading-7 text-gray-700 dark:text-gray-300">
-                {item}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // Case 3: API returns structured sections
+  // Case 2: structured array response
   if (
     Array.isArray(journey) &&
     journey.every(
@@ -406,34 +445,38 @@ function BusinessJourneyPanel({
     )
   ) {
     return (
-      <div className="rounded-2xl">
-        <div className="space-y-6">
-          {(journey as BusinessJourneySection[]).map((section, idx) => (
-            <div key={idx} className="space-y-3">
-              <h4 className="text-base font-semibold text-gray-900 dark:text-white">
-                {section.title}
-              </h4>
+      <div className="space-y-3">
+        {(journey as BusinessJourneySection[]).map((section, idx) => {
+          const key = `${section.title}-${idx}`;
+          const isOpen = openSectionKey === null ? idx === 0 : openSectionKey === key;
 
-              <div className="space-y-2">
+          return (
+            <JourneyAccordionSection
+              key={key}
+              title={section.title}
+              isOpen={isOpen}
+              onToggle={() => toggleSection(key)}
+            >
+              <div className="space-y-3">
                 {section.points?.map((point, pointIdx) => (
                   <div key={pointIdx} className="flex items-start gap-2 pl-2">
                     <span className="mt-2 h-1.5 w-1.5 rounded-full bg-gray-500 dark:bg-gray-400" />
-                    <p className="text-sm leading-7 text-gray-700 dark:text-gray-300">
+                    <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">
                       {point}
                     </p>
                   </div>
                 ))}
               </div>
-            </div>
-          ))}
-        </div>
+            </JourneyAccordionSection>
+          );
+        })}
       </div>
     );
   }
 
   return (
     <div className="rounded-2xl">
-      <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
+      <pre className="whitespace-pre-wrap text-sm text-charcoal-500 dark:text-white/90">
         {JSON.stringify(journey, null, 2)}
       </pre>
     </div>
@@ -1043,26 +1086,41 @@ export default function ObjectivesPageClient({
   const handleBusinessSummarySave = async () => {
     try {
       const website = objectiveDraft.website?.trim();
+      const businessContext = objectiveDraft.business_context?.trim();
+
       const pptFile = objectiveDraft.uploaded_files.find(
         (f) =>
           f.uploadStatus === "ready" &&
-          f.rawFile &&
           f.name.toLowerCase().endsWith(".pptx")
       );
 
-      let nextBusinessContext = objectiveDraft.business_context;
+      const hasUploadedPpt = !!pptFile?.rawFile;
+      const hasSavedPptWithoutRawFile = !!pptFile && !pptFile.rawFile;
 
-      if (website) {
-        if (!pptFile?.rawFile) {
-          alert("Please upload a PPTX file.");
-          return;
-        }
+      if (!businessContext && !website && !pptFile) {
+        alert("Please provide at least one: Business Summary, Website, or PPT file.");
+        return;
+      }
 
+      if (!businessContext && !website && hasSavedPptWithoutRawFile) {
+        alert("Please re-upload the PPT file before saving.");
+        return;
+      }
+
+      let nextBusinessContext = businessContext || "";
+
+      if (!nextBusinessContext && (website || hasUploadedPpt)) {
         setIsGeneratingSummary(true);
 
         const formData = new FormData();
-        formData.append("website", website);
-        formData.append("ppt", pptFile.rawFile);
+
+        if (website) {
+          formData.append("website", website);
+        }
+
+        if (hasUploadedPpt && pptFile?.rawFile) {
+          formData.append("ppt", pptFile.rawFile);
+        }
 
         const analyzeRes = await fetch(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
@@ -1075,13 +1133,13 @@ export default function ObjectivesPageClient({
           }
         );
 
-        const analyzeJson = await analyzeRes.json();
+        const analyzeJson = await analyzeRes.json().catch(() => null);
 
         if (!analyzeRes.ok) {
           throw new Error(
             analyzeJson?.details ||
             analyzeJson?.error ||
-            "Failed to analyze website"
+            "Failed to analyze input"
           );
         }
 
@@ -1137,7 +1195,6 @@ export default function ObjectivesPageClient({
       setIsGeneratingSummary(false);
     }
   };
-
   const handleStrategicObjectivesSave = async () => {
     try {
       const nextTarget = Number(objectiveTargetDraft);
@@ -1646,7 +1703,7 @@ export default function ObjectivesPageClient({
                         placeholder="Describe your business context..."
                       />
                     ) : objective.business_context ? (
-                      <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
+                      <p className="whitespace-pre-wrap text-sm text-charcoal-500 dark:text-white/90">
                         {objective.business_context}
                       </p>
                     ) : (
