@@ -45,6 +45,8 @@ export default function ProfileClient() {
   const month = searchParams.get("month") || "NA";
   const year = searchParams.get("year") || "NA";
 
+  const isPreviewMode = month === "NA" && year === "NA";
+
   const token =
     typeof window !== "undefined" ? localStorage.getItem("jwtToken") || "" : "";
 
@@ -125,6 +127,12 @@ export default function ProfileClient() {
       setTab("personal");
     }
   }, [isMember, tab]);
+
+  React.useEffect(() => {
+  if (isPreviewMode && tab === "teamMembers") {
+    setTab("personal");
+  }
+}, [isPreviewMode, tab]);
 
   const memberColumns = React.useMemo<ColumnDef<TeamMemberRow>[]>(
     () => [
@@ -312,17 +320,21 @@ export default function ProfileClient() {
         </div>
 
         <div className="mt-3">
-          <SegmentedToggle<"personal" | "objectives" | "teamMembers">
-            value={tab}
-            options={[
-              { value: "personal", label: "User Details" },
-              // { value: "objectives", label: "Performance Targets" },
-              ...(isMember === false ? [{ value: "teamMembers" as const, label: "Team Members" }] : []),
-            ]}
-            onChange={(val) => setTab(val)}
-            className="max-w-full sm:max-w-[520px]"
-            compact
-          />
+         <SegmentedToggle<"personal" | "objectives" | "teamMembers">
+  value={tab}
+  options={[
+    { value: "personal", label: "User Details" },
+    ...(isMember === false
+      ? [{ value: "teamMembers" as const, label: "Team Members" }]
+      : []),
+  ]}
+  onChange={(val) => {
+    if (isPreviewMode && val === "teamMembers") return;
+    setTab(val);
+  }}
+  className="max-w-full sm:max-w-[520px]"
+  compact
+/>
         </div>
 
         <div className="mt-4 space-y-4 ">
@@ -330,9 +342,6 @@ export default function ProfileClient() {
             <>
               <UserInfoCard
                 activeTab="personal"
-                countryName={countryName}
-                month={month}
-                year={year}
               />
             </>
           )}
@@ -340,9 +349,6 @@ export default function ProfileClient() {
           {tab === "objectives" && (
             <UserInfoCard
               activeTab="objectives"
-              countryName={countryName}
-              month={month}
-              year={year}
             />
           )}
 

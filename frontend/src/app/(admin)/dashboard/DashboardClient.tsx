@@ -4297,12 +4297,12 @@ const dummyLiveBusinessClientData: ApiResponse & {
   },
 
   recommended_actions_mtd: {
-    "1": `Dummy Product 1
-Units: 152 (+18.40%)
-ASP: £12.80 (+3.20%)
-Net sales: £1,945.00 (+22.10%)
-CM1 profit per unit: £3.40 (+9.30%)
-CM1 profit: £516.80 (+28.40%)
+  "1": `Dummy Product 1
+Units: 0
+ASP: £0.00 (0%)
+Net sales: £0.00 (0%)
+CM1 profit per unit: £0.00 (0%)
+CM1 profit: £0.00 (0%)
 
 Product Journey:
 Dummy Product 1 has maintained steady momentum and gained share through stronger conversion and stable pricing.
@@ -4316,12 +4316,12 @@ Increase spend moderately on top-performing keywords and branded placements.
 Inventory:
 Maintain healthy stock cover and avoid under-ordering during high velocity weeks.`,
 
-    "2": `Dummy Product 2
-Units: 121 (+11.20%)
-ASP: £14.10 (-1.50%)
-Net sales: £1,706.00 (+8.60%)
-CM1 profit per unit: £2.95 (+6.20%)
-CM1 profit: £356.95 (+15.80%)
+  "2": `Dummy Product 2
+Units: 0 (0%)
+ASP: £0.00 (0%)
+Net sales: £0.00 (0%)
+CM1 profit per unit: £0.00 (0%)
+CM1 profit: £0.00 (0%)
 
 Product Journey:
 Dummy Product 2 is growing, though ASP softness indicates price pressure.
@@ -4335,12 +4335,12 @@ Reduce non-performing spend and prioritize campaigns with stronger ROAS.
 Inventory:
 Replenish conservatively and align purchase planning with recent sell-through.`,
 
-    "3": `Other SKUs
-Units: 340 (+5.20%)
-ASP: £11.90 (-2.10%)
-Net sales: £4,046.00 (+3.80%)
-CM1 profit per unit: £2.10 (-1.40%)
-CM1 profit: £714.00 (+1.90%)
+  "3": `Other SKUs
+Units: 0 (0%)
+ASP: £0.00 (0%)
+Net sales: £0.00 (0%)
+CM1 profit per unit: £0.00 (0%)
+CM1 profit: £0.00 (0%)
 
 Product Journey:
 The remaining SKU portfolio is contributing moderate growth but with weaker profitability consistency.
@@ -4353,14 +4353,14 @@ Consolidate spend toward better converting products and pause weak ad groups.
 
 Inventory:
 Use tighter replenishment rules on slow-moving items to avoid inventory drag.`,
-  },
+},
 
   remaining_skus_block: `Other SKUs
-Units: 340 (+5.20%)
-ASP: £11.90 (-2.10%)
-Net sales: £4,046.00 (+3.80%)
-CM1 profit per unit: £2.10 (-1.40%)
-CM1 profit: £714.00 (+1.90%)
+Units: 0 (0%)
+ASP: £0.00 (0%)
+Net sales: £0.00 (0%)
+CM1 profit per unit: £0.00 (0%)
+CM1 profit: £0.00 (0%)
 
 Product Journey:
 The remaining SKU portfolio is contributing moderate growth but with weaker profitability consistency.
@@ -4374,190 +4374,190 @@ Consolidate spend toward better converting products and pause weak ad groups.
 Inventory:
 Use tighter replenishment rules on slow-moving items to avoid inventory drag.`,
 
-  categorized_growth: {
-    top_80_skus: [
-      {
-        product_name: "Dummy Product 1",
-        sku: "DUMMY-SKU-001",
-        quantity_month1: 128,
-        quantity_month2: 152,
-        asp_month1: 12.4,
-        asp_month2: 12.8,
-        product_sales_month1: 1780,
-        product_sales_month2: 2125,
-        net_sales_month1: 1593,
-        net_sales_month2: 1945,
-        sales_mix_month1: 34.2,
-        sales_mix_month2: 36.9,
-        unit_wise_profitability_month1: 3.11,
-        unit_wise_profitability_month2: 3.4,
-        profit_month1: 398,
-        profit_month2: 517,
-        profit_percentage_month1: 24.98,
-        profit_percentage_month2: 26.58,
-        "Sales Mix (Month2)": 36.9,
-        "Unit Growth": { category: "growth", value: 18.75 },
-        "ASP Growth": { category: "growth", value: 3.23 },
-        "Sales Growth": { category: "growth", value: 22.10 },
-        "Net Sales Growth": { category: "growth", value: 22.10 },
-        "Sales Mix Change": { category: "growth", value: 2.70 },
-        "Profit Per Unit": { category: "growth", value: 9.32 },
-        "CM1 Profit Impact": { category: "growth", value: 29.90 },
-      },
-      {
-        product_name: "Dummy Product 2",
-        sku: "DUMMY-SKU-002",
-        quantity_month1: 109,
-        quantity_month2: 121,
-        asp_month1: 14.3,
-        asp_month2: 14.1,
-        product_sales_month1: 1640,
-        product_sales_month2: 1825,
-        net_sales_month1: 1571,
-        net_sales_month2: 1706,
-        sales_mix_month1: 28.6,
-        sales_mix_month2: 30.4,
-        unit_wise_profitability_month1: 2.78,
-        unit_wise_profitability_month2: 2.95,
-        profit_month1: 308,
-        profit_month2: 357,
-        profit_percentage_month1: 19.61,
-        profit_percentage_month2: 20.93,
-        "Sales Mix (Month2)": 30.4,
-        "Unit Growth": { category: "growth", value: 11.01 },
-        "ASP Growth": { category: "growth", value: -1.40 },
-        "Sales Growth": { category: "growth", value: 8.59 },
-        "Net Sales Growth": { category: "growth", value: 8.59 },
-        "Sales Mix Change": { category: "growth", value: 1.80 },
-        "Profit Per Unit": { category: "growth", value: 6.12 },
-        "CM1 Profit Impact": { category: "growth", value: 15.91 },
-      },
-    ],
-
-    new_or_reviving_skus: [
-      {
-        product_name: "Dummy Product 3",
-        sku: "DUMMY-SKU-003",
-        quantity_month1: 0,
-        quantity_month2: 76,
-        asp_month1: 0,
-        asp_month2: 13.6,
-        product_sales_month1: 0,
-        product_sales_month2: 1088,
-        net_sales_month1: 0,
-        net_sales_month2: 1034,
-        sales_mix_month1: 0,
-        sales_mix_month2: 18.3,
-        unit_wise_profitability_month1: 0,
-        unit_wise_profitability_month2: 2.42,
-        profit_month1: 0,
-        profit_month2: 184,
-        profit_percentage_month1: 0,
-        profit_percentage_month2: 17.79,
-        "Sales Mix (Month2)": 18.3,
-      },
-    ],
-
-    other_skus: [
-      {
-        product_name: "Dummy Product 4",
-        sku: "DUMMY-SKU-004",
-        quantity_month1: 82,
-        quantity_month2: 88,
-        asp_month1: 11.8,
-        asp_month2: 11.5,
-        product_sales_month1: 1040,
-        product_sales_month2: 1086,
-        net_sales_month1: 965,
-        net_sales_month2: 1012,
-        sales_mix_month1: 17.2,
-        sales_mix_month2: 14.4,
-        unit_wise_profitability_month1: 1.96,
-        unit_wise_profitability_month2: 2.05,
-        profit_month1: 161,
-        profit_month2: 180,
-        profit_percentage_month1: 16.68,
-        profit_percentage_month2: 17.79,
-        "Sales Mix (Month2)": 14.4,
-        "Unit Growth": { category: "growth", value: 7.32 },
-        "ASP Growth": { category: "growth", value: -2.54 },
-        "Sales Growth": { category: "growth", value: 4.87 },
-        "Net Sales Growth": { category: "growth", value: 4.87 },
-        "Sales Mix Change": { category: "growth", value: -2.80 },
-        "Profit Per Unit": { category: "growth", value: 4.59 },
-        "CM1 Profit Impact": { category: "growth", value: 11.80 },
-      },
-      {
-        product_name: "Dummy Product 5",
-        sku: "DUMMY-SKU-005",
-        quantity_month1: 65,
-        quantity_month2: 59,
-        asp_month1: 10.9,
-        asp_month2: 10.6,
-        product_sales_month1: 760,
-        product_sales_month2: 702,
-        net_sales_month1: 715,
-        net_sales_month2: 664,
-        sales_mix_month1: 14.0,
-        sales_mix_month2: 12.0,
-        unit_wise_profitability_month1: 1.88,
-        unit_wise_profitability_month2: 1.61,
-        profit_month1: 122,
-        profit_month2: 95,
-        profit_percentage_month1: 17.06,
-        profit_percentage_month2: 14.31,
-        "Sales Mix (Month2)": 12.0,
-        "Unit Growth": { category: "growth", value: -9.23 },
-        "ASP Growth": { category: "growth", value: -2.75 },
-        "Sales Growth": { category: "growth", value: -7.13 },
-        "Net Sales Growth": { category: "growth", value: -7.13 },
-        "Sales Mix Change": { category: "growth", value: -2.00 },
-        "Profit Per Unit": { category: "growth", value: -14.36 },
-        "CM1 Profit Impact": { category: "growth", value: -22.13 },
-      },
-    ],
-
-    top_80_total: {
-      product_name: "Total",
-      "Sales Mix (Month2)": 67.3,
-      "Unit Growth": { category: "growth", value: 15.1 },
-      "ASP Growth": { category: "growth", value: 1.2 },
-      "Sales Growth": { category: "growth", value: 16.7 },
-      "Net Sales Growth": { category: "growth", value: 16.7 },
-      "Sales Mix Change": { category: "growth", value: 4.5 },
-      "Profit Per Unit": { category: "growth", value: 7.8 },
-      "CM1 Profit Impact": { category: "growth", value: 23.6 },
-    },
-
-    new_or_reviving_total: {
-      product_name: "Total",
-      "Sales Mix (Month2)": 18.3,
-    },
-
-    other_total: {
-      product_name: "Total",
-      "Sales Mix (Month2)": 26.4,
-      "Unit Growth": { category: "growth", value: -1.3 },
-      "ASP Growth": { category: "growth", value: -2.6 },
-      "Sales Growth": { category: "growth", value: -1.9 },
-      "Net Sales Growth": { category: "growth", value: -1.9 },
-      "Sales Mix Change": { category: "growth", value: -4.8 },
-      "Profit Per Unit": { category: "growth", value: -6.4 },
-      "CM1 Profit Impact": { category: "growth", value: -9.2 },
-    },
-
-    all_skus_total: {
-      product_name: "Total",
-      "Sales Mix (Month2)": 100,
-      "Unit Growth": { category: "growth", value: 12.8 },
-      "ASP Growth": { category: "growth", value: 0.9 },
-      "Sales Growth": { category: "growth", value: 13.9 },
-      "Net Sales Growth": { category: "growth", value: 13.9 },
+ categorized_growth: {
+  top_80_skus: [
+    {
+      product_name: "Dummy Product 1",
+      sku: "DUMMY-SKU-001",
+      quantity_month1: 0,
+      quantity_month2: 0,
+      asp_month1: 0,
+      asp_month2: 0,
+      product_sales_month1: 0,
+      product_sales_month2: 0,
+      net_sales_month1: 0,
+      net_sales_month2: 0,
+      sales_mix_month1: 0,
+      sales_mix_month2: 0,
+      unit_wise_profitability_month1: 0,
+      unit_wise_profitability_month2: 0,
+      profit_month1: 0,
+      profit_month2: 0,
+      profit_percentage_month1: 0,
+      profit_percentage_month2: 0,
+      "Sales Mix (Month2)": 0,
+      "Unit Growth": { category: "growth", value: 0 },
+      "ASP Growth": { category: "growth", value: 0 },
+      "Sales Growth": { category: "growth", value: 0 },
+      "Net Sales Growth": { category: "growth", value: 0 },
       "Sales Mix Change": { category: "growth", value: 0 },
-      "Profit Per Unit": { category: "growth", value: 5.6 },
-      "CM1 Profit Impact": { category: "growth", value: 19.4 },
+      "Profit Per Unit": { category: "growth", value: 0 },
+      "CM1 Profit Impact": { category: "growth", value: 0 },
     },
+    {
+      product_name: "Dummy Product 2",
+      sku: "DUMMY-SKU-002",
+      quantity_month1: 0,
+      quantity_month2: 0,
+      asp_month1: 0,
+      asp_month2: 0,
+      product_sales_month1: 0,
+      product_sales_month2: 0,
+      net_sales_month1: 0,
+      net_sales_month2: 0,
+      sales_mix_month1: 0,
+      sales_mix_month2: 0,
+      unit_wise_profitability_month1: 0,
+      unit_wise_profitability_month2: 0,
+      profit_month1: 0,
+      profit_month2: 0,
+      profit_percentage_month1: 0,
+      profit_percentage_month2: 0,
+      "Sales Mix (Month2)": 0,
+      "Unit Growth": { category: "growth", value: 0 },
+      "ASP Growth": { category: "growth", value: 0 },
+      "Sales Growth": { category: "growth", value: 0 },
+      "Net Sales Growth": { category: "growth", value: 0 },
+      "Sales Mix Change": { category: "growth", value: 0 },
+      "Profit Per Unit": { category: "growth", value: 0 },
+      "CM1 Profit Impact": { category: "growth", value: 0 },
+    },
+  ],
+
+  new_or_reviving_skus: [
+    {
+      product_name: "Dummy Product 3",
+      sku: "DUMMY-SKU-003",
+      quantity_month1: 0,
+      quantity_month2: 0,
+      asp_month1: 0,
+      asp_month2: 0,
+      product_sales_month1: 0,
+      product_sales_month2: 0,
+      net_sales_month1: 0,
+      net_sales_month2: 0,
+      sales_mix_month1: 0,
+      sales_mix_month2: 0,
+      unit_wise_profitability_month1: 0,
+      unit_wise_profitability_month2: 0,
+      profit_month1: 0,
+      profit_month2: 0,
+      profit_percentage_month1: 0,
+      profit_percentage_month2: 0,
+      "Sales Mix (Month2)": 0,
+    },
+  ],
+
+  other_skus: [
+    {
+      product_name: "Dummy Product 4",
+      sku: "DUMMY-SKU-004",
+      quantity_month1: 0,
+      quantity_month2: 0,
+      asp_month1: 0,
+      asp_month2: 0,
+      product_sales_month1: 0,
+      product_sales_month2: 0,
+      net_sales_month1: 0,
+      net_sales_month2: 0,
+      sales_mix_month1: 0,
+      sales_mix_month2: 0,
+      unit_wise_profitability_month1: 0,
+      unit_wise_profitability_month2: 0,
+      profit_month1: 0,
+      profit_month2: 0,
+      profit_percentage_month1: 0,
+      profit_percentage_month2: 0,
+      "Sales Mix (Month2)": 0,
+      "Unit Growth": { category: "growth", value: 0 },
+      "ASP Growth": { category: "growth", value: 0 },
+      "Sales Growth": { category: "growth", value: 0 },
+      "Net Sales Growth": { category: "growth", value: 0 },
+      "Sales Mix Change": { category: "growth", value: 0 },
+      "Profit Per Unit": { category: "growth", value: 0 },
+      "CM1 Profit Impact": { category: "growth", value: 0 },
+    },
+    {
+      product_name: "Dummy Product 5",
+      sku: "DUMMY-SKU-005",
+      quantity_month1: 0,
+      quantity_month2: 0,
+      asp_month1: 0,
+      asp_month2: 0,
+      product_sales_month1: 0,
+      product_sales_month2: 0,
+      net_sales_month1: 0,
+      net_sales_month2: 0,
+      sales_mix_month1: 0,
+      sales_mix_month2: 0,
+      unit_wise_profitability_month1: 0,
+      unit_wise_profitability_month2: 0,
+      profit_month1: 0,
+      profit_month2: 0,
+      profit_percentage_month1: 0,
+      profit_percentage_month2: 0,
+      "Sales Mix (Month2)": 0,
+      "Unit Growth": { category: "growth", value: 0 },
+      "ASP Growth": { category: "growth", value: 0 },
+      "Sales Growth": { category: "growth", value: 0 },
+      "Net Sales Growth": { category: "growth", value: 0 },
+      "Sales Mix Change": { category: "growth", value: 0 },
+      "Profit Per Unit": { category: "growth", value: 0 },
+      "CM1 Profit Impact": { category: "growth", value: 0 },
+    },
+  ],
+
+  top_80_total: {
+    product_name: "Total",
+    "Sales Mix (Month2)": 0,
+    "Unit Growth": { category: "growth", value: 0 },
+    "ASP Growth": { category: "growth", value: 0 },
+    "Sales Growth": { category: "growth", value: 0 },
+    "Net Sales Growth": { category: "growth", value: 0 },
+    "Sales Mix Change": { category: "growth", value: 0 },
+    "Profit Per Unit": { category: "growth", value: 0 },
+    "CM1 Profit Impact": { category: "growth", value: 0 },
   },
+
+  new_or_reviving_total: {
+    product_name: "Total",
+    "Sales Mix (Month2)": 0,
+  },
+
+  other_total: {
+    product_name: "Total",
+    "Sales Mix (Month2)": 0,
+    "Unit Growth": { category: "growth", value: 0 },
+    "ASP Growth": { category: "growth", value: 0 },
+    "Sales Growth": { category: "growth", value: 0 },
+    "Net Sales Growth": { category: "growth", value: 0 },
+    "Sales Mix Change": { category: "growth", value: 0 },
+    "Profit Per Unit": { category: "growth", value: 0 },
+    "CM1 Profit Impact": { category: "growth", value: 0 },
+  },
+
+  all_skus_total: {
+    product_name: "Total",
+    "Sales Mix (Month2)": 0,
+    "Unit Growth": { category: "growth", value: 0 },
+    "ASP Growth": { category: "growth", value: 0 },
+    "Sales Growth": { category: "growth", value: 0 },
+    "Net Sales Growth": { category: "growth", value: 0 },
+    "Sales Mix Change": { category: "growth", value: 0 },
+    "Profit Per Unit": { category: "growth", value: 0 },
+    "CM1 Profit Impact": { category: "growth", value: 0 },
+  },
+},
 
   ai_insights: {
     "DUMMY-SKU-001": {
@@ -4983,7 +4983,7 @@ const stickyKpiItems = [
 {
     label: "Target",
     current: shouldShowDummyUi
-        ? 18000
+        ? 0
         : (stats_targetHome ?? 0),
     previous: shouldShowDummyUi
         ? 16500
