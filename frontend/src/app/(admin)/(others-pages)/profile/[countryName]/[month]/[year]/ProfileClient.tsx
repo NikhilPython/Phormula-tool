@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useSearchParams } from "next/navigation";
 import UserInfoCard from "@/components/user-profile/UserInfoCard";
 import UserAddressCard from "@/components/user-profile/UserAddressCard";
 import Button from "@/components/ui/button/Button";
@@ -13,23 +14,6 @@ import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataT
 import { IoEyeOutline } from "react-icons/io5";
 import { FiEdit, FiCheck, FiX } from "react-icons/fi";
 import { MdOutlineDeleteOutline } from "react-icons/md";
-
-// function TabButton({
-//   active,
-//   onClick,
-//   children,
-// }: {
-//   active: boolean;
-//   onClick: () => void;
-//   children: React.ReactNode;
-// }) {
-//   return (
-//     <Button
-//       variant={active ? "primary" : "outline"}
-//       size="sm"
-//       onClick={onClick}>{children}</Button>
-//   );
-// }
 
 type TeamMemberRow = Row & {
   sno: number;
@@ -54,6 +38,12 @@ export default function ProfileClient() {
   const [isViewOpen, setIsViewOpen] = React.useState(false);
   const [isEditOpen, setIsEditOpen] = React.useState(false);
   const [actionLoading, setActionLoading] = React.useState(false);
+
+  const searchParams = useSearchParams();
+
+  const countryName = searchParams.get("countryName") || "global";
+  const month = searchParams.get("month") || "NA";
+  const year = searchParams.get("year") || "NA";
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("jwtToken") || "" : "";
@@ -137,168 +127,168 @@ export default function ProfileClient() {
   }, [isMember, tab]);
 
   const memberColumns = React.useMemo<ColumnDef<TeamMemberRow>[]>(
-  () => [
-    {
-      key: "sno",
-      header: "S.No.",
-      width: "90px",
-      cellClassName: "text-center",
-      headerClassName: "text-center",
-    },
-    {
-      key: "name",
-      header: "Name",
-      width: "220px",
-      cellClassName: "text-center",
-      headerClassName: "text-center",
-    },
-    {
-      key: "email",
-      header: "Email",
-      width: "260px",
-      cellClassName: "text-center",
-      headerClassName: "text-center",
-    },
-    {
-      key: "country",
-      header: "Country",
-      width: "140px",
-      cellClassName: "text-center",
-      headerClassName: "text-center",
-    },
-    {
-      key: "role",
-      header: "Role",
-      width: "140px",
-      cellClassName: "text-center",
-      headerClassName: "text-center",
-    },
-    {
-      key: "sectionAccess",
-      header: "Section Access",
-      width: "260px",
-      cellClassName: "text-center",
-      headerClassName: "text-center",
-    },
-    {
-      key: "addedOn",
-      header: "Added On",
-      width: "160px",
-      cellClassName: "text-center",
-      headerClassName: "text-center",
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      width: "140px",
-      cellClassName: "text-center",
-      headerClassName: "text-center",
-    },
-  ],
-  []
-);
+    () => [
+      {
+        key: "sno",
+        header: "S.No.",
+        width: "90px",
+        cellClassName: "text-center",
+        headerClassName: "text-center",
+      },
+      {
+        key: "name",
+        header: "Name",
+        width: "220px",
+        cellClassName: "text-center",
+        headerClassName: "text-center",
+      },
+      {
+        key: "email",
+        header: "Email",
+        width: "260px",
+        cellClassName: "text-center",
+        headerClassName: "text-center",
+      },
+      {
+        key: "country",
+        header: "Country",
+        width: "140px",
+        cellClassName: "text-center",
+        headerClassName: "text-center",
+      },
+      {
+        key: "role",
+        header: "Role",
+        width: "140px",
+        cellClassName: "text-center",
+        headerClassName: "text-center",
+      },
+      {
+        key: "sectionAccess",
+        header: "Section Access",
+        width: "260px",
+        cellClassName: "text-center",
+        headerClassName: "text-center",
+      },
+      {
+        key: "addedOn",
+        header: "Added On",
+        width: "160px",
+        cellClassName: "text-center",
+        headerClassName: "text-center",
+      },
+      {
+        key: "actions",
+        header: "Actions",
+        width: "140px",
+        cellClassName: "text-center",
+        headerClassName: "text-center",
+      },
+    ],
+    []
+  );
 
   const memberRows = React.useMemo<TeamMemberRow[]>(() => {
-  return filteredMembers.map((m, idx) => {
-    const name = String(m?.member_name || "-");
-    const email = String(m?.email || "-");
-    const countries = Array.isArray(m?.countries) ? m.countries : [];
-    const modules = Array.isArray(m?.modules) ? m.modules : [];
-    const createdAt = m?.created_at ? new Date(m.created_at) : null;
-    const formatRole = (role: string) => {
-  if (!role) return "-";
+    return filteredMembers.map((m, idx) => {
+      const name = String(m?.member_name || "-");
+      const email = String(m?.email || "-");
+      const countries = Array.isArray(m?.countries) ? m.countries : [];
+      const modules = Array.isArray(m?.modules) ? m.modules : [];
+      const createdAt = m?.created_at ? new Date(m.created_at) : null;
+      const formatRole = (role: string) => {
+        if (!role) return "-";
 
-  return role
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (l) => l.toUpperCase());
-};
-    const roleRaw = String(m?.role || m?.member_role || "");
-const role = formatRole(roleRaw);
+        return role
+          .toLowerCase()
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (l) => l.toUpperCase());
+      };
+      const roleRaw = String(m?.role || m?.member_role || "");
+      const role = formatRole(roleRaw);
 
-    const showModules = modules.slice(0, 2);
-const extraCount = Math.max(0, modules.length - 2);
+      const showModules = modules.slice(0, 2);
+      const extraCount = Math.max(0, modules.length - 2);
 
-    return {
-      sno: idx + 1,
+      return {
+        sno: idx + 1,
 
-      name: <span className="font-semibold text-slate-800">{name}</span>,
+        name: <span className="font-semibold text-slate-800">{name}</span>,
 
-      email: <span className="text-gray-500">{email}</span>,
+        email: <span className="text-gray-500">{email}</span>,
 
-      country: <span className="text-slate-700">{countries?.[0] || "-"}</span>,
+        country: <span className="text-slate-700">{countries?.[0] || "-"}</span>,
 
-      role: <span className="text-slate-700">{role}</span>,
+        role: <span className="text-slate-700">{role}</span>,
 
-      sectionAccess: (
-  <div className="flex flex-wrap items-center justify-center gap-2">
-    {showModules.map((mod: string) => (
-      <span
-        key={mod}
-        className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700"
-      >
-        {mod
-          .replaceAll("_", " ")
-          .replace(/\b\w/g, (l) => l.toUpperCase())}
-      </span>
-    ))}
+        sectionAccess: (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {showModules.map((mod: string) => (
+              <span
+                key={mod}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700"
+              >
+                {mod
+                  .replaceAll("_", " ")
+                  .replace(/\b\w/g, (l) => l.toUpperCase())}
+              </span>
+            ))}
 
-    {extraCount > 0 && (
-      <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-600">
-        +{extraCount}
-      </span>
-    )}
-  </div>
-),
+            {extraCount > 0 && (
+              <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] text-gray-600">
+                +{extraCount}
+              </span>
+            )}
+          </div>
+        ),
 
-      addedOn: (
-        <span className="text-slate-700">
-          {createdAt
-            ? createdAt.toLocaleDateString("en-GB", {
+        addedOn: (
+          <span className="text-slate-700">
+            {createdAt
+              ? createdAt.toLocaleDateString("en-GB", {
                 day: "2-digit",
                 month: "short",
                 year: "numeric",
               })
-            : "-"}
-        </span>
-      ),
+              : "-"}
+          </span>
+        ),
 
-      actions: (
-        <div className="flex justify-center gap-2">
-          <button
-            onClick={() => {
-              setSelectedMember(m);
-              setIsViewOpen(true);
-            }}
-            className="p-1.5 rounded-md border border-gray-200 text-xs hover:bg-gray-50"
-            type="button"
-          >
-            <IoEyeOutline size={15} />
-          </button>
+        actions: (
+          <div className="flex justify-center gap-2">
+            <button
+              onClick={() => {
+                setSelectedMember(m);
+                setIsViewOpen(true);
+              }}
+              className="p-1.5 rounded-md border border-gray-200 text-xs hover:bg-gray-50"
+              type="button"
+            >
+              <IoEyeOutline size={15} />
+            </button>
 
-          <button
-            onClick={() => {
-              setSelectedMember(m);
-              setIsEditOpen(true);
-            }}
-            className="p-1.5 rounded-md border border-gray-200 text-xs hover:bg-gray-50"
-            type="button"
-          >
-            <FiEdit size={15} />
-          </button>
+            <button
+              onClick={() => {
+                setSelectedMember(m);
+                setIsEditOpen(true);
+              }}
+              className="p-1.5 rounded-md border border-gray-200 text-xs hover:bg-gray-50"
+              type="button"
+            >
+              <FiEdit size={15} />
+            </button>
 
-          <button
-            onClick={() => handleDelete(m)}
-            className="p-1.5 rounded-md border border-gray-200 text-xs "
-            type="button"
-          >
-          < MdOutlineDeleteOutline size={17}  />
-          </button>
-        </div>
-      ),
-    };
-  });
-}, [filteredMembers]);
+            <button
+              onClick={() => handleDelete(m)}
+              className="p-1.5 rounded-md border border-gray-200 text-xs "
+              type="button"
+            >
+              < MdOutlineDeleteOutline size={17} />
+            </button>
+          </div>
+        ),
+      };
+    });
+  }, [filteredMembers]);
 
   return (
     <div>
@@ -320,40 +310,6 @@ const extraCount = Math.max(0, modules.length - 2);
             Manage your profile, country, integrations and performance targets
           </p>
         </div>
-        {/* </div> */}
-
-        {/* Tabs */}
-        {/* <div className="flex flex-wrap gap-2 ">
-          <TabButton
-            active={tab === "personal"}
-            onClick={() => setTab("personal")}
-          >
-            User Details
-          </TabButton>
-
-          <TabButton
-            active={tab === "objectives"}
-            onClick={() => setTab("objectives")}
-          >
-            Performance Targets
-          </TabButton>
-
-          {isMember === false && (
-  <TabButton
-    active={tab === "teamMembers"}
-    onClick={() => setTab("teamMembers")}
-  >
-    Team Members
-  </TabButton>
-)}
-
-           <TabButton
-            active={tab === "integrations"}
-            onClick={() => setTab("integrations")}
-          >
-            Integrations
-          </TabButton> 
-        </div> */}
 
         <div className="mt-3">
           <SegmentedToggle<"personal" | "objectives" | "teamMembers">
@@ -372,16 +328,27 @@ const extraCount = Math.max(0, modules.length - 2);
         <div className="mt-4 space-y-4 ">
           {tab === "personal" && (
             <>
-              <UserInfoCard activeTab="personal" />
-              {/* <UserAddressCard /> */}
+              <UserInfoCard
+                activeTab="personal"
+                countryName={countryName}
+                month={month}
+                year={year}
+              />
             </>
           )}
 
-          {tab === "objectives" && <UserInfoCard activeTab="objectives" />}
+          {tab === "objectives" && (
+            <UserInfoCard
+              activeTab="objectives"
+              countryName={countryName}
+              month={month}
+              year={year}
+            />
+          )}
 
           {/* {tab === "integrations" && <UserInfoCard activeTab="integrations" />} */}
         </div>
-        
+
         {tab === "teamMembers" && isMember === false && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
