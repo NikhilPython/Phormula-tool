@@ -877,7 +877,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     <span>Net Sales</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="w-9 border-t-2 border-dashed border-[#7B9A6D]" />
+                    <span className="h-0 w-9 border-t-2 border border-[#7B9A6D]" />
                     <span>CM1 Profit</span>
                   </div>
                 </>
@@ -890,7 +890,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     <span>Units</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="w-9 border-t-2 border-dashed border-[#B75A5A]" />
+                    <span className="h-0 w-9 border-t-2 border border-[#B75A5A]" />
                     <span>ASP</span>
                   </div>
                 </>
@@ -903,7 +903,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     <span>Sales Mix</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="w-9 border-t-2 border-dashed border-[#ED9F50]" />
+                    <span className="h-0 w-9 border-t-2 border-[#ED9F50]" />
                     <span>Profit Mix</span>
                   </div>
                 </>
