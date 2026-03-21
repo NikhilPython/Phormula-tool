@@ -54,12 +54,12 @@ def analyze_website():
         # POST → Analyze + Save
         # =========================
         elif request.method == "POST":
-            # -------- Website --------
             website = request.form.get("website")
             if website:
                 website = website.strip()
+                if website == "":
+                    website = None
 
-            # -------- PPT --------
             ppt_file = request.files.get("ppt")
 
             ppt_binary = None
@@ -77,32 +77,36 @@ def analyze_website():
                     tmp.write(ppt_binary)
                     ppt_path = tmp.name
 
-            # -------- Validation --------
+            # at least one required
             if not website and not ppt_file:
                 return jsonify({
                     "error": "Either website or ppt is required"
                 }), 400
 
-            # -------- Analyze --------
-            # analyze_business_website must support:
-            # - website only
-            # - ppt only
-            # - both website and ppt
-            result = analyze_business_website(website, ppt_path)
+            # -------- Analyze safely --------
+            if website and ppt_path:
+                result = analyze_business_website(website, ppt_path)
+            elif website and not ppt_path:
+                result = analyze_business_website(website, None)
+            elif not website and ppt_path:
+                # pass empty string instead of None
+                result = analyze_business_website("", ppt_path)
+            else:
+                return jsonify({
+                    "error": "Either website or ppt is required"
+                }), 400
 
             if isinstance(result, dict) and "error" in result:
                 return jsonify(result), 400
 
             overview = result.get("overview") if isinstance(result, dict) else None
 
-            # -------- Existing record --------
             objective = UserObjective.query.filter_by(
                 user_id=user_id,
                 country="uk"
             ).first()
 
             if objective:
-                # update only provided values
                 if overview:
                     objective.business_context = overview
 
@@ -142,5 +146,4 @@ def analyze_website():
     finally:
         if ppt_path and os.path.exists(ppt_path):
             os.remove(ppt_path)
-
-
+            

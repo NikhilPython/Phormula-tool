@@ -117,19 +117,32 @@ def extract_text(html):
         tag.extract()
 
     return soup.get_text(" ", strip=True)
+def analyze_business_website(url=None, ppt_path=None):
+    # -------- Normalize inputs --------
+    url = (url or "").strip()
 
-def analyze_business_website(url, ppt_path=None):
+    if not url and not ppt_path:
+        return {
+            "error": "Either website or PPT is required"
+        }
 
     # -------- Website --------
-    pages = get_internal_links(url)
-
+    pages = []
     website_text = ""
 
-    for html in pages:
-        text = extract_text(html)
-        website_text += text + "\n"
+    if url:
+        try:
+            pages = get_internal_links(url)
 
-    website_text = website_text[:15000]
+            for html in pages:
+                text = extract_text(html)
+                if text:
+                    website_text += text + "\n"
+
+            website_text = website_text[:15000]
+
+        except Exception as e:
+            print(f"Website extraction error: {e}")
 
     # -------- PPT --------
     ppt_text = ""
@@ -137,14 +150,13 @@ def analyze_business_website(url, ppt_path=None):
     if ppt_path:
         try:
             ppt_text = extract_ppt_text(ppt_path)
-            ppt_text = ppt_text[:5000]
+            ppt_text = (ppt_text or "")[:5000]
         except Exception as e:
             print(f"PPT extraction error: {e}")
 
     # -------- Combine --------
     combined_text = (website_text + "\n" + ppt_text).strip()
 
-    # ❗ handle empty content
     if len(combined_text) < 500:
         return {
             "error": "Could not extract sufficient content from website or PPT"
@@ -154,13 +166,13 @@ def analyze_business_website(url, ppt_path=None):
     prompt = f"""
 You are the founder of a company.
 
-Using BOTH the website content and presentation content, write a clear and compelling business overview in a natural, human tone.
+Using the available content, write a clear and compelling business overview in a natural, human tone.
 
 Guidelines:
 - Write in first person (we, our)
 - Keep it around 200–250 words
 - Make it sound confident, clear, and slightly conversational
-- Combine insights from both sources
+- If both website and PPT are available, combine insights from both
 - Prefer PPT for vision, positioning, and strategy
 - Prefer website for product and operational details
 - Avoid repetition
@@ -180,15 +192,15 @@ Content:
 
     ai_output = response.output_text.strip()
 
-    # ✅ FINAL RETURN
     return {
         "overview": ai_output,
         "debug": {
             "website_text_sample": website_text,
             "ppt_text_sample": ppt_text,
-            "pages_scraped": len(pages)
+            "pages_scraped": len(pages),
+            "used_website": bool(url),
+            "used_ppt": bool(ppt_path)
         }
     }
-
 
    
