@@ -755,12 +755,43 @@ OUTPUT STRUCTURE:
   - impact of advertising, platform fees, storage fees, and reimbursements (lost_total)
 - Tie all major points back to month/year.
 - Keep this section concise but analytical.
+- This section MUST reflect the FULL observed period, not just the latest month.
+- Analyze:
+  - how revenue evolved across the period
+  - how margins changed over time
+  - how cost structure evolved (advertising, platform fees, storage)
+- Only reference the latest month as a final state, NOT as the entire analysis.
 
 5. SKU-Level Insights
-- Identify top-performing and weakest SKUs in the latest month.
-- Explain their contribution to sales and profit.
-- Mention inventory position and coverage ratio for important SKUs if data is available.
-- Whenever a SKU metric is mentioned, state that it refers to the latest month and mention that month/year.
+
+- This section MUST include BOTH:
+  1) Historical SKU performance across the full observed period (using sku_summary)
+  2) Latest month SKU snapshot (using sku_data)
+
+- FIRST: Historical Performance (PRIMARY ANALYSIS)
+  - Identify top SKUs by total net sales across the observed period
+  - Identify top SKUs by total CM1 profit across the observed period
+  - Identify weakest SKUs across the observed period
+  - Mention:
+    - total net sales
+    - total CM1 profit
+    - overall CM1 margin
+  - Clearly state that these refer to the full observed period (NOT a single month)
+
+- SECOND: Latest Month Snapshot (SUPPORTING)
+  - Highlight how top SKUs performed in the latest month
+  - Include:
+    - net sales
+    - CM1 profit
+    - margin
+    - sellable inventory
+    - inventory coverage (if available)
+  - Explicitly mention the latest month and year
+
+- CRITICAL:
+  - Historical analysis MUST dominate the section
+  - Latest month should only be used as supporting context
+  - Do NOT limit SKU analysis to the latest month
 
 6. Competition Analysis and Comparison
 - Identify the business category using business_overview and business_category_hint.
