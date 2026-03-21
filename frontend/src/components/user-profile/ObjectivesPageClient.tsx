@@ -79,6 +79,17 @@ type UserObjectiveForm = {
   uploaded_files: UploadedSummaryFile[];
 };
 
+type BusinessJourneySection = {
+  title: string;
+  points: string[];
+};
+
+type BusinessJourneyResponse =
+  | string
+  | string[]
+  | BusinessJourneySection[]
+  | null;
+
 const SUMMARY_TABS: Array<{ key: SummaryTab; label: string }> = [
   { key: "business_summary", label: "Business Summary" },
   { key: "targets_and_objectives", label: "Targets and Objectives" },
@@ -183,8 +194,6 @@ const countryToPlatform = (country: string): PlatformId => {
   return "shopify";
 };
 
-
-
 function InfoCard({
   title,
   children,
@@ -239,73 +248,194 @@ function SummaryTabs({
   );
 }
 
-function PlaceholderPanel({ title }: { title: string }) {
-  return (
-    <div className="rounded-2xl ">
-      <div className="space-y-5 text-sm text-charcoal-500 dark:text-gray-300">
-        <div>
-          <h4 className="font-semibold ">
-            1. Business Foundation
-          </h4>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
-            <li>
-              Built around premium skincare products focusing on quality,
-              repeat purchases, and strong customer trust.
-            </li>
-            <li>
-              Established presence across Amazon US and Shopify to balance
-              marketplace reach with direct customer ownership.
-            </li>
-          </ul>
-        </div>
-        <div>
-          <h4 className="font-semibold">
-            2. Early Growth Phase
-          </h4>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
-            <li>
-              Initial growth was driven by product-market fit within core
-              skincare categories.
-            </li>
-            <li>
-              Amazon helped generate traffic and sales volume while Shopify
-              strengthened direct brand relationships.
-            </li>
-          </ul>
-        </div>
+type ParsedJourneyBlock =
+  | { type: "heading"; text: string }
+  | { type: "paragraph"; text: string }
+  | { type: "bullet"; text: string };
 
-        <div>
-          <h4 className="font-semibold ">
-            3. Revenue Expansion Strategy
-          </h4>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
-            <li>
-              Growth focused on paid advertising, organic ranking improvement,
-              and stronger marketplace visibility.
-            </li>
-            <li>
-              Efforts prioritized scalable sales growth while maintaining brand
-              positioning and customer experience.
-            </li>
-          </ul>
-        </div>
+function parseBusinessJourneyText(input: string): ParsedJourneyBlock[] {
+  if (!input) return [];
 
-        <div>
-          <h4 className="font-semibold ">
-            4. Inventory Management Evolution
-          </h4>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
-            <li>
-              Inventory turnover became critical due to shelf-life sensitivity
-              and aging stock risks.
-            </li>
-            <li>
-              Focus shifted to clearing slow-moving SKUs while maintaining
-              healthy stock levels of best-selling products.
-            </li>
-          </ul>
+  const lines = input
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const blocks: ParsedJourneyBlock[] = [];
+
+  for (const line of lines) {
+    // Matches: "1. Business Context"
+    if (/^\d+\.\s+/.test(line)) {
+      blocks.push({
+        type: "heading",
+        text: line.replace(/^\d+\.\s+/, "").trim(),
+      });
+      continue;
+    }
+
+    // Matches bullet lines starting with "-" or "•"
+    if (/^[-•]\s+/.test(line)) {
+      blocks.push({
+        type: "bullet",
+        text: line.replace(/^[-•]\s+/, "").trim(),
+      });
+      continue;
+    }
+
+    // Everything else becomes a paragraph
+    blocks.push({
+      type: "paragraph",
+      text: line,
+    });
+  }
+
+  return blocks;
+}
+
+function BusinessJourneyPanel({
+  journey,
+  loading,
+  error,
+}: {
+  journey: BusinessJourneyResponse;
+  loading: boolean;
+  error: string | null;
+}) {
+  if (loading) {
+    return (
+      <div className="rounded-2xl">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Generating business journey...
+        </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl">
+        <p className="text-sm text-red-500">{error}</p>
+      </div>
+    );
+  }
+
+  if (!journey) {
+    return (
+      <div className="rounded-2xl">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Business Journey will appear after Business Summary is available.
+        </p>
+      </div>
+    );
+  }
+
+  // Case 1: API returns plain string
+  if (typeof journey === "string") {
+    const blocks = parseBusinessJourneyText(journey);
+
+    return (
+      <div className="rounded-2xl">
+        <div className="space-y-5">
+          {blocks.map((block, idx) => {
+            if (block.type === "heading") {
+              return (
+                <h4
+                  key={idx}
+                  className="pt-2 text-base font-semibold text-gray-900 dark:text-white"
+                >
+                  {block.text}
+                </h4>
+              );
+            }
+
+            if (block.type === "bullet") {
+              return (
+                <div key={idx} className="pl-4">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-gray-500 dark:bg-gray-400" />
+                    <p className="text-sm leading-7 text-gray-700 dark:text-gray-300">
+                      {block.text}
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <p
+                key={idx}
+                className="text-sm leading-7 text-gray-700 dark:text-gray-300"
+              >
+                {block.text}
+              </p>
+            );
+          })}
         </div>
       </div>
+    );
+  }
+
+  // Case 2: API returns array of strings
+  if (Array.isArray(journey) && journey.every((item) => typeof item === "string")) {
+    return (
+      <div className="rounded-2xl">
+        <div className="space-y-3">
+          {(journey as string[]).map((item, idx) => (
+            <div key={idx} className="flex items-start gap-2">
+              <span className="mt-2 h-1.5 w-1.5 rounded-full bg-gray-500 dark:bg-gray-400" />
+              <p className="text-sm leading-7 text-gray-700 dark:text-gray-300">
+                {item}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Case 3: API returns structured sections
+  if (
+    Array.isArray(journey) &&
+    journey.every(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "title" in item &&
+        "points" in item
+    )
+  ) {
+    return (
+      <div className="rounded-2xl">
+        <div className="space-y-6">
+          {(journey as BusinessJourneySection[]).map((section, idx) => (
+            <div key={idx} className="space-y-3">
+              <h4 className="text-base font-semibold text-gray-900 dark:text-white">
+                {section.title}
+              </h4>
+
+              <div className="space-y-2">
+                {section.points?.map((point, pointIdx) => (
+                  <div key={pointIdx} className="flex items-start gap-2 pl-2">
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-gray-500 dark:bg-gray-400" />
+                    <p className="text-sm leading-7 text-gray-700 dark:text-gray-300">
+                      {point}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl">
+      <pre className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
+        {JSON.stringify(journey, null, 2)}
+      </pre>
     </div>
   );
 }
@@ -323,12 +453,6 @@ function DummyBlurWrapper({
 }) {
   return (
     <div className={`relative w-full ${className}`}>
-      {/* {enabled && (
-        <div className="absolute right-2 top-2 z-20 rounded-md bg-black/70 px-2 py-1 text-[10px] sm:text-xs text-white shadow">
-          {badgeText}
-        </div>
-      )} */}
-
       <div
         className={
           enabled
@@ -341,12 +465,6 @@ function DummyBlurWrapper({
     </div>
   );
 }
-
-const formatFileSize = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
 
 const readFileAsArrayBuffer = (file: File) =>
   new Promise<ArrayBuffer>((resolve, reject) => {
@@ -448,6 +566,10 @@ export default function ObjectivesPageClient({
   const [isBusinessSummaryEditMode, setIsBusinessSummaryEditMode] = useState(false);
   const [isStrategicEditMode, setIsStrategicEditMode] = useState(false);
 
+  const [businessJourney, setBusinessJourney] = useState<BusinessJourneyResponse>(null);
+  const [isFetchingBusinessJourney, setIsFetchingBusinessJourney] = useState(false);
+  const [businessJourneyError, setBusinessJourneyError] = useState<string | null>(null);
+
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "balanced",
     profit_priority: "protect_growth",
@@ -461,23 +583,23 @@ export default function ObjectivesPageClient({
 
   const [objectiveDraft, setObjectiveDraft] = useState<UserObjectiveForm>(objective);
   useEffect(() => {
-  if (!isPreviewMode) return;
+    if (!isPreviewMode) return;
 
-  const dummyObjective: UserObjectiveForm = {
-    growth_intent: "aggressive",
-    profit_priority: "protect_growth",
-    inventory_clearance_priority: true,
-    business_context:
-      "This is a dummy business summary preview. The business focuses on premium skincare products across marketplace and D2C channels, with emphasis on growth, margin discipline, and healthy inventory turnover.",
-    country: "global",
-    time_horizon: "1_month",
-    website: "",
-    uploaded_files: [],
-  };
+    const dummyObjective: UserObjectiveForm = {
+      growth_intent: "aggressive",
+      profit_priority: "protect_growth",
+      inventory_clearance_priority: true,
+      business_context:
+        "This is a dummy business summary preview. The business focuses on premium skincare products across marketplace and D2C channels, with emphasis on growth, margin discipline, and healthy inventory turnover.",
+      country: "global",
+      time_horizon: "1_month",
+      website: "",
+      uploaded_files: [],
+    };
 
-  setObjective(dummyObjective);
-  setObjectiveDraft(dummyObjective);
-}, [isPreviewMode]);
+    setObjective(dummyObjective);
+    setObjectiveDraft(dummyObjective);
+  }, [isPreviewMode]);
   const [expandedChart, setExpandedChart] = useState<"targetSales" | "objectiveMoM" | null>(null);
 
   const [objectiveTargetDraft, setObjectiveTargetDraft] = useState<string>("");
@@ -566,6 +688,81 @@ export default function ObjectivesPageClient({
       },
     ];
 
+
+  const fetchBusinessJourney = async ({
+    countryName,
+    month,
+    year,
+  }: {
+    countryName: string;
+    month: string;
+    year: number;
+  }) => {
+    if (!token) return;
+    if (!objective.business_context?.trim() && !objectiveDraft.business_context?.trim()) return;
+
+    try {
+      setIsFetchingBusinessJourney(true);
+      setBusinessJourneyError(null);
+
+      const params = new URLSearchParams({
+        countryName: (countryName || "uk").toLowerCase(),
+        month: (month || "february").toLowerCase(),
+        year: String(year),
+      });
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/generate?${params.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || json?.details || "Failed to generate business journey");
+      }
+
+      setBusinessJourney(json?.business_journey ?? null);
+    } catch (error: any) {
+      console.error("Failed to fetch business journey:", error);
+      setBusinessJourney(null);
+      setBusinessJourneyError(error?.message || "Failed to load business journey");
+    } finally {
+      setIsFetchingBusinessJourney(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isPreviewMode) return;
+    if (!token) return;
+    if (!objective.business_context?.trim()) return;
+
+    const now = new Date();
+    const monthName = now.toLocaleString("en-US", { month: "long" }).toLowerCase();
+    const currentYear = now.getFullYear();
+
+    const countryToFetch =
+      (country || objective.country || integratedCountries[0] || "uk").toLowerCase();
+
+    fetchBusinessJourney({
+      countryName: countryToFetch,
+      month: monthName,
+      year: currentYear,
+    });
+  }, [
+    token,
+    isPreviewMode,
+    objective.business_context,
+    objective.country,
+    country,
+    integratedCountries,
+  ]);
+
   useEffect(() => {
     if (!token || isPreviewMode) return;
 
@@ -644,13 +841,13 @@ export default function ObjectivesPageClient({
     return 1;
   };
 
- const resolvedTargetCountry = useMemo(() => {
-  if (isPreviewMode) return "global";
-  if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
-  if (objective.country) return objective.country.toLowerCase();
-  if (country) return country.toLowerCase();
-  return "uk";
-}, [isPreviewMode, objectiveDraft.country, objective.country, country]);
+  const resolvedTargetCountry = useMemo(() => {
+    if (isPreviewMode) return "global";
+    if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
+    if (objective.country) return objective.country.toLowerCase();
+    if (country) return country.toLowerCase();
+    return "uk";
+  }, [isPreviewMode, objectiveDraft.country, objective.country, country]);
 
   const isGlobalPage = resolvedTargetCountry === "global";
 
@@ -794,7 +991,7 @@ export default function ObjectivesPageClient({
     };
   };
 
-  
+
 
   const saveInlineTarget = async () => {
     const next = Number(draftTarget);
@@ -926,6 +1123,13 @@ export default function ObjectivesPageClient({
       setObjective(finalObjective);
       setObjectiveDraft(finalObjective);
       setIsBusinessSummaryEditMode(false);
+
+      const now = new Date();
+      await fetchBusinessJourney({
+        countryName: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
+        month: now.toLocaleString("en-US", { month: "long" }).toLowerCase(),
+        year: now.getFullYear(),
+      });
     } catch (err: any) {
       console.error(err);
       alert(err?.message || "Failed to save business summary");
@@ -1043,50 +1247,50 @@ export default function ObjectivesPageClient({
   }, [country, integratedCountries, objective.country]);
 
   const monthlyTargetData: TargetRow[] = useMemo(() => {
-  if (isPreviewMode) return dummyMonthlyTargetData;
+    if (isPreviewMode) return dummyMonthlyTargetData;
 
-  const currentTarget = Number((data as any)?.target_sales ?? 0);
+    const currentTarget = Number((data as any)?.target_sales ?? 0);
 
-  const rows: TargetRow[] = connectedPlatformsForTargets.map((pid, idx) => {
-    const meta = PLATFORM_TARGET_META[pid] ?? {
-      marketplace: String(pid),
-      currencySymbol: "",
-    };
+    const rows: TargetRow[] = connectedPlatformsForTargets.map((pid, idx) => {
+      const meta = PLATFORM_TARGET_META[pid] ?? {
+        marketplace: String(pid),
+        currencySymbol: "",
+      };
 
       const nativeCurrency = platformToCurrencyCode(pid) || homeCurrencyCode;
       const rowCountry = platformToCountry(pid);
       const nativeToHome = getFxDb(nativeCurrency, homeCurrencyCode, rowCountry);
       const homeTarget = currentTarget * nativeToHome;
 
-    return {
-      __pid: pid,
-      sno: `${idx + 1}.`,
-      marketplace: meta.marketplace,
-      targetNative: money(currentTarget, nativeCurrency),
-      conversion: nativeCurrency === homeCurrencyCode ? "-" : nativeToHome.toFixed(3),
-      targetHome: money(homeTarget, homeCurrencyCode),
-    };
-  });
-
-  if (rows.length) {
-    const totalHome = rows.reduce((sum, row: any) => {
-      const num = Number(String(row.targetHome).replace(/[^0-9.-]+/g, ""));
-      return sum + (Number.isFinite(num) ? num : 0);
-    }, 0);
-
-    rows.push({
-      __pid: "global",
-      sno: "",
-      marketplace: "Total",
-      targetNative: "",
-      conversion: "",
-      targetHome: money(totalHome, homeCurrencyCode),
-      __isTotal: true,
+      return {
+        __pid: pid,
+        sno: `${idx + 1}.`,
+        marketplace: meta.marketplace,
+        targetNative: money(currentTarget, nativeCurrency),
+        conversion: nativeCurrency === homeCurrencyCode ? "-" : nativeToHome.toFixed(3),
+        targetHome: money(homeTarget, homeCurrencyCode),
+      };
     });
-  }
 
-  return rows;
-}, [isPreviewMode, connectedPlatformsForTargets, data, homeCurrencyCode, rateMap]);
+    if (rows.length) {
+      const totalHome = rows.reduce((sum, row: any) => {
+        const num = Number(String(row.targetHome).replace(/[^0-9.-]+/g, ""));
+        return sum + (Number.isFinite(num) ? num : 0);
+      }, 0);
+
+      rows.push({
+        __pid: "global",
+        sno: "",
+        marketplace: "Total",
+        targetNative: "",
+        conversion: "",
+        targetHome: money(totalHome, homeCurrencyCode),
+        __isTotal: true,
+      });
+    }
+
+    return rows;
+  }, [isPreviewMode, connectedPlatformsForTargets, data, homeCurrencyCode, rateMap]);
 
   const monthlyTargetColumns: ColumnDef<TargetRow>[] = useMemo(
     () => [
@@ -1349,579 +1553,505 @@ export default function ObjectivesPageClient({
     fetchObjective();
   }, [token, country, integratedCountries]);
 
-  useEffect(() => {
-    const fetchObjective = async () => {
-      if (!token) return;
-
-      const countryToFetch =
-        (country || objective.country || integratedCountries[0] || "").toLowerCase();
-
-      if (!countryToFetch) return;
-
-      try {
-        setIsFetchingObjective(true);
-
-        const month = getObjectiveMonth();
-
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/objective?country=${encodeURIComponent(
-            countryToFetch
-          )}&month=${encodeURIComponent(month)}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        const json = await res.json().catch(() => null);
-
-        if (!res.ok) {
-          if (res.status !== 404) {
-            throw new Error(json?.error || "Failed to fetch objective");
-          }
-
-          setObjective((prev) => ({
-            ...prev,
-            country: countryToFetch,
-          }));
-
-          setObjectiveDraft((prev) => ({
-            ...prev,
-            country: countryToFetch,
-          }));
-
-          return;
-        }
-
-        const serverObjective = json?.objective;
-        if (!serverObjective) return;
-
-        setObjective((prev) => ({
-          ...prev,
-          country: countryToFetch,
-          growth_intent: serverObjective.growth_intent ?? prev.growth_intent,
-          profit_priority: serverObjective.profit_priority ?? prev.profit_priority,
-          inventory_clearance_priority:
-            serverObjective.inventory_clearance_priority ?? prev.inventory_clearance_priority,
-          business_context: serverObjective.business_context ?? prev.business_context,
-        }));
-
-        setObjectiveDraft((prev) => ({
-          ...prev,
-          country: countryToFetch,
-          growth_intent: serverObjective.growth_intent ?? prev.growth_intent,
-          profit_priority: serverObjective.profit_priority ?? prev.profit_priority,
-          inventory_clearance_priority:
-            serverObjective.inventory_clearance_priority ?? prev.inventory_clearance_priority,
-          business_context: serverObjective.business_context ?? prev.business_context,
-        }));
-      } catch (error) {
-        console.error("Failed to fetch objective:", error);
-      } finally {
-        setIsFetchingObjective(false);
-      }
-    };
-
-    fetchObjective();
-  }, [token, country, integratedCountries]);
-
   return (
     <div className="w-full">
 
 
       {!isPreviewMode && (isLoading || ratesLoading || isFetchingBusinessSummary) && (
-  <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">Loading…</div>
-)}
+        <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">Loading…</div>
+      )}
 
 
       {isError && (
         <div className="mb-4 text-sm text-red-500">Failed to load objectives page.</div>
       )}
- 
+
       <div className="mb-1">
         <PageBreadcrumb pageTitle="Business Overview" variant="page" align="left" textSize="2xl" />
       </div>
-      
+
 
       <SummaryTabs activeTab={activeTab} onChange={setActiveTab} />
       <DummyBlurWrapper enabled={isPreviewMode} badgeText="Dummy Targets Preview">
 
-      {activeTab === "business_summary" && (
-        <div className="grid grid-cols-1 gap-4">
-          <InfoCard
-            title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
-            action={
-              !isBusinessSummaryEditMode ? (
-  <button
-    type="button"
-    onClick={startBusinessSummaryEdit}
-    disabled={isPreviewMode}
-    className="inline-flex h-9 w-9 items-center justify-center text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-    aria-label="Enable business summary edit mode"
-    title="Edit business summary"
-  >
-                  <FiEdit className="text-lg" />
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Button
+        {activeTab === "business_summary" && (
+          <div className="grid grid-cols-1 gap-4">
+            <InfoCard
+              title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
+              action={
+                !isBusinessSummaryEditMode ? (
+                  <button
                     type="button"
-                    onClick={handleBusinessSummarySave}
-                    size="icon"
-                    title="Save"
-                    disabled={isGeneratingSummary || isSaving}
+                    onClick={startBusinessSummaryEdit}
+                    disabled={isPreviewMode}
+                    className="inline-flex h-9 w-9 items-center justify-center text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Enable business summary edit mode"
+                    title="Edit business summary"
                   >
-                    <FiCheck />
-                  </Button>
+                    <FiEdit className="text-lg" />
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      onClick={handleBusinessSummarySave}
+                      size="icon"
+                      title="Save"
+                      disabled={isGeneratingSummary || isSaving}
+                    >
+                      <FiCheck />
+                    </Button>
 
-                  <Button
-                    type="button"
-                    onClick={cancelBusinessSummaryEdit}
-                    size="icon"
-                    variant="outline"
-                    title="Cancel"
-                    disabled={isGeneratingSummary || isSaving}
-                  >
-                    <FiX />
-                  </Button>
-                </div>
-              )
-            }
-          >
-            <>
-              {isGeneratingSummary && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-white/80 ">
-                  <Loader backgroundClass="bg-transparent" />
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 gap-5">
-                <div>
-                  <div className="mb-1 flex items-center justify-end">
-                    {isBusinessSummaryEditMode && (
-                      <p className="text-xs text-gray-500">Max 250 characters</p>
-                    )}
+                    <Button
+                      type="button"
+                      onClick={cancelBusinessSummaryEdit}
+                      size="icon"
+                      variant="outline"
+                      title="Cancel"
+                      disabled={isGeneratingSummary || isSaving}
+                    >
+                      <FiX />
+                    </Button>
                   </div>
-
-                  {isBusinessSummaryEditMode ? (
-                    <textarea
-                      rows={5}
-                      maxLength={250}
-                      value={objectiveDraft.business_context || ""}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          business_context: e.target.value,
-                        }))
-                      }
-                      className="w-full resize-none rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                      placeholder="Describe your business context..."
-                    />
-                  ) : objective.business_context ? (
-                    <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
-                      {objective.business_context}
-                    </p>
-                  ) : (
-                    <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
-                      Example:
-                      Our business primarily sells premium skincare products across Amazon US and Shopify.
-                      We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
-                      Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
-                      while maintaining bestseller stock is a key priority.
-                    </p>
-                  )}
-                </div>
-
-                {isBusinessSummaryEditMode && (
-                  <div className="flex items-center gap-3 py-3">
-                    <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
-
-                    <span className="whitespace-nowrap text-[10px] sm:text-xs font-medium tracking-widest text-gray-400 dark:text-gray-500">
-                      OR AUTO-EXTRACT YOUR BUSINESS SUMMARY
-                    </span>
-
-                    <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                )
+              }
+            >
+              <>
+                {isGeneratingSummary && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-white/80 ">
+                    <Loader backgroundClass="bg-transparent" />
                   </div>
                 )}
 
-                {isBusinessSummaryEditMode && (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Website</p>
-
-                      <div className="relative">
-                        <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                          type="url"
-                          placeholder="https://yourwebsite.com"
-                          value={objectiveDraft.website || ""}
-                          onChange={(e) =>
-                            setObjectiveDraft((prev) => ({
-                              ...prev,
-                              website: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-md border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                        />
-                      </div>
+                <div className="grid grid-cols-1 gap-5">
+                  <div>
+                    <div className="mb-1 flex items-center justify-end">
+                      {isBusinessSummaryEditMode && (
+                        <p className="text-xs text-gray-500">Max 250 characters</p>
+                      )}
                     </div>
 
-                    <div>
-                      <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Files</p>
+                    {isBusinessSummaryEditMode ? (
+                      <textarea
+                        rows={5}
+                        maxLength={250}
+                        value={objectiveDraft.business_context || ""}
+                        onChange={(e) =>
+                          setObjectiveDraft((prev) => ({
+                            ...prev,
+                            business_context: e.target.value,
+                          }))
+                        }
+                        className="w-full resize-none rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        placeholder="Describe your business context..."
+                      />
+                    ) : objective.business_context ? (
+                      <p className="whitespace-pre-wrap text-sm text-gray-800 dark:text-white/90">
+                        {objective.business_context}
+                      </p>
+                    ) : (
+                      <p className="whitespace-pre-wrap italic leading-relaxed text-sm text-gray-400 dark:text-gray-500">
+                        Example:
+                        Our business primarily sells premium skincare products across Amazon US and Shopify.
+                        We focus on maintaining strong margins while scaling revenue through ads and organic ranking.
+                        Inventory turnover is critical for us due to product shelf life, so clearing slow-moving SKUs
+                        while maintaining bestseller stock is a key priority.
+                      </p>
+                    )}
+                  </div>
 
-                      <div className="w-full rounded-md border border-gray-300 bg-white px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
-                        <div className="flex items-center gap-2">
-                          <label
-                            htmlFor="business-summary-file"
-                            className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                          >
-                            Upload File
-                          </label>
+                  {isBusinessSummaryEditMode && (
+                    <div className="flex items-center gap-3 py-3">
+                      <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
 
+                      <span className="whitespace-nowrap text-[10px] sm:text-xs font-medium tracking-widest text-gray-400 dark:text-gray-500">
+                        OR AUTO-EXTRACT YOUR BUSINESS SUMMARY
+                      </span>
+
+                      <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+                    </div>
+                  )}
+
+                  {isBusinessSummaryEditMode && (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Website</p>
+
+                        <div className="relative">
+                          <FiGlobe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                           <input
-                            id="business-summary-file"
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".docx,.pptx"
-                            onChange={handleFilesSelected}
-                            className="hidden"
+                            type="url"
+                            placeholder="https://yourwebsite.com"
+                            value={objectiveDraft.website || ""}
+                            onChange={(e) =>
+                              setObjectiveDraft((prev) => ({
+                                ...prev,
+                                website: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-md border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
                           />
+                        </div>
+                      </div>
 
-                          <div className="min-w-0 flex-1">
-                            {objectiveDraft.uploaded_files?.[0] ? (
-                              <div className="inline-flex max-w-full items-center gap-2 rounded-md bg-gray-50 px-2 py-1 dark:bg-gray-700/60">
-                                <FiFileText className="shrink-0 text-gray-500 dark:text-gray-300" />
-                                <span className="truncate text-xs text-gray-600 dark:text-gray-300 max-w-[180px] sm:max-w-[220px]">
-                                  {objectiveDraft.uploaded_files[0].name}
+                      <div>
+                        <p className="mb-2 text-xs text-charcoal-500 dark:text-gray-400">Files</p>
+
+                        <div className="w-full rounded-md border border-gray-300 bg-white px-2 py-2 dark:border-gray-700 dark:bg-gray-800">
+                          <div className="flex items-center gap-2">
+                            <label
+                              htmlFor="business-summary-file"
+                              className="shrink-0 cursor-pointer rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                            >
+                              Upload File
+                            </label>
+
+                            <input
+                              id="business-summary-file"
+                              ref={fileInputRef}
+                              type="file"
+                              accept=".docx,.pptx"
+                              onChange={handleFilesSelected}
+                              className="hidden"
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              {objectiveDraft.uploaded_files?.[0] ? (
+                                <div className="inline-flex max-w-full items-center gap-2 rounded-md bg-gray-50 px-2 py-1 dark:bg-gray-700/60">
+                                  <FiFileText className="shrink-0 text-gray-500 dark:text-gray-300" />
+                                  <span className="truncate text-xs text-gray-600 dark:text-gray-300 max-w-[180px] sm:max-w-[220px]">
+                                    {objectiveDraft.uploaded_files[0].name}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveUploadedFile(objectiveDraft.uploaded_files[0].id)}
+                                    className="shrink-0 text-gray-400 hover:text-red-500"
+                                    title="Remove file"
+                                  >
+                                    <FiTrash2 size={14} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="block truncate px-2 text-xs text-gray-500 dark:text-gray-400">
+                                  No file selected
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveUploadedFile(objectiveDraft.uploaded_files[0].id)}
-                                  className="shrink-0 text-gray-400 hover:text-red-500"
-                                  title="Remove file"
-                                >
-                                  <FiTrash2 size={14} />
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="block truncate px-2 text-xs text-gray-500 dark:text-gray-400">
-                                No file selected
-                              </span>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {isExtractingFiles && (
-                  <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                    Extracting text from files...
-                  </div>
-                )}
-              </div>
-            </>
-          </InfoCard>
+                  {isExtractingFiles && (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                      Extracting text from files...
+                    </div>
+                  )}
+                </div>
+              </>
+            </InfoCard>
 
-          <InfoCard
-            title={<PageBreadcrumb pageTitle="Business Journey" variant="table" align="left" />}
-          >
-            <PlaceholderPanel title="Business Journey" />
-          </InfoCard>
+            <InfoCard
+              title={<PageBreadcrumb pageTitle="Business Journey" variant="table" align="left" />}
+            >
+              <BusinessJourneyPanel
+                journey={businessJourney}
+                loading={isFetchingBusinessJourney}
+                error={businessJourneyError}
+              />
+            </InfoCard>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {(expandedChart === null || expandedChart === "targetSales") && (
-              <div className={expandedChart === "targetSales" ? "lg:col-span-2" : ""}>
-                <InfoCard
-                  title={
-                    <PageBreadcrumb
-                      pageTitle="Target vs Monthwise Sales"
-                      variant="table"
-                      align="left"
-                    />
-                  }
-                  action={
-                    <button
-                      type="button"
-                      data-no-expand
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleChartExpand("targetSales");
-                      }}
-                      aria-label={
-                        expandedChart === "targetSales"
-                          ? "Collapse Target vs Monthwise Sales chart"
-                          : "Expand Target vs Monthwise Sales chart"
-                      }
-                      title={expandedChart === "targetSales" ? "Collapse" : "Expand"}
-                      className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md dark:bg-gray-800 dark:border-gray-700 dark:text-blue-400"
-                    >
-                      {expandedChart === "targetSales" ? (
-                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                      ) : (
-                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                      )}
-                    </button>
-                  }
-                >
-                  <div className="h-[420px] w-full">
-                   <TargetVsSalesChart
-  country={isPreviewMode ? "global" : resolvedTargetCountry}
-  token={token || ""}
-  apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
-  monthsToLoad={12}
-  className="h-full w-full"
-  isPreviewMode={isPreviewMode}
-  dummyData={dummyTargetVsSalesData}
-  currencySymbol={
-    homeCurrencyCode === "GBP"
-      ? "£"
-      : homeCurrencyCode === "USD"
-        ? "$"
-        : homeCurrencyCode === "EUR"
-          ? "€"
-          : homeCurrencyCode
-  }
-/>
-                  </div>
-                </InfoCard>
-              </div>
-            )}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {(expandedChart === null || expandedChart === "targetSales") && (
+                <div className={expandedChart === "targetSales" ? "lg:col-span-2" : ""}>
+                  <InfoCard
+                    title={
+                      <PageBreadcrumb
+                        pageTitle="Target vs Monthwise Sales"
+                        variant="table"
+                        align="left"
+                      />
+                    }
+                    action={
+                      <button
+                        type="button"
+                        data-no-expand
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleChartExpand("targetSales");
+                        }}
+                        aria-label={
+                          expandedChart === "targetSales"
+                            ? "Collapse Target vs Monthwise Sales chart"
+                            : "Expand Target vs Monthwise Sales chart"
+                        }
+                        title={expandedChart === "targetSales" ? "Collapse" : "Expand"}
+                        className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md dark:bg-gray-800 dark:border-gray-700 dark:text-blue-400"
+                      >
+                        {expandedChart === "targetSales" ? (
+                          <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                        ) : (
+                          <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                        )}
+                      </button>
+                    }
+                  >
+                    <div className="h-[420px] w-full">
+                      <TargetVsSalesChart
+                        country={isPreviewMode ? "global" : resolvedTargetCountry}
+                        token={token || ""}
+                        apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
+                        monthsToLoad={12}
+                        className="h-full w-full"
+                        isPreviewMode={isPreviewMode}
+                        dummyData={dummyTargetVsSalesData}
+                        currencySymbol={
+                          homeCurrencyCode === "GBP"
+                            ? "£"
+                            : homeCurrencyCode === "USD"
+                              ? "$"
+                              : homeCurrencyCode === "EUR"
+                                ? "€"
+                                : homeCurrencyCode
+                        }
+                      />
+                    </div>
+                  </InfoCard>
+                </div>
+              )}
 
-            {(expandedChart === null || expandedChart === "objectiveMoM") && (
-              <div className={expandedChart === "objectiveMoM" ? "lg:col-span-2" : ""}>
-                <InfoCard
-                  title={
-                    <PageBreadcrumb
-                      pageTitle="Objective MoM"
-                      variant="table"
-                      align="left"
-                    />
-                  }
-                  action={
-                    <button
-                      type="button"
-                      data-no-expand
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleChartExpand("objectiveMoM");
-                      }}
-                      aria-label={
-                        expandedChart === "objectiveMoM"
-                          ? "Collapse Objective MoM chart"
-                          : "Expand Objective MoM chart"
-                      }
-                      title={expandedChart === "objectiveMoM" ? "Collapse" : "Expand"}
-                      className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md dark:bg-gray-800 dark:border-gray-700 dark:text-blue-400"
-                    >
-                      {expandedChart === "objectiveMoM" ? (
-                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                      ) : (
-                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                      )}
-                    </button>
-                  }
-                >
-                  <div className="h-[420px] w-full">
-<ObjectiveMoMChart
-  title="Objective MoM Trend"
-  country={isPreviewMode ? "global" : resolvedTargetCountry}
-  token={token || ""}
-  apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
-  className="h-full w-full"
-  isPreviewMode={isPreviewMode}
-  dummyData={[
-    { month: "2025-01", growth_intent: "balanced", profit_priority: "protect_growth" },
-    { month: "2025-02", growth_intent: "aggressive", profit_priority: "protect_growth" },
-    { month: "2025-03", growth_intent: "balanced", profit_priority: "high" },
-    { month: "2025-04", growth_intent: "aggressive", profit_priority: "high" },
-    { month: "2025-05", growth_intent: "balanced", profit_priority: "sacrifice_short_term" },
-    { month: "2025-06", growth_intent: "aggressive", profit_priority: "protect_growth" },
-  ]}
-/>
-                  </div>
-                </InfoCard>
-              </div>
-            )}
+              {(expandedChart === null || expandedChart === "objectiveMoM") && (
+                <div className={expandedChart === "objectiveMoM" ? "lg:col-span-2" : ""}>
+                  <InfoCard
+                    title={
+                      <PageBreadcrumb
+                        pageTitle="Objective MoM"
+                        variant="table"
+                        align="left"
+                      />
+                    }
+                    action={
+                      <button
+                        type="button"
+                        data-no-expand
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleChartExpand("objectiveMoM");
+                        }}
+                        aria-label={
+                          expandedChart === "objectiveMoM"
+                            ? "Collapse Objective MoM chart"
+                            : "Expand Objective MoM chart"
+                        }
+                        title={expandedChart === "objectiveMoM" ? "Collapse" : "Expand"}
+                        className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md dark:bg-gray-800 dark:border-gray-700 dark:text-blue-400"
+                      >
+                        {expandedChart === "objectiveMoM" ? (
+                          <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                        ) : (
+                          <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                        )}
+                      </button>
+                    }
+                  >
+                    <div className="h-[420px] w-full">
+                      <ObjectiveMoMChart
+                        title="Objective MoM Trend"
+                        country={isPreviewMode ? "global" : resolvedTargetCountry}
+                        token={token || ""}
+                        apiBaseUrl={process.env.NEXT_PUBLIC_API_BASE_URL || ""}
+                        className="h-full w-full"
+                        isPreviewMode={isPreviewMode}
+                        dummyData={[
+                          { month: "2025-01", growth_intent: "balanced", profit_priority: "protect_growth" },
+                          { month: "2025-02", growth_intent: "aggressive", profit_priority: "protect_growth" },
+                          { month: "2025-03", growth_intent: "balanced", profit_priority: "high" },
+                          { month: "2025-04", growth_intent: "aggressive", profit_priority: "high" },
+                          { month: "2025-05", growth_intent: "balanced", profit_priority: "sacrifice_short_term" },
+                          { month: "2025-06", growth_intent: "aggressive", profit_priority: "protect_growth" },
+                        ]}
+                      />
+                    </div>
+                  </InfoCard>
+                </div>
+              )}
+            </div>
+
           </div>
-          
-        </div>
-      )}
+        )}
       </DummyBlurWrapper>
 
       {activeTab === "targets_and_objectives" && (
         <DummyBlurWrapper enabled={isPreviewMode} badgeText="Dummy Targets Preview">
-        <div className="grid grid-cols-1 gap-4">
-          <InfoCard
-            title={
-              <PageBreadcrumb
-                pageTitle="Strategic Objectives and Monthly Targets"
-                variant="table"
-                align="left"
-              />
-            }
-            action={
-              !isStrategicEditMode ? (
-                <button
-  onClick={startStrategicEdit}
-  className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-  type="button"
-  disabled={isPreviewMode}
->
-                  <FiEdit className="text-lg" />
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Button size="icon" onClick={handleStrategicObjectivesSave}>
-                    <FiCheck />
-                  </Button>
-                  <Button size="icon" variant="outline" onClick={cancelStrategicEdit}>
-                    <FiX />
-                  </Button>
-                </div>
-              )
-            }
-          >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <InfoItem
-                label="Growth"
-                value={
-                  isStrategicEditMode ? (
-                    <select
-                      value={objectiveDraft.growth_intent}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
-                        }))
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      {GROWTH_OPTIONS.map((v) => (
-                        <option key={v} value={v}>
-                          {v.charAt(0).toUpperCase() + v.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    prettifyObjectiveValue(objective.growth_intent)
-                  )
-                }
-              />
-
-              <InfoItem
-                label="Profit"
-                value={
-                  isStrategicEditMode ? (
-                    <select
-                      value={objectiveDraft.profit_priority}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
-                        }))
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      {PROFIT_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    prettifyObjectiveValue(objective.profit_priority)
-                  )
-                }
-              />
-
-              <InfoItem
-                label="Inventory Dilution"
-                value={
-                  isStrategicEditMode ? (
-                    <select
-                      value={objectiveDraft.inventory_clearance_priority ? "yes" : "no"}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          inventory_clearance_priority: e.target.value === "yes",
-                        }))
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  ) : (
-                    objective.inventory_clearance_priority ? "Yes" : "No"
-                  )
-                }
-              />
-
-              <InfoItem
-                label="Country"
-                value={
-                  isStrategicEditMode ? (
-                    <select
-                      value={objectiveDraft.country}
-                      onChange={(e) =>
-                        setObjectiveDraft((prev) => ({
-                          ...prev,
-                          country: e.target.value,
-                        }))
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                    >
-                      <option value="" disabled>
-                        Select Country
-                      </option>
-                      {integratedCountries.map((c) => (
-                        <option key={c} value={c}>
-                          {c.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    objective.country?.toUpperCase() || "-"
-                  )
-                }
-              />
-
-              <InfoItem
-                label={`Target (${strategicDisplayCurrency})`}
-                value={
-                  isStrategicEditMode ? (
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={objectiveTargetDraft}
-                      onChange={(e) => setObjectiveTargetDraft(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                      placeholder="Enter target"
-                    />
-                  ) : (
-                    money(strategicDisplayTargetValue, strategicDisplayCurrency)
-                  )
-                }
-              />
-
-              {isGlobalPage && (
+          <div className="grid grid-cols-1 gap-4">
+            <InfoCard
+              title={
+                <PageBreadcrumb
+                  pageTitle="Strategic Objectives and Monthly Targets"
+                  variant="table"
+                  align="left"
+                />
+              }
+              action={
+                !isStrategicEditMode ? (
+                  <button
+                    onClick={startStrategicEdit}
+                    className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    type="button"
+                    disabled={isPreviewMode}
+                  >
+                    <FiEdit className="text-lg" />
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Button size="icon" onClick={handleStrategicObjectivesSave}>
+                      <FiCheck />
+                    </Button>
+                    <Button size="icon" variant="outline" onClick={cancelStrategicEdit}>
+                      <FiX />
+                    </Button>
+                  </div>
+                )
+              }
+            >
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <InfoItem
-                  label={`Conversion Rate (${targetSourceCurrency} → ${homeCurrencyCode})`}
+                  label="Growth"
                   value={
-                    <span>
-                      {strategicConversionRate == null ? "-" : strategicConversionRate.toFixed(3)}
-                    </span>
+                    isStrategicEditMode ? (
+                      <select
+                        value={objectiveDraft.growth_intent}
+                        onChange={(e) =>
+                          setObjectiveDraft((prev) => ({
+                            ...prev,
+                            growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
+                          }))
+                        }
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      >
+                        {GROWTH_OPTIONS.map((v) => (
+                          <option key={v} value={v}>
+                            {v.charAt(0).toUpperCase() + v.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      prettifyObjectiveValue(objective.growth_intent)
+                    )
                   }
                 />
-              )}
-            </div>
-          </InfoCard>
-        </div>
+
+                <InfoItem
+                  label="Profit"
+                  value={
+                    isStrategicEditMode ? (
+                      <select
+                        value={objectiveDraft.profit_priority}
+                        onChange={(e) =>
+                          setObjectiveDraft((prev) => ({
+                            ...prev,
+                            profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
+                          }))
+                        }
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      >
+                        {PROFIT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      prettifyObjectiveValue(objective.profit_priority)
+                    )
+                  }
+                />
+
+                <InfoItem
+                  label="Inventory Dilution"
+                  value={
+                    isStrategicEditMode ? (
+                      <select
+                        value={objectiveDraft.inventory_clearance_priority ? "yes" : "no"}
+                        onChange={(e) =>
+                          setObjectiveDraft((prev) => ({
+                            ...prev,
+                            inventory_clearance_priority: e.target.value === "yes",
+                          }))
+                        }
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      >
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    ) : (
+                      objective.inventory_clearance_priority ? "Yes" : "No"
+                    )
+                  }
+                />
+
+                <InfoItem
+                  label="Country"
+                  value={
+                    isStrategicEditMode ? (
+                      <select
+                        value={objectiveDraft.country}
+                        onChange={(e) =>
+                          setObjectiveDraft((prev) => ({
+                            ...prev,
+                            country: e.target.value,
+                          }))
+                        }
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      >
+                        <option value="" disabled>
+                          Select Country
+                        </option>
+                        {integratedCountries.map((c) => (
+                          <option key={c} value={c}>
+                            {c.toUpperCase()}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      objective.country?.toUpperCase() || "-"
+                    )
+                  }
+                />
+
+                <InfoItem
+                  label={`Target (${strategicDisplayCurrency})`}
+                  value={
+                    isStrategicEditMode ? (
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={objectiveTargetDraft}
+                        onChange={(e) => setObjectiveTargetDraft(e.target.value)}
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        placeholder="Enter target"
+                      />
+                    ) : (
+                      money(strategicDisplayTargetValue, strategicDisplayCurrency)
+                    )
+                  }
+                />
+
+                {isGlobalPage && (
+                  <InfoItem
+                    label={`Conversion Rate (${targetSourceCurrency} → ${homeCurrencyCode})`}
+                    value={
+                      <span>
+                        {strategicConversionRate == null ? "-" : strategicConversionRate.toFixed(3)}
+                      </span>
+                    }
+                  />
+                )}
+              </div>
+            </InfoCard>
+          </div>
         </DummyBlurWrapper>
       )}
     </div>
