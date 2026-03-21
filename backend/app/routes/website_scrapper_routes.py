@@ -15,13 +15,13 @@ load_dotenv()
 
 @website_scrapper_bp.route("/analyze-website", methods=["GET", "POST"])
 def analyze_website():
-
     auth_header = request.headers.get("Authorization")
 
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify({"error": "Authorization token is missing or invalid"}), 401
 
     token = auth_header.split(" ")[1]
+    ppt_path = None
 
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
@@ -31,10 +31,9 @@ def analyze_website():
             return jsonify({"error": "Invalid token payload"}), 401
 
         # =========================
-        # ✅ GET → Fetch from DB
+        # GET → Fetch from DB
         # =========================
         if request.method == "GET":
-
             objective = UserObjective.query.filter_by(
                 user_id=user_id,
                 country="uk"
@@ -52,51 +51,67 @@ def analyze_website():
             })
 
         # =========================
-        # ✅ POST → Analyze + Save
+        # POST → Analyze + Save
         # =========================
         elif request.method == "POST":
-
             # -------- Website --------
             website = request.form.get("website")
-
-            if not website:
-                return jsonify({"error": "website parameter is required"}), 400
+            if website:
+                website = website.strip()
 
             # -------- PPT --------
             ppt_file = request.files.get("ppt")
 
             ppt_binary = None
             ppt_filename = None
-            ppt_path = None
 
-            if ppt_file:
+            if ppt_file and ppt_file.filename:
                 ppt_binary = ppt_file.read()
                 ppt_filename = ppt_file.filename
 
                 import tempfile
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp:
+                import os
+
+                file_ext = os.path.splitext(ppt_filename)[1] or ".pptx"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
                     tmp.write(ppt_binary)
                     ppt_path = tmp.name
 
+            # -------- Validation --------
+            if not website and not ppt_file:
+                return jsonify({
+                    "error": "Either website or ppt is required"
+                }), 400
+
             # -------- Analyze --------
+            # analyze_business_website must support:
+            # - website only
+            # - ppt only
+            # - both website and ppt
             result = analyze_business_website(website, ppt_path)
 
             if isinstance(result, dict) and "error" in result:
                 return jsonify(result), 400
 
-            # -------- Save to DB --------
-            overview = result.get("overview")
+            overview = result.get("overview") if isinstance(result, dict) else None
 
+            # -------- Existing record --------
             objective = UserObjective.query.filter_by(
                 user_id=user_id,
                 country="uk"
             ).first()
 
             if objective:
-                objective.business_context = overview
-                objective.website_url = website
-                objective.ppt_file_data = ppt_binary
-                objective.ppt_file_name = ppt_filename
+                # update only provided values
+                if overview:
+                    objective.business_context = overview
+
+                if website:
+                    objective.website_url = website
+
+                if ppt_binary is not None:
+                    objective.ppt_file_data = ppt_binary
+                    objective.ppt_file_name = ppt_filename
             else:
                 objective = UserObjective(
                     user_id=user_id,
@@ -111,13 +126,10 @@ def analyze_website():
 
             db.session.commit()
 
-            # -------- Cleanup --------
-            if ppt_path and os.path.exists(ppt_path):
-                os.remove(ppt_path)
-
             return jsonify({
                 "type": "website_analysis",
                 "website": website,
+                "ppt_file_name": ppt_filename,
                 "data": result
             })
 
@@ -126,5 +138,9 @@ def analyze_website():
             "error": "Website analysis failed",
             "details": str(e)
         }), 500
-    
+
+    finally:
+        if ppt_path and os.path.exists(ppt_path):
+            os.remove(ppt_path)
+
 
