@@ -157,7 +157,7 @@ def analyze_business_website(url=None, ppt_path=None):
     # -------- Combine --------
     combined_text = (website_text + "\n" + ppt_text).strip()
 
-    if len(combined_text) < 500:
+    if len(combined_text) < 50:
         return {
             "error": "Could not extract sufficient content from website or PPT"
         }
@@ -185,12 +185,14 @@ Content:
 {combined_text}
 """
 
-    response = openai_client.responses.create(
-        model="gpt-4.1",
-        input=prompt
+    response = openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
     )
 
-    ai_output = response.output_text.strip()
+    ai_output = response.choices[0].message.content.strip()
 
     return {
         "overview": ai_output,
