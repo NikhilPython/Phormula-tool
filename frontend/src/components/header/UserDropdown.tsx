@@ -153,8 +153,8 @@ export default function UserDropdown() {
         tag="button"
         className={`flex items-center gap-3 px-3 py-2 font-medium rounded-lg group text-theme-sm w-full text-left ${
           isNAMonthYear
-            ? "cursor-not-allowed text-gray-400 bg-gray-100 dark:text-gray-500 dark:bg-white/5"
-            : "text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+            ? "cursor-not-allowed text-gray-400 opacity-50 "
+            : "text-gray-700 hover:bg-gray-100 hover:text-gray-700"
         }`}
       >
         Add Members

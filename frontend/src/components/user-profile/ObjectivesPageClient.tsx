@@ -27,6 +27,8 @@ import JSZip from "jszip";
 import mammoth from "mammoth";
 import Loader from "@/components/loader/Loader";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
+import { IoMdLock } from "react-icons/io";
+import { useRouter } from 'next/navigation';
 
 type ObjectivesPageClientProps = {
   country?: string;
@@ -483,31 +485,73 @@ function BusinessJourneyPanel({
   );
 }
 
-function DummyBlurWrapper({
+
+const PreviewLockedSection = ({
   enabled,
-  badgeText = "Dummy Preview",
   children,
-  className = "",
+  title,
+  description,
+  buttonText,
+  onAction,
 }: {
   enabled: boolean;
-  badgeText?: string;
   children: React.ReactNode;
-  className?: string;
-}) {
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onAction?: () => void;
+}) => {
   return (
-    <div className={`relative w-full ${className}`}>
+    <div className="relative w-full">
       <div
         className={
           enabled
-            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
-            : "opacity-100 transition-opacity duration-300"
+            ? "pointer-events-none select-none opacity-45 transition-all duration-300"
+            : "opacity-100 transition-all duration-300"
         }
       >
         {children}
       </div>
+
+      {enabled && (
+        <>
+          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="sticky top-[20vh] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                <div className="mb-4 flex justify-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                    <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-semibold text-[#414042]">
+                  {title}
+                </h3>
+
+                <p className="mt-2 text-sm text-gray-600 leading-6">
+                  {description}
+                </p>
+
+                <button
+                  onClick={onAction}
+                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE]"
+                >
+                  {buttonText}
+                </button>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Demo data is shown for preview only.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
-}
+};
 
 const readFileAsArrayBuffer = (file: File) =>
   new Promise<ArrayBuffer>((resolve, reject) => {
@@ -883,6 +927,8 @@ export default function ObjectivesPageClient({
 
     return 1;
   };
+
+  const router = useRouter();
 
   const resolvedTargetCountry = useMemo(() => {
     if (isPreviewMode) return "global";
@@ -1610,6 +1656,11 @@ export default function ObjectivesPageClient({
     fetchObjective();
   }, [token, country, integratedCountries]);
 
+  const handleConnectAmazonPreview = () => {
+  const connectCountry = country === "global" ? "uk" : country;
+  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+};
+
   return (
     <div className="w-full">
 
@@ -1629,8 +1680,14 @@ export default function ObjectivesPageClient({
 
 
       <SummaryTabs activeTab={activeTab} onChange={setActiveTab} />
-      <DummyBlurWrapper enabled={isPreviewMode} badgeText="Dummy Targets Preview">
-
+     
+<PreviewLockedSection
+  enabled={isPreviewMode}
+  title="Preview Mode"
+   description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+  buttonText="Connect Amazon"
+  onAction={handleConnectAmazonPreview}
+>
         {activeTab === "business_summary" && (
           <div className="grid grid-cols-1 gap-4">
             <InfoCard
@@ -1937,10 +1994,10 @@ export default function ObjectivesPageClient({
 
           </div>
         )}
-      </DummyBlurWrapper>
+     
 
       {activeTab === "targets_and_objectives" && (
-        <DummyBlurWrapper enabled={isPreviewMode} badgeText="Dummy Targets Preview">
+        
           <div className="grid grid-cols-1 gap-4">
             <InfoCard
               title={
@@ -2109,8 +2166,9 @@ export default function ObjectivesPageClient({
               </div>
             </InfoCard>
           </div>
-        </DummyBlurWrapper>
+        
       )}
+      </PreviewLockedSection>
     </div>
   );
 }
