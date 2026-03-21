@@ -342,9 +342,6 @@ export default function ProfileClient() {
             <>
               <UserInfoCard
                 activeTab="personal"
-                countryName={countryName}
-                month={month}
-                year={year}
               />
             </>
           )}
@@ -352,9 +349,6 @@ export default function ProfileClient() {
           {tab === "objectives" && (
             <UserInfoCard
               activeTab="objectives"
-              countryName={countryName}
-              month={month}
-              year={year}
             />
           )}
 
