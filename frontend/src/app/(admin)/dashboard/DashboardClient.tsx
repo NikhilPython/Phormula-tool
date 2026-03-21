@@ -51,6 +51,7 @@ import { fetchCurrentInventoryData, InventoryRow } from "@/lib/inventory/fetchCu
 import Alert from "@/components/ui/alert/Alert";
 import { ApiResponse } from "@/components/businessInsight/types";
 import DashboardStickyKpis from "./DashboardStickyKpis";
+import { IoMdLock } from "react-icons/io";
 
 const TERM_DEFINITIONS: Record<string, string> = {
     asp: "Average Selling Price",
@@ -2912,7 +2913,11 @@ const PreviewLockedSection = ({
           <div className="absolute inset-0 z-20 pointer-events-none">
             <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
               <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-                <div className="mb-4 text-3xl">🔒</div>
+                 <div className="mb-4 flex justify-center">
+                                               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F8EDCE]">
+                                                 <IoMdLock className="text-3xl text-[#37455F]" />
+                                               </div>
+                                             </div>
 
                 <h3 className="text-lg font-semibold text-[#414042]">
                   {title}
@@ -5177,7 +5182,7 @@ const finalRangeCompletedPct = shouldShowDummyUi
 <PreviewLockedSection
   enabled={isUsingDummyData}
   title="Preview mode"
-  description="You're viewing demo business insights data. Connect your Amazon account to unlock your real SKU analysis, growth trends, AI insights, and exports."
+  description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
   buttonText="Connect Amazon"
   onAction={handleConnectAmazonPreview}
 >

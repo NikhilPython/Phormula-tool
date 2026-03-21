@@ -131,46 +131,48 @@ export default function UserDropdown() {
         </div>
 
         <ul className="flex flex-col gap-1 pt-4 pb-3 border-b border-gray-200 dark:border-gray-800">
-          <li>
-            <DropdownItem
-              onItemClick={closeDropdown}
-              tag="a"
-              href={`/objectives-targets/${currentCountryName}/${month || "NA"}/${year || "NA"}`}
-              className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
-            >
-              Business Overview
-            </DropdownItem>
-
-           {!isMember && (
   <li>
     <DropdownItem
-      onItemClick={() => {
-        if (isNAMonthYear) return;
-        closeDropdown();
-        setIsAddMemberOpen(true);
-      }}
-      tag="button"
-      className={`flex items-center gap-3 px-3 py-2 font-medium rounded-lg group text-theme-sm w-full text-left ${
-        isNAMonthYear
-          ? "cursor-not-allowed text-gray-400 bg-gray-100 dark:text-gray-500 dark:bg-white/5"
-          : "text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
-      }`}
+      onItemClick={closeDropdown}
+      tag="a"
+      href={`/objectives-targets/${currentCountryName}/${month || "NA"}/${year || "NA"}`}
+      className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
     >
-      Add Members
+      Business Overview
     </DropdownItem>
   </li>
-)}
 
-            <DropdownItem
-              onItemClick={closeDropdown}
-              tag="a"
-              href="/profile"
-              className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
-            >
-              Account Settings
-            </DropdownItem>
-          </li>
-        </ul>
+  {!isMember && (
+    <li>
+      <DropdownItem
+        onItemClick={() => {
+          if (isNAMonthYear) return;
+          closeDropdown();
+          setIsAddMemberOpen(true);
+        }}
+        tag="button"
+        className={`flex items-center gap-3 px-3 py-2 font-medium rounded-lg group text-theme-sm w-full text-left ${
+          isNAMonthYear
+            ? "cursor-not-allowed text-gray-400 bg-gray-100 dark:text-gray-500 dark:bg-white/5"
+            : "text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+        }`}
+      >
+        Add Members
+      </DropdownItem>
+    </li>
+  )}
+
+  <li>
+    <DropdownItem
+      onItemClick={closeDropdown}
+      tag="a"
+      href="/profile"
+      className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+    >
+      Account Settings
+    </DropdownItem>
+  </li>
+</ul>
 
         <button
           onClick={handleLogout}

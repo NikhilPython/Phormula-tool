@@ -347,6 +347,34 @@ export default function DispatchPage({
     XLSX.writeFile(workbook, `Dispatch Report ${monthdp}-${yeardp}.xlsx`)
   }
 
+  useEffect(() => {
+  if (!embedded || typeof window === 'undefined') return;
+
+  const handleRefresh = (event: Event) => {
+    const customEvent = event as CustomEvent<{ month?: string; year?: string }>;
+    const nextMonth = customEvent.detail?.month;
+    const nextYear = customEvent.detail?.year;
+
+    if (!nextMonth || !nextYear) return;
+
+    setMonthDp(nextMonth);
+    setYearDp(nextYear);
+    void fetchDispatchFile(nextMonth, nextYear);
+  };
+
+  const handleDownload = () => {
+    handleExportToExcel();
+  };
+
+  window.addEventListener('dispatch-report-refresh', handleRefresh as EventListener);
+  window.addEventListener('dispatch-report-download', handleDownload);
+
+  return () => {
+    window.removeEventListener('dispatch-report-refresh', handleRefresh as EventListener);
+    window.removeEventListener('dispatch-report-download', handleDownload);
+  };
+}, [embedded, countryName]);
+
   const tableRows = skuData.map((row, index) => {
     const isTotal = isTotalRow(row)
 
@@ -422,13 +450,20 @@ export default function DispatchPage({
     <>
       <style jsx>{`
         .inline-dropdowns {
-          display: flex;
-          flex-wrap: nowrap;
-          gap: 0.5vw;
-          align-items: center;
-          justify-content: flex-start;
-          margin-bottom: 3vh;
-        }
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .inline-dropdowns {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
 
         @media (max-width: 600px) {
           .inline-dropdowns {
@@ -646,18 +681,19 @@ export default function DispatchPage({
         }
 
         .alert-container {
-          display: flex;
-          align-items: center;
-          background-color: #f2f2f2;
-          border-top: 4px solid #ff5c5c;
-          padding: 12px 16px;
-          border-radius: 6px;
-          font-family: 'Lato', sans-serif;
-          width: 34%;
-          justify-content: space-between;
-          box-sizing: border-box;
-          margin-top: 20px;
-        }
+  display: flex;
+  align-items: center;
+  background-color: #f2f2f2;
+  border-top: 4px solid #ff5c5c;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-family: 'Lato', sans-serif;
+  width: 100%;
+  max-width: 700px;
+  justify-content: space-between;
+  box-sizing: border-box;
+  margin-top: 20px;
+}
 
         .alert-message {
           display: flex;
@@ -723,39 +759,42 @@ export default function DispatchPage({
           width: 100%;
         }
       `}</style>
+{!embedded && (
+     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+  
+    <div className="flex flex-wrap items-baseline gap-2 justify-start">
+      <PageBreadcrumb
+        pageTitle="Dispatch Report - "
+        variant="page"
+        align="left"
+        className=""
+      />
+      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+        Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
+      </span>
+    </div>
 
-      <div className="flex justify-between items-start">
-        <div className="flex flex-wrap items-baseline gap-2 justify-start">
-          <PageBreadcrumb
-            pageTitle="Dispatch Report - "
-            variant="page"
-            align="left"
-            className=""
-          />
-          <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-            Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
-          </span>
-        </div>
 
-        <div className="inline-dropdowns">
-          <MonthYearPickerTable
-            month={month}
-            year={year}
-            yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
-            onMonthChange={(v) => setMonthDp(v)}
-            onYearChange={(v) => setYearDp(v)}
-            valueMode="lower"
-          />
+  <div className={`inline-dropdowns ${embedded ? 'w-full flex justify-end' : ''}`}>
+    <MonthYearPickerTable
+      month={month}
+      year={year}
+      yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
+      onMonthChange={(v) => setMonthDp(v)}
+      onYearChange={(v) => setYearDp(v)}
+      valueMode="lower"
+    />
 
-          <div className="centralised-fetch-button">
-            <button className="fetch-button" onClick={() => fetchDispatchFile(monthdp, yeardp)}>
-              Get Report
-            </button>
-          </div>
+    <div className="centralised-fetch-button">
+      <button className="fetch-button" onClick={() => fetchDispatchFile(monthdp, yeardp)}>
+        Get Report
+      </button>
+    </div>
 
-          <DownloadIconButton onClick={handleExportToExcel} size="md" />
-        </div>
-      </div>
+    <DownloadIconButton onClick={handleExportToExcel} size="md" />
+  </div>
+</div>
+  )}
 
       {loading ? (
         <div className="loading-wrapper">
