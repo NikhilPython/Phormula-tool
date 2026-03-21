@@ -272,15 +272,13 @@ export default function SkuRecommendationDrawer({
             </div>
 
             {selectedRec?.journeyPoints?.length ? (
-              <ul className="space-y-1 text-xs 2xl:text-sm text-charcoal-600">
+              <ul className="list-disc pl-5 space-y-1 text-xs text-charcoal-500 2xl:text-sm">
                 {selectedRec.journeyPoints.map((p, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span>
-                      {p
-                        .replace(/^\d+\.\s*-\s*/, "")
-                        .replace(/^\d+\.\s*/, "")
-                        .replace(/^-+\s*/, "")}
-                    </span>
+                  <li key={i}>
+                    {p
+                      .replace(/^\d+\.\s*-\s*/, "")
+                      .replace(/^\d+\.\s*/, "")
+                      .replace(/^-+\s*/, "")}
                   </li>
                 ))}
               </ul>

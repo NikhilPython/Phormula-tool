@@ -779,16 +779,13 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                   </div>
 
                   {block.journeyBullets?.length ? (
-                    <ul className="space-y-1 text-xs text-charcoal-600 2xl:text-sm">
+                    <ul className="list-disc pl-5 space-y-1 text-xs text-charcoal-500 2xl:text-sm">
                       {block.journeyBullets.map((p, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          {/* <span className="text-charcoal-400">→</span> */}
-                          <span>
-                            {p
-                              .replace(/^\d+\.\s*-\s*/, "")
-                              .replace(/^\d+\.\s*/, "")
-                              .replace(/^-+\s*/, "")}
-                          </span>
+                        <li key={i}>
+                          {p
+                            .replace(/^\d+\.\s*-\s*/, "")
+                            .replace(/^\d+\.\s*/, "")
+                            .replace(/^-+\s*/, "")}
                         </li>
                       ))}
                     </ul>
@@ -842,10 +839,10 @@ const PreviewLockedSection = ({
             <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
               <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
                 <div className="mb-4 flex justify-center">
-                                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F8EDCE]">
-                                  <IoMdLock className="text-3xl text-[#37455F]" />
-                                </div>
-                              </div>
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F8EDCE]">
+                    <IoMdLock className="text-3xl text-[#37455F]" />
+                  </div>
+                </div>
 
                 <h3 className="text-lg font-semibold text-[#414042]">
                   {title}
@@ -1908,19 +1905,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const isDemoMode =
-  String(month).toUpperCase() === "NA" ||
-  String(year).toUpperCase() === "NA";
+    String(month).toUpperCase() === "NA" ||
+    String(year).toUpperCase() === "NA";
 
-const effectiveCountryName = isDemoMode ? "global" : countryName;
-const effectiveHomeCurrency = isDemoMode ? "usd" : globalHomeCurrency;
+  const effectiveCountryName = isDemoMode ? "global" : countryName;
+  const effectiveHomeCurrency = isDemoMode ? "usd" : globalHomeCurrency;
 
-const currencySymbol = isDemoMode
-  ? getCurrencySymbol("global")
-  : isGlobalPage
-    ? getCurrencySymbol(homeCurrency)
-    : getCurrencySymbol(countryName || "");
+  const currencySymbol = isDemoMode
+    ? getCurrencySymbol("global")
+    : isGlobalPage
+      ? getCurrencySymbol(homeCurrency)
+      : getCurrencySymbol(countryName || "");
 
-  
+
 
   const [collapsed, setCollapsed] = useState(false);
 
@@ -1929,42 +1926,42 @@ const currencySymbol = isDemoMode
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter | "">("");
   const [uploadsData, setUploadsData] = useState<UploadHistoryResponse | null>(
-  isDemoMode ? DEMO_UPLOAD_HISTORY : null
-);
+    isDemoMode ? DEMO_UPLOAD_HISTORY : null
+  );
 
   const [allDropdownsSelected, setAllDropdownsSelected] = useState(isDemoMode);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showNoDataOverlay, setShowNoDataOverlay] = useState(false);
   const [performanceTrend, setPerformanceTrend] = useState<PerformanceTrendPayload | null>(
-  isDemoMode ? DEMO_PERFORMANCE_TREND : null
-);
+    isDemoMode ? DEMO_PERFORMANCE_TREND : null
+  );
   const [performanceTrendMetric, setPerformanceTrendMetric] = useState<"net_sales" | "units">("net_sales");
   const [performanceTrendBase64, setPerformanceTrendBase64] = useState<string | null>(null);
   const [trendExportApi, setTrendExportApi] = useState<TrendChartExportApi | null>(null);
   const [focusedChart, setFocusedChart] = useState<FocusedChart>(null);
   const [bargraphUploads, setBargraphUploads] = useState<UploadRow[]>(
-  isDemoMode ? DEMO_UPLOADS : []
-);
+    isDemoMode ? DEMO_UPLOADS : []
+  );
   const [bargraphLoading, setBargraphLoading] = useState(false);
   const [bargraphUserMeta, setBargraphUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
   const [graphPageUploads, setGraphPageUploads] = useState<UploadRow[]>(
-  isDemoMode ? DEMO_UPLOADS : []
-);
+    isDemoMode ? DEMO_UPLOADS : []
+  );
   const [graphPageLoading, setGraphPageLoading] = useState(false);
   const [graphPageUserMeta, setGraphPageUserMeta] = useState<{ company_name?: string; brand_name?: string } | null>(null);
   const [graphPageError, setGraphPageError] = useState<string | null>(null);
   const [skuRows, setSkuRows] = useState<TableRow[]>(
-  isDemoMode ? DEMO_SKU_ROWS : []
-);
+    isDemoMode ? DEMO_SKU_ROWS : []
+  );
 
   const [activeTab, setActiveTab] = useState<DashboardTab>("graphs");
   const [pendingHash, setPendingHash] = useState<string>("");
   const [targetSummary, setTargetSummary] = useState<{
-  target_sales?: number;
-  shortfall_total?: number;
-  cashflow_total?: number;
-} | null>(isDemoMode ? DEMO_TARGET_SUMMARY : null);
+    target_sales?: number;
+    shortfall_total?: number;
+    cashflow_total?: number;
+  } | null>(isDemoMode ? DEMO_TARGET_SUMMARY : null);
 
   const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
@@ -2009,48 +2006,48 @@ const currencySymbol = isDemoMode
   }, []);
 
   useEffect(() => {
-  if (!pendingHash) return;
-  if (!allDropdownsSelected) return;
+    if (!pendingHash) return;
+    if (!allDropdownsSelected) return;
 
-  if (isDemoMode) {
-    setPendingHash("");
-    return;
-  }
-
-  const timer = setTimeout(() => {
-    const el = document.getElementById(pendingHash);
-    if (el) {
-      el.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
+    if (isDemoMode) {
+      setPendingHash("");
+      return;
     }
-    setPendingHash("");
-  }, 250);
 
-  return () => clearTimeout(timer);
-}, [activeTab, pendingHash, allDropdownsSelected, isDemoMode]);
+    const timer = setTimeout(() => {
+      const el = document.getElementById(pendingHash);
+      if (el) {
+        el.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+      setPendingHash("");
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [activeTab, pendingHash, allDropdownsSelected, isDemoMode]);
 
   const tabsDisabled: Partial<Record<DashboardTab, boolean>> = useMemo(() => {
-  if (isDemoMode) {
-    return {
-      graphs: false,
-      businessSummary: false,
-      skuBreakdown: false,
-      skuwiseProfit: false,
-      cashFlow: false,
-    };
-  }
+    if (isDemoMode) {
+      return {
+        graphs: false,
+        businessSummary: false,
+        skuBreakdown: false,
+        skuwiseProfit: false,
+        cashFlow: false,
+      };
+    }
 
-  const disabled = !allDropdownsSelected;
-  return {
-    graphs: disabled,
-    businessSummary: disabled,
-    skuBreakdown: disabled,
-    skuwiseProfit: disabled,
-    cashFlow: disabled,
-  };
-}, [allDropdownsSelected, isDemoMode]);
+    const disabled = !allDropdownsSelected;
+    return {
+      graphs: disabled,
+      businessSummary: disabled,
+      skuBreakdown: disabled,
+      skuwiseProfit: disabled,
+      cashFlow: disabled,
+    };
+  }, [allDropdownsSelected, isDemoMode]);
 
   const nameToSkuMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -2075,8 +2072,8 @@ const currencySymbol = isDemoMode
 
   // ---------------- AI Summary Panel state ----------------
   const [aiPanel, setAiPanel] = useState<AiPanelData | null>(
-  isDemoMode ? DEMO_AI_PANEL : null
-);
+    isDemoMode ? DEMO_AI_PANEL : null
+  );
   const [aiPanelLoading, setAiPanelLoading] = useState(false);
   const [aiPanelError, setAiPanelError] = useState<string | null>(null);
 
@@ -2174,24 +2171,24 @@ const currencySymbol = isDemoMode
   }, [topData]);
 
   useEffect(() => {
-  setShowNoDataOverlay(false);
-  setFocusedChart(null);
-  setChartExportApi(null);
-  setSkuExportPayload(null);
-  setExpenseBreakdownPieBase64(null);
-  setProductWiseCm1PieBase64(null);
-  setPerformanceTrendBase64(null);
-  setTrendExportApi(null);
+    setShowNoDataOverlay(false);
+    setFocusedChart(null);
+    setChartExportApi(null);
+    setSkuExportPayload(null);
+    setExpenseBreakdownPieBase64(null);
+    setProductWiseCm1PieBase64(null);
+    setPerformanceTrendBase64(null);
+    setTrendExportApi(null);
 
-  if (isDemoMode) {
-    setPerformanceTrend(DEMO_PERFORMANCE_TREND);
-    setSkuRows(DEMO_SKU_ROWS);
-    return;
-  }
+    if (isDemoMode) {
+      setPerformanceTrend(DEMO_PERFORMANCE_TREND);
+      setSkuRows(DEMO_SKU_ROWS);
+      return;
+    }
 
-  setPerformanceTrend(null);
-  setSkuRows([]);
-}, [range, selectedMonth, selectedQuarter, selectedYear, isDemoMode]);
+    setPerformanceTrend(null);
+    setSkuRows([]);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, isDemoMode]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2239,32 +2236,32 @@ const currencySymbol = isDemoMode
 
 
   const displayData: Summary =
-  isDemoMode
-    ? DEMO_SUMMARY
-    : allDropdownsSelected && uploadsData?.summary
-      ? uploadsData.summary
-      : zeroData;
+    isDemoMode
+      ? DEMO_SUMMARY
+      : allDropdownsSelected && uploadsData?.summary
+        ? uploadsData.summary
+        : zeroData;
 
   // range: "monthly" | "quarterly" | "yearly"
-const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
-  setRange(v);
-  setSelectedMonth("");
-  setSelectedQuarter("");
-  setSelectedYear(isDemoMode ? String(new Date().getFullYear()) : "");
+  const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
+    setRange(v);
+    setSelectedMonth("");
+    setSelectedQuarter("");
+    setSelectedYear(isDemoMode ? String(new Date().getFullYear()) : "");
 
-  if (isDemoMode) {
-    setUploadsData(DEMO_UPLOAD_HISTORY);
-    setAiPanel(DEMO_AI_PANEL);
-    setPerformanceTrend(DEMO_PERFORMANCE_TREND);
-    setBargraphUploads(DEMO_UPLOADS);
-    setGraphPageUploads(DEMO_UPLOADS);
-    setSkuRows(DEMO_SKU_ROWS);
-    setTargetSummary(DEMO_TARGET_SUMMARY);
-    return;
-  }
+    if (isDemoMode) {
+      setUploadsData(DEMO_UPLOAD_HISTORY);
+      setAiPanel(DEMO_AI_PANEL);
+      setPerformanceTrend(DEMO_PERFORMANCE_TREND);
+      setBargraphUploads(DEMO_UPLOADS);
+      setGraphPageUploads(DEMO_UPLOADS);
+      setSkuRows(DEMO_SKU_ROWS);
+      setTargetSummary(DEMO_TARGET_SUMMARY);
+      return;
+    }
 
-  setUploadsData(null);
-};
+    setUploadsData(null);
+  };
 
   const fetchUploadHistory = async (
     rangeType: RangeType,
@@ -2432,23 +2429,23 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
   };
 
   useEffect(() => {
-  if (isDemoMode) {
-    setTargetSummary(DEMO_TARGET_SUMMARY);
-    return;
-  }
+    if (isDemoMode) {
+      setTargetSummary(DEMO_TARGET_SUMMARY);
+      return;
+    }
 
-  const ready =
-    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-    (range === "yearly" && !!selectedYear);
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
 
-  if (!ready) {
-    setTargetSummary(null);
-    return;
-  }
+    if (!ready) {
+      setTargetSummary(null);
+      return;
+    }
 
-  fetchTargetSummary();
-}, [range, selectedMonth, selectedQuarter, selectedYear, initialCountryName, isDemoMode]);
+    fetchTargetSummary();
+  }, [range, selectedMonth, selectedQuarter, selectedYear, initialCountryName, isDemoMode]);
 
 
 
@@ -2571,142 +2568,142 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
   };
 
   const handleMonthChange = (v: string) => {
-  setSelectedMonth(v);
+    setSelectedMonth(v);
 
-  if (isDemoMode) {
-    setUploadsData(DEMO_UPLOAD_HISTORY);
-    return;
-  }
+    if (isDemoMode) {
+      setUploadsData(DEMO_UPLOAD_HISTORY);
+      return;
+    }
 
-  if (selectedYear) {
-    fetchUploadHistory(range, v, selectedQuarter || "", selectedYear, countryName);
-  } else {
-    setUploadsData(null);
-  }
-};
+    if (selectedYear) {
+      fetchUploadHistory(range, v, selectedQuarter || "", selectedYear, countryName);
+    } else {
+      setUploadsData(null);
+    }
+  };
 
   // quarter is "Q1" | "Q2" | "Q3" | "Q4"
   const handleQuarterChange = (v: string) => {
-  const q = isQuarter(v) ? v : "";
-  setSelectedQuarter(q);
+    const q = isQuarter(v) ? v : "";
+    setSelectedQuarter(q);
 
-  if (isDemoMode) {
-    setUploadsData(DEMO_UPLOAD_HISTORY);
-    return;
-  }
+    if (isDemoMode) {
+      setUploadsData(DEMO_UPLOAD_HISTORY);
+      return;
+    }
 
-  if (selectedYear && q) {
-    fetchUploadHistory(range, selectedMonth, q, selectedYear, countryName);
-  } else {
-    setUploadsData(null);
-  }
-};
+    if (selectedYear && q) {
+      fetchUploadHistory(range, selectedMonth, q, selectedYear, countryName);
+    } else {
+      setUploadsData(null);
+    }
+  };
 
   const handleYearChange = (v: string) => {
-  setSelectedYear(v);
+    setSelectedYear(v);
 
-  if (isDemoMode) {
-    setUploadsData(DEMO_UPLOAD_HISTORY);
-    return;
-  }
+    if (isDemoMode) {
+      setUploadsData(DEMO_UPLOAD_HISTORY);
+      return;
+    }
 
-  if (
-    (range === "monthly" && selectedMonth) ||
-    (range === "quarterly" && selectedQuarter) ||
-    range === "yearly"
-  ) {
-    fetchUploadHistory(range, selectedMonth, selectedQuarter || "", v, countryName);
-  } else {
-    setUploadsData(null);
-  }
-};
+    if (
+      (range === "monthly" && selectedMonth) ||
+      (range === "quarterly" && selectedQuarter) ||
+      range === "yearly"
+    ) {
+      fetchUploadHistory(range, selectedMonth, selectedQuarter || "", v, countryName);
+    } else {
+      setUploadsData(null);
+    }
+  };
 
   useEffect(() => {
-  if (isDemoMode) {
+    if (isDemoMode) {
+      setRange("yearly");
+      setSelectedMonth("");
+      setSelectedQuarter("");
+      setSelectedYear(String(new Date().getFullYear()));
+      setUploadsData(DEMO_UPLOAD_HISTORY);
+      setAiPanel(DEMO_AI_PANEL);
+      setPerformanceTrend(DEMO_PERFORMANCE_TREND);
+      setBargraphUploads(DEMO_UPLOADS);
+      setGraphPageUploads(DEMO_UPLOADS);
+      setSkuRows(DEMO_SKU_ROWS);
+      setTargetSummary(DEMO_TARGET_SUMMARY);
+      setAllDropdownsSelected(true);
+      return;
+    }
+
     setRange("yearly");
     setSelectedMonth("");
     setSelectedQuarter("");
-    setSelectedYear(String(new Date().getFullYear()));
-    setUploadsData(DEMO_UPLOAD_HISTORY);
-    setAiPanel(DEMO_AI_PANEL);
-    setPerformanceTrend(DEMO_PERFORMANCE_TREND);
-    setBargraphUploads(DEMO_UPLOADS);
-    setGraphPageUploads(DEMO_UPLOADS);
-    setSkuRows(DEMO_SKU_ROWS);
-    setTargetSummary(DEMO_TARGET_SUMMARY);
-    setAllDropdownsSelected(true);
-    return;
-  }
 
-  setRange("yearly");
-  setSelectedMonth("");
-  setSelectedQuarter("");
-
-  const y = computeDefaultYearlyYear();
-  setSelectedYear(y);
-}, [isDemoMode]);
+    const y = computeDefaultYearlyYear();
+    setSelectedYear(y);
+  }, [isDemoMode]);
 
 
   const fetchCurrencyKey = isGlobalPage ? homeCurrency : "country";
 
- useEffect(() => {
-  if (isDemoMode) return;
-  if (!countryName) return;
-  if (range === "" || !selectedYear) return;
+  useEffect(() => {
+    if (isDemoMode) return;
+    if (!countryName) return;
+    if (range === "" || !selectedYear) return;
 
-  fetchUploadHistory(
-    range,
-    selectedMonth,
-    selectedQuarter || "",
-    selectedYear,
-    countryName
-  );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [range, selectedMonth, selectedQuarter, selectedYear, countryName, fetchCurrencyKey, isDemoMode]);
+    fetchUploadHistory(
+      range,
+      selectedMonth,
+      selectedQuarter || "",
+      selectedYear,
+      countryName
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, fetchCurrencyKey, isDemoMode]);
 
- useEffect(() => {
-  if (isDemoMode) return;
+  useEffect(() => {
+    if (isDemoMode) return;
 
-  if (!range || !selectedYear) {
-    setAiPanel(null);
-    return;
-  }
+    if (!range || !selectedYear) {
+      setAiPanel(null);
+      return;
+    }
 
-  const ready =
-    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-    (range === "yearly" && !!selectedYear);
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
 
-  if (!ready) {
-    setAiPanel(null);
-    return;
-  }
+    if (!ready) {
+      setAiPanel(null);
+      return;
+    }
 
-  fetchAiSummary(range);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [range, selectedMonth, selectedQuarter, selectedYear, countryName, isDemoMode]);
+    fetchAiSummary(range);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, isDemoMode]);
 
 
   useEffect(() => {
-  if (isDemoMode) return;
+    if (isDemoMode) return;
 
-  if (!range || !selectedYear) {
-    setPerformanceTrend(null);
-    return;
-  }
+    if (!range || !selectedYear) {
+      setPerformanceTrend(null);
+      return;
+    }
 
-  const ready =
-    (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-    (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-    (range === "yearly" && !!selectedYear);
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
 
-  if (!ready) {
-    setPerformanceTrend(null);
-    return;
-  }
+    if (!ready) {
+      setPerformanceTrend(null);
+      return;
+    }
 
-  fetchPerformanceTrendFromHistory(range);
-}, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric, isDemoMode]);
+    fetchPerformanceTrendFromHistory(range);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, performanceTrendMetric, isDemoMode]);
 
   const handleDownloadSkuSheet1 = async () => {
     try {
@@ -2736,9 +2733,9 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
 
   useEffect(() => {
     if (isDemoMode) {
-    setAllDropdownsSelected(true);
-    return;
-  }
+      setAllDropdownsSelected(true);
+      return;
+    }
     if (range === "monthly") {
       setAllDropdownsSelected(!!selectedMonth && !!selectedYear);
     } else if (range === "quarterly") {
@@ -2770,14 +2767,14 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
 
   useEffect(() => {
     if (isDemoMode) {
-    setBargraphUploads(DEMO_UPLOADS);
-    setBargraphUserMeta({
-      company_name: "Demo Company",
-      brand_name: "Demo Brand",
-    });
-    setBargraphLoading(false);
-    return;
-  }
+      setBargraphUploads(DEMO_UPLOADS);
+      setBargraphUserMeta({
+        company_name: "Demo Company",
+        brand_name: "Demo Brand",
+      });
+      setBargraphLoading(false);
+      return;
+    }
     if (!range || !selectedYear) return;
 
     const ready =
@@ -2926,7 +2923,7 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
     };
 
     fetchGraphPageUploads();
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency ,isDemoMode]);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName, homeCurrency, isDemoMode]);
 
 
   useEffect(() => {
@@ -3065,9 +3062,9 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
   // if (month === "NA" || year === "NA") {
   //   return <IntegrationDashboard />;
   // }
-  
 
-  
+
+
 
   const hasAnyContent = !!uploadsData?.summary;
   const initialLoading = loading && !hasAnyContent;
@@ -3131,31 +3128,31 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
   };
 
   const syncTabToHash = (tab: DashboardTab) => {
-  if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
 
-  const hash = FINANCE_TAB_TO_HASH[tab];
-  if (!hash) return;
+    const hash = FINANCE_TAB_TO_HASH[tab];
+    if (!hash) return;
 
-  const nextUrl = `${window.location.pathname}#${hash}`;
+    const nextUrl = `${window.location.pathname}#${hash}`;
 
-  if (isDemoMode) {
-    window.history.replaceState(null, "", nextUrl);
-    return;
-  }
+    if (isDemoMode) {
+      window.history.replaceState(null, "", nextUrl);
+      return;
+    }
 
-  window.history.pushState(null, "", nextUrl);
+    window.history.pushState(null, "", nextUrl);
 
-  window.dispatchEvent(
-    new CustomEvent("page-hash-navigate", {
-      detail: { hash },
-    })
-  );
-};
+    window.dispatchEvent(
+      new CustomEvent("page-hash-navigate", {
+        detail: { hash },
+      })
+    );
+  };
 
   const handleConnectAmazonPreview = () => {
-  const connectCountry = effectiveCountryName === "global" ? "uk" : effectiveCountryName;
-  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
-};
+    const connectCountry = effectiveCountryName === "global" ? "uk" : effectiveCountryName;
+    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+  };
 
   return (
     <div ref={layoutRef} className="space-y-3 relative">
@@ -3165,9 +3162,9 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
             <PageBreadcrumb pageTitle="Financial Metrics -" variant="page" align="left" textSize="2xl" />
             <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
               Amazon{" "}
-{effectiveCountryName?.toLowerCase() === "global"
-  ? "Global"
-  : effectiveCountryName?.toUpperCase()}
+              {effectiveCountryName?.toLowerCase() === "global"
+                ? "Global"
+                : effectiveCountryName?.toUpperCase()}
             </span>
           </div>
           <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
@@ -3208,1001 +3205,1001 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
           compact
         />
       </div>
-<PreviewLockedSection
-  enabled={isDemoMode}
-  title="Preview mode"
-  description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-  buttonText="Connect Amazon"
-  onAction={handleConnectAmazonPreview}
->
-      {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
-      {activeTab !== "cashFlow" && (
-       
-        <div className="flex flex-col gap-5 w-full mt-4">
-          {/* Summary Cards */}
-          {uploadsData?.summary &&
-            (() => {
-              const summary = displayData;
-              const netSales = summary.total_sales;
-              const rawComparisons =
-                (uploadsData as any).summaryComparisons ??
-                (uploadsData as any).summary_comparisons;
+      <PreviewLockedSection
+        enabled={isDemoMode}
+        title="Preview mode"
+        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+        buttonText="Connect Amazon"
+        onAction={handleConnectAmazonPreview}
+      >
+        {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
+        {activeTab !== "cashFlow" && (
 
-              const comparisons: SummaryComparisons | undefined = rawComparisons
-                ? (rawComparisons as SummaryComparisons)
-                : undefined;
+          <div className="flex flex-col gap-5 w-full mt-4">
+            {/* Summary Cards */}
+            {uploadsData?.summary &&
+              (() => {
+                const summary = displayData;
+                const netSales = summary.total_sales;
+                const rawComparisons =
+                  (uploadsData as any).summaryComparisons ??
+                  (uploadsData as any).summary_comparisons;
 
-              const formatMoney = (val: number, opts?: { showPlus?: boolean }) => {
-                const num = Number(val || 0);
-                const sign = num < 0 ? "-" : opts?.showPlus && num > 0 ? "+" : "";
-                const abs = Math.abs(num);
+                const comparisons: SummaryComparisons | undefined = rawComparisons
+                  ? (rawComparisons as SummaryComparisons)
+                  : undefined;
 
-                return `${sign}${currencySymbol}${abs.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`;
-              };
+                const formatMoney = (val: number, opts?: { showPlus?: boolean }) => {
+                  const num = Number(val || 0);
+                  const sign = num < 0 ? "-" : opts?.showPlus && num > 0 ? "+" : "";
+                  const abs = Math.abs(num);
 
-              const costOfAds = summary.advertising_total ?? 0;
-
-              const getRoas = (s?: Summary) => {
-                const ns = s?.total_sales ?? 0;            // net sales
-                const ads = s?.advertising_total ?? 0;     // cost of ads
-                return ns > 0 ? (ads / ns) * 100 : 0;
-              };
-
-
-              const roas = getRoas(summary);
-
-              const formatRoas = (val: number) =>
-                `${val.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}%`;
-
-              const buildTacosComparisonRows = () => {
-                const yNum = Number(selectedYear);
-
-                const label =
-                  range === "monthly"
-                    ? selectedMonth && yNum
-                      ? getPrevMonthLabel(selectedMonth, yNum)
-                      : "Prev month"
-                    : range === "quarterly"
-                      ? selectedQuarter && yNum
-                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                        : "Prev quarter"
-                      : yNum
-                        ? getPrevYearLabel(yNum)
-                        : "Prev year";
-
-                const prevVal =
-                  range === "monthly"
-                    ? comparisons?.lastMonth
-                      ? getRoas(comparisons.lastMonth)
-                      : undefined
-                    : range === "quarterly"
-                      ? comparisons?.lastQuarter
-                        ? getRoas(comparisons.lastQuarter)
-                        : undefined
-                      : comparisons?.lastYear
-                        ? getRoas(comparisons.lastYear)
-                        : undefined;
-
-                const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-                const delta = hasPrev ? roas - prevVal! : null;
-
-                const deltaClassName =
-                  typeof delta === "number"
-                    ? delta > 0
-                      ? "text-red-600"       // higher TACoS worse
-                      : delta < 0
-                        ? "text-emerald-600" // lower TACoS better
-                        : "text-gray-400"
-                    : "text-gray-400";
-
-                const arrow =
-                  typeof delta === "number"
-                    ? delta > 0
-                      ? "▼"
-                      : delta < 0
-                        ? "▲"
-                        : ""
-                    : "";
-
-                const deltaText =
-                  typeof delta === "number"
-                    ? `${arrow} ${Math.abs(delta).toFixed(2)}%`
-                    : "-";
-
-                return [
-                  {
-                    label,
-                    valueText: hasPrev ? formatRoas(prevVal!) : "-",
-                    deltaText,
-                    deltaClassName,
-                  },
-                ];
-              };
-
-
-              const formatUnits = (val: number) =>
-                val.toLocaleString(undefined, { maximumFractionDigits: 0 });
-
-              const safeDiv = (num: number, den: number) => (den > 0 ? num / den : 0);
-
-              const renderMoneyWithPerUnit = (total: number, units: number) => {
-                const totalText = formatMoney(total);
-
-                if (!units) {
-                  return <span>{totalText}</span>;
-                }
-
-                const perUnit = total / units;
-                const perUnitText = formatMoney(perUnit);
-
-                return (
-                  <div className="flex items-baseline gap-1 leading-tight">
-                    <span className="text-sm 2xl:text-lg font-semibold">
-                      {totalText}
-                    </span>
-
-                    <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
-                      ({perUnitText}/unit)
-                    </span>
-                  </div>
-                );
-
-              };
-
-              const formatPercent = (val: number) =>
-                `${val.toLocaleString(undefined, {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 2,
-                })}%`;
-
-              const getGrossSales = (s?: Summary) =>
-                s?.total_product_sales ?? s?.gross_sales ?? 0;
-
-              const isSummaryZero =
-                summary.unit_sold === 0 &&
-                summary.total_sales === 0 &&
-                summary.total_expense === 0 &&
-                summary.cm2_profit === 0;
-
-              const cm2Percent =
-                netSales > 0 ? (summary.cm2_profit / netSales) * 100 : 0;
-
-              // ---------- generic comparisons helper ----------
-              const getComparisons = (metric: keyof Summary): ComparisonItem[] => {
-                const current = summary[metric] ?? 0;
-
-                const lm = comparisons?.lastMonth?.[metric];
-                const lq = comparisons?.lastQuarter?.[metric];
-                const ly = comparisons?.lastYear?.[metric];
-
-                const makeItem = (label: string, prevVal?: number): ComparisonItem => {
-                  if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
-                  const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
-                  return { label, value: prevVal, diffPct };
+                  return `${sign}${currencySymbol}${abs.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`;
                 };
 
-                const yNum = Number(selectedYear);
+                const costOfAds = summary.advertising_total ?? 0;
 
-                if (range === "monthly") {
-                  const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
-                  return [makeItem(label, lm)];
-                }
-
-                if (range === "quarterly") {
-                  const label =
-                    selectedQuarter && yNum
-                      ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                      : "Prev quarter";
-                  return [makeItem(label, lq)];
-                }
-
-                if (range === "yearly") {
-                  const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
-                  return [makeItem(label, ly)];
-                }
-
-                return [];
-              };
-
-              const buildComparisonsRows = (
-                metric: keyof Summary,
-                formatter: (val: number) => string
-              ) => {
-                const items = getComparisons(metric);
-
-                return items.map((item) => {
-                  const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                  const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                  const deltaClassName = hasDiff
-                    ? item.diffPct! >= 0
-                      ? "text-emerald-600"
-                      : "text-red-600"
-                    : "text-gray-400";
-
-                  const deltaText = hasDiff
-                    ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
-                    : "-";
-
-                  return {
-                    label: item.label,
-                    valueText: hasValue ? formatter(item.value!) : "-",
-                    deltaText,
-                    deltaClassName,
-                  };
-                });
-              };
-
-              // ---------- Gross Sales comparisons ----------
-              const getGrossSalesComparisons = (): ComparisonItem[] => {
-                const current = getGrossSales(summary);
-                const yNum = Number(selectedYear);
-
-                const prevMonth = comparisons?.lastMonth ? getGrossSales(comparisons.lastMonth) : undefined;
-                const prevQuarter = comparisons?.lastQuarter ? getGrossSales(comparisons.lastQuarter) : undefined;
-                const prevYear = comparisons?.lastYear ? getGrossSales(comparisons.lastYear) : undefined;
-
-                const makeItem = (label: string, prevVal?: number): ComparisonItem => {
-                  if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
-                  const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
-                  return { label, value: prevVal, diffPct };
+                const getRoas = (s?: Summary) => {
+                  const ns = s?.total_sales ?? 0;            // net sales
+                  const ads = s?.advertising_total ?? 0;     // cost of ads
+                  return ns > 0 ? (ads / ns) * 100 : 0;
                 };
 
-                if (range === "monthly") {
-                  const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
-                  return [makeItem(label, prevMonth)];
-                }
 
-                if (range === "quarterly") {
+                const roas = getRoas(summary);
+
+                const formatRoas = (val: number) =>
+                  `${val.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}%`;
+
+                const buildTacosComparisonRows = () => {
+                  const yNum = Number(selectedYear);
+
                   const label =
-                    selectedQuarter && yNum
-                      ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                      : "Prev quarter";
-                  return [makeItem(label, prevQuarter)];
-                }
+                    range === "monthly"
+                      ? selectedMonth && yNum
+                        ? getPrevMonthLabel(selectedMonth, yNum)
+                        : "Prev month"
+                      : range === "quarterly"
+                        ? selectedQuarter && yNum
+                          ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                          : "Prev quarter"
+                        : yNum
+                          ? getPrevYearLabel(yNum)
+                          : "Prev year";
 
-                if (range === "yearly") {
-                  const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
-                  return [makeItem(label, prevYear)];
-                }
-
-                return [];
-              };
-
-              // ---------- CM2% comparisons ----------
-              const getCm2Percent = (s?: Summary) =>
-                s && s.total_sales > 0 ? (s.cm2_profit / s.total_sales) * 100 : 0;
-              const renderCm2PercentComparisons = () => {
-                const yNum = Number(selectedYear);
-
-                const label =
-                  range === "monthly"
-                    ? selectedMonth && yNum
-                      ? getPrevMonthLabel(selectedMonth, yNum)
-                      : "Prev month"
-                    : range === "quarterly"
-                      ? selectedQuarter && yNum
-                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                        : "Prev quarter"
-                      : yNum
-                        ? getPrevYearLabel(yNum)
-                        : "Prev year";
-
-                const prevVal =
-                  range === "monthly"
-                    ? comparisons?.lastMonth
-                      ? getCm2Percent(comparisons.lastMonth)
-                      : undefined
-                    : range === "quarterly"
-                      ? comparisons?.lastQuarter
-                        ? getCm2Percent(comparisons.lastQuarter)
+                  const prevVal =
+                    range === "monthly"
+                      ? comparisons?.lastMonth
+                        ? getRoas(comparisons.lastMonth)
                         : undefined
-                      : comparisons?.lastYear
-                        ? getCm2Percent(comparisons.lastYear)
-                        : undefined;
+                      : range === "quarterly"
+                        ? comparisons?.lastQuarter
+                          ? getRoas(comparisons.lastQuarter)
+                          : undefined
+                        : comparisons?.lastYear
+                          ? getRoas(comparisons.lastYear)
+                          : undefined;
 
-                const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+                  const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+                  const delta = hasPrev ? roas - prevVal! : null;
 
-                const diffPct =
-                  hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
+                  const deltaClassName =
+                    typeof delta === "number"
+                      ? delta > 0
+                        ? "text-red-600"       // higher TACoS worse
+                        : delta < 0
+                          ? "text-emerald-600" // lower TACoS better
+                          : "text-gray-400"
+                      : "text-gray-400";
 
-                const diffClass =
-                  typeof diffPct === "number"
-                    ? diffPct >= 0
-                      ? "text-emerald-600"
-                      : "text-red-600"
-                    : "text-gray-400";
+                  const arrow =
+                    typeof delta === "number"
+                      ? delta > 0
+                        ? "▼"
+                        : delta < 0
+                          ? "▲"
+                          : ""
+                      : "";
 
-                return (
-                  <div className="mt-3 space-y-1.5">
-                    <div className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
-                      <div className="min-w-0">
-                        <div className="whitespace-nowrap">
-                          {label}:
-                        </div>
-                        <div className="whitespace-nowrap">
-                          {hasPrev ? formatPercent(prevVal!) : "-"}
-                        </div>
-                      </div>
+                  const deltaText =
+                    typeof delta === "number"
+                      ? `${arrow} ${Math.abs(delta).toFixed(2)}%`
+                      : "-";
 
-                      <span className={`font-bold whitespace-nowrap ${diffClass}`}>
-                        {typeof diffPct === "number" ? (
-                          <>
-                            {diffPct >= 0 ? "▲" : "▼"} {Math.abs(diffPct).toFixed(1)}%
-                          </>
-                        ) : (
-                          "-"
-                        )}
+                  return [
+                    {
+                      label,
+                      valueText: hasPrev ? formatRoas(prevVal!) : "-",
+                      deltaText,
+                      deltaClassName,
+                    },
+                  ];
+                };
+
+
+                const formatUnits = (val: number) =>
+                  val.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+                const safeDiv = (num: number, den: number) => (den > 0 ? num / den : 0);
+
+                const renderMoneyWithPerUnit = (total: number, units: number) => {
+                  const totalText = formatMoney(total);
+
+                  if (!units) {
+                    return <span>{totalText}</span>;
+                  }
+
+                  const perUnit = total / units;
+                  const perUnitText = formatMoney(perUnit);
+
+                  return (
+                    <div className="flex items-baseline gap-1 leading-tight">
+                      <span className="text-sm 2xl:text-lg font-semibold">
+                        {totalText}
+                      </span>
+
+                      <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+                        ({perUnitText}/unit)
                       </span>
                     </div>
-                  </div>
-                );
-              };
+                  );
 
-              const buildCm2PercentComparisonRows = () => {
-                const yNum = Number(selectedYear);
+                };
 
-                const label =
-                  range === "monthly"
-                    ? selectedMonth && yNum
-                      ? getPrevMonthLabel(selectedMonth, yNum)
-                      : "Prev month"
-                    : range === "quarterly"
-                      ? selectedQuarter && yNum
+                const formatPercent = (val: number) =>
+                  `${val.toLocaleString(undefined, {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2,
+                  })}%`;
+
+                const getGrossSales = (s?: Summary) =>
+                  s?.total_product_sales ?? s?.gross_sales ?? 0;
+
+                const isSummaryZero =
+                  summary.unit_sold === 0 &&
+                  summary.total_sales === 0 &&
+                  summary.total_expense === 0 &&
+                  summary.cm2_profit === 0;
+
+                const cm2Percent =
+                  netSales > 0 ? (summary.cm2_profit / netSales) * 100 : 0;
+
+                // ---------- generic comparisons helper ----------
+                const getComparisons = (metric: keyof Summary): ComparisonItem[] => {
+                  const current = summary[metric] ?? 0;
+
+                  const lm = comparisons?.lastMonth?.[metric];
+                  const lq = comparisons?.lastQuarter?.[metric];
+                  const ly = comparisons?.lastYear?.[metric];
+
+                  const makeItem = (label: string, prevVal?: number): ComparisonItem => {
+                    if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
+                    const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
+                    return { label, value: prevVal, diffPct };
+                  };
+
+                  const yNum = Number(selectedYear);
+
+                  if (range === "monthly") {
+                    const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
+                    return [makeItem(label, lm)];
+                  }
+
+                  if (range === "quarterly") {
+                    const label =
+                      selectedQuarter && yNum
                         ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                        : "Prev quarter"
-                      : yNum
-                        ? getPrevYearLabel(yNum)
-                        : "Prev year";
+                        : "Prev quarter";
+                    return [makeItem(label, lq)];
+                  }
 
-                const prevVal =
-                  range === "monthly"
-                    ? comparisons?.lastMonth
-                      ? getCm2Percent(comparisons.lastMonth)
-                      : undefined
-                    : range === "quarterly"
-                      ? comparisons?.lastQuarter
-                        ? getCm2Percent(comparisons.lastQuarter)
+                  if (range === "yearly") {
+                    const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
+                    return [makeItem(label, ly)];
+                  }
+
+                  return [];
+                };
+
+                const buildComparisonsRows = (
+                  metric: keyof Summary,
+                  formatter: (val: number) => string
+                ) => {
+                  const items = getComparisons(metric);
+
+                  return items.map((item) => {
+                    const hasValue = typeof item.value === "number" && !isNaN(item.value);
+                    const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+                    const deltaClassName = hasDiff
+                      ? item.diffPct! >= 0
+                        ? "text-emerald-600"
+                        : "text-red-600"
+                      : "text-gray-400";
+
+                    const deltaText = hasDiff
+                      ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
+                      : "-";
+
+                    return {
+                      label: item.label,
+                      valueText: hasValue ? formatter(item.value!) : "-",
+                      deltaText,
+                      deltaClassName,
+                    };
+                  });
+                };
+
+                // ---------- Gross Sales comparisons ----------
+                const getGrossSalesComparisons = (): ComparisonItem[] => {
+                  const current = getGrossSales(summary);
+                  const yNum = Number(selectedYear);
+
+                  const prevMonth = comparisons?.lastMonth ? getGrossSales(comparisons.lastMonth) : undefined;
+                  const prevQuarter = comparisons?.lastQuarter ? getGrossSales(comparisons.lastQuarter) : undefined;
+                  const prevYear = comparisons?.lastYear ? getGrossSales(comparisons.lastYear) : undefined;
+
+                  const makeItem = (label: string, prevVal?: number): ComparisonItem => {
+                    if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
+                    const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
+                    return { label, value: prevVal, diffPct };
+                  };
+
+                  if (range === "monthly") {
+                    const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
+                    return [makeItem(label, prevMonth)];
+                  }
+
+                  if (range === "quarterly") {
+                    const label =
+                      selectedQuarter && yNum
+                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                        : "Prev quarter";
+                    return [makeItem(label, prevQuarter)];
+                  }
+
+                  if (range === "yearly") {
+                    const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
+                    return [makeItem(label, prevYear)];
+                  }
+
+                  return [];
+                };
+
+                // ---------- CM2% comparisons ----------
+                const getCm2Percent = (s?: Summary) =>
+                  s && s.total_sales > 0 ? (s.cm2_profit / s.total_sales) * 100 : 0;
+                const renderCm2PercentComparisons = () => {
+                  const yNum = Number(selectedYear);
+
+                  const label =
+                    range === "monthly"
+                      ? selectedMonth && yNum
+                        ? getPrevMonthLabel(selectedMonth, yNum)
+                        : "Prev month"
+                      : range === "quarterly"
+                        ? selectedQuarter && yNum
+                          ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                          : "Prev quarter"
+                        : yNum
+                          ? getPrevYearLabel(yNum)
+                          : "Prev year";
+
+                  const prevVal =
+                    range === "monthly"
+                      ? comparisons?.lastMonth
+                        ? getCm2Percent(comparisons.lastMonth)
                         : undefined
-                      : comparisons?.lastYear
-                        ? getCm2Percent(comparisons.lastYear)
-                        : undefined;
+                      : range === "quarterly"
+                        ? comparisons?.lastQuarter
+                          ? getCm2Percent(comparisons.lastQuarter)
+                          : undefined
+                        : comparisons?.lastYear
+                          ? getCm2Percent(comparisons.lastYear)
+                          : undefined;
 
-                const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+                  const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
 
-                const diffPct =
-                  hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
+                  const diffPct =
+                    hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
 
-                const deltaClassName =
-                  typeof diffPct === "number"
-                    ? diffPct >= 0
-                      ? "text-emerald-600"
-                      : "text-red-600"
-                    : "text-gray-400";
+                  const diffClass =
+                    typeof diffPct === "number"
+                      ? diffPct >= 0
+                        ? "text-emerald-600"
+                        : "text-red-600"
+                      : "text-gray-400";
 
-                const deltaText =
-                  typeof diffPct === "number"
-                    ? `${diffPct >= 0 ? "▲" : "▼"} ${Math.abs(diffPct).toFixed(1)}%`
-                    : "-";
+                  return (
+                    <div className="mt-3 space-y-1.5">
+                      <div className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
+                        <div className="min-w-0">
+                          <div className="whitespace-nowrap">
+                            {label}:
+                          </div>
+                          <div className="whitespace-nowrap">
+                            {hasPrev ? formatPercent(prevVal!) : "-"}
+                          </div>
+                        </div>
 
-                return [
+                        <span className={`font-bold whitespace-nowrap ${diffClass}`}>
+                          {typeof diffPct === "number" ? (
+                            <>
+                              {diffPct >= 0 ? "▲" : "▼"} {Math.abs(diffPct).toFixed(1)}%
+                            </>
+                          ) : (
+                            "-"
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                };
+
+                const buildCm2PercentComparisonRows = () => {
+                  const yNum = Number(selectedYear);
+
+                  const label =
+                    range === "monthly"
+                      ? selectedMonth && yNum
+                        ? getPrevMonthLabel(selectedMonth, yNum)
+                        : "Prev month"
+                      : range === "quarterly"
+                        ? selectedQuarter && yNum
+                          ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                          : "Prev quarter"
+                        : yNum
+                          ? getPrevYearLabel(yNum)
+                          : "Prev year";
+
+                  const prevVal =
+                    range === "monthly"
+                      ? comparisons?.lastMonth
+                        ? getCm2Percent(comparisons.lastMonth)
+                        : undefined
+                      : range === "quarterly"
+                        ? comparisons?.lastQuarter
+                          ? getCm2Percent(comparisons.lastQuarter)
+                          : undefined
+                        : comparisons?.lastYear
+                          ? getCm2Percent(comparisons.lastYear)
+                          : undefined;
+
+                  const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
+
+                  const diffPct =
+                    hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
+
+                  const deltaClassName =
+                    typeof diffPct === "number"
+                      ? diffPct >= 0
+                        ? "text-emerald-600"
+                        : "text-red-600"
+                      : "text-gray-400";
+
+                  const deltaText =
+                    typeof diffPct === "number"
+                      ? `${diffPct >= 0 ? "▲" : "▼"} ${Math.abs(diffPct).toFixed(1)}%`
+                      : "-";
+
+                  return [
+                    {
+                      label,
+                      valueText: hasPrev ? formatPercent(prevVal!) : "-",
+                      deltaText,
+                      deltaClassName,
+                    },
+                  ];
+                };
+
+                const cards = [
                   {
-                    label,
-                    valueText: hasPrev ? formatPercent(prevVal!) : "-",
-                    deltaText,
-                    deltaClassName,
+                    key: "units",
+                    title: "Units",
+                    value: formatUnits(summary.unit_sold),
+                    // className: "border border-[#FDD36F] bg-[#FDD36F4D]",
+                    className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
+                    comparisons: buildComparisonsRows("unit_sold", formatUnits),
+                  },
+                  {
+                    key: "grossSales",
+                    title: "Gross Sales",
+                    value: renderMoneyWithPerUnit(getGrossSales(summary), summary.unit_sold),
+                    // className: "border border-[#ED9F50] bg-[#ED9F504D]",
+                    className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
+                    comparisons: (() => {
+                      const items = getGrossSalesComparisons();
+                      return items.map((item) => {
+                        const hasValue = typeof item.value === "number" && !isNaN(item.value);
+                        const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
+
+                        const deltaClassName = hasDiff
+                          ? item.diffPct! >= 0
+                            ? "text-emerald-600"
+                            : "text-red-600"
+                          : "text-gray-400";
+
+                        const deltaText = hasDiff
+                          ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
+                          : "-";
+
+                        return {
+                          label: item.label,
+                          valueText: hasValue ? formatMoney(item.value!) : "-",
+                          deltaText,
+                          deltaClassName,
+                        };
+                      });
+                    })(),
+                  },
+                  {
+                    key: "netSales",
+                    title: "Net Sales",
+                    value: renderMoneyWithPerUnit(netSales, summary.unit_sold),
+                    // className: "border border-[#75BBDA] bg-[#75BBDA4D]",
+                    className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
+                    comparisons: buildComparisonsRows("total_sales", formatMoney),
+                  },
+
+                  {
+                    key: "expenses",
+                    title: "Marketplace Fees",
+                    value: renderMoneyWithPerUnit(summary.total_expense, summary.unit_sold),
+                    // className: "border border-[#B75A5A] bg-[#B75A5A4D]",
+                    className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
+                    comparisons: buildComparisonsRows("total_expense", formatMoney),
+                  },
+                  {
+                    key: "ads",
+                    title: "Cost of Advertisement",
+                    value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
+                    // className: "border border-[#C49466] bg-[#C494664D]",
+                    className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
+                    comparisons: buildComparisonsRows("advertising_total", formatMoney),
+                  },
+
+                  {
+                    key: "tacos",
+                    title: "TACoS",
+                    value: formatRoas(roas),
+                    // className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
+                    className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
+                    comparisons: buildTacosComparisonRows(),
+                  },
+                  {
+                    key: "cm2",
+                    title: "CM2 Profit",
+                    value: renderMoneyWithPerUnit(summary.cm2_profit, summary.unit_sold),
+                    // className: "border border-[#B8C78C] bg-[#B8C78C4D]",
+                    className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
+                    comparisons: buildComparisonsRows("cm2_profit", formatMoney),
+                  },
+                  {
+                    key: "cm2Pct",
+                    title: "CM2 Profit %",
+                    value: formatPercent(cm2Percent),
+                    // className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
+                    className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+                    comparisons: buildCm2PercentComparisonRows(),
                   },
                 ];
-              };
 
-              const cards = [
-                {
-                  key: "units",
-                  title: "Units",
-                  value: formatUnits(summary.unit_sold),
-                  // className: "border border-[#FDD36F] bg-[#FDD36F4D]",
-                  className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
-                  comparisons: buildComparisonsRows("unit_sold", formatUnits),
-                },
-                {
-                  key: "grossSales",
-                  title: "Gross Sales",
-                  value: renderMoneyWithPerUnit(getGrossSales(summary), summary.unit_sold),
-                  // className: "border border-[#ED9F50] bg-[#ED9F504D]",
-                  className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
-                  comparisons: (() => {
-                    const items = getGrossSalesComparisons();
-                    return items.map((item) => {
-                      const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                      const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                      const deltaClassName = hasDiff
-                        ? item.diffPct! >= 0
-                          ? "text-emerald-600"
-                          : "text-red-600"
-                        : "text-gray-400";
-
-                      const deltaText = hasDiff
-                        ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
-                        : "-";
-
-                      return {
-                        label: item.label,
-                        valueText: hasValue ? formatMoney(item.value!) : "-",
-                        deltaText,
-                        deltaClassName,
-                      };
-                    });
-                  })(),
-                },
-                {
-                  key: "netSales",
-                  title: "Net Sales",
-                  value: renderMoneyWithPerUnit(netSales, summary.unit_sold),
-                  // className: "border border-[#75BBDA] bg-[#75BBDA4D]",
-                  className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
-                  comparisons: buildComparisonsRows("total_sales", formatMoney),
-                },
-
-                {
-                  key: "expenses",
-                  title: "Marketplace Fees",
-                  value: renderMoneyWithPerUnit(summary.total_expense, summary.unit_sold),
-                  // className: "border border-[#B75A5A] bg-[#B75A5A4D]",
-                  className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
-                  comparisons: buildComparisonsRows("total_expense", formatMoney),
-                },
-                {
-                  key: "ads",
-                  title: "Cost of Advertisement",
-                  value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
-                  // className: "border border-[#C49466] bg-[#C494664D]",
-                  className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
-                  comparisons: buildComparisonsRows("advertising_total", formatMoney),
-                },
-
-                {
-                  key: "tacos",
-                  title: "TACoS",
-                  value: formatRoas(roas),
-                  // className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
-                  className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
-                  comparisons: buildTacosComparisonRows(),
-                },
-                {
-                  key: "cm2",
-                  title: "CM2 Profit",
-                  value: renderMoneyWithPerUnit(summary.cm2_profit, summary.unit_sold),
-                  // className: "border border-[#B8C78C] bg-[#B8C78C4D]",
-                  className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-                  comparisons: buildComparisonsRows("cm2_profit", formatMoney),
-                },
-                {
-                  key: "cm2Pct",
-                  title: "CM2 Profit %",
-                  value: formatPercent(cm2Percent),
-                  // className: "border border-[#7B9A6D] bg-[#7B9A6D4D]",
-                  className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
-                  comparisons: buildCm2PercentComparisonRows(),
-                },
-              ];
-
-              return (
-                <div
-                  className={[
-                    "w-full grid gap-2 2xl:gap-3",
-                    "grid-cols-2 sm:grid-cols-4 min-[1700px]:grid-cols-8",
-                  ].join(" ")}
-                >
-                  {cards.map((c) => (
-                    <SummaryMetricCard
-                      key={c.key}
-                      title={c.title}
-                      value={c.value}
-                      className={c.className}
-                      comparisons={c.comparisons}
-                    />
-                  ))}
-                </div>
-              );
-            })()}
-        </div>
-       
-      )}
-
-      {/* ===================== TAB CONTENT AREA ===================== */}
-      <div className="w-full mt-4">
-        {/* ---------- TAB 1: GRAPHS ---------- */}
-        {activeTab === "graphs" && (
-          
-          <div id="finance-dashboard" className="scroll-mt-[80px]">
-            {/* Monthly */}
-            {range === "monthly" && selectedMonth && selectedYear && (
-              <>
-                <div className="w-full rounded-xl space-y-4">
+                return (
                   <div
                     className={[
-                      "grid grid-cols-1 gap-4",
-                      focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+                      "w-full grid gap-2 2xl:gap-3",
+                      "grid-cols-2 sm:grid-cols-4 min-[1700px]:grid-cols-8",
                     ].join(" ")}
                   >
-                    {/* LEFT card */}
-                    {(focusedChart === null || focusedChart === "trend") && (
-                      <div
-                        className={[
-                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
-                          "cursor-default select-none",
-                          focusedChart === "trend" ? "cursor-default" : "",
-                        ].join(" ")}
-                      >
-                        <div className={getTrendWrapperHeight()}>
-                          <PerformanceTrendChart
-                            range={range}
-                            month={selectedMonth}
-                            year={selectedYear}
-                            countryName={initialCountryName}
-                            homeCurrency={globalHomeCurrency}
-                            currencySymbol={currencySymbol}
-                            data={performanceTrend}
-                            metric={performanceTrendMetric}
-                            onExportApiReady={setTrendExportApi}
-                            isExpanded={focusedChart === "trend"}
-                            onToggleExpand={() => toggleFocus("trend")}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* RIGHT card */}
-                    {(focusedChart === null || focusedChart === "pnl") && (
-                      <div
-                        className={[
-                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
-                          "cursor-default select-none",
-                          "min-h-0 overflow-hidden",
-                          "flex flex-col",
-                          focusedChart === "pnl" ? "cursor-default" : "",
-                        ].join(" ")}
-                      >
-                        <div className="shrink-0 flex items-center justify-between gap-3">
-                          <div className="flex items-baseline gap-2 min-w-0">
-                            <PageBreadcrumb
-                              pageTitle="P&L"
-                              variant="page"
-                              align="left"
-                              textSize="2xl"
-                            />
-                          </div>
-
-                          <button
-                            type="button"
-                            data-no-expand
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFocus("pnl");
-                            }}
-                            aria-label={
-                              focusedChart === "pnl"
-                                ? "Collapse P&L chart"
-                                : "Expand P&L chart"
-                            }
-                            title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                            className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                          >
-                            {focusedChart === "pnl" ? (
-                              <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                            ) : (
-                              <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                            )}
-                          </button>
-                        </div>
-
-                        <div className="flex-1 min-h-0 overflow-hidden mt-4">
-                          <Bargraph
-                            range={range}
-                            selectedMonth={selectedMonth}
-                            selectedYear={selectedYear}
-                            countryName={initialCountryName}
-                            homeCurrency={globalHomeCurrency}
-                            hideDownloadButton
-                            onExportApiReady={setChartExportApi}
-                            onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                            isCollapsed={pnlCollapsed}
-                            uploads={bargraphUploads}
-                            loading={bargraphLoading}
-                            userMeta={bargraphUserMeta}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {allDropdownsSelected && (
-                  <div className="mt-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-                      <CircleChart
-                        range="monthly"
-                        month={selectedMonth}
-                        selectedQuarter={undefined}
-                        year={selectedYear}
-                        countryName={initialCountryName}
-                        homeCurrency={globalHomeCurrency}
-                        onExportBase64Ready={setExpenseBreakdownPieBase64}
+                    {cards.map((c) => (
+                      <SummaryMetricCard
+                        key={c.key}
+                        title={c.title}
+                        value={c.value}
+                        className={c.className}
+                        comparisons={c.comparisons}
                       />
-
-                      <CMchartofsku
-                        range="monthly"
-                        month={selectedMonth}
-                        selectedQuarter={undefined}
-                        year={selectedYear}
-                        countryName={initialCountryName}
-                        homeCurrency={globalHomeCurrency}
-                        onExportBase64Ready={setProductWiseCm1PieBase64}
-                      />
-                    </div>
+                    ))}
                   </div>
-                )}
-              </>
-            )}
-
-            {/* Quarterly */}
-            {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
-              <>
-                <div className="w-full rounded-xl space-y-4">
-                  <div
-                    className={[
-                      "grid grid-cols-1 gap-4",
-                      focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
-                    ].join(" ")}
-                  >
-                    {/* LEFT card */}
-                    {(focusedChart === null || focusedChart === "trend") && (
-                      <div
-                        className={[
-                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
-                          "cursor-default select-none",
-                          focusedChart === "trend" ? "cursor-default" : "",
-                        ].join(" ")}
-                      >
-                        <div className={getTrendWrapperHeight()}>
-                          <PerformanceTrendChart
-                            range={range}
-                            quarter={selectedQuarter}
-                            year={selectedYear}
-                            countryName={initialCountryName}
-                            homeCurrency={globalHomeCurrency}
-                            currencySymbol={currencySymbol}
-                            data={performanceTrend}
-                            metric={performanceTrendMetric}
-                            onExportApiReady={setTrendExportApi}
-                            isExpanded={focusedChart === "trend"}
-                            onToggleExpand={() => toggleFocus("trend")}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* RIGHT card */}
-                    {(focusedChart === null || focusedChart === "pnl") && (
-                      <div
-                        className={[
-                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
-                          "cursor-default select-none",
-                          "min-h-0 overflow-hidden",
-                          "flex flex-col",
-                          focusedChart === "pnl" ? "cursor-default" : "",
-                        ].join(" ")}
-                      >
-                        <div className="shrink-0 flex items-center justify-between gap-3">
-                          <div className="flex items-baseline gap-2">
-                            <PageBreadcrumb
-                              pageTitle="P&L"
-                              variant="page"
-                              align="left"
-                              textSize="2xl"
-                            />
-                          </div>
-
-                          <button
-                            type="button"
-                            data-no-expand
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFocus("pnl");
-                            }}
-                            aria-label={
-                              focusedChart === "pnl"
-                                ? "Collapse P&L chart"
-                                : "Expand P&L chart"
-                            }
-                            title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                            className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                          >
-                            {focusedChart === "pnl" ? (
-                              <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                            ) : (
-                              <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                            )}
-                          </button>
-                        </div>
-
-                        <div className="flex-1 min-h-0 overflow-hidden mt-4">
-                          <GraphPage
-                            range={range}
-                            selectedQuarter={selectedQuarter}
-                            selectedYear={selectedYear}
-                            countryName={initialCountryName}
-                            homeCurrency={globalHomeCurrency}
-                            hideDownloadButton
-                            onExportApiReady={setChartExportApi}
-                            onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                            isCollapsed={pnlCollapsed}
-                            uploads={graphPageUploads}
-                            loading={graphPageLoading}
-                            userMeta={graphPageUserMeta}
-                            error={graphPageError}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {allDropdownsSelected && (
-                  <div className="mt-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-                      <CircleChart
-                        range="quarterly"
-                        month={undefined}
-                        selectedQuarter={selectedQuarter}
-                        year={selectedYear}
-                        countryName={initialCountryName}
-                        homeCurrency={globalHomeCurrency}
-                        onExportBase64Ready={setExpenseBreakdownPieBase64}
-                      />
-
-                      <CMchartofsku
-                        range="quarterly"
-                        month={undefined}
-                        selectedQuarter={selectedQuarter}
-                        year={selectedYear}
-                        countryName={initialCountryName}
-                        homeCurrency={globalHomeCurrency}
-                        onExportBase64Ready={setProductWiseCm1PieBase64}
-                      />
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Yearly */}
-            {allDropdownsSelected && range === "yearly" && selectedYear && (
-              <>
-                <div className="w-full rounded-xl space-y-4">
-                  <div
-                    className={[
-                      "grid grid-cols-1 gap-4",
-                      focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
-                    ].join(" ")}
-                  >
-                    {/* LEFT card */}
-                    {(focusedChart === null || focusedChart === "trend") && (
-                      <div
-                        className={[
-                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
-                          "cursor-default select-none",
-                          focusedChart === "trend" ? "cursor-default" : "",
-                        ].join(" ")}
-                      >
-                        <div className={getTrendWrapperHeight()}>
-                          <PerformanceTrendChart
-                            range={range}
-                            year={selectedYear}
-                            countryName={initialCountryName}
-                            homeCurrency={globalHomeCurrency}
-                            currencySymbol={currencySymbol}
-                            data={performanceTrend}
-                            metric={performanceTrendMetric}
-                            onExportApiReady={setTrendExportApi}
-                            isExpanded={focusedChart === "trend"}
-                            onToggleExpand={() => toggleFocus("trend")}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* RIGHT card */}
-                    {(focusedChart === null || focusedChart === "pnl") && (
-                      <div
-                        className={[
-                          "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
-                          "cursor-default select-none",
-                          "min-h-0 overflow-hidden",
-                          "flex flex-col",
-                          focusedChart === "pnl" ? "cursor-default" : "",
-                        ].join(" ")}
-                      >
-                        <div className="shrink-0 flex items-center justify-between gap-3">
-                          <div className="flex items-baseline gap-2">
-                            <PageBreadcrumb
-                              pageTitle="P&L"
-                              variant="page"
-                              align="left"
-                              textSize="2xl"
-                            />
-                          </div>
-
-                          <button
-                            type="button"
-                            data-no-expand
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFocus("pnl");
-                            }}
-                            aria-label={
-                              focusedChart === "pnl"
-                                ? "Collapse P&L chart"
-                                : "Expand P&L chart"
-                            }
-                            title={focusedChart === "pnl" ? "Collapse" : "Expand"}
-                            className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                          >
-                            {focusedChart === "pnl" ? (
-                              <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                            ) : (
-                              <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                            )}
-                          </button>
-                        </div>
-
-                        <div className="flex-1 min-h-0 overflow-hidden mt-4">
-                          <GraphPage
-                            range={range}
-                            selectedYear={selectedYear}
-                            countryName={initialCountryName}
-                            homeCurrency={globalHomeCurrency}
-                            hideDownloadButton
-                            onExportApiReady={setChartExportApi}
-                            onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
-                            isCollapsed={pnlCollapsed}
-                            uploads={graphPageUploads}
-                            loading={graphPageLoading}
-                            userMeta={graphPageUserMeta}
-                            error={graphPageError}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-                    <CircleChart
-                      range="yearly"
-                      month={undefined}
-                      selectedQuarter={undefined}
-                      year={selectedYear}
-                      countryName={initialCountryName}
-                      homeCurrency={globalHomeCurrency}
-                      onExportBase64Ready={setExpenseBreakdownPieBase64}
-                      disableInternalFade={isDemoMode}
-                    />
-
-                    <CMchartofsku
-                      range="yearly"
-                      month={undefined}
-                      selectedQuarter={undefined}
-                      year={selectedYear}
-                      countryName={initialCountryName}
-                      homeCurrency={globalHomeCurrency}
-                      onExportBase64Ready={setProductWiseCm1PieBase64}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
+                );
+              })()}
           </div>
-         
+
         )}
 
-        {/* ---------- TAB 2: BUSINESS SUMMARY ---------- */}
-        {activeTab === "businessSummary" && allDropdownsSelected && (
-         
-          <div
-            id="ai-insights"
-            className="scroll-mt-[80px] space-y-5"
-          >
-            {/* ✅ Loader INSIDE the white container */}
-            {aiPanelLoading ? (
-              <div className="min-h-[420px] flex items-center justify-center">
-                {/* IMPORTANT: force inline, not fullscreen */}
-                <Loader fullscreen={false} transparent />
-              </div>
-            ) : aiPanelError ? (
-              <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">⚠️</span>
-                  <p className="font-semibold text-red-700">Unable to Generate Insights</p>
+        {/* ===================== TAB CONTENT AREA ===================== */}
+        <div className="w-full mt-4">
+          {/* ---------- TAB 1: GRAPHS ---------- */}
+          {activeTab === "graphs" && (
+
+            <div id="finance-dashboard" className="scroll-mt-[80px]">
+              {/* Monthly */}
+              {range === "monthly" && selectedMonth && selectedYear && (
+                <>
+                  <div className="w-full rounded-xl space-y-4">
+                    <div
+                      className={[
+                        "grid grid-cols-1 gap-4",
+                        focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+                      ].join(" ")}
+                    >
+                      {/* LEFT card */}
+                      {(focusedChart === null || focusedChart === "trend") && (
+                        <div
+                          className={[
+                            "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
+                            "cursor-default select-none",
+                            focusedChart === "trend" ? "cursor-default" : "",
+                          ].join(" ")}
+                        >
+                          <div className={getTrendWrapperHeight()}>
+                            <PerformanceTrendChart
+                              range={range}
+                              month={selectedMonth}
+                              year={selectedYear}
+                              countryName={initialCountryName}
+                              homeCurrency={globalHomeCurrency}
+                              currencySymbol={currencySymbol}
+                              data={performanceTrend}
+                              metric={performanceTrendMetric}
+                              onExportApiReady={setTrendExportApi}
+                              isExpanded={focusedChart === "trend"}
+                              onToggleExpand={() => toggleFocus("trend")}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* RIGHT card */}
+                      {(focusedChart === null || focusedChart === "pnl") && (
+                        <div
+                          className={[
+                            "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
+                            "cursor-default select-none",
+                            "min-h-0 overflow-hidden",
+                            "flex flex-col",
+                            focusedChart === "pnl" ? "cursor-default" : "",
+                          ].join(" ")}
+                        >
+                          <div className="shrink-0 flex items-center justify-between gap-3">
+                            <div className="flex items-baseline gap-2 min-w-0">
+                              <PageBreadcrumb
+                                pageTitle="P&L"
+                                variant="page"
+                                align="left"
+                                textSize="2xl"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              data-no-expand
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFocus("pnl");
+                              }}
+                              aria-label={
+                                focusedChart === "pnl"
+                                  ? "Collapse P&L chart"
+                                  : "Expand P&L chart"
+                              }
+                              title={focusedChart === "pnl" ? "Collapse" : "Expand"}
+                              className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                            >
+                              {focusedChart === "pnl" ? (
+                                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                              ) : (
+                                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                              )}
+                            </button>
+                          </div>
+
+                          <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                            <Bargraph
+                              range={range}
+                              selectedMonth={selectedMonth}
+                              selectedYear={selectedYear}
+                              countryName={initialCountryName}
+                              homeCurrency={globalHomeCurrency}
+                              hideDownloadButton
+                              onExportApiReady={setChartExportApi}
+                              onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                              isCollapsed={pnlCollapsed}
+                              uploads={bargraphUploads}
+                              loading={bargraphLoading}
+                              userMeta={bargraphUserMeta}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {allDropdownsSelected && (
+                    <div className="mt-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                        <CircleChart
+                          range="monthly"
+                          month={selectedMonth}
+                          selectedQuarter={undefined}
+                          year={selectedYear}
+                          countryName={initialCountryName}
+                          homeCurrency={globalHomeCurrency}
+                          onExportBase64Ready={setExpenseBreakdownPieBase64}
+                        />
+
+                        <CMchartofsku
+                          range="monthly"
+                          month={selectedMonth}
+                          selectedQuarter={undefined}
+                          year={selectedYear}
+                          countryName={initialCountryName}
+                          homeCurrency={globalHomeCurrency}
+                          onExportBase64Ready={setProductWiseCm1PieBase64}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Quarterly */}
+              {range === "quarterly" && isQuarter(selectedQuarter) && selectedYear && (
+                <>
+                  <div className="w-full rounded-xl space-y-4">
+                    <div
+                      className={[
+                        "grid grid-cols-1 gap-4",
+                        focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+                      ].join(" ")}
+                    >
+                      {/* LEFT card */}
+                      {(focusedChart === null || focusedChart === "trend") && (
+                        <div
+                          className={[
+                            "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
+                            "cursor-default select-none",
+                            focusedChart === "trend" ? "cursor-default" : "",
+                          ].join(" ")}
+                        >
+                          <div className={getTrendWrapperHeight()}>
+                            <PerformanceTrendChart
+                              range={range}
+                              quarter={selectedQuarter}
+                              year={selectedYear}
+                              countryName={initialCountryName}
+                              homeCurrency={globalHomeCurrency}
+                              currencySymbol={currencySymbol}
+                              data={performanceTrend}
+                              metric={performanceTrendMetric}
+                              onExportApiReady={setTrendExportApi}
+                              isExpanded={focusedChart === "trend"}
+                              onToggleExpand={() => toggleFocus("trend")}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* RIGHT card */}
+                      {(focusedChart === null || focusedChart === "pnl") && (
+                        <div
+                          className={[
+                            "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
+                            "cursor-default select-none",
+                            "min-h-0 overflow-hidden",
+                            "flex flex-col",
+                            focusedChart === "pnl" ? "cursor-default" : "",
+                          ].join(" ")}
+                        >
+                          <div className="shrink-0 flex items-center justify-between gap-3">
+                            <div className="flex items-baseline gap-2">
+                              <PageBreadcrumb
+                                pageTitle="P&L"
+                                variant="page"
+                                align="left"
+                                textSize="2xl"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              data-no-expand
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFocus("pnl");
+                              }}
+                              aria-label={
+                                focusedChart === "pnl"
+                                  ? "Collapse P&L chart"
+                                  : "Expand P&L chart"
+                              }
+                              title={focusedChart === "pnl" ? "Collapse" : "Expand"}
+                              className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                            >
+                              {focusedChart === "pnl" ? (
+                                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                              ) : (
+                                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                              )}
+                            </button>
+                          </div>
+
+                          <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                            <GraphPage
+                              range={range}
+                              selectedQuarter={selectedQuarter}
+                              selectedYear={selectedYear}
+                              countryName={initialCountryName}
+                              homeCurrency={globalHomeCurrency}
+                              hideDownloadButton
+                              onExportApiReady={setChartExportApi}
+                              onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                              isCollapsed={pnlCollapsed}
+                              uploads={graphPageUploads}
+                              loading={graphPageLoading}
+                              userMeta={graphPageUserMeta}
+                              error={graphPageError}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {allDropdownsSelected && (
+                    <div className="mt-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                        <CircleChart
+                          range="quarterly"
+                          month={undefined}
+                          selectedQuarter={selectedQuarter}
+                          year={selectedYear}
+                          countryName={initialCountryName}
+                          homeCurrency={globalHomeCurrency}
+                          onExportBase64Ready={setExpenseBreakdownPieBase64}
+                        />
+
+                        <CMchartofsku
+                          range="quarterly"
+                          month={undefined}
+                          selectedQuarter={selectedQuarter}
+                          year={selectedYear}
+                          countryName={initialCountryName}
+                          homeCurrency={globalHomeCurrency}
+                          onExportBase64Ready={setProductWiseCm1PieBase64}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Yearly */}
+              {allDropdownsSelected && range === "yearly" && selectedYear && (
+                <>
+                  <div className="w-full rounded-xl space-y-4">
+                    <div
+                      className={[
+                        "grid grid-cols-1 gap-4",
+                        focusedChart ? "lg:grid-cols-1" : "lg:grid-cols-2",
+                      ].join(" ")}
+                    >
+                      {/* LEFT card */}
+                      {(focusedChart === null || focusedChart === "trend") && (
+                        <div
+                          className={[
+                            "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
+                            "cursor-default select-none",
+                            focusedChart === "trend" ? "cursor-default" : "",
+                          ].join(" ")}
+                        >
+                          <div className={getTrendWrapperHeight()}>
+                            <PerformanceTrendChart
+                              range={range}
+                              year={selectedYear}
+                              countryName={initialCountryName}
+                              homeCurrency={globalHomeCurrency}
+                              currencySymbol={currencySymbol}
+                              data={performanceTrend}
+                              metric={performanceTrendMetric}
+                              onExportApiReady={setTrendExportApi}
+                              isExpanded={focusedChart === "trend"}
+                              onToggleExpand={() => toggleFocus("trend")}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* RIGHT card */}
+                      {(focusedChart === null || focusedChart === "pnl") && (
+                        <div
+                          className={[
+                            "rounded-xl border border-slate-200 bg-white shadow-sm p-4",
+                            "cursor-default select-none",
+                            "min-h-0 overflow-hidden",
+                            "flex flex-col",
+                            focusedChart === "pnl" ? "cursor-default" : "",
+                          ].join(" ")}
+                        >
+                          <div className="shrink-0 flex items-center justify-between gap-3">
+                            <div className="flex items-baseline gap-2">
+                              <PageBreadcrumb
+                                pageTitle="P&L"
+                                variant="page"
+                                align="left"
+                                textSize="2xl"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              data-no-expand
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFocus("pnl");
+                              }}
+                              aria-label={
+                                focusedChart === "pnl"
+                                  ? "Collapse P&L chart"
+                                  : "Expand P&L chart"
+                              }
+                              title={focusedChart === "pnl" ? "Collapse" : "Expand"}
+                              className="hidden lg:inline-flex rounded-md border border-gray-300 bg-white text-blue-700 p-1.5 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                            >
+                              {focusedChart === "pnl" ? (
+                                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                              ) : (
+                                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                              )}
+                            </button>
+                          </div>
+
+                          <div className="flex-1 min-h-0 overflow-hidden mt-4">
+                            <GraphPage
+                              range={range}
+                              selectedYear={selectedYear}
+                              countryName={initialCountryName}
+                              homeCurrency={globalHomeCurrency}
+                              hideDownloadButton
+                              onExportApiReady={setChartExportApi}
+                              onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
+                              isCollapsed={pnlCollapsed}
+                              uploads={graphPageUploads}
+                              loading={graphPageLoading}
+                              userMeta={graphPageUserMeta}
+                              error={graphPageError}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                      <CircleChart
+                        range="yearly"
+                        month={undefined}
+                        selectedQuarter={undefined}
+                        year={selectedYear}
+                        countryName={initialCountryName}
+                        homeCurrency={globalHomeCurrency}
+                        onExportBase64Ready={setExpenseBreakdownPieBase64}
+                        disableInternalFade={isDemoMode}
+                      />
+
+                      <CMchartofsku
+                        range="yearly"
+                        month={undefined}
+                        selectedQuarter={undefined}
+                        year={selectedYear}
+                        countryName={initialCountryName}
+                        homeCurrency={globalHomeCurrency}
+                        onExportBase64Ready={setProductWiseCm1PieBase64}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+          )}
+
+          {/* ---------- TAB 2: BUSINESS SUMMARY ---------- */}
+          {activeTab === "businessSummary" && allDropdownsSelected && (
+
+            <div
+              id="ai-insights"
+              className="scroll-mt-[80px] space-y-5"
+            >
+              {/* ✅ Loader INSIDE the white container */}
+              {aiPanelLoading ? (
+                <div className="min-h-[420px] flex items-center justify-center">
+                  {/* IMPORTANT: force inline, not fullscreen */}
+                  <Loader fullscreen={false} transparent />
                 </div>
-                <p className="text-sm text-red-600">{aiPanelError}</p>
-              </div>
-            ) : (
-              <>
-                {/* {aiPanel?.objective && (
+              ) : aiPanelError ? (
+                <div className="w-full rounded-2xl border-2 border-red-200 bg-red-50 p-6 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">⚠️</span>
+                    <p className="font-semibold text-red-700">Unable to Generate Insights</p>
+                  </div>
+                  <p className="text-sm text-red-600">{aiPanelError}</p>
+                </div>
+              ) : (
+                <>
+                  {/* {aiPanel?.objective && (
   <MonthlyObjectiveStrip
     objective={aiPanel.objective}
     targetSummary={targetSummary}
     currencySymbol={currencySymbol}
   />
 )} */}
-                <AiSingleInsightCard
-                  loading={false}
-                  error={null}
-                  summaryBullets={aiPanel?.summaryBullets ?? []}
-                  recommendationBullets={aiPanel?.recommendationBullets ?? []}
-                  skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
-                  inventoryBullets={aiPanel?.inventoryBullets ?? []}
-                  recommendationsMap={aiPanel?.recommendationsMap}
-                  objective={aiPanel?.objective}
-                  remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
-                  nameToSkuMap={nameToSkuMap}
-                  range={range}
-                  selectedYear={selectedYear}
-                  selectedQuarter={selectedQuarter}
-                  homeCurrency={globalHomeCurrency}
-                  countryName={initialCountryName}
-                  portfolioRecommendation={aiPanel?.portfolioRecommendation}
-                  targetSummary={targetSummary}
+                  <AiSingleInsightCard
+                    loading={false}
+                    error={null}
+                    summaryBullets={aiPanel?.summaryBullets ?? []}
+                    recommendationBullets={aiPanel?.recommendationBullets ?? []}
+                    skuInsightsBullets={aiPanel?.skuInsightsBullets ?? []}
+                    inventoryBullets={aiPanel?.inventoryBullets ?? []}
+                    recommendationsMap={aiPanel?.recommendationsMap}
+                    objective={aiPanel?.objective}
+                    remainingSkusRecommendation={aiPanel?.remainingSkusRecommendation}
+                    nameToSkuMap={nameToSkuMap}
+                    range={range}
+                    selectedYear={selectedYear}
+                    selectedQuarter={selectedQuarter}
+                    homeCurrency={globalHomeCurrency}
+                    countryName={initialCountryName}
+                    portfolioRecommendation={aiPanel?.portfolioRecommendation}
+                    targetSummary={targetSummary}
+                    currencySymbol={currencySymbol}
+                  />
+                </>
+              )}
+            </div>
+
+          )}
+
+          {/* ---------- TAB 3: SKU / PRODUCTWISE P&L ---------- */}
+          {activeTab === "skuBreakdown" && allDropdownsSelected && (
+
+            <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
+              <SKUtable
+                range={range as Exclude<RangeType, "">}
+                month={range === "monthly" ? selectedMonth : undefined}
+                quarter={range === "quarterly" ? selectedQuarter : undefined}
+                year={selectedYear}
+                countryName={initialCountryName}
+                homeCurrency={globalHomeCurrency}
+                hideDownloadButton={false}
+                onExportPayloadChange={setSkuExportPayload}
+                onDownload={handleDownloadSkuSheet1}
+                onRowsChange={setSkuRows}
+                disableInternalFade={isDemoMode}
+              />
+
+              {skuRows.length > 0 && (
+                <SkuTopBottomTables
+                  topData={topData}
+                  bottomData={bottomData}
                   currencySymbol={currencySymbol}
                 />
-              </>
-            )}
-          </div>
-         
-        )}
+              )}
+            </div>
 
-        {/* ---------- TAB 3: SKU / PRODUCTWISE P&L ---------- */}
-        {activeTab === "skuBreakdown" && allDropdownsSelected && (
-         
-          <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
-            <SKUtable
-              range={range as Exclude<RangeType, "">}
-              month={range === "monthly" ? selectedMonth : undefined}
-              quarter={range === "quarterly" ? selectedQuarter : undefined}
-              year={selectedYear}
-              countryName={initialCountryName}
-              homeCurrency={globalHomeCurrency}
-              hideDownloadButton={false}
-              onExportPayloadChange={setSkuExportPayload}
-              onDownload={handleDownloadSkuSheet1}
-              onRowsChange={setSkuRows}
-              disableInternalFade={isDemoMode}
-            />
+          )}
 
-            {skuRows.length > 0 && (
-              <SkuTopBottomTables
-                topData={topData}
-                bottomData={bottomData}
-                currencySymbol={currencySymbol}
-              />
-            )}
-          </div>
-            
-        )}
+          {activeTab === "skuwiseProfit" && allDropdownsSelected && (
 
-        {activeTab === "skuwiseProfit" && allDropdownsSelected && (
-          
-          <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
-            {/* <ProductwisePerformance
+            <div id="skuwise-profit" className="mt-4 scroll-mt-[80px]">
+              {/* <ProductwisePerformance
               embedded
               countryNameProp={initialCountryName}
               rangeProp={range as "monthly" | "quarterly" | "yearly"}
@@ -4211,44 +4208,44 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
               selectedYearProp={selectedYear ? Number(selectedYear) : ""}
               initialProductName={defaultTopProductName}
             /> */}
-            <ProductwisePerformance
-  key={[
-    initialCountryName,
-    range,
-    selectedMonth,
-    selectedQuarter,
-    selectedYear,
-    defaultTopProductName,
-    isDemoMode ? "demo" : "live",
-  ].join("-")}
-  embedded
-  countryNameProp={isDemoMode ? "global" : initialCountryName}
-  rangeProp={range as "monthly" | "quarterly" | "yearly"}
-  selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
-  selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
-  selectedYearProp={isDemoMode ? "NA" as any : selectedYear ? Number(selectedYear) : ""}
-  initialProductName={defaultTopProductName || "Demo Product A"}
-/>
-          </div>
-         
-        )}
+              <ProductwisePerformance
+                key={[
+                  initialCountryName,
+                  range,
+                  selectedMonth,
+                  selectedQuarter,
+                  selectedYear,
+                  defaultTopProductName,
+                  isDemoMode ? "demo" : "live",
+                ].join("-")}
+                embedded
+                countryNameProp={isDemoMode ? "global" : initialCountryName}
+                rangeProp={range as "monthly" | "quarterly" | "yearly"}
+                selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
+                selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
+                selectedYearProp={isDemoMode ? "NA" as any : selectedYear ? Number(selectedYear) : ""}
+                initialProductName={defaultTopProductName || "Demo Product A"}
+              />
+            </div>
 
-        {activeTab === "cashFlow" && allDropdownsSelected && (
- 
-    <div id="cash-flow" className="mt-4 scroll-mt-[80px]">
-      <CashFlowPage
-        embedded
-        countryNameProp={isDemoMode ? "global" : initialCountryName}
-        rangeProp={range as "monthly" | "quarterly" | "yearly"}
-        selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
-        selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
-        selectedYearProp={isDemoMode ? "NA" : selectedYear}
-      />
-    </div>
-  
-)}
-      </div>
-</PreviewLockedSection>
+          )}
+
+          {activeTab === "cashFlow" && allDropdownsSelected && (
+
+            <div id="cash-flow" className="mt-4 scroll-mt-[80px]">
+              <CashFlowPage
+                embedded
+                countryNameProp={isDemoMode ? "global" : initialCountryName}
+                rangeProp={range as "monthly" | "quarterly" | "yearly"}
+                selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
+                selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
+                selectedYearProp={isDemoMode ? "NA" : selectedYear}
+              />
+            </div>
+
+          )}
+        </div>
+      </PreviewLockedSection>
       {/* ===================== YOUR EXISTING OVERLAYS / MODALS (KEEP) ===================== */}
       {showNoDataOverlay && (
         <div
