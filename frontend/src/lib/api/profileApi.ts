@@ -27,6 +27,7 @@ export type ForgotPasswordRequest = {
 };
 
 export const profileApi = baseApi.injectEndpoints({
+   overrideExisting: true,
   endpoints: (build) => ({
     getUserData: build.query<UserData, void>({
       query: () => ({ url: "/get_user_data", method: "GET" }),

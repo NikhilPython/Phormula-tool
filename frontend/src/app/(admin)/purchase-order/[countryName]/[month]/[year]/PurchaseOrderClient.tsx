@@ -352,6 +352,41 @@ const getTableRowClassName = useCallback((row: Row, rowIndex: number) => {
   return rowIndex % 2 === 0 ? 'bg-white' : 'bg-white';
 }, []);
 
+useEffect(() => {
+  if (!embedded || typeof window === 'undefined') return;
+
+  const handleRefresh = (event: Event) => {
+    const customEvent = event as CustomEvent<{ month?: string; year?: string }>;
+    const nextMonth = customEvent.detail?.month;
+    const nextYear = customEvent.detail?.year;
+
+    if (!nextMonth || !nextYear) return;
+
+    setMonth(nextMonth);
+    setYear(nextYear);
+
+    setTimeout(() => {
+      if (countryName.toLowerCase() === 'global') {
+        void fetchGlobalDispatchFile();
+      } else {
+        void fetchDispatchFile();
+      }
+    }, 0);
+  };
+
+  const handleDownload = () => {
+    handleExportToExcel();
+  };
+
+  window.addEventListener('po-report-refresh', handleRefresh as EventListener);
+  window.addEventListener('po-report-download', handleDownload);
+
+  return () => {
+    window.removeEventListener('po-report-refresh', handleRefresh as EventListener);
+    window.removeEventListener('po-report-download', handleDownload);
+  };
+}, [embedded, countryName, fetchDispatchFile, fetchGlobalDispatchFile, month, year, skuData]);
+
   return (
     <>
        <style jsx>{`
@@ -373,17 +408,20 @@ font-weight: bold;
         .tablec tbody tr:nth-child(even) { background-color: #5EA68E33; }
         .tablec tbody tr:nth-child(odd) { background-color: #ffffff; }
         .inline-dropdowns {
-         
-          gap: 15px;
-          align-items: center;
-         
-          margin-bottom: 30px;
-        }
-        @media (max-width: 768px) {
-          .styled-button {
-            width: 100%;
-            padding: 12px;
-          }
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 768px) {
+  .inline-dropdowns {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
           .dropdown-select {
             width: 100%;
           }
@@ -468,64 +506,50 @@ font-weight: bold;
         }
         
       `}</style>
-      <div className='flex items-center justify-between items-start'>
-         <div className="flex flex-wrap items-baseline gap-2 justify-start">
-              <PageBreadcrumb
-                pageTitle="PO Report - "
-                variant="page"
-                align="left"
-                className=""
-              />
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                Amazon {countryName?.toLowerCase() === "global"
-                  ? "Global"
-                  : countryName?.toUpperCase()}
-              </span>
-            </div>
-{/* <h2 className='text-2xl font-bold text-[#414042] mb-6'>
-        {isGlobalRoute ? (
-          <>
-            <span style={{ color: '#414042' }}>PO Report for </span>
-            <span style={{ color: '#60a68e' }}>Global</span>
-          </>
-        ) : (
-          <span style={{ color: '#414042' }}>
-            PO Report for{' '}
-            <span style={{ color: '#60a68e' }}>{countryName.toUpperCase()}</span>
-          </span>
-        )}
-      </h2> */}
-<div className="inline-dropdowns flex sm:flex-row flex-col">
-        <MonthYearPickerTable
-                        month={month}
-                        year={year}
-                        yearOptions={[
-                          new Date().getFullYear(),
-                          new Date().getFullYear() - 1,
-                        ]}
-                        onMonthChange={(v) => setMonth(v)}
-                        onYearChange={(v) => setYear(v)}
-                        valueMode="lower"
-                      />
-                     
-                                        <DownloadIconButton onClick={handleExportToExcel} size="md" />
+      {!embedded && (
+     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+  
+    <div className="flex flex-wrap items-baseline gap-2 justify-start">
+      <PageBreadcrumb
+        pageTitle="PO Report - "
+        variant="page"
+        align="left"
+        className=""
+      />
+      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+        Amazon {countryName?.toLowerCase() === "global"
+          ? "Global"
+          : countryName?.toUpperCase()}
+      </span>
+    </div>
+  
 
-        <div className="flex sm:flex-row flex-col gap-4">
-          <button
-            className="fetch-button"
-            onClick={isGlobalRoute ? fetchGlobalDispatchFile : fetchDispatchFile}
-          >
-            {isGlobalRoute ? 'Get Global Report' : 'Get Report'}
-          </button>
-          {/* {!isGlobalRoute && (
-            <button className="fetch-button" onClick={openUploadModal}>
-              Upload Local Warehouse Inventory File&nbsp;
-              <i className="fa-solid fa-plus" />
-            </button>
-          )} */}
-        </div>
-      </div>
-      </div>
+  <div className={`inline-dropdowns flex sm:flex-row flex-col ${embedded ? 'w-full justify-end' : ''}`}>
+    <MonthYearPickerTable
+      month={month}
+      year={year}
+      yearOptions={[
+        new Date().getFullYear(),
+        new Date().getFullYear() - 1,
+      ]}
+      onMonthChange={(v) => setMonth(v)}
+      onYearChange={(v) => setYear(v)}
+      valueMode="lower"
+    />
+
+    <DownloadIconButton onClick={handleExportToExcel} size="md" />
+
+    <div className="flex sm:flex-row flex-col gap-4">
+      <button
+        className="fetch-button"
+        onClick={isGlobalRoute ? fetchGlobalDispatchFile : fetchDispatchFile}
+      >
+        {isGlobalRoute ? 'Get Global Report' : 'Get Report'}
+      </button>
+    </div>
+  </div>
+</div>
+)}
       
       
 

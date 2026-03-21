@@ -841,7 +841,11 @@ const PreviewLockedSection = ({
           <div className="absolute inset-0 z-20 pointer-events-none">
             <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
               <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-                <div className="mb-4 text-3xl">🔒</div>
+                <div className="mb-4 flex justify-center">
+                                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F8EDCE]">
+                                  <IoMdLock className="text-3xl text-[#37455F]" />
+                                </div>
+                              </div>
 
                 <h3 className="text-lg font-semibold text-[#414042]">
                   {title}
@@ -3207,7 +3211,7 @@ const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
 <PreviewLockedSection
   enabled={isDemoMode}
   title="Preview mode"
-  description="You're viewing demo financial data. Connect your Amazon to unlock your real dashboard, profitability insights, cash flow."
+  description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
   buttonText="Connect Amazon"
   onAction={handleConnectAmazonPreview}
 >

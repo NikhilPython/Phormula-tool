@@ -467,9 +467,10 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
 
   return (
     <div>
-      <div className="flex flex-col gap-3">
-        <div className="flex justify-between items-center gap-4 flex-wrap">
-          <div className="flex items-baseline gap-2">
+      <div className="flex flex-col gap-6 mt-5 ">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-baseline gap-2">
             <PageBreadcrumb
               pageTitle={
                 <>
@@ -486,12 +487,6 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
               textSize="2xl"
             />
           </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-6 mt-5 ">
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-          <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between w-full gap-3">
               <div className="flex flex-col leading-tight">
                 <div className="flex items-baseline gap-2">
