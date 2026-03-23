@@ -183,6 +183,42 @@ const routeToIntegrationDashboard = (country: string) => {
     }
   };
 
+  const getCurrentMonthYear = () => {
+  const now = new Date();
+  const month = now.toLocaleString("en-US", { month: "long" }).toLowerCase();
+  const year = String(now.getFullYear());
+  return { month, year };
+};
+
+const routeMemberByModule = (country: string, modules: string[] = []) => {
+  const normalizedCountry = (country || "global").toLowerCase();
+  const { month, year } = getCurrentMonthYear();
+
+  for (const mod of modules) {
+    if (mod === "LIVE_DASHBOARD") {
+      router.replace(`/live-dashboard/${normalizedCountry}/${month}/${year}`);
+      return;
+    }
+
+    if (mod === "FINANCE_DASHBOARDS") {
+      router.replace(`/pnl-dashboard/MTD/${normalizedCountry}/${month}/${year}`);
+      return;
+    }
+
+    if (mod === "BUSINESS_INTELLIGENCE") {
+      router.replace(`/ai-insight/MTD/${normalizedCountry}/${month}/${year}`);
+      return;
+    }
+
+    if (mod === "INVENTORY_PLANNING") {
+      router.replace(`/inventory-reconciliation/${normalizedCountry}/${month}/${year}`);
+      return;
+    }
+  }
+
+  router.replace("/signin");
+};
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (status === "loading" || isLoggingIn || isMemberLoggingIn) return;
@@ -297,11 +333,13 @@ const routeToIntegrationDashboard = (country: string) => {
       );
 
       const memberCountry =
-        Array.isArray(result?.countries) && result.countries.length > 0
-          ? String(result.countries[0]).trim().toLowerCase()
-          : "global";
+  Array.isArray(result?.countries) && result.countries.length > 0
+    ? String(result.countries[0]).trim().toLowerCase()
+    : "global";
 
-      routeToDashboard(memberCountry);
+const memberModules = Array.isArray(result?.modules) ? result.modules : [];
+
+routeMemberByModule(memberCountry, memberModules);
     } catch (err: any) {
       const msg =
         err?.status === 403

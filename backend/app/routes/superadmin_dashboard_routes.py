@@ -7,7 +7,7 @@ import io
 import pandas as pd
 from sqlalchemy import inspect
 from app import db
-from app.models.user_models import CurrencyConversion, Category, UserAdmin , User, UploadHistory, CountryProfile
+from app.models.user_models import CurrencyConversion, Category, UserAdmin , User, UploadHistory, CountryProfile, Member
 from sqlalchemy.exc import IntegrityError
 from flask import current_app
 import os,jwt
@@ -723,3 +723,50 @@ def upload_referral_fee():
             'message': 'An error occurred while processing the file',
             'error': str(e)
         }), 500        
+
+
+
+@superadmin_dashboard_bp.route("/superadmin/dashboard/members", methods=["GET"])
+def get_members():
+    # ✅ Auth check
+    ok, err = _is_superadmin_authenticated()
+    if not ok:
+        payload, code = err
+        return jsonify(payload), code
+
+    try:
+        # optional filters
+        owner_user_id = request.args.get("owner_user_id", type=int)
+        email = request.args.get("email")
+
+        query = Member.query
+
+        if owner_user_id:
+            query = query.filter(Member.owner_user_id == owner_user_id)
+
+        if email:
+            query = query.filter(Member.email == email)
+
+        members = query.order_by(Member.id.asc()).all()
+
+        return jsonify({
+            "message": f"{len(members)} member record(s) found.",
+            "data": [
+                {
+                    "email": m.email,
+                    "member_name": m.member_name,
+                    "role": m.role,
+                    "marketplace_ids": m.marketplace_ids,
+                    "modules": m.modules,
+                    "countries": m.countries
+                }
+                for m in members
+            ]
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "message": "An error occurred while fetching member details.",
+            "error": str(e)
+        }), 500
+

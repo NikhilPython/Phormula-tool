@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import UserInfoCard from "@/components/user-profile/UserInfoCard";
 import UserAddressCard from "@/components/user-profile/UserAddressCard";
 import Button from "@/components/ui/button/Button";
@@ -39,12 +39,11 @@ export default function ProfileClient() {
   const [isEditOpen, setIsEditOpen] = React.useState(false);
   const [actionLoading, setActionLoading] = React.useState(false);
 
-  const searchParams = useSearchParams();
+  const params = useParams();
 
-  const countryName = searchParams.get("countryName") || "global";
-  const month = searchParams.get("month") || "NA";
-  const year = searchParams.get("year") || "NA";
-
+  const countryName = (params?.countryName as string) || "global";
+const month = (params?.month as string) || "NA";
+const year = (params?.year as string) || "NA";
   const isPreviewMode = month === "NA" && year === "NA";
 
   const token =
