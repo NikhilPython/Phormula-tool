@@ -26,13 +26,17 @@ type InventoryUiRow = {
   rowType?: "normal" | "others" | "total";
 } & Record<string, React.ReactNode>;
 
+type CurrencyCode = "USD" | "GBP" | "CAD" | "INR";
+
 type CurrentInventorySectionProps = {
   region: RegionKey;
   invLoading: boolean;
   invError?: string | null;
   invRows: InventoryRow[];
   inventoryAlerts: Record<string, { alert?: string; alert_type?: string }>;
-  userData: any; // keep as any if you don't have a typed profile yet
+  userData: any;
+  convertToDisplayCurrency: (value: number | null | undefined, from: CurrencyCode) => number;
+  formatDisplayAmount: (value: number | null | undefined) => string;
 };
 
 /* ========= Shared helpers ========= */
@@ -275,6 +279,8 @@ export default function CurrentInventorySection({
   invRows,
   inventoryAlerts,
   userData,
+  convertToDisplayCurrency,
+  formatDisplayAmount,
 }: CurrentInventorySectionProps) {
 
   const displayRegion = useMemo(() => {
@@ -294,6 +300,13 @@ export default function CurrentInventorySection({
     () => (userData as any)?.homeCurrency || (userData as any)?.home_currency || "",
     [userData]
   );
+
+  const storageSourceCurrency: CurrencyCode = useMemo(() => {
+    if (region === "UK" || region === "Global") return "GBP";
+    if (region === "US") return "USD";
+    if (region === "CA") return "CAD";
+    return "GBP";
+  }, [region]);
 
   // backend month column: "Current Month Units Sold (MonthName)" (dynamic)
   const findMtdKey = useCallback((row: InventoryRow) => {
@@ -524,7 +537,13 @@ export default function CurrentInventorySection({
         salesRank: salesRank ? formatInt(salesRank) : "—",
         currentInventory: formatInt(currentInventory),
         inventory180Plus: formatInt(inventory180Plus),
-        estStorage: estStorage ? formatInt(estStorage) : "—",
+        // estStorage: estStorage ? formatInt(estStorage) : "—",
+        estStorage:
+          estStorage
+            ? formatDisplayAmount(
+              convertToDisplayCurrency(estStorage, storageSourceCurrency)
+            )
+            : "—",
         coverageMonths: formatRatio(coverage),
         alert: alertText || "—",
       };
@@ -563,7 +582,10 @@ export default function CurrentInventorySection({
         salesRank: "—",
         currentInventory: formatInt(agg.currentInventory),
         inventory180Plus: formatInt(agg.inventory180Plus),
-        estStorage: formatInt(agg.estStorage),
+        // estStorage: formatInt(agg.estStorage),
+        estStorage: formatDisplayAmount(
+          convertToDisplayCurrency(agg.estStorage, storageSourceCurrency)
+        ),
         coverageMonths: formatRatio(coverage),
         alert: "",
       });
@@ -614,7 +636,14 @@ export default function CurrentInventorySection({
         currentInventory: <span className="font-semibold">{formatInt(currentInventory)}</span>,
         inventory180Plus: <span className="font-semibold">{formatInt(inventory180Plus)}</span>,
         salesRank: "",
-        estStorage: <span className="font-semibold">{formatInt(estStorage)}</span>,
+        // estStorage: <span className="font-semibold">{formatInt(estStorage)}</span>,
+        estStorage: (
+          <span className="font-semibold">
+            {formatDisplayAmount(
+              convertToDisplayCurrency(estStorage, storageSourceCurrency)
+            )}
+          </span>
+        ),
         mtdSales: <span className="font-semibold">{formatInt(mtdSales)}</span>,
         sales30: <span className="font-semibold">{formatInt(mtdSales + sales30)}</span>,
         coverageMonths: <span className="font-semibold">{formatRatio(coverage)}</span>,
@@ -623,7 +652,16 @@ export default function CurrentInventorySection({
     }
 
     return uiRows;
-  }, [invRows, findMtdKey, findSales30Key, inventoryAlerts]);
+    // }, [invRows, findMtdKey, findSales30Key, inventoryAlerts]);
+  }, [
+    invRows,
+    findMtdKey,
+    findSales30Key,
+    inventoryAlerts,
+    convertToDisplayCurrency,
+    formatDisplayAmount,
+    storageSourceCurrency,
+  ]);
 
   /* -------- Build DataTable columns -------- */
 
