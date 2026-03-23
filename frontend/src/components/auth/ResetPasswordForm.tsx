@@ -295,20 +295,20 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={handleClose}
+      // onClick={handleClose}
     >
       <div
         className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 relative"
-        onClick={(e) => e.stopPropagation()}
+        // onClick={(e) => e.stopPropagation()}
       >
-        <button
+        {/* <button
           type="button"
           onClick={handleClose}
           className="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-sm"
           aria-label="Close"
         >
           ✕
-        </button>
+        </button> */}
 
         <div className="mb-5 sm:mb-8">
           <PageBreadcrumb
@@ -316,7 +316,7 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             align="center"
             variant="table"
           />
-          <p className="text-sm text-chacoal-500 text-center">
+          <p className="text-sm text-charcoal-500 text-center">
             Enter a new password and confirm it to continue.
           </p>
         </div>
@@ -333,7 +333,7 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
             >
               <input
                 type={showPassword ? "text" : "password"}
-                className="w-full bg-transparent outline-none text-sm text-gray-800 dark:text-white/90"
+                className="w-full bg-transparent outline-none text-sm text-charcoal-500 dark:text-white/90"
                 placeholder="New Password"
                 value={password}
                 onChange={(e) => {
@@ -351,7 +351,7 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
 
               <button
                 type="button"
-                className="ml-3 text-gray-500 dark:text-gray-400"
+                className="ml-3 text-charcoal-500 dark:text-gray-400"
                 onClick={() => setShowPassword((v) => !v)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
@@ -432,14 +432,14 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
           )}
 
           <div className="mt-6 flex items-center justify-end gap-3">
-            <Button
+            {/* <Button
               type="button"
               onClick={handleClose}
               variant="outline"
               size="sm"
             >
               Back to Sign In
-            </Button>
+            </Button> */}
 
             <Button
               type="submit"
