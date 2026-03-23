@@ -256,9 +256,9 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
 
   const isPreviewMode =
-  String(paramMonth).toLowerCase() === "na" ||
-  String(paramYear).toLowerCase() === "na";
-  
+    String(paramMonth).toLowerCase() === "na" ||
+    String(paramYear).toLowerCase() === "na";
+
   const effectiveCountryForCurrency = isPreviewMode
     ? "global"
     : countryName;
@@ -308,16 +308,16 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   );
 
   const [month, setMonth] = useState<string>(
-  embedded
-    ? (isPreviewMode ? defaultMonth : capitalize(selectedMonthProp || ""))
-    : (initialMonth || defaultMonth)
-);
+    embedded
+      ? (isPreviewMode ? defaultMonth : capitalize(selectedMonthProp || ""))
+      : (initialMonth || defaultMonth)
+  );
 
-const [year, setYear] = useState<string>(
-  embedded
-    ? (isPreviewMode ? defaultYear : String(selectedYearProp || ""))
-    : (initialYear || defaultYear)
-);
+  const [year, setYear] = useState<string>(
+    embedded
+      ? (isPreviewMode ? defaultYear : String(selectedYearProp || ""))
+      : (initialYear || defaultYear)
+  );
 
   const [periodType, setPeriodType] = useState<PeriodType>(
     embedded ? (rangeProp || "yearly") : "monthly"
@@ -346,30 +346,30 @@ const [year, setYear] = useState<string>(
   };
 
   useEffect(() => {
-  if (!embedded) return;
+    if (!embedded) return;
 
-  setPeriodType(rangeProp || "yearly");
+    setPeriodType(rangeProp || "yearly");
 
-  if (isPreviewMode) {
-    setMonth(defaultMonth);
-    setSelectedQuarter("");
-    setYear(defaultYear);
-    return;
-  }
+    if (isPreviewMode) {
+      setMonth(defaultMonth);
+      setSelectedQuarter("");
+      setYear(defaultYear);
+      return;
+    }
 
-  setMonth(capitalize(selectedMonthProp || ""));
-  setSelectedQuarter(selectedQuarterProp || "");
-  setYear(String(selectedYearProp || ""));
-}, [
-  embedded,
-  rangeProp,
-  selectedMonthProp,
-  selectedQuarterProp,
-  selectedYearProp,
-  isPreviewMode,
-  defaultMonth,
-  defaultYear,
-]);
+    setMonth(capitalize(selectedMonthProp || ""));
+    setSelectedQuarter(selectedQuarterProp || "");
+    setYear(String(selectedYearProp || ""));
+  }, [
+    embedded,
+    rangeProp,
+    selectedMonthProp,
+    selectedQuarterProp,
+    selectedYearProp,
+    isPreviewMode,
+    defaultMonth,
+    defaultYear,
+  ]);
 
   const DUMMY_CASHFLOW_SUMMARY: SummaryShape = {
     quantity_total: 10,
@@ -678,14 +678,16 @@ const [year, setYear] = useState<string>(
 
         datasets.push({
           label: labelMap[key],
+          metricKey: key,
           data: ds,
           borderColor: colorMapping[labelMap[key]],
-          backgroundColor: `${colorMapping[labelMap[key]]}20`,
+          backgroundColor: colorMapping[labelMap[key]],
           borderWidth: 2,
           fill: false,
           tension: 0.35,
+          cubicInterpolationMode: "monotone",
           pointRadius: 3,
-          pointHoverRadius: 4,
+          pointHoverRadius: 5,
         });
       });
     } else if (periodType === "yearly") {
@@ -704,14 +706,16 @@ const [year, setYear] = useState<string>(
 
         datasets.push({
           label,
+          metricKey: key,
           data: ds,
           borderColor: colorMapping[label],
-          backgroundColor: `${colorMapping[label]}20`,
+          backgroundColor: colorMapping[label],
           borderWidth: 2,
           fill: false,
           tension: 0.35,
-          pointRadius: 2,
-          pointHoverRadius: 3,
+          cubicInterpolationMode: "monotone",
+          pointRadius: 3,
+          pointHoverRadius: 5,
         });
       });
     }
@@ -749,14 +753,19 @@ const [year, setYear] = useState<string>(
   const barChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: { padding: 0 },
     plugins: {
       legend: { display: false },
       tooltip: {
+        enabled: !allValuesZero,
         callbacks: {
-          label: (tooltipItem: any) =>
-            `Amount: ${currencySymbol}${Number(
-              tooltipItem.raw
-            ).toLocaleString()}`,
+          label: (tooltipItem: any) => {
+            const label = tooltipItem.label || "";
+            return `${label}: ${currencySymbol} ${Number(tooltipItem.raw).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}`;
+          },
         },
       },
     },
@@ -764,21 +773,17 @@ const [year, setYear] = useState<string>(
       x: {
         grid: {
           display: false,
-          drawBorder: false,
         },
-        title: {
+        border: {
           display: false,
         },
         ticks: {
+          color: "#6B7280",
           font: { size: xAxisTickFontSize },
           maxRotation: 0,
           minRotation: 0,
           autoSkip: false,
-          callback: function (
-            this: any,
-            _value: unknown,
-            index: number
-          ): string | number {
+          callback: function (this: any, _value: unknown, index: number): string | number {
             const label = this.chart.data.labels?.[index];
             return typeof label === "string" || typeof label === "number" ? label : "";
           },
@@ -789,29 +794,57 @@ const [year, setYear] = useState<string>(
         beginAtZero: true,
         title: {
           display: true,
-          text: `Amount (${currencySymbol})`,
+          text: `(${currencySymbol})`,
+          color: "#6B7280",
           font: { size: yAxisFontSize },
         },
         ticks: {
+          color: "#6B7280",
           font: { size: yAxisFontSize },
+          padding: 0,
           callback: (value: any) =>
             `${currencySymbol}${Number(value).toLocaleString()}`,
+        },
+        border: {
+          display: false,
+        },
+        grid: {
+          color: "#E5E7EB",
         },
       },
     },
   } as const;
 
+  const allLineDataPoints =
+    periodType === "monthly"
+      ? []
+      : getLineChartData().datasets.flatMap((d: any) => d.data as number[]);
+
+  const minLineValue = allLineDataPoints.length ? Math.min(...allLineDataPoints) : 0;
+  const minLineY = minLineValue < 0 ? Math.floor(minLineValue * 1.1) : 0;
+
   const lineChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    layout: { padding: 0 },
+    interaction: {
+      intersect: false,
+      mode: allValuesZero ? "nearest" : "index",
+    },
     plugins: {
       legend: { display: false },
       tooltip: {
+        enabled: !allValuesZero,
+        mode: "index",
+        intersect: false,
         callbacks: {
-          label: (tooltipItem: any) =>
-            `${tooltipItem.dataset.label}: ${currencySymbol}${Number(
-              tooltipItem.raw
-            ).toLocaleString()}`,
+          label: (tooltipItem: any) => {
+            const displayLabel = tooltipItem.dataset.label || "";
+            return `${displayLabel}: ${currencySymbol} ${Number(tooltipItem.raw).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}`;
+          },
           labelColor: (context: any) => {
             const color = context.dataset.borderColor;
             return {
@@ -827,12 +860,12 @@ const [year, setYear] = useState<string>(
       x: {
         grid: {
           display: false,
-          drawBorder: false,
         },
-        title: {
+        border: {
           display: false,
         },
         ticks: {
+          color: "#6B7280",
           font: { size: xAxisTickFontSize },
           maxRotation: 0,
           minRotation: 0,
@@ -844,20 +877,29 @@ const [year, setYear] = useState<string>(
         },
       },
       y: {
-        beginAtZero: true,
+        beginAtZero: minLineY >= 0,
+        min: minLineY,
         title: {
           display: true,
-          text: `Amount (${currencySymbol})`,
+          text: `(${currencySymbol})`,
+          color: "#6B7280",
           font: { size: yAxisFontSize },
         },
         ticks: {
+          color: "#6B7280",
           font: { size: yAxisFontSize },
+          padding: 0,
           callback: (value: any) =>
             `${currencySymbol}${Number(value).toLocaleString()}`,
         },
+        border: {
+          display: false,
+        },
+        grid: {
+          color: "#E5E7EB",
+        },
       },
     },
-    interaction: { mode: "index" as const, intersect: false },
   } as const;
 
   const metrics = columnsToDisplay2.map((key) => ({
@@ -930,6 +972,24 @@ const [year, setYear] = useState<string>(
     (periodType === "quarterly" && !!selectedQuarter && !!year) ||
     (periodType === "yearly" && !!year);
 
+  const minSelectedMetricCount = Object.values(selectedGraphs).filter(Boolean).length;
+
+  const displayedMetrics = metrics.map((m) => ({
+    ...m,
+    displayLabel: periodType === "monthly" ? m.label : m.label,
+  }));
+
+  const toggleMetricSelection = (name: string) => {
+    const isChecked = !!selectedGraphs[name];
+    const selectedCount = Object.values(selectedGraphs).filter(Boolean).length;
+
+    if (isChecked && selectedCount === 1) return;
+
+    setSelectedGraphs((prev) => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
+  };
 
   return (
     <div className="w-full pb-6 sm:pb-0">
@@ -1024,47 +1084,99 @@ const [year, setYear] = useState<string>(
           <div className="flex flex-col">
             {/* Header + Download in one responsive row */}
             <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              {/* Left: title + period */}
-
-              {/* Right: Download button */}
-              {/* <div className="flex justify-center sm:justify-end">
-              <DownloadIconButton onClick={downloadCombinedExcelWithImage} />
-            </div> */}
             </div>
 
             {/* Summary Table using DataTable */}
             {effectiveData?.summary && (
-              <CashFlowSankey
-                data={effectiveData.summary}
-                previous_summary={
-                  isPreviewMode ? undefined : data?.previous_summary
-                }
-                previousLabel={isPreviewMode ? undefined : previousLabel}
-                periodType={periodType}
-                currency={currencySymbol}
-              />
+              <div className="mt-4 rounded-xl overflow-hidden">
+                <CashFlowSankey
+                  data={effectiveData.summary}
+                  previous_summary={
+                    isPreviewMode ? undefined : data?.previous_summary
+                  }
+                  previousLabel={isPreviewMode ? undefined : previousLabel}
+                  periodType={periodType}
+                  currency={currencySymbol}
+                />
+              </div>
             )}
-
-
 
             {/* Chart Section */}
             <div className="mt-6 rounded-xl bg-white p-4 shadow border">
-              <div className="h-[320px] sm:h-[40vw] max-h-[560px]">
+              <div
+                className={[
+                  "flex flex-wrap items-center justify-center",
+                  "gap-4",
+                  "w-full",
+                  allValuesZero ? "opacity-30 pointer-events-none" : "opacity-100",
+                  "transition-opacity duration-300",
+                ].join(" ")}
+              >
+                {displayedMetrics.map(({ name, displayLabel, color }) => {
+                  const isChecked = !!selectedGraphs[name];
+
+                  return (
+                    <label
+                      key={name}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className={[
+                        "shrink-0",
+                        "flex items-center gap-1 sm:gap-1.5",
+                        "font-semibold select-none whitespace-nowrap",
+                        "text-[10px] 2xl:text-xs my-1 2xl:my-3",
+                        "text-charcoal-500",
+                        allValuesZero ? "cursor-not-allowed" : "cursor-pointer",
+                      ].join(" ")}
+                    >
+                      <span
+                        className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
+                        style={{
+                          borderColor: color,
+                          backgroundColor: isChecked ? color : "white",
+                          opacity: allValuesZero ? 0.6 : 1,
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!allValuesZero) toggleMetricSelection(name);
+                        }}
+                      >
+                        {isChecked && (
+                          <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
+                            <path
+                              fill="currentColor"
+                              d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                            />
+                          </svg>
+                        )}
+                      </span>
+
+                      <span className="capitalize">{displayLabel}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="w-full pt-4 h-[320px] sm:h-[40vw] max-h-[560px]">
                 {periodType === "monthly" ? (
                   <Bar
+                    key="cashflow-bar"
                     ref={chartRef}
                     data={getFilteredBarChartData() as any}
                     options={barChartOptions as any}
+                    style={{ width: "100%", height: "100%" }}
                   />
                 ) : (
                   <Line
+                    key="cashflow-line"
                     ref={chartRef}
                     data={getLineChartData() as any}
                     options={lineChartOptions as any}
+                    style={{ width: "100%", height: "100%" }}
                   />
                 )}
               </div>
-
             </div>
           </div>
         )

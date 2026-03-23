@@ -46,7 +46,7 @@ export async function generateMetadata({
   const monthFormatted = monthName(p.month);
   const range = p.ranged.toUpperCase();
 
-  const title = `P&L Dashboard | Amazon ${country}`;
+  const title = `Financial Metrics | Amazon ${country}`;
 
   return {
     title,

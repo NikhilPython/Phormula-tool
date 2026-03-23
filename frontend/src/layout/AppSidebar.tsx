@@ -621,10 +621,6 @@ if ((params as any).countryName || segments[0] === "country") {
           name: "AI Insights",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#ai-insights`,
         },
-        // {
-        //   name: "MTD P&L",
-        //   path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#mtd-pl`,
-        // },
         {
           name: "P&L Breakdown",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#pnl-mtd`,
@@ -708,10 +704,6 @@ if ((params as any).countryName || segments[0] === "country") {
           name: "AI Insights",
           path: `/ai-insight/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
-        // {
-        //   name: "Chatbot",
-        //   path: `/chatbot/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        // },
         {
           name: "Inventory Forecast",
           path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-forecast`,
@@ -768,10 +760,10 @@ if ((params as any).countryName || segments[0] === "country") {
               countryName
             )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
         },
-        {
-          name: "Targets & Objectives",
-          path: `/objectives-targets/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
+        // {
+        //   name: "Targets & Objectives",
+        //   path: `/objectives-targets/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+        // },
       ],
     },
   ];

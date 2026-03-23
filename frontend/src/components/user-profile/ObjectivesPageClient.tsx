@@ -172,32 +172,55 @@ function JourneyAccordionSection({
   onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    if (!contentRef.current) return;
+
+    if (isOpen) {
+      setHeight(contentRef.current.scrollHeight);
+    } else {
+      setHeight(0);
+    }
+  }, [isOpen, children]);
+
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-gray-50"
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors duration-200 hover:bg-gray-50 dark:hover:bg-gray-800/60"
       >
         <div className="flex items-center gap-3">
-          <span className="text-charcoal-500 dark:text-gray-400">
-            {isOpen ? <FiChevronDown size={18} /> : <FiChevronRight size={18} />}
+          <span
+            className={`text-charcoal-500 transition-transform duration-300 ease-in-out dark:text-gray-400 ${isOpen ? "rotate-90" : "rotate-0"
+              }`}
+          >
+            <FiChevronRight size={18} />
           </span>
+
           <h4 className="text-sm font-semibold text-charcoal-500 dark:text-white/90">
             {title}
           </h4>
         </div>
       </button>
 
-      {isOpen && (
-        <div className="border-t border-gray-200 px-4 py-4 dark:border-gray-800">
+      <div
+        style={{ height }}
+        className="overflow-hidden transition-all duration-300 ease-in-out"
+      >
+        <div
+          ref={contentRef}
+          className={`border-t border-gray-200 px-4 py-4 transition-opacity duration-300 ease-in-out dark:border-gray-800 ${isOpen ? "opacity-100" : "opacity-0"
+            }`}
+        >
           {children}
         </div>
-      )}
+      </div>
     </div>
   );
 }
-
 function parseBusinessJourneySections(input: string): JourneySection[] {
   if (!input) return [];
 
@@ -361,7 +384,7 @@ function BusinessJourneyPanel({
   };
 
   return (
-    <div className="relative min-h-[220px]">
+    <div className="relative min-h-fit">
       {loading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-white/80 dark:bg-gray-900/80">
           <Loader backgroundClass="bg-transparent" />
@@ -382,7 +405,7 @@ function BusinessJourneyPanel({
         <div className="space-y-3">
           {parseBusinessJourneySections(journey).map((section, idx) => {
             const key = `${section.title}-${idx}`;
-            const isOpen = openSectionKey === null ? idx === 0 : openSectionKey === key;
+            const isOpen = openSectionKey === key;
 
             return (
               <JourneyAccordionSection
@@ -429,7 +452,7 @@ function BusinessJourneyPanel({
         <div className="space-y-3">
           {(journey as BusinessJourneySection[]).map((section, idx) => {
             const key = `${section.title}-${idx}`;
-            const isOpen = openSectionKey === null ? idx === 0 : openSectionKey === key;
+            const isOpen = openSectionKey === key;
 
             return (
               <JourneyAccordionSection
