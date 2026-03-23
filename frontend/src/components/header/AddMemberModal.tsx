@@ -215,7 +215,7 @@ export default function AddMemberModal({
       password,
       marketplaces,
       modules,
-      // role,
+      role,
     };
 
     try {
