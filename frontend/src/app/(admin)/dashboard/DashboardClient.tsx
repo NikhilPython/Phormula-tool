@@ -6577,7 +6577,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                 inventoryAlerts={finalInventoryAlerts}
                                 userData={userData}
                                 convertToDisplayCurrency={convertToDisplayCurrency}
-                                formatDisplayAmount={formatDisplayAmount}
+                                displayCurrency={displayCurrency}
                             />
 
                         </div>

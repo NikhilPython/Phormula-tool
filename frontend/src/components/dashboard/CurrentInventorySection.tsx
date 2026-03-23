@@ -36,7 +36,7 @@ type CurrentInventorySectionProps = {
   inventoryAlerts: Record<string, { alert?: string; alert_type?: string }>;
   userData: any;
   convertToDisplayCurrency: (value: number | null | undefined, from: CurrencyCode) => number;
-  formatDisplayAmount: (value: number | null | undefined) => string;
+  displayCurrency: CurrencyCode;
 };
 
 /* ========= Shared helpers ========= */
@@ -270,6 +270,30 @@ const boldRowsByColValue = (
   }
 };
 
+const getCurrencySymbol = (currency: CurrencyCode) => {
+  switch (currency) {
+    case "USD":
+      return "$";
+    case "GBP":
+      return "£";
+    case "CAD":
+      return "CA$";
+    case "INR":
+      return "₹";
+    default:
+      return "";
+  }
+};
+
+const formatMoneyNumberOnly = (n: number | null | undefined) => {
+  const v = Number(n ?? 0);
+  if (!Number.isFinite(v)) return "—";
+  return v.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
 /* ===================== COMPONENT ===================== */
 
 export default function CurrentInventorySection({
@@ -280,7 +304,7 @@ export default function CurrentInventorySection({
   inventoryAlerts,
   userData,
   convertToDisplayCurrency,
-  formatDisplayAmount,
+  displayCurrency
 }: CurrentInventorySectionProps) {
 
   const displayRegion = useMemo(() => {
@@ -307,6 +331,10 @@ export default function CurrentInventorySection({
     if (region === "CA") return "CAD";
     return "GBP";
   }, [region]);
+
+  const storageHeaderLabel = useMemo(() => {
+    return `Estimated storage cost (${getCurrencySymbol(displayCurrency)})`;
+  }, [displayCurrency]);
 
   // backend month column: "Current Month Units Sold (MonthName)" (dynamic)
   const findMtdKey = useCallback((row: InventoryRow) => {
@@ -540,7 +568,7 @@ export default function CurrentInventorySection({
         // estStorage: estStorage ? formatInt(estStorage) : "—",
         estStorage:
           estStorage
-            ? formatDisplayAmount(
+            ? formatMoneyNumberOnly(
               convertToDisplayCurrency(estStorage, storageSourceCurrency)
             )
             : "—",
@@ -583,7 +611,7 @@ export default function CurrentInventorySection({
         currentInventory: formatInt(agg.currentInventory),
         inventory180Plus: formatInt(agg.inventory180Plus),
         // estStorage: formatInt(agg.estStorage),
-        estStorage: formatDisplayAmount(
+        estStorage: formatMoneyNumberOnly(
           convertToDisplayCurrency(agg.estStorage, storageSourceCurrency)
         ),
         coverageMonths: formatRatio(coverage),
@@ -639,7 +667,7 @@ export default function CurrentInventorySection({
         // estStorage: <span className="font-semibold">{formatInt(estStorage)}</span>,
         estStorage: (
           <span className="font-semibold">
-            {formatDisplayAmount(
+            {formatMoneyNumberOnly(
               convertToDisplayCurrency(estStorage, storageSourceCurrency)
             )}
           </span>
@@ -659,7 +687,6 @@ export default function CurrentInventorySection({
     findSales30Key,
     inventoryAlerts,
     convertToDisplayCurrency,
-    formatDisplayAmount,
     storageSourceCurrency,
   ]);
 
@@ -703,7 +730,7 @@ export default function CurrentInventorySection({
       },
       {
         key: "estStorage",
-        header: "Estimated storage cost",
+        header: storageHeaderLabel,
         width: responsiveWidth,
         cellClassName: "text-center",
         headerClassName: "break-words",
@@ -723,7 +750,7 @@ export default function CurrentInventorySection({
         headerClassName: "break-words",
       },
     ];
-  }, []);
+  }, [storageHeaderLabel]);
 
   return (
     <div
