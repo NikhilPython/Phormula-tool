@@ -349,3 +349,51 @@ export const getCompanyInfoFieldErrors = (
     address_zipcode: fieldErrors.address_zipcode?.[0],
   };
 };
+
+
+
+/* -------------------- RESET PASSWORD -------------------- */
+
+export const resetPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(1, "Password is required")
+      .min(6, "At least 6 characters")
+      .refine((val) => (val.match(/\d/g) || []).length >= 2, {
+        message: "At least 2 numbers",
+      })
+      .refine((val) => (val.match(/[a-zA-Z]/g) || []).length >= 2, {
+        message: "At least 2 alphabets",
+      })
+      .refine((val) => specialCharRegex.test(val), {
+        message: "At least 1 special character",
+      }),
+
+    confirm: z.string().min(1, "Confirm password is required"),
+  })
+  .superRefine((data, ctx) => {
+    if (data.confirm !== data.password) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["confirm"],
+        message: "Passwords do not match",
+      });
+    }
+  });
+
+export type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
+export type ResetPasswordFormErrors = Partial<
+  Record<keyof ResetPasswordFormValues, string>
+>;
+
+export const getResetPasswordFieldErrors = (
+  error: z.ZodError<ResetPasswordFormValues>
+): ResetPasswordFormErrors => {
+  const fieldErrors = error.flatten().fieldErrors;
+
+  return {
+    password: fieldErrors.password?.[0],
+    confirm: fieldErrors.confirm?.[0],
+  };
+};
