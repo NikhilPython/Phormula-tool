@@ -24,8 +24,8 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 load_dotenv()
-db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
-db_url1= os.getenv('DATABASE_ADMIN_URL', 'postgresql://postgres:password@localhost:5432/admin_db')
+db_url = os.getenv('DATABASE_URL')
+db_url1= os.getenv('DATABASE_ADMIN_URL')
 forecast_bp = Blueprint('forecast_bp', __name__)
 
 
@@ -890,630 +890,6 @@ def manual_forecast():
         print(traceback.format_exc())
         return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
 
-
-# @forecast_bp.route('/api/Pnlforecast', methods=['GET','POST'])
-# def Pnlforecast():
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-
-#     try:
-#         payload, user_id, member_id = get_effective_user_id_from_token(token)
-#         country = request.args.get('country')
-#         month = request.args.get('month')
-#         year = request.args.get('year')
-
-#         if not country or not year:
-#             return jsonify({'error': 'Missing required parameters: country or year'}), 400
-
-#         print(f"User ID: {user_id}, Country: {country}, Year: {year}, month: {month}")
-
-#         current_month = datetime.now().strftime("%b").lower()
-
-#         # Load the forecasted sales data
-
-#         forecast_filename = f'forecasts_for_{user_id}_{country}.xlsx'
-#         stored = load_file_from_db(user_id=user_id, country=country, filename=forecast_filename)
-
-#         if not stored:
-#             return jsonify({'error': f'Forecast file for user {user_id} not found in DB'}), 404
-
-#         df = pd.read_excel(BytesIO(stored.data), engine='openpyxl')
-
-
-#         # Normalize column names to lowercase for case-insensitive matching
-#         df.columns = [col.lower() for col in df.columns]
-        
-#         # Ensure required columns exist (after normalizing names)
-#         required_columns = ['sku', 'forecast', 'price_in_gbp', 'month']
-#         missing_columns = [col for col in required_columns if col not in df.columns]
-        
-#         if missing_columns:
-#             # Try to map columns that might be named differently
-#             column_mapping = {
-#                 'price_in_gbp': ['price in gbp', 'price_in_gbp', 'price_gbp', 'price'],
-#                 'forecast': ['forecast', 'forecasted', 'forecast_qty', 'qty'],
-#                 'month': ['date', 'forecast_date', 'period']
-#             }
-            
-#             for req_col in missing_columns[:]:  # Use a copy to avoid modifying during iteration
-#                 for alternative in column_mapping.get(req_col, []):
-#                     if alternative in df.columns:
-#                         df[req_col] = df[alternative]
-#                         missing_columns.remove(req_col)
-#                         print(f"Mapped column {alternative} to {req_col}")
-#                         break
-        
-#         if missing_columns:
-#             return jsonify({'error': f'Missing required columns in forecast file: {missing_columns}'}), 500
-
-#         # Connect to the database
-#         engine = create_engine(db_url)
-#         connection = engine.connect()
-        
-#         # Initialize the columns
-#         df['profit_percentage'] = None
-#         df['avg_sales_price'] = None 
-
-#         # Fetch profit % for each SKU from the database
-#         for sku in df['sku'].unique():  
-#             table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}"
-            
-#             # For PostgreSQL, we should use the text() function from SQLAlchemy to properly prepare statements
-#             # or use parameterized queries to avoid SQL injection and formatting issues
-#             from sqlalchemy import text
-            
-#             # Create a parameterized query
-#             query = text(f"SELECT profit_percentage, net_sales, quantity, product_name FROM {table_name} WHERE sku = :sku LIMIT 1")
-            
-#             try:
-#                 # Execute with parameters
-#                 result = connection.execute(query, {"sku": sku}).fetchone()
-                
-#                 if result:
-#                     profit_percentage, net_sales, quantity, product_name = result
-#                     df.loc[df['sku'] == sku, 'profit_percentage'] = profit_percentage
-#                     avg_sales_price = net_sales / quantity if quantity != 0 else 0
-#                     df.loc[df['sku'] == sku, 'avg_sales_price'] = avg_sales_price
-#                     df.loc[df['sku'] == sku, 'product_name'] = product_name
-                    
-#                 else:
-#                     print(f"⚠ No data found for SKU {sku}, checking merge table...")
-
-#                     # For the merge table query, also use parameterized query
-#                     query_merge = text(f"""
-#                         SELECT profit_percentage, net_sales, quantity, product_name
-#                         FROM skuwisemonthly_{user_id}_{country}
-#                         WHERE sku = :sku
-#                         ORDER BY 
-#                             CAST(year AS INTEGER) DESC,
-#                             CASE LOWER(month)
-#                                 WHEN 'january' THEN 1
-#                                 WHEN 'february' THEN 2
-#                                 WHEN 'march' THEN 3
-#                                 WHEN 'april' THEN 4
-#                                 WHEN 'may' THEN 5
-#                                 WHEN 'june' THEN 6
-#                                 WHEN 'july' THEN 7
-#                                 WHEN 'august' THEN 8
-#                                 WHEN 'september' THEN 9
-#                                 WHEN 'october' THEN 10
-#                                 WHEN 'november' THEN 11
-#                                 WHEN 'december' THEN 12
-#                             END DESC
-#                         LIMIT 1
-#                     """)
-                    
-#                     merge_result = connection.execute(query_merge, {"sku": sku}).fetchone()
-
-#                     if merge_result:
-#                         profit_percentage, net_sales_merge, quantity_merge, product_name_merge = merge_result
-#                         avg_sales_price_merge = net_sales_merge / quantity_merge  if quantity_merge != 0 else 0
-#                         # Fallback profit % if not found
-#                         df.loc[df['sku'] == sku, 'profit_percentage'] = profit_percentage
-#                         df.loc[df['sku'] == sku, 'avg_sales_price'] = avg_sales_price_merge
-#                         df.loc[df['sku'] == sku, 'product_name'] = product_name_merge
-                        
-#                     else:
-#                         print(f"⚠ SKU {sku} not found in merge table either. Assigning defaults.")
-#                         df.loc[df['sku'] == sku, 'profit_percentage'] = 0
-#                         df.loc[df['sku'] == sku, 'avg_sales_price'] = 0
-#             except Exception as e:
-#                 print(f"Error querying database for SKU {sku}: {str(e)}")
-#                 df.loc[df['sku'] == sku, 'profit_percentage'] = 0
-#                 df.loc[df['sku'] == sku, 'avg_sales_price'] = 0
-
-#         # Close the database connection
-#         connection.close()
-
-#         # Ensure profit % column is numeric
-#         df['profit_percentage'] = pd.to_numeric(df['profit_percentage'], errors='coerce')
-#         df['avg_sales_price'] = pd.to_numeric(df['avg_sales_price'], errors='coerce')
-
-#         # Calculate total sales - use avg_sales_price if available, otherwise fall back to price_in_gbp
-#         df['Total_Sales'] = df['forecast'] * df.apply(
-#             lambda row: row['avg_sales_price'] if pd.notnull(row['avg_sales_price']) and row['avg_sales_price'] > 0 
-#             else row['price_in_gbp'], axis=1
-#         )
-
-#         # Calculate profit
-#         df['profit'] = (df['profit_percentage'] / 100) * df['Total_Sales']
-
-#         # Set profit_percentage to 0 for items with no forecast
-#         df.loc[df['forecast'] == 0, 'profit_percentage'] = 0
-
-#         # Ensure the date column is datetime
-#         df['month'] = pd.to_datetime(df['month'], errors='coerce')
-        
-#         # Group by SKU and sort by date to determine forecast month
-#         df = df.sort_values(by=['sku', 'month'])
-#         df['forecast_month'] = df.groupby('sku').cumcount() + 1
-
-#         # Convert numerical month ranking to ordinal (1st, 2nd, 3rd)
-#         ordinal_map = {1: '1st', 2: '2nd', 3: '3rd'}
-#         df['forecast_month'] = df['forecast_month'].map(ordinal_map)
-
-#         product_names = df[['sku', 'product_name']].drop_duplicates(subset='sku')
-
-#         # Create pivot table
-#         df_pivot = df.pivot(index='sku', columns='forecast_month', 
-#                            values=['forecast', 'profit_percentage', 'Total_Sales', 'profit'])
-        
-#         # Flatten the column names
-#         df_pivot.columns = [f'{col[0]}_{col[1]}' for col in df_pivot.columns]
-#         df_pivot.reset_index(inplace=True)
-#         df_pivot = df_pivot.merge(product_names, on='sku', how='left')
-        
-#         # Add summary columns
-#         df_pivot['forecast_sum'] = df_pivot.filter(regex='^forecast_').sum(axis=1, skipna=True)
-#         df_pivot['profit_percentage_sum'] = df_pivot.filter(regex='^profit_percentage_').mean(axis=1, skipna=True)
-#         df_pivot['profit_sum'] = df_pivot.filter(regex='^profit_[^p]').sum(axis=1, skipna=True)  # Avoid matching profit_percentage
-#         df_pivot['Total_Sales_sum'] = df_pivot.filter(regex='^Total_Sales_').sum(axis=1, skipna=True)
-
-#         total_values = df_pivot.select_dtypes(include=['number']).sum()
-
-#         # Handle profit percentage columns separately - use WEIGHTED AVERAGE instead of mean
-#         profit_percentage_columns = [col for col in df_pivot.columns if col.startswith('profit_percentage_')]
-#         sales_columns = [col for col in df_pivot.columns if col.startswith('Total_Sales_')]
-
-#         for i, col in enumerate(profit_percentage_columns):
-#             if col in df_pivot.columns:
-#                 # Get corresponding sales column
-#                 period = col.split('_')[-1]  # Extract '1st', '2nd', '3rd'
-#                 sales_col = f'Total_Sales_{period}'
-                
-#                 if sales_col in df_pivot.columns:
-#                     # Calculate weighted average profit percentage
-#                     total_profit = df_pivot[f'profit_{period}'].sum()
-#                     total_sales = df_pivot[sales_col].sum()
-                    
-#                     if total_sales > 0:
-#                         total_values[col] = (total_profit / total_sales) * 100
-#                     else:
-#                         total_values[col] = 0
-#                 else:
-#                     total_values[col] = 0
-
-#         # Create total row DataFrame
-#         total_row = pd.DataFrame([total_values])
-#         total_row.insert(0, 'sku', 'Total')  # Ensure 'sku' column is in the first position
-#         if 'product_name' in df_pivot.columns:
-#             total_row['product_name'] = 'Total'
-
-#         # Concatenate with the pivot table
-#         df_pivot = pd.concat([df_pivot, total_row], ignore_index=True)
-
-#         # Convert month name to number
-#         months = MONTHS_MAP.get(month.lower(), '1')  # Default to 1 if month not found
-#         try:
-#             months = int(months)
-#             print(f"Converted month: {months} (type: {type(months)})")
-#         except (ValueError, TypeError):
-#             print(f"Error converting month {month} to integer, using default")
-#             months = 1
-
-#         # Convert year to integer
-#         try:
-#             year = int(year)
-#             print(f"Converted year: {year} (type: {type(year)})")
-#         except (ValueError, TypeError):
-#             print(f"Error converting year {year} to integer, using current year")
-#             year = datetime.now().year
-
-#         # Calculate previous months and years for ACOS
-#         prev_months = [(months - i) % 12 if (months - i) % 12 != 0 else 12 for i in range(3)]
-#         prev_years = [year if months - i > 0 else year - 1 for i in range(3)]
-
-#         # Fetch acos values
-#         acos_values = []
-#         for m, y in zip(prev_months, prev_years):
-#             month_name = MONTHS_REVERSE_MAP.get(m, 'january')
-#             record = UploadHistory.query.filter_by(user_id=user_id, country=country, month=month_name, year=str(y)).first()
-#             if record and record.acos is not None:
-#                 try:
-#                     acos_value = float(record.acos)
-#                     print(f"Month: {month_name}, Year: {y}, acos: {acos_value}")
-#                     acos_values.append(acos_value)
-#                 except (ValueError, TypeError):
-#                     print(f"Error converting acos value for {month_name} {y}")
-        
-#         # Fetch Reimbursement vs CM2 Margins values
-#         ReimbursementvsCM2Margins1_values = []
-#         for m, y in zip(prev_months, prev_years):
-#             month_name = MONTHS_REVERSE_MAP.get(m, 'january')
-#             record = UploadHistory.query.filter_by(user_id=user_id, country=country, month=month_name, year=str(y)).first()
-#             if record and record.rembursment_vs_cm2_margins is not None:
-#                 try:
-#                     ReimbursementvsCM2Margins1_value = float(record.rembursment_vs_cm2_margins)
-#                     print(f"Month: {month_name}, Year: {y}, ReimbursementvsCM2Margins1_value: {ReimbursementvsCM2Margins1_value}")
-#                     ReimbursementvsCM2Margins1_values.append(ReimbursementvsCM2Margins1_value)
-#                 except (ValueError, TypeError):
-#                     print(f"Error converting Reimbursement vs CM2 value for {month_name} {y}")
-
-#         # Calculate averages safely
-#         avg_ReimbursementvsCM2Margins1 = sum(ReimbursementvsCM2Margins1_values) / len(ReimbursementvsCM2Margins1_values) if ReimbursementvsCM2Margins1_values else 0
-#         avg_acos = sum(acos_values) / len(acos_values) if acos_values else 0
-
-#         # Calculate previous 5 months and years for platform fee
-#         prev_months_5 = [(months - i) % 12 if (months - i) % 12 != 0 else 12 for i in range(5)]
-#         prev_years_5 = [year if months - i > 0 else year - 1 for i in range(5)]
-
-#         # Fetch platform fee values
-#         platform_fee_values = []
-#         for m, y in zip(prev_months_5, prev_years_5):
-#             month_name = MONTHS_REVERSE_MAP.get(m, 'january')
-#             record = UploadHistory.query.filter_by(user_id=user_id, country=country, month=month_name, year=str(y)).first()
-#             if record and record.platform_fee is not None:
-#                 try:
-#                     platform_fee_value = float(record.platform_fee)
-#                     print(f"Month: {month_name}, Year: {y}, platform_fee: {platform_fee_value}")
-#                     platform_fee_values.append(platform_fee_value)
-#                 except (ValueError, TypeError):
-#                     print(f"Error converting platform fee value for {month_name} {y}")
-
-#         # Calculate average platform fee percentage if needed
-#         if platform_fee_values:
-#             avg_platform_fee_percentage = sum(platform_fee_values) / len(platform_fee_values)
-#             print(f"Average Platform Fee Percentage over last 5 months: {avg_platform_fee_percentage}")
-#         else:
-#             avg_platform_fee_percentage = 0
-#             print("No platform fee values found for the last 5 months.")
-
-#         # Get upload history
-#         # Normalize values for DB query
-#         # Get upload history (handle ongoing month)
-      
-
-#         requested_month = month.lower()
-#         requested_year = int(year)
-
-#         current_month = datetime.now().strftime("%B").lower()
-#         current_year = datetime.now().year
-
-#         # If ongoing month, fallback to previous completed month
-#         if requested_month == current_month and requested_year == current_year:
-#             fallback_month_num = datetime.now().month - 1
-#             fallback_year = requested_year
-
-#             if fallback_month_num == 0:  # January edge case
-#                 fallback_month_num = 12
-#                 fallback_year -= 1
-
-#             fallback_month = MONTHS_REVERSE_MAP[fallback_month_num]
-#             fallback_year = str(fallback_year)
-#         else:
-#             fallback_month = requested_month
-#             fallback_year = str(requested_year)
-
-#         print(f"📌 Using upload_history from {fallback_month} {fallback_year}")
-
-#         upload_history = UploadHistory.query.filter_by(
-#             user_id=user_id,
-#             country=country,
-#             month=fallback_month,
-#             year=fallback_year
-#         ).first()
-
-
-        
-#         if upload_history:
-#             # Get values from upload history, with safe defaults
-#             acos_value = upload_history.acos if upload_history.acos is not None else 0
-#             platform_fee_percentage = upload_history.platform_fee if upload_history.platform_fee is not None else 0
-#             rembursement_fee = upload_history.rembursement_fee if upload_history.rembursement_fee is not None else 0
-#             cm2_profit = upload_history.cm2_profit if upload_history.cm2_profit is not None else 0
-#             rembursment_vs_cm2_margins = upload_history.rembursment_vs_cm2_margins if upload_history.rembursment_vs_cm2_margins is not None else 0
-            
-#             # Get total sales and CM1 profit for each forecast period
-#             try:
-#                 total_sales_1st = df_pivot.loc[df_pivot['sku'] == 'Total', 'Total_Sales_1st'].values[0] if 'Total_Sales_1st' in df_pivot.columns else 0
-#                 print(f"Total Sales 1st: {total_sales_1st}")
-#                 total_sales_2nd = df_pivot.loc[df_pivot['sku'] == 'Total', 'Total_Sales_2nd'].values[0] if 'Total_Sales_2nd' in df_pivot.columns else 0
-#                 total_sales_3rd = df_pivot.loc[df_pivot['sku'] == 'Total', 'Total_Sales_3rd'].values[0] if 'Total_Sales_3rd' in df_pivot.columns else 0
-                
-#                 # Get CM1 profits (gross profit before advertising and platform fees) for each forecast period  
-#                 cm1_profit_1st = df_pivot.loc[df_pivot['sku'] == 'Total', 'profit_1st'].values[0] if 'profit_1st' in df_pivot.columns else 0
-#                 cm1_profit_2nd = df_pivot.loc[df_pivot['sku'] == 'Total', 'profit_2nd'].values[0] if 'profit_2nd' in df_pivot.columns else 0
-#                 cm1_profit_3rd = df_pivot.loc[df_pivot['sku'] == 'Total', 'profit_3rd'].values[0] if 'profit_3rd' in df_pivot.columns else 0
-                
-#             except (IndexError, KeyError):
-#                 total_sales_1st = total_sales_2nd = total_sales_3rd = 0
-#                 cm1_profit_1st = cm1_profit_2nd = cm1_profit_3rd = 0
-
-#             # STEP 1: Calculate TACOS (Total Advertising Cost of Sales) - advertising cost as % of sales
-#             # First, fetch total_sales for the last 3 months to calculate total_sales_sum_3months
-#             historical_total_sales = []
-
-#             for m, y in zip(prev_months, prev_years):
-#                 month_name = MONTHS_REVERSE_MAP.get(m, 'january')
-#                 record = UploadHistory.query.filter_by(user_id=user_id, country=country, month=month_name, year=str(y)).first()
-#                 if record and record.total_sales is not None:
-#                     try:
-#                         total_sales_value = float(record.total_sales)
-#                         print(f"Month: {month_name}, Year: {y}, total_sales: {total_sales_value}")
-#                         historical_total_sales.append(total_sales_value)
-#                     except (ValueError, TypeError):
-#                         print(f"Error converting total_sales value for {month_name} {y}")
-
-#             # Calculate sum of historical total sales
-#             if historical_total_sales:
-#                 total_sales_sum_3months = sum(historical_total_sales)
-                
-#             else:
-#                 total_sales_sum_3months = 0
-#                 print(f"⚠️ No historical total sales data found")
-
-#             # Now fetch advertising total values for the last 3 months
-#             advertising_total_values = []
-
-#             for m, y in zip(prev_months, prev_years):
-#                 month_name = MONTHS_REVERSE_MAP.get(m, 'january')
-#                 record = UploadHistory.query.filter_by(user_id=user_id, country=country, month=month_name, year=str(y)).first()
-#                 if record and record.advertising_total is not None:
-#                     try:
-#                         advertising_total_value = float(record.advertising_total)
-#                         print(f"Month: {month_name}, Year: {y}, advertising_total: {advertising_total_value}")
-#                         advertising_total_values.append(advertising_total_value)
-#                     except (ValueError, TypeError):
-#                         print(f"Error converting advertising_total value for {month_name} {y}")
-
-#             # Calculate sum of 3 months advertising totals
-#             if advertising_total_values:
-#                 advertising_total_sum_3months = sum(advertising_total_values)
-                
-#             else:
-#                 advertising_total_sum_3months = 0
-#                 print(f"⚠️ No historical advertising total data found")
-
-#             # Calculate ACOS values using sum of 3 months advertising total / sum of 3 months total sales
-#             # FIXED: Use abs() to ensure positive values
-#             acos1_value = abs((advertising_total_sum_3months / total_sales_sum_3months) * 100) if total_sales_sum_3months > 0 else 0
-#             acos2_value = abs((advertising_total_sum_3months / total_sales_sum_3months) * 100) if total_sales_sum_3months > 0 else 0
-#             acos3_value = abs((advertising_total_sum_3months / total_sales_sum_3months) * 100) if total_sales_sum_3months > 0 else 0
-
-            
-#             # STEP 2: Calculate Cost of Advertisement (based on ACOS percentage of sales)
-#             # FIXED: Use abs() to ensure positive values
-#             advertising_total1 = abs((total_sales_1st * acos1_value) / 100)
-#             advertising_total2 = abs((total_sales_2nd * acos2_value) / 100)
-#             advertising_total3 = abs((total_sales_3rd * acos3_value) / 100)
-
-            
-
-#             # STEP 3: Calculate Platform Fees 
-#             # FIXED: Use abs() to ensure positive values
-#             current_platform_fee = abs(platform_fee_percentage) if platform_fee_percentage > 0 else abs(avg_platform_fee_percentage)
-
-#             platform_fees1_value = abs(avg_platform_fee_percentage)
-#             platform_fees2_value = abs(avg_platform_fee_percentage)
-#             platform_fees3_value = abs(avg_platform_fee_percentage)
-
-#             # STEP 4: Calculate CM2 Profit = CM1 Profit - Cost of Advertisement - Platform Fees
-#             # CORRECTED FORMULA: Subtract both advertising and platform fees
-#             cm2profit1_value = cm1_profit_1st - advertising_total1 - platform_fees1_value
-#             cm2profit2_value = cm1_profit_2nd - advertising_total2 - platform_fees2_value
-#             cm2profit3_value = cm1_profit_3rd - advertising_total3 - platform_fees3_value
-
-#             # STEP 5: Calculate CM2 Margins (CM2 Profit as percentage of sales)
-#             cm2margin1_value = (cm2profit1_value / total_sales_1st) * 100 if total_sales_1st > 0 else 0
-#             cm2margin2_value = (cm2profit2_value / total_sales_2nd) * 100 if total_sales_2nd > 0 else 0
-#             cm2margin3_value = (cm2profit3_value / total_sales_3rd) * 100 if total_sales_3rd > 0 else 0
-            
-#             # STEP 6: Calculate Net Reimbursement 
-#             # Fetch reimbursement fee values for the last 3 months
-#             reimbursement_fee_values = []
-
-#             for m, y in zip(prev_months, prev_years):
-#                 month_name = MONTHS_REVERSE_MAP.get(m, 'january')
-#                 record = UploadHistory.query.filter_by(user_id=user_id, country=country, month=month_name, year=str(y)).first()
-#                 if record and record.rembursement_fee is not None:
-#                     try:
-#                         reimbursement_fee_value = float(record.rembursement_fee)
-#                         print(f"Month: {month_name}, Year: {y}, reimbursement_fee: {reimbursement_fee_value}")
-#                         reimbursement_fee_values.append(reimbursement_fee_value)
-#                     except (ValueError, TypeError):
-#                         print(f"Error converting reimbursement fee value for {month_name} {y}")
-
-#             # Calculate sum of 3 months reimbursement fees
-#             if reimbursement_fee_values:
-#                 reimbursement_fee_sum_3months = sum(reimbursement_fee_values)
-#                 print(f"✅ Sum of 3 months reimbursement fees: {reimbursement_fee_sum_3months}")
-#             else:
-#                 reimbursement_fee_sum_3months = 0
-#                 print(f"⚠️ No reimbursement fee data found")
-
-#             # Calculate reimbursement percentage from historical data
-#             # FIXED: Use abs() to ensure positive values
-#             reimbursement_percentage = abs((reimbursement_fee_sum_3months / total_sales_sum_3months) * 100) if total_sales_sum_3months > 0 else 0
-            
-
-#             # Calculate Net Reimbursement for each period - FIXED: Use abs() to ensure positive values
-#             NetReimbursement1_value = abs((total_sales_1st * reimbursement_percentage) / 100)
-#             NetReimbursement2_value = abs((total_sales_2nd * reimbursement_percentage) / 100)
-#             NetReimbursement3_value = abs((total_sales_3rd * reimbursement_percentage) / 100)
-
-           
-#             # STEP 7: Calculate Reimbursement vs CM2 Margins (reimbursement as % of CM2 profit)
-#             # FIXED: Use abs() to handle potential negative CM2 profits
-#             ReimbursementvsCM2Margins1_value = (NetReimbursement1_value / abs(cm2profit1_value)) * 100 if abs(cm2profit1_value) > 0 else 0
-#             ReimbursementvsCM2Margins2_value = (NetReimbursement2_value / abs(cm2profit2_value)) * 100 if abs(cm2profit2_value) > 0 else 0
-#             ReimbursementvsCM2Margins3_value = (NetReimbursement3_value / abs(cm2profit3_value)) * 100 if abs(cm2profit3_value) > 0 else 0
-
-           
-
-#             # STEP 8: Calculate Reimbursement vs Sales (reimbursement as % of sales)
-#             # This reports the positive percentage we calculated
-#             Reimbursementvssales1_value = abs(reimbursement_percentage)
-#             Reimbursementvssales2_value = abs(reimbursement_percentage)
-#             Reimbursementvssales3_value = abs(reimbursement_percentage)
-
-           
-#             # Create all the DataFrame rows - FIXED: All values are now positive
-#             platform_fees_rows = pd.DataFrame([
-#                 {'sku': 'Platform_Fees1', 'value': abs(platform_fees1_value)},
-#                 {'sku': 'Platform_Fees2', 'value': abs(platform_fees2_value)},
-#                 {'sku': 'Platform_Fees3', 'value': abs(platform_fees3_value)}
-#             ])
-
-#             advertising_rows = pd.DataFrame([
-#                 {'sku': 'advertising_total1', 'value': abs(advertising_total1)},
-#                 {'sku': 'advertising_total2', 'value': abs(advertising_total2)},
-#                 {'sku': 'advertising_total3', 'value': abs(advertising_total3)}
-#             ])
-
-#             cm2profit_rows = pd.DataFrame([
-#                 {'sku': 'cm2profit1', 'value': cm2profit1_value},  # Keep original sign for CM2 profit
-#                 {'sku': 'cm2profit2', 'value': cm2profit2_value},
-#                 {'sku': 'cm2profit3', 'value': cm2profit3_value}
-#             ])
-
-#             cm2margin_rows = pd.DataFrame([
-#                 {'sku': 'cm2margin1', 'value': cm2margin1_value},  # Keep original sign for margins
-#                 {'sku': 'cm2margin2', 'value': cm2margin2_value},
-#                 {'sku': 'cm2margin3', 'value': cm2margin3_value}
-#             ])
-
-#             NetReimbursement_rows = pd.DataFrame([
-#                 {'sku': 'NetReimbursement1', 'value': abs(NetReimbursement1_value)},
-#                 {'sku': 'NetReimbursement2', 'value': abs(NetReimbursement2_value)},
-#                 {'sku': 'NetReimbursement3', 'value': abs(NetReimbursement3_value)}
-#             ])
-
-#             ReimbursementvsCM2Margins_rows = pd.DataFrame([
-#                 {'sku': 'ReimbursementvsCM2Margins1', 'value': abs(ReimbursementvsCM2Margins1_value)},
-#                 {'sku': 'ReimbursementvsCM2Margins2', 'value': abs(ReimbursementvsCM2Margins2_value)},
-#                 {'sku': 'ReimbursementvsCM2Margins3', 'value': abs(ReimbursementvsCM2Margins3_value)}
-#             ])
-
-#             Reimbursementvssales_rows = pd.DataFrame([
-#                 {'sku': 'Reimbursementvssales1', 'value': abs(Reimbursementvssales1_value)},
-#                 {'sku': 'Reimbursementvssales2', 'value': abs(Reimbursementvssales2_value)},
-#                 {'sku': 'Reimbursementvssales3', 'value': abs(Reimbursementvssales3_value)}
-#             ])
-
-#             acos_rows = pd.DataFrame([
-#                 {'sku': 'acos1', 'value': abs(acos1_value)},
-#                 {'sku': 'acos2', 'value': abs(acos2_value)},
-#                 {'sku': 'acos3', 'value': abs(acos3_value)}
-#             ])
-
-#             # Calculate quarter-end totals
-#             try:
-#                 # Sum up all values - FIXED: Use abs() for costs
-#                 platform_fees_total = abs(platform_fees1_value) + abs(platform_fees2_value) + abs(platform_fees3_value)
-#                 advertising_total = abs(advertising_total1) + abs(advertising_total2) + abs(advertising_total3)
-                
-#                 # Get total sales and CM1 profit totals
-#                 total_sales_sum = df_pivot.loc[df_pivot['sku'] == 'Total', 'Total_Sales_sum'].values[0] if 'Total_Sales_sum' in df_pivot.columns else 0
-#                 cm1_profit_sum = df_pivot.loc[df_pivot['sku'] == 'Total', 'profit_sum'].values[0] if 'profit_sum' in df_pivot.columns else 0
-                
-#                 # Calculate CM2 profit total using corrected formula: CM1 - Advertising - Platform Fees
-#                 cm2profit_total = cm1_profit_sum - advertising_total - platform_fees_total
-#                 cm2margin_total = (cm2profit_total / total_sales_sum) * 100 if total_sales_sum > 0 else 0
-                
-#                 # Calculate TACOS total (advertising cost as % of total sales) - FIXED: Use abs()
-#                 acos_total = abs((advertising_total / total_sales_sum) * 100) if total_sales_sum > 0 else 0
-                
-#                 # Calculate reimbursement totals - FIXED: Use abs()
-#                 NetReimbursement_total = abs(NetReimbursement1_value) + abs(NetReimbursement2_value) + abs(NetReimbursement3_value)
-#                 ReimbursementvsCM2Margins_total = abs((NetReimbursement_total / abs(cm2profit_total)) * 100) if abs(cm2profit_total) > 0 else 0
-#                 Reimbursementvssales_total = abs((NetReimbursement_total / total_sales_sum) * 100) if total_sales_sum > 0 else 0
-                
-                
-#             except Exception as e:
-#                 print(f"Error calculating quarter-end totals: {str(e)}")
-#                 platform_fees_total = advertising_total = cm2profit_total = cm2margin_total = 0
-#                 acos_total = NetReimbursement_total = ReimbursementvsCM2Margins_total = Reimbursementvssales_total = 0
-
-#             # Create quarter-end rows - FIXED: Use abs() for positive values
-#             quarterend_row = pd.DataFrame([
-#                 {'sku': 'platform_fees_total', 'value': abs(platform_fees_total)},
-#                 {'sku': 'advertising_total', 'value': abs(advertising_total)},
-#                 {'sku': 'cm2profit_total', 'value': cm2profit_total},  # Keep original sign
-#                 {'sku': 'cm2margin_total', 'value': cm2margin_total},  # Keep original sign
-#                 {'sku': 'acos_total', 'value': abs(acos_total)},
-#                 {'sku': 'NetReimbursement_total', 'value': abs(NetReimbursement_total)},
-#                 {'sku': 'ReimbursementvsCM2Margins_total', 'value': abs(ReimbursementvsCM2Margins_total)},
-#                 {'sku': 'Reimbursementvssales_total', 'value': abs(Reimbursementvssales_total)}
-#             ])
-
-#             # Get list of columns from the pivot table
-#             columns_list = df_pivot.columns.tolist()
-
-#             # Add missing columns to all DataFrames
-#             additional_dfs = [
-#                 acos_rows, platform_fees_rows, advertising_rows, cm2profit_rows, 
-#                 NetReimbursement_rows, ReimbursementvsCM2Margins_rows, 
-#                 Reimbursementvssales_rows, cm2margin_rows, quarterend_row
-#             ]
-            
-#             for df_add in additional_dfs:
-#                 for col in columns_list:
-#                     if col not in df_add.columns:
-#                         df_add[col] = None  # Add missing columns
-
-#             # Concatenate all DataFrames
-#             final_df = pd.concat([df_pivot] + additional_dfs, ignore_index=True)
-
-#             # Generate output filename
-#             output_filename = f'forecastpnl_{user_id}_{country}_{month}_{year}_table.xlsx'
-
-#             buf = BytesIO()
-#             final_df.to_excel(buf, index=False, engine='openpyxl')
-#             buf.seek(0)
-
-#             save_file_to_db(
-#                 user_id=user_id,
-#                 country=country,
-#                 filename=output_filename,
-#                 file_bytes=buf.getvalue(),
-#                 kind="pnl_forecast",
-#                 month=month.lower() if month else None,
-#                 year=str(year),
-#             )
-
-#             buf.seek(0)
-#             return send_file(
-#                 buf,
-#                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-#                 as_attachment=True,
-#                 download_name=f'PnL_forecast_{country}_{month}_{year}.xlsx'
-#             )
-#         else:
-#             return jsonify({'error': 'No upload history found for specified parameters'}), 404
-
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-#     except Exception as e:
-#         print(f"Error in Pnlforecast: {str(e)}")  # Print error to console
-#         import traceback
-#         traceback.print_exc()  # Print full traceback for debugging
-#         return jsonify({'error': str(e)}), 500
-
 @forecast_bp.route('/api/Pnlforecast', methods=['GET', 'POST'])
 def Pnlforecast():
     auth_header = request.headers.get('Authorization')
@@ -2040,7 +1416,7 @@ def Pnlforecasts():
         if not month or not year:
             return jsonify({'error': 'Missing required parameters: month or year'}), 400
 
-        month = month.lower().strip()
+        month = str(month).strip().lower()
         year = int(year)
 
         global_filename = f'forecastpnl_{user_id}_global_{month}_{year}_table.xlsx'
@@ -2054,16 +1430,26 @@ def Pnlforecasts():
                     query = text("""
                         SELECT conversion_rate
                         FROM currency_conversion
-                        WHERE lower(country) = 'us'
-                          AND lower(month) = :month
-                          AND year = :year
+                        WHERE lower(user_currency) = 'gbp'
+                        AND lower(country) = 'us'
+                        AND lower(selected_currency) = 'usd'
+                        AND lower(month) = :month
+                        AND year = :year
                         LIMIT 1
                     """)
                     result = conn.execute(query, {
                         "month": month.lower(),
                         "year": int(year)
                     }).fetchone()
-                    return float(result[0]) if result and result[0] is not None else 1.0
+
+                    if result and result[0] is not None:
+                        rate = float(result[0])
+                        print(f"✅ GBP -> USD conversion rate used for {month} {year}: {rate}")
+                        return rate
+
+                    print(f"⚠ No GBP -> USD conversion rate found for {month} {year}. Using 1.0")
+                    return 1.0
+
             except Exception as e:
                 print(f"❌ Error fetching conversion rate: {str(e)}")
                 return 1.0
@@ -2075,6 +1461,7 @@ def Pnlforecasts():
                 filename=filename
             )
             if stored:
+                print(f"✅ {country_code.upper()} PnL already exists in DB")
                 return stored
 
             print(f"🔄 Missing {country_code.upper()} PnL file in DB, generating now...")
@@ -2092,7 +1479,6 @@ def Pnlforecasts():
                     print(f"❌ Failed generating {country_code.upper()} PnL: status={status_code}")
                     return None
             else:
-                response_obj = resp
                 status_code = getattr(resp, 'status_code', 200)
                 if status_code != 200:
                     print(f"❌ Failed generating {country_code.upper()} PnL: status={status_code}")
@@ -2103,78 +1489,32 @@ def Pnlforecasts():
                 country=country_code,
                 filename=filename
             )
+
+            if stored:
+                print(f"✅ {country_code.upper()} PnL generated and saved in DB")
+            else:
+                print(f"❌ {country_code.upper()} PnL generation call succeeded but file not found in DB")
+
             return stored
 
         uk_stored = ensure_country_pnl_exists('uk', uk_filename)
         us_stored = ensure_country_pnl_exists('us', us_filename)
-        global_stored = load_file_from_db(user_id=user_id, country='global', filename=global_filename)
 
         uk_exists = uk_stored is not None
         us_exists = us_stored is not None
-        global_exists = global_stored is not None
 
-        print(f"📁 DB File status - UK: {uk_exists}, US: {us_exists}, Global: {global_exists}")
+        print(f"📁 DB File status - UK: {uk_exists}, US: {us_exists}")
 
         if not uk_exists and not us_exists:
             return jsonify({'error': 'No PnL forecast files found for UK or US in DB'}), 404
 
-        def get_db_timestamp(stored_obj):
-            if not stored_obj:
-                return 0
-            for attr in ("updated_at", "modified_at", "created_at", "timestamp"):
-                if hasattr(stored_obj, attr) and getattr(stored_obj, attr) is not None:
-                    try:
-                        return getattr(stored_obj, attr).timestamp()
-                    except Exception:
-                        pass
-            return 0
-
-        uk_ts = get_db_timestamp(uk_stored) if uk_exists else 0
-        us_ts = get_db_timestamp(us_stored) if us_exists else 0
-        global_ts = get_db_timestamp(global_stored) if global_exists else 0
-
-        needs_regeneration = False
-        current_scenario = None
-
-        if uk_exists and us_exists:
-            current_scenario = "both"
-            latest_country_ts = max(uk_ts, us_ts)
-            if (global_ts and latest_country_ts and global_ts < latest_country_ts) or (not global_exists):
-                needs_regeneration = True
-                print("🔄 Both UK and US found - Global needs regeneration")
-            else:
-                print("✅ Global is up-to-date with both countries")
-
-        elif us_exists and not uk_exists:
-            current_scenario = "us_only"
-            if (global_ts and us_ts and global_ts < us_ts) or (not global_exists):
-                needs_regeneration = True
-                print("🔄 Only US found - Global needs regeneration")
-            else:
-                print("✅ Global is up-to-date with US data")
-
-        elif uk_exists and not us_exists:
-            current_scenario = "uk_only"
-            if (global_ts and uk_ts and global_ts < uk_ts) or (not global_exists):
-                needs_regeneration = True
-                print("🔄 Only UK found - Global needs regeneration")
-            else:
-                print("✅ Global is up-to-date with UK data")
-
-        if global_exists and not needs_regeneration:
-            print("✅ Returning existing up-to-date global file from DB")
-            return send_db_file(
-                global_stored,
-                download_name=f'PnL_forecast_global_{month}_{year}.xlsx'
-            )
-
-        print(f"🔄 Regenerating global file for scenario: {current_scenario}")
-
         conversion_rate = get_usd_conversion_rate(month, year)
-        print(f"🔄 Using conversion rate: {conversion_rate}")
+        print(f"🔎 FINAL conversion_rate used for global: {conversion_rate}")
 
-        if current_scenario == "both":
-            print("📊 Creating combined global forecast from UK and US data (DB)")
+        # IMPORTANT: always regenerate global from latest available country files
+        if uk_exists and us_exists:
+            print("📊 Creating combined global forecast from UK and US data")
+
             df_uk_original = pd.read_excel(BytesIO(uk_stored.data), engine='openpyxl')
             df_us_original = pd.read_excel(BytesIO(us_stored.data), engine='openpyxl')
 
@@ -2185,24 +1525,27 @@ def Pnlforecasts():
             df_us['country'] = 'US'
 
             df_uk_converted = convert_uk_to_usd(df_uk, conversion_rate)
+
             df_global = process_combined_forecast_data(df_us, df_uk_converted)
 
-        elif current_scenario == "us_only":
-            print("🇺🇸 Creating global forecast from US data only (DB)")
-            df_global = pd.read_excel(BytesIO(us_stored.data), engine='openpyxl')
+        elif uk_exists and not us_exists:
+            print("🇬🇧 Creating global forecast from UK only and converting GBP -> USD")
 
-        elif current_scenario == "uk_only":
-            print("🇬🇧 Creating global forecast from UK data only (DB) and converting to USD")
             df_uk_original = pd.read_excel(BytesIO(uk_stored.data), engine='openpyxl')
             df_uk = df_uk_original.copy()
             df_uk['country'] = 'UK'
+
             df_global = convert_uk_to_usd(df_uk, conversion_rate)
+
+        elif us_exists and not uk_exists:
+            print("🇺🇸 Creating global forecast from US only")
+            df_global = pd.read_excel(BytesIO(us_stored.data), engine='openpyxl')
 
         else:
             return jsonify({'error': 'Unexpected scenario while generating global PnL'}), 500
 
         if 'country' in df_global.columns:
-            df_global = df_global.drop('country', axis=1)
+            df_global = df_global.drop(columns=['country'])
 
         buf = BytesIO()
         df_global.to_excel(buf, index=False, engine='openpyxl')
@@ -2239,25 +1582,28 @@ def Pnlforecasts():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
-
-
-def convert_uk_to_usd(df_uk, conversion_rate):
-    """Convert UK financial data to USD"""
-    df_converted = df_uk.copy()
     
-    # Define columns to convert (all financial columns)
+
+    
+def convert_uk_to_usd(df_uk, conversion_rate):
+    """
+    Convert UK PnL values from GBP to USD.
+    Multiplies monetary columns by GBP->USD rate.
+    Does NOT convert percentage fields.
+    """
+    df_converted = df_uk.copy()
+    conversion_rate = float(conversion_rate or 1.0)
+
     financial_columns = [
         'Total_Sales_1st', 'Total_Sales_2nd', 'Total_Sales_3rd', 'Total_Sales_sum',
         'profit_1st', 'profit_2nd', 'profit_3rd', 'profit_sum'
     ]
-    
-    # Convert basic financial columns
+
     for col in financial_columns:
         if col in df_converted.columns:
+            df_converted[col] = pd.to_numeric(df_converted[col], errors='coerce').fillna(0)
             df_converted[col] = df_converted[col] * conversion_rate
-    
-    # Convert 'value' column for financial metrics
+
     financial_metrics = [
         'Platform_Fees1', 'Platform_Fees2', 'Platform_Fees3',
         'advertising_total1', 'advertising_total2', 'advertising_total3',
@@ -2266,26 +1612,31 @@ def convert_uk_to_usd(df_uk, conversion_rate):
         'platform_fees_total', 'advertising_total', 'cm2profit_total',
         'NetReimbursement_total'
     ]
-    
-    for metric in financial_metrics:
-        mask = df_converted['sku'] == metric
-        if mask.any():
-            df_converted.loc[mask, 'value'] = df_converted.loc[mask, 'value'] * conversion_rate
-    
-    # Don't convert percentage columns, forecast quantities, etc.
-    print(f"✅ UK data converted to USD using rate: {conversion_rate}")
+
+    if 'sku' in df_converted.columns and 'value' in df_converted.columns:
+        df_converted['sku'] = df_converted['sku'].astype(str).str.strip()
+        df_converted['value'] = pd.to_numeric(df_converted['value'], errors='coerce').fillna(0)
+
+        for metric in financial_metrics:
+            mask = df_converted['sku'] == metric
+            if mask.any():
+                df_converted.loc[mask, 'value'] = df_converted.loc[mask, 'value'] * conversion_rate
+
     return df_converted
 
 
+
 def process_combined_forecast_data(df_us, df_uk_converted):
-    """Process and combine US and converted UK forecast data"""
-    
-    # Combine the dataframes
+    """
+    Combine US PnL + converted UK PnL into one global dataframe.
+    Product rows are grouped by product_name.
+    Financial summary rows are grouped by sku.
+    """
     df_combined = pd.concat([df_us, df_uk_converted], ignore_index=True)
-    
-    # Define financial metrics that need special handling
+
     financial_metrics = [
-        'acos1', 'acos2', 'acos3', 'Platform_Fees1', 'Platform_Fees2', 'Platform_Fees3',
+        'acos1', 'acos2', 'acos3',
+        'Platform_Fees1', 'Platform_Fees2', 'Platform_Fees3',
         'advertising_total1', 'advertising_total2', 'advertising_total3',
         'cm2profit1', 'cm2profit2', 'cm2profit3',
         'NetReimbursement1', 'NetReimbursement2', 'NetReimbursement3',
@@ -2296,43 +1647,37 @@ def process_combined_forecast_data(df_us, df_uk_converted):
         'acos_total', 'NetReimbursement_total', 'ReimbursementvsCM2Margins_total',
         'Reimbursementvssales_total', 'Total'
     ]
-    
-    # Separate product rows from financial metric rows
+
+    df_combined['sku'] = df_combined['sku'].astype(str).str.strip()
+
     product_rows = df_combined[~df_combined['sku'].isin(financial_metrics)].copy()
     financial_rows = df_combined[df_combined['sku'].isin(financial_metrics)].copy()
-    
-    # Process product rows - group by product_name and sum quantities/values
+
     if not product_rows.empty:
-        # Handle missing product names
-        product_rows['product_name'] = product_rows['product_name'].fillna('Unknown')
-        
-        # Define numeric columns to sum
+        if 'product_name' not in product_rows.columns:
+            product_rows['product_name'] = 'Unknown'
+        product_rows['product_name'] = product_rows['product_name'].fillna('Unknown').astype(str)
+
         numeric_cols_to_sum = [
             'forecast_1st', 'forecast_2nd', 'forecast_3rd', 'forecast_sum',
             'Total_Sales_1st', 'Total_Sales_2nd', 'Total_Sales_3rd', 'Total_Sales_sum',
             'profit_1st', 'profit_2nd', 'profit_3rd', 'profit_sum'
         ]
-        
-        # Group products by product_name
-        agg_dict = {'sku': 'first'}  # Take first SKU
+
+        agg_dict = {'sku': 'first'}
+
         for col in numeric_cols_to_sum:
             if col in product_rows.columns:
+                product_rows[col] = pd.to_numeric(product_rows[col], errors='coerce').fillna(0)
                 agg_dict[col] = 'sum'
-        
-        # Add other columns
-        other_cols = ['value', 'country']
-        for col in other_cols:
-            if col in product_rows.columns:
-                agg_dict[col] = 'first'
-        
-        grouped_products = product_rows.groupby('product_name').agg(agg_dict).reset_index()
-        
-        # Recalculate profit percentages after grouping
+
+        grouped_products = product_rows.groupby('product_name', as_index=False).agg(agg_dict)
+
         for period in ['1st', '2nd', '3rd', 'sum']:
             profit_col = f'profit_{period}'
             sales_col = f'Total_Sales_{period}'
             percentage_col = f'profit_percentage_{period}'
-            
+
             if profit_col in grouped_products.columns and sales_col in grouped_products.columns:
                 grouped_products[percentage_col] = np.where(
                     grouped_products[sales_col] != 0,
@@ -2341,34 +1686,26 @@ def process_combined_forecast_data(df_us, df_uk_converted):
                 )
     else:
         grouped_products = pd.DataFrame()
-    
-    # Process financial metrics - sum values for same metrics
+
     grouped_financial_list = []
-    
+
     if not financial_rows.empty:
+        numeric_cols = financial_rows.select_dtypes(include=[np.number]).columns.tolist()
+
         for sku in financial_rows['sku'].unique():
-            sku_data = financial_rows[financial_rows['sku'] == sku]
-            
-            # Create aggregated row
+            sku_data = financial_rows[financial_rows['sku'] == sku].copy()
             result_row = sku_data.iloc[0].copy()
-            
-            # Sum financial values
-            if 'value' in sku_data.columns:
-                result_row['value'] = sku_data['value'].sum()
-            
-            # Sum other numeric columns
-            numeric_cols = sku_data.select_dtypes(include=[np.number]).columns
+
             for col in numeric_cols:
-                if col != 'value':  # Already handled above
-                    result_row[col] = sku_data[col].sum()
-            
+                sku_data[col] = pd.to_numeric(sku_data[col], errors='coerce').fillna(0)
+                result_row[col] = sku_data[col].sum()
+
             grouped_financial_list.append(result_row)
-        
+
         grouped_financial = pd.DataFrame(grouped_financial_list)
     else:
         grouped_financial = pd.DataFrame()
-    
-    # Combine all results
+
     if not grouped_products.empty and not grouped_financial.empty:
         result_df = pd.concat([grouped_products, grouped_financial], ignore_index=True)
     elif not grouped_products.empty:
@@ -2377,106 +1714,87 @@ def process_combined_forecast_data(df_us, df_uk_converted):
         result_df = grouped_financial
     else:
         result_df = pd.DataFrame()
-    
-    # Recalculate dependent metrics (ACOS, margins, reimbursement ratios)
+
     if not result_df.empty:
         result_df = recalculate_dependent_metrics(result_df)
-    
+
     return result_df
 
-
 def recalculate_dependent_metrics(df):
-    """Recalculate percentage-based metrics after aggregation"""
-    
-    # Get total sales for calculations
+    """
+    Recalculate ACOS, CM2 margins, reimbursement percentages
+    after global aggregation.
+    """
     total_row = df[df['sku'] == 'Total']
     if total_row.empty:
         print("⚠️ No 'Total' row found for recalculation")
         return df
-    
-    total_sales_1st = total_row['Total_Sales_1st'].iloc[0] if 'Total_Sales_1st' in total_row.columns else 0
-    total_sales_2nd = total_row['Total_Sales_2nd'].iloc[0] if 'Total_Sales_2nd' in total_row.columns else 0
-    total_sales_3rd = total_row['Total_Sales_3rd'].iloc[0] if 'Total_Sales_3rd' in total_row.columns else 0
-    total_sales_sum = total_row['Total_Sales_sum'].iloc[0] if 'Total_Sales_sum' in total_row.columns else 0
-    
-    # Recalculate ACOS percentages
+
+    total_sales_1st = float(total_row['Total_Sales_1st'].iloc[0]) if 'Total_Sales_1st' in total_row.columns else 0
+    total_sales_2nd = float(total_row['Total_Sales_2nd'].iloc[0]) if 'Total_Sales_2nd' in total_row.columns else 0
+    total_sales_3rd = float(total_row['Total_Sales_3rd'].iloc[0]) if 'Total_Sales_3rd' in total_row.columns else 0
+    total_sales_sum = float(total_row['Total_Sales_sum'].iloc[0]) if 'Total_Sales_sum' in total_row.columns else 0
+
     for period, sales in [('1', total_sales_1st), ('2', total_sales_2nd), ('3', total_sales_3rd)]:
         platform_fees_mask = df['sku'] == f'Platform_Fees{period}'
         acos_mask = df['sku'] == f'acos{period}'
-        
+
         if platform_fees_mask.any() and acos_mask.any() and sales > 0:
-            platform_fees_value = df.loc[platform_fees_mask, 'value'].iloc[0]
-            acos_percentage = (platform_fees_value / sales) * 100
-            df.loc[acos_mask, 'value'] = acos_percentage
-    
-    # Recalculate total ACOS
+            platform_fees_value = float(df.loc[platform_fees_mask, 'value'].iloc[0])
+            df.loc[acos_mask, 'value'] = (platform_fees_value / sales) * 100
+
     total_platform_fees_mask = df['sku'] == 'platform_fees_total'
     acos_total_mask = df['sku'] == 'acos_total'
     if total_platform_fees_mask.any() and acos_total_mask.any() and total_sales_sum > 0:
-        total_platform_fees = df.loc[total_platform_fees_mask, 'value'].iloc[0]
-        acos_total_percentage = (total_platform_fees / total_sales_sum) * 100
-        df.loc[acos_total_mask, 'value'] = acos_total_percentage
-    
-    # Recalculate CM2 margins
+        total_platform_fees = float(df.loc[total_platform_fees_mask, 'value'].iloc[0])
+        df.loc[acos_total_mask, 'value'] = (total_platform_fees / total_sales_sum) * 100
+
     for period, sales in [('1', total_sales_1st), ('2', total_sales_2nd), ('3', total_sales_3rd)]:
         cm2profit_mask = df['sku'] == f'cm2profit{period}'
         cm2margin_mask = df['sku'] == f'cm2margin{period}'
-        
+
         if cm2profit_mask.any() and cm2margin_mask.any() and sales > 0:
-            cm2profit_value = df.loc[cm2profit_mask, 'value'].iloc[0]
-            cm2margin_percentage = (cm2profit_value / sales) * 100
-            df.loc[cm2margin_mask, 'value'] = cm2margin_percentage
-    
-    # Recalculate total CM2 margin
+            cm2profit_value = float(df.loc[cm2profit_mask, 'value'].iloc[0])
+            df.loc[cm2margin_mask, 'value'] = (cm2profit_value / sales) * 100
+
     total_cm2profit_mask = df['sku'] == 'cm2profit_total'
     cm2margin_total_mask = df['sku'] == 'cm2margin_total'
     if total_cm2profit_mask.any() and cm2margin_total_mask.any() and total_sales_sum > 0:
-        total_cm2profit = df.loc[total_cm2profit_mask, 'value'].iloc[0]
-        cm2margin_total_percentage = (total_cm2profit / total_sales_sum) * 100
-        df.loc[cm2margin_total_mask, 'value'] = cm2margin_total_percentage
-    
-    # Recalculate Reimbursement ratios
+        total_cm2profit = float(df.loc[total_cm2profit_mask, 'value'].iloc[0])
+        df.loc[cm2margin_total_mask, 'value'] = (total_cm2profit / total_sales_sum) * 100
+
     for period, sales in [('1', total_sales_1st), ('2', total_sales_2nd), ('3', total_sales_3rd)]:
         net_reimb_mask = df['sku'] == f'NetReimbursement{period}'
         reimb_vs_sales_mask = df['sku'] == f'Reimbursementvssales{period}'
         reimb_vs_cm2_mask = df['sku'] == f'ReimbursementvsCM2Margins{period}'
         cm2profit_mask = df['sku'] == f'cm2profit{period}'
-        
+
         if net_reimb_mask.any():
-            net_reimb_value = df.loc[net_reimb_mask, 'value'].iloc[0]
-            
-            # Reimbursement vs Sales
+            net_reimb_value = float(df.loc[net_reimb_mask, 'value'].iloc[0])
+
             if reimb_vs_sales_mask.any() and sales > 0:
-                reimb_vs_sales_percentage = (net_reimb_value / sales) * 100
-                df.loc[reimb_vs_sales_mask, 'value'] = reimb_vs_sales_percentage
-            
-            # Reimbursement vs CM2 Margins
+                df.loc[reimb_vs_sales_mask, 'value'] = (net_reimb_value / sales) * 100
+
             if reimb_vs_cm2_mask.any() and cm2profit_mask.any():
-                cm2profit_value = df.loc[cm2profit_mask, 'value'].iloc[0]
+                cm2profit_value = float(df.loc[cm2profit_mask, 'value'].iloc[0])
                 if cm2profit_value != 0:
-                    reimb_vs_cm2_percentage = (net_reimb_value / cm2profit_value) * 100
-                    df.loc[reimb_vs_cm2_mask, 'value'] = reimb_vs_cm2_percentage
-    
-    # Recalculate total reimbursement ratios
+                    df.loc[reimb_vs_cm2_mask, 'value'] = (net_reimb_value / cm2profit_value) * 100
+
     total_net_reimb_mask = df['sku'] == 'NetReimbursement_total'
     total_reimb_vs_sales_mask = df['sku'] == 'Reimbursementvssales_total'
     total_reimb_vs_cm2_mask = df['sku'] == 'ReimbursementvsCM2Margins_total'
-    
+
     if total_net_reimb_mask.any():
-        total_net_reimb = df.loc[total_net_reimb_mask, 'value'].iloc[0]
-        
-        # Total Reimbursement vs Sales
+        total_net_reimb = float(df.loc[total_net_reimb_mask, 'value'].iloc[0])
+
         if total_reimb_vs_sales_mask.any() and total_sales_sum > 0:
-            total_reimb_vs_sales = (total_net_reimb / total_sales_sum) * 100
-            df.loc[total_reimb_vs_sales_mask, 'value'] = total_reimb_vs_sales
-        
-        # Total Reimbursement vs CM2 Margins
+            df.loc[total_reimb_vs_sales_mask, 'value'] = (total_net_reimb / total_sales_sum) * 100
+
         if total_reimb_vs_cm2_mask.any() and total_cm2profit_mask.any():
-            total_cm2profit = df.loc[total_cm2profit_mask, 'value'].iloc[0]
+            total_cm2profit = float(df.loc[total_cm2profit_mask, 'value'].iloc[0])
             if total_cm2profit != 0:
-                total_reimb_vs_cm2 = (total_net_reimb / total_cm2profit) * 100
-                df.loc[total_reimb_vs_cm2_mask, 'value'] = total_reimb_vs_cm2
-    
+                df.loc[total_reimb_vs_cm2_mask, 'value'] = (total_net_reimb / total_cm2profit) * 100
+
     return df
 
 
