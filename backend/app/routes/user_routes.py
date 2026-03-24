@@ -261,22 +261,30 @@ def forgot_password():
 
 @user_bp.route('/reset_password/<token>', methods=['POST'])
 def reset_password(token):
-    data = request.get_json()
+    data = request.get_json() or {}
     password = data.get('password')
-    user_id = decode_token(token)
 
-    if not user_id:
-        return jsonify({'success': False, 'message': 'Invalid or expired token.'})
+    if not password:
+        return jsonify({'success': False, 'message': 'Password is required.'}), 400
 
-    user = User.query.get(user_id)
-    if user:
-        hashed_password = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
-        user.password = hashed_password
-        user.is_verified = True
-        db.session.commit()
-        return jsonify({'success': True, 'message': 'Password reset successfully.'})
-    else:
-        return jsonify({'success': False, 'message': 'User not found.'})
+    decoded_data = decode_token(token)
+    if not decoded_data:
+        return jsonify({'success': False, 'message': 'Invalid or expired token.'}), 400
+
+    user_id = decoded_data.get('user_id')
+    if user_id is None:
+        return jsonify({'success': False, 'message': 'Invalid token payload.'}), 400
+
+    user = db.session.get(User, user_id)   # preferred in newer SQLAlchemy
+    if user is None:
+        return jsonify({'success': False, 'message': 'User not found.'}), 404
+
+    user.password = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
+    user.is_verified = True
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': 'Password reset successfully.'}), 200
+
 
 
 @user_bp.route('/google_register', methods=['POST'])
