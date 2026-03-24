@@ -96,7 +96,6 @@ def passcountryfromprofiles():
     return jsonify({'countries': global_countries}), 200
 
 
-
 @dashboard_bp.route('/getDispatchfile', methods=['GET'])
 def getDispatchfile():
     auth_header = request.headers.get('Authorization')
@@ -107,6 +106,7 @@ def getDispatchfile():
 
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
+
         country = request.args.get('country')
         month = request.args.get('month')
         year = request.args.get('year')
@@ -114,14 +114,13 @@ def getDispatchfile():
         if not country or not month or not year:
             return jsonify({'error': 'Missing country, month, or year parameters'}), 400
 
-        # ----- month resolution (your existing logic) -----
-        requested_month = month.lower()
+        requested_month = month.strip().lower()
         requested_year = int(year)
 
         current_month = datetime.now().strftime("%B").lower()
         current_year = datetime.now().year
 
-        # Dispatch/forecast file naming uses ongoing month if current year
+        # Existing naming behavior preserved
         effective_month = current_month if requested_year == current_year else requested_month
         short_month = effective_month[:3].lower()
 
@@ -157,36 +156,88 @@ def getDispatchfile():
 
             filename, content_type, data_bytes = row[0], row[1], row[2]
 
-            # bytea often comes back as memoryview in psycopg
             if isinstance(data_bytes, memoryview):
                 data_bytes = data_bytes.tobytes()
 
             return filename, content_type, data_bytes
 
-        # ---------- GLOBAL: merge UK + US ----------
-        if country.lower() == 'global':
-            uk_row = fetch_latest_stored_file(user_id, "uk", short_month)
-            us_row = fetch_latest_stored_file(user_id, "us", short_month)
+        def normalize_col_name(col) -> str:
+            cleaned = str(col or '').replace('\u00A0', ' ')
+            cleaned = ' '.join(cleaned.split()).strip()
 
-            if not uk_row and not us_row:
-                return jsonify({'error': 'No UK or US dispatch files found in DB'}), 404
+            lower = cleaned.lower()
 
-            frames = []
-            for r in (uk_row, us_row):
-                if not r:
-                    continue
-                _, _, data_bytes = r
-                if not data_bytes:
-                    continue
-                frames.append(pd.read_excel(BytesIO(data_bytes)))
+            header_map = {
+                'sku': 'sku',
+                'product name': 'Product Name',
+                'inventory at month end': 'Inventory at Month End',
+                'projected sales total': 'Projected Sales Total',
+                'dispatch': 'Dispatch',
+                'current inventory + dispatch': 'Current Inventory + Dispatch',
+                'inventory coverage ratio before dispatch': 'Inventory Coverage Ratio Before Dispatch',
+            }
 
-            if not frames:
-                return jsonify({'error': 'No readable UK/US dispatch files found in DB'}), 404
+            return header_map.get(lower, cleaned)
 
-            combined_df = pd.concat(frames, ignore_index=True)
+        def find_header_row(excel_rows):
+            """
+            Finds the actual header row in sheet data.
+            Looks for Product Name plus at least one dispatch-related column.
+            """
+            for idx, row in enumerate(excel_rows):
+                normalized = [normalize_col_name(cell) for cell in row]
+                if (
+                    'Product Name' in normalized and
+                    (
+                        'Dispatch' in normalized or
+                        'Inventory at Month End' in normalized or
+                        'sku' in normalized
+                    )
+                ):
+                    return idx
+            return -1
 
+        def read_dispatch_dataframe(data_bytes: bytes) -> pd.DataFrame:
+            """
+            Reads uploaded workbook robustly:
+            - prefers sheet named 'Dispatch'
+            - detects actual header row dynamically
+            """
+            excel_file = pd.ExcelFile(BytesIO(data_bytes))
+            sheet_name = next(
+                (s for s in excel_file.sheet_names if s.strip().lower() == 'dispatch'),
+                excel_file.sheet_names[0]
+            )
+
+            preview_df = pd.read_excel(
+                BytesIO(data_bytes),
+                sheet_name=sheet_name,
+                header=None
+            )
+
+            excel_rows = preview_df.fillna('').values.tolist()
+            header_row_index = find_header_row(excel_rows)
+
+            if header_row_index == -1:
+                raise ValueError(
+                    f"Could not find dispatch header row in sheet '{sheet_name}'."
+                )
+
+            df = pd.read_excel(
+                BytesIO(data_bytes),
+                sheet_name=sheet_name,
+                header=header_row_index
+            )
+
+            df.columns = [normalize_col_name(c) for c in df.columns]
+            df = df.loc[:, [str(c).strip() != '' and not str(c).startswith('Unnamed:') for c in df.columns]]
+
+            return df
+
+        def clean_dispatch_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             expected_columns = [
                 'Product Name',
+                'sku',
                 'Inventory at Month End',
                 'Projected Sales Total',
                 'Dispatch',
@@ -194,25 +245,45 @@ def getDispatchfile():
                 'Inventory Coverage Ratio Before Dispatch'
             ]
 
-            have = [c for c in expected_columns if c in combined_df.columns]
-            if 'Product Name' not in have:
-                return jsonify({'error': "'Product Name' column missing in dispatch files"}), 400
+            available_columns = [c for c in expected_columns if c in df.columns]
 
-            combined_df = combined_df[have].copy()
-            combined_df['Product Name'] = combined_df['Product Name'].astype(str)
-            combined_df = combined_df[combined_df['Product Name'].str.lower() != 'total']
+            if 'Product Name' not in available_columns:
+                raise ValueError(f"'Product Name' column missing. Found columns: {list(df.columns)}")
 
-            # numeric coercion
-            for col in [
+            cleaned = df[available_columns].copy()
+            cleaned['Product Name'] = cleaned['Product Name'].astype(str).str.strip()
+
+            if 'sku' in cleaned.columns:
+                cleaned['sku'] = cleaned['sku'].astype(str).str.strip()
+
+            cleaned = cleaned[
+                cleaned['Product Name'].notna() &
+                (cleaned['Product Name'] != '') &
+                (cleaned['Product Name'].str.lower() != 'nan') &
+                (cleaned['Product Name'].str.lower() != 'total')
+            ].copy()
+
+            numeric_cols = [
                 'Inventory at Month End',
                 'Projected Sales Total',
                 'Dispatch',
-                'Current Inventory + Dispatch'
-            ]:
-                if col in combined_df.columns:
-                    combined_df[col] = pd.to_numeric(combined_df[col], errors='coerce').fillna(0)
+                'Current Inventory + Dispatch',
+                'Inventory Coverage Ratio Before Dispatch'
+            ]
 
-            # sum metrics by product
+            for col in numeric_cols:
+                if col in cleaned.columns:
+                    cleaned[col] = pd.to_numeric(cleaned[col], errors='coerce').fillna(0)
+
+            return cleaned
+
+        def build_global_dispatch_file(frames: list[pd.DataFrame]) -> BytesIO:
+            combined_df = pd.concat(frames, ignore_index=True)
+
+            group_keys = ['Product Name']
+            if 'sku' in combined_df.columns:
+                group_keys.append('sku')
+
             sum_cols = [
                 'Inventory at Month End',
                 'Projected Sales Total',
@@ -221,54 +292,128 @@ def getDispatchfile():
             ]
             agg_spec = {c: 'sum' for c in sum_cols if c in combined_df.columns}
 
-            grouped = (
-                combined_df.groupby('Product Name', as_index=False).agg(agg_spec)
-                if agg_spec else combined_df[['Product Name']].drop_duplicates()
-            )
+            if agg_spec:
+                grouped = combined_df.groupby(group_keys, as_index=False).agg(agg_spec)
+            else:
+                grouped = combined_df[group_keys].drop_duplicates()
 
-            # weighted avg coverage ratio (weighted by Inventory at Month End)
             if (
                 'Inventory Coverage Ratio Before Dispatch' in combined_df.columns and
                 'Inventory at Month End' in combined_df.columns
             ):
-                def weighted_avg(df):
-                    denom = df['Inventory at Month End'].sum()
+                def weighted_avg(group):
+                    denom = group['Inventory at Month End'].sum()
                     if denom <= 0:
                         return 0
-                    ratio_num = pd.to_numeric(
-                        df['Inventory Coverage Ratio Before Dispatch'],
-                        errors='coerce'
-                    ).fillna(0)
-                    return (ratio_num * df['Inventory at Month End']).sum() / denom
+                    return (
+                        group['Inventory Coverage Ratio Before Dispatch'] *
+                        group['Inventory at Month End']
+                    ).sum() / denom
 
                 ratio_df = (
-                    combined_df.groupby('Product Name', as_index=False)
+                    combined_df.groupby(group_keys)
                     .apply(weighted_avg)
-                    .rename(columns={None: 'Inventory Coverage Ratio Before Dispatch'})
+                    .reset_index(name='Inventory Coverage Ratio Before Dispatch')
                 )
 
-                final_df = pd.merge(grouped, ratio_df, on='Product Name', how='left')
-                final_df['Inventory Coverage Ratio Before Dispatch'] = final_df[
-                    'Inventory Coverage Ratio Before Dispatch'
-                ].apply(lambda x: "-" if pd.isna(x) or x == 0 else round(float(x), 2))
+                final_df = pd.merge(grouped, ratio_df, on=group_keys, how='left')
             else:
                 final_df = grouped.copy()
 
-            # total row
-            total_row = {'Product Name': 'Total'}
-            for c in sum_cols:
-                if c in final_df.columns:
-                    total_row[c] = float(final_df[c].sum())
-            if 'Inventory Coverage Ratio Before Dispatch' in final_df.columns:
-                total_row['Inventory Coverage Ratio Before Dispatch'] = ''
+            ordered_cols = [
+                'Product Name',
+                'sku',
+                'Inventory at Month End',
+                'Projected Sales Total',
+                'Dispatch',
+                'Current Inventory + Dispatch',
+                'Inventory Coverage Ratio Before Dispatch'
+            ]
+            final_df = final_df[[c for c in ordered_cols if c in final_df.columns]]
+
+            total_row = {}
+            for col in final_df.columns:
+                if col == 'Product Name':
+                    total_row[col] = 'Total'
+                elif col == 'sku':
+                    total_row[col] = ''
+                elif col in [
+                    'Inventory at Month End',
+                    'Projected Sales Total',
+                    'Dispatch',
+                    'Current Inventory + Dispatch'
+                ]:
+                    total_row[col] = float(final_df[col].sum()) if col in final_df.columns else 0
+                elif col == 'Inventory Coverage Ratio Before Dispatch':
+                    total_row[col] = ''
+                else:
+                    total_row[col] = ''
 
             final_df = pd.concat([final_df, pd.DataFrame([total_row])], ignore_index=True)
 
-            # write excel to memory
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 final_df.to_excel(writer, index=False, sheet_name='Dispatch')
+
+                workbook = writer.book
+                worksheet = writer.sheets['Dispatch']
+
+                number_format = workbook.add_format({'num_format': '#,##0.##'})
+                header_format = workbook.add_format({
+                    'bold': True,
+                    'align': 'center',
+                    'valign': 'vcenter'
+                })
+
+                for col_idx, col_name in enumerate(final_df.columns):
+                    worksheet.write(0, col_idx, col_name, header_format)
+
+                    if col_name in [
+                        'Inventory at Month End',
+                        'Projected Sales Total',
+                        'Dispatch',
+                        'Current Inventory + Dispatch',
+                        'Inventory Coverage Ratio Before Dispatch'
+                    ]:
+                        worksheet.set_column(col_idx, col_idx, 22, number_format)
+                    elif col_name == 'Product Name':
+                        worksheet.set_column(col_idx, col_idx, 40)
+                    elif col_name == 'sku':
+                        worksheet.set_column(col_idx, col_idx, 20)
+                    else:
+                        worksheet.set_column(col_idx, col_idx, 18)
+
             output.seek(0)
+            return output
+
+        # ---------- GLOBAL ----------
+        if country.lower() == 'global':
+            uk_row = fetch_latest_stored_file(user_id, 'uk', short_month)
+            us_row = fetch_latest_stored_file(user_id, 'us', short_month)
+
+            if not uk_row and not us_row:
+                return jsonify({'error': 'No UK or US forecast files found in DB'}), 404
+
+            frames = []
+
+            for row in (uk_row, us_row):
+                if not row:
+                    continue
+
+                _, _, data_bytes = row
+                if not data_bytes:
+                    continue
+
+                df = read_dispatch_dataframe(data_bytes)
+                df = clean_dispatch_dataframe(df)
+
+                if not df.empty:
+                    frames.append(df)
+
+            if not frames:
+                return jsonify({'error': 'No readable UK/US dispatch data found in DB'}), 404
+
+            output = build_global_dispatch_file(frames)
 
             return send_file(
                 output,
@@ -285,6 +430,7 @@ def getDispatchfile():
             }), 404
 
         filename, content_type, data_bytes = row
+
         if not data_bytes:
             return jsonify({'error': 'Stored file is empty/corrupt'}), 500
 
@@ -299,11 +445,11 @@ def getDispatchfile():
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-
-
+    
 
 @dashboard_bp.route('/getDispatchfile2', methods=['GET'])
 def getDispatchfile2():
@@ -441,9 +587,7 @@ def PO_generated():
     from sqlalchemy import create_engine, text
     from datetime import datetime
 
-    # ---------------- AUTH ----------------
     auth_header = request.headers.get('Authorization')
-
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token missing'}), 401
 
@@ -456,8 +600,6 @@ def PO_generated():
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
 
-    # ---------------- INPUT ----------------
-    # Support both form-data and query params
     month = request.form.get('month') or request.args.get('month')
     year = request.form.get('year') or request.args.get('year')
     country = request.form.get('country') or request.args.get('country')
@@ -466,9 +608,9 @@ def PO_generated():
         return jsonify({'error': 'Month, year and country required'}), 400
 
     try:
-        month_clean = month.strip().title()          # march -> March
+        month_clean = month.strip().title()
         month_name = datetime.strptime(month_clean, "%B").strftime("%B")
-        month_db = month_name.lower()               # store as lowercase in DB
+        month_db = month_name.lower()
         year_int = int(year)
         year_db = str(year_int)
         country_db = country.strip().lower()
@@ -477,21 +619,20 @@ def PO_generated():
 
     engine = create_engine(db_url)
 
-    # ---------------- FETCH INVENTORY FORECAST ----------------
-    query = text("""
+    forecast_query = text("""
         SELECT filename, data
         FROM public.stored_files
         WHERE user_id = :user_id
-          AND country = :country
+          AND LOWER(country) = LOWER(:country)
           AND kind = 'inventory_forecast'
-          AND month = :month
+          AND LOWER(month) = LOWER(:month)
           AND year = :year
         ORDER BY id DESC
         LIMIT 1
     """)
 
     with engine.connect() as conn:
-        row = conn.execute(query, {
+        row = conn.execute(forecast_query, {
             "user_id": user_id,
             "country": country_db,
             "month": month_db,
@@ -501,7 +642,7 @@ def PO_generated():
     if not row:
         return jsonify({'error': 'Inventory forecast not found'}), 404
 
-    filename_existing, data_bytes = row
+    _, data_bytes = row
 
     if isinstance(data_bytes, memoryview):
         data_bytes = data_bytes.tobytes()
@@ -511,7 +652,7 @@ def PO_generated():
     except Exception as e:
         return jsonify({'error': f'Unable to read Dispatch sheet: {str(e)}'}), 400
 
-    inventory_df.columns = inventory_df.columns.str.strip()
+    inventory_df.columns = [str(c).strip() for c in inventory_df.columns]
 
     if 'sku' not in inventory_df.columns or 'Dispatch' not in inventory_df.columns:
         return jsonify({
@@ -519,16 +660,21 @@ def PO_generated():
         }), 400
 
     inventory_df['sku'] = inventory_df['sku'].astype(str).str.strip()
-    inventory_df['Dispatch'] = pd.to_numeric(
-        inventory_df['Dispatch'], errors='coerce'
-    ).fillna(0)
+    inventory_df['Dispatch'] = pd.to_numeric(inventory_df['Dispatch'], errors='coerce').fillna(0)
 
-    # Remove total rows from forecast
+    if 'Product Name' not in inventory_df.columns:
+        inventory_df['Product Name'] = ''
+
+    inventory_df['Product Name'] = inventory_df['Product Name'].astype(str).str.strip()
+
     inventory_df = inventory_df[
         ~inventory_df['sku'].astype(str).str.lower().str.contains('total', na=False)
-    ]
+    ].copy()
 
-    # ---------------- SKU TABLE ----------------
+    inventory_df = inventory_df[
+        inventory_df['sku'].notna() & (inventory_df['sku'] != '')
+    ].copy()
+
     sku_table = f"sku_{user_id}_data_table"
 
     try:
@@ -537,25 +683,24 @@ def PO_generated():
         return jsonify({'error': f"{sku_table} not found"}), 404
 
     sku_column = f"sku_{country_db}"
-
     if sku_column not in sku_df.columns:
         return jsonify({'error': f"{sku_column} column missing"}), 400
 
-    sku_df.rename(columns={sku_column: "sku"}, inplace=True)
+    sku_df = sku_df.copy()
+    sku_df.rename(columns={sku_column: 'sku'}, inplace=True)
     sku_df['sku'] = sku_df['sku'].astype(str).str.strip()
 
-    # Safe numeric conversion
     for col in ['local_stock', 'in_transit_units', 'price']:
         if col in sku_df.columns:
             sku_df[col] = pd.to_numeric(sku_df[col], errors='coerce').fillna(0)
         else:
             sku_df[col] = 0
 
-    # Ensure product_name exists
     if 'product_name' not in sku_df.columns:
         sku_df['product_name'] = ''
 
-    # ---------------- MERGE ----------------
+    sku_df['product_name'] = sku_df['product_name'].fillna('').astype(str).str.strip()
+
     merged_df = inventory_df.merge(
         sku_df[['sku', 'product_name', 'price', 'local_stock', 'in_transit_units']],
         on='sku',
@@ -563,19 +708,15 @@ def PO_generated():
     )
 
     merged_df.rename(columns={
-        'product_name': 'Product Name',
+        'product_name': 'Product Name DB',
         'price': 'Cost per Unit (in INR)',
         'local_stock': 'Current Inventory - Local Warehouse',
         'in_transit_units': 'PO Already Raised'
     }, inplace=True)
 
-    merged_df = merged_df.loc[:, ~merged_df.columns.duplicated()]
-
-    # Fill missing merged values
-    if 'Product Name' not in merged_df.columns:
-        merged_df['Product Name'] = ''
-
-    merged_df['Product Name'] = merged_df['Product Name'].fillna('')
+    merged_df['Product Name'] = merged_df['Product Name'].replace('', pd.NA)
+    merged_df['Product Name'] = merged_df['Product Name'].fillna(merged_df.get('Product Name DB', ''))
+    merged_df['Product Name'] = merged_df['Product Name'].fillna('').astype(str).str.strip()
 
     for col in [
         'Dispatch',
@@ -587,7 +728,6 @@ def PO_generated():
             merged_df[col] = 0
         merged_df[col] = pd.to_numeric(merged_df[col], errors='coerce').fillna(0)
 
-    # ---------------- DISPATCH COLUMNS ----------------
     merged_df['Dispatches UK'] = merged_df['Dispatch'] if country_db == 'uk' else 0
     merged_df['Dispatches Canada'] = merged_df['Dispatch'] if country_db == 'canada' else 0
     merged_df['Dispatches Amazon US'] = merged_df['Dispatch'] if country_db in ['us', 'amazon us', 'amazon_us'] else 0
@@ -598,7 +738,6 @@ def PO_generated():
         merged_df['Dispatches Amazon US']
     )
 
-    # ---------------- PO CALCULATION ----------------
     merged_df['PO to be raised'] = (
         merged_df['Total Dispatches']
         - merged_df['Current Inventory - Local Warehouse']
@@ -610,11 +749,9 @@ def PO_generated():
     ).fillna(0).clip(lower=0)
 
     merged_df['PO Cost (in INR)'] = (
-        merged_df['PO to be raised'] *
-        merged_df['Cost per Unit (in INR)']
+        merged_df['PO to be raised'] * merged_df['Cost per Unit (in INR)']
     )
 
-    # ---------------- FINAL OUTPUT ----------------
     columns_required = [
         'sku',
         'Product Name',
@@ -631,13 +768,12 @@ def PO_generated():
 
     for col in columns_required:
         if col not in merged_df.columns:
-            merged_df[col] = 0 if col != 'Product Name' and col != 'sku' else ''
+            merged_df[col] = '' if col in ['sku', 'Product Name'] else 0
 
     final_df = merged_df[columns_required].copy()
     final_df.rename(columns={'sku': 'SKU'}, inplace=True)
     final_df.insert(0, 'Sno.', range(1, len(final_df) + 1))
 
-    # ---------------- TOTAL ROW ----------------
     totals = final_df.sum(numeric_only=True)
 
     total_row = {
@@ -657,18 +793,14 @@ def PO_generated():
 
     final_df = pd.concat([final_df, pd.DataFrame([total_row])], ignore_index=True)
 
-    # ---------------- EXPORT EXCEL ----------------
     output = BytesIO()
-
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        final_df.to_excel(writer, index=False, sheet_name="Purchase Order")
-
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        final_df.to_excel(writer, index=False, sheet_name='Purchase Order')
     output.seek(0)
     file_bytes = output.read()
 
-    filename = f"purchase_order_{user_id}_{country_db}_{month_name}_{year_int}.xlsx"
+    filename = f"purchase_order_{user_id}_{country_db}_{month_db}_{year_db}.xlsx"
 
-    # ---------------- SAVE FILE (UPSERT) ----------------
     upsert_query = text("""
         INSERT INTO public.stored_files
         (user_id, country, kind, month, year, filename, content_type, data, created_at)
@@ -709,14 +841,19 @@ def PO_generated():
     }), 200
 
 
-
 @dashboard_bp.route('/global_purchase_order', methods=['GET'])
 def global_PO_generated():
+    from io import BytesIO
+    import pandas as pd
+    from sqlalchemy import create_engine, text
+    from datetime import datetime
+
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     token = auth_header.split(' ')[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
@@ -726,264 +863,293 @@ def global_PO_generated():
 
     month = request.args.get('month')
     year = request.args.get('year')
+
     if not month or not year:
         return jsonify({'error': 'Month and year must be provided'}), 400
 
     try:
-        month_name = datetime.strptime(month, "%B").strftime("%B")
-        year = int(year)
-    except ValueError:
+        month_name = datetime.strptime(month.strip().title(), "%B").strftime("%B")
+        month_db = month_name.lower()
+        year_db = str(int(year))
+    except Exception:
         return jsonify({'error': 'Invalid month or year format'}), 400
 
     engine = create_engine(db_url)
-    Session = sessionmaker(bind=engine)
-    db_session = Session()
 
-    # --- SKU table (source of truth for price) ---
-    sku_table_name = f"sku_{user_id}_data_table"
-    try:
-        sku_df = pd.read_sql_table(sku_table_name, engine)
-    except Exception as e:
-        return jsonify({'error': f"SKU table '{sku_table_name}' not found: {str(e)}"}), 400
+    def fetch_latest_po(country_code: str):
+        filename = f"purchase_order_{user_id}_{country_code}_{month_db}_{year_db}.xlsx"
 
-    # Build a mapping: any sku value in sku_* -> price (as-is from DB)
-    price_map = {}
-    sku_cols_in_db = [c for c in sku_df.columns if c.startswith('sku_')]
-    if 'price' in sku_df.columns:
-        for _, r in sku_df.iterrows():
-            price_val = r.get('price')
-            if pd.isna(price_val):
-                continue
-            for c in sku_cols_in_db:
-                v = r.get(c)
-                if pd.notna(v) and str(v).strip():
-                    price_map[str(v).strip()] = float(price_val)
+        q = text("""
+            SELECT filename, content_type, data
+            FROM public.stored_files
+            WHERE user_id = :user_id
+              AND LOWER(country) = LOWER(:country)
+              AND kind = 'purchase_order'
+              AND LOWER(month) = LOWER(:month)
+              AND year = :year
+              AND LOWER(filename) = LOWER(:filename)
+            ORDER BY id DESC
+            LIMIT 1
+        """)
 
-    # Only check UK and US countries (removed Canada)
+        with engine.connect() as conn:
+            row = conn.execute(q, {
+                "user_id": user_id,
+                "country": country_code,
+                "month": month_db,
+                "year": year_db,
+                "filename": filename
+            }).fetchone()
+
+        if not row:
+            return None
+
+        filename, content_type, data_bytes = row[0], row[1], row[2]
+        if isinstance(data_bytes, memoryview):
+            data_bytes = data_bytes.tobytes()
+
+        return filename, content_type, data_bytes
+
+    def read_po_df(data_bytes: bytes) -> pd.DataFrame:
+        df = pd.read_excel(BytesIO(data_bytes), sheet_name=0)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+
     countries = ['uk', 'us']
-    country_files_found = []
-    existing_files = {}
-    
-    # Check which country files exist
-    for country in countries:
-        individual_po_path = os.path.join(
-         f'purchase_order_{user_id}_{country}_{month_name.lower()}_{year}.xlsx'
-        )
-        if os.path.exists(individual_po_path):
-            existing_files[country] = individual_po_path
-            country_files_found.append(country)
+    po_rows = {country: fetch_latest_po(country) for country in countries}
+    country_files_found = [country for country, row in po_rows.items() if row]
 
-    # If no country files exist, return error
     if not country_files_found:
         return jsonify({
             'error': 'No country-specific purchase order files found. Please generate UK and/or US purchase orders first.'
         }), 404
 
     global_df = pd.DataFrame()
-    
-    # Process existing country files
+
+    numeric_columns = [
+        'Dispatches UK',
+        'Dispatches Canada',
+        'Dispatches Amazon US',
+        'Total Dispatches',
+        'Current Inventory - Local Warehouse',
+        'PO Already Raised',
+        'PO to be raised',
+        'Cost per Unit (in INR)',
+        'PO Cost (in INR)'
+    ]
+
     for country in country_files_found:
         try:
-            country_po_df = pd.read_excel(existing_files[country])
+            _, _, data_bytes = po_rows[country]
+            country_po_df = read_po_df(data_bytes)
 
-            # Remove total row if present
-            if not country_po_df.empty and str(country_po_df.iloc[-1].get('Sno.', '')).strip().lower() == 'total':
-                country_po_df = country_po_df.iloc[:-1]
+            if 'Product Name' not in country_po_df.columns:
+                return jsonify({'error': f'Product Name column missing in {country.upper()} purchase order file'}), 400
 
-            # Standardize column names
-            column_mapping = {
-                'SKU': 'sku',
-                'Product Name': 'Product Name',
-                'Dispatches UK': 'Dispatches UK',
-                'Dispatches Canada': 'Dispatches Canada',
-                'Dispatches Amazon US': 'Dispatches Amazon US',
-                'Total Dispatches': 'Total Dispatches',
-                'Current Inventory - Local Warehouse': 'Current Inventory - Local Warehouse',
-                'PO Already Raised': 'PO Already Raised',
-                'PO to Be raised': 'PO to Be raised',
-                'Cost per Unit (in INR)': 'Cost per Unit (in INR)',
-                'PO Cost (in INR)': 'PO Cost (in INR)'
-            }
-            for old_col, new_col in column_mapping.items():
-                if old_col in country_po_df.columns:
-                    country_po_df = country_po_df.rename(columns={old_col: new_col})
+            if 'SKU' in country_po_df.columns and 'sku' not in country_po_df.columns:
+                country_po_df.rename(columns={'SKU': 'sku'}, inplace=True)
 
-            # Clean SKU column
-            if 'sku' in country_po_df.columns:
-                country_po_df['sku'] = country_po_df['sku'].astype(str).str.strip()
+            if 'PO to Be raised' in country_po_df.columns and 'PO to be raised' not in country_po_df.columns:
+                country_po_df.rename(columns={'PO to Be raised': 'PO to be raised'}, inplace=True)
 
-            # Convert numeric columns
-            numeric_columns = [
-                'Dispatches UK', 'Dispatches Canada', 'Dispatches Amazon US',
-                'Total Dispatches', 'Current Inventory - Local Warehouse', 'PO Already Raised',
-                'PO to Be raised', 'Cost per Unit (in INR)', 'PO Cost (in INR)'
-            ]
+            if 'sku' not in country_po_df.columns:
+                country_po_df['sku'] = ''
+
+            country_po_df['sku'] = country_po_df['sku'].fillna('').astype(str).str.strip()
+            country_po_df['Product Name'] = country_po_df['Product Name'].fillna('').astype(str).str.strip()
+
+            country_po_df = country_po_df[
+                country_po_df['Product Name'].str.lower() != 'total'
+            ].copy()
+
             for col in numeric_columns:
-                if col in country_po_df.columns:
-                    country_po_df[col] = pd.to_numeric(country_po_df[col], errors='coerce').fillna(0)
-
-            # Ensure dispatch columns exist
-            for col in ['Dispatches UK', 'Dispatches Canada', 'Dispatches Amazon US']:
                 if col not in country_po_df.columns:
                     country_po_df[col] = 0
+                country_po_df[col] = pd.to_numeric(country_po_df[col], errors='coerce').fillna(0)
 
-            # Select relevant columns
-            merge_columns = ['sku', 'Product Name'] + [c for c in numeric_columns if c in country_po_df.columns]
+            merge_columns = ['sku', 'Product Name'] + numeric_columns
             country_data = country_po_df[merge_columns].copy()
 
-            # Merge with global dataframe
             if global_df.empty:
                 global_df = country_data.copy()
             else:
-                # Merge on Product Name, handling SKU conflicts
-                global_df = pd.merge(global_df, country_data, on='Product Name', how='outer', suffixes=('', '_new'))
+                global_df = pd.merge(
+                    global_df,
+                    country_data,
+                    on='Product Name',
+                    how='outer',
+                    suffixes=('', '_new')
+                )
 
-                # Handle SKU conflicts - prefer non-null values
                 if 'sku_new' in global_df.columns:
-                    mask = global_df['sku'].isna() & global_df['sku_new'].notna()
-                    global_df.loc[mask, 'sku'] = global_df.loc[mask, 'sku_new']
-                    global_df = global_df.drop(columns=['sku_new'])
+                    global_df['sku'] = global_df['sku'].fillna('')
+                    global_df['sku_new'] = global_df['sku_new'].fillna('')
+                    global_df['sku'] = global_df['sku'].replace('', pd.NA).fillna(global_df['sku_new'])
+                    global_df['sku'] = global_df['sku'].fillna('')
+                    global_df.drop(columns=['sku_new'], inplace=True)
 
-                # Sum numeric columns from both files
                 for col in numeric_columns:
                     new_col = f'{col}_new'
                     if new_col in global_df.columns:
-                        global_df[col] = global_df.get(col, 0).fillna(0) + global_df[new_col].fillna(0)
-                        global_df = global_df.drop(columns=[new_col])
+                        if col not in global_df.columns:
+                            global_df[col] = 0
+                        global_df[col] = global_df[col].fillna(0) + global_df[new_col].fillna(0)
+                        global_df.drop(columns=[new_col], inplace=True)
 
         except Exception as e:
-            print(f"Error reading PO file for {country}: {str(e)}")
-            db_session.close()
             return jsonify({'error': f'Error processing {country.upper()} file: {str(e)}'}), 500
 
-    # --- Apply DB prices to every row by SKU (source of truth) ---
-    if 'sku' in global_df.columns:
-        global_df['sku'] = global_df['sku'].astype(str).str.strip()
-    else:
-        global_df['sku'] = ''
-    global_df['Cost per Unit (in INR)'] = global_df['sku'].map(price_map).astype(float).fillna(0.0)
+    if global_df.empty:
+        return jsonify({'error': 'No purchase order rows found to merge'}), 404
 
-    # Recalculate totals and costs
-    if 'Total Dispatches' not in global_df.columns or global_df['Total Dispatches'].isna().any():
-        global_df['Total Dispatches'] = (
-            global_df.get('Dispatches UK', 0).fillna(0) +
-            global_df.get('Dispatches Canada', 0).fillna(0) +
-            global_df.get('Dispatches Amazon US', 0).fillna(0)
-        )
-    
-    # Ensure required columns exist
+    if 'Dispatches UK' not in global_df.columns:
+        global_df['Dispatches UK'] = 0
+    if 'Dispatches Canada' not in global_df.columns:
+        global_df['Dispatches Canada'] = 0
+    if 'Dispatches Amazon US' not in global_df.columns:
+        global_df['Dispatches Amazon US'] = 0
     if 'Current Inventory - Local Warehouse' not in global_df.columns:
         global_df['Current Inventory - Local Warehouse'] = 0
     if 'PO Already Raised' not in global_df.columns:
         global_df['PO Already Raised'] = 0
+    if 'Cost per Unit (in INR)' not in global_df.columns:
+        global_df['Cost per Unit (in INR)'] = 0
 
-    # Recalculate PO to be raised
-    global_df['PO to Be raised'] = (
+    global_df['Total Dispatches'] = (
+        global_df['Dispatches UK'].fillna(0) +
+        global_df['Dispatches Canada'].fillna(0) +
+        global_df['Dispatches Amazon US'].fillna(0)
+    )
+
+    global_df['PO to be raised'] = (
         global_df['Total Dispatches'] -
-        global_df['Current Inventory - Local Warehouse'] -
-        global_df['PO Already Raised']
+        global_df['Current Inventory - Local Warehouse'].fillna(0) -
+        global_df['PO Already Raised'].fillna(0)
     ).clip(lower=0)
 
-    # Recalculate PO Cost using DB price
-    global_df['PO Cost (in INR)'] = global_df['PO to Be raised'] * global_df['Cost per Unit (in INR)']
+    global_df['PO Cost (in INR)'] = (
+        global_df['PO to be raised'] * global_df['Cost per Unit (in INR)'].fillna(0)
+    )
 
-    # Group by Product Name to handle duplicates
     numeric_to_sum = [
-        'Dispatches UK', 'Dispatches Canada', 'Dispatches Amazon US',
-        'Total Dispatches', 'Current Inventory - Local Warehouse', 'PO Already Raised',
-        'PO to Be raised', 'PO Cost (in INR)'
+        'Dispatches UK',
+        'Dispatches Canada',
+        'Dispatches Amazon US',
+        'Total Dispatches',
+        'Current Inventory - Local Warehouse',
+        'PO Already Raised',
+        'PO to be raised',
+        'PO Cost (in INR)'
     ]
-    
-    agg_dict = {'sku': 'first'}  # Keep first SKU
+
+    agg_dict = {'sku': 'first'}
     for col in numeric_to_sum:
-        if col in global_df.columns:
-            agg_dict[col] = 'sum'
-    # Keep first price (as-is from DB)
+        agg_dict[col] = 'sum'
     agg_dict['Cost per Unit (in INR)'] = 'first'
 
     grouped_df = global_df.groupby('Product Name', as_index=False).agg(agg_dict)
-    
-    # Recalculate PO Cost after grouping
-    grouped_df['PO Cost (in INR)'] = grouped_df['PO to Be raised'] * grouped_df['Cost per Unit (in INR)']
+    grouped_df['PO Cost (in INR)'] = grouped_df['PO to be raised'] * grouped_df['Cost per Unit (in INR)'].fillna(0)
 
-    # Build final dataframe with proper column order
-    final_columns = [
-        'Sno.', 'Product Name', 'Dispatches UK', 'Dispatches Canada',
-        'Dispatches Amazon US', 'Total Dispatches', 'Current Inventory - Local Warehouse',
-        'PO Already Raised', 'PO to Be raised', 'Cost per Unit (in INR)', 'PO Cost (in INR)'
-    ]
-    
     final_df = pd.DataFrame()
+    final_df['Sno.'] = range(1, len(grouped_df) + 1)
     final_df['Product Name'] = grouped_df['Product Name']
-    
-    for col in final_columns[2:]:  # Skip Sno. and Product Name
-        final_df[col] = grouped_df.get(col, 0)
+    final_df['Dispatches UK'] = grouped_df.get('Dispatches UK', 0)
+    final_df['Dispatches Canada'] = grouped_df.get('Dispatches Canada', 0)
+    final_df['Dispatches Amazon US'] = grouped_df.get('Dispatches Amazon US', 0)
+    final_df['Total Dispatches'] = grouped_df.get('Total Dispatches', 0)
+    final_df['Current Inventory - Local Warehouse'] = grouped_df.get('Current Inventory - Local Warehouse', 0)
+    final_df['PO Already Raised'] = grouped_df.get('PO Already Raised', 0)
+    final_df['PO to be raised'] = grouped_df.get('PO to be raised', 0)
+    final_df['Cost per Unit (in INR)'] = grouped_df.get('Cost per Unit (in INR)', 0)
+    final_df['PO Cost (in INR)'] = grouped_df.get('PO Cost (in INR)', 0)
 
-    # Add serial numbers
-    final_df.insert(0, 'Sno.', range(1, len(final_df) + 1))
+    total_row = {
+        'Sno.': 'Total',
+        'Product Name': '',
+        'Dispatches UK': final_df['Dispatches UK'].sum(),
+        'Dispatches Canada': final_df['Dispatches Canada'].sum(),
+        'Dispatches Amazon US': final_df['Dispatches Amazon US'].sum(),
+        'Total Dispatches': final_df['Total Dispatches'].sum(),
+        'Current Inventory - Local Warehouse': final_df['Current Inventory - Local Warehouse'].sum(),
+        'PO Already Raised': final_df['PO Already Raised'].sum(),
+        'PO to be raised': final_df['PO to be raised'].sum(),
+        'Cost per Unit (in INR)': '',
+        'PO Cost (in INR)': final_df['PO Cost (in INR)'].sum(),
+    }
 
-    # Add total row (don't sum unit cost)
-    cols_to_sum = [
-        'Dispatches UK', 'Dispatches Canada', 'Dispatches Amazon US',
-        'Total Dispatches', 'Current Inventory - Local Warehouse',
-        'PO Already Raised', 'PO to Be raised', 'PO Cost (in INR)'
-    ]
-    
-    total_row_data = {'Sno.': 'Total', 'Product Name': ''}
-    for col in cols_to_sum:
-        if col in final_df.columns and pd.api.types.is_numeric_dtype(final_df[col]):
-            total_row_data[col] = final_df[col].sum()
-        else:
-            total_row_data[col] = 0
-    
-    # Leave unit cost blank in total row
-    total_row_data['Cost per Unit (in INR)'] = ''
+    final_df = pd.concat([final_df, pd.DataFrame([total_row])], ignore_index=True)
 
-    final_df = pd.concat([final_df, pd.DataFrame([total_row_data])], ignore_index=True)
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        final_df.to_excel(writer, index=False, sheet_name='Purchase Order')
+    output.seek(0)
+    file_bytes = output.read()
 
-    # Round numeric columns
-    numeric_cols = final_df.select_dtypes(include='number').columns
-    final_df[numeric_cols] = final_df[numeric_cols].round(2)
-
-    # Determine file naming based on countries processed
     if len(country_files_found) == 1:
-        # Single country - use country name
-        country_name = country_files_found[0]
-        file_suffix = country_name
-        file_type = f"{country_name.upper()} Purchase Order"
+        file_suffix = country_files_found[0]
+        file_type = f"{country_files_found[0].upper()} Purchase Order"
     else:
-        # Multiple countries - use global
-        file_suffix = "global"
-        file_type = "Global Purchase Order"
+        file_suffix = 'global'
+        file_type = 'Global Purchase Order'
 
-    # Save to Excel
-    output_path = os.path.join( f'purchase_order_{user_id}_{file_suffix}_{month_name.lower()}_{year}.xlsx')
-    
-    try:
-        final_df.to_excel(output_path, index=False)
-    except Exception as e:
-        db_session.close()
-        return jsonify({'error': f'Error saving file: {str(e)}'}), 500
+    filename = f"purchase_order_{user_id}_{file_suffix}_{month_db}_{year_db}.xlsx"
 
-    db_session.close()
-    
+    upsert_query = text("""
+        INSERT INTO public.stored_files
+        (user_id, country, kind, month, year, filename, content_type, data, created_at)
+        VALUES (
+            :user_id,
+            :country,
+            'purchase_order',
+            :month,
+            :year,
+            :filename,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            :data,
+            NOW()
+        )
+        ON CONFLICT (user_id, country, filename)
+        DO UPDATE SET
+            kind = EXCLUDED.kind,
+            month = EXCLUDED.month,
+            year = EXCLUDED.year,
+            content_type = EXCLUDED.content_type,
+            data = EXCLUDED.data,
+            created_at = NOW()
+    """)
+
+    with engine.begin() as conn:
+        conn.execute(upsert_query, {
+            "user_id": user_id,
+            "country": file_suffix,
+            "month": month_db,
+            "year": year_db,
+            "filename": filename,
+            "data": file_bytes
+        })
+
     return jsonify({
         'message': f'{file_type} generated successfully',
-        'data': encode_file_to_base64(output_path),
-        'records_count': len(final_df) - 1,  # exclude total row
+        'filename': filename,
+        'records_count': len(final_df) - 1,
         'countries_processed': country_files_found,
         'file_type': file_type.lower().replace(' ', '_'),
-        'source': 'country_po_files'
+        'source': 'stored_files'
     }), 200
 
 
 @dashboard_bp.route('/getGlobalDispatchfile', methods=['GET'])
 def get_global_dispatch_file():
+    from io import BytesIO
+    from sqlalchemy import create_engine, text
+    from datetime import datetime
+
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     token = auth_header.split(' ')[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
@@ -993,46 +1159,88 @@ def get_global_dispatch_file():
 
     month = request.args.get('month')
     year = request.args.get('year')
+
     if not month or not year:
         return jsonify({'error': 'Month and year must be provided'}), 400
 
-    # Check for different file types based on what exists
-    countries = ['uk', 'us']
-    existing_files = {}
-    
-    for country in countries:
-        country_file_path = os.path.join( f'purchase_order_{user_id}_{country}_{month.lower()}_{year}.xlsx')
-        if os.path.exists(country_file_path):
-            existing_files[country] = country_file_path
-    
-    # Determine which file to serve
-    file_path = None
-    download_name = None
-    
-    if len(existing_files) > 1:
-        # Multiple countries exist - look for global file
-        file_path = os.path.join( f'purchase_order_{user_id}_global_{month.lower()}_{year}.xlsx')
-        download_name = f'global_purchase_order_{month}_{year}.xlsx'
-    elif len(existing_files) == 1:
-        # Single country exists - use that country file or its corresponding generated file
-        country = list(existing_files.keys())[0]
-        file_path = os.path.join( f'purchase_order_{user_id}_{country}_{month.lower()}_{year}.xlsx')
-        download_name = f'{country}_purchase_order_{month}_{year}.xlsx'
-    else:
-        return jsonify({'error': 'No purchase order files found. Please generate country-specific files first.'}), 404
-
-    if not os.path.exists(file_path):
-        return jsonify({'error': 'Generated file not found. Please generate the report first.'}), 404
-
     try:
+        month_name = datetime.strptime(month.strip().title(), "%B").strftime("%B")
+        month_db = month_name.lower()
+        year_db = str(int(year))
+    except Exception:
+        return jsonify({'error': 'Invalid month or year format'}), 400
+
+    engine = create_engine(db_url)
+
+    def fetch_latest_file(country_code: str):
+        filename = f"purchase_order_{user_id}_{country_code}_{month_db}_{year_db}.xlsx"
+
+        q = text("""
+            SELECT filename, content_type, data
+            FROM public.stored_files
+            WHERE user_id = :user_id
+              AND LOWER(country) = LOWER(:country)
+              AND kind = 'purchase_order'
+              AND LOWER(month) = LOWER(:month)
+              AND year = :year
+              AND LOWER(filename) = LOWER(:filename)
+            ORDER BY id DESC
+            LIMIT 1
+        """)
+
+        with engine.connect() as conn:
+            row = conn.execute(q, {
+                "user_id": user_id,
+                "country": country_code,
+                "month": month_db,
+                "year": year_db,
+                "filename": filename
+            }).fetchone()
+
+        if not row:
+            return None
+
+        filename, content_type, data_bytes = row[0], row[1], row[2]
+        if isinstance(data_bytes, memoryview):
+            data_bytes = data_bytes.tobytes()
+
+        return filename, content_type, data_bytes
+
+    global_row = fetch_latest_file('global')
+    if global_row:
+        filename, content_type, data_bytes = global_row
         return send_file(
-            file_path,
+            BytesIO(data_bytes),
             as_attachment=True,
-            download_name=download_name,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            download_name=filename,
+            mimetype=content_type or 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-    except Exception as e:
-        return jsonify({'error': f'Error sending file: {str(e)}'}), 500
+
+    uk_row = fetch_latest_file('uk')
+    us_row = fetch_latest_file('us')
+
+    if uk_row and not us_row:
+        filename, content_type, data_bytes = uk_row
+        return send_file(
+            BytesIO(data_bytes),
+            as_attachment=True,
+            download_name=filename,
+            mimetype=content_type or 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    if us_row and not uk_row:
+        filename, content_type, data_bytes = us_row
+        return send_file(
+            BytesIO(data_bytes),
+            as_attachment=True,
+            download_name=filename,
+            mimetype=content_type or 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    return jsonify({
+        'error': 'No purchase order files found. Please generate country-specific files first.'
+    }), 404
+
 
 
 @dashboard_bp.route('/getForecastFile', methods=['GET'])

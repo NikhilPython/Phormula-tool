@@ -180,7 +180,9 @@ export default function ViewUserPage() {
         try {
           setMembersLoading(true);
          const membersRes = await fetch(
-  `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard/members`,
+  `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard/members?email=${encodeURIComponent(
+    email
+  )}`,
   {
     method: "GET",
     headers: {
