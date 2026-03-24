@@ -198,23 +198,57 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     [forecast3]
   );
 
-  const tableRows = useMemo(
-    () =>
-      forecastData
-        .filter((r) => r && r.sku && r.sku !== 'Total')
-        .map((r, idx) => ({
-          sNo: idx + 1,
-          product: r['Product Name'] ?? '',
-          sku: r['sku'] ?? '',
-          sold1: r[last3SoldOldestFirst[0]] ?? '',
-          sold2: r[last3SoldOldestFirst[1]] ?? '',
-          sold3: r[last3SoldOldestFirst[2]] ?? '',
-          f1: r[forecast3[0]] ?? '',
-          f2: r[forecast3[1]] ?? '',
-          f3: r[forecast3[2]] ?? '',
-        })),
-    [forecastData, last3SoldOldestFirst, forecast3]
-  );
+  const tableRows = useMemo(() => {
+    const baseRows = forecastData
+      .filter((r) => r && r.sku && r.sku !== 'Total')
+      .map((r) => ({
+        product: r['Product Name'] ?? '',
+        sku: r['sku'] ?? '',
+        sold1: Number(r[last3SoldOldestFirst[0]]) || 0,
+        sold2: Number(r[last3SoldOldestFirst[1]]) || 0,
+        sold3: Number(r[last3SoldOldestFirst[2]]) || 0,
+        f1: Number(r[forecast3[0]]) || 0,
+        f2: Number(r[forecast3[1]]) || 0,
+        f3: Number(r[forecast3[2]]) || 0,
+      }));
+
+    const first9 = baseRows.slice(0, 9);
+    const remaining = baseRows.slice(9);
+
+    const rows = [...first9];
+
+    if (remaining.length > 0) {
+      const othersRow = remaining.reduce(
+        (acc, r) => ({
+          product: 'Others',
+          sku: '-',
+          sold1: acc.sold1 + r.sold1,
+          sold2: acc.sold2 + r.sold2,
+          sold3: acc.sold3 + r.sold3,
+          f1: acc.f1 + r.f1,
+          f2: acc.f2 + r.f2,
+          f3: acc.f3 + r.f3,
+        }),
+        {
+          product: 'Others',
+          sku: '-',
+          sold1: 0,
+          sold2: 0,
+          sold3: 0,
+          f1: 0,
+          f2: 0,
+          f3: 0,
+        }
+      );
+
+      rows.push(othersRow);
+    }
+
+    return rows.map((r, idx) => ({
+      sNo: idx + 1,
+      ...r,
+    }));
+  }, [forecastData, last3SoldOldestFirst, forecast3]);
 
   const totalsRow = useMemo(() => {
     const sumCol = (key: string) => {
@@ -275,7 +309,10 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   const datasets = useMemo(() => {
     const skuDatasets = top5Rows.map((t, i) => ({
       key: `top${i + 1}`,
-      label: (t.row["sku"] as string) || (t.row["Product Name"] as string) || `SKU ${i + 1}`,
+      label:
+        (t.row["Product Name"] as string) ||
+        (t.row["sku"] as string) ||
+        `Product ${i + 1}`,
       data: t.vals,
       borderColor: palette[i % palette.length],
       backgroundColor: palette[i % palette.length],
@@ -471,22 +508,22 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
           <div className="flex flex-col gap-4">
             <div className="flex items-baseline gap-2">
-            <PageBreadcrumb
-              pageTitle={
-                <>
-                  Forecasted Data -{" "}
-                  {monthRange && (
-                    <span className="text-green-500">
-                      {countryName.toUpperCase()} ({monthRange})
-                    </span>
-                  )}
-                </>
-              }
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
-          </div>
+              <PageBreadcrumb
+                pageTitle={
+                  <>
+                    Forecasted Data -{" "}
+                    {monthRange && (
+                      <span className="text-green-500">
+                        {countryName.toUpperCase()} ({monthRange})
+                      </span>
+                    )}
+                  </>
+                }
+                variant="page"
+                align="left"
+                textSize="2xl"
+              />
+            </div>
             <div className="flex items-center justify-between w-full gap-3">
               <div className="flex flex-col leading-tight">
                 <div className="flex items-baseline gap-2">
@@ -516,9 +553,9 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
               ...top5Rows.map((t, i) => ({
                 name: `top${i + 1}`,
                 label:
-                  (t.row["sku"] as string) ||
                   (t.row["Product Name"] as string) ||
-                  `SKU ${i + 1}`,
+                  (t.row["sku"] as string) ||
+                  `Product ${i + 1}`,
                 color: palette[i % palette.length],
               })),
               { name: "total", label: "Total", color: "#C49466" },
