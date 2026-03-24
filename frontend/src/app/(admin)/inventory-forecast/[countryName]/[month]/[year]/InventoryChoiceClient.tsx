@@ -468,7 +468,7 @@ export default function InventoryFlowPage() {
     onAction?: () => void;
   }) => {
     return (
-      <div >
+      < >
         <div
         >
           {children}
@@ -504,7 +504,7 @@ export default function InventoryFlowPage() {
             </div>
           </>
         )}
-      </div>
+      </>
     );
   };
 
