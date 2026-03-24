@@ -23,8 +23,8 @@ type PurchaseOrderPageProps = {
 };
 
 const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ] as const;
 
 const YEARS = Array.from({ length: 2 }, (_, i) => new Date().getFullYear() - i);
@@ -64,10 +64,10 @@ export default function PurchaseOrderPage({
     [countryName],
   );
 
-const displayedColumns = useMemo(
-  () =>
-    isGlobalRoute
-      ? [
+  const displayedColumns = useMemo(
+    () =>
+      isGlobalRoute
+        ? [
           'Sno.',
           'Product Name',
           'Dispatches UK',
@@ -80,7 +80,7 @@ const displayedColumns = useMemo(
           'Cost per Unit (in INR)',
           'PO Cost (in INR)',
         ]
-      : [
+        : [
           'Sno.',
           'Product Name',
           'Dispatches UK',
@@ -91,19 +91,19 @@ const displayedColumns = useMemo(
           'Cost per Unit (in INR)',
           'PO Cost (in INR)',
         ],
-  [isGlobalRoute],
-);
+    [isGlobalRoute],
+  );
 
-const signRowMap = useMemo<Record<string, string>>(
-  () => ({
-    'Dispatches UK': '(+)',
-    'Dispatches Canada': '(+)',
-    'Dispatches Amazon US': '(+)',
-    'Current Inventory - Local Warehouse': '(-)',
-    'PO Already Raised': '(-)',
-  }),
-  []
-);
+  const signRowMap = useMemo<Record<string, string>>(
+    () => ({
+      'Dispatches UK': '(+)',
+      'Dispatches Canada': '(+)',
+      'Dispatches Amazon US': '(+)',
+      'Current Inventory - Local Warehouse': '(-)',
+      'PO Already Raised': '(-)',
+    }),
+    []
+  );
 
   // Pre-fill from URL
   useEffect(() => {
@@ -268,128 +268,128 @@ const signRowMap = useMemo<Record<string, string>>(
 
 
   const tableData = useMemo(() => {
-  if (!skuData.length) return [];
+    if (!skuData.length) return [];
 
-  const signRow: Row = {};
-  displayedColumns.forEach((col) => {
-    signRow[col] = signRowMap[col] || '';
-  });
-  signRow.__isSignRow = true;
-
-  const formattedRows = skuData.map((row, index) => {
-    const out: Row = {};
-
+    const signRow: Row = {};
     displayedColumns.forEach((col) => {
-      let value =
-        col === 'Sno.'
-          ? row[col] ?? index + 1
-          : row[col];
-
-      if (typeof value === 'number') {
-        value = value.toLocaleString('en-IN', {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 2,
-        });
-      }
-
-      out[col] = value ?? '';
+      signRow[col] = signRowMap[col] || '';
     });
+    signRow.__isSignRow = true;
 
-    const isTotalRow =
-      String(row['Product Name'] ?? '').trim().toLowerCase() === 'total';
+    const formattedRows = skuData.map((row, index) => {
+      const out: Row = {};
 
-    out.__isTotalRow = isTotalRow;
-    return out;
-  });
+      displayedColumns.forEach((col) => {
+        let value =
+          col === 'Sno.'
+            ? row[col] ?? index + 1
+            : row[col];
 
-  return [signRow, ...formattedRows];
-}, [skuData, displayedColumns, signRowMap]);
-
-
-const tableColumns = useMemo<ColumnDef<Row>[]>(
-  () =>
-    displayedColumns.map((col) => ({
-      key: col,
-      header: col,
-      width:
-        col === 'Sno.'
-          ? '60px'
-          : col === 'Product Name'
-          ? '220px'
-          : '140px',
-      cellClassName:
-        col === 'Product Name'
-          ? 'text-left'
-          : col === 'Sno.'
-          ? 'text-center'
-          : '',
-      headerClassName:
-        col === 'Sno.'
-          ? 'text-center'
-          : '',
-      render: (row, value) => {
-        const text = String(value ?? '');
-
-        if (row.__isSignRow) {
-          if (text === '(+)') {
-            return <span className="text-green-600 font-medium">{text}</span>;
-          }
-          if (text === '(-)') {
-            return <span className="text-red-500 font-medium">{text}</span>;
-          }
-          return '';
+        if (typeof value === 'number') {
+          value = value.toLocaleString('en-IN', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          });
         }
 
-        return text;
-      },
-    })),
-  [displayedColumns]
-);
+        out[col] = value ?? '';
+      });
 
-const getTableRowClassName = useCallback((row: Row, rowIndex: number) => {
-  if (row.__isSignRow) return 'bg-white';
-  if (row.__isTotalRow) return 'bg-[#D9D9D9] font-semibold';
-  return rowIndex % 2 === 0 ? 'bg-white' : 'bg-white';
-}, []);
+      const isTotalRow =
+        String(row['Product Name'] ?? '').trim().toLowerCase() === 'total';
 
-useEffect(() => {
-  if (!embedded || typeof window === 'undefined') return;
+      out.__isTotalRow = isTotalRow;
+      return out;
+    });
 
-  const handleRefresh = (event: Event) => {
-    const customEvent = event as CustomEvent<{ month?: string; year?: string }>;
-    const nextMonth = customEvent.detail?.month;
-    const nextYear = customEvent.detail?.year;
+    return [signRow, ...formattedRows];
+  }, [skuData, displayedColumns, signRowMap]);
 
-    if (!nextMonth || !nextYear) return;
 
-    setMonth(nextMonth);
-    setYear(nextYear);
+  const tableColumns = useMemo<ColumnDef<Row>[]>(
+    () =>
+      displayedColumns.map((col) => ({
+        key: col,
+        header: col,
+        width:
+          col === 'Sno.'
+            ? '60px'
+            : col === 'Product Name'
+              ? '220px'
+              : '140px',
+        cellClassName:
+          col === 'Product Name'
+            ? 'text-left'
+            : col === 'Sno.'
+              ? 'text-center'
+              : '',
+        headerClassName:
+          col === 'Sno.'
+            ? 'text-center'
+            : '',
+        render: (row, value) => {
+          const text = String(value ?? '');
 
-    setTimeout(() => {
-      if (countryName.toLowerCase() === 'global') {
-        void fetchGlobalDispatchFile();
-      } else {
-        void fetchDispatchFile();
-      }
-    }, 0);
-  };
+          if (row.__isSignRow) {
+            if (text === '(+)') {
+              return <span className="text-green-600 font-medium">{text}</span>;
+            }
+            if (text === '(-)') {
+              return <span className="text-red-500 font-medium">{text}</span>;
+            }
+            return '';
+          }
 
-  const handleDownload = () => {
-    handleExportToExcel();
-  };
+          return text;
+        },
+      })),
+    [displayedColumns]
+  );
 
-  window.addEventListener('po-report-refresh', handleRefresh as EventListener);
-  window.addEventListener('po-report-download', handleDownload);
+  const getTableRowClassName = useCallback((row: Row, rowIndex: number) => {
+    if (row.__isSignRow) return 'bg-white';
+    if (row.__isTotalRow) return 'bg-[#D9D9D9] font-semibold';
+    return rowIndex % 2 === 0 ? 'bg-white' : 'bg-white';
+  }, []);
 
-  return () => {
-    window.removeEventListener('po-report-refresh', handleRefresh as EventListener);
-    window.removeEventListener('po-report-download', handleDownload);
-  };
-}, [embedded, countryName, fetchDispatchFile, fetchGlobalDispatchFile, month, year, skuData]);
+  useEffect(() => {
+    if (!embedded || typeof window === 'undefined') return;
+
+    const handleRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<{ month?: string; year?: string }>;
+      const nextMonth = customEvent.detail?.month;
+      const nextYear = customEvent.detail?.year;
+
+      if (!nextMonth || !nextYear) return;
+
+      setMonth(nextMonth);
+      setYear(nextYear);
+
+      setTimeout(() => {
+        if (countryName.toLowerCase() === 'global') {
+          void fetchGlobalDispatchFile();
+        } else {
+          void fetchDispatchFile();
+        }
+      }, 0);
+    };
+
+    const handleDownload = () => {
+      handleExportToExcel();
+    };
+
+    window.addEventListener('po-report-refresh', handleRefresh as EventListener);
+    window.addEventListener('po-report-download', handleDownload);
+
+    return () => {
+      window.removeEventListener('po-report-refresh', handleRefresh as EventListener);
+      window.removeEventListener('po-report-download', handleDownload);
+    };
+  }, [embedded, countryName, fetchDispatchFile, fetchGlobalDispatchFile, month, year, skuData]);
 
   return (
     <>
-       <style jsx>{`
+      <style jsx>{`
         .styled-button:active {
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
           transform: translateY(1px);
@@ -507,51 +507,51 @@ font-weight: bold;
         
       `}</style>
       {!embedded && (
-     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-  
-    <div className="flex flex-wrap items-baseline gap-2 justify-start">
-      <PageBreadcrumb
-        pageTitle="PO Report - "
-        variant="page"
-        align="left"
-        className=""
-      />
-      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-        Amazon {countryName?.toLowerCase() === "global"
-          ? "Global"
-          : countryName?.toUpperCase()}
-      </span>
-    </div>
-  
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
 
-  <div className={`inline-dropdowns flex sm:flex-row flex-col ${embedded ? 'w-full justify-end' : ''}`}>
-    <MonthYearPickerTable
-      month={month}
-      year={year}
-      yearOptions={[
-        new Date().getFullYear(),
-        new Date().getFullYear() - 1,
-      ]}
-      onMonthChange={(v) => setMonth(v)}
-      onYearChange={(v) => setYear(v)}
-      valueMode="lower"
-    />
+          <div className="flex flex-wrap items-baseline gap-2 justify-start">
+            <PageBreadcrumb
+              pageTitle="PO Report - "
+              variant="page"
+              align="left"
+              className=""
+            />
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              Amazon {countryName?.toLowerCase() === "global"
+                ? "Global"
+                : countryName?.toUpperCase()}
+            </span>
+          </div>
 
-    <DownloadIconButton onClick={handleExportToExcel} size="md" />
 
-    <div className="flex sm:flex-row flex-col gap-4">
-      <button
-        className="fetch-button"
-        onClick={isGlobalRoute ? fetchGlobalDispatchFile : fetchDispatchFile}
-      >
-        {isGlobalRoute ? 'Get Global Report' : 'Get Report'}
-      </button>
-    </div>
-  </div>
-</div>
-)}
-      
-      
+          <div className={`inline-dropdowns flex sm:flex-row flex-col ${embedded ? 'w-full justify-end' : ''}`}>
+            <MonthYearPickerTable
+              month={month}
+              year={year}
+              yearOptions={[
+                new Date().getFullYear(),
+                new Date().getFullYear() - 1,
+              ]}
+              onMonthChange={(v) => setMonth(v)}
+              onYearChange={(v) => setYear(v)}
+              valueMode="lower"
+            />
+
+            <DownloadIconButton onClick={handleExportToExcel} size="md" />
+
+            <div className="flex sm:flex-row flex-col gap-4">
+              <button
+                className="fetch-button"
+                onClick={isGlobalRoute ? fetchGlobalDispatchFile : fetchDispatchFile}
+              >
+                {isGlobalRoute ? 'Get Global Report' : 'Get Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
 
       {loading ? (
         <div style={{ padding: '48px', textAlign: 'center' }} />
@@ -570,20 +570,20 @@ font-weight: bold;
           {skuData.length > 0 ? (
             <>
               <div className="">
-  <DataTable<Row>
-    columns={tableColumns}
-    data={tableData}
-    paginate={false}
-    pageSize={10}
-    stickyHeader
-    scrollY
-    maxHeight="90vh"
-    emptyMessage={`Select Month and Year to see ${isGlobalRoute ? 'Global PO' : 'PO'}!`}
-    rowClassName={getTableRowClassName}
-    tableClassName="text-xs 2xl:text-sm"
-  />
-</div>
-               
+                <DataTable<Row>
+                  columns={tableColumns}
+                  data={tableData}
+                  paginate={false}
+                  pageSize={10}
+                  stickyHeader
+                  scrollY
+                  maxHeight="90vh"
+                  emptyMessage={`Select Month and Year to see ${isGlobalRoute ? 'Global PO' : 'PO'}!`}
+                  rowClassName={getTableRowClassName}
+                  tableClassName="text-xs 2xl:text-sm"
+                />
+              </div>
+
             </>
           ) : (
             <p>
@@ -601,7 +601,7 @@ font-weight: bold;
         />
       )}
 
-   
+
     </>
   );
 }

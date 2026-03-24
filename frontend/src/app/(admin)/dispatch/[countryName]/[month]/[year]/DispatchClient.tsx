@@ -15,6 +15,10 @@ interface SkuRow {
   [key: string]: string | number | undefined
   sku?: string
   'Product Name'?: string
+  'Inventory at Month End'?: string | number
+  'Inventory Coverage Ratio Before Dispatch'?: string | number
+  'Dispatch'?: string | number
+  'Current Inventory + Dispatch'?: string | number
 }
 
 type DispatchPageProps = {
@@ -39,23 +43,6 @@ const monthNames = [
   'December',
 ] as const
 
-function capitalize(str: string) {
-  if (!str) return ''
-  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
-}
-
-function getCurrentMonthPlus1() {
-  const now = new Date()
-  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-  return monthNames[nextMonth.getMonth()]
-}
-
-function getCurrentYear() {
-  const now = new Date()
-  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-  return String(nextMonth.getFullYear())
-}
-
 const DISPLAYED_COLUMNS = [
   'Sno.',
   'Product Name',
@@ -73,6 +60,23 @@ const NUMERIC_COLUMNS = [
   'Current Inventory + Dispatch',
 ] as const
 
+function capitalize(str: string) {
+  if (!str) return ''
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
+}
+
+function getCurrentMonthPlus1() {
+  const now = new Date()
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  return monthNames[nextMonth.getMonth()]
+}
+
+function getCurrentYear() {
+  const now = new Date()
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  return String(nextMonth.getFullYear())
+}
+
 function normalizeHeader(header: unknown): string {
   const cleaned = String(header ?? '')
     .replace(/\u00A0/g, ' ')
@@ -81,12 +85,15 @@ function normalizeHeader(header: unknown): string {
     .toLowerCase()
 
   const headerMap: Record<string, string> = {
+    sno: 'Sno.',
+    'sno.': 'Sno.',
     sku: 'sku',
     'product name': 'Product Name',
     'inventory at month end': 'Inventory at Month End',
     'inventory coverage ratio before dispatch': 'Inventory Coverage Ratio Before Dispatch',
     dispatch: 'Dispatch',
     'current inventory + dispatch': 'Current Inventory + Dispatch',
+    'projected sales total': 'Projected Sales Total',
   }
 
   return headerMap[cleaned] || String(header ?? '').trim()
@@ -104,6 +111,39 @@ function parseCellValue(header: string, value: unknown): string | number {
   }
 
   return String(value).trim()
+}
+
+function findHeaderRowIndex(rows: any[][]): number {
+  return rows.findIndex((row) => {
+    const normalized = (row || []).map((cell) => normalizeHeader(cell))
+
+    return (
+      normalized.includes('Product Name') &&
+      (
+        normalized.includes('Dispatch') ||
+        normalized.includes('Inventory at Month End') ||
+        normalized.includes('sku')
+      )
+    )
+  })
+}
+
+function isMeaningfulRow(row: SkuRow): boolean {
+  const productName = String(row['Product Name'] ?? '').trim()
+  const sku = String(row['sku'] ?? '').trim()
+  const inventoryAtMonthEnd = row['Inventory at Month End']
+  const dispatch = row['Dispatch']
+  const currentInventoryDispatch = row['Current Inventory + Dispatch']
+  const coverageRatio = row['Inventory Coverage Ratio Before Dispatch']
+
+  return Boolean(
+    productName ||
+    sku ||
+    (inventoryAtMonthEnd !== '' && inventoryAtMonthEnd !== undefined) ||
+    (dispatch !== '' && dispatch !== undefined) ||
+    (currentInventoryDispatch !== '' && currentInventoryDispatch !== undefined) ||
+    (coverageRatio !== '' && coverageRatio !== undefined)
+  )
 }
 
 export default function DispatchPage({
@@ -156,6 +196,7 @@ export default function DispatchPage({
     setLoading(true)
     setError('')
     setShowForecastMessage(false)
+    setSkuData([])
 
     try {
       const response = await fetch(
@@ -172,13 +213,15 @@ export default function DispatchPage({
         let errorData: any = {}
         try {
           errorData = await response.json()
-        } catch { }
+        } catch {}
 
         const msg = String(errorData?.error || 'Failed to fetch dispatch file')
 
         if (
           msg.includes('Forecast file not found') ||
           msg.includes('Please generate inventory forecast first') ||
+          msg.includes('No UK or US forecast files found') ||
+          msg.includes('No readable UK/US dispatch data found') ||
           msg.includes('No UK or US dispatch files found')
         ) {
           setShowForecastMessage(true)
@@ -191,16 +234,16 @@ export default function DispatchPage({
 
       const blob = await response.blob()
       const data = await blob.arrayBuffer()
-      const workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
+      const workbook = XLSX.read(new Uint8Array(data), { type: 'array' })
 
       const sheetName =
         workbook.SheetNames.find((name) => name.trim().toLowerCase() === 'dispatch') ||
-        workbook.SheetNames[0];
+        workbook.SheetNames[0]
 
-      const sheet = workbook.Sheets[sheetName];
+      const sheet = workbook.Sheets[sheetName]
 
       if (!sheet) {
-        throw new Error(`Sheet "${sheetName}" not found in workbook`);
+        throw new Error(`Sheet "${sheetName}" not found in workbook`)
       }
 
       const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
@@ -209,11 +252,16 @@ export default function DispatchPage({
         raw: true,
       })
 
-      if (!rows || rows.length < 7) {
+      if (!rows || rows.length === 0) {
         throw new Error('Dispatch file format is invalid')
       }
 
-      const headerRowIndex = 6
+      const headerRowIndex = findHeaderRowIndex(rows)
+
+      if (headerRowIndex === -1) {
+        throw new Error('Could not find dispatch header row')
+      }
+
       const rawHeaders = (rows[headerRowIndex] || []).map((h) => normalizeHeader(h))
       const dataRows = rows.slice(headerRowIndex + 1)
 
@@ -228,12 +276,16 @@ export default function DispatchPage({
 
           rawHeaders.forEach((header, idx) => {
             if (!header) return
+            if (String(header).startsWith('Unnamed:')) return
             obj[header] = parseCellValue(header, row[idx])
           })
 
           return obj
         })
+        .filter((row) => isMeaningfulRow(row))
 
+      console.log('Dispatch sheet:', sheetName)
+      console.log('Detected header row index:', headerRowIndex)
       console.log('Dispatch headers:', rawHeaders)
       console.log('First parsed row:', jsonData[0])
       console.log('Dispatch sample rows:', jsonData.slice(0, 5))
@@ -242,6 +294,7 @@ export default function DispatchPage({
     } catch (err: any) {
       console.error('Fetch error:', err)
       setError(err?.message ?? 'Unknown error')
+      setSkuData([])
     } finally {
       setLoading(false)
     }
@@ -274,9 +327,8 @@ export default function DispatchPage({
 
   function isTotalRow(row: SkuRow) {
     return (
-      row['Product Name'] === 'Total' ||
-      (row.sku && row.sku.toLowerCase() === 'total') ||
-      (row['Product Name'] && String(row['Product Name']).toLowerCase() === 'total')
+      String(row['Product Name'] ?? '').trim().toLowerCase() === 'total' ||
+      String(row.sku ?? '').trim().toLowerCase() === 'total'
     )
   }
 
@@ -348,32 +400,32 @@ export default function DispatchPage({
   }
 
   useEffect(() => {
-  if (!embedded || typeof window === 'undefined') return;
+    if (!embedded || typeof window === 'undefined') return
 
-  const handleRefresh = (event: Event) => {
-    const customEvent = event as CustomEvent<{ month?: string; year?: string }>;
-    const nextMonth = customEvent.detail?.month;
-    const nextYear = customEvent.detail?.year;
+    const handleRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<{ month?: string; year?: string }>
+      const nextMonth = customEvent.detail?.month
+      const nextYear = customEvent.detail?.year
 
-    if (!nextMonth || !nextYear) return;
+      if (!nextMonth || !nextYear) return
 
-    setMonthDp(nextMonth);
-    setYearDp(nextYear);
-    void fetchDispatchFile(nextMonth, nextYear);
-  };
+      setMonthDp(nextMonth)
+      setYearDp(nextYear)
+      void fetchDispatchFile(nextMonth, nextYear)
+    }
 
-  const handleDownload = () => {
-    handleExportToExcel();
-  };
+    const handleDownload = () => {
+      handleExportToExcel()
+    }
 
-  window.addEventListener('dispatch-report-refresh', handleRefresh as EventListener);
-  window.addEventListener('dispatch-report-download', handleDownload);
+    window.addEventListener('dispatch-report-refresh', handleRefresh as EventListener)
+    window.addEventListener('dispatch-report-download', handleDownload)
 
-  return () => {
-    window.removeEventListener('dispatch-report-refresh', handleRefresh as EventListener);
-    window.removeEventListener('dispatch-report-download', handleDownload);
-  };
-}, [embedded, countryName]);
+    return () => {
+      window.removeEventListener('dispatch-report-refresh', handleRefresh as EventListener)
+      window.removeEventListener('dispatch-report-download', handleDownload)
+    }
+  }, [embedded, countryName, skuData, monthdp, yeardp])
 
   const tableRows = skuData.map((row, index) => {
     const isTotal = isTotalRow(row)
@@ -434,7 +486,7 @@ export default function DispatchPage({
       ) : (
         col
       ),
-      width: isCoverage ? '200px' : col === 'Sno.' ? '60px' : undefined,
+      width: isCoverage ? '260px' : col === 'Sno.' ? '60px' : undefined,
       cellClassName:
         col === 'Product Name'
           ? 'text-left whitespace-nowrap'
@@ -450,20 +502,20 @@ export default function DispatchPage({
     <>
       <style jsx>{`
         .inline-dropdowns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: flex-end;
-  margin-bottom: 24px;
-}
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          align-items: center;
+          justify-content: flex-end;
+          margin-bottom: 24px;
+        }
 
-@media (max-width: 768px) {
-  .inline-dropdowns {
-    width: 100%;
-    justify-content: flex-start;
-  }
-}
+        @media (max-width: 768px) {
+          .inline-dropdowns {
+            width: 100%;
+            justify-content: flex-start;
+          }
+        }
 
         @media (max-width: 600px) {
           .inline-dropdowns {
@@ -524,7 +576,7 @@ export default function DispatchPage({
         }
 
         .tablec thead th {
-          background-color: #5EA68E !important;
+          background-color: #5ea68e !important;
           color: #f8edcf !important;
           font-weight: bold !important;
           text-align: center !important;
@@ -532,7 +584,7 @@ export default function DispatchPage({
         }
 
         .tablec tbody tr:nth-child(even) {
-          background-color: #5EA68E33;
+          background-color: #5ea68e33;
         }
 
         .tablec tbody tr:nth-child(odd) {
@@ -667,7 +719,7 @@ export default function DispatchPage({
           margin-left: auto;
           background: none;
           border: none;
-          color: #4104042;
+          color: #414042;
           font-weight: 600;
           cursor: pointer;
           text-decoration: underline;
@@ -681,19 +733,19 @@ export default function DispatchPage({
         }
 
         .alert-container {
-  display: flex;
-  align-items: center;
-  background-color: #f2f2f2;
-  border-top: 4px solid #ff5c5c;
-  padding: 12px 16px;
-  border-radius: 6px;
-  font-family: 'Lato', sans-serif;
-  width: 100%;
-  max-width: 700px;
-  justify-content: space-between;
-  box-sizing: border-box;
-  margin-top: 20px;
-}
+          display: flex;
+          align-items: center;
+          background-color: #f2f2f2;
+          border-top: 4px solid #ff5c5c;
+          padding: 12px 16px;
+          border-radius: 6px;
+          font-family: 'Lato', sans-serif;
+          width: 100%;
+          max-width: 700px;
+          justify-content: space-between;
+          box-sizing: border-box;
+          margin-top: 20px;
+        }
 
         .alert-message {
           display: flex;
@@ -759,42 +811,41 @@ export default function DispatchPage({
           width: 100%;
         }
       `}</style>
-{!embedded && (
-     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-  
-    <div className="flex flex-wrap items-baseline gap-2 justify-start">
-      <PageBreadcrumb
-        pageTitle="Dispatch Report - "
-        variant="page"
-        align="left"
-        className=""
-      />
-      <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-        Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
-      </span>
-    </div>
 
+      {!embedded && (
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-wrap items-baseline gap-2 justify-start">
+            <PageBreadcrumb
+              pageTitle="Dispatch Report - "
+              variant="page"
+              align="left"
+              className=""
+            />
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
+            </span>
+          </div>
 
-  <div className={`inline-dropdowns ${embedded ? 'w-full flex justify-end' : ''}`}>
-    <MonthYearPickerTable
-      month={month}
-      year={year}
-      yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
-      onMonthChange={(v) => setMonthDp(v)}
-      onYearChange={(v) => setYearDp(v)}
-      valueMode="lower"
-    />
+          <div className={`inline-dropdowns ${embedded ? 'w-full flex justify-end' : ''}`}>
+            <MonthYearPickerTable
+              month={monthdp}
+              year={yeardp}
+              yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
+              onMonthChange={(v) => setMonthDp(capitalize(v))}
+              onYearChange={(v) => setYearDp(String(v))}
+              valueMode="lower"
+            />
 
-    <div className="centralised-fetch-button">
-      <button className="fetch-button" onClick={() => fetchDispatchFile(monthdp, yeardp)}>
-        Get Report
-      </button>
-    </div>
+            <div className="centralised-fetch-button">
+              <button className="fetch-button" onClick={() => fetchDispatchFile(monthdp, yeardp)}>
+                Get Report
+              </button>
+            </div>
 
-    <DownloadIconButton onClick={handleExportToExcel} size="md" />
-  </div>
-</div>
-  )}
+            <DownloadIconButton onClick={handleExportToExcel} size="md" />
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="loading-wrapper">
@@ -811,7 +862,7 @@ export default function DispatchPage({
           </button>
         </div>
       ) : showForecastMessage ? (
-        <div className="forecast-banner lg:w-[40%]  w-full">
+        <div className="forecast-banner lg:w-[40%] w-full">
           <i className="fa-solid fa-circle-exclamation"></i>
           <span>Run the Inventory Forecast to view dispatch reports.</span>
           <button className="forecast-action" onClick={handleRedirectToForecast}>
@@ -845,11 +896,10 @@ export default function DispatchPage({
       >
         <FileUploadForm
           initialCountry={''}
-          onClose={function (): void {
-            throw new Error('Function not implemented.')
-          }}
-          onComplete={function (): void {
-            throw new Error('Function not implemented.')
+          onClose={() => setShowUpload(false)}
+          onComplete={() => {
+            setShowUpload(false)
+            void fetchDispatchFile(monthdp, yeardp)
           }}
         />
       </Modal>
