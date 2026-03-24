@@ -164,65 +164,65 @@ const Pnlforecast: React.FC = () => {
   const [LosSalesUnits, setLosSalesUnits] = useState<boolean>(false);
 
   const DUMMY_PNL_ROWS: RowData[] = [
-    {
-      sku: 'SKU-DEMO-1',
-      product_name: 'Demo Product A',
-      units_1st: 0,
-      units_2nd: 0,
-      units_3rd: 0,
-      units_sum: 0,
-      Total_Sales_1st: 0,
-      profit_1st: 0,
-      profit_percentage_1st: 0,
-      Total_Sales_2nd: 0,
-      profit_2nd: 0,
-      profit_percentage_2nd: 0,
-      Total_Sales_3rd: 0,
-      profit_3rd: 0,
-      profit_percentage_3rd: 0,
-      Total_Sales_sum: 0,
-      profit_sum: 0,
-    },
-    {
-      sku: 'SKU-DEMO-2',
-      product_name: 'Demo Product B',
-      units_1st: 0,
-      units_2nd: 0,
-      units_3rd: 0,
-      units_sum: 0,
-      Total_Sales_1st: 0,
-      profit_1st: 0,
-      profit_percentage_1st: 0,
-      Total_Sales_2nd: 0,
-      profit_2nd: 0,
-      profit_percentage_2nd: 0,
-      Total_Sales_3rd: 0,
-      profit_3rd: 0,
-      profit_percentage_3rd: 0,
-      Total_Sales_sum: 0,
-      profit_sum: 0,
-    },
-    {
-      sku: 'Total',
-      product_name: 'Total',
-      units_1st: 0,
-      units_2nd: 0,
-      units_3rd: 0,
-      units_sum: 0,
-      Total_Sales_1st: 0,
-      profit_1st: 0,
-      profit_percentage_1st: 0,
-      Total_Sales_2nd: 0,
-      profit_2nd: 0,
-      profit_percentage_2nd: 0,
-      Total_Sales_3rd: 0,
-      profit_3rd: 0,
-      profit_percentage_3rd: 0,
-      Total_Sales_sum: 0,
-      profit_sum: 0,
-      profit_percentage_sum: 0,
-    },
-  ];
+  {
+    sku: "SKU-DEMO-1",
+    product_name: "Demo Product A",
+    units_1st: 0,
+    units_2nd: 0,
+    units_3rd: 0,
+    units_sum: 0,
+    Total_Sales_1st: 0,
+    profit_1st: 0,
+    profit_percentage_1st: 0,
+    Total_Sales_2nd: 0,
+    profit_2nd: 0,
+    profit_percentage_2nd: 0,
+    Total_Sales_3rd: 0,
+    profit_3rd: 0,
+    profit_percentage_3rd: 0,
+    Total_Sales_sum: 0,
+    profit_sum: 0,
+  },
+  {
+    sku: "SKU-DEMO-2",
+    product_name: "Demo Product B",
+    units_1st: 0,
+    units_2nd: 0,
+    units_3rd: 0,
+    units_sum: 0,
+    Total_Sales_1st: 0,
+    profit_1st: 0,
+    profit_percentage_1st: 0,
+    Total_Sales_2nd: 0,
+    profit_2nd: 0,
+    profit_percentage_2nd: 0,
+    Total_Sales_3rd: 0,
+    profit_3rd: 0,
+    profit_percentage_3rd: 0,
+    Total_Sales_sum: 0,
+    profit_sum: 0,
+  },
+  {
+    sku: "Total",
+    product_name: "Total",
+    units_1st: 0,
+    units_2nd: 0,
+    units_3rd: 0,
+    units_sum: 0,
+    Total_Sales_1st: 0,
+    profit_1st: 0,
+    profit_percentage_1st: 0,
+    Total_Sales_2nd: 0,
+    profit_2nd: 0,
+    profit_percentage_2nd: 0,
+    Total_Sales_3rd: 0,
+    profit_3rd: 0,
+    profit_percentage_3rd: 0,
+    Total_Sales_sum: 0,
+    profit_sum: 0,
+    profit_percentage_sum: 0,
+  },
+];
 
   const DUMMY_PNL_CHART: ChartDataItem[] = [
     {
@@ -643,58 +643,61 @@ const Pnlforecast: React.FC = () => {
   const handleDownload = async () => {
     const dataUrl = getChartPngWithWhiteBg();
 
-    await exportPnLForecastExcel({
-      filename: 'PNL_Forecast_With_Chart.xlsx',
-      titleLine: `P&L Forecast - ${effectiveCountry.toUpperCase()} (${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)})`,
-      titleCountry: effectiveCountry.toUpperCase(),
-      platformLabel: 'Amazon',
-      periodLabel: `${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
-      companyName,
-      brandName,
-      productRows: productRows || [],
-      summaryRows: summaryAsRows || [],
-      chartImageBase64: dataUrl,
-    });
-  };
+  await exportPnLForecastExcel({
+    filename: "PNL_Forecast_With_Chart.xlsx",
+    titleLine: `P&L Forecast - ${effectiveCountry.toUpperCase()} (${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)})`,
+    titleCountry: effectiveCountry.toUpperCase(),
+    platformLabel: "Amazon",
+    periodLabel: `${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
+    companyName,
+    brandName,
+    productRows: productRows || [],
+    summaryRows: summaryAsRows || [],
+    chartImageBase64: dataUrl,
+  });
+};
 
-  const PreviewLockedSection = ({
-    enabled,
-    children,
-    title,
-    description,
-    buttonText,
-    onAction,
-  }: {
-    enabled: boolean;
-    children: React.ReactNode;
-    title?: string;
-    description?: string;
-    buttonText?: string;
-    onAction?: () => void;
-  }) => {
-    return (
-      <div className="relative w-full">
-        <div
-          className={
-            enabled
-              ? 'pointer-events-none select-none opacity-45 transition-all duration-300'
-              : 'opacity-100 transition-all duration-300'
-          }
-        >
-          {children}
-        </div>
 
-        {enabled && (
-          <>
-            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
-            <div className="absolute inset-0 z-20 pointer-events-none">
-              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
-                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-                  <div className="mb-4 flex justify-center">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#37455F]">
-                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                    </div>
-                  </div>
+
+const PreviewLockedSection = ({
+  enabled,
+  children,
+  title,
+  description,
+  buttonText,
+  onAction,
+}: {
+  enabled: boolean;
+  children: React.ReactNode;
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onAction?: () => void;
+}) => {
+  return (
+    <div className="relative w-full">
+      <div
+        className={
+          enabled
+            ? "pointer-events-none select-none opacity-45  transition-all duration-300"
+            : "opacity-100 transition-all duration-300"
+        }
+      >
+        {children}
+      </div>
+
+      {enabled && (
+        <>
+          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+               <div className="mb-4 flex justify-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                                   <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                                 </div>
+              </div>
 
                   <h3 className="text-lg font-semibold text-[#414042]">
                     {title}
@@ -723,11 +726,11 @@ const Pnlforecast: React.FC = () => {
     );
   };
 
-  const handleConnectAmazonPreview = () => {
-    const connectCountry = effectiveCountry === 'global' ? 'uk' : effectiveCountry;
-    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
-  };
-
+const handleConnectAmazonPreview = () => {
+  const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
+  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+};
+  
   const monthGroup = (
     id: string,
     label: string,
@@ -807,13 +810,13 @@ const Pnlforecast: React.FC = () => {
   ];
 
   const DUMMY_SUMMARY_ROWS = [
-    { label: 'Cost of Advertisement', m1: 0, m2: 0, m3: 0, sum: 0 },
-    { label: 'Platform Fees', m1: 0, m2: 0, m3: 0, sum: 0 },
-    { label: 'Other Expenses', m1: 0, m2: 0, m3: 0, sum: 0 },
-    { label: 'CM2 Profit/Loss', m1: 0, m2: 0, m3: 0, sum: 0 },
-    { label: 'Net Reimbursement (Projected)', m1: 0, m2: 0, m3: 0, sum: 0 },
-    { label: 'Reimbursement vs CM2 Margins', m1: 0, m2: 0, m3: 0, sum: 0 },
-  ];
+  { label: "Cost of Advertisement", m1: 0, m2: 0, m3: 0, sum: 0 },
+  { label: "Platform Fees", m1: 0, m2: 0, m3: 0, sum: 0 },
+  { label: "Other Expenses", m1: 0, m2: 0, m3: 0, sum: 0 },
+  { label: "CM2 Profit/Loss", m1: 0, m2: 0, m3: 0, sum: 0 },
+  { label: "Net Reimbursement (Projected)", m1: 0, m2: 0, m3: 0, sum: 0 },
+  { label: "Reimbursement vs CM2 Margins", m1: 0, m2: 0, m3: 0, sum: 0 },
+];
 
   const summaryRows = isDemoMode
     ? DUMMY_SUMMARY_ROWS
@@ -968,31 +971,31 @@ const Pnlforecast: React.FC = () => {
           {error}
         </div>
       )}
-
-      <PreviewLockedSection
-        enabled={isDemoMode}
-        title="Preview mode"
-        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-        buttonText="Connect Amazon"
-        onAction={handleConnectAmazonPreview}
-      >
-        {data && chartData.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between w-full gap-3">
-                <div className="flex flex-col leading-tight">
-                  <div className="flex items-baseline gap-2">
-                    <PageBreadcrumb
-                      pageTitle="P&L Forecast Trend"
-                      variant="page"
-                      align="left"
-                      textSize="2xl"
-                    />
-                  </div>
-                  <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-                    Historical data vs forecasted trends
-                  </p>
-                </div>
+<PreviewLockedSection
+  enabled={isDemoMode}
+  title="Preview mode"
+  description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+  buttonText="Connect Amazon"
+  onAction={handleConnectAmazonPreview}
+>
+      {data && chartData.length > 0 && (
+       
+  <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between w-full gap-3">
+        <div className="flex flex-col leading-tight">
+          <div className="flex items-baseline gap-2">
+            <PageBreadcrumb
+              pageTitle="P&L Forecast Trend"
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+          </div>
+          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+            Historical data vs forecasted trends
+          </p>
+        </div>
 
                 <div className="flex items-center gap-3">
                   <DownloadIconButton
@@ -1002,77 +1005,80 @@ const Pnlforecast: React.FC = () => {
                 </div>
               </div>
 
-              <div className="mt-2">
-                <PnlForecastChart
-                  ref={chartRef}
-                  chartData={chartData}
-                  currencySymbol={currencySymbol}
-                  selectedGraphs={selectedGraphs}
-                  handleCheckboxChange={handleCheckboxChange}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+      <div className="mt-2">
+        <PnlForecastChart
+          ref={chartRef}
+          chartData={chartData}
+          currencySymbol={currencySymbol}
+          selectedGraphs={selectedGraphs}
+          handleCheckboxChange={handleCheckboxChange}
+        />
+      </div>
+    </div>
+  </div>
+  
+)}
 
-        {data && (
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-            <PageBreadcrumb
-              pageTitle="Detailed P&L Forecast Data"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
+      {data && (
+         
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+          <PageBreadcrumb
+            pageTitle="Detailed P&L Forecast Data"
+            variant="page"
+            align="left"
+            textSize="2xl"
+          />
 
-            <div className="mt-4 w-full overflow-x-auto">
-              <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
-                <div className="w-full text-xs 2xl:text-sm text-[#414042]">
-                  <GroupedCollapsibleTables<RowData>
-                    rows={[
-                      ...(normalizedProductRows || []),
-                      ...summaryAsRows,
-                    ]}
-                    getRowKey={(r, idx) =>
-                      r.sku && r.sku !== '' ? r.sku : `summary-${idx}-${r.product_name}`
-                    }
-                    leftCols={leftCols}
-                    groups={groups}
-                    singleCols={[]}
-                    getValue={(row, key) => {
-                      if (key === 'sr_no') {
-                        if (
-                          row.product_name === 'Total' ||
-                          summaryRows.some(s => s.label === row.product_name)
-                        ) {
-                          return '';
-                        }
+          <div className="mt-4 w-full overflow-x-auto">
+            <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
+              <div className="w-full text-xs 2xl:text-sm text-[#414042]">
+                <GroupedCollapsibleTables<RowData>
+                  rows={[
+                    ...(normalizedProductRows || []),
+                    ...summaryAsRows,
+                  ]}
+                  getRowKey={(r, idx) =>
+                    r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
+                  }
+                  leftCols={leftCols}
+                  groups={groups}
+                  singleCols={[]}
+                  getValue={(row, key, rowIndex) => {
+                    if (key === "sr_no") {
+                      if (
+                        row.product_name === "Total" ||
+                        summaryRows.some(s => s.label === row.product_name)
+                      ) {
+                        return "";
+                      }
 
                         const productIndex = normalizedProductRows?.findIndex(
                           r => r === row
                         );
 
-                        return productIndex !== undefined && productIndex >= 0
-                          ? productIndex + 1
-                          : '';
-                      }
+                      return productIndex !== undefined && productIndex >= 0
+                        ? productIndex + 1
+                        : "";
+                    }
 
-                      return formatCellValue(key, row[key]);
-                    }}
-                    getRowClassName={(row) => {
-                      if (row.product_name === 'Total') {
-                        return 'bg-[#EFEFEF] font-semibold';
-                      }
-                      if (summaryRows.some(s => s.label === row.product_name)) {
-                        return 'bg-white';
-                      }
-                      return 'bg-white';
-                    }}
-                  />
-                </div>
+                    return formatCellValue(key, row[key]);
+                  }}
+                  getRowClassName={(row) => {
+                    if (row.product_name === "Total") {
+                      return "bg-[#EFEFEF] font-semibold";
+                    }
+                    if (summaryRows.some(s => s.label === row.product_name)) {
+                      return "bg-white";
+                    }
+                    return "bg-white";
+                  }}
+                />
               </div>
             </div>
           </div>
-        )}
+        </div>
+        
+      )}
       </PreviewLockedSection>
     </div>
   );
