@@ -1881,50 +1881,50 @@ def render_live_recommended_action(
         lines.append("")
         lines.append(f"• Inventory action: {inventory_recommendation}")
 
-    # =========================================================
-    # PORTFOLIO INVENTORY (ONLY ONCE)
-    # =========================================================
-    if render_portfolio_inventory and inventory_alerts:
-
-        lines.append("")
-        lines.append("## INVENTORY")
-
-        ageing = inventory_alerts.get("ageing_inventory", {})
-        lines.append(
-            f"• Ageing inventory (181+ days): "
-            f"{ageing.get('total_units',0)} units across "
-            f"{ageing.get('total_skus',0)} SKUs"
-        )
-
-        high_cov = inventory_alerts.get("high_coverage", {})
-        lines.append(
-            f"• High coverage SKUs: {high_cov.get('count',0)} SKUs"
-        )
-
-        unful = inventory_alerts.get("unfulfillable", {})
-        if unful.get("status") == "above_1_percent":
-            lines.append(
-                f"• Unfulfillable inventory is above 1% of total inventory "
-                f"({unful.get('percentage')}%)"
-            )
-        else:
-            lines.append(
-                f"• Unfulfillable inventory remains below 1% "
-                f"({unful.get('percentage')}%)"
-            )
-
-        storage = inventory_alerts.get("estimated_storage_cost", {})
-        lines.append(
-            f"• Est. storage cost next month: "
-            f"{currency_symbol}{storage.get('value',0):,.2f}"
-        )
-
-        lines.append(
-            "• For detailed inventory insights, please refer to the Inventory Reconciliation tab."
-        )
-
     return "\n".join(lines)
 
+def render_portfolio_inventory_block(inventory_alerts, currency_symbol="£"):
+    if not inventory_alerts:
+        return ""
+
+    lines = []
+    lines.append("## INVENTORY")
+
+    ageing = inventory_alerts.get("ageing_inventory", {})
+    lines.append(
+        f"• Ageing inventory (181+ days): "
+        f"{ageing.get('total_units',0)} units across "
+        f"{ageing.get('total_skus',0)} SKUs"
+    )
+
+    high_cov = inventory_alerts.get("high_coverage", {})
+    lines.append(
+        f"• High coverage SKUs: {high_cov.get('count',0)} SKUs"
+    )
+
+    unful = inventory_alerts.get("unfulfillable", {})
+    if unful.get("status") == "above_1_percent":
+        lines.append(
+            f"• Unfulfillable inventory is above 1% of total inventory "
+            f"({unful.get('percentage')}%)"
+        )
+    else:
+        lines.append(
+            f"• Unfulfillable inventory remains below 1% "
+            f"({unful.get('percentage')}%)"
+        )
+
+    storage = inventory_alerts.get("estimated_storage_cost", {})
+    lines.append(
+        f"• Est. storage cost next month: "
+        f"{currency_symbol}{storage.get('value',0):,.2f}"
+    )
+
+    lines.append(
+        "• For detailed inventory insights, please refer to the Inventory Reconciliation tab."
+    )
+
+    return "\n".join(lines)
 
 #-----------------------------------------------------------------------------
 # AI SUMMARY (overall header) – now via ChatGPT with numeric fallback

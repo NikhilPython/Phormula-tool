@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { IoInformationCircleOutline } from "react-icons/io5";
+import { EyeCloseIcon, EyeIcon } from "@/icons";
 
 const MODULE_OPTIONS = [
   "LIVE_DASHBOARD",
@@ -153,25 +154,43 @@ export default function AddMemberModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
+  const [showPassword, setShowPassword] = useState(false);
+const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+const [passwordError, setPasswordError] = useState("");
 
   const { data: userData } = useGetUserDataQuery();
 
   const ownerEmail = (userData as any)?.owner_email?.toLowerCase?.() || "";
 
   useEffect(() => {
-    if (!isOpen) {
-      setName("");
-      setEmail("");
-      setCountry("");
-      setPassword("");
-      setConfirmPassword("");
-      setModules([]);
-      setRole("MARKETING");
-      setLoading(false);
-      setError("");
-      setSuccess("");
-    }
-  }, [isOpen]);
+  if (!isOpen) {
+    setName("");
+    setEmail("");
+    setCountry("");
+    setPassword("");
+    setConfirmPassword("");
+    setModules([]);
+    setRole("MARKETING");
+    setLoading(false);
+    setError("");
+    setSuccess("");
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+  }
+}, [isOpen]);
+
+useEffect(() => {
+  if (!confirmPassword) {
+    setPasswordError("");
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    setPasswordError("Passwords do not match");
+  } else {
+    setPasswordError("");
+  }
+}, [password, confirmPassword]);
 
   const marketplaces = useMemo(() => {
     return country ? COUNTRY_TO_MARKETPLACES[country] || [] : [];
@@ -180,14 +199,14 @@ export default function AddMemberModal({
   const isSelfAdd = ownerEmail && email.trim().toLowerCase() === ownerEmail;
 
   const canSubmit =
-    name.trim() &&
-    email.trim() &&
-    password.length >= 6 &&
-    password === confirmPassword &&
-    marketplaces.length > 0 &&
-    modules.length > 0 &&
-    !loading &&
-    !isSelfAdd;
+  name.trim() &&
+  email.trim() &&
+  password.length >= 6 &&
+  !passwordError &&
+  marketplaces.length > 0 &&
+  modules.length > 0 &&
+  !loading &&
+  !isSelfAdd;
 
   const handleSave = async () => {
     setSuccess("");
@@ -298,31 +317,66 @@ export default function AddMemberModal({
 
             {/* Password */}
             <div>
-              <label className="text-sm text-gray-700 dark:text-gray-200">
-                 Password <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="password"
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
-                placeholder="Min. 6 Characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
+  <label className="text-sm text-gray-700 dark:text-gray-200">
+    Password <span className="text-red-500">*</span>
+  </label>
+
+  <div className="relative mt-1">
+    <input
+      type={showPassword ? "text" : "password"}
+      className="w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 pr-10 text-sm"
+      placeholder="Min. 6 Characters"
+      value={password}
+      onChange={(e) => setPassword(e.target.value)}
+    />
+
+    <button
+      type="button"
+      onClick={() => setShowPassword((prev) => !prev)}
+      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+      aria-label={showPassword ? "Hide password" : "Show password"}
+    >
+      {showPassword ? (
+        <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
+      ) : (
+        <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
+      )}
+    </button>
+  </div>
+</div>
 
             {/* Confirm Password */}
             <div>
-              <label className="text-sm text-gray-700 dark:text-gray-200">
-                Confirm Password <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="password"
-                className="mt-1 w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 text-sm"
-                placeholder="Re-enter password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
-            </div>
+  <label className="text-sm text-gray-700 dark:text-gray-200">
+    Confirm Password <span className="text-red-500">*</span>
+  </label>
+
+  <div className="relative mt-1">
+    <input
+      type={showConfirmPassword ? "text" : "password"}
+      className="w-full rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-dark px-3 py-2 pr-10 text-sm"
+      placeholder="Re-enter password"
+      value={confirmPassword}
+      onChange={(e) => setConfirmPassword(e.target.value)}
+    />
+    {passwordError && (
+  <p className="mt-1 text-xs text-red-600">{passwordError}</p>
+)}
+
+    <button
+      type="button"
+      onClick={() => setShowConfirmPassword((prev) => !prev)}
+      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+    >
+      {showConfirmPassword ? (
+        <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
+      ) : (
+        <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
+      )}
+    </button>
+  </div>
+</div>
 
             {/* Country */}
             <div>
