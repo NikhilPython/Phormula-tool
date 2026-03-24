@@ -8,10 +8,10 @@ import PnlForecastChart from '@/components/pnlforecast/PnlForecastChart';
 import GroupedCollapsibleTables, {
   ColGroup,
   LeafCol,
-} from "@/components/ui/table/GroupedCollapsibleTables";
-import { exportPnLForecastExcel } from "@/lib/excel/exportCurrentInventoryExcel";
-import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
-import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+} from '@/components/ui/table/GroupedCollapsibleTables';
+import { exportPnLForecastExcel } from '@/lib/excel/exportCurrentInventoryExcel';
+import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
+import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import { IoMdLock } from 'react-icons/io';
 
@@ -62,16 +62,6 @@ const formatNumber = (val: any): string => {
   });
 };
 
-const getPreviousMonthYear = (month: string, year: string) => {
-  const date = new Date(`${month} 1, ${year}`);
-  date.setMonth(date.getMonth() - 1);
-
-  return {
-    month: date.toLocaleString("default", { month: "long" }),
-    year: date.getFullYear().toString(),
-  };
-};
-
 const formatPercent = (val: any): string => {
   if (val === null || val === undefined || val === '' || isNaN(Number(val))) return '';
   return `${Number(val).toFixed(2)}%`;
@@ -106,6 +96,20 @@ const formatCellValue = (key: string, value: any): string => {
   return typeof value === 'number' || !isNaN(Number(value)) ? formatNumber(value) : value;
 };
 
+const formatMonthYear = (monthName: string, yearVal: number | string) => {
+  const date = new Date(`${monthName} 1, ${yearVal}`);
+  return date.toLocaleString('en-US', { month: 'short' }) + `'` + String(yearVal).slice(-2);
+};
+
+const addMonths = (monthName: string, yearVal: number, offset: number) => {
+  const date = new Date(`${monthName} 1, ${yearVal}`);
+  date.setMonth(date.getMonth() + offset);
+  return {
+    month: date.toLocaleString('default', { month: 'long' }),
+    year: date.getFullYear(),
+  };
+};
+
 const Pnlforecast: React.FC = () => {
   const router = useRouter();
   const params = useParams();
@@ -114,27 +118,42 @@ const Pnlforecast: React.FC = () => {
   const urlYear = (params?.year as string) || '';
 
   const isDemoMode =
-    urlMonth?.toUpperCase() === "NA" &&
-    urlYear?.toUpperCase() === "NA";
+    urlMonth?.toUpperCase() === 'NA' &&
+    urlYear?.toUpperCase() === 'NA';
 
-      const { data: userData } = useGetUserDataQuery();
+  const { data: userData } = useGetUserDataQuery();
 
   const companyName =
     (userData as any)?.companyName ||
     (userData as any)?.company_name ||
     (userData as any)?.company ||
-    "";
+    '';
 
   const brandName =
     (userData as any)?.brandName ||
     (userData as any)?.brand_name ||
     (userData as any)?.brand ||
-    "";
+    '';
 
-
-  const effectiveCountry = isDemoMode ? "global" : countryName;
+  const effectiveCountry = isDemoMode ? 'global' : countryName;
   const currencySymbol = getCurrencySymbol(effectiveCountry);
-  const { month, year } = getPreviousMonthYear(urlMonth, urlYear);
+
+  const selectedMonth = isDemoMode ? 'March' : urlMonth;
+  const selectedYear = isDemoMode ? '2026' : urlYear;
+
+  const month = selectedMonth;
+  const year = selectedYear;
+
+  const currentMonth = month;
+  const currentYear = Number(year);
+
+  const nextMonthObj = addMonths(currentMonth, currentYear, 1);
+  const nextToNextMonthObj = addMonths(currentMonth, currentYear, 2);
+
+  const nextMonth = nextMonthObj.month;
+  const nextMonthYear = nextMonthObj.year;
+  const nextToNextMonth = nextToNextMonthObj.month;
+  const nextToNextMonthYear = nextToNextMonthObj.year;
 
   const [data, setData] = useState<RowData[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -145,104 +164,104 @@ const Pnlforecast: React.FC = () => {
   const [LosSalesUnits, setLosSalesUnits] = useState<boolean>(false);
 
   const DUMMY_PNL_ROWS: RowData[] = [
-  {
-    sku: "SKU-DEMO-1",
-    product_name: "Demo Product A",
-    units_1st: 0,
-    units_2nd: 0,
-    units_3rd: 0,
-    units_sum: 0,
-    Total_Sales_1st: 0,
-    profit_1st: 0,
-    profit_percentage_1st: 0,
-    Total_Sales_2nd: 0,
-    profit_2nd: 0,
-    profit_percentage_2nd: 0,
-    Total_Sales_3rd: 0,
-    profit_3rd: 0,
-    profit_percentage_3rd: 0,
-    Total_Sales_sum: 0,
-    profit_sum: 0,
-  },
-  {
-    sku: "SKU-DEMO-2",
-    product_name: "Demo Product B",
-    units_1st: 0,
-    units_2nd: 0,
-    units_3rd: 0,
-    units_sum: 0,
-    Total_Sales_1st: 0,
-    profit_1st: 0,
-    profit_percentage_1st: 0,
-    Total_Sales_2nd: 0,
-    profit_2nd: 0,
-    profit_percentage_2nd: 0,
-    Total_Sales_3rd: 0,
-    profit_3rd: 0,
-    profit_percentage_3rd: 0,
-    Total_Sales_sum: 0,
-    profit_sum: 0,
-  },
-  {
-    sku: "Total",
-    product_name: "Total",
-    units_1st: 0,
-    units_2nd: 0,
-    units_3rd: 0,
-    units_sum: 0,
-    Total_Sales_1st: 0,
-    profit_1st: 0,
-    profit_percentage_1st: 0,
-    Total_Sales_2nd: 0,
-    profit_2nd: 0,
-    profit_percentage_2nd: 0,
-    Total_Sales_3rd: 0,
-    profit_3rd: 0,
-    profit_percentage_3rd: 0,
-    Total_Sales_sum: 0,
-    profit_sum: 0,
-    profit_percentage_sum: 0,
-  },
-];
+    {
+      sku: 'SKU-DEMO-1',
+      product_name: 'Demo Product A',
+      units_1st: 0,
+      units_2nd: 0,
+      units_3rd: 0,
+      units_sum: 0,
+      Total_Sales_1st: 0,
+      profit_1st: 0,
+      profit_percentage_1st: 0,
+      Total_Sales_2nd: 0,
+      profit_2nd: 0,
+      profit_percentage_2nd: 0,
+      Total_Sales_3rd: 0,
+      profit_3rd: 0,
+      profit_percentage_3rd: 0,
+      Total_Sales_sum: 0,
+      profit_sum: 0,
+    },
+    {
+      sku: 'SKU-DEMO-2',
+      product_name: 'Demo Product B',
+      units_1st: 0,
+      units_2nd: 0,
+      units_3rd: 0,
+      units_sum: 0,
+      Total_Sales_1st: 0,
+      profit_1st: 0,
+      profit_percentage_1st: 0,
+      Total_Sales_2nd: 0,
+      profit_2nd: 0,
+      profit_percentage_2nd: 0,
+      Total_Sales_3rd: 0,
+      profit_3rd: 0,
+      profit_percentage_3rd: 0,
+      Total_Sales_sum: 0,
+      profit_sum: 0,
+    },
+    {
+      sku: 'Total',
+      product_name: 'Total',
+      units_1st: 0,
+      units_2nd: 0,
+      units_3rd: 0,
+      units_sum: 0,
+      Total_Sales_1st: 0,
+      profit_1st: 0,
+      profit_percentage_1st: 0,
+      Total_Sales_2nd: 0,
+      profit_2nd: 0,
+      profit_percentage_2nd: 0,
+      Total_Sales_3rd: 0,
+      profit_3rd: 0,
+      profit_percentage_3rd: 0,
+      Total_Sales_sum: 0,
+      profit_sum: 0,
+      profit_percentage_sum: 0,
+    },
+  ];
 
   const DUMMY_PNL_CHART: ChartDataItem[] = [
     {
-      month: "Dec 25",
+      month: 'Dec 25',
       SALES: 42000,
-      "ADVERTISING COSTS": 3500,
-      "CM1 PROFIT": 11000,
-      "CM2 PROFIT": 5700,
+      'ADVERTISING COSTS': 3500,
+      'CM1 PROFIT': 11000,
+      'CM2 PROFIT': 5700,
       isHistorical: true,
     },
     {
-      month: "Jan 26",
+      month: 'Jan 26',
       SALES: 45000,
-      "ADVERTISING COSTS": 4200,
-      "CM1 PROFIT": 12000,
-      "CM2 PROFIT": 7100,
+      'ADVERTISING COSTS': 4200,
+      'CM1 PROFIT': 12000,
+      'CM2 PROFIT': 7100,
       isForecast: true,
     },
     {
-      month: "Feb 26",
+      month: 'Feb 26',
       SALES: 52000,
-      "ADVERTISING COSTS": 4800,
-      "CM1 PROFIT": 14500,
-      "CM2 PROFIT": 8600,
+      'ADVERTISING COSTS': 4800,
+      'CM1 PROFIT': 14500,
+      'CM2 PROFIT': 8600,
       isForecast: true,
     },
     {
-      month: "Mar 26",
+      month: 'Mar 26',
       SALES: 60000,
-      "ADVERTISING COSTS": 5200,
-      "CM1 PROFIT": 17000,
-      "CM2 PROFIT": 10200,
+      'ADVERTISING COSTS': 5200,
+      'CM1 PROFIT': 17000,
+      'CM2 PROFIT': 10200,
       isForecast: true,
     },
   ];
 
   const chartRef = useRef<any>(null);
 
-  const [selectedColumns, setSelectedColumns] = useState<string[]>(() => ([
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(() => [
     'sku',
     'product_name',
     LosSalesUnits && 'forecast_1st',
@@ -261,10 +280,10 @@ const Pnlforecast: React.FC = () => {
     'Total_Sales_sum',
     'profit_sum',
     showCm1 && 'profit_percentage_sum',
-  ].filter(Boolean) as string[]));
+  ].filter(Boolean) as string[]);
 
   useEffect(() => {
-    setSelectedColumns(([
+    setSelectedColumns([
       'sku',
       'product_name',
       LosSalesUnits && 'forecast_1st',
@@ -283,29 +302,28 @@ const Pnlforecast: React.FC = () => {
       'Total_Sales_sum',
       'profit_sum',
       showCm1 && 'profit_percentage_sum',
-    ].filter(Boolean) as string[]));
+    ].filter(Boolean) as string[]);
   }, [LosSalesUnits, showCm1]);
 
   const getChartPngWithWhiteBg = (): string | null => {
     const chartInstance = chartRef.current;
     if (!chartInstance) return null;
 
-    const sourceCanvas =
-      chartInstance.canvas || chartInstance.ctx?.canvas;
+    const sourceCanvas = chartInstance.canvas || chartInstance.ctx?.canvas;
     if (!sourceCanvas) return null;
 
-    const exportCanvas = document.createElement("canvas");
+    const exportCanvas = document.createElement('canvas');
     exportCanvas.width = sourceCanvas.width;
     exportCanvas.height = sourceCanvas.height;
 
-    const ctx = exportCanvas.getContext("2d");
+    const ctx = exportCanvas.getContext('2d');
     if (!ctx) return null;
 
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
     ctx.drawImage(sourceCanvas, 0, 0);
 
-    return exportCanvas.toDataURL("image/png");
+    return exportCanvas.toDataURL('image/png');
   };
 
   const [selectedGraphs, setSelectedGraphs] = useState<SelectedGraphs>({
@@ -322,39 +340,19 @@ const Pnlforecast: React.FC = () => {
     setSelectedGraphs((prev) => ({ ...prev, [name]: checked }));
   };
 
-  const currentDate = new Date();
-  const currentMonth = currentDate.toLocaleString('default', { month: 'long' });
-  const currentYear = currentDate.getFullYear();
-
-  const nextMonthDate = new Date(currentDate);
-  nextMonthDate.setDate(1);
-  nextMonthDate.setMonth(currentDate.getMonth() + 1);
-  const nextMonth = nextMonthDate.toLocaleString('default', { month: 'long' });
-  const nextMonthYear = nextMonthDate.getFullYear();
-
-  const nextToNextMonthDate = new Date(currentDate);
-  nextToNextMonthDate.setDate(1);
-  nextToNextMonthDate.setMonth(currentDate.getMonth() + 2);
-  const nextToNextMonth = nextToNextMonthDate.toLocaleString('default', { month: 'long' });
-  const nextToNextMonthYear = nextToNextMonthDate.getFullYear();
-
-  const formatMonthYear = (monthName: string, yearVal: number) => {
-    const date = new Date(`${monthName} 1, ${yearVal}`);
-    return date.toLocaleString('en-US', { month: 'short' }) + `'` + String(yearVal).slice(-2);
-  };
-
   const fetchPreviousMonthsData = async (): Promise<ChartDataItem[]> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
     if (!token) return [];
+
     try {
       const previousMonths: ChartDataItem[] = [];
-      const now = new Date();
-      let date = new Date(now.getFullYear(), now.getMonth(), 1);
-      date.setMonth(date.getMonth() - 6);
+      const base = new Date(`${month} 1, ${year}`);
+      base.setMonth(base.getMonth() - 6);
 
       for (let i = 0; i < 6; i++) {
-        const monthName = date.toLocaleString('default', { month: 'long' });
-        const yearValue = date.getFullYear();
+        const monthName = base.toLocaleString('default', { month: 'long' });
+        const yearValue = base.getFullYear();
+
         try {
           const response = await fetch(
             `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/previous_months?month=${monthName}&year=${yearValue}&country=${countryName}&period_type=monthly`,
@@ -366,6 +364,7 @@ const Pnlforecast: React.FC = () => {
               },
             }
           );
+
           if (response.ok) {
             const result = await response.json();
             if (result.data && result.totals) {
@@ -381,9 +380,11 @@ const Pnlforecast: React.FC = () => {
               });
             }
           }
-        } catch { }
-        date.setMonth(date.getMonth() + 1);
+        } catch {}
+
+        base.setMonth(base.getMonth() + 1);
       }
+
       return previousMonths;
     } catch {
       return [];
@@ -430,7 +431,32 @@ const Pnlforecast: React.FC = () => {
         isForecast: true,
       },
     ];
+
     return [...previousData, ...forecastChartData];
+  };
+
+  const parseExcelResponse = async (response: Response): Promise<RowData[]> => {
+    const blob = await response.blob();
+    const buffer = await blob.arrayBuffer();
+    const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    return XLSX.utils.sheet_to_json<RowData>(sheet);
+  };
+
+  const generateCountryPnlIfMissing = async (country: 'uk' | 'us', token: string) => {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast?country=${country}&month=${month}&year=${year}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    return res.ok;
   };
 
   useEffect(() => {
@@ -444,12 +470,12 @@ const Pnlforecast: React.FC = () => {
 
     const fetchForecastData = async () => {
       const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("jwtToken")
+        typeof window !== 'undefined'
+          ? localStorage.getItem('jwtToken')
           : null;
 
       if (!token) {
-        setError("Authorization token is missing");
+        setError('Authorization token is missing');
         setLoading(false);
         return;
       }
@@ -457,68 +483,125 @@ const Pnlforecast: React.FC = () => {
       try {
         const previousData = await fetchPreviousMonthsData();
 
-        const endpoint =
-          countryName.toLowerCase() === "global"
-            ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/global?month=${month}&year=${year}`
-            : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast?country=${countryName}&month=${month}&year=${year}`;
+        if (countryName.toLowerCase() === 'global') {
+          let response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/global?month=${month}&year=${year}`,
+            {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          if (!response.ok && response.status === 404) {
+            await generateCountryPnlIfMissing('uk', token);
+            await generateCountryPnlIfMissing('us', token);
+
+            response = await fetch(
+              `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast/global?month=${month}&year=${year}`,
+              {
+                method: 'GET',
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+          }
+
+          if (!response.ok) {
+            const errJson = await response.json().catch(() => ({}));
+            setError(
+              errJson?.error ||
+                'Unable to load Global P&L Forecast. Generate UK/US inventory and P&L data first.'
+            );
+            setLoading(false);
+            return;
+          }
+
+          const contentType = response.headers.get('Content-Type') || '';
+
+          if (
+            contentType.startsWith(
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+          ) {
+            const jsonData = await parseExcelResponse(response);
+            if (jsonData.length === 0) {
+              setError('Empty table found in the Excel file');
+            } else {
+              setData(jsonData);
+              setChartData(prepareChartData(jsonData, previousData));
+            }
+            setLoading(false);
+            return;
+          }
+
+          if (contentType.includes('application/json')) {
+            const json = (await response.json()) as RowData[];
+            if (Array.isArray(json)) {
+              setData(json);
+              setChartData(prepareChartData(json, previousData));
+            } else {
+              throw new Error('Invalid JSON format');
+            }
+          }
+
+          setLoading(false);
+          return;
+        }
+
+        const endpoint = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/Pnlforecast?country=${countryName}&month=${month}&year=${year}`;
 
         const response = await fetch(endpoint, {
-          method: "GET",
+          method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
         });
 
         if (!response.ok) {
-          if (response.status === 404) {
-            setError("You need to load Inventory forecast first to load PnL forecast");
+          const errJson = await response.json().catch(() => ({}));
+          setError(
+            errJson?.error ||
+              'You need to load Inventory forecast first to load P&L forecast'
+          );
+          setLoading(false);
+          return;
+        }
+
+        const contentType = response.headers.get('Content-Type') || '';
+
+        if (
+          contentType.startsWith(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          )
+        ) {
+          const jsonData = await parseExcelResponse(response);
+          if (jsonData.length === 0) {
+            setError('Empty table found in the Excel file');
           } else {
-            setError(`Error fetching data: ${response.statusText}`);
+            setData(jsonData);
+            setChartData(prepareChartData(jsonData, previousData));
           }
           setLoading(false);
           return;
         }
 
-        const contentType = response.headers.get("Content-Type") || "";
-
-        if (
-          contentType.startsWith(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          )
-        ) {
-          const blob = await response.blob();
-          const reader = new FileReader();
-          reader.onload = async (e) => {
-            if (!e.target) return;
-            const arr = new Uint8Array(e.target.result as ArrayBuffer);
-            const workbook = XLSX.read(arr, { type: "array" });
-            const sheetName = workbook.SheetNames[0];
-            const sheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json<RowData>(sheet);
-
-            if (jsonData.length === 0) {
-              setError("Empty table found in the Excel file");
-            } else {
-              setData(jsonData);
-              setChartData(prepareChartData(jsonData, previousData));
-            }
-          };
-          reader.readAsArrayBuffer(blob);
-          return;
-        }
-
-        if (contentType.includes("application/json")) {
+        if (contentType.includes('application/json')) {
           const json = (await response.json()) as RowData[];
           if (Array.isArray(json)) {
             setData(json);
             setChartData(prepareChartData(json, previousData));
           } else {
-            throw new Error("Invalid JSON format");
+            throw new Error('Invalid JSON format');
           }
         }
       } catch (err: any) {
-        setError(err?.message || "An error occurred while fetching the data");
+        setError(err?.message || 'An error occurred while fetching the data');
       } finally {
         setLoading(false);
       }
@@ -528,22 +611,9 @@ const Pnlforecast: React.FC = () => {
   }, [countryName, month, year, isDemoMode]);
 
   useEffect(() => {
-    if (data && data.length > 0) {
-      uploadTableToBackend();
-    }
-  }, [data]);
-
-  const formatValue = (sku: string): string => {
-    const row = data?.find((r) => r.sku === sku);
-    return formatNumber(row?.value || 0);
-  };
-
-  const getTotal = (platformFees: string, advertising: string): string => {
-    const pfRow = data?.find((row) => row.sku === platformFees);
-    const adRow = data?.find((row) => row.sku === advertising);
-    const total = (pfRow?.value || 0) + (adRow?.value || 0);
-    return formatNumber(total);
-  };
+    if (!data || data.length === 0 || isDemoMode) return;
+    uploadTableToBackend();
+  }, [data, isDemoMode]);
 
   const uploadTableToBackend = async () => {
     const table = document.querySelector('.tablec') as HTMLTableElement | null;
@@ -567,100 +637,97 @@ const Pnlforecast: React.FC = () => {
         headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` },
         body: formData,
       });
-    } catch { }
+    } catch {}
   };
 
   const handleDownload = async () => {
-  const dataUrl = getChartPngWithWhiteBg();
+    const dataUrl = getChartPngWithWhiteBg();
 
-  await exportPnLForecastExcel({
-    filename: "PNL_Forecast_With_Chart.xlsx",
-    titleLine: `P&L Forecast - ${effectiveCountry.toUpperCase()} (${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)})`,
-    titleCountry: effectiveCountry.toUpperCase(),
-    platformLabel: "Amazon",
-    periodLabel: `${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
-    companyName,
-    brandName,
-    productRows: productRows || [],
-    summaryRows: summaryAsRows || [],
-    chartImageBase64: dataUrl,
-  });
-};
+    await exportPnLForecastExcel({
+      filename: 'PNL_Forecast_With_Chart.xlsx',
+      titleLine: `P&L Forecast - ${effectiveCountry.toUpperCase()} (${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)})`,
+      titleCountry: effectiveCountry.toUpperCase(),
+      platformLabel: 'Amazon',
+      periodLabel: `${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
+      companyName,
+      brandName,
+      productRows: productRows || [],
+      summaryRows: summaryAsRows || [],
+      chartImageBase64: dataUrl,
+    });
+  };
 
+  const PreviewLockedSection = ({
+    enabled,
+    children,
+    title,
+    description,
+    buttonText,
+    onAction,
+  }: {
+    enabled: boolean;
+    children: React.ReactNode;
+    title?: string;
+    description?: string;
+    buttonText?: string;
+    onAction?: () => void;
+  }) => {
+    return (
+      <div className="relative w-full">
+        <div
+          className={
+            enabled
+              ? 'pointer-events-none select-none opacity-45 transition-all duration-300'
+              : 'opacity-100 transition-all duration-300'
+          }
+        >
+          {children}
+        </div>
 
+        {enabled && (
+          <>
+            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+            <div className="absolute inset-0 z-20 pointer-events-none">
+              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                  <div className="mb-4 flex justify-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#37455F]">
+                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                    </div>
+                  </div>
 
-const PreviewLockedSection = ({
-  enabled,
-  children,
-  title,
-  description,
-  buttonText,
-  onAction,
-}: {
-  enabled: boolean;
-  children: React.ReactNode;
-  title?: string;
-  description?: string;
-  buttonText?: string;
-  onAction?: () => void;
-}) => {
-  return (
-    <div className="relative w-full">
-      <div
-        className={
-          enabled
-            ? "pointer-events-none select-none opacity-45  transition-all duration-300"
-            : "opacity-100 transition-all duration-300"
-        }
-      >
-        {children}
-      </div>
+                  <h3 className="text-lg font-semibold text-[#414042]">
+                    {title}
+                  </h3>
 
-      {enabled && (
-        <>
-          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+                  <p className="mt-2 text-sm text-gray-600 leading-6">
+                    {description}
+                  </p>
 
-          <div className="absolute inset-0 z-20 pointer-events-none">
-            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
-              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-               <div className="mb-4 flex justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
-                                   <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                                 </div>
-              </div>
+                  <button
+                    onClick={onAction}
+                    className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                  >
+                    {buttonText}
+                  </button>
 
-                <h3 className="text-lg font-semibold text-[#414042]">
-                  {title}
-                </h3>
-
-                <p className="mt-2 text-sm text-gray-600 leading-6">
-                  {description}
-                </p>
-
-                <button
-                  onClick={onAction}
-                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
-                >
-                  {buttonText}
-                </button>
-
-                <p className="mt-3 text-xs text-gray-500">
-                  Demo data is shown for preview only.
-                </p>
+                  <p className="mt-3 text-xs text-gray-500">
+                    Demo data is shown for preview only.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
+          </>
+        )}
+      </div>
+    );
+  };
 
-const handleConnectAmazonPreview = () => {
-  const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
-  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
-};
-  
+  const handleConnectAmazonPreview = () => {
+    const connectCountry = effectiveCountry === 'global' ? 'uk' : effectiveCountry;
+    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+  };
+
   const monthGroup = (
     id: string,
     label: string,
@@ -672,200 +739,200 @@ const handleConnectAmazonPreview = () => {
     id,
     label,
     collapsedCols: [
-      { key: s, label: `Sales (${currencySymbol})`, align: "center" },
-      { key: p, label: `CM1 (${currencySymbol})`, align: "center" },
+      { key: s, label: `Sales (${currencySymbol})`, align: 'center' },
+      { key: p, label: `CM1 (${currencySymbol})`, align: 'center' },
     ],
     expandedCols: [
-      { key: u, label: "Units", align: "center" },
-      { key: s, label: `Sales (${currencySymbol})`, align: "center" },
-      { key: p, label: `CM1 (${currencySymbol})`, align: "center" },
-      { key: pp, label: "CM1 %", align: "center" },
+      { key: u, label: 'Units', align: 'center' },
+      { key: s, label: `Sales (${currencySymbol})`, align: 'center' },
+      { key: p, label: `CM1 (${currencySymbol})`, align: 'center' },
+      { key: pp, label: 'CM1 %', align: 'center' },
     ],
   });
 
   const leftCols: LeafCol<RowData>[] = [
     {
-      key: "sr_no",
-      label: "S. No.",
-      align: "center",
-      thClassName: "th-center",
-      tdClassName: "td-center",
+      key: 'sr_no',
+      label: 'S. No.',
+      align: 'center',
+      thClassName: 'th-center',
+      tdClassName: 'td-center',
     },
     {
-      key: "product_name",
-      label: "Product Name",
-      align: "left",
-      thClassName: "th-left",
+      key: 'product_name',
+      label: 'Product Name',
+      align: 'left',
+      thClassName: 'th-left',
     },
     {
-      key: "sku",
-      label: "SKU",
-      align: "center",
+      key: 'sku',
+      label: 'SKU',
+      align: 'center',
     },
   ];
 
   const groups: ColGroup<RowData>[] = [
     monthGroup(
-      "m1",
+      'm1',
       `P&L Forecast for ${formatMonthYear(currentMonth, currentYear)}`,
-      "forecast_1st",
-      "Total_Sales_1st",
-      "profit_1st",
-      "profit_percentage_1st"
+      'forecast_1st',
+      'Total_Sales_1st',
+      'profit_1st',
+      'profit_percentage_1st'
     ),
     monthGroup(
-      "m2",
+      'm2',
       `P&L Forecast for ${formatMonthYear(nextMonth, nextMonthYear)}`,
-      "forecast_2nd",
-      "Total_Sales_2nd",
-      "profit_2nd",
-      "profit_percentage_2nd"
+      'forecast_2nd',
+      'Total_Sales_2nd',
+      'profit_2nd',
+      'profit_percentage_2nd'
     ),
     monthGroup(
-      "m3",
+      'm3',
       `P&L Forecast for ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
-      "forecast_3rd",
-      "Total_Sales_3rd",
-      "profit_3rd",
-      "profit_percentage_3rd"
+      'forecast_3rd',
+      'Total_Sales_3rd',
+      'profit_3rd',
+      'profit_percentage_3rd'
     ),
     monthGroup(
-      "sum",
-      "P&L Forecast for 3 months",
-      "forecast_sum",
-      "Total_Sales_sum",
-      "profit_sum",
-      "profit_percentage_sum"
+      'sum',
+      'P&L Forecast for 3 months',
+      'forecast_sum',
+      'Total_Sales_sum',
+      'profit_sum',
+      'profit_percentage_sum'
     ),
   ];
 
   const DUMMY_SUMMARY_ROWS = [
-  { label: "Cost of Advertisement", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "Platform Fees", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "Other Expenses", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "CM2 Profit/Loss", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "Net Reimbursement (Projected)", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "Reimbursement vs CM2 Margins", m1: 0, m2: 0, m3: 0, sum: 0 },
-];
+    { label: 'Cost of Advertisement', m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: 'Platform Fees', m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: 'Other Expenses', m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: 'CM2 Profit/Loss', m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: 'Net Reimbursement (Projected)', m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: 'Reimbursement vs CM2 Margins', m1: 0, m2: 0, m3: 0, sum: 0 },
+  ];
 
   const summaryRows = isDemoMode
     ? DUMMY_SUMMARY_ROWS
     : [
-      {
-        label: "Cost of Advertisement",
-        m1: data?.find(r => r.sku === "advertising_total1")?.value,
-        m2: data?.find(r => r.sku === "advertising_total2")?.value,
-        m3: data?.find(r => r.sku === "advertising_total3")?.value,
-        sum: data?.find(r => r.sku === "advertising_total")?.value,
-      },
-      {
-        label: "Platform Fees",
-        m1: data?.find(r => r.sku === "Platform_Fees1")?.value,
-        m2: data?.find(r => r.sku === "Platform_Fees2")?.value,
-        m3: data?.find(r => r.sku === "Platform_Fees3")?.value,
-        sum: data?.find(r => r.sku === "platform_fees_total")?.value,
-      },
-      {
-        label: "Other Expenses",
-        m1:
-          (data?.find(r => r.sku === "Platform_Fees1")?.value || 0) +
-          (data?.find(r => r.sku === "advertising_total1")?.value || 0),
-        m2:
-          (data?.find(r => r.sku === "Platform_Fees2")?.value || 0) +
-          (data?.find(r => r.sku === "advertising_total2")?.value || 0),
-        m3:
-          (data?.find(r => r.sku === "Platform_Fees3")?.value || 0) +
-          (data?.find(r => r.sku === "advertising_total3")?.value || 0),
-        sum:
-          (data?.find(r => r.sku === "platform_fees_total")?.value || 0) +
-          (data?.find(r => r.sku === "advertising_total")?.value || 0),
-      },
-      {
-        label: "CM2 Profit/Loss",
-        m1: data?.find(r => r.sku === "cm2profit1")?.value,
-        m2: data?.find(r => r.sku === "cm2profit2")?.value,
-        m3: data?.find(r => r.sku === "cm2profit3")?.value,
-        sum: data?.find(r => r.sku === "cm2profit_total")?.value,
-      },
-      {
-        label: "Net Reimbursement (Projected)",
-        m1: data?.find(r => r.sku === "NetReimbursement1")?.value,
-        m2: data?.find(r => r.sku === "NetReimbursement2")?.value,
-        m3: data?.find(r => r.sku === "NetReimbursement3")?.value,
-        sum: data?.find(r => r.sku === "NetReimbursement_total")?.value,
-      },
-      {
-        label: "Reimbursement vs CM2 Margins",
-        m1: data?.find(r => r.sku === "ReimbursementvsCM2Margins1")?.value,
-        m2: data?.find(r => r.sku === "ReimbursementvsCM2Margins2")?.value,
-        m3: data?.find(r => r.sku === "ReimbursementvsCM2Margins3")?.value,
-        sum: data?.find(r => r.sku === "ReimbursementvsCM2Margins_total")?.value,
-      },
-    ];
+        {
+          label: 'Cost of Advertisement',
+          m1: data?.find(r => r.sku === 'advertising_total1')?.value,
+          m2: data?.find(r => r.sku === 'advertising_total2')?.value,
+          m3: data?.find(r => r.sku === 'advertising_total3')?.value,
+          sum: data?.find(r => r.sku === 'advertising_total')?.value,
+        },
+        {
+          label: 'Platform Fees',
+          m1: data?.find(r => r.sku === 'Platform_Fees1')?.value,
+          m2: data?.find(r => r.sku === 'Platform_Fees2')?.value,
+          m3: data?.find(r => r.sku === 'Platform_Fees3')?.value,
+          sum: data?.find(r => r.sku === 'platform_fees_total')?.value,
+        },
+        {
+          label: 'Other Expenses',
+          m1:
+            (data?.find(r => r.sku === 'Platform_Fees1')?.value || 0) +
+            (data?.find(r => r.sku === 'advertising_total1')?.value || 0),
+          m2:
+            (data?.find(r => r.sku === 'Platform_Fees2')?.value || 0) +
+            (data?.find(r => r.sku === 'advertising_total2')?.value || 0),
+          m3:
+            (data?.find(r => r.sku === 'Platform_Fees3')?.value || 0) +
+            (data?.find(r => r.sku === 'advertising_total3')?.value || 0),
+          sum:
+            (data?.find(r => r.sku === 'platform_fees_total')?.value || 0) +
+            (data?.find(r => r.sku === 'advertising_total')?.value || 0),
+        },
+        {
+          label: 'CM2 Profit/Loss',
+          m1: data?.find(r => r.sku === 'cm2profit1')?.value,
+          m2: data?.find(r => r.sku === 'cm2profit2')?.value,
+          m3: data?.find(r => r.sku === 'cm2profit3')?.value,
+          sum: data?.find(r => r.sku === 'cm2profit_total')?.value,
+        },
+        {
+          label: 'Net Reimbursement (Projected)',
+          m1: data?.find(r => r.sku === 'NetReimbursement1')?.value,
+          m2: data?.find(r => r.sku === 'NetReimbursement2')?.value,
+          m3: data?.find(r => r.sku === 'NetReimbursement3')?.value,
+          sum: data?.find(r => r.sku === 'NetReimbursement_total')?.value,
+        },
+        {
+          label: 'Reimbursement vs CM2 Margins',
+          m1: data?.find(r => r.sku === 'ReimbursementvsCM2Margins1')?.value,
+          m2: data?.find(r => r.sku === 'ReimbursementvsCM2Margins2')?.value,
+          m3: data?.find(r => r.sku === 'ReimbursementvsCM2Margins3')?.value,
+          sum: data?.find(r => r.sku === 'ReimbursementvsCM2Margins_total')?.value,
+        },
+      ];
 
   const productRows = data?.filter(
     (row) =>
       row.sku &&
       ![
-        "acos1",
-        "acos2",
-        "acos3",
-        "Platform_Fees1",
-        "Platform_Fees2",
-        "Platform_Fees3",
-        "advertising_total1",
-        "advertising_total2",
-        "advertising_total3",
-        "cm2profit1",
-        "cm2profit2",
-        "cm2profit3",
-        "NetReimbursement1",
-        "NetReimbursement2",
-        "NetReimbursement3",
-        "ReimbursementvsCM2Margins1",
-        "ReimbursementvsCM2Margins2",
-        "ReimbursementvsCM2Margins3",
-        "Reimbursementvssales1",
-        "Reimbursementvssales2",
-        "Reimbursementvssales3",
-        "cm2margin1",
-        "cm2margin2",
-        "cm2margin3",
-        "platform_fees_total",
-        "advertising_total",
-        "cm2profit_total",
-        "cm2margin_total",
-        "acos_total",
-        "NetReimbursement_total",
-        "ReimbursementvsCM2Margins_total",
-        "Reimbursementvssales_total",
+        'acos1',
+        'acos2',
+        'acos3',
+        'Platform_Fees1',
+        'Platform_Fees2',
+        'Platform_Fees3',
+        'advertising_total1',
+        'advertising_total2',
+        'advertising_total3',
+        'cm2profit1',
+        'cm2profit2',
+        'cm2profit3',
+        'NetReimbursement1',
+        'NetReimbursement2',
+        'NetReimbursement3',
+        'ReimbursementvsCM2Margins1',
+        'ReimbursementvsCM2Margins2',
+        'ReimbursementvsCM2Margins3',
+        'Reimbursementvssales1',
+        'Reimbursementvssales2',
+        'Reimbursementvssales3',
+        'cm2margin1',
+        'cm2margin2',
+        'cm2margin3',
+        'platform_fees_total',
+        'advertising_total',
+        'cm2profit_total',
+        'cm2margin_total',
+        'acos_total',
+        'NetReimbursement_total',
+        'ReimbursementvsCM2Margins_total',
+        'Reimbursementvssales_total',
       ].includes(row.sku)
   );
 
   const summaryAsRows: RowData[] = summaryRows.map(r => ({
     product_name: r.label,
-    sku: "",
-    forecast_1st: "",
-    Total_Sales_1st: r.m1 ?? "",
-    profit_1st: "",
-    profit_percentage_1st: "",
-    forecast_2nd: "",
-    Total_Sales_2nd: r.m2 ?? "",
-    profit_2nd: "",
-    profit_percentage_2nd: "",
-    forecast_3rd: "",
-    Total_Sales_3rd: r.m3 ?? "",
-    profit_3rd: "",
-    profit_percentage_3rd: "",
-    forecast_sum: "",
-    Total_Sales_sum: r.sum ?? "",
-    profit_sum: "",
-    profit_percentage_sum: "",
+    sku: '',
+    forecast_1st: '',
+    Total_Sales_1st: r.m1 ?? '',
+    profit_1st: '',
+    profit_percentage_1st: '',
+    forecast_2nd: '',
+    Total_Sales_2nd: r.m2 ?? '',
+    profit_2nd: '',
+    profit_percentage_2nd: '',
+    forecast_3rd: '',
+    Total_Sales_3rd: r.m3 ?? '',
+    profit_3rd: '',
+    profit_percentage_3rd: '',
+    forecast_sum: '',
+    Total_Sales_sum: r.sum ?? '',
+    profit_sum: '',
+    profit_percentage_sum: '',
   }));
 
   const normalizedProductRows = productRows?.map(r => ({
     ...r,
-    sku: r.sku === "Total" ? "" : r.sku,
+    sku: r.sku === 'Total' ? '' : r.sku,
   }));
 
   return (
@@ -875,10 +942,10 @@ const handleConnectAmazonPreview = () => {
           <PageBreadcrumb
             pageTitle={
               <>
-                P&amp;L Forecast -{" "}
+                P&amp;L Forecast -{' '}
                 <span className="text-green-500">
                   {effectiveCountry.toUpperCase()} (
-                  {formatMonthYear(currentMonth, currentYear)} to{" "}
+                  {formatMonthYear(currentMonth, currentYear)} to{' '}
                   {formatMonthYear(nextToNextMonth, nextToNextMonthYear)})
                 </span>
               </>
@@ -901,114 +968,111 @@ const handleConnectAmazonPreview = () => {
           {error}
         </div>
       )}
-<PreviewLockedSection
-  enabled={isDemoMode}
-  title="Preview mode"
-  description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-  buttonText="Connect Amazon"
-  onAction={handleConnectAmazonPreview}
->
-      {data && chartData.length > 0 && (
-       
-  <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between w-full gap-3">
-        <div className="flex flex-col leading-tight">
-          <div className="flex items-baseline gap-2">
-            <PageBreadcrumb
-              pageTitle="P&L Forecast Trend"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
-          </div>
-          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-            Historical data vs forecasted trends
-          </p>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <DownloadIconButton
-            onClick={handleDownload}
-            disabled={isDemoMode}
-          />
-        </div>
-      </div>
+      <PreviewLockedSection
+        enabled={isDemoMode}
+        title="Preview mode"
+        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+        buttonText="Connect Amazon"
+        onAction={handleConnectAmazonPreview}
+      >
+        {data && chartData.length > 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between w-full gap-3">
+                <div className="flex flex-col leading-tight">
+                  <div className="flex items-baseline gap-2">
+                    <PageBreadcrumb
+                      pageTitle="P&L Forecast Trend"
+                      variant="page"
+                      align="left"
+                      textSize="2xl"
+                    />
+                  </div>
+                  <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+                    Historical data vs forecasted trends
+                  </p>
+                </div>
 
-      <div className="mt-2">
-        <PnlForecastChart
-          ref={chartRef}
-          chartData={chartData}
-          currencySymbol={currencySymbol}
-          selectedGraphs={selectedGraphs}
-          handleCheckboxChange={handleCheckboxChange}
-        />
-      </div>
-    </div>
-  </div>
-  
-)}
+                <div className="flex items-center gap-3">
+                  <DownloadIconButton
+                    onClick={handleDownload}
+                    disabled={isDemoMode}
+                  />
+                </div>
+              </div>
 
-      {data && (
-         
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-          <PageBreadcrumb
-            pageTitle="Detailed P&L Forecast Data"
-            variant="page"
-            align="left"
-            textSize="2xl"
-          />
-
-          <div className="mt-4 w-full overflow-x-auto">
-            <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
-              <div className="w-full text-xs 2xl:text-sm text-[#414042]">
-                <GroupedCollapsibleTables<RowData>
-                  rows={[
-                    ...(normalizedProductRows || []),
-                    ...summaryAsRows,
-                  ]}
-                  getRowKey={(r, idx) =>
-                    r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
-                  }
-                  leftCols={leftCols}
-                  groups={groups}
-                  singleCols={[]}
-                  getValue={(row, key, rowIndex) => {
-                    if (key === "sr_no") {
-                      if (
-                        row.product_name === "Total" ||
-                        summaryRows.some(s => s.label === row.product_name)
-                      ) {
-                        return "";
-                      }
-
-                      const productIndex = normalizedProductRows?.findIndex(
-                        r => r === row
-                      );
-
-                      return productIndex !== undefined && productIndex >= 0
-                        ? productIndex + 1
-                        : "";
-                    }
-
-                    return formatCellValue(key, row[key]);
-                  }}
-                  getRowClassName={(row) => {
-                    if (row.product_name === "Total") {
-                      return "bg-[#EFEFEF] font-semibold";
-                    }
-                    if (summaryRows.some(s => s.label === row.product_name)) {
-                      return "bg-white";
-                    }
-                    return "bg-white";
-                  }}
+              <div className="mt-2">
+                <PnlForecastChart
+                  ref={chartRef}
+                  chartData={chartData}
+                  currencySymbol={currencySymbol}
+                  selectedGraphs={selectedGraphs}
+                  handleCheckboxChange={handleCheckboxChange}
                 />
               </div>
             </div>
           </div>
-        </div>
-        
-      )}
+        )}
+
+        {data && (
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+            <PageBreadcrumb
+              pageTitle="Detailed P&L Forecast Data"
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+
+            <div className="mt-4 w-full overflow-x-auto">
+              <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
+                <div className="w-full text-xs 2xl:text-sm text-[#414042]">
+                  <GroupedCollapsibleTables<RowData>
+                    rows={[
+                      ...(normalizedProductRows || []),
+                      ...summaryAsRows,
+                    ]}
+                    getRowKey={(r, idx) =>
+                      r.sku && r.sku !== '' ? r.sku : `summary-${idx}-${r.product_name}`
+                    }
+                    leftCols={leftCols}
+                    groups={groups}
+                    singleCols={[]}
+                    getValue={(row, key) => {
+                      if (key === 'sr_no') {
+                        if (
+                          row.product_name === 'Total' ||
+                          summaryRows.some(s => s.label === row.product_name)
+                        ) {
+                          return '';
+                        }
+
+                        const productIndex = normalizedProductRows?.findIndex(
+                          r => r === row
+                        );
+
+                        return productIndex !== undefined && productIndex >= 0
+                          ? productIndex + 1
+                          : '';
+                      }
+
+                      return formatCellValue(key, row[key]);
+                    }}
+                    getRowClassName={(row) => {
+                      if (row.product_name === 'Total') {
+                        return 'bg-[#EFEFEF] font-semibold';
+                      }
+                      if (summaryRows.some(s => s.label === row.product_name)) {
+                        return 'bg-white';
+                      }
+                      return 'bg-white';
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </PreviewLockedSection>
     </div>
   );
