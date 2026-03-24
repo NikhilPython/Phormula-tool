@@ -101,7 +101,7 @@ export default function ViewMemberDrawer({
               </span>
             </div>
 
-            <Row label="Added By" value={member?.added_by || "Raghav Sood"} />
+            <Row label="Added By" value={name || "Raghav Sood"} />
           </div>
 
           {/* Section Access */}
