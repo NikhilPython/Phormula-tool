@@ -11,7 +11,7 @@ import json
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
+from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
 compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts,)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
@@ -1054,6 +1054,7 @@ def live_mtd_vs_previous():
                 inventory_recommendation=sku_strategy.get("inventory_recommendation"),
                 journey_summary=sku_strategy.get("journey_summary"),
                 currency_symbol=currency["symbol"],
+                
             )
 
 
@@ -1181,6 +1182,11 @@ def live_mtd_vs_previous():
             "total_current_rembursement_fee": total_current_rembursement_fee,
             "total_previous_rembursement_fee": total_previous_rembursement_fee,
         }
+        # --- build inventory block ---
+        portfolio_inventory_block = render_portfolio_inventory_block(
+            inventory_alerts=portfolio_inventory_alerts,
+            currency_symbol=currency["symbol"],
+        )    
 
         # ---------------------------
         # FINAL RESPONSE PAYLOAD
@@ -1193,6 +1199,7 @@ def live_mtd_vs_previous():
                 "inventory_clearance_priority": user_objective.get("inventory_clearance_priority"),
                 "time_horizon": user_objective.get("time_horizon"),
             },
+            "portfolio_inventory_block": portfolio_inventory_block,
 
             "periods": {
                 "previous": {"label": prev_label},
@@ -1219,7 +1226,7 @@ def live_mtd_vs_previous():
                 "current_mtd": curr_daily,
             },
 
-            "portfolio_inventory_alerts": payload_ai.get("portfolio_inventory_alerts", {}),
+            
             "ai_insights": insights,
             "overall_summary": overall_summary,
             "overall_actions": overall_actions,
