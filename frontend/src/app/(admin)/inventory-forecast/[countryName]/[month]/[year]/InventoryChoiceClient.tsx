@@ -468,13 +468,8 @@ export default function InventoryFlowPage() {
     onAction?: () => void;
   }) => {
     return (
-      <div className="relative w-full">
+      <div >
         <div
-          className={
-            enabled
-              ? 'pointer-events-none select-none opacity-45 transition-all duration-300'
-              : 'opacity-100 transition-all duration-300'
-          }
         >
           {children}
         </div>
@@ -698,12 +693,12 @@ export default function InventoryFlowPage() {
             buttonText="Connect Amazon"
             onAction={handleConnectAmazonPreview}
           >
-            <div className="bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-100">
+            <div >
               {loading ? (
                 <Loading />
               ) : activeTab === 'inventory' ? (
                 missingMonths.length > 0 ? (
-                  <div id="inventory-forecast" className="scroll-mt-[80px]">
+                  <div id="inventory-forecast" className="scroll-mt-[80px] rounded-xl shadow-sm border border-gray-100">
                     <p className="text-sm sm:text-base mb-4 text-[#414042]">
                       The following monthly files are needed to upload:{' '}
                       <strong className="text-[#60a68e]">{missingMonths.join(', ')}</strong>
