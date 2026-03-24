@@ -729,37 +729,46 @@ def upload_referral_fee():
 
 @superadmin_dashboard_bp.route("/superadmin/dashboard/members", methods=["GET"])
 def get_members():
-    # ✅ Auth check
     ok, err = _is_superadmin_authenticated()
     if not ok:
         payload, code = err
         return jsonify(payload), code
 
     try:
-        # optional filters
-        owner_user_id = request.args.get("owner_user_id", type=int)
-        email = request.args.get("email")
+        user_email = request.args.get("email")
 
-        query = Member.query
+        if not user_email:
+            return jsonify({
+                "message": "Email parameter is required"
+            }), 400
 
-        if owner_user_id:
-            query = query.filter(Member.owner_user_id == owner_user_id)
+        # Find user by email
+        user = User.query.filter_by(email=user_email).first()
 
-        if email:
-            query = query.filter(Member.email == email)
+        if not user:
+            return jsonify({
+                "message": f"No user found with email {user_email}"
+            }), 404
 
-        members = query.order_by(Member.id.asc()).all()
+        # Get only members belonging to this user
+        members = Member.query.filter_by(owner_user_id=user.id).order_by(Member.id.asc()).all()
 
         return jsonify({
             "message": f"{len(members)} member record(s) found.",
+            "user_email": user.email,
+            "user_id": user.id,
             "data": [
                 {
+                    "id": m.id,
+                    "owner_user_id": m.owner_user_id,
                     "email": m.email,
                     "member_name": m.member_name,
                     "role": m.role,
                     "marketplace_ids": m.marketplace_ids,
                     "modules": m.modules,
-                    "countries": m.countries
+                    "countries": m.countries,
+                    "is_verified": m.is_verified,
+                    "status": "Active" if m.is_verified else "Inactive"
                 }
                 for m in members
             ]
@@ -771,3 +780,4 @@ def get_members():
             "error": str(e)
         }), 500
 
+        
