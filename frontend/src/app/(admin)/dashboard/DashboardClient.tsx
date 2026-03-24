@@ -6102,7 +6102,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
                     <div
                         id="ai-insights"
-                        className="mt-6 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
+                        className="mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-x-hidden scroll-mt-[80px]"
                     >
                         <div className="w-full max-w-full min-w-0">
 
@@ -6424,8 +6424,8 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         </div>
 
                                         <div className="flex items-center gap-3">
-                                            {/* Only this part depends on isCountryMode */}
-                                            {!isCountryMode && (
+                                          
+                                            {/* {!isCountryMode && (
                                                 <>
                                                     <SegmentedToggle<RegionKey>
                                                         value={graphRegion}
@@ -6434,7 +6434,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                     />
 
                                                 </>
-                                            )}
+                                            )} */}
                                             <span className="relative group shrink-0">
                                                 <button
                                                     type="button"

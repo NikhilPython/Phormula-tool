@@ -31,6 +31,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AiButton } from '@/components/ui/button/AiButton';
 import SegmentedToggle from '@/components/ui/SegmentedToggle';
 import { IoMdLock } from "react-icons/io";
+import SkuAnalysisSection from '@/components/businessInsight/SkuAnalysisSection';
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
@@ -40,6 +41,14 @@ ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip,
 interface MonthOption {
   value: string;
   label: string;
+}
+interface CurrencyRateRow {
+  user_currency: string;
+  country: string;
+  selected_currency: string;
+  conversion_rate: number;
+  month: string;
+  year: number;
 }
 
 interface GrowthCategory {
@@ -166,7 +175,7 @@ const MonthsforBI: React.FC = () => {
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   };
 
-   const TOP_80_DUMMY: SkuItem[] = [
+  const TOP_80_DUMMY: SkuItem[] = [
     {
       product_name: "Demo Product A",
       sku: "DEMO-A",
@@ -266,9 +275,9 @@ const MonthsforBI: React.FC = () => {
   };
 
   const PREVIEW_MONTH1 = "01";
-const PREVIEW_YEAR1 = "2025";
-const PREVIEW_MONTH2 = "02";
-const PREVIEW_YEAR2 = "2025";
+  const PREVIEW_YEAR1 = "2025";
+  const PREVIEW_MONTH2 = "02";
+  const PREVIEW_YEAR2 = "2025";
 
 
   const isPreviewMode =
@@ -277,25 +286,25 @@ const PREVIEW_YEAR2 = "2025";
 
   // Month/year form
   const [month1, setMonth1] = useState<string>(isPreviewMode ? PREVIEW_MONTH1 : '');
-const [year1, setYear1] = useState<string>(isPreviewMode ? PREVIEW_YEAR1 : '');
-const [month2, setMonth2] = useState<string>(isPreviewMode ? PREVIEW_MONTH2 : '');
-const [year2, setYear2] = useState<string>(isPreviewMode ? PREVIEW_YEAR2 : '');
+  const [year1, setYear1] = useState<string>(isPreviewMode ? PREVIEW_YEAR1 : '');
+  const [month2, setMonth2] = useState<string>(isPreviewMode ? PREVIEW_MONTH2 : '');
+  const [year2, setYear2] = useState<string>(isPreviewMode ? PREVIEW_YEAR2 : '');
   const [isMobile, setIsMobile] = useState(false);
 
   const [is2xlUp, setIs2xlUp] = useState(false);
 
-useEffect(() => {
-  const check = () => {
-    setIsMobile(window.innerWidth < 768);
-    setIs2xlUp(window.innerWidth >= 1536);
-  };
-  check();
-  window.addEventListener("resize", check);
-  return () => window.removeEventListener("resize", check);
-}, []);
+  useEffect(() => {
+    const check = () => {
+      setIsMobile(window.innerWidth < 768);
+      setIs2xlUp(window.innerWidth >= 1536);
+    };
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
-const axisTickFontSize = is2xlUp ? 14 : 12;
-const axisNameFontSize = is2xlUp ? 14 : 12;
+  const axisTickFontSize = is2xlUp ? 14 : 12;
+  const axisNameFontSize = is2xlUp ? 14 : 12;
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
     check();
@@ -316,7 +325,7 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
   });
 
 
-  const [activeTab, setActiveTab] = useState<TabKey>('all_skus');
+  // const [activeTab, setActiveTab] = useState<TabKey>('all_skus');
   const [month2Label, setMonth2Label] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
@@ -331,7 +340,7 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
   const [fbText, setFbText] = useState<string>('');
   const [fbSubmitting, setFbSubmitting] = useState<boolean>(false);
   const [fbSuccess, setFbSuccess] = useState<boolean>(false);
-  const [expandAllSkusOthers, setExpandAllSkusOthers] = useState(true);
+  // const [expandAllSkusOthers, setExpandAllSkusOthers] = useState(true);
   const [reimbursementTotals, setReimbursementTotals] = useState<{ month1: number; month2: number } | null>(null);
   const [advertisingTotals, setAdvertisingTotals] = useState<{ month1: number; month2: number } | null>(null);
   const [expenseTotals, setExpenseTotals] = useState<{ month1: number; month2: number } | null>(null);
@@ -339,14 +348,166 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
   const router = useRouter();
 
   useEffect(() => {
-  if (!isPreviewMode) return;
+    if (!isPreviewMode) return;
 
-  setActiveTab('top_80_skus');
-  handleSubmit();
-}, [isPreviewMode]);
+    // setActiveTab('top_80_skus');
+    handleSubmit();
+  }, [isPreviewMode]);
+
+  const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
+  const [ratesLoading, setRatesLoading] = useState(false);
 
 
+  const monthName = (date = new Date()) =>
+    date.toLocaleString("en-US", { month: "long" }).toLowerCase();
 
+  const currentYearNum = (date = new Date()) => date.getFullYear();
+
+  const rateMap = useMemo(() => {
+    const map = new Map<string, number>();
+
+    for (const r of currencyRates) {
+      const key = [
+        (r.user_currency || "").toLowerCase(),
+        (r.selected_currency || "").toLowerCase(),
+        (r.country || "").toLowerCase(),
+        (r.month || "").toLowerCase(),
+        Number(r.year),
+      ].join("|");
+
+      map.set(key, Number(r.conversion_rate));
+    }
+
+    return map;
+  }, [currencyRates]);
+
+  const getFxDb = (
+    from: string,
+    to: string,
+    country: string,
+    month: string = monthName(),
+    year: number = currentYearNum()
+  ) => {
+    const f = (from || "").toLowerCase();
+    const t = (to || "").toLowerCase();
+    const c = (country || "").toLowerCase();
+    const m = (month || "").toLowerCase();
+    const y = Number(year);
+
+    if (!f || !t) return 1;
+    if (f === t) return 1;
+
+    const directKey = `${f}|${t}|${c}|${m}|${y}`;
+    const inverseKey = `${t}|${f}|${c}|${m}|${y}`;
+
+    const direct = rateMap.get(directKey);
+    if (direct != null) return direct;
+
+    const inverse = rateMap.get(inverseKey);
+    if (inverse != null && inverse !== 0) return 1 / inverse;
+
+    return 1;
+  };
+
+  const getFxLookupCountry = (country?: string, currencyCode?: string) => {
+    const c = (country || "").toLowerCase();
+    const code = (currencyCode || "").toUpperCase();
+
+    if (c && c !== "global") return c;
+
+    if (code === "GBP") return "uk";
+    if (code === "USD") return "us";
+    if (code === "CAD") return "ca";
+    if (code === "INR") return "india";
+
+    return "us";
+  };
+
+  const safeNumber = (value: any, fallback = 0) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const getCurrencyCodeByCountry = (country?: string) => {
+    const c = (country || "").toLowerCase();
+    if (c === "uk") return "GBP";
+    if (c === "us") return "USD";
+    if (c === "ca") return "CAD";
+    if (c === "india" || c === "in") return "INR";
+    if (c === "global") return "USD";
+    return "USD";
+  };
+
+  const getCurrencySymbolFromCode = (code?: string) => {
+    const c = (code || "").toUpperCase();
+    if (c === "GBP") return "£";
+    if (c === "USD") return "$";
+    if (c === "CAD") return "C$";
+    if (c === "EUR") return "€";
+    if (c === "INR") return "₹";
+    return c || "$";
+  };
+
+  const effectiveCountry = isPreviewMode ? "global" : countryName;
+
+  const selectedCountryCurrency = useMemo(() => {
+    return getCurrencyCodeByCountry(effectiveCountry);
+  }, [effectiveCountry]);
+
+  const homeCurrencyCode = useMemo(() => {
+    if (!currencyRates.length) return selectedCountryCurrency;
+
+    const row = currencyRates.find(
+      (r) => (r.country || "").toLowerCase() === (effectiveCountry || "").toLowerCase()
+    );
+
+    return (row?.user_currency || selectedCountryCurrency).toUpperCase();
+  }, [currencyRates, effectiveCountry, selectedCountryCurrency]);
+
+  const displayCurrencyCode = useMemo(() => {
+    return (effectiveCountry || "").toLowerCase() === "global"
+      ? homeCurrencyCode
+      : selectedCountryCurrency;
+  }, [effectiveCountry, homeCurrencyCode, selectedCountryCurrency]);
+
+  const displayCurrencySymbol = useMemo(() => {
+    return getCurrencySymbolFromCode(displayCurrencyCode);
+  }, [displayCurrencyCode]);
+
+  const convertAmount = (
+    value: number,
+    sourceCountry?: string,
+    month?: string,
+    year?: string | number
+  ) => {
+    const numericValue = safeNumber(value, 0);
+    if (!numericValue) return 0;
+
+    const fromCurrency = getCurrencyCodeByCountry(sourceCountry || effectiveCountry);
+    const toCurrency = displayCurrencyCode;
+
+    if (!fromCurrency || !toCurrency || fromCurrency === toCurrency) {
+      return numericValue;
+    }
+
+    const fxCountry = getFxLookupCountry(sourceCountry || effectiveCountry, toCurrency);
+
+    const monthLabel =
+      month
+        ? (months.find((m) => m.value === String(month).padStart(2, "0"))?.label || "").toLowerCase()
+        : monthName();
+
+    const fx = getFxDb(
+      fromCurrency,
+      toCurrency,
+      fxCountry,
+      monthLabel || monthName(),
+      year ? Number(year) : currentYearNum()
+    );
+
+    const converted = numericValue * safeNumber(fx, 1);
+    return Number.isFinite(converted) ? converted : numericValue;
+  };
 
   // ✅ NEW: available periods from backend (['YYYY-MM'])
   const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
@@ -366,138 +527,170 @@ const axisNameFontSize = is2xlUp ? 14 : 12;
   const didInitialFetchRef = React.useRef(false);
 
   useEffect(() => {
-  if (!isPreviewMode) return;
+    if (!isPreviewMode) return;
 
-  setMonth1(PREVIEW_MONTH1);
-  setYear1(PREVIEW_YEAR1);
-  setMonth2(PREVIEW_MONTH2);
-  setYear2(PREVIEW_YEAR2);
+    setMonth1(PREVIEW_MONTH1);
+    setYear1(PREVIEW_YEAR1);
+    setMonth2(PREVIEW_MONTH2);
+    setYear2(PREVIEW_YEAR2);
 
-  setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
-  setAdvertisingTotals({ month1: 4200, month2: 5200 });
-  setExpenseTotals({ month1: 3800, month2: 4100 });
-  setReimbursementTotals({ month1: 900, month2: 1100 });
-  setMonth2Label("Preview");
-  setActiveTab("all_skus");
-  setError(null);
-}, [isPreviewMode]);
+    setCategorizedGrowth(DUMMY_CATEGORIZED_GROWTH);
+    setAdvertisingTotals({ month1: 4200, month2: 5200 });
+    setExpenseTotals({ month1: 3800, month2: 4100 });
+    setReimbursementTotals({ month1: 900, month2: 1100 });
+    setMonth2Label("Preview");
+    // setActiveTab("all_skus");
+    setError(null);
+  }, [isPreviewMode]);
 
-  
+  useEffect(() => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-  const effectiveCountry = isPreviewMode ? "global" : countryName;
+    if (!token) return;
+
+    const fetchRates = async () => {
+      try {
+        setRatesLoading(true);
+
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/currency-rates`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Failed to fetch rates: ${res.status} ${errText}`);
+        }
+
+        const json = await res.json();
+        setCurrencyRates(Array.isArray(json) ? json : []);
+      } catch (e) {
+        console.error("Failed to fetch currency rates:", e);
+        setCurrencyRates([]);
+      } finally {
+        setRatesLoading(false);
+      }
+    };
+
+    fetchRates();
+  }, []);
+
+
 
   const isUsingDummyData = isPreviewMode;
 
   const DummyBlurWrapper = ({
-  enabled,
-  badgeText = "Dummy Preview",
-  children,
-  className = "",
-}: {
-  enabled: boolean;
-  badgeText?: string;
-  children: React.ReactNode;
-  className?: string;
-}) => {
-  return (
-    <div className={`relative w-full ${className}`}>
-      {/* {enabled && (
+    enabled,
+    badgeText = "Dummy Preview",
+    children,
+    className = "",
+  }: {
+    enabled: boolean;
+    badgeText?: string;
+    children: React.ReactNode;
+    className?: string;
+  }) => {
+    return (
+      <div className={`relative w-full ${className}`}>
+        {/* {enabled && (
         <div className="absolute right-2 top-2 z-20 rounded-md bg-black/70 px-2 py-1 text-[10px] sm:text-xs text-white shadow">
           {badgeText}
         </div>
       )} */}
 
-      <div
-        className={
-          enabled
-            ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
-            : "opacity-100 transition-opacity duration-300"
-        }
-      >
-        {children}
+        <div
+          className={
+            enabled
+              ? "opacity-40 pointer-events-none select-none transition-opacity duration-300"
+              : "opacity-100 transition-opacity duration-300"
+          }
+        >
+          {children}
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
-const PreviewLockedSection = ({
-  enabled,
-  children,
-  title,
-  description,
-  buttonText,
-  onAction,
-}: {
-  enabled: boolean;
-  children: React.ReactNode;
-  title?: string;
-  description?: string;
-  buttonText?: string;
-  onAction?: () => void;
-}) => {
-  return (
-    <div className="relative w-full">
-      <div
-        className={
-          enabled
-            ? "pointer-events-none select-none opacity-45 transition-all duration-300"
-            : "opacity-100 transition-all duration-300"
-        }
-      >
-        {children}
-      </div>
+  const PreviewLockedSection = ({
+    enabled,
+    children,
+    title,
+    description,
+    buttonText,
+    onAction,
+  }: {
+    enabled: boolean;
+    children: React.ReactNode;
+    title?: string;
+    description?: string;
+    buttonText?: string;
+    onAction?: () => void;
+  }) => {
+    return (
+      <div className="relative w-full">
+        <div
+          className={
+            enabled
+              ? "pointer-events-none select-none opacity-45 transition-all duration-300"
+              : "opacity-100 transition-all duration-300"
+          }
+        >
+          {children}
+        </div>
 
-      {enabled && (
-        <>
-          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+        {enabled && (
+          <>
+            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
 
-          <div className="absolute inset-0 z-20 pointer-events-none">
-            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
-              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-               <div className="mb-4 flex justify-center">
-                               <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
-                                                  <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                                                </div>
-                             </div>
+            <div className="absolute inset-0 z-20 pointer-events-none">
+              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                  <div className="mb-4 flex justify-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                    </div>
+                  </div>
 
-                <h3 className="text-lg font-semibold text-[#414042]">
-                  {title}
-                </h3>
+                  <h3 className="text-lg font-semibold text-[#414042]">
+                    {title}
+                  </h3>
 
-                <p className="mt-2 text-sm text-gray-600 leading-6">
-                  {description}
-                </p>
+                  <p className="mt-2 text-sm text-gray-600 leading-6">
+                    {description}
+                  </p>
 
-                <button
-                  onClick={onAction}
-                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
-                >
-                  {buttonText}
-                </button>
+                  <button
+                    onClick={onAction}
+                    className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                  >
+                    {buttonText}
+                  </button>
 
-                <p className="mt-3 text-xs text-gray-500">
-                  Demo data is shown for preview only.
-                </p>
+                  <p className="mt-3 text-xs text-gray-500">
+                    Demo data is shown for preview only.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
+          </>
+        )}
+      </div>
+    );
+  };
 
-const handleConnectAmazonPreview = () => {
-  const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
-  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
-};
+  const handleConnectAmazonPreview = () => {
+    const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
+    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+  };
 
 
   // =========================
   // PREVIEW / DUMMY DATA
   // =========================
 
- 
+
 
 
 
@@ -541,9 +734,9 @@ const handleConnectAmazonPreview = () => {
     intro.start();
   }, [introReady]);
 
-  
 
-  
+
+
 
 
   const toggleTotalsMetric = (key: string) => {
@@ -606,56 +799,69 @@ const handleConnectAmazonPreview = () => {
 
 
   const buildCompareSeries = (
-  metricKeyBase: 'net_sales' | 'profit' | 'total_quantity' | 'rembursement_fee' | 'asp'
-) => {
-  const safeM1 = month1 || (isPreviewMode ? PREVIEW_MONTH1 : "");
-  const safeY1 = year1 || (isPreviewMode ? PREVIEW_YEAR1 : "");
-  const safeM2 = month2 || (isPreviewMode ? PREVIEW_MONTH2 : "");
-  const safeY2 = year2 || (isPreviewMode ? PREVIEW_YEAR2 : "");
+    metricKeyBase: 'net_sales' | 'profit' | 'total_quantity' | 'rembursement_fee' | 'asp'
+  ) => {
+    const safeM1 = month1 || (isPreviewMode ? PREVIEW_MONTH1 : "");
+    const safeY1 = year1 || (isPreviewMode ? PREVIEW_YEAR1 : "");
+    const safeM2 = month2 || (isPreviewMode ? PREVIEW_MONTH2 : "");
+    const safeY2 = year2 || (isPreviewMode ? PREVIEW_YEAR2 : "");
 
-  const m1Label = `${getAbbr(safeM1)}'${String(safeY1).slice(2)}`;
-  const m2Label = `${getAbbr(safeM2)}'${String(safeY2).slice(2)}`;
-  const x = [m1Label, "", m2Label];
+    const m1Label = `${getAbbr(safeM1)}'${String(safeY1).slice(2)}`;
+    const m2Label = `${getAbbr(safeM2)}'${String(safeY2).slice(2)}`;
+    const x = [m1Label, "", m2Label];
 
-  if (isPreviewMode) {
-    return {
-      x,
-      values: {
-        top80_m1: 12000,
-        top80_m2: 16500,
-        newRev_m1: 4000,
-        newRev_m2: 7200,
-        other_m1: 8000,
-        other_m2: 6500,
-      },
-    };
-  }
+    if (isPreviewMode) {
+      return {
+        x,
+        values: {
+          top80_m1: 12000,
+          top80_m2: 16500,
+          newRev_m1: 4000,
+          newRev_m2: 7200,
+          other_m1: 8000,
+          other_m2: 6500,
+        },
+      };
+    }
 
     const top80Rows = categorizedGrowth.top_80_skus || [];
     const newRevRows = categorizedGrowth.new_or_reviving_skus || [];
     const otherRows = categorizedGrowth.other_skus || [];
 
-    const sumField = (rows: any[], key: string) =>
-      (rows || []).reduce((a, r) => a + Number(r?.[key] ?? 0), 0);
+    const sumFieldConverted = (
+      rows: any[],
+      key: string,
+      monthVal: string,
+      yearVal: string
+    ) =>
+      (rows || []).reduce((a, r) => {
+        const raw = safeNumber(r?.[key], 0);
+        return a + safeNumber(convertAmount(raw, effectiveCountry, monthVal, yearVal), 0);
+      }, 0);
 
-    const safeDiv = (a: number, b: number) => (b ? a / b : 0);
+    const sumFieldRaw = (rows: any[], key: string) =>
+      (rows || []).reduce((a, r) => a + safeNumber(r?.[key], 0), 0);
 
-    // ✅ SPECIAL CASE: ASP should be weighted = total net_sales / total qty
+    const safeDiv = (a: number, b: number) => {
+      const result = b ? a / b : 0;
+      return Number.isFinite(result) ? result : 0;
+    };
+
     if (metricKeyBase === 'asp') {
-      const top80_ns_m1 = sumField(top80Rows, 'net_sales_month1');
-      const top80_ns_m2 = sumField(top80Rows, 'net_sales_month2');
-      const top80_q_m1 = sumField(top80Rows, 'total_quantity_month1');
-      const top80_q_m2 = sumField(top80Rows, 'total_quantity_month2');
+      const top80_ns_m1 = sumFieldConverted(top80Rows, 'net_sales_month1', safeM1, safeY1);
+      const top80_ns_m2 = sumFieldConverted(top80Rows, 'net_sales_month2', safeM2, safeY2);
+      const top80_q_m1 = sumFieldRaw(top80Rows, 'total_quantity_month1');
+      const top80_q_m2 = sumFieldRaw(top80Rows, 'total_quantity_month2');
 
-      const newRev_ns_m1 = sumField(newRevRows, 'net_sales_month1');
-      const newRev_ns_m2 = sumField(newRevRows, 'net_sales_month2');
-      const newRev_q_m1 = sumField(newRevRows, 'total_quantity_month1');
-      const newRev_q_m2 = sumField(newRevRows, 'total_quantity_month2');
+      const newRev_ns_m1 = sumFieldConverted(newRevRows, 'net_sales_month1', safeM1, safeY1);
+      const newRev_ns_m2 = sumFieldConverted(newRevRows, 'net_sales_month2', safeM2, safeY2);
+      const newRev_q_m1 = sumFieldRaw(newRevRows, 'total_quantity_month1');
+      const newRev_q_m2 = sumFieldRaw(newRevRows, 'total_quantity_month2');
 
-      const other_ns_m1 = sumField(otherRows, 'net_sales_month1');
-      const other_ns_m2 = sumField(otherRows, 'net_sales_month2');
-      const other_q_m1 = sumField(otherRows, 'total_quantity_month1');
-      const other_q_m2 = sumField(otherRows, 'total_quantity_month2');
+      const other_ns_m1 = sumFieldConverted(otherRows, 'net_sales_month1', safeM1, safeY1);
+      const other_ns_m2 = sumFieldConverted(otherRows, 'net_sales_month2', safeM2, safeY2);
+      const other_q_m1 = sumFieldRaw(otherRows, 'total_quantity_month1');
+      const other_q_m2 = sumFieldRaw(otherRows, 'total_quantity_month2');
 
       const top80_m1 = safeDiv(top80_ns_m1, top80_q_m1);
       const top80_m2 = safeDiv(top80_ns_m2, top80_q_m2);
@@ -666,23 +872,67 @@ const handleConnectAmazonPreview = () => {
       const other_m1 = safeDiv(other_ns_m1, other_q_m1);
       const other_m2 = safeDiv(other_ns_m2, other_q_m2);
 
-      return { x, values: { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } };
+      return {
+        x,
+        values: {
+          top80_m1: safeNumber(top80_m1),
+          top80_m2: safeNumber(top80_m2),
+          newRev_m1: safeNumber(newRev_m1),
+          newRev_m2: safeNumber(newRev_m2),
+          other_m1: safeNumber(other_m1),
+          other_m2: safeNumber(other_m2),
+        },
+      };
     }
 
-    // ✅ DEFAULT: SUM metrics
+    if (metricKeyBase === 'total_quantity') {
+      const m1Key = `${metricKeyBase}_month1`;
+      const m2Key = `${metricKeyBase}_month2`;
+
+      const top80_m1 = sumFieldRaw(top80Rows, m1Key);
+      const top80_m2 = sumFieldRaw(top80Rows, m2Key);
+
+      const newRev_m1 = sumFieldRaw(newRevRows, m1Key);
+      const newRev_m2 = sumFieldRaw(newRevRows, m2Key);
+
+      const other_m1 = sumFieldRaw(otherRows, m1Key);
+      const other_m2 = sumFieldRaw(otherRows, m2Key);
+
+      return {
+        x,
+        values: {
+          top80_m1: safeNumber(top80_m1),
+          top80_m2: safeNumber(top80_m2),
+          newRev_m1: safeNumber(newRev_m1),
+          newRev_m2: safeNumber(newRev_m2),
+          other_m1: safeNumber(other_m1),
+          other_m2: safeNumber(other_m2),
+        },
+      };
+    }
+
     const m1Key = `${metricKeyBase}_month1`;
     const m2Key = `${metricKeyBase}_month2`;
 
-    const top80_m1 = sumField(top80Rows, m1Key);
-    const top80_m2 = sumField(top80Rows, m2Key);
+    const top80_m1 = sumFieldConverted(top80Rows, m1Key, safeM1, safeY1);
+    const top80_m2 = sumFieldConverted(top80Rows, m2Key, safeM2, safeY2);
 
-    const newRev_m1 = sumField(newRevRows, m1Key);
-    const newRev_m2 = sumField(newRevRows, m2Key);
+    const newRev_m1 = sumFieldConverted(newRevRows, m1Key, safeM1, safeY1);
+    const newRev_m2 = sumFieldConverted(newRevRows, m2Key, safeM2, safeY2);
 
-    const other_m1 = sumField(otherRows, m1Key);
-    const other_m2 = sumField(otherRows, m2Key);
-
-    return { x, values: { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } };
+    const other_m1 = sumFieldConverted(otherRows, m1Key, safeM1, safeY1);
+    const other_m2 = sumFieldConverted(otherRows, m2Key, safeM2, safeY2);
+    return {
+      x,
+      values: {
+        top80_m1: safeNumber(top80_m1),
+        top80_m2: safeNumber(top80_m2),
+        newRev_m1: safeNumber(newRev_m1),
+        newRev_m2: safeNumber(newRev_m2),
+        other_m1: safeNumber(other_m1),
+        other_m2: safeNumber(other_m2),
+      },
+    };
   };
 
   const getAllRows = () => ([
@@ -691,856 +941,726 @@ const handleConnectAmazonPreview = () => {
     ...(categorizedGrowth.other_skus || []),
   ]);
 
-  const totalOf = (key: string) =>
-    getAllRows().reduce((a, r) => a + Number(r?.[key] ?? 0), 0);
+  const totalOf = (key: string) => {
+    const monthVal = key.endsWith("_month1") ? month1 : month2;
+    const yearVal = key.endsWith("_month1") ? year1 : year2;
 
+    return getAllRows().reduce((a, r) => {
+      const raw = safeNumber(r?.[key], 0);
 
-
-
-
-  useEffect(() => {
-    const el = chartRef.current;
-    if (!el) return;
-
-    const raf = requestAnimationFrame(() => {
-      if (chartInstanceRef.current && chartInstanceRef.current.getDom() !== el) {
-        chartInstanceRef.current.dispose();
-        chartInstanceRef.current = null;
-      }
-      if (!chartInstanceRef.current) {
-        chartInstanceRef.current = echarts.init(el);
+      if (key.startsWith("total_quantity")) {
+        return a + raw;
       }
 
-      const { x, values } = buildCompareSeries('net_sales');
-      const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-      const currency = effectiveCountry === "global"
-        ? "$"
-        : getCurrencySymbol(effectiveCountry);
-
-      const hasAny =
-        top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2
-
-      if (!hasAny && !isPreviewMode) {
-        chartInstanceRef.current?.clear();
-        chartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-        chartInstanceRef.current?.resize();
-        return;
-      }
-
-      const option: echarts.EChartsOption = {
-
-
-        tooltip: {
-          trigger: 'axis',
-          formatter: (params: any) => {
-            // params: array of series points
-            const axisLabel = params?.[0]?.axisValueLabel ?? '';
-            const lines: string[] = [];
-            lines.push(`<div style="font-weight:700;margin-bottom:6px;">Net Sales  ${axisLabel}</div>`);
-
-            // reverse order: Top 80, Other, New/Reviving
-            const map = new Map(params.map((p: any) => [p.seriesName, p]));
-            const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
-
-            ordered.forEach((p: any) => {
-              lines.push(
-                `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
-          <span style="flex:1;">${p.seriesName}</span>
-          <span style="font-weight:700;">${currency}${fmtNum(p.data)}</span>
-        </div>`
-              );
-            });
-
-            return `<div style="min-width:180px;">${lines.join('')}</div>`;
-          },
-        },
-
-
-        legend: { show: false },
-
-        grid: { left: 50, right: 20, top: 40, bottom: 35 },
-        color: ['#7B9A6D', '#3a8ea4', '#ed9F50',], // Net Sales palette
-        xAxis: {
-          type: 'category',
-          boundaryGap: false,
-          data: x,
-          axisLabel: {
-            interval: 0,
-            fontSize: axisTickFontSize,
-            margin: 20,
-            align: 'center',
-            formatter: (v: string, idx: number) => {
-              if (v === '') return '';
-              if (idx === 0) return `{m1|${v}}`; // Month1
-              if (idx === 2) return `{m2|${v}}`; // Month2
-              return v;
-            },
-            rich: {
-              // Month1 ko center-left lane ke liye RIGHT align + left padding
-              m1: {
-                align: 'right',
-                padding: [0, 0, 0, 80], // <-- increase/decrease (60-120)
-              },
-              // Month2 ko center-right lane ke liye LEFT align + right padding
-              m2: {
-                align: 'left',
-                padding: [0, 80, 0, 0], // <-- increase/decrease (60-120)
-              },
-            },
-          },
-
-
-          splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
-        },
-        yAxis: {
-          type: 'value',
-          name: `Amount (${currency})`,
-          nameLocation: 'middle',
-          nameGap: 45,
-          axisLabel: {
-            fontSize: axisTickFontSize,
-            formatter: (v: number) => `${Math.round(v).toLocaleString()}`
-          }
-        },
-
-
-        series: [
-          {
-            name: 'New/Reviving',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
-                { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
-                { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
-                { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
-              ]),
-            },
-            data: [newRev_m1, newRev_m1, newRev_m2],
-          },
-          {
-            name: 'Other SKUs',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
-                { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
-                { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
-                { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
-              ]),
-            },
-            data: [other_m1, other_m1, other_m2],
-          },
-          {
-            name: 'Top 80%',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
-                { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
-                { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
-                { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
-              ]),
-            },
-            data: [top80_m1, top80_m1, top80_m2],
-            markLine: {
-              symbol: "none",
-              silent: true,
-              data: [{ xAxis: "" }], // center category
-              lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
-              label: { show: false },
-            },
-          },
-
-        ],
-
-
-
-      };
-
-      chartInstanceRef.current!.setOption(option, true);
-      chartInstanceRef.current!.resize();
-
-      const onResize = () => chartInstanceRef.current?.resize();
-      window.addEventListener('resize', onResize);
-      const ro = new ResizeObserver(() => chartInstanceRef.current?.resize());
-      ro.observe(el);
-
-      return () => {
-        window.removeEventListener('resize', onResize);
-        ro.disconnect();
-      };
-    });
-
-    return () => cancelAnimationFrame(raf);
-  }, [
-    month1, year1, month2, year2,
-    categorizedGrowth.top_80_skus,
-    categorizedGrowth.new_or_reviving_skus,
-    categorizedGrowth.other_skus,
-  ]);
-
-  useEffect(() => {
-    const el = profitChartRef.current;
-    if (!el) return;
-
-    const raf = requestAnimationFrame(() => {
-      if (profitChartInstanceRef.current && profitChartInstanceRef.current.getDom() !== el) {
-        profitChartInstanceRef.current.dispose();
-        profitChartInstanceRef.current = null;
-      }
-      if (!profitChartInstanceRef.current) {
-        profitChartInstanceRef.current = echarts.init(el);
-      }
-
-      const { x, values } = buildCompareSeries('profit');
-      const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-      const currency = effectiveCountry === "global"
-        ? "$"
-        : getCurrencySymbol(effectiveCountry);
-
-
-      const hasAny =
-        top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
-
-      if (!hasAny && !isPreviewMode) {
-        profitChartInstanceRef.current?.clear();
-        profitChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-        profitChartInstanceRef.current?.resize();
-        return;
-      }
-
-      const option: echarts.EChartsOption = {
-        tooltip: {
-          trigger: 'axis',
-          formatter: (params: any) => {
-            const axisLabel = params?.[0]?.axisValueLabel ?? '';
-            const lines: string[] = [];
-            lines.push(`<div style="font-weight:700;margin-bottom:6px;">CM1 Profit ${axisLabel}</div>`);
-
-            const map = new Map(params.map((p: any) => [p.seriesName, p]));
-            const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
-
-            ordered.forEach((p: any) => {
-              lines.push(
-                `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
-          <span style="flex:1;">${p.seriesName}</span>
-          <span style="font-weight:700;">${currency}${fmtNum(p.data)}</span>
-        </div>`
-              );
-            });
-
-            return `<div style="min-width:180px;">${lines.join('')}</div>`;
-          },
-        },
-
-        legend: { show: false },
-
-        grid: { left: 50, right: 20, top: 40, bottom: 35 },
-        color: ['#7B9A6D', '#3A8ea4', '#ed9f50',], // Net Sales palette
-        xAxis: {
-          type: 'category',
-          boundaryGap: false,
-          data: x,
-          axisLabel: {
-            interval: 0,
-            fontSize: axisTickFontSize,
-            margin: 20,
-            align: 'center',
-            formatter: (v: string, idx: number) => {
-              if (v === '') return '';
-              if (idx === 0) return `{m1|${v}}`; // Month1
-              if (idx === 2) return `{m2|${v}}`; // Month2
-              return v;
-            },
-            rich: {
-              // Month1 ko center-left lane ke liye RIGHT align + left padding
-              m1: {
-                align: 'right',
-                padding: [0, 0, 0, 80], // <-- increase/decrease (60-120)
-              },
-              // Month2 ko center-right lane ke liye LEFT align + right padding
-              m2: {
-                align: 'left',
-                padding: [0, 80, 0, 0], // <-- increase/decrease (60-120)
-              },
-            },
-          },
-
-
-          splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
-        },
-        yAxis: {
-          type: 'value',
-          name: `Amount (${currency})`,
-          nameLocation: 'middle',
-          nameGap: 45,
-          axisLabel: {
-            fontSize: axisNameFontSize,
-            formatter: (v: number) => `${Math.round(v).toLocaleString()}`
-          }
-        },
-
-        series: [
-          {
-            name: 'New/Reviving',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
-                { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
-                { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
-                { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
-              ]),
-            },
-            data: [newRev_m1, newRev_m1, newRev_m2],
-          },
-          {
-            name: 'Other SKUs',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
-                { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
-                { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
-                { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
-              ]),
-            },
-            data: [other_m1, other_m1, other_m2],
-
-          },
-          {
-            name: 'Top 80%',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
-                { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
-                { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
-                { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
-              ]),
-            },
-
-            data: [top80_m1, top80_m1, top80_m2],
-            markLine: {
-              symbol: "none",
-              silent: true,
-              data: [{ xAxis: "" }], // center category
-              lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
-              label: { show: false },
-            },
-          },
-        ],
-
-
-
-
-      };
-
-      profitChartInstanceRef.current!.setOption(option, true);
-      profitChartInstanceRef.current!.resize();
-
-      const onResize = () => profitChartInstanceRef.current?.resize();
-      window.addEventListener('resize', onResize);
-      const ro = new ResizeObserver(() => profitChartInstanceRef.current?.resize());
-      ro.observe(el);
-
-      return () => {
-        window.removeEventListener('resize', onResize);
-        ro.disconnect();
-      };
-    });
-
-    return () => cancelAnimationFrame(raf);
-  }, [
-    month1, year1, month2, year2,
-    categorizedGrowth.top_80_skus,
-    categorizedGrowth.new_or_reviving_skus,
-    categorizedGrowth.other_skus,
-  ]);
-
-  useEffect(() => {
-    const el = unitsChartRef.current;
-    if (!el) return;
-
-    const raf = requestAnimationFrame(() => {
-      if (unitsChartInstanceRef.current && unitsChartInstanceRef.current.getDom() !== el) {
-        unitsChartInstanceRef.current.dispose();
-        unitsChartInstanceRef.current = null;
-      }
-      if (!unitsChartInstanceRef.current) {
-        unitsChartInstanceRef.current = echarts.init(el);
-      }
-
-      const { x, values } = buildCompareSeries('total_quantity');
-      const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-
-      const hasAny = top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
-      if (!hasAny && !isPreviewMode) {
-        unitsChartInstanceRef.current?.clear();
-        unitsChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-        unitsChartInstanceRef.current?.resize();
-        return;
-      }
-
-      const option: echarts.EChartsOption = {
-        tooltip: {
-          trigger: 'axis',
-          formatter: (params: any) => {
-            const axisLabel = params?.[0]?.axisValueLabel ?? '';
-            const lines: string[] = [];
-            lines.push(`<div style="font-weight:700;margin-bottom:6px;">Units  ${axisLabel}</div>`);
-
-            const map = new Map(params.map((p: any) => [p.seriesName, p]));
-            const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
-
-            ordered.forEach((p: any) => {
-              lines.push(
-                `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
-                <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
-                <span style="flex:1;">${p.seriesName}</span>
-                <span style="font-weight:700;">${fmtNum(p.data)}</span>
-              </div>`
-              );
-            });
-
-            return `<div style="min-width:180px;">${lines.join('')}</div>`;
-          },
-        },
-
-        legend: { show: false },
-        grid: { left: 50, right: 20, top: 40, bottom: 35 },
-        color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
-        xAxis: {
-          type: 'category',
-          boundaryGap: false,
-          data: x,
-          axisLabel: {
-            interval: 0,
-            fontSize: axisTickFontSize,
-            margin: 20,
-            align: 'center',
-            formatter: (v: string, idx: number) => {
-              if (v === '') return '';
-              if (idx === 0) return `{m1|${v}}`;
-              if (idx === 2) return `{m2|${v}}`;
-              return v;
-            },
-            rich: {
-              m1: { align: 'right', padding: [0, 0, 0, 80] },
-              m2: { align: 'left', padding: [0, 80, 0, 0] },
-            },
-          },
-          splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
-        },
-        yAxis: {
-          type: 'value',
-          name: 'Nos.',
-          nameLocation: 'middle',
-          nameGap: 45,
-          axisLabel: {
-            fontSize: axisTickFontSize,
-            formatter: (v: number) => `${Math.round(v).toLocaleString()}`
-          }
-        }
-
-        ,
-
-        series: [
-          {
-            name: 'New/Reviving',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
-                { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
-                { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
-                { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
-              ]),
-            },
-            data: [newRev_m1, newRev_m1, newRev_m2],
-          },
-          {
-            name: 'Other SKUs',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
-                { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
-                { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
-                { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
-              ]),
-            },
-            data: [other_m1, other_m1, other_m2],
-          },
-          {
-            name: 'Top 80%',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
-                { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
-                { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
-                { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
-              ]),
-            },
-            data: [top80_m1, top80_m1, top80_m2],
-            markLine: {
-              symbol: "none",
-              silent: true,
-              data: [{ xAxis: "" }],
-              lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
-              label: { show: false },
-            },
-          },
-        ],
-      };
-
-      unitsChartInstanceRef.current!.setOption(option, true);
-      unitsChartInstanceRef.current!.resize();
-
-      const onResize = () => unitsChartInstanceRef.current?.resize();
-      window.addEventListener('resize', onResize);
-      const ro = new ResizeObserver(() => unitsChartInstanceRef.current?.resize());
-      ro.observe(el);
-
-      return () => {
-        window.removeEventListener('resize', onResize);
-        ro.disconnect();
-      };
-    });
-
-    return () => cancelAnimationFrame(raf);
-  }, [
-    month1, year1, month2, year2,
-    categorizedGrowth.top_80_skus,
-    categorizedGrowth.new_or_reviving_skus,
-    categorizedGrowth.other_skus,
-  ]);
-
-  // --- Reimbursement Fees chart ---
-  useEffect(() => {
-    const el = aspChartRef.current;
-    if (!el) return;
-
-    const raf = requestAnimationFrame(() => {
-      if (aspChartInstanceRef.current && aspChartInstanceRef.current.getDom() !== el) {
-        aspChartInstanceRef.current.dispose();
-        aspChartInstanceRef.current = null;
-      }
-      if (!aspChartInstanceRef.current) {
-        aspChartInstanceRef.current = echarts.init(el);
-      }
-
-      const { x, values } = buildCompareSeries('asp');
-      const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
-      const currency = effectiveCountry === "global"
-        ? "$"
-        : getCurrencySymbol(effectiveCountry);
-
-
-      const hasAny =
-        top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
-
-      if (!hasAny && !isPreviewMode) {
-        aspChartInstanceRef.current?.clear();
-        aspChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-        aspChartInstanceRef.current?.resize();
-        return;
-      }
-
-      const option: echarts.EChartsOption = {
-        tooltip: {
-          trigger: 'axis',
-          formatter: (params: any) => {
-            const axisLabel = params?.[0]?.axisValueLabel ?? '';
-            const lines: string[] = [];
-            lines.push(`<div style="font-weight:700;margin-bottom:6px;">ASP  ${axisLabel}</div>`);
-
-            const map = new Map(params.map((p: any) => [p.seriesName, p]));
-            const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
-
-            ordered.forEach((p: any) => {
-              lines.push(
-                `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
-                <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
-                <span style="flex:1;">${p.seriesName}</span>
-                <span style="font-weight:700;">${currency}${Number(p.data ?? 0).toFixed(2)}</span>
-              </div>`
-              );
-            });
-
-            return `<div style="min-width:180px;">${lines.join('')}</div>`;
-          },
-        },
-        legend: { show: false },
-        grid: { left: 50, right: 20, top: 40, bottom: 35 },
-        color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
-        xAxis: {
-          type: 'category',
-          boundaryGap: false,
-          data: x,
-          axisLabel: {
-            interval: 0,
-            fontSize: axisTickFontSize,
-            margin: 20,
-            align: 'center',
-            formatter: (v: string, idx: number) => {
-              if (v === '') return '';
-              if (idx === 0) return `{m1|${v}}`;
-              if (idx === 2) return `{m2|${v}}`;
-              return v;
-            },
-            rich: {
-              m1: { align: 'right', padding: [0, 0, 0, 80] },
-              m2: { align: 'left', padding: [0, 80, 0, 0] },
-            },
-          },
-          splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
-        },
-        yAxis: {
-          type: 'value',
-          name: `Amount (${currency})`,
-          nameLocation: 'middle',
-          nameGap: 45,
-          axisLabel: {
-            fontSize: axisNameFontSize,
-            formatter: (value: number) => {
-              if (!value) return '0';
-              return Number.isInteger(value)
-                ? value.toString()
-                : value.toFixed(0);
-            }
-          },
-        },
-        series: [
-          {
-            name: 'New/Reviving',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
-                { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
-                { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
-                { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
-              ]),
-            },
-            data: [newRev_m1, newRev_m1, newRev_m2],
-          },
-          {
-            name: 'Other SKUs',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
-                { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
-                { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
-                { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
-              ]),
-            },
-            data: [other_m1, other_m1, other_m2],
-          },
-          {
-            name: 'Top 80%',
-            type: 'line',
-            smooth: true,
-            stack: 'Total',
-            symbol: 'none',
-            areaStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
-                { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
-                { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
-                { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
-              ]),
-            },
-            data: [top80_m1, top80_m1, top80_m2],
-            markLine: {
-              symbol: "none",
-              silent: true,
-              data: [{ xAxis: "" }],
-              lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
-              label: { show: false },
-            },
-          },
-        ],
-      };
-
-      aspChartInstanceRef.current!.setOption(option, true);
-      aspChartInstanceRef.current!.resize();
-
-      const onResize = () => aspChartInstanceRef.current?.resize();
-      window.addEventListener('resize', onResize);
-      const ro = new ResizeObserver(() => aspChartInstanceRef.current?.resize());
-      ro.observe(el);
-
-      return () => {
-        window.removeEventListener('resize', onResize);
-        ro.disconnect();
-      };
-    });
-
-    return () => cancelAnimationFrame(raf);
-  }, [
-    month1, year1, month2, year2,
-    categorizedGrowth.top_80_skus,
-    categorizedGrowth.new_or_reviving_skus,
-    categorizedGrowth.other_skus,
-  ]);
-
-  useEffect(() => {
-    const el = totalsChartRef.current;
-    if (!el) return;
-
-    const raf = requestAnimationFrame(() => {
-      if (totalsChartInstanceRef.current && totalsChartInstanceRef.current.getDom() !== el) {
-        totalsChartInstanceRef.current.dispose();
-        totalsChartInstanceRef.current = null;
-      }
-      if (!totalsChartInstanceRef.current) totalsChartInstanceRef.current = echarts.init(el);
-
-      const m1Label = `${getAbbr(month1)}'${String(year1).slice(2)}`;
-      const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
-      const x = [m1Label, '', m2Label];
-      const currency = effectiveCountry === "global"
-        ? "$"
-        : getCurrencySymbol(effectiveCountry);
-
-
-      const netSales_m1 = totalOf('net_sales_month1');
-      const netSales_m2 = totalOf('net_sales_month2');
-
-      const profit_m1 = totalOf('profit_month1');
-      const profit_m2 = totalOf('profit_month2');
-
-      const otherExp_m1 = expenseTotals?.month1 ?? 0;
-      const otherExp_m2 = expenseTotals?.month2 ?? 0;
-
-      const adv_m1 = advertisingTotals?.month1 ?? 0;
-      const adv_m2 = advertisingTotals?.month2 ?? 0;
-
-      const reimb_m1 = reimbursementTotals?.month1 ?? 0;
-      const reimb_m2 = reimbursementTotals?.month2 ?? 0;
-
-      const hasAny =
-        netSales_m1 || netSales_m2 || profit_m1 || profit_m2 ||
-        otherExp_m1 || otherExp_m2 || adv_m1 || adv_m2 || reimb_m1 || reimb_m2;
-
-      if (!hasAny && !isPreviewMode) {
-        totalsChartInstanceRef.current?.clear();
-        totalsChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
-        totalsChartInstanceRef.current?.resize();
-        return;
-      }
-
-      const option: echarts.EChartsOption = {
-        tooltip: {
-          trigger: 'axis',
-          formatter: (params: any) => {
-            const axisLabel = params?.[0]?.axisValueLabel ?? '';
-            const lines: string[] = [];
-            lines.push(`<div style="font-weight:700;margin-bottom:6px;">Totals ${axisLabel}</div>`);
-            (params || []).forEach((p: any) => {
-              lines.push(
-                `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+      return a + safeNumber(convertAmount(raw, effectiveCountry, monthVal, yearVal), 0);
+    }, 0);
+  };
+
+useEffect(() => {
+  const el = chartRef.current;
+  if (!el) return;
+
+  let ro: ResizeObserver | null = null;
+  const onResize = () => chartInstanceRef.current?.resize();
+
+  const raf = requestAnimationFrame(() => {
+    if (chartInstanceRef.current && chartInstanceRef.current.getDom() !== el) {
+      chartInstanceRef.current.dispose();
+      chartInstanceRef.current = null;
+    }
+    if (!chartInstanceRef.current) {
+      chartInstanceRef.current = echarts.init(el);
+    }
+
+    const { x, values } = buildCompareSeries('net_sales');
+    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+    const currency = displayCurrencySymbol;
+
+    const hasAny =
+      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
+
+    if (!hasAny && !isPreviewMode) {
+      chartInstanceRef.current?.clear();
+      chartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+      chartInstanceRef.current?.resize();
+      return;
+    }
+
+    const option: echarts.EChartsOption = {
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const axisLabel = params?.[0]?.axisValueLabel ?? '';
+          const lines: string[] = [];
+          lines.push(`<div style="font-weight:700;margin-bottom:6px;">Net Sales ${axisLabel}</div>`);
+
+          const map = new Map(params.map((p: any) => [p.seriesName, p]));
+          const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
+
+          ordered.forEach((p: any) => {
+            lines.push(
+              `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
                 <span style="flex:1;">${p.seriesName}</span>
                 <span style="font-weight:700;">${currency}${fmtNum(p.data)}</span>
               </div>`
-              );
-            });
-            return `<div style="min-width:210px;">${lines.join('')}</div>`;
+            );
+          });
+
+          return `<div style="min-width:180px;">${lines.join('')}</div>`;
+        },
+      },
+      legend: { show: false },
+      grid: { left: 50, right: 20, top: 40, bottom: 35 },
+      color: ['#7B9A6D', '#3a8ea4', '#ed9F50'],
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: x,
+        axisLabel: {
+          interval: 0,
+          fontSize: axisTickFontSize,
+          margin: 20,
+          align: 'center',
+          formatter: (v: string, idx: number) => {
+            if (v === '') return '';
+            if (idx === 0) return `{m1|${v}}`;
+            if (idx === 2) return `{m2|${v}}`;
+            return v;
+          },
+          rich: {
+            m1: { align: 'right', padding: [0, 0, 0, 80] },
+            m2: { align: 'left', padding: [0, 80, 0, 0] },
           },
         },
-        legend: { top: 8 },
-        grid: { left: 55, right: 20, top: 55, bottom: 35 },
-        xAxis: {
-          type: 'category',
-          boundaryGap: false,
-          data: x,
-          splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
+        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
+      },
+      yAxis: {
+        type: 'value',
+        name: `Amount (${currency})`,
+        nameLocation: 'middle',
+        nameGap: 45,
+        axisLabel: {
+          fontSize: axisTickFontSize,
+          formatter: (v: number) => `${Math.round(v).toLocaleString()}`
+        }
+      },
+      series: [
+        {
+          name: 'New/Reviving',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
+              { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
+              { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
+              { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
+            ]),
+          },
+          data: [newRev_m1, newRev_m1, newRev_m2],
         },
-        yAxis: {
-          type: 'value',
-          axisLabel: { formatter: (v: any) => Math.round(Number(v)).toLocaleString() },
+        {
+          name: 'Other SKUs',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
+              { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
+              { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
+              { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
+            ]),
+          },
+          data: [other_m1, other_m1, other_m2],
         },
-        series: [
-          { name: 'Net Sales', type: 'line', symbol: 'none', data: [netSales_m1, netSales_m1, netSales_m2] },
-          { name: 'CM1 Profit', type: 'line', symbol: 'none', data: [profit_m1, profit_m1, profit_m2] },
-          { name: 'Other Expense', type: 'line', symbol: 'none', data: [otherExp_m1, otherExp_m1, otherExp_m2] },
-          { name: 'Advertising Total', type: 'line', symbol: 'none', data: [adv_m1, adv_m1, adv_m2] },
-          { name: 'Reimbursement Fee', type: 'line', symbol: 'none', data: [reimb_m1, reimb_m1, reimb_m2] },
-        ],
-      };
+        {
+          name: 'Top 80%',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
+              { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
+              { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
+              { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
+            ]),
+          },
+          data: [top80_m1, top80_m1, top80_m2],
+          markLine: {
+            symbol: "none",
+            silent: true,
+            data: [{ xAxis: "" }],
+            lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+            label: { show: false },
+          },
+        },
+      ],
+    };
 
-      totalsChartInstanceRef.current!.setOption(option, true);
-      totalsChartInstanceRef.current!.resize();
+    chartInstanceRef.current.setOption(option, true);
+    chartInstanceRef.current.resize();
 
-      const onResize = () => totalsChartInstanceRef.current?.resize();
-      window.addEventListener('resize', onResize);
-      const ro = new ResizeObserver(() => totalsChartInstanceRef.current?.resize());
-      ro.observe(el);
+    window.addEventListener("resize", onResize);
+    ro = new ResizeObserver(() => chartInstanceRef.current?.resize());
+    ro.observe(el);
+  });
 
-      return () => {
-        window.removeEventListener('resize', onResize);
-        ro.disconnect();
-      };
-    });
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", onResize);
+    ro?.disconnect();
+  };
+}, [
+  month1, year1, month2, year2,
+  categorizedGrowth.top_80_skus,
+  categorizedGrowth.new_or_reviving_skus,
+  categorizedGrowth.other_skus,
+  rateMap,
+  displayCurrencySymbol,
+  displayCurrencyCode,
+  effectiveCountry,
+  axisTickFontSize,
+  isPreviewMode,
+]);
 
-    return () => cancelAnimationFrame(raf);
-  }, [
-    month1, year1, month2, year2,
-    categorizedGrowth.top_80_skus,
-    categorizedGrowth.new_or_reviving_skus,
-    categorizedGrowth.other_skus,
-    advertisingTotals,
-    expenseTotals,
-    reimbursementTotals,
-  ]);
+useEffect(() => {
+  const el = profitChartRef.current;
+  if (!el) return;
+
+  let ro: ResizeObserver | null = null;
+  const onResize = () => profitChartInstanceRef.current?.resize();
+
+  const raf = requestAnimationFrame(() => {
+    if (profitChartInstanceRef.current && profitChartInstanceRef.current.getDom() !== el) {
+      profitChartInstanceRef.current.dispose();
+      profitChartInstanceRef.current = null;
+    }
+    if (!profitChartInstanceRef.current) {
+      profitChartInstanceRef.current = echarts.init(el);
+    }
+
+    const { x, values } = buildCompareSeries('profit');
+    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+    const currency = displayCurrencySymbol;
+
+    const hasAny =
+      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
+
+    if (!hasAny && !isPreviewMode) {
+      profitChartInstanceRef.current?.clear();
+      profitChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+      profitChartInstanceRef.current?.resize();
+      return;
+    }
+
+    const option: echarts.EChartsOption = {
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const axisLabel = params?.[0]?.axisValueLabel ?? '';
+          const lines: string[] = [];
+          lines.push(`<div style="font-weight:700;margin-bottom:6px;">CM1 Profit ${axisLabel}</div>`);
+
+          const map = new Map(params.map((p: any) => [p.seriesName, p]));
+          const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
+
+          ordered.forEach((p: any) => {
+            lines.push(
+              `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
+                <span style="flex:1;">${p.seriesName}</span>
+                <span style="font-weight:700;">${currency}${fmtNum(p.data)}</span>
+              </div>`
+            );
+          });
+
+          return `<div style="min-width:180px;">${lines.join('')}</div>`;
+        },
+      },
+      legend: { show: false },
+      grid: { left: 50, right: 20, top: 40, bottom: 35 },
+      color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: x,
+        axisLabel: {
+          interval: 0,
+          fontSize: axisTickFontSize,
+          margin: 20,
+          align: 'center',
+          formatter: (v: string, idx: number) => {
+            if (v === '') return '';
+            if (idx === 0) return `{m1|${v}}`;
+            if (idx === 2) return `{m2|${v}}`;
+            return v;
+          },
+          rich: {
+            m1: { align: 'right', padding: [0, 0, 0, 80] },
+            m2: { align: 'left', padding: [0, 80, 0, 0] },
+          },
+        },
+        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
+      },
+      yAxis: {
+        type: 'value',
+        name: `Amount (${currency})`,
+        nameLocation: 'middle',
+        nameGap: 45,
+        axisLabel: {
+          fontSize: axisNameFontSize,
+          formatter: (v: number) => `${Math.round(v).toLocaleString()}`
+        }
+      },
+      series: [
+        {
+          name: 'New/Reviving',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
+              { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
+              { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
+              { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
+            ]),
+          },
+          data: [newRev_m1, newRev_m1, newRev_m2],
+        },
+        {
+          name: 'Other SKUs',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
+              { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
+              { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
+              { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
+            ]),
+          },
+          data: [other_m1, other_m1, other_m2],
+        },
+        {
+          name: 'Top 80%',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
+              { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
+              { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
+              { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
+            ]),
+          },
+          data: [top80_m1, top80_m1, top80_m2],
+          markLine: {
+            symbol: "none",
+            silent: true,
+            data: [{ xAxis: "" }],
+            lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+            label: { show: false },
+          },
+        },
+      ],
+    };
+
+    profitChartInstanceRef.current.setOption(option, true);
+    profitChartInstanceRef.current.resize();
+
+    window.addEventListener("resize", onResize);
+    ro = new ResizeObserver(() => profitChartInstanceRef.current?.resize());
+    ro.observe(el);
+  });
+
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", onResize);
+    ro?.disconnect();
+  };
+}, [
+  month1,
+  year1,
+  month2,
+  year2,
+  categorizedGrowth.top_80_skus,
+  categorizedGrowth.new_or_reviving_skus,
+  categorizedGrowth.other_skus,
+  rateMap,
+  displayCurrencySymbol,
+  displayCurrencyCode,
+  effectiveCountry,
+  axisTickFontSize,
+  axisNameFontSize,
+  isPreviewMode,
+]);
+useEffect(() => {
+  const el = unitsChartRef.current;
+  if (!el) return;
+
+  let ro: ResizeObserver | null = null;
+  const onResize = () => unitsChartInstanceRef.current?.resize();
+
+  const raf = requestAnimationFrame(() => {
+    if (unitsChartInstanceRef.current && unitsChartInstanceRef.current.getDom() !== el) {
+      unitsChartInstanceRef.current.dispose();
+      unitsChartInstanceRef.current = null;
+    }
+    if (!unitsChartInstanceRef.current) {
+      unitsChartInstanceRef.current = echarts.init(el);
+    }
+
+    const { x, values } = buildCompareSeries('total_quantity');
+    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+
+    const hasAny =
+      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
+
+    if (!hasAny && !isPreviewMode) {
+      unitsChartInstanceRef.current?.clear();
+      unitsChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+      unitsChartInstanceRef.current?.resize();
+      return;
+    }
+
+    const option: echarts.EChartsOption = {
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const axisLabel = params?.[0]?.axisValueLabel ?? '';
+          const lines: string[] = [];
+          lines.push(`<div style="font-weight:700;margin-bottom:6px;">Units ${axisLabel}</div>`);
+
+          const map = new Map(params.map((p: any) => [p.seriesName, p]));
+          const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
+
+          ordered.forEach((p: any) => {
+            lines.push(
+              `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
+                <span style="flex:1;">${p.seriesName}</span>
+                <span style="font-weight:700;">${fmtNum(p.data)}</span>
+              </div>`
+            );
+          });
+
+          return `<div style="min-width:180px;">${lines.join('')}</div>`;
+        },
+      },
+      legend: { show: false },
+      grid: { left: 50, right: 20, top: 40, bottom: 35 },
+      color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: x,
+        axisLabel: {
+          interval: 0,
+          fontSize: axisTickFontSize,
+          margin: 20,
+          align: 'center',
+          formatter: (v: string, idx: number) => {
+            if (v === '') return '';
+            if (idx === 0) return `{m1|${v}}`;
+            if (idx === 2) return `{m2|${v}}`;
+            return v;
+          },
+          rich: {
+            m1: { align: 'right', padding: [0, 0, 0, 80] },
+            m2: { align: 'left', padding: [0, 80, 0, 0] },
+          },
+        },
+        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Nos.',
+        nameLocation: 'middle',
+        nameGap: 45,
+        axisLabel: {
+          fontSize: axisTickFontSize,
+          formatter: (v: number) => `${Math.round(v).toLocaleString()}`
+        }
+      },
+      series: [
+        {
+          name: 'New/Reviving',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
+              { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
+              { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
+              { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
+            ]),
+          },
+          data: [newRev_m1, newRev_m1, newRev_m2],
+        },
+        {
+          name: 'Other SKUs',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
+              { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
+              { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
+              { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
+            ]),
+          },
+          data: [other_m1, other_m1, other_m2],
+        },
+        {
+          name: 'Top 80%',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
+              { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
+              { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
+              { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
+            ]),
+          },
+          data: [top80_m1, top80_m1, top80_m2],
+          markLine: {
+            symbol: "none",
+            silent: true,
+            data: [{ xAxis: "" }],
+            lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+            label: { show: false },
+          },
+        },
+      ],
+    };
+
+    unitsChartInstanceRef.current.setOption(option, true);
+    unitsChartInstanceRef.current.resize();
+
+    window.addEventListener("resize", onResize);
+    ro = new ResizeObserver(() => unitsChartInstanceRef.current?.resize());
+    ro.observe(el);
+  });
+
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", onResize);
+    ro?.disconnect();
+  };
+}, [
+  month1, year1, month2, year2,
+  categorizedGrowth.top_80_skus,
+  categorizedGrowth.new_or_reviving_skus,
+  categorizedGrowth.other_skus,
+  rateMap,
+  displayCurrencySymbol,
+  displayCurrencyCode,
+  effectiveCountry,
+  axisTickFontSize,
+  isPreviewMode,
+]);
+
+useEffect(() => {
+  const el = aspChartRef.current;
+  if (!el) return;
+
+  let ro: ResizeObserver | null = null;
+  const onResize = () => aspChartInstanceRef.current?.resize();
+
+  const raf = requestAnimationFrame(() => {
+    if (aspChartInstanceRef.current && aspChartInstanceRef.current.getDom() !== el) {
+      aspChartInstanceRef.current.dispose();
+      aspChartInstanceRef.current = null;
+    }
+    if (!aspChartInstanceRef.current) {
+      aspChartInstanceRef.current = echarts.init(el);
+    }
+
+    const { x, values } = buildCompareSeries('asp');
+    const { top80_m1, top80_m2, newRev_m1, newRev_m2, other_m1, other_m2 } = values;
+    const currency = displayCurrencySymbol;
+
+    const hasAny =
+      top80_m1 || top80_m2 || newRev_m1 || newRev_m2 || other_m1 || other_m2;
+
+    if (!hasAny && !isPreviewMode) {
+      aspChartInstanceRef.current?.clear();
+      aspChartInstanceRef.current?.setOption({ title: { text: 'No data' } });
+      aspChartInstanceRef.current?.resize();
+      return;
+    }
+
+    const option: echarts.EChartsOption = {
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const axisLabel = params?.[0]?.axisValueLabel ?? '';
+          const lines: string[] = [];
+          lines.push(`<div style="font-weight:700;margin-bottom:6px;">ASP ${axisLabel}</div>`);
+
+          const map = new Map(params.map((p: any) => [p.seriesName, p]));
+          const ordered = SERIES_ORDER.map(s => map.get(s.name)).filter(Boolean);
+
+          ordered.forEach((p: any) => {
+            lines.push(
+              `<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:999px;background:${p.color};"></span>
+                <span style="flex:1;">${p.seriesName}</span>
+                <span style="font-weight:700;">${currency}${Number(p.data ?? 0).toFixed(2)}</span>
+              </div>`
+            );
+          });
+
+          return `<div style="min-width:180px;">${lines.join('')}</div>`;
+        },
+      },
+      legend: { show: false },
+      grid: { left: 50, right: 20, top: 40, bottom: 35 },
+      color: ['#7B9A6D', '#3A8ea4', '#ed9f50'],
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: x,
+        axisLabel: {
+          interval: 0,
+          fontSize: axisTickFontSize,
+          margin: 20,
+          align: 'center',
+          formatter: (v: string, idx: number) => {
+            if (v === '') return '';
+            if (idx === 0) return `{m1|${v}}`;
+            if (idx === 2) return `{m2|${v}}`;
+            return v;
+          },
+          rich: {
+            m1: { align: 'right', padding: [0, 0, 0, 80] },
+            m2: { align: 'left', padding: [0, 80, 0, 0] },
+          },
+        },
+        splitLine: { show: true, lineStyle: { type: 'dashed', opacity: 0.35 } },
+      },
+      yAxis: {
+        type: 'value',
+        name: `Amount (${currency})`,
+        nameLocation: 'middle',
+        nameGap: 45,
+        axisLabel: {
+          fontSize: axisNameFontSize,
+          formatter: (value: number) => {
+            if (!value) return '0';
+            return Number.isInteger(value) ? value.toString() : value.toFixed(0);
+          }
+        },
+      },
+      series: [
+        {
+          name: 'New/Reviving',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#7B9A6D", 0.12) },
+              { offset: 0.49, color: hexToRgba("#7B9A6D", 0.12) },
+              { offset: 0.51, color: hexToRgba("#7B9A6D", 0.28) },
+              { offset: 1.0, color: hexToRgba("#7B9A6D", 0.28) },
+            ]),
+          },
+          data: [newRev_m1, newRev_m1, newRev_m2],
+        },
+        {
+          name: 'Other SKUs',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#3A8ea4", 0.12) },
+              { offset: 0.49, color: hexToRgba("#3A8ea4", 0.12) },
+              { offset: 0.51, color: hexToRgba("#3A8ea4", 0.28) },
+              { offset: 1.0, color: hexToRgba("#3A8ea4", 0.28) },
+            ]),
+          },
+          data: [other_m1, other_m1, other_m2],
+        },
+        {
+          name: 'Top 80%',
+          type: 'line',
+          smooth: true,
+          stack: 'Total',
+          symbol: 'none',
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+              { offset: 0.0, color: hexToRgba("#ed9f50", 0.12) },
+              { offset: 0.49, color: hexToRgba("#ed9f50", 0.12) },
+              { offset: 0.51, color: hexToRgba("#ed9f50", 0.28) },
+              { offset: 1.0, color: hexToRgba("#ed9f50", 0.28) },
+            ]),
+          },
+          data: [top80_m1, top80_m1, top80_m2],
+          markLine: {
+            symbol: "none",
+            silent: true,
+            data: [{ xAxis: "" }],
+            lineStyle: { color: "#111827", width: 1, opacity: 0.35 },
+            label: { show: false },
+          },
+        },
+      ],
+    };
+
+    aspChartInstanceRef.current.setOption(option, true);
+    aspChartInstanceRef.current.resize();
+
+    window.addEventListener("resize", onResize);
+    ro = new ResizeObserver(() => aspChartInstanceRef.current?.resize());
+    ro.observe(el);
+  });
+
+  return () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener("resize", onResize);
+    ro?.disconnect();
+  };
+}, [
+  month1, year1, month2, year2,
+  categorizedGrowth.top_80_skus,
+  categorizedGrowth.new_or_reviving_skus,
+  categorizedGrowth.other_skus,
+  rateMap,
+  displayCurrencySymbol,
+  displayCurrencyCode,
+  effectiveCountry,
+  axisTickFontSize,
+  axisNameFontSize,
+  isPreviewMode,
+]);
 
 
 
 
-
-
-
-
-  // Helpers
   const months: MonthOption[] = [
     { value: '01', label: 'January' }, { value: '02', label: 'February' },
     { value: '03', label: 'March' }, { value: '04', label: 'April' },
@@ -1707,46 +1827,34 @@ const handleConnectAmazonPreview = () => {
   // Load persisted state on mount
   // =========================
   useEffect(() => {
-  if (isPreviewMode) return;
+    if (isPreviewMode) return;
 
-  const saved = loadCompareFromStorage();
-  if (saved) {
-    setMonth1(saved.month1 || '');
-    setYear1(saved.year1 || '');
-    setMonth2(saved.month2 || '');
-    setYear2(saved.year2 || '');
-    setCategorizedGrowth(
-      saved.categorizedGrowth || {
-        top_80_skus: [],
-        new_or_reviving_skus: [],
-        other_skus: [],
-        all_skus: [],
-        top_80_total: null,
-        new_or_reviving_total: null,
-        other_total: null,
-        all_skus_total: null,
-      }
-    );
-    setMonth2Label(saved.month2Label || '');
-    setActiveTab(saved.activeTab || 'all_skus');
-  }
-
-  const cachedInsights = loadInsightsFromStorage();
-  if (cachedInsights && Object.keys(cachedInsights).length) {
-    setSkuInsights(cachedInsights);
-  }
-}, [isPreviewMode]);
-
-  // Also persist activeTab changes (lightweight)
-  useEffect(() => {
     const saved = loadCompareFromStorage();
     if (saved) {
-      saveCompareToStorage({ ...saved, activeTab });
+      setMonth1(saved.month1 || '');
+      setYear1(saved.year1 || '');
+      setMonth2(saved.month2 || '');
+      setYear2(saved.year2 || '');
+      setCategorizedGrowth(
+        saved.categorizedGrowth || {
+          top_80_skus: [],
+          new_or_reviving_skus: [],
+          other_skus: [],
+          all_skus: [],
+          top_80_total: null,
+          new_or_reviving_total: null,
+          other_total: null,
+          all_skus_total: null,
+        }
+      );
+      setMonth2Label(saved.month2Label || '');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
 
-
+    const cachedInsights = loadInsightsFromStorage();
+    if (cachedInsights && Object.keys(cachedInsights).length) {
+      setSkuInsights(cachedInsights);
+    }
+  }, [isPreviewMode]);
 
   // ✅ NEW: fetch available periods from backend
   useEffect(() => {
@@ -1823,17 +1931,17 @@ const handleConnectAmazonPreview = () => {
     e?.preventDefault?.();
     setError(null);
     if (!isPreviewMode) {
-  setCategorizedGrowth({
-    top_80_skus: [],
-    new_or_reviving_skus: [],
-    other_skus: [],
-    all_skus: [],
-    top_80_total: null,
-    new_or_reviving_total: null,
-    other_total: null,
-    all_skus_total: null,
-  });
-}
+      setCategorizedGrowth({
+        top_80_skus: [],
+        new_or_reviving_skus: [],
+        other_skus: [],
+        all_skus: [],
+        top_80_total: null,
+        new_or_reviving_total: null,
+        other_total: null,
+        all_skus_total: null,
+      });
+    }
 
     setMonth2Label('');
     setSkuInsights({});
@@ -1868,13 +1976,14 @@ const handleConnectAmazonPreview = () => {
       setAdvertisingTotals(res.data?.advertising_totals ?? null);
       setExpenseTotals(res.data?.expense_totals ?? null);
 
-      // Save to localStorage (persist compare)
       saveCompareToStorage({
-        month1, year1, month2, year2,
+        month1,
+        year1,
+        month2,
+        year2,
         categorizedGrowth: newCategorized,
         month2Label: newMonth2Label,
-        activeTab,
-        countryName
+        countryName,
       });
 
     } catch (err: any) {
@@ -1884,20 +1993,20 @@ const handleConnectAmazonPreview = () => {
   };
 
   useEffect(() => {
-  if (isPreviewMode) return;
-  if (!countryName) return;
+    if (isPreviewMode) return;
+    if (!countryName) return;
 
-  if (!month1 || !year1 || !month2 || !year2) return;
+    if (!month1 || !year1 || !month2 || !year2) return;
 
-  if (!isPeriodAvailable(year1, month1) || !isPeriodAvailable(year2, month2)) return;
+    if (!isPeriodAvailable(year1, month1) || !isPeriodAvailable(year2, month2)) return;
 
-  if (didInitialFetchRef.current) return;
+    if (didInitialFetchRef.current) return;
 
-  didInitialFetchRef.current = true;
-  handleSubmit();
-}, [countryName, month1, year1, month2, year2, isPreviewMode, availablePeriods]);
+    didInitialFetchRef.current = true;
+    handleSubmit();
+  }, [countryName, month1, year1, month2, year2, isPreviewMode, availablePeriods]);
 
- 
+
   // =====================
   // AI insights generate
   // =====================
@@ -1953,13 +2062,6 @@ const handleConnectAmazonPreview = () => {
     return getInsightByProductName(item.product_name);
   };
 
-  const getCurrencySymbol = (effectiveCountry: string | undefined) => {
-    // Global => $, UK => £, baaki default $
-    const c = (countryName || '').toLowerCase();
-    if (c === 'uk') return '£';
-    if (c === 'global') return '$';
-    return '$';
-  };
 
   const fmtNum = (v: any) => Math.round(Number(v || 0)).toLocaleString();
 
@@ -2365,26 +2467,25 @@ const handleConnectAmazonPreview = () => {
 
   const m1Label = `${getAbbr(month1)}'${String(year1).slice(2)}`;
   const m2Label = `${getAbbr(month2)}'${String(year2).slice(2)}`;
-  const currency = effectiveCountry === "global"
-    ? "$"
-    : getCurrencySymbol(effectiveCountry);
+  const currency = displayCurrencySymbol;
 
 
   const totalsLine = useMemo(() => {
-    const netSales_m1 = sumKey("net_sales_month1");
-    const netSales_m2 = sumKey("net_sales_month2");
 
-    const profit_m1 = sumKey("profit_month1");
-    const profit_m2 = sumKey("profit_month2");
+    const netSales_m1 = totalOf("net_sales_month1");
+    const netSales_m2 = totalOf("net_sales_month2");
 
-    const otherExp_m1 = expenseTotals?.month1 ?? 0;
-    const otherExp_m2 = expenseTotals?.month2 ?? 0;
+    const profit_m1 = totalOf("profit_month1");
+    const profit_m2 = totalOf("profit_month2");
 
-    const adv_m1 = advertisingTotals?.month1 ?? 0;
-    const adv_m2 = advertisingTotals?.month2 ?? 0;
+    const otherExp_m1 = convertAmount(expenseTotals?.month1 ?? 0, effectiveCountry, month1, year1);
+    const otherExp_m2 = convertAmount(expenseTotals?.month2 ?? 0, effectiveCountry, month2, year2);
 
-    const reimb_m1 = reimbursementTotals?.month1 ?? 0;
-    const reimb_m2 = reimbursementTotals?.month2 ?? 0;
+    const adv_m1 = convertAmount(advertisingTotals?.month1 ?? 0, effectiveCountry, month1, year1);
+    const adv_m2 = convertAmount(advertisingTotals?.month2 ?? 0, effectiveCountry, month2, year2);
+
+    const reimb_m1 = convertAmount(reimbursementTotals?.month1 ?? 0, effectiveCountry, month1, year1);
+    const reimb_m2 = convertAmount(reimbursementTotals?.month2 ?? 0, effectiveCountry, month2, year2);
 
     // ✅ YAHAN ADD KARO (return se just pehle)
     const ds = [
@@ -2449,13 +2550,22 @@ const handleConnectAmazonPreview = () => {
       },
     };
   }, [
-    m1Label, m2Label, currency,
-    expenseTotals, advertisingTotals, reimbursementTotals,
-    selectedTotals, // ✅ IMPORTANT dependency
-    allRows,        // (or categorizedGrowth deps)
+    m1Label,
+    m2Label,
+    expenseTotals,
+    advertisingTotals,
+    reimbursementTotals,
+    selectedTotals,
+    allRows,
+    rateMap,
+    displayCurrencySymbol,
+    displayCurrencyCode,
+    effectiveCountry,
+    month1,
+    year1,
+    month2,
+    year2,
   ]);
-
-
 
   const renderSection = (title: string, raw?: string) => {
     if (!raw) return null;
@@ -2557,8 +2667,6 @@ const handleConnectAmazonPreview = () => {
     );
   };
 
-
-
   const pill = (label: string, value: any) => {
     const displayValue = (() => {
       if (value === null || value === undefined) return "-";
@@ -2586,7 +2694,6 @@ const handleConnectAmazonPreview = () => {
     );
   };
 
-
   const bigBox = (title: string, text?: string) => (
     <div style={{ marginTop: 14 }}>
       <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 8 }}>{title}</div>
@@ -2596,17 +2703,9 @@ const handleConnectAmazonPreview = () => {
     </div>
   );
 
-
-
-
-
-  useEffect(() => {
-    // whenever compare/month changes -> categorizedGrowth updates -> reset Others view
-    setExpandAllSkusOthers(false);
-  }, [categorizedGrowth]);
-
-
-
+  // useEffect(() => {
+  //   setExpandAllSkusOthers(false);
+  // }, [categorizedGrowth]);
 
   const renderFormattedInsight = (raw: string) => {
     if (!raw) return null;
@@ -2677,146 +2776,146 @@ const handleConnectAmazonPreview = () => {
 
 
 
-  const currentTabData = React.useMemo(() => {
-    // ✅ full dataset for active tab (your real source)
-    const fullCurrent = (categorizedGrowth?.[activeTab] || []) as SkuItem[];
+  // const currentTabData = React.useMemo(() => {
+  //   // ✅ full dataset for active tab (your real source)
+  //   const fullCurrent = (categorizedGrowth?.[activeTab] || []) as SkuItem[];
 
-    // If not All SKUs, return directly
-    if (activeTab !== 'all_skus') return fullCurrent;
+  //   // If not All SKUs, return directly
+  //   if (activeTab !== 'all_skus') return fullCurrent;
 
-    // Sort by Sales Mix (Month2) desc (fallback -Infinity)
-    const sorted = [...fullCurrent].sort((a, b) => {
-      const am = Number(a?.['Sales Mix (Month2)'] ?? -Infinity);
-      const bm = Number(b?.['Sales Mix (Month2)'] ?? -Infinity);
-      return bm - am;
-    });
+  //   // Sort by Sales Mix (Month2) desc (fallback -Infinity)
+  //   const sorted = [...fullCurrent].sort((a, b) => {
+  //     const am = Number(a?.['Sales Mix (Month2)'] ?? -Infinity);
+  //     const bm = Number(b?.['Sales Mix (Month2)'] ?? -Infinity);
+  //     return bm - am;
+  //   });
 
-    // If expanded, show all SKUs (no "Others" row)
-    if (expandAllSkusOthers) {
-      return sorted;
-    }
+  //   // If expanded, show all SKUs (no "Others" row)
+  //   if (expandAllSkusOthers) {
+  //     return sorted;
+  //   }
 
-    // Otherwise show top 5 + Others aggregation
-    const top5 = sorted.slice(0, 5);
-    const rest = sorted.slice(5);
+  //   // Otherwise show top 5 + Others aggregation
+  //   const top5 = sorted.slice(0, 5);
+  //   const rest = sorted.slice(5);
 
-    if (!rest.length) return top5;
+  //   if (!rest.length) return top5;
 
-    const sumNum = (arr: any[], key: string) =>
-      arr.reduce((acc, r) => acc + (Number(r?.[key]) || 0), 0);
+  //   const sumNum = (arr: any[], key: string) =>
+  //     arr.reduce((acc, r) => acc + (Number(r?.[key]) || 0), 0);
 
-    // For GrowthCategory fields: compute weighted average by Net Sales (month2)
-    const wAvgGrowth = (arr: any[], field: string) => {
-      const wKey = 'net_sales_month2';
-      const totalW = arr.reduce((s, r) => s + (Number(r?.[wKey]) || 0), 0);
-      if (!totalW) return null;
+  //   // For GrowthCategory fields: compute weighted average by Net Sales (month2)
+  //   const wAvgGrowth = (arr: any[], field: string) => {
+  //     const wKey = 'net_sales_month2';
+  //     const totalW = arr.reduce((s, r) => s + (Number(r?.[wKey]) || 0), 0);
+  //     if (!totalW) return null;
 
-      const val = arr.reduce((s, r) => {
-        const g = r?.[field];
-        const v = Number(g?.value ?? 0);
-        const w = Number(r?.[wKey] ?? 0);
-        return s + v * w;
-      }, 0) / totalW;
+  //     const val = arr.reduce((s, r) => {
+  //       const g = r?.[field];
+  //       const v = Number(g?.value ?? 0);
+  //       const w = Number(r?.[wKey] ?? 0);
+  //       return s + v * w;
+  //     }, 0) / totalW;
 
-      // category only for coloring; keep "Low Growth" so it stays neutral
-      return { category: 'Low Growth', value: val } as GrowthCategory;
-    };
+  //     // category only for coloring; keep "Low Growth" so it stays neutral
+  //     return { category: 'Low Growth', value: val } as GrowthCategory;
+  //   };
 
-    const others: any = {
-      product_name: 'Others',
+  //   const others: any = {
+  //     product_name: 'Others',
 
-      // ✅ key MUST match UI
-      'Sales Mix (Month2)': sumNum(rest, 'Sales Mix (Month2)'),
+  //     // ✅ key MUST match UI
+  //     'Sales Mix (Month2)': sumNum(rest, 'Sales Mix (Month2)'),
 
-      // ✅ fields used by table mapping
-      'Unit Growth': wAvgGrowth(rest, 'Unit Growth'),
-      'ASP Growth': wAvgGrowth(rest, 'ASP Growth'),
-      'Net Sales Growth': wAvgGrowth(rest, 'Net Sales Growth'),
-      'Sales Mix Change': wAvgGrowth(rest, 'Sales Mix Change'),
-      'CM1 Profit Impact': wAvgGrowth(rest, 'CM1 Profit Impact'),
-      'Profit Per Unit': wAvgGrowth(rest, 'Profit Per Unit'),
-    };
+  //     // ✅ fields used by table mapping
+  //     'Unit Growth': wAvgGrowth(rest, 'Unit Growth'),
+  //     'ASP Growth': wAvgGrowth(rest, 'ASP Growth'),
+  //     'Net Sales Growth': wAvgGrowth(rest, 'Net Sales Growth'),
+  //     'Sales Mix Change': wAvgGrowth(rest, 'Sales Mix Change'),
+  //     'CM1 Profit Impact': wAvgGrowth(rest, 'CM1 Profit Impact'),
+  //     'Profit Per Unit': wAvgGrowth(rest, 'Profit Per Unit'),
+  //   };
 
-    return [...top5, others];
-  }, [categorizedGrowth, activeTab, expandAllSkusOthers]);
+  //   return [...top5, others];
+  // }, [categorizedGrowth, activeTab, expandAllSkusOthers]);
 
   type TableRow = Row & {
     __isTotal?: boolean;
   };
 
-  const buildTableRows = React.useMemo<TableRow[]>(() => {
-    const rows = (currentTabData || []) as any[];
+  // const buildTableRows = React.useMemo<TableRow[]>(() => {
+  //   const rows = (currentTabData || []) as any[];
 
-    const tableRows: TableRow[] = rows.map((item, idx) => {
-      const isOthers =
-        activeTab === "all_skus" &&
-        String(item?.product_name ?? "").toLowerCase().trim() === "others";
+  //   const tableRows: TableRow[] = rows.map((item, idx) => {
+  //     const isOthers =
+  //       activeTab === "all_skus" &&
+  //       String(item?.product_name ?? "").toLowerCase().trim() === "others";
 
-      return {
-        sno: idx + 1,
-        product_name:
-          String(item.product_name).trim() === "0" ? (item.sku || "N/A") : item.product_name,
+  //     return {
+  //       sno: idx + 1,
+  //       product_name:
+  //         String(item.product_name).trim() === "0" ? (item.sku || "N/A") : item.product_name,
 
-        sales_mix:
-          item["Sales Mix (Month2)"] != null
-            ? `${Number(item["Sales Mix (Month2)"]).toFixed(2)}%`
-            : "N/A",
+  //       sales_mix:
+  //         item["Sales Mix (Month2)"] != null
+  //           ? `${Number(item["Sales Mix (Month2)"]).toFixed(2)}%`
+  //           : "N/A",
 
-        sales_mix_change: item["Sales Mix Change"],
+  //       sales_mix_change: item["Sales Mix Change"],
 
-        unit_growth: item["Unit Growth"],
-        asp_growth: item["ASP Growth"],
-        net_sales_growth: item["Net Sales Growth"],
-        cm1_profit_impact: item["CM1 Profit Impact"],
-        profit_per_unit: item["Profit Per Unit"],
+  //       unit_growth: item["Unit Growth"],
+  //       asp_growth: item["ASP Growth"],
+  //       net_sales_growth: item["Net Sales Growth"],
+  //       cm1_profit_impact: item["CM1 Profit Impact"],
+  //       profit_per_unit: item["Profit Per Unit"],
 
-        ai: item, // keep full item for render()
+  //       ai: item, // keep full item for render()
 
-        __isOthers: isOthers,
-      };
-    });
+  //       __isOthers: isOthers,
+  //     };
+  //   });
 
-    // ✅ Total row (same as your tfoot logic but as a row)
-    if ((categorizedGrowth?.[activeTab] as any[])?.length) {
-      const rawRows = (categorizedGrowth[activeTab] || []) as any[];
+  //   // ✅ Total row (same as your tfoot logic but as a row)
+  //   if ((categorizedGrowth?.[activeTab] as any[])?.length) {
+  //     const rawRows = (categorizedGrowth[activeTab] || []) as any[];
 
-      const sum = (k: string) => rawRows.reduce((s, r) => s + Number(r?.[k] ?? 0), 0);
+  //     const sum = (k: string) => rawRows.reduce((s, r) => s + Number(r?.[k] ?? 0), 0);
 
-      const pct = (m1: number, m2: number) => (m1 === 0 ? 0 : ((m2 - m1) / m1) * 100);
+  //     const pct = (m1: number, m2: number) => (m1 === 0 ? 0 : ((m2 - m1) / m1) * 100);
 
-      const totalSalesMixSum = rawRows.reduce(
-        (s, r) => s + Number(r?.["Sales Mix (Month2)"] ?? 0),
-        0
-      );
-      const rounded = Number(totalSalesMixSum.toFixed(2));
-      const fixed = Math.abs(rounded - 100) < 0.05 ? 100 : rounded;
+  //     const totalSalesMixSum = rawRows.reduce(
+  //       (s, r) => s + Number(r?.["Sales Mix (Month2)"] ?? 0),
+  //       0
+  //     );
+  //     const rounded = Number(totalSalesMixSum.toFixed(2));
+  //     const fixed = Math.abs(rounded - 100) < 0.05 ? 100 : rounded;
 
-      const totalCells = {
-        // for growth columns, store number only; render will format
-        sales_mix_change:
-          activeTab !== "new_or_reviving_skus" ? 0 : undefined, // you were showing 0 placeholder
+  //     const totalCells = {
+  //       // for growth columns, store number only; render will format
+  //       sales_mix_change:
+  //         activeTab !== "new_or_reviving_skus" ? 0 : undefined, // you were showing 0 placeholder
 
-        unit_growth: pct(sum("total_quantity_month1"), sum("total_quantity_month2")),
-        asp_growth: pct(sum("asp_month1"), sum("asp_month2")),
-        net_sales_growth: pct(sum("net_sales_month1"), sum("net_sales_month2")),
-        cm1_profit_impact: pct(
-          sum("unit_wise_profitability_month1"),
-          sum("unit_wise_profitability_month2")
-        ),
-        profit_per_unit: pct(sum("profit_month1"), sum("profit_month2")),
-      };
+  //       unit_growth: pct(sum("total_quantity_month1"), sum("total_quantity_month2")),
+  //       asp_growth: pct(sum("asp_month1"), sum("asp_month2")),
+  //       net_sales_growth: pct(sum("net_sales_month1"), sum("net_sales_month2")),
+  //       cm1_profit_impact: pct(
+  //         sum("unit_wise_profitability_month1"),
+  //         sum("unit_wise_profitability_month2")
+  //       ),
+  //       profit_per_unit: pct(sum("profit_month1"), sum("profit_month2")),
+  //     };
 
-      tableRows.push({
-        sno: "",
-        product_name: "Total",
-        sales_mix: `${fixed.toFixed(2)}%`,
-        ...totalCells,
-        __isTotal: true,
-      });
-    }
+  //     tableRows.push({
+  //       sno: "",
+  //       product_name: "Total",
+  //       sales_mix: `${fixed.toFixed(2)}%`,
+  //       ...totalCells,
+  //       __isTotal: true,
+  //     });
+  //   }
 
-    return tableRows;
-  }, [currentTabData, categorizedGrowth, activeTab]);
+  //   return tableRows;
+  // }, [currentTabData, categorizedGrowth, activeTab]);
 
   const renderGrowthCell = (growth: any) => {
     // growth can be GrowthCategory {category,value} OR a number (for total row)
@@ -2866,100 +2965,97 @@ const handleConnectAmazonPreview = () => {
     );
   };
 
-  const columns = React.useMemo<ColumnDef<TableRow>[]>(() => {
-    const showInsight = Object.keys(skuInsights).length > 0;
+  // const columns = React.useMemo<ColumnDef<TableRow>[]>(() => {
+  //   const showInsight = Object.keys(skuInsights).length > 0;
 
-    const cols: ColumnDef<TableRow>[] = [
-      { key: "sno", header: "S.No.", width: "60px" },
+  //   const cols: ColumnDef<TableRow>[] = [
+  //     { key: "sno", header: "S.No.", width: "60px" },
 
-      {
-        key: "product_name",
-        header: "Product Name",
-        width: "260px",
-        cellClassName: "text-left",
-        render: (row, value) => (
-          <span className={row.__isTotal ? "font-bold" : ""}>{value}</span>
-        ),
-      },
+  //     {
+  //       key: "product_name",
+  //       header: "Product Name",
+  //       width: "260px",
+  //       cellClassName: "text-left",
+  //       render: (row, value) => (
+  //         <span className={row.__isTotal ? "font-bold" : ""}>{value}</span>
+  //       ),
+  //     },
 
-      {
-        key: "sales_mix",
-        header: `Sales Mix (${month2Label || "Month 2"})`,
-        width: "150px",
-      },
-    ];
+  //     {
+  //       key: "sales_mix",
+  //       header: `Sales Mix (${month2Label || "Month 2"})`,
+  //       width: "150px",
+  //     },
+  //   ];
 
-    if (activeTab !== "new_or_reviving_skus") {
-      cols.push({
-        key: "sales_mix_change",
-        header: "Sales Mix Change (%)",
-        width: "170px",
-        render: (row, value) => renderGrowthCell(value),
-      });
-    }
+  //   if (activeTab !== "new_or_reviving_skus") {
+  //     cols.push({
+  //       key: "sales_mix_change",
+  //       header: "Sales Mix Change (%)",
+  //       width: "170px",
+  //       render: (row, value) => renderGrowthCell(value),
+  //     });
+  //   }
 
-    cols.push(
-      { key: "unit_growth", header: "Unit Growth (%)", width: "150px", render: (row, v) => renderGrowthCell(v) },
-      { key: "asp_growth", header: "ASP Growth (%)", width: "150px", render: (row, v) => renderGrowthCell(v) },
-      { key: "net_sales_growth", header: "Net Sales Growth (%)", width: "170px", render: (row, v) => renderGrowthCell(v) },
-      { key: "cm1_profit_impact", header: "CM1 Profit Impact (%)", width: "190px", render: (row, v) => renderGrowthCell(v) },
-      {
-        key: "profit_per_unit",
-        header: "CM1 Profit Per Unit (%)",
-        width: "200px",
-        render: (row, v) => renderGrowthCell(v),
-      }
-    );
+  //   cols.push(
+  //     { key: "unit_growth", header: "Unit Growth (%)", width: "150px", render: (row, v) => renderGrowthCell(v) },
+  //     { key: "asp_growth", header: "ASP Growth (%)", width: "150px", render: (row, v) => renderGrowthCell(v) },
+  //     { key: "net_sales_growth", header: "Net Sales Growth (%)", width: "170px", render: (row, v) => renderGrowthCell(v) },
+  //     { key: "cm1_profit_impact", header: "CM1 Profit Impact (%)", width: "190px", render: (row, v) => renderGrowthCell(v) },
+  //     {
+  //       key: "profit_per_unit",
+  //       header: "CM1 Profit Per Unit (%)",
+  //       width: "200px",
+  //       render: (row, v) => renderGrowthCell(v),
+  //     }
+  //   );
 
-    if (showInsight) {
-      cols.push({
-        key: "ai",
-        header: "AI Insight",
-        width: "140px",
-        render: (row, value) => {
-          // Total row -> blank
-          if (row.__isTotal) return "";
+  //   if (showInsight) {
+  //     cols.push({
+  //       key: "ai",
+  //       header: "AI Insight",
+  //       width: "140px",
+  //       render: (row, value) => {
+  //         // Total row -> blank
+  //         if (row.__isTotal) return "";
 
-          // Others row -> expand
-          if ((row as any).__isOthers) {
-            return (
-              <button
-                className="font-semibold underline text-[#414042]"
-                onClick={() => setExpandAllSkusOthers(true)}
-              >
-                Expand SKUs
-              </button>
-            );
-          }
+  //         // Others row -> expand
+  //         if ((row as any).__isOthers) {
+  //           return (
+  //             <button
+  //               className="font-semibold underline text-[#414042]"
+  //               onClick={() => setExpandAllSkusOthers(true)}
+  //             >
+  //               Expand SKUs
+  //             </button>
+  //           );
+  //         }
 
-          const item = value as any;
-          const entry = getInsightForItem(item);
+  //         const item = value as any;
+  //         const entry = getInsightForItem(item);
 
-          if (!entry) return <em style={{ color: "#888" }}>--</em>;
+  //         if (!entry) return <em style={{ color: "#888" }}>--</em>;
 
-          return (
-            <button
-              className="font-semibold underline text-[#414042]"
-              onClick={() => {
-                setSelectedSku(entry[0]);
-                setModalOpen(true);
-                setFbType(null);
-                setFbText("");
-                setFbSuccess(false);
-              }}
-            >
-              View Insights
-            </button>
-          );
-        },
-      });
-    }
+  //         return (
+  //           <button
+  //             className="font-semibold underline text-[#414042]"
+  //             onClick={() => {
+  //               setSelectedSku(entry[0]);
+  //               setModalOpen(true);
+  //               setFbType(null);
+  //               setFbText("");
+  //               setFbSuccess(false);
+  //             }}
+  //           >
+  //             View Insights
+  //           </button>
+  //         );
+  //       },
+  //     });
+  //   }
 
-    return cols;
-  }, [activeTab, month2Label, skuInsights, expandAllSkusOthers, currentTabData]);
-
-
-
+  //   return cols;
+  // }, [activeTab, month2Label, skuInsights, expandAllSkusOthers, currentTabData]);
 
   const formatCountryLabel = (country: string) => {
     const lower = country.toLowerCase();
@@ -2987,29 +3083,12 @@ const handleConnectAmazonPreview = () => {
     }
   }, [year1, year2, month1, month2]);
 
-  //   const [activeTab, setActiveTab] = useState<
-  //   'all_skus' | 'top_80_skus' | 'new_or_reviving_skus' | 'other_skus'
-  // >('all_skus');
-
-  const tabOptions = useMemo(
-    () => [
-      { value: "all_skus" as const, label: "All SKUs" },
-      { value: "top_80_skus" as const, label: "Top 80% SKUs" },
-      { value: "new_or_reviving_skus" as const, label: "New/Reviving SKUs" },
-      { value: "other_skus" as const, label: "Other SKUs" },
-    ],
-    []
-  );
-
-   const handleTabChange = (val: TabKey) => setActiveTab(val);
-
   return (
     <>
       <style>{`
   div{ font-family: 'Lato', sans-serif; }
   select{ outline: none; }
  
-  .total-row td{ background-color:#ccc; font-weight:bold; }
   .styled-button, .compare-button{
     padding:8px 16px;  border:none; border-radius:6px; cursor:pointer;
     transition:background-color .2s ease; box-shadow:0 3px 6px rgba(0,0,0,.15);
@@ -3066,13 +3145,11 @@ const handleConnectAmazonPreview = () => {
 
   .month-dot.selected .dot{ background:#5EA68E; }
 
-  /* ✅ NEW: selected month label */
   .month-dot.selected .month-label{
     color:#5EA68E;
     font-weight:600;
   }
 
-  /* ✅ NEW: disabled months styling */
   .month-dot.disabled{
     opacity:0.3;
     cursor:not-allowed;
@@ -3086,7 +3163,7 @@ const handleConnectAmazonPreview = () => {
     color:#414042;
     white-space:nowrap;
   }
-  .month-label-short{ display:none; }   /* default: desktop pe short hidden */
+  .month-label-short{ display:none; }   
   .month-label-full{ display:inline; }
 
   @keyframes pulseRing {
@@ -3147,56 +3224,7 @@ const handleConnectAmazonPreview = () => {
   -webkit-overflow-scrolling: touch;
 }
 
-@media (max-width: 1440px){
-  .tablec{
-    min-width: 1300px;   /* scroll allow karega */
-  }
 
-  .tablec th,
-  .tablec td{
-    padding:8px 10px;    /* breathing space */
-    font-size:13px;
-  }
-}
-  
-
-@media (max-width: 1024px){
-  .tablec{
-    min-width: 1200px; /* 🔥 force scroll instead of squash */
-  }
-}
-
-
-
-  .sku-zero-wrap{
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.sku-zero{
-  color: #FF5C5C;
-  font-weight: 700;
-}
-.sku-zero-tooltip{
-  position: absolute;
-  left: 0;
-  top: 100%;
-  transform: translateY(6px);
-  background: #111827;
-  color: #fff;
-  padding: 6px 8px;
-  font-size: 12px;
-  border-radius: 6px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .15s ease;
-  z-index: 50;
-}
-.sku-zero-wrap:hover .sku-zero-tooltip{
-  opacity: 1;
-}
 
 .tour-overlay{
   position: fixed;
@@ -3238,610 +3266,577 @@ const handleConnectAmazonPreview = () => {
 
 `}</style>
 
-
-
-      <div className='w-full'>
-        {/* Month selectors */}
-        <div className="sticky top-0 z-40 w-full flex flex-col
-  bg-[#F7F7F7]
-  sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
-  border-b border-gray-200">
-          <div className='mb-3'>
-            <h2 className="2xl:text-2xl text-[18px] font-bold text-[#414042] ">
+      <div className="w-full font-[Lato,sans-serif]">
+        <div className="sticky top-0 z-40 flex w-full flex-col gap-1 border-b border-gray-200 bg-[#F7F7F7] sm:flex-row sm:gap-4 md:items-center md:justify-between">
+          <div className="mb-3">
+            <h2 className="text-[18px] font-bold text-[#414042] 2xl:text-2xl">
               Business Insights - AI Analyst&nbsp;-
-              <span className="text-[#5EA68E] pl-1">
-                {effectiveCountry && formatCountryLabel(effectiveCountry)}<span className="text-[#5EA68E] px-2">
-                </span>
+              <span className="pl-1 text-[#5EA68E]">
+                {effectiveCountry && formatCountryLabel(effectiveCountry)}
+                <span className="px-2 text-[#5EA68E]"></span>
               </span>
             </h2>
-            <p><i className="2xl:text-sm text-xs">Select the year and month for both periods to compare growth metrics.</i></p>
+            <p>
+              <i className="text-xs 2xl:text-sm">
+                Select the year and month for both periods to compare growth metrics.
+              </i>
+            </p>
           </div>
-
         </div>
+
         <PreviewLockedSection
-  enabled={isUsingDummyData}
-  title="Preview mode"
-  description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-  buttonText="Connect Amazon"
-  onAction={handleConnectAmazonPreview}
->
+          enabled={isUsingDummyData}
+          title="Preview mode"
+          description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+          buttonText="Connect Amazon"
+          onAction={handleConnectAmazonPreview}
+        >
 
+          <form onSubmit={handleSubmit} className="month-form ">
+            {/* Row 1 */}
+            <div className="month-row">
+              <select id="intro-year1" value={year1} ref={year1Ref} onChange={(e) => setYear1(e.target.value)} className="year-dropdown">
+                <option value="">Year 1</option>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <div id="intro-month1" ref={month1Ref} className={`month-slider ${year1 && !month1 ? 'needs-pick' : ''}`}>
+                {months.map(m => {
+                  const disabled =
+                    !year1 ||
+                    !isPeriodAvailable(year1, m.value) ||
+                    isLockedCurrent(year1, m.value) ||
+                    (year2 && year1 === year2 && month2 === m.value);
+                  const selected = month1 === m.value;
+                  return (
+                    <div
+                      key={m.value}
 
-        <form onSubmit={handleSubmit} className="month-form ">
-          {/* Row 1 */}
-          <div className="month-row">
-            <select id="intro-year1" value={year1} ref={year1Ref} onChange={(e) => setYear1(e.target.value)} className="year-dropdown">
-              <option value="">Year 1</option>
-              {years.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-            <div id="intro-month1" ref={month1Ref} className={`month-slider ${year1 && !month1 ? 'needs-pick' : ''}`}>
-              {months.map(m => {
-                const disabled =
-                  !year1 ||
-                  !isPeriodAvailable(year1, m.value) ||
-                  isLockedCurrent(year1, m.value) ||
-                  (year2 && year1 === year2 && month2 === m.value);
-                const selected = month1 === m.value;
-                return (
-                  <div
-                    key={m.value}
-
-                    className={`month-dot  ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
-                    onClick={() => {
-                      if (disabled) return;
-                      setMonth1(m.value);
-                    }}
-                  >
-                    {selected && !disabled && <div className="month-tag text-nowrap"></div>}
-                    <span className="dot"></span>
-                    <div className="month-label">
-                      <span className="month-label-full">{m.label}</span>
-                      <span className="month-label-short">{m.label.slice(0, 3)}</span>
+                      className={`month-dot  ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
+                      onClick={() => {
+                        if (disabled) return;
+                        setMonth1(m.value);
+                      }}
+                    >
+                      {selected && !disabled && <div className="month-tag text-nowrap"></div>}
+                      <span className="dot"></span>
+                      <div className="month-label">
+                        <span className="month-label-full">{m.label}</span>
+                        <span className="month-label-short">{m.label.slice(0, 3)}</span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          {/* Row 2 */}
-          <div className="month-row">
-            <select value={year2} onChange={(e) => setYear2(e.target.value)} className="year-dropdown">
-              <option value="">Year 2</option>
-              {years.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-            <div className={`month-slider ${year2 && !month2 ? 'needs-pick' : ''}`}>
-              {months.map(m => {
-                const disabled =
-                  !year2 ||
-                  !isPeriodAvailable(year2, m.value) ||
-                  isLockedCurrent(year2, m.value) ||
-                  (year1 && year1 === year2 && month1 === m.value);
-                const selected = month2 === m.value;
-                return (
-                  <div
-                    key={m.value}
-                    className={`month-dot ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
-                    onClick={() => {
-                      if (disabled) return;
-                      setMonth2(m.value);
-                    }}
-                  >
-                    {selected && !disabled && <div className="month-tag text-nowrap"></div>}
-                    <span className="dot"></span>
-                    <div className="month-label">
-                      <span className="month-label-full">{m.label}</span>
-                      <span className="month-label-short">{m.label.slice(0, 3)}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </form>
-
-
-        <div className="compare-button-container">
-          <button
-            id="intro-compare"
-            type="submit"
-            onClick={(e) => {
-              handleSubmit(e);
-            }}
-            className="compare-button 2xl:text-sm text-xs"
-            ref={compareBtnRef}
-          >
-            Compare
-          </button>
-        </div>
-        
-
-        {error && <p style={{ color: 'red' }}>{error}</p>}
- 
-        <div className="mt-4 mb-3 rounded-xl border border-gray-200 p-4 w-full bg-white">
-          <div className="2xl:text-2xl text-[18px] font-bold text-[#414042]">Profitability</div>
-
-          {/* Center labels like GraphPage */}
-          <div className="mt-3 sm:mt-4 flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-5 w-full mx-auto transition-opacity duration-300">
-            {[
-              { key: "netSales", label: "Net Sales", color: "#75bbda" },
-              { key: "cm1Profit", label: "CM1 Profit", color: "#7b9a6d" },
-              { key: "otherExpense", label: "Other Expense", color: "#3A8EA4" },
-              { key: "advertising", label: "Advertising Total", color: "#C49466" },
-              { key: "reimbursement", label: "Reimbursement", color: "#FDD36F" },
-            ].map(({ key, label, color }) => {
-              const isChecked = !!selectedTotals[key];
-
-              return (
-                <label
-                  key={key}
-                  className={[
-                    "shrink-0 flex items-center gap-1 sm:gap-1.5",
-                    "font-semibold select-none whitespace-nowrap",
-                    "text-[10px] 2xl:text-xs",
-                    "text-charcoal-500",
-                    isChecked ? "opacity-100" : "opacity-40",
-                    "cursor-pointer",
-                  ].join(" ")}
-                >
-                  <span
-                    className="flex items-center justify-center h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-sm border transition"
-                    style={{
-                      borderColor: color,
-                      backgroundColor: isChecked ? color : "white",
-                    }}
-                    onClick={() => toggleTotalsMetric(key)}
-                  >
-                    {isChecked && (
-                      <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
-                        <path
-                          fill="currentColor"
-                          d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
-                        />
-                      </svg>
-                    )}
-                  </span>
-
-                  <span className="capitalize">{label}</span>
-                </label>
-              );
-            })}
-          </div>
-
-          {/* chart */}
-        
-  <div className="h-[320px] sm:h-[360px] md:h-[400px] lg:h-[420px] w-full mt-2 sm:mt-3">
-    <Line data={totalsLine.data as any} options={totalsLine.options as any} />
-  </div>
-
-
-        </div>
-       
-
-
-        {/* ✅ ONE BOX */}
-        <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-4">
-
-        
-  <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-    <div>
-      <PageBreadcrumb pageTitle="Units Sold" variant="page" align="left" textSize="2xl" />
-      <div ref={unitsChartRef} className="h-[320px] w-full" />
-    </div>
-
-    <div>
-      <PageBreadcrumb pageTitle="Net Sales" variant="page" align="left" textSize="2xl" />
-      <div ref={chartRef} className="h-[320px] w-full" />
-    </div>
-
-    <div className="mt-3">
-      <PageBreadcrumb pageTitle="CM1 Profit" variant="page" align="left" textSize="2xl" />
-      <div ref={profitChartRef} className="h-[320px] w-full" />
-    </div>
-
-    <div className="mt-3">
-      <PageBreadcrumb pageTitle="Average Selling Price" variant="page" align="left" textSize="2xl" />
-      <div ref={aspChartRef} className="h-[320px] w-full" />
-    </div>
-  </div>
-
-
-          {/* Shared legend bottom center */}
-          <div className="mt-3 flex flex-wrap justify-center gap-4 2xl:text-xs text-[10px] font-semibold text-[#414042]">
-            <span className="inline-flex items-center gap-2">
-              <span className="inline-block h-[10px] w-[10px]  bg-[#ED9F50]" />
-              Top 80%
-            </span>
-
-            <span className="inline-flex items-center gap-2">
-              <span className="inline-block h-[10px] w-[10px]  bg-[#3A8EA4]" />
-              Other SKUs
-            </span>
-
-            <span className="inline-flex items-center gap-2">
-              <span className="inline-block h-[10px] w-[10px]  bg-[#7B9A6D]" />
-              New/Reviving
-            </span>
-          </div>
-         
-        </div>
-
-
-
-        {/* Table + actions */}
-{/* Table + actions */}
-{(['all_skus', 'top_80_skus', 'new_or_reviving_skus', 'other_skus'] as TabKey[]).some(
-  (k) => (categorizedGrowth[k] || []).length > 0
-) && (
- 
-  <div className="mt-4 rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
-    <div className="flex flex-col gap-4 min-w-0">
-      {/* MOBILE HEADER */}
-      <div className="flex items-center justify-between gap-2 xl:hidden min-w-0">
-        <PageBreadcrumb
-          pageTitle="SKU Analysis MTD"
-          variant="page"
-          align="left"
-        />
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={analyzeSkus}
-            disabled={
-              isPreviewMode ||
-              !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
-                (k) =>
-                  (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
-              )
-            }
-            className="
-              bg-custom-effect shin text-[#F8EDCE]
-              h-9 min-w-[120px] px-4
-              rounded-sm
-              inline-flex items-center justify-center gap-1
-              whitespace-nowrap
-              text-xs 2xl:text-sm
-              transition-all duration-200 ease-out
-              hover:-translate-y-[2px]
-              hover:shadow-lg
-              active:translate-y-0
-              active:shadow-md
-              disabled:opacity-50
-              disabled:cursor-not-allowed
-              disabled:transform-none
-              disabled:shadow-none
-            "
-            style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
-          >
-            <BsStars
-              className="shrink-0"
-              style={{ fontSize: "12px", color: "#F8EDCE" }}
-            />
-            {loadingInsight ? "Generating..." : "AI Insights"}
-          </button>
-
-          <DownloadIconButton
-            disabled={isPreviewMode}
-            onClick={() => {
-              const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
-              const allRows = getAllSkusForExport();
-              exportToExcel(allRows, file);
-            }}
-            className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-          />
-        </div>
-      </div>
-
-      {/* MOBILE TABS */}
-      <div className="xl:hidden w-full min-w-0 overflow-hidden">
-        <div className="w-full max-w-full overflow-x-auto overflow-y-hidden no-scrollbar">
-          <div className="inline-flex min-w-max">
-            <SegmentedToggle<TabKey>
-              value={activeTab}
-              options={tabOptions}
-              onChange={handleTabChange}
-              className="bg-white"
-              textSizeClass="text-xs 2xl:text-sm"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* DESKTOP HEADER */}
-      <div className="hidden xl:flex xl:items-center xl:justify-between xl:gap-6 min-w-0">
-        <PageBreadcrumb
-          pageTitle="SKU Analysis MTD"
-          variant="page"
-          align="left"
-        />
-
-        <div className="flex items-center gap-3 min-w-0 flex-1 justify-end">
-          <div className="min-w-0 max-w-full overflow-hidden">
-            <div className="max-w-full overflow-x-auto overflow-y-hidden no-scrollbar">
-              <div className="inline-flex min-w-max">
-                <SegmentedToggle<TabKey>
-                  value={activeTab}
-                  options={tabOptions}
-                  onChange={handleTabChange}
-                  className="bg-white"
-                  textSizeClass="text-xs 2xl:text-sm"
-                />
+                  );
+                })}
               </div>
             </div>
+            {/* Row 2 */}
+            <div className="month-row">
+              <select value={year2} onChange={(e) => setYear2(e.target.value)} className="year-dropdown">
+                <option value="">Year 2</option>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <div className={`month-slider ${year2 && !month2 ? 'needs-pick' : ''}`}>
+                {months.map(m => {
+                  const disabled =
+                    !year2 ||
+                    !isPeriodAvailable(year2, m.value) ||
+                    isLockedCurrent(year2, m.value) ||
+                    (year1 && year1 === year2 && month1 === m.value);
+                  const selected = month2 === m.value;
+                  return (
+                    <div
+                      key={m.value}
+                      className={`month-dot ${selected ? 'selected' : ''} ${disabled ? 'disabled' : ''}`}
+                      onClick={() => {
+                        if (disabled) return;
+                        setMonth2(m.value);
+                      }}
+                    >
+                      {selected && !disabled && <div className="month-tag text-nowrap"></div>}
+                      <span className="dot"></span>
+                      <div className="month-label">
+                        <span className="month-label-full">{m.label}</span>
+                        <span className="month-label-short">{m.label.slice(0, 3)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </form>
+
+          <div className="mt-5 text-right">
+            <button
+              id="intro-compare"
+              type="submit"
+              onClick={(e) => {
+                handleSubmit(e);
+              }}
+              ref={compareBtnRef}
+              className="rounded-md bg-[#2c3e50] px-4 py-2 text-xs font-bold text-[#f8edcf] shadow-[0_3px_6px_rgba(0,0,0,.15)] transition-colors duration-200 ease-in-out hover:bg-[#1f2a36] 2xl:text-sm"
+            >
+              Compare
+            </button>
           </div>
 
-          <button
-            onClick={analyzeSkus}
-            disabled={
-              isPreviewMode ||
-              !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
-                (k) =>
-                  (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length > 0
-              )
-            }
-            className="
-              bg-custom-effect shin text-[#F8EDCE]
-              h-9 min-w-[120px] px-4
-              rounded-sm
-              inline-flex items-center justify-center gap-1
-              whitespace-nowrap
-              text-xs 2xl:text-sm
-              shrink-0
-              transition-all duration-200 ease-out
-              hover:-translate-y-[2px]
-              hover:shadow-lg
-              active:translate-y-0
-              active:shadow-md
-              disabled:opacity-50
-              disabled:cursor-not-allowed
-              disabled:transform-none
-              disabled:shadow-none
-            "
-            style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
-          >
-            <BsStars
-              className="shrink-0"
-              style={{ fontSize: "12px", color: "#F8EDCE" }}
-            />
-            {loadingInsight ? "Generating..." : "AI Insights"}
-          </button>
+          {error && <p className="text-red-500">{error}</p>}
 
-          <DownloadIconButton
-            disabled={isPreviewMode}
-            onClick={() => {
-              const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(2)}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
-              const allRows = getAllSkusForExport();
-              exportToExcel(allRows, file);
-            }}
-            className="shrink-0 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-          />
-        </div>
-      </div>
-    </div>
+          <div className="mt-4 mb-3 w-full rounded-xl border border-gray-200 bg-white p-4">
+            <div className="text-[18px] font-bold text-[#414042] 2xl:text-2xl">
+              Profitability
+            </div>
 
-    <div className="pt-6">
-      <DataTable<TableRow>
-        columns={columns}
-        data={buildTableRows}
-        stickyHeader
-        zebra
-        paginate
-        pageSize={10}
-        maxHeight="60vh"
-        loading={false}
-        headerMaxWidth={140}
-        rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-bold" : "")}
-      />
-    </div>
+            <div className="mx-auto mt-3 flex w-full flex-wrap items-center justify-center gap-3 transition-opacity duration-300 sm:mt-4 sm:gap-4 md:gap-5">
+              {[
+                { key: "netSales", label: "Net Sales", color: "#75bbda" },
+                { key: "cm1Profit", label: "CM1 Profit", color: "#7b9a6d" },
+                { key: "otherExpense", label: "Other Expense", color: "#3A8EA4" },
+                { key: "advertising", label: "Advertising Total", color: "#C49466" },
+                { key: "reimbursement", label: "Reimbursement", color: "#FDD36F" },
+              ].map(({ key, label, color }) => {
+                const isChecked = !!selectedTotals[key];
 
-    <div className="flex justify-center mt-2">
-      <div
-        className="
-          grid grid-cols-2 gap-x-6 gap-y-2
-          sm:grid-cols-4
-          lg:flex lg:items-center lg:gap-10 lg:flex-wrap
-          text-xs 2xl:text-sm text-[#414042] mt-1
-          justify-items-start
-        "
-      >
-        <span className="inline-flex items-center gap-2">
-          <span className="inline-flex items-center gap-2 text-[#5EA68E] font-bold">
-            <FaArrowUp className="text-[10px] 2xl:text-xs" /> High growth
-          </span>
-        </span>
+                return (
+                  <label
+                    key={key}
+                    className={[
+                      "flex shrink-0 cursor-pointer select-none items-center gap-1 whitespace-nowrap font-semibold text-[10px] text-charcoal-500 sm:gap-1.5 2xl:text-xs",
+                      isChecked ? "opacity-100" : "opacity-40",
+                    ].join(" ")}
+                  >
+                    <span
+                      className="flex h-3 w-3 items-center justify-center rounded-sm border transition sm:h-3.5 sm:w-3.5"
+                      style={{
+                        borderColor: color,
+                        backgroundColor: isChecked ? color : "white",
+                      }}
+                      onClick={() => toggleTotalsMetric(key)}
+                    >
+                      {isChecked && (
+                        <svg viewBox="0 0 24 24" width="14" height="14" className="text-white">
+                          <path
+                            fill="currentColor"
+                            d="M20.285 6.709a1 1 0 0 0-1.414-1.414L9 15.168l-3.879-3.88a1 1 0 0 0-1.414 1.415l4.586 4.586a1 1 0 0 0 1.414 0l10-10Z"
+                          />
+                        </svg>
+                      )}
+                    </span>
 
-        <span className="inline-flex items-center gap-2">
-          <span className="inline-flex items-center gap-2 text-[#FF5C5C] font-bold">
-            <FaArrowDown className="text-[10px] 2xl:text-xs" /> Negative growth
-          </span>
-        </span>
+                    <span className="capitalize">{label}</span>
+                  </label>
+                );
+              })}
+            </div>
 
-        <span className="inline-flex items-center gap-2 font-bold whitespace-nowrap">
-          <span className="text-[#414042] inline-flex items-center gap-1">
-            <FaArrowUp className="text-[10px] 2xl:text-xs" /> + /
-            <FaArrowDown className="text-[10px] 2xl:text-xs" /> -
-          </span>
-          Low growth
-        </span>
+            <div className="mt-2 h-[320px] w-full sm:mt-3 sm:h-[360px] md:h-[400px] lg:h-[420px]">
+              <Line data={totalsLine.data as any} options={totalsLine.options as any} />
+            </div>
+          </div>
 
-        <span className="inline-flex items-center gap-2 font-bold">
-          <span className="text-sm 2xl:text-base leading-none">-</span>
-          Past data for SKU is not available
-        </span>
-      </div>
-    </div>
-  </div>
-  
-)}
- </PreviewLockedSection>
-      </div>
-     
-
-
-
-{(() => {
-  if (!modalOpen || !selectedSku) return null;
-
-  const insightData =
-    skuInsights[selectedSku as keyof typeof skuInsights] ||
-    getInsightByProductName(selectedSku as string)?.[1];
-
-  if (!insightData) return null;
-
-  const objectiveObj = isObjectiveObj(insightData.objective)
-    ? insightData.objective
-    : undefined;
-
-  // ✅ bullets helpers
-  const toBullets = (raw?: string) => normalizeBullets(raw);
-  const recoBullets = toBullets(insightData.recommendation);
-  const inventoryRecoBullets = toBullets(insightData.inventory_recommendation);
-
-  // ✅ NEW: product journey bullets (already array)
-  const journeyBullets = (insightData.product_journey || [])
-    .map((s) => String(s || "").trim())
-    .filter(Boolean);
-
-  return (
-    <AnimatePresence>
-      {modalOpen && (
-        <>
-          {/* overlay */}
-          <motion.div
-            className="fixed inset-0 z-[999999] bg-black/40"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setModalOpen(false)}
-          />
-
-          {/* drawer */}
-          <motion.aside
-            className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] max-w-[720px] bg-white shadow-2xl flex flex-col"
-            initial={{ x: 520 }}
-            animate={{ x: 0 }}
-            exit={{ x: 520 }}
-            transition={{ type: "tween", duration: 0.25 }}
-          >
-            {/* header */}
-            <div className="shrink-0 border-b border-slate-200 p-4 flex items-start justify-between gap-3">
+          <div className="mt-4 mb-3 rounded-xl border border-gray-200 bg-white p-4">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
               <div>
-                <div className="flex items-center gap-2">
-                  <div className="text-sm text-slate-500">Detailed View</div>
-
-                  {/* optional period badge */}
-                  <span className="text-[11px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-700">
-                    {countryName ? String(countryName).toUpperCase() : "—"}
-                  </span>
-                </div>
-
-                <div className="text-lg font-semibold text-slate-900">
-                  {insightData.product_name || selectedSku}
-                </div>
+                <PageBreadcrumb
+                  pageTitle="Units Sold"
+                  variant="page"
+                  align="left"
+                  textSize="2xl"
+                />
+                <div ref={unitsChartRef} className="h-[320px] w-full" />
               </div>
 
-              <button
-                onClick={() => setModalOpen(false)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                ✕
-              </button>
+              <div>
+                <PageBreadcrumb
+                  pageTitle="Net Sales"
+                  variant="page"
+                  align="left"
+                  textSize="2xl"
+                />
+                <div ref={chartRef} className="h-[320px] w-full" />
+              </div>
+
+              <div className="mt-3">
+                <PageBreadcrumb
+                  pageTitle="CM1 Profit"
+                  variant="page"
+                  align="left"
+                  textSize="2xl"
+                />
+                <div ref={profitChartRef} className="h-[320px] w-full" />
+              </div>
+
+              <div className="mt-3">
+                <PageBreadcrumb
+                  pageTitle="Average Selling Price"
+                  variant="page"
+                  align="left"
+                  textSize="2xl"
+                />
+                <div ref={aspChartRef} className="h-[320px] w-full" />
+              </div>
             </div>
 
-            {/* content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-5">
-              {/* 1) Objective strip */}
-              {objectiveObj && (
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-slate-800">Objectives</div>
+            <div className="mt-3 flex flex-wrap justify-center gap-4 text-[10px] font-semibold text-[#414042] 2xl:text-xs">
+              <span className="inline-flex items-center gap-2">
+                <span className="inline-block h-[10px] w-[10px] bg-[#ED9F50]" />
+                Top 80%
+              </span>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <div className="text-xs text-slate-500">Primary Focus</div>
-                      <div className="text-sm font-bold text-slate-800 mt-1">
-                        {objectiveObj?.growth_intent || "balanced"}
+              <span className="inline-flex items-center gap-2">
+                <span className="inline-block h-[10px] w-[10px] bg-[#3A8EA4]" />
+                Other SKUs
+              </span>
+
+              <span className="inline-flex items-center gap-2">
+                <span className="inline-block h-[10px] w-[10px] bg-[#7B9A6D]" />
+                New/Reviving
+              </span>
+            </div>
+          </div>
+
+          {/* {(["all_skus", "top_80_skus", "new_or_reviving_skus", "other_skus"] as TabKey[]).some(
+            (k) => (categorizedGrowth[k] || []).length > 0
+          ) && (
+              <div className="mt-4 overflow-hidden rounded-xl border bg-white p-4 shadow-sm sm:p-5">
+                <div className="flex min-w-0 flex-col gap-4">
+                  <div className="flex min-w-0 items-center justify-between gap-2 xl:hidden">
+                    <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" />
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        onClick={analyzeSkus}
+                        disabled={
+                          isPreviewMode ||
+                          !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
+                            (k) =>
+                              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length >
+                              0
+                          )
+                        }
+                        className="inline-flex h-9 min-w-[120px] items-center justify-center gap-1 whitespace-nowrap rounded-sm bg-custom-effect px-4 text-xs text-[#F8EDCE] transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:transform-none 2xl:text-sm"
+                        style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
+                      >
+                        <BsStars
+                          className="shrink-0"
+                          style={{ fontSize: "12px", color: "#F8EDCE" }}
+                        />
+                        {loadingInsight ? "Generating..." : "AI Insights"}
+                      </button>
+
+                      <DownloadIconButton
+                        disabled={isPreviewMode}
+                        onClick={() => {
+                          const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(
+                            2
+                          )}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
+                          const allRows = getAllSkusForExport();
+                          exportToExcel(allRows, file);
+                        }}
+                        className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="w-full min-w-0 overflow-hidden xl:hidden">
+                    <div className="no-scrollbar w-full max-w-full overflow-x-auto overflow-y-hidden">
+                      <div className="inline-flex min-w-max">
+                        <SegmentedToggle<TabKey>
+                          value={activeTab}
+                          options={tabOptions}
+                          onChange={handleTabChange}
+                          className="bg-white"
+                          textSizeClass="text-xs 2xl:text-sm"
+                        />
                       </div>
                     </div>
+                  </div>
 
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <div className="text-xs text-slate-500">Profit Strategy</div>
-                      <div className="text-sm font-bold text-slate-800 mt-1">
-                        {(objectiveObj?.profit_priority?.replaceAll("_", " ") || "protect growth")}
-                      </div>
-                    </div>
+                  <div className="hidden min-w-0 xl:flex xl:items-center xl:justify-between xl:gap-6">
+                    <PageBreadcrumb pageTitle="SKU Analysis MTD" variant="page" align="left" />
 
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <div className="text-xs text-slate-500">Inventory Dilution</div>
-                      <div className="text-sm font-bold text-slate-800 mt-1">
-                        {objectiveObj?.inventory_clearance_priority ? "Yes" : "No"}
+                    <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+                      <div className="min-w-0 max-w-full overflow-hidden">
+                        <div className="no-scrollbar max-w-full overflow-x-auto overflow-y-hidden">
+                          <div className="inline-flex min-w-max">
+                            <SegmentedToggle<TabKey>
+                              value={activeTab}
+                              options={tabOptions}
+                              onChange={handleTabChange}
+                              className="bg-white"
+                              textSizeClass="text-xs 2xl:text-sm"
+                            />
+                          </div>
+                        </div>
                       </div>
+
+                      <button
+                        onClick={analyzeSkus}
+                        disabled={
+                          isPreviewMode ||
+                          !["top_80_skus", "new_or_reviving_skus", "other_skus"].some(
+                            (k) =>
+                              (categorizedGrowth[k as keyof CategorizedGrowth] as SkuItem[])?.length >
+                              0
+                          )
+                        }
+                        className="inline-flex h-9 min-w-[120px] shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-sm bg-custom-effect px-4 text-xs text-[#F8EDCE] transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:transform-none 2xl:text-sm"
+                        style={{ boxShadow: "0px 4px 4px 0px #00000040" }}
+                      >
+                        <BsStars
+                          className="shrink-0"
+                          style={{ fontSize: "12px", color: "#F8EDCE" }}
+                        />
+                        {loadingInsight ? "Generating..." : "AI Insights"}
+                      </button>
+
+                      <DownloadIconButton
+                        disabled={isPreviewMode}
+                        onClick={() => {
+                          const file = `AllSKUs-${getAbbr(month1)}'${String(year1).slice(
+                            2
+                          )}vs${getAbbr(month2)}'${String(year2).slice(2)}.xlsx`;
+                          const allRows = getAllSkusForExport();
+                          exportToExcel(allRows, file);
+                        }}
+                        className="shrink-0 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                      />
                     </div>
                   </div>
                 </div>
-              )}
 
-              {/* 2) Recommendations */}
-              <div className="space-y-2">
-                <div className="text-sm font-semibold text-slate-800">Recommendations</div>
-
-                {recoBullets.length > 0 && (
-                  <div>
-                    <div className="text-xs font-semibold text-blue-900 mb-1">💡 Action</div>
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700">
-                      {recoBullets.map((pt, i) => (
-                        <li key={i}>{pt}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {inventoryRecoBullets.length > 0 && (
-                  <div>
-                    <div className="text-xs font-semibold text-amber-900 mb-1">📦 Inventory</div>
-                    <ul className="list-disc pl-5 space-y-1 text-xs text-slate-700">
-                      {inventoryRecoBullets.map((pt, i) => (
-                        <li key={i}>{pt}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {!recoBullets.length && !inventoryRecoBullets.length && (
-                  <div className="text-xs text-slate-500">No recommendation available.</div>
-                )}
-              </div>
-
-              {/* 3) Chart */}
-              <div className="space-y-2">
-                <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 8 }}>
-                  <Productinfoinpopup
-                    productname={insightData.product_name}
-                    countryName={countryName}
+                <div className="pt-6">
+                  <DataTable<TableRow>
+                    columns={columns}
+                    data={buildTableRows}
+                    stickyHeader
+                    zebra
+                    paginate
+                    pageSize={10}
+                    maxHeight="60vh"
+                    loading={false}
+                    headerMaxWidth={140}
+                    rowClassName={(row) => (row.__isTotal ? "bg-[#D9D9D933] font-bold" : "")}
                   />
                 </div>
-              </div>
 
-              {/* 4) Product Journey ✅ NEW */}
-              {journeyBullets.length > 0 && (
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-slate-800">Product Journey</div>
+                <div className="mt-2 flex justify-center">
+                  <div className="mt-1 grid grid-cols-2 justify-items-start gap-x-6 gap-y-2 text-xs text-[#414042] sm:grid-cols-4 lg:flex lg:flex-wrap lg:items-center lg:gap-10 2xl:text-sm">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="inline-flex items-center gap-2 font-bold text-[#5EA68E]">
+                        <FaArrowUp className="text-[10px] 2xl:text-xs" /> High growth
+                      </span>
+                    </span>
 
-                  <ul className="space-y-2 2xl:text-sm text-xs text-slate-700">
-                    {journeyBullets.map((j, i) => (
-                      <li key={i} className="flex gap-2">
-                        <span className="text-slate-400 mt-[2px]">→</span>
-                        <span>{j}</span>
-                      </li>
-                    ))}
-                  </ul>
+                    <span className="inline-flex items-center gap-2">
+                      <span className="inline-flex items-center gap-2 font-bold text-[#FF5C5C]">
+                        <FaArrowDown className="text-[10px] 2xl:text-xs" /> Negative growth
+                      </span>
+                    </span>
+
+                    <span className="inline-flex items-center gap-2 whitespace-nowrap font-bold">
+                      <span className="inline-flex items-center gap-1 text-[#414042]">
+                        <FaArrowUp className="text-[10px] 2xl:text-xs" /> + /
+                        <FaArrowDown className="text-[10px] 2xl:text-xs" /> -
+                      </span>
+                      Low growth
+                    </span>
+
+                    <span className="inline-flex items-center gap-2 font-bold">
+                      <span className="text-sm leading-none 2xl:text-base">-</span>
+                      Past data for SKU is not available
+                    </span>
+                  </div>
                 </div>
-              )}
-            </div>
-          </motion.aside>
-        </>
-      )}
-    </AnimatePresence>
-  );
-})()}
+              </div>
+            )} */}
+
+          <SkuAnalysisSection
+            categorizedGrowth={categorizedGrowth}
+            month1={month1}
+            year1={year1}
+            month2={month2}
+            year2={year2}
+            month2Label={month2Label}
+            skuInsights={skuInsights}
+            loadingInsight={loadingInsight}
+            analyzeSkus={analyzeSkus}
+            exportToExcel={exportToExcel}
+            getAllSkusForExport={getAllSkusForExport}
+            getAbbr={getAbbr}
+            getInsightForItem={getInsightForItem}
+            setSelectedSku={setSelectedSku}
+            setModalOpen={setModalOpen}
+            setFbType={setFbType}
+            setFbText={setFbText}
+            setFbSuccess={setFbSuccess}
+            isPreviewMode={isPreviewMode}
+          />
+        </PreviewLockedSection>
+      </div>
+
+      {(() => {
+        if (!modalOpen || !selectedSku) return null;
+
+        const insightData =
+          skuInsights[selectedSku as keyof typeof skuInsights] ||
+          getInsightByProductName(selectedSku as string)?.[1];
+
+        if (!insightData) return null;
+
+        const objectiveObj = isObjectiveObj(insightData.objective)
+          ? insightData.objective
+          : undefined;
+
+        const toBullets = (raw?: string) => normalizeBullets(raw);
+        const recoBullets = toBullets(insightData.recommendation);
+        const inventoryRecoBullets = toBullets(insightData.inventory_recommendation);
+
+        const journeyBullets = (insightData.product_journey || [])
+          .map((s) => String(s || "").trim())
+          .filter(Boolean);
+
+        return (
+          <AnimatePresence>
+            {modalOpen && (
+              <>
+                <motion.div
+                  className="fixed inset-0 z-[999999] bg-black/40"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setModalOpen(false)}
+                />
+
+                <motion.aside
+                  className="fixed right-0 top-0 z-[1000000] flex h-screen w-[95vw] max-w-[720px] flex-col bg-white shadow-2xl"
+                  initial={{ x: 520 }}
+                  animate={{ x: 0 }}
+                  exit={{ x: 520 }}
+                  transition={{ type: "tween", duration: 0.25 }}
+                >
+                  <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 p-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm text-slate-500">Detailed View</div>
+
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700">
+                          {countryName ? String(countryName).toUpperCase() : "—"}
+                        </span>
+                      </div>
+
+                      <div className="text-lg font-semibold text-slate-900">
+                        {insightData.product_name || selectedSku}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setModalOpen(false)}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="flex-1 space-y-5 overflow-y-auto p-4">
+                    {objectiveObj && (
+                      <div className="space-y-2">
+                        <div className="text-sm font-semibold text-slate-800">Objectives</div>
+
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                            <div className="text-xs text-slate-500">Primary Focus</div>
+                            <div className="mt-1 text-sm font-bold text-slate-800">
+                              {objectiveObj?.growth_intent || "balanced"}
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                            <div className="text-xs text-slate-500">Profit Strategy</div>
+                            <div className="mt-1 text-sm font-bold text-slate-800">
+                              {objectiveObj?.profit_priority?.replaceAll("_", " ") ||
+                                "protect growth"}
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                            <div className="text-xs text-slate-500">Inventory Dilution</div>
+                            <div className="mt-1 text-sm font-bold text-slate-800">
+                              {objectiveObj?.inventory_clearance_priority ? "Yes" : "No"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <div className="text-sm font-semibold text-slate-800">
+                        Recommendations
+                      </div>
+
+                      {recoBullets.length > 0 && (
+                        <div>
+                          <div className="mb-1 text-xs font-semibold text-blue-900">
+                            💡 Action
+                          </div>
+                          <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
+                            {recoBullets.map((pt, i) => (
+                              <li key={i}>{pt}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {inventoryRecoBullets.length > 0 && (
+                        <div>
+                          <div className="mb-1 text-xs font-semibold text-amber-900">
+                            📦 Inventory
+                          </div>
+                          <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
+                            {inventoryRecoBullets.map((pt, i) => (
+                              <li key={i}>{pt}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {!recoBullets.length && !inventoryRecoBullets.length && (
+                        <div className="text-xs text-slate-500">
+                          No recommendation available.
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="rounded-lg border border-[#e5e7eb] p-2">
+                        <Productinfoinpopup
+                          productname={insightData.product_name}
+                          countryName={countryName}
+                        />
+                      </div>
+                    </div>
+
+                    {journeyBullets.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-sm font-semibold text-slate-800">
+                          Product Journey
+                        </div>
+
+                        <ul className="space-y-2 text-xs text-slate-700 2xl:text-sm">
+                          {journeyBullets.map((j, i) => (
+                            <li key={i} className="flex gap-2">
+                              <span className="mt-[2px] text-slate-400">→</span>
+                              <span>{j}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </motion.aside>
+              </>
+            )}
+          </AnimatePresence>
+        );
+      })()}
     </>
   );
 };

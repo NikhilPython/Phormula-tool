@@ -1349,9 +1349,9 @@ const AiSingleInsightCard: React.FC<AiSingleInsightCardProps> = ({
             {narrativeInsights.length > 0 && (
               <div className="xl:col-span-7 rounded-xl border border-slate-200 bg-white shadow-sm p-4 h-full">
                 <div className="space-y-3 h-full">
-                  <h2 className="text-lg 2xl:text-2xl text-[#414042] font-bold leading-snug">
+                  <h2 className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-charcoal-500 font-bold leading-snug">
                     {narrativeInsights[0]?.split("(")[0]?.trim()}
-                    <span className="text-[#5EA68E] font-semibold ml-2 2xl:text-xl">
+                    <span className="text-[#5EA68E] font-bold ml-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl">
                       {formatSummaryPeriod(narrativeInsights[0])}
                     </span>
                   </h2>

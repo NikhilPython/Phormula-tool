@@ -136,7 +136,15 @@ export default function SalesTargetStatsCard({
       <div className="relative flex flex-col items-center gap-2 font-bold text-charcoal-500">
         <button
           type="button"
-          onClick={() => router.push("/objectives-targets/uk?tab=targets_and_objectives")}
+          onClick={() => {
+  const country = value.toLowerCase(); // uk, us, ca, global
+  const month = monthName.toLowerCase(); // february
+  const fullYear = String(year); // 2026
+
+  router.push(
+    `/objectives-targets/${country}/${month}/${fullYear}?tab=targets_and_objectives`
+  );
+}}
           className="absolute right-0 top-0 inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100"
           aria-label="Edit targets and objectives"
           title="Edit targets and objectives"
@@ -153,14 +161,14 @@ export default function SalesTargetStatsCard({
           />
         </div>
 
-        {!hideTabs && (
+        {/* {!hideTabs && (
           <SegmentedToggle<RegionKey>
             value={value}
             options={availableRegions.map((r: RegionKey) => ({ value: r }))}
             onChange={onChange}
             className="mt-1"
           />
-        )}
+        )} */}
       </div>
 
       <div className="pt-4 lg:flex-1">
