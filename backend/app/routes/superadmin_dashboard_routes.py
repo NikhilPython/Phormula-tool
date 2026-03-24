@@ -161,6 +161,7 @@ def get_superadmin_dashboard():
         return jsonify({
             "email": email_to_search,
             "user_id": user_id,
+            "name": (user.name if user else getattr(user_admin, "name", None)),  # ✅ ADD THIS
             "brand_name": (user.brand_name if user else getattr(user_admin, "brand_name", None)),
             "annual_sales_range": (user.annual_sales_range if user else getattr(user_admin, "annual_sales_range", None)),
             "related_upload_history": [
