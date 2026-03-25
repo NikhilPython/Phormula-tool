@@ -16,6 +16,7 @@ import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import { motion } from "framer-motion";
 import SkuRecommendationDrawer from '@/components/dashboard/SkuRecommendationDrawer';
+import InventoryInsightsSection from "@/components/businessInsight/InventoryInsightsSection";
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
@@ -45,7 +46,7 @@ type MonthsforBIProps = {
   year: string;        // "2025"
   initialData?: ApiResponse | null;
   disableAutoFetch?: boolean; // when true, LiveBusinessClient will NOT fetch
- onGenerateInsights?: () => Promise<void>;
+  onGenerateInsights?: () => Promise<void>;
 };
 
 // =========================
@@ -163,11 +164,12 @@ interface ApiResponse {
     alert_bullets?: string[];
     summary_text?: string;
   };
-  overall_actions?: string[];
+  overall_actions?: string[] | Record<string, string>;
   recommended_actions_mtd?: Record<string, string>;
-  remaining_skus_recommendation?: string;
-  remaining_skus_block?: string;
-  portfolio_recommendation?: string;
+  remaining_skus_recommendation?: string | number;
+  remaining_skus_block?: string | number;
+  portfolio_recommendation?: string | number;
+  portfolio_inventory_block?: string | number;
 }
 
 // =========================
@@ -175,8 +177,8 @@ interface ApiResponse {
 // =========================
 const API_BASE = `${process.env.NEXT_PUBLIC_API_BASE_URL}`;
 
-const STORAGE_KEY = 'live_bi_insight_data';
-const INSIGHTS_KEY = 'live_bi_sku_insights';
+// const STORAGE_KEY = 'live_bi_insight_data';
+// const INSIGHTS_KEY = 'live_bi_sku_insights';
 
 // Axios instance with JWT
 const api = axios.create({ baseURL: API_BASE });
@@ -207,6 +209,9 @@ const capitalizeWords = (value: string) =>
     .toString()
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const normalizeTextBlock = (value: unknown): string =>
+  typeof value === "string" ? value : "";
 
 // =========================
 // Main Component
@@ -442,7 +447,7 @@ export default function LiveBusinessClient({
   const [adsRecommendation, setAdsRecommendation] = useState<string>("");
   const [inventorySummary, setInventorySummary] = useState<any>(null);
   const [selectedSkuItem, setSelectedSkuItem] = useState<SkuItem | null>(null);
-
+  const [portfolioInventoryBlock, setPortfolioInventoryBlock] = useState<string>("");
   // Feedback
   const [fbType, setFbType] = useState<'like' | 'dislike' | null>(null);
   const [fbText, setFbText] = useState<string>('');
@@ -603,45 +608,45 @@ export default function LiveBusinessClient({
   // Persistence helpers
   // =========================
 
-  const saveCompareToStorage = (payload: any) => {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch (e) {
-      console.warn('Failed to save BI compare state:', e);
-    }
-  };
+  // const saveCompareToStorage = (payload: any) => {
+  //   if (typeof window === 'undefined') return;
+  //   try {
+  //     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  //   } catch (e) {
+  //     console.warn('Failed to save BI compare state:', e);
+  //   }
+  // };
 
-  const loadCompareFromStorage = (): any => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      console.warn('Failed to load BI compare state:', e);
-      return null;
-    }
-  };
+  // const loadCompareFromStorage = (): any => {
+  //   if (typeof window === 'undefined') return null;
+  //   try {
+  //     const raw = localStorage.getItem(STORAGE_KEY);
+  //     return raw ? JSON.parse(raw) : null;
+  //   } catch (e) {
+  //     console.warn('Failed to load BI compare state:', e);
+  //     return null;
+  //   }
+  // };
 
-  const saveInsightsToStorage = (insights: Record<string, SkuInsight>) => {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(INSIGHTS_KEY, JSON.stringify(insights || {}));
-    } catch (e) {
-      console.warn('Failed to save insights:', e);
-    }
-  };
+  // const saveInsightsToStorage = (insights: Record<string, SkuInsight>) => {
+  //   if (typeof window === 'undefined') return;
+  //   try {
+  //     localStorage.setItem(INSIGHTS_KEY, JSON.stringify(insights || {}));
+  //   } catch (e) {
+  //     console.warn('Failed to save insights:', e);
+  //   }
+  // };
 
-  const loadInsightsFromStorage = (): Record<string, SkuInsight> => {
-    if (typeof window === 'undefined') return {};
-    try {
-      const raw = localStorage.getItem(INSIGHTS_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch (e) {
-      console.warn('Failed to load insights:', e);
-      return {};
-    }
-  };
+  // const loadInsightsFromStorage = (): Record<string, SkuInsight> => {
+  //   if (typeof window === 'undefined') return {};
+  //   try {
+  //     const raw = localStorage.getItem(INSIGHTS_KEY);
+  //     return raw ? JSON.parse(raw) : {};
+  //   } catch (e) {
+  //     console.warn('Failed to load insights:', e);
+  //     return {};
+  //   }
+  // };
 
   // Normalize backend growth field names -> existing frontend keys
   const normalizeCategorizedGrowth = (raw?: any): CategorizedGrowth => {
@@ -717,6 +722,38 @@ export default function LiveBusinessClient({
     };
   };
 
+  // const hydrateFromPayload = (payload: ApiResponse) => {
+  //   const newPeriods = payload.periods || null;
+
+  //   const rawCat = payload.categorized_growth || {
+  //     top_80_skus: [],
+  //     new_or_reviving_skus: [],
+  //     other_skus: [],
+  //   };
+
+  //   const normalized = normalizeCategorizedGrowth(rawCat);
+  //   setPeriods(newPeriods);
+  //   setCategorizedGrowth(normalized);
+  //   const currentLabel = newPeriods?.current_mtd?.label || '';
+  //   setMonth2Label(currentLabel);
+  //   const summaryObj = payload.overall_summary;
+  //   setSummaryText(summaryObj?.summary_text || "");
+  //   setOverallSummary(summaryObj?.metric_bullets || []);
+  //   setOverallActions(payload.overall_actions || []);
+  //   setRecommendedActions(payload.recommended_actions_mtd || {});
+  //   setRemainingSkusBlock(payload.remaining_skus_block || payload.remaining_skus_recommendation || "");
+  //   setPortfolioRecommendation((payload as any).portfolio_recommendation || "");
+  //   setPortfolioInventoryBlock((payload as any).portfolio_inventory_block || "");
+  //   setObjectiveContext(payload.objective_context || null);
+  //   setAdsRecommendation((payload as any).ads_recommendation || "");
+  //   setInventorySummary((payload as any).inventory_summary || null);
+  //   const liveInsights = payload.ai_insights || {};
+  //   if (liveInsights && Object.keys(liveInsights).length) {
+  //     setSkuInsights(liveInsights);
+  //     // saveInsightsToStorage(liveInsights);
+  //   }
+  // };
+
   const hydrateFromPayload = (payload: ApiResponse) => {
     const newPeriods = payload.periods || null;
 
@@ -727,25 +764,30 @@ export default function LiveBusinessClient({
     };
 
     const normalized = normalizeCategorizedGrowth(rawCat);
+
     setPeriods(newPeriods);
     setCategorizedGrowth(normalized);
-    const currentLabel = newPeriods?.current_mtd?.label || '';
-    setMonth2Label(currentLabel);
+    setMonth2Label(newPeriods?.current_mtd?.label || "");
+
     const summaryObj = payload.overall_summary;
+
     setSummaryText(summaryObj?.summary_text || "");
     setOverallSummary(summaryObj?.metric_bullets || []);
-    setOverallActions(payload.overall_actions || []);
+    setOverallActions(
+      Array.isArray(payload.overall_actions)
+        ? payload.overall_actions
+        : []
+    );
     setRecommendedActions(payload.recommended_actions_mtd || {});
-    setRemainingSkusBlock(payload.remaining_skus_block || payload.remaining_skus_recommendation || "");
-    setPortfolioRecommendation((payload as any).portfolio_recommendation || "");
+    setRemainingSkusBlock(normalizeTextBlock(payload.remaining_skus_block || payload.remaining_skus_recommendation));
+    setPortfolioRecommendation(normalizeTextBlock(payload.portfolio_recommendation));
+    setPortfolioInventoryBlock(normalizeTextBlock(payload.portfolio_inventory_block));
     setObjectiveContext(payload.objective_context || null);
-    setAdsRecommendation((payload as any).ads_recommendation || "");
-    setInventorySummary((payload as any).inventory_summary || null);
+    setAdsRecommendation(payload.ads_recommendation || "");
+    setInventorySummary(payload.inventory_summary || null);
+
     const liveInsights = payload.ai_insights || {};
-    if (liveInsights && Object.keys(liveInsights).length) {
-      setSkuInsights(liveInsights);
-      saveInsightsToStorage(liveInsights);
-    }
+    setSkuInsights(liveInsights);
   };
 
   useEffect(() => {
@@ -759,50 +801,192 @@ export default function LiveBusinessClient({
   // Initial load (cached + live)
   // =========================
 
-  useEffect(() => {
-    const saved = loadCompareFromStorage();
-    const todayKey = getTodayKey();
+  // useEffect(() => {
+  //   const saved = loadCompareFromStorage();
+  //   const todayKey = getTodayKey();
 
-    if (saved) {
-      if (saved.categorizedGrowth) setCategorizedGrowth(saved.categorizedGrowth);
-      if (saved.periods) setPeriods(saved.periods);
-      if (saved.month2Label) setMonth2Label(saved.month2Label);
-      if (saved.activeTab) setActiveTab(saved.activeTab);
-      if (saved.portfolioRecommendation) setPortfolioRecommendation(saved.portfolioRecommendation);
+  //   if (saved) {
+  //     if (saved.categorizedGrowth) setCategorizedGrowth(saved.categorizedGrowth);
+  //     if (saved.periods) setPeriods(saved.periods);
+  //     if (saved.month2Label) setMonth2Label(saved.month2Label);
+  //     if (saved.activeTab) setActiveTab(saved.activeTab);
+  //     if (saved.portfolioRecommendation) setPortfolioRecommendation(saved.portfolioRecommendation);
 
-      if (saved.insightDate === todayKey) {
-        if (saved.overallActions) setOverallActions(saved.overallActions);
-        if (saved.summaryText) setSummaryText(saved.summaryText);
-        if (saved.overallSummary) setOverallSummary(saved.overallSummary);
-        if (saved.objectiveContext) {
-          setObjectiveContext(saved.objectiveContext);
-        }
+  //     if (saved.insightDate === todayKey) {
+  //       if (saved.overallActions) setOverallActions(saved.overallActions);
+  //       if (saved.summaryText) setSummaryText(saved.summaryText);
+  //       if (saved.overallSummary) setOverallSummary(saved.overallSummary);
+  //       if (saved.objectiveContext) {
+  //         setObjectiveContext(saved.objectiveContext);
+  //       }
 
-        setInsightDate(todayKey);
-      }
+  //       setInsightDate(todayKey);
+  //     }
+  //   }
+
+  //   const cachedInsights = loadInsightsFromStorage();
+  //   if (cachedInsights && Object.keys(cachedInsights).length) {
+  //     setSkuInsights(cachedInsights);
+  //   }
+  // }, []);
+
+  // useEffect(() => {
+  //   const saved = loadCompareFromStorage();
+  //   if (saved) saveCompareToStorage({ ...saved, activeTab });
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [activeTab]);
+
+  const parsePortfolioInventoryBlock = (raw: string) => {
+    if (!raw || typeof raw !== "string") {
+      return { inventoryBullets: [], summaryText: "" };
     }
 
-    const cachedInsights = loadInsightsFromStorage();
-    if (cachedInsights && Object.keys(cachedInsights).length) {
-      setSkuInsights(cachedInsights);
-    }
-  }, []);
+    const lines = raw
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .filter((l) => !/^##\s*inventory/i.test(l));
 
-  useEffect(() => {
-    const saved = loadCompareFromStorage();
-    if (saved) saveCompareToStorage({ ...saved, activeTab });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+    const inventoryBullets = lines
+      .filter((l) => /^[-•]/.test(l))
+      .map((l) => l.replace(/^[-•]\s*/, "").trim());
+
+    const summaryText = lines
+      .filter((l) => !/^[-•]/.test(l))
+      .join(" ")
+      .trim();
+
+    return { inventoryBullets, summaryText };
+  };
+
+  const parsedPortfolioInventory = useMemo(() => {
+    return parsePortfolioInventoryBlock(portfolioInventoryBlock);
+  }, [portfolioInventoryBlock]);
 
   // =========================
   // Fetch live BI (current MTD vs previous)
   // =========================
 
+  // const fetchLiveBi = async (generateInsights: boolean = false) => {
+  //   setError(null);
+  //   if (!generateInsights) {
+  //     setSkuInsights({});
+  //     // saveInsightsToStorage({});
+  //     setSelectedSku(null);
+  //     setModalOpen(false);
+  //     setPageLoading(true);
+  //   }
+
+  //   try {
+  //     const res = await api.get<ApiResponse>('/live_mtd_bi', {
+  //       params: {
+  //         countryName: normalizedCountry,
+  //         ranged,
+  //         month,
+  //         year,
+  //         generate_ai_insights: generateInsights ? 'true' : 'false',
+  //       },
+  //     });
+
+
+  //     const newPeriods = res.data.periods || null;
+  //     const rawCat = res.data.categorized_growth || {
+  //       top_80_skus: [],
+  //       new_or_reviving_skus: [],
+  //       other_skus: [],
+  //     };
+  //     const normalized = normalizeCategorizedGrowth(rawCat);
+
+  //     setPeriods(newPeriods);
+  //     setCategorizedGrowth(normalized);
+
+  //     const currentLabel = newPeriods?.current_mtd?.label || '';
+  //     setMonth2Label(currentLabel);
+
+  //     const summaryObj = res.data.overall_summary;
+
+  //     const summaryTextFromApi = summaryObj?.summary_text || "";
+  //     const summaryBulletsFromApi = summaryObj?.metric_bullets || [];
+  //     const adsRecommendation = res.data.ads_recommendation || "";
+  //     const inventoryFromApi = res.data.inventory_summary || null;
+  //     const remainingBlock =
+  //       res.data.remaining_skus_block || res.data.remaining_skus_recommendation || "";
+
+  //     const actionsFromApi = res.data.overall_actions || [];
+  //     const recommendedActionsFromApi = res.data.recommended_actions_mtd || {};
+  //     const objectiveFromApi = res.data.objective_context || null;
+  //     const portfolioRecFromApi = (res.data as any).portfolio_recommendation || "";
+  //     setPortfolioRecommendation(portfolioRecFromApi);
+  //     setObjectiveContext(objectiveFromApi);
+
+  //     setSummaryText(summaryTextFromApi);
+  //     setOverallSummary(summaryBulletsFromApi);
+  //     setOverallActions(actionsFromApi);              // ✅ ADD THIS
+  //     setRecommendedActions(recommendedActionsFromApi);
+  //     setAdsRecommendation(adsRecommendation);
+  //     setInventorySummary(inventoryFromApi);
+  //     setRemainingSkusBlock(remainingBlock);
+
+  //     let finalSummary = overallSummary;
+  //     let finalActions = overallActions;
+
+  //     const todayKey = getTodayKey();
+
+  //     if (!generateInsights) {
+  //       const isNewDay = insightDate !== todayKey;
+  //       const hasNoExisting =
+  //         overallSummary.length === 0 && overallActions.length === 0;
+
+  //       if (isNewDay || hasNoExisting) {
+  //         finalSummary = summaryBulletsFromApi;
+  //         finalActions = actionsFromApi;
+
+  //         setSummaryText(summaryTextFromApi);
+  //         setOverallSummary(summaryBulletsFromApi);
+  //         setOverallActions(actionsFromApi);
+
+  //         setInsightDate(todayKey);
+  //       }
+  //     }
+
+  //     const liveInsights = res.data.ai_insights || {};
+  //     if (generateInsights && Object.keys(liveInsights).length) {
+  //       setSkuInsights(liveInsights);
+  //       // saveInsightsToStorage(liveInsights);
+  //     }
+
+  //     saveCompareToStorage({
+  //       categorizedGrowth: normalized,
+  //       periods: newPeriods,
+  //       month2Label: currentLabel,
+  //       activeTab,
+  //       countryName,
+  //       // overallSummary: finalSummary,
+  //       overallActions: finalActions,
+  //       recommendedActions: recommendedActionsFromApi, // ✅ ADD
+  //       overallSummary: summaryBulletsFromApi,
+  //       summaryText: summaryTextFromApi,
+  //       insightDate: todayKey,
+  //       objectiveContext: objectiveFromApi,
+  //       portfolioRecommendation: portfolioRecFromApi,
+  //     });
+  //   } catch (err: any) {
+  //     console.error('live_mtd_bi error:', err?.response?.data || err.message);
+  //     setError(
+  //       err?.response?.data?.error ||
+  //       'An error occurred while fetching live BI data.'
+  //     );
+  //   } finally {
+  //     if (!generateInsights) setPageLoading(false);
+
+  //   }
+  // };
+
   const fetchLiveBi = async (generateInsights: boolean = false) => {
     setError(null);
+
     if (!generateInsights) {
       setSkuInsights({});
-      saveInsightsToStorage({});
       setSelectedSku(null);
       setModalOpen(false);
       setPageLoading(true);
@@ -819,88 +1003,46 @@ export default function LiveBusinessClient({
         },
       });
 
-
       const newPeriods = res.data.periods || null;
       const rawCat = res.data.categorized_growth || {
         top_80_skus: [],
         new_or_reviving_skus: [],
         other_skus: [],
       };
+
       const normalized = normalizeCategorizedGrowth(rawCat);
 
       setPeriods(newPeriods);
       setCategorizedGrowth(normalized);
-
-      const currentLabel = newPeriods?.current_mtd?.label || '';
-      setMonth2Label(currentLabel);
+      setMonth2Label(newPeriods?.current_mtd?.label || "");
 
       const summaryObj = res.data.overall_summary;
-
       const summaryTextFromApi = summaryObj?.summary_text || "";
       const summaryBulletsFromApi = summaryObj?.metric_bullets || [];
-      const adsRecommendation = res.data.ads_recommendation || "";
+      const adsRecommendationFromApi = res.data.ads_recommendation || "";
       const inventoryFromApi = res.data.inventory_summary || null;
-      const remainingBlock =
-        res.data.remaining_skus_block || res.data.remaining_skus_recommendation || "";
-
-      const actionsFromApi = res.data.overall_actions || [];
-      const recommendedActionsFromApi = res.data.recommended_actions_mtd || {};
-      const objectiveFromApi = res.data.objective_context || null;
-      const portfolioRecFromApi = (res.data as any).portfolio_recommendation || "";
-      setPortfolioRecommendation(portfolioRecFromApi);
-      setObjectiveContext(objectiveFromApi);
+      const remainingBlock = normalizeTextBlock(
+        res.data.remaining_skus_block || res.data.remaining_skus_recommendation
+      );
+      const portfolioRecFromApi = normalizeTextBlock(res.data.portfolio_recommendation);
+      const portfolioInventoryFromApi = normalizeTextBlock(res.data.portfolio_inventory_block);
 
       setSummaryText(summaryTextFromApi);
       setOverallSummary(summaryBulletsFromApi);
-      setOverallActions(actionsFromApi);              // ✅ ADD THIS
-      setRecommendedActions(recommendedActionsFromApi);
-      setAdsRecommendation(adsRecommendation);
+      setOverallActions(Array.isArray(res.data.overall_actions) ? res.data.overall_actions : []);
+      setRecommendedActions(res.data.recommended_actions_mtd || {});
+      setAdsRecommendation(adsRecommendationFromApi);
       setInventorySummary(inventoryFromApi);
       setRemainingSkusBlock(remainingBlock);
-
-      let finalSummary = overallSummary;
-      let finalActions = overallActions;
-
-      const todayKey = getTodayKey();
-
-      if (!generateInsights) {
-        const isNewDay = insightDate !== todayKey;
-        const hasNoExisting =
-          overallSummary.length === 0 && overallActions.length === 0;
-
-        if (isNewDay || hasNoExisting) {
-          finalSummary = summaryBulletsFromApi;
-          finalActions = actionsFromApi;
-
-          setSummaryText(summaryTextFromApi);
-          setOverallSummary(summaryBulletsFromApi);
-          setOverallActions(actionsFromApi);
-
-          setInsightDate(todayKey);
-        }
-      }
+      setPortfolioRecommendation(portfolioRecFromApi);
+      setPortfolioInventoryBlock(portfolioInventoryFromApi);
+      setObjectiveContext(res.data.objective_context || null);
+      setInsightDate(getTodayKey());
 
       const liveInsights = res.data.ai_insights || {};
-      if (generateInsights && Object.keys(liveInsights).length) {
+      if (generateInsights) {
         setSkuInsights(liveInsights);
-        saveInsightsToStorage(liveInsights);
       }
-
-      saveCompareToStorage({
-        categorizedGrowth: normalized,
-        periods: newPeriods,
-        month2Label: currentLabel,
-        activeTab,
-        countryName,
-        // overallSummary: finalSummary,
-        overallActions: finalActions,
-        recommendedActions: recommendedActionsFromApi, // ✅ ADD
-        overallSummary: summaryBulletsFromApi,
-        summaryText: summaryTextFromApi,
-        insightDate: todayKey,
-        objectiveContext: objectiveFromApi,
-        portfolioRecommendation: portfolioRecFromApi,
-      });
     } catch (err: any) {
       console.error('live_mtd_bi error:', err?.response?.data || err.message);
       setError(
@@ -909,7 +1051,6 @@ export default function LiveBusinessClient({
       );
     } finally {
       if (!generateInsights) setPageLoading(false);
-
     }
   };
 
@@ -949,19 +1090,19 @@ export default function LiveBusinessClient({
   // };
 
   const analyzeSkus = async () => {
-  setLoadingInsight(true);
-  try {
-    if (onGenerateInsights) {
-      await onGenerateInsights();
-      return;
+    setLoadingInsight(true);
+    try {
+      if (onGenerateInsights) {
+        await onGenerateInsights();
+        return;
+      }
+      await fetchLiveBi(true);
+    } catch (err: any) {
+      console.error('generate insights error:', err?.response?.data || err.message);
+    } finally {
+      setLoadingInsight(false);
     }
-    await fetchLiveBi(true);
-  } catch (err: any) {
-    console.error('generate insights error:', err?.response?.data || err.message);
-  } finally {
-    setLoadingInsight(false);
-  }
-};
+  };
 
   // =========================
   // Insight helpers
@@ -2183,7 +2324,7 @@ export default function LiveBusinessClient({
       inventoryPoints: sections.inventoryPoints,
     };
   };
-  
+
   const formatBulletLine = (line: string) => {
     if (!line) return null;
 
@@ -3078,7 +3219,9 @@ export default function LiveBusinessClient({
           {(summaryText ||
             overallSummary.length > 0 ||
             Object.keys(recommendedActions).length > 0 ||
-            overallActions.length > 0) && (
+            overallActions.length > 0 ||
+            parsedPortfolioInventory.inventoryBullets.length > 0 ||
+            !!parsedPortfolioInventory.summaryText) && (
 
               <div className="flex gap-4 flex-col">
 
@@ -3315,25 +3458,11 @@ export default function LiveBusinessClient({
                 )}
 
                 {/* 4) Inventory Insight */}
-                {(inventorySummary?.alert_bullets?.length > 0 || inventorySummary?.summary_text) && (
-                  <div className="bg-white border border-[#D9D9D9] rounded-xl shadow-sm p-3 text-xs 2xl:text-sm text-charcoal-600 w-full">
-                    <PageBreadcrumb pageTitle="Inventory Insight" variant="page" align="left" />
-
-                    {inventorySummary?.alert_bullets?.length > 0 && (
-                      <ul className="list-disc pl-5 space-y-1 pt-2">
-                        {inventorySummary.alert_bullets.map((bullet: string, idx: number) => (
-                          <li key={idx}>{bullet}</li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {inventorySummary?.summary_text && (
-                      <div className="mt-3 text-xs 2xl:text-sm text-charcoal-500 italic border-l-2 border-green-500 pl-3">
-                        {inventorySummary.summary_text}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <InventoryInsightsSection
+                  title="Inventory Insight"
+                  inventoryBullets={parsedPortfolioInventory.inventoryBullets}
+                  summaryText={parsedPortfolioInventory.summaryText}
+                />
 
               </div>
             )}

@@ -423,23 +423,37 @@ export default function ViewUserPage() {
       </header>
 
       <div className="mt-6 space-y-8">
+        <div className="flex items-center my-2">
+  <button
+    onClick={() => {
+      if (window.history.length > 1) {
+        router.back();
+      } else {
+        router.push("/superadmin/CDPAdminConsole");
+      }
+    }}
+    className="inline-flex items-center gap-2 text-sm font-medium text-[#1f5274] hover:text-[#5EA68E] transition"
+  >
+    ← Back to Admins
+  </button>
+</div>
         {/* Admin profile card */}
         <section className="rounded-3xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
           <div className="bg-gradient-to-r from-[#1f5274] via-[#2d6a8d] to-[#5EA68E] px-6 sm:px-8 py-8">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
               <div className="flex items-center gap-4 sm:gap-5">
-                <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-lg">
+                <div className="h-20 w-20  rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-lg">
                   {initials}
                 </div>
 
                 <div className="min-w-0">
-                  <p className="text-white/80 text-sm sm:text-base font-medium">
+                  <p className="text-white/80 text-sm  font-medium">
                     Admin Profile
                   </p>
-                  <h1 className="text-white text-2xl sm:text-3xl font-bold break-words">
+                  <h1 className="text-white text-2xl  font-bold break-words">
                     {displayName}
                   </h1>
-                  <p className="text-white/90 text-sm sm:text-base break-all mt-1">
+                  <p className="text-white/90 text-sm  break-all mt-1">
                     {displayEmail}
                   </p>
                 </div>
@@ -687,20 +701,23 @@ export default function ViewUserPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.related_country_profiles?.map((p) => (
-                        <tr key={p.id} className="border-t">
-                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700 font-medium">
-                            {p.country.toUpperCase()}
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-                            {p.stock_unit}
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-                            {p.transit_time}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
+  {data.related_country_profiles?.map((p, index) => (
+    <tr
+      key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
+      className="border-t"
+    >
+      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700 font-medium">
+        {p.country?.toUpperCase() || "-"}
+      </td>
+      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
+        {p.stock_unit}
+      </td>
+      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
+        {p.transit_time}
+      </td>
+    </tr>
+  ))}
+</tbody>
                   </table>
                 </div>
               </div>

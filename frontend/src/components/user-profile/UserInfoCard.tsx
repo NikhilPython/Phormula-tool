@@ -238,6 +238,79 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   const [personalErrors, setPersonalErrors] = useState<PersonalInfoFormErrors>({});
   const [companyErrors, setCompanyErrors] = useState<CompanyInfoFormErrors>({});
+  const [showMemberPasswordForm, setShowMemberPasswordForm] = useState(false);
+  const [memberPasswordForm, setMemberPasswordForm] = useState({
+  old_password: "",
+  new_password: "",
+  confirm_password: "",
+});
+
+const [memberPasswordLoading, setMemberPasswordLoading] = useState(false);
+const [memberPasswordMessage, setMemberPasswordMessage] = useState("");
+const [memberPasswordError, setMemberPasswordError] = useState("");
+
+const handleMemberChangePassword = async () => {
+  setMemberPasswordError("");
+  setMemberPasswordMessage("");
+
+  const oldPassword = memberPasswordForm.old_password.trim();
+  const newPassword = memberPasswordForm.new_password.trim();
+  const confirmPassword = memberPasswordForm.confirm_password.trim();
+
+  if (!oldPassword || !newPassword || !confirmPassword) {
+    setMemberPasswordError("All password fields are required.");
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    setMemberPasswordError("New password must be at least 6 characters.");
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    setMemberPasswordError("New password and confirm password do not match.");
+    return;
+  }
+
+  try {
+    setMemberPasswordLoading(true);
+
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/member_change_password`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          old_password: oldPassword,
+          new_password: newPassword,
+        }),
+      }
+    );
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      setMemberPasswordError(
+        result?.error || result?.message || "Failed to change password."
+      );
+      return;
+    }
+
+    setMemberPasswordMessage(result?.message || "Password changed successfully.");
+    setMemberPasswordForm({
+      old_password: "",
+      new_password: "",
+      confirm_password: "",
+    });
+  } catch (error: any) {
+    setMemberPasswordError(error?.message || "Something went wrong.");
+  } finally {
+    setMemberPasswordLoading(false);
+  }
+};
 
   const integratedCountries = useMemo(() => {
     const countries: string[] = [];
@@ -274,6 +347,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const pageCurrency = useMemo(() => platformToCurrencyCode(pagePlatform), [pagePlatform]);
 
   const { data, isLoading, isError } = useGetUserDataQuery();
+  const isMemberUser = Boolean((data as any)?.is_member);
   const token = useSelector((state: any) => state.auth?.token);
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
   const [forgotPassword, { isLoading: isSending, isSuccess }] = useForgotPasswordMutation();
@@ -421,10 +495,11 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     feeModal.closeModal();
   };
 
-  const openSection = (s: Section) => {
-    setActiveSection(s);
-    openModal();
-  };
+const openSection = (s: Section) => {
+  if (isMemberUser) return;
+  setActiveSection(s);
+  openModal();
+};
 
   const handleInput =
     (key: keyof FormState) =>
@@ -992,6 +1067,16 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   }, [pageCurrency, form.homeCurrency]);
 
   useEffect(() => {
+  if (isMemberUser) {
+    setIsPersonalEditMode(false);
+    setIsCompanyEditMode(false);
+    setIsTargetEditMode(false);
+    setIsObjectiveEditMode(false);
+    setEditingPid(null);
+  }
+}, [isMemberUser]);
+
+  useEffect(() => {
     const saved = localStorage.getItem("user_objective");
     if (!saved) return;
 
@@ -1045,21 +1130,21 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                 <InfoCard
                   title={<PageBreadcrumb pageTitle="Personal Info" variant="table" align="left" />}
                   action={
-                    !isPersonalEditMode ? (
-                      <button onClick={startPersonalEdit} className="h-9 w-9 text-gray-700" type="button">
-                        <FiEdit className="text-lg" />
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Button size="icon" onClick={handleSavePersonal}>
-                          <FiCheck />
-                        </Button>
-                        <Button size="icon" variant="outline" onClick={cancelPersonalEdit}>
-                          <FiX />
-                        </Button>
-                      </div>
-                    )
-                  }
+  isMemberUser ? null : !isPersonalEditMode ? (
+    <button onClick={startPersonalEdit} className="h-9 w-9 text-gray-700" type="button">
+      <FiEdit className="text-lg" />
+    </button>
+  ) : (
+    <div className="flex items-center gap-2">
+      <Button size="icon" onClick={handleSavePersonal}>
+        <FiCheck />
+      </Button>
+      <Button size="icon" variant="outline" onClick={cancelPersonalEdit}>
+        <FiX />
+      </Button>
+    </div>
+  )
+}
                 >
                   <div className="grid grid-cols-2 gap-4">
                     <InfoItem
@@ -1117,45 +1202,140 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       }
                     />
 
-                    <div className="">
-                      <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Reset Password</p>
-                      <button
-                        type="button"
-                        onClick={handleForgotPassword}
-                        disabled={isSending}
-                        className={`text-sm font-medium ${isSuccess
-                          ? "text-green-600 dark:text-green-400"
-                          : "text-blue-600 hover:underline dark:text-blue-400"
-                          } ${isSending ? "cursor-not-allowed opacity-60" : ""}`}
-                      >
-                        {isSending
-                          ? "Sending..."
-                          : isSuccess
-                            ? "Email sent for password reset"
-                            : "Click here to change password"}
-                      </button>
-                    </div>
+                   <div className="">
+  <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+    {isMemberUser ? "Change Password" : "Reset Password"}
+  </p>
+
+  {!isMemberUser ? (
+    <button
+      type="button"
+      onClick={handleForgotPassword}
+      disabled={isSending}
+      className={`text-sm font-medium ${
+        isSuccess
+          ? "text-green-600 dark:text-green-400"
+          : "text-blue-600 hover:underline dark:text-blue-400"
+      } ${isSending ? "cursor-not-allowed opacity-60" : ""}`}
+    >
+      {isSending
+        ? "Sending..."
+        : isSuccess
+          ? "Email sent for password reset"
+          : "Click here to change password"}
+    </button>
+  ) : !showMemberPasswordForm ? (
+    <button
+      type="button"
+      onClick={() => {
+        setShowMemberPasswordForm(true);
+        setMemberPasswordError("");
+        setMemberPasswordMessage("");
+      }}
+      className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+    >
+      Click here to change password
+    </button>
+  ) : (
+    <div className="mt-2 space-y-3">
+      <Input
+        type="password"
+        placeholder="Old Password"
+        value={memberPasswordForm.old_password}
+        onChange={(e) =>
+          setMemberPasswordForm((prev) => ({
+            ...prev,
+            old_password: e.target.value,
+          }))
+        }
+      />
+
+      <Input
+        type="password"
+        placeholder="New Password"
+        value={memberPasswordForm.new_password}
+        onChange={(e) =>
+          setMemberPasswordForm((prev) => ({
+            ...prev,
+            new_password: e.target.value,
+          }))
+        }
+      />
+
+      <Input
+        type="password"
+        placeholder="Confirm New Password"
+        value={memberPasswordForm.confirm_password}
+        onChange={(e) =>
+          setMemberPasswordForm((prev) => ({
+            ...prev,
+            confirm_password: e.target.value,
+          }))
+        }
+      />
+
+      {memberPasswordError && (
+        <p className="text-xs text-red-500">{memberPasswordError}</p>
+      )}
+
+      {memberPasswordMessage && (
+        <p className="text-xs text-green-600 dark:text-green-400">
+          {memberPasswordMessage}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleMemberChangePassword}
+          disabled={memberPasswordLoading}
+        >
+          {memberPasswordLoading ? "Updating..." : "Update Password"}
+        </Button>
+
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setShowMemberPasswordForm(false);
+            setMemberPasswordError("");
+            setMemberPasswordMessage("");
+            setMemberPasswordForm({
+              old_password: "",
+              new_password: "",
+              confirm_password: "",
+            });
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )}
+</div>
                   </div>
                 </InfoCard>
 
                 <InfoCard
                   title={<PageBreadcrumb pageTitle="Company Info" variant="table" align="left" />}
                   action={
-                    !isCompanyEditMode ? (
-                      <button onClick={startCompanyEdit} className="h-9 w-9 text-gray-700" type="button">
-                        <FiEdit className="text-lg" />
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Button size="icon" onClick={handleSaveCompany}>
-                          <FiCheck />
-                        </Button>
-                        <Button size="icon" variant="outline" onClick={cancelCompanyEdit}>
-                          <FiX />
-                        </Button>
-                      </div>
-                    )
-                  }
+  isMemberUser ? null : !isCompanyEditMode ? (
+    <button onClick={startCompanyEdit} className="h-9 w-9 text-gray-700" type="button">
+      <FiEdit className="text-lg" />
+    </button>
+  ) : (
+    <div className="flex items-center gap-2">
+      <Button size="icon" onClick={handleSaveCompany}>
+        <FiCheck />
+      </Button>
+      <Button size="icon" variant="outline" onClick={cancelCompanyEdit}>
+        <FiX />
+      </Button>
+    </div>
+  )
+}
                 >
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <InfoItem

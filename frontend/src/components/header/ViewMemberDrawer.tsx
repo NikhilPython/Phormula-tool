@@ -20,10 +20,12 @@ export default function ViewMemberDrawer({
   isOpen,
   onClose,
   member,
+  addedBy,
 }: {
   isOpen: boolean;
   onClose: () => void;
   member: any;
+  addedBy?: string;
 }) {
   if (!isOpen || !member) return null;
 
@@ -101,7 +103,7 @@ export default function ViewMemberDrawer({
               </span>
             </div>
 
-            <Row label="Added By" value={name || "Raghav Sood"} />
+<Row label="Added By" value={addedBy || "—"} />
           </div>
 
           {/* Section Access */}

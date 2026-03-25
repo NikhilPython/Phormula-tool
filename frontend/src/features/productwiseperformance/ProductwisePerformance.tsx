@@ -208,19 +208,19 @@ const DUMMY_PRODUCTWISE_DATA: APIResponse = {
   success: true,
   data: {
     global: [
-      { month: "January", net_sales: 42000, quantity: 320, profit: 9800 },
-      { month: "February", net_sales: 46000, quantity: 350, profit: 11200 },
-      { month: "March", net_sales: 52000, quantity: 380, profit: 13500 },
+      { month: "January", net_sales: 0, quantity: 0, profit: 0 },
+      { month: "February", net_sales: 0, quantity: 0, profit: 0 },
+      { month: "March", net_sales: 0, quantity: 0, profit: 0 },
     ],
     uk: [
-      { month: "January", net_sales: 18000, quantity: 140, profit: 4200 },
-      { month: "February", net_sales: 20000, quantity: 150, profit: 5100 },
-      { month: "March", net_sales: 23000, quantity: 170, profit: 6400 },
+      { month: "January", net_sales: 0, quantity: 0, profit: 0 },
+      { month: "February", net_sales: 0, quantity: 0, profit: 0 },
+      { month: "March", net_sales: 0, quantity: 0, profit: 0 },
     ],
     us: [
-      { month: "January", net_sales: 24000, quantity: 180, profit: 5600 },
-      { month: "February", net_sales: 26000, quantity: 200, profit: 6100 },
-      { month: "March", net_sales: 29000, quantity: 210, profit: 7100 },
+      { month: "January", net_sales: 0, quantity: 0, profit: 0 },
+      { month: "February", net_sales: 0, quantity: 0, profit: 0 },
+      { month: "March", net_sales: 0, quantity: 0, profit: 0 },
     ],
     global_gbp: [],
     global_inr: [],

@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
+import Image from "next/image";
 
 type MessageType = "" | "success" | "error";
 
@@ -200,8 +201,18 @@ export default function SuperadminResetPasswordPage() {
   const resendOtp = () => requestOtp();
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 font-sans bg-[#5EA68E]">
-      <div className="w-full max-w-md p-8 rounded-2xl shadow-2xl bg-[linear-gradient(145deg,rgba(255,255,255,0.95),rgba(255,255,255,0.98))] backdrop-blur">
+    <div className="min-h-screen flex items-center justify-center p-4 font-sans bg-[#EFEFEF]">
+      <div className="absolute top-6 left-6">
+          <Image
+            width={220}
+            height={40}
+            src="/images/logo/Logo_Phormula.png"
+            alt="Phormula"
+            priority
+            className="w-[150px] xl:w-[180px] 2xl:w-[220px]"
+          />
+        </div>
+      <div className="w-full max-w-md p-8 rounded-2xl shadow-2xl bg-white backdrop-blur border border-t-8 border-t-[#5EA68E]">
         <div className="text-center mb-8">
           <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-gradient-to-br from-[#5EA68E] to-[#1f5274] flex items-center justify-center">
             <Lock size={32} color="#fff" />
@@ -269,13 +280,7 @@ export default function SuperadminResetPasswordPage() {
               disabled={loading}
               onMouseEnter={() => setHovered(true)}
               onMouseLeave={() => setHovered(false)}
-              className={`w-full py-3 px-4 rounded-lg flex items-center justify-center text-base font-semibold text-white transition-all duration-300
-                ${
-                  loading
-                    ? "cursor-not-allowed opacity-60 bg-[linear-gradient(135deg,rgba(31,82,116,0.5),rgba(96,166,142,0.5))]"
-                    : "bg-gradient-to-br from-[#1f5274] to-[#5EA68E] hover:from-[#5EA68E] hover:to-[#1f5274] hover:shadow-lg"
-                }
-                ${hovered && !loading ? "scale-[1.02]" : ""}`}
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 sm:py-3 px-4 text-sm sm:text-base font-semibold text-[#F8EDCE] rounded-lg bg-[#37455F] transition disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02]"
             >
               {loading ? (
                 <>
@@ -378,11 +383,7 @@ export default function SuperadminResetPasswordPage() {
             <button
               onClick={resetPassword}
               disabled={loading}
-              className={`w-full text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center text-base transition ${
-                loading
-                  ? "cursor-not-allowed opacity-60 bg-[linear-gradient(135deg,rgba(31,82,116,0.5),rgba(96,166,142,0.5))]"
-                  : "bg-gradient-to-br from-[#1f5274] to-[#5EA68E] hover:from-[#5EA68E] hover:to-[#1f5274] hover:shadow-lg"
-              }`}
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 sm:py-3 px-4 text-sm sm:text-base font-semibold text-[#F8EDCE] rounded-lg bg-[#37455F] transition disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02]"
             >
               {loading ? (
                 <>
