@@ -85,8 +85,7 @@ export default function InventoryFlowPage() {
   const today = new Date();
   const currentMonthIndex = today.getMonth();
   const thisYear = today.getFullYear();
-  const previousMonthIndex = currentMonthIndex === 0 ? 11 : currentMonthIndex - 1;
-
+  
   const monthNames = [
     'january',
     'february',
@@ -104,8 +103,12 @@ export default function InventoryFlowPage() {
 
   const urlMonth = (params.month ?? '').toLowerCase().trim();
 
+  const effectiveYear =
+    /^\d{4}$/.test(params.year ?? '') ? String(params.year) : String(thisYear);
+
+
   const effectiveMonth: string = useMemo(() => {
-    if (!urlMonth) return monthNames[previousMonthIndex];
+    if (!urlMonth) return monthNames[currentMonthIndex];
 
     const mnum = urlMonth.match(/\b(1[0-2]|0?[1-9])\b/);
     if (mnum) return monthNames[parseInt(mnum[0], 10) - 1];
@@ -115,11 +118,8 @@ export default function InventoryFlowPage() {
     if (si !== -1) return monthNames[si];
 
     const li = monthNames.indexOf(urlMonth as any);
-    return li !== -1 ? monthNames[li] : monthNames[previousMonthIndex];
-  }, [urlMonth, previousMonthIndex]);
-
-  const effectiveYear =
-    /^\d{4}$/.test(params.year ?? '') ? String(params.year) : String(thisYear);
+    return li !== -1 ? monthNames[li] : monthNames[currentMonthIndex];
+  }, [urlMonth, currentMonthIndex]);
 
   const isDemoMode =
     params.month?.toUpperCase() === 'NA' &&
@@ -133,6 +133,9 @@ export default function InventoryFlowPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  // const currentMonthName = monthNames[currentMonthIndex];
+  // const currentYearString = String(thisYear);
+
   const [sharedMonth, setSharedMonth] = useState<string>(effectiveMonth);
   const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
   const [poTriggered, setPoTriggered] = useState(false);
