@@ -539,25 +539,25 @@ const AppSidebar: React.FC = () => {
     const month = (params.month as string) || currentParams.month;
     const year = (params.year as string) || currentParams.year;
 
-if ((params as any).countryName || segments[0] === "country") {
-  switch (segments[0]) {
-    case "live-dashboard":
-      newPath = `/live-dashboard/${newCountryName}/${month}/${year}`;
-      break;
-    case "pnl-dashboard":
-      newPath = `/pnl-dashboard/${ranged}/${newCountryName}/${month}/${year}`;
-      break;
-    case "live-business-insight":
-      newPath = `/live-business-insight/${ranged}/${newCountryName}/${month}/${year}`;
-      break;
-    case "ai-insight":
-      newPath = `/ai-insight/${ranged}/${newCountryName}/${month}/${year}`;
-      break;
-    case "chatbot":
-      newPath = `/chatbot/${ranged}/${newCountryName}/${month}/${year}`;
-      break;
-  }
-}
+    if ((params as any).countryName || segments[0] === "country") {
+      switch (segments[0]) {
+        case "live-dashboard":
+          newPath = `/live-dashboard/${newCountryName}/${month}/${year}`;
+          break;
+        case "pnl-dashboard":
+          newPath = `/pnl-dashboard/${ranged}/${newCountryName}/${month}/${year}`;
+          break;
+        case "live-business-insight":
+          newPath = `/live-business-insight/${ranged}/${newCountryName}/${month}/${year}`;
+          break;
+        case "ai-insight":
+          newPath = `/ai-insight/${ranged}/${newCountryName}/${month}/${year}`;
+          break;
+        case "chatbot":
+          newPath = `/chatbot/${ranged}/${newCountryName}/${month}/${year}`;
+          break;
+      }
+    }
 
     if (!newPath) {
       switch (segments[0]) {
@@ -713,6 +713,22 @@ if ((params as any).countryName || segments[0] === "country") {
           path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-forecast`,
         },
         {
+          name: "Dispatch Planning",
+          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#dispatch`,
+        },
+        {
+          name: "Purchase Order (PO) Planning",
+          path: ({ countryName, month, year }) =>
+            `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`,
+          onClick: async () => {
+            await triggerPurchaseOrderApi(
+              currentParams.countryName,
+              currentParams.month,
+              currentParams.year
+            );
+          },
+        },
+        {
           name: "P&L Forecast",
           path: `/pnlforecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
@@ -741,22 +757,7 @@ if ((params as any).countryName || segments[0] === "country") {
           name: "Inventory Reconcilliation",
           path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
-        {
-          name: "Dispatch Planning",
-          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#dispatch`,
-        },
-        {
-          name: "Purchase Order (PO) Planning",
-          path: ({ countryName, month, year }) =>
-            `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`,
-          onClick: async () => {
-            await triggerPurchaseOrderApi(
-              currentParams.countryName,
-              currentParams.month,
-              currentParams.year
-            );
-          },
-        },
+
         {
           name: "Expense Reconcilliation",
           path: ({ countryName, month, year }) =>
@@ -764,10 +765,10 @@ if ((params as any).countryName || segments[0] === "country") {
               countryName
             )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
         },
-        {
-          name: "Targets & Objectives",
-          path: `/objectives-targets/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-        },
+        // {
+        //   name: "Targets & Objectives",
+        //   path: `/objectives-targets/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+        // },
       ],
     },
   ];
