@@ -1567,13 +1567,18 @@ def render_month_end_summary(
     def fmt_pct(x):
         return f"{x:+.2f}%" if isinstance(x, (int, float)) else "N/A"
 
-    def fmt_number(x):
-        return f"{x:,.2f}" if isinstance(x, (int, float)) else "N/A"
+    def fmt_number(x, decimals=2):
+        if not isinstance(x, (int, float)):
+            return "N/A"
+
+        if decimals == 0:
+            return f"{int(round(x)):,}"   # 👈 no decimals
+        return f"{x:,.{decimals}f}"
 
     def fmt_currency(x):
         return f"{currency_symbol}{x:,.2f}" if isinstance(x, (int, float)) else "N/A"
 
-    def fmt_value_with_pct(metric_dict, is_currency=False):
+    def fmt_value_with_pct(metric_dict, is_currency=False, decimals=2):
         if not isinstance(metric_dict, dict):
             return "N/A"
 
@@ -1583,7 +1588,7 @@ def render_month_end_summary(
         if is_currency:
             current_str = fmt_currency(current)
         else:
-            current_str = fmt_number(current)
+            current_str = fmt_number(current, decimals=decimals)
 
         pct_str = fmt_pct(pct)
 
@@ -1721,7 +1726,7 @@ def render_month_end_summary(
         )
 
         lines.append(
-            f"• Units: {fmt_value_with_pct(s.get('total_quantity'))}"
+            f"• Units: {fmt_value_with_pct(s.get('total_quantity'), decimals=0)}"
         )
 
         lines.append(
@@ -1771,7 +1776,7 @@ def render_month_end_summary(
         )
 
         lines.append(
-            f"• Units: {fmt_value_with_pct(remaining_agg.get('total_quantity'))}"
+            f"• Units: {fmt_value_with_pct(remaining_agg.get('total_quantity'), decimals=0)}"
         )
 
         lines.append(
