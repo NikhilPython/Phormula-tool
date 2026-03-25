@@ -516,6 +516,12 @@ def prepare_ai_sku_data(sku_df):
             sku_clean_df["platform_fee_inventory_storage"].abs()
         )
 
+    # =====================================================
+    # ✅ FIX: ABS FOR LOST TOTAL (SKU LEVEL)
+    # =====================================================
+    if "lost_total" in sku_clean_df.columns:
+        sku_clean_df["lost_total"] = sku_clean_df["lost_total"].abs()    
+
     # ----------- CONVERT TO DICT -----------
     sku_data = sku_clean_df.to_dict(orient="records")
 
@@ -539,6 +545,10 @@ def prepare_ai_sku_data(sku_df):
         # ABS fix for storage fee at total level
         if col == "platform_fee_inventory_storage" and value is not None:
             value = abs(value)
+
+        # ABS fix for lost_total
+        if col == "lost_total" and value is not None:
+            value = abs(value)    
 
         overall_metrics_filtered[col] = value
 
