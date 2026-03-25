@@ -394,9 +394,8 @@ function BusinessJourneyPanel({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl ${
-        loading && !hasJourneyContent ? "min-h-[220px]" : ""
-      }`}
+      className={`relative overflow-hidden rounded-2xl ${loading && !hasJourneyContent ? "min-h-[220px]" : ""
+        }`}
     >
       {loading && (
         <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/80 dark:bg-gray-900/80">
@@ -633,6 +632,7 @@ const extractTextFromSupportedFile = async (file: File) => {
 
   throw new Error("Only .docx and .pptx text extraction is supported in the frontend.");
 };
+
 
 export default function ObjectivesPageClient({
   country,
@@ -955,6 +955,30 @@ export default function ObjectivesPageClient({
 
   const isGlobalPage = resolvedTargetCountry === "global";
 
+
+
+  const getCurrencySymbol = (code: string) => {
+    switch ((code || "").toUpperCase()) {
+      case "GBP":
+        return "£";
+      case "USD":
+        return "$";
+      case "EUR":
+        return "€";
+      case "CAD":
+        return "C$";
+      default:
+        return code;
+    }
+  };
+
+  const chartCurrencyCode = isPreviewMode
+    ? homeCurrencyCode
+    : resolvedTargetCountry === "global"
+      ? homeCurrencyCode
+      : pageCurrency;
+
+
   const startEditTarget = (pid: PlatformId) => {
     setEditingPid(pid);
     setDraftTarget(String(baseNativeTarget || ""));
@@ -965,16 +989,6 @@ export default function ObjectivesPageClient({
     setDraftTarget("");
   };
 
-  const openTargetEditMode = () => {
-    setIsTargetEditMode(true);
-    const firstPid = connectedPlatformsForTargets[0];
-    if (firstPid) startEditTarget(firstPid);
-  };
-
-  const closeTargetEditMode = () => {
-    setIsTargetEditMode(false);
-    cancelEditTarget();
-  };
 
   const startBusinessSummaryEdit = () => {
     setObjectiveDraft(objective);
@@ -1007,8 +1021,6 @@ export default function ObjectivesPageClient({
       return resolvedTargetCountry;
     }
 
-    // On global page, source country must be the country where target was originally entered.
-    // Prefer a non-global saved country; otherwise fallback to first connected marketplace country.
     if (objectiveDraft.country && objectiveDraft.country.toLowerCase() !== "global") {
       return objectiveDraft.country.toLowerCase();
     }
@@ -1935,15 +1947,7 @@ export default function ObjectivesPageClient({
                         className="h-full w-full"
                         isPreviewMode={isPreviewMode}
                         dummyData={dummyTargetVsSalesData}
-                        currencySymbol={
-                          homeCurrencyCode === "GBP"
-                            ? "£"
-                            : homeCurrencyCode === "USD"
-                              ? "$"
-                              : homeCurrencyCode === "EUR"
-                                ? "€"
-                                : homeCurrencyCode
-                        }
+                        currencySymbol={getCurrencySymbol(chartCurrencyCode)}
                       />
                     </div>
                   </InfoCard>

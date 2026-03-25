@@ -110,20 +110,39 @@ const toNum = (v: any) => {
 
 const sum = (row: AnyRow, keys: string[]) => keys.reduce((acc, k) => acc + toNum(row?.[k]), 0);
 
-// localStorage keys
 const seedKey = (country: string, year: string) => `ledgerSeeded:${country}:${year}`;
 
-// const isTotalRow = (row: AnyRow) => {
-//   const msku = String(row?.msku || '').trim().toUpperCase();
-//   const pn = String(row?.product_name || '').trim().toUpperCase();
-//   return (
-//     msku === 'TOTAL' ||
-//     pn === 'TOTAL' ||
-//     row?.is_total === true ||
-//     row?.__isTotal === true
-//   );
-// };
+type CurrencyRateRow = {
+  user_currency: string;
+  country: string;
+  selected_currency: string;
+  conversion_rate: number;
+  month: string;
+  year: number;
+};
 
+const currencyCodeByCountry = (country: string) => {
+  const c = (country || "").toLowerCase();
+  if (c === "uk") return "GBP";
+  if (c === "us") return "USD";
+  if (c === "ca") return "CAD";
+  if (c === "in" || c === "india") return "INR";
+  return "USD";
+};
+
+const currencySymbolByCode = (code: string) => {
+  const c = (code || "").toUpperCase();
+  if (c === "USD") return "$";
+  if (c === "GBP") return "£";
+  if (c === "EUR") return "€";
+  if (c === "CAD") return "C$";
+  if (c === "INR") return "₹";
+  return c;
+};
+
+const normalizeCurrencyCode = (value: string) => {
+  return (value || "").trim().toUpperCase();
+};
 const isTotalRow = (row: AnyRow) => {
   const msku = String(row?.msku || "").trim().toUpperCase();
   const pn = String(row?.product_name || "").trim().toUpperCase();
@@ -262,10 +281,8 @@ const buildReconFilename = (range: Range, opts: {
 
 export default function InventoryReconciliationPage({ params }: Params) {
 
-  // ✅ profile data (API)
   const { data: userData } = useGetUserDataQuery();
 
-  // ✅ safe derived strings
   const companyName =
     (userData as any)?.companyName ||
     (userData as any)?.company_name ||
@@ -291,7 +308,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const countryName = decodeURIComponent(countryNameRaw ?? '').toLowerCase();
 
   const breakupPieRef = useRef<InventoryPieCardHandle | null>(null);
-const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
+  const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
 
   const monthParam = normalizeMonth(decodeURIComponent(monthRaw ?? ""));
   const yearParam = normalizeYear(decodeURIComponent(yearRaw ?? ""));
@@ -302,6 +319,17 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
   >(null);
   const pieMetricsRef = useRef<typeof pieMetrics>(null);
 
+  const userHomeCurrencyCode = normalizeCurrencyCode(
+    (userData as any)?.homeCurrency || "USD"
+  );
+
+  const pageCurrencyCode = normalizeCurrencyCode(
+    currencyCodeByCountry(countryName)
+  );
+
+  const displayCurrencyCode =
+    countryName === "global" ? userHomeCurrencyCode : pageCurrencyCode;
+
   useEffect(() => {
     pieBase64Ref.current = pieBase64;
   }, [pieBase64]);
@@ -310,17 +338,13 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
   }, [pieMetrics]);
 
   /* ================= FILTER STATE ================= */
-   const now = new Date();
-
-  // ✅ historic page should default to previous month, not current month
+  const now = new Date();
   const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const defaultMonth = months[prevDate.getMonth()];
   const defaultYear = String(prevDate.getFullYear());
-
   const currentMonth = months[now.getMonth()];
   const currentYear = String(now.getFullYear());
 
-  // ✅ if route params point to current month/year, force previous month/year
   const resolvedMonth =
     monthParam === currentMonth && yearParam === currentYear
       ? defaultMonth
@@ -331,7 +355,7 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
       ? defaultYear
       : yearParam || defaultYear;
 
-      type InventoryViewTab = "charts" | "table" | "extra";
+  type InventoryViewTab = "charts" | "table" | "extra";
 
   const [range, setRange] = useState<Range>("monthly");
   const [selectedMonth, setSelectedMonth] = useState<string>(resolvedMonth);
@@ -339,8 +363,8 @@ const ageingPieRef = useRef<InventoryPieCardHandle | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>(resolvedYear);
   const [exportTick, setExportTick] = useState(0);
   const [lostCompRows, setLostCompRows] = useState<AnyRow[]>([]);
-const [lostCompLoading, setLostCompLoading] = useState(false);
-const [lostCompLoaded, setLostCompLoaded] = useState(false);
+  const [lostCompLoading, setLostCompLoading] = useState(false);
+  const [lostCompLoaded, setLostCompLoaded] = useState(false);
 
   const isNA =
     monthParam?.toLowerCase() === "na" ||
@@ -373,13 +397,11 @@ const [lostCompLoaded, setLostCompLoaded] = useState(false);
     defaultMonth,
     defaultYear,
   ]);
-  
+
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-  // ✅ 1) Amazon → DB seed route (run ONCE only per year)
   const AMAZON_LEDGER_SEED = `${API_BASE}/amazon_api/inventory/ledger-summary`;
 
-  // ✅ 2) DB aggregation routes (HIT ON FILTER CHANGE)
   const LEDGER_DB_STORE_MONTH = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-month`;
   const LEDGER_DB_STORE_QUARTER = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-quarter`;
   const LEDGER_DB_STORE_YEAR = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-year`;
@@ -394,7 +416,8 @@ const [lostCompLoaded, setLostCompLoaded] = useState(false);
 
   const [showMultiuseCountry, setShowMultiuseCountry] = useState(false);
   const [activeView, setActiveView] = useState<InventoryViewTab>("charts");
-
+  const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
+  const [ratesLoading, setRatesLoading] = useState(false);
   const yearOptions = useMemo(() => {
     const MIN_YEAR = 2024;
     const y = new Date().getFullYear();
@@ -414,7 +437,7 @@ const [lostCompLoaded, setLostCompLoaded] = useState(false);
   const [ageingPie, setAgeingPie] = useState<PieDatum[]>([]);
   const [pieLoading, setPieLoading] = useState(false);
 
-    useEffect(() => {
+  useEffect(() => {
     if (pageLoading) return;
     if (!hasValidPeriod) {
       setBreakupPie([]);
@@ -431,9 +454,6 @@ const [lostCompLoaded, setLostCompLoaded] = useState(false);
       } catch (e) {
         console.error(e);
         if (!cancelled) {
-          // fail silently or show modal (your choice)
-          // setModalMessage((e as any)?.message || "Pie fetch failed");
-          // setShowModal(true);
           setBreakupPie([]);
           setAgeingPie([]);
         }
@@ -447,124 +467,278 @@ const [lostCompLoaded, setLostCompLoaded] = useState(false);
     return () => {
       cancelled = true;
     };
-    // ✅ refetch when user changes filters
   }, [range, selectedMonth, selectedQuarter, selectedYear, marketplaceId, pageLoading, hasValidPeriod]);
 
 
- async function fetchInventoryLostCompensation() {
-  if (!hasValidPeriod) {
-    setLostCompRows([]);
-    return;
+  async function fetchInventoryLostCompensation() {
+    if (!hasValidPeriod) {
+      setLostCompRows([]);
+      return;
+    }
+
+    setLostCompLoading(true);
+    try {
+      const mode =
+        range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
+
+      const q: Record<string, any> = {
+        country: countryName,
+        year: selectedYear,
+        mode,
+      };
+
+      if (mode === "month") {
+        q.month = selectedMonth;
+      }
+
+      if (mode === "quarter") {
+        q.quarter = quarterToNumber(selectedQuarter);
+      }
+
+      const url = `${API_BASE}/api/inventory_lost_compensation?${buildQuery(q)}`;
+      const res = await fetch(url, { headers: authHeaders() });
+      const json = await res.json();
+
+      if (!res.ok || json?.success === false) {
+        throw new Error(json?.error || "Failed to fetch inventory lost compensation");
+      }
+
+      setLostCompRows(Array.isArray(json?.data) ? json.data : []);
+    } catch (e: any) {
+      console.error(e);
+      setLostCompRows([]);
+      setModalMessage(e?.message || "Failed to fetch inventory lost compensation");
+      setShowModal(true);
+    } finally {
+      setLostCompLoading(false);
+    }
   }
 
-  setLostCompLoading(true);
-  try {
-    const mode =
-      range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
 
-    const q: Record<string, any> = {
-      country: countryName,
-      year: selectedYear,
-      mode,
+
+  useEffect(() => {
+    if (pageLoading) return;
+    if (activeView !== "extra") return;
+
+    void fetchInventoryLostCompensation();
+  }, [activeView, range, selectedMonth, selectedQuarter, selectedYear, countryName, pageLoading]);
+
+
+  const rateMap = useMemo(() => {
+    const map = new Map<string, number>();
+
+    for (const r of currencyRates) {
+      const key = [
+        (r.user_currency || "").toLowerCase(),
+        (r.selected_currency || "").toLowerCase(),
+        (r.country || "").toLowerCase(),
+        (r.month || "").toLowerCase(),
+        Number(r.year),
+      ].join("|");
+
+      map.set(key, Number(r.conversion_rate));
+    }
+
+    return map;
+  }, [currencyRates]);
+
+  const getFxDb = useCallback(
+    (
+      from: string,
+      to: string,
+      country: string,
+      month: string,
+      year: number
+    ) => {
+      const f = (from || "").toLowerCase();
+      const t = (to || "").toLowerCase();
+      const c = (country || "").toLowerCase();
+      const m = (month || "").toLowerCase();
+      const y = Number(year);
+
+      if (!f || !t) return 1;
+      if (f === t) return 1;
+
+      const directKey = `${f}|${t}|${c}|${m}|${y}`;
+      const inverseKey = `${t}|${f}|${c}|${m}|${y}`;
+
+      const direct = rateMap.get(directKey);
+      if (direct != null) return direct;
+
+      const inverse = rateMap.get(inverseKey);
+      if (inverse != null && inverse !== 0) return 1 / inverse;
+
+      return 1;
+    },
+    [rateMap]
+  );
+
+  const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
+    return (lostCompRows || []).map((row, idx) => {
+      const sourceCurrency = normalizeCurrencyCode(
+        row?.currency || pageCurrencyCode
+      );
+
+      const targetCurrency =
+        countryName === "global" ? userHomeCurrencyCode : pageCurrencyCode;
+
+      const fx =
+        countryName === "global"
+          ? getFxDb(
+            sourceCurrency,
+            targetCurrency,
+            countryName,
+            selectedMonth,
+            Number(selectedYear)
+          )
+          : 1;
+
+      const convertedPrice = toNum(row?.price) * fx;
+      const convertedCompensationValue = toNum(row?.compensation_value) * fx;
+      const convertedCompReimbursement =
+        toNum(row?.compensation_reimbursement_amount) * fx;
+      const convertedSettlementAmount =
+        toNum(row?.settlement_loss_event_amount) * fx;
+      const convertedLossValue = toNum(row?.loss_value) * fx;
+      const convertedNetValue = toNum(row?.net_value) * fx;
+
+      const productName = String(row?.product_name || "").trim().toUpperCase();
+      const msku = String(row?.msku || "").trim().toUpperCase();
+
+      const isTotal =
+        productName === "TOTAL" ||
+        productName === "GRAND TOTAL" ||
+        msku === "TOTAL" ||
+        msku === "GRAND TOTAL" ||
+        row?.__isTotal === true;
+
+      const isOthers =
+        productName === "OTHERS" ||
+        msku === "OTHERS" ||
+        row?.__isOthers === true;
+
+      return {
+        __sno: isTotal || isOthers ? "" : idx + 1,
+        __isTotal: isTotal,
+        __isOthers: isOthers,
+
+        product_name: isTotal
+          ? "Total"
+          : isOthers
+            ? "Others"
+            : formatCell(row?.product_name),
+
+        msku: isTotal ? "-" : isOthers ? "-" : formatCell(row?.msku),
+
+        price: formatCell(convertedPrice),
+        lost_units: formatCell(row?.lost_units),
+        damaged_units: formatCell(row?.damaged_units),
+        total_lost_units: formatCell(row?.total_lost_units),
+        compensation_units: formatCell(row?.compensation_units),
+        compensation_value: formatCell(convertedCompensationValue),
+        compensation_reimbursement_amount: formatCell(convertedCompReimbursement),
+        settlement_loss_event_units: formatCell(row?.settlement_loss_event_units),
+        settlement_loss_event_amount: formatCell(convertedSettlementAmount),
+        loss_value: formatCell(convertedLossValue),
+        net_units: formatCell(row?.net_units),
+        net_value: formatCell(convertedNetValue),
+      };
+    });
+  }, [
+    lostCompRows,
+    countryName,
+    pageCurrencyCode,
+    userHomeCurrencyCode,
+    getFxDb,
+    selectedMonth,
+    selectedYear,
+  ]);
+
+  const lostCompRowClassName = (row: Record<string, React.ReactNode>) => {
+    if ((row as any).__isTotal) {
+      return "bg-[#D9D9D9] font-semibold";
+    }
+    return "";
+  };
+  useEffect(() => {
+    if (pageLoading) return;
+    if (!hasValidPeriod) return;
+
+    const fetchRates = async () => {
+      try {
+        setRatesLoading(true);
+
+        const res = await fetch(`${API_BASE}/currency-rates`, {
+          headers: authHeaders(),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Failed to fetch rates: ${res.status} ${errText}`);
+        }
+
+        const json = await res.json();
+        setCurrencyRates(Array.isArray(json) ? json : []);
+      } catch (e) {
+        console.error("Failed to fetch currency rates:", e);
+        setCurrencyRates([]);
+      } finally {
+        setRatesLoading(false);
+      }
     };
 
-    if (mode === "month") {
-  q.month = selectedMonth;
-}
-
-    if (mode === "quarter") {
-      q.quarter = quarterToNumber(selectedQuarter);
-    }
-
-    const url = `${API_BASE}/api/inventory_lost_compensation?${buildQuery(q)}`;
-    const res = await fetch(url, { headers: authHeaders() });
-    const json = await res.json();
-
-    if (!res.ok || json?.success === false) {
-      throw new Error(json?.error || "Failed to fetch inventory lost compensation");
-    }
-
-    setLostCompRows(Array.isArray(json?.data) ? json.data : []);
-  } catch (e: any) {
-    console.error(e);
-    setLostCompRows([]);
-    setModalMessage(e?.message || "Failed to fetch inventory lost compensation");
-    setShowModal(true);
-  } finally {
-    setLostCompLoading(false);
-  }
-}
-
-useEffect(() => {
-  if (pageLoading) return;
-  if (activeView !== "extra") return;
-
-  void fetchInventoryLostCompensation();
-}, [activeView, range, selectedMonth, selectedQuarter, selectedYear, countryName, pageLoading]);
-
-const lostCompTableData = useMemo<Record<string, React.ReactNode>[]>(() => {
-  return (lostCompRows || []).map((row, idx) => ({
-    __sno: idx + 1,
-    product_name: formatCell(row?.product_name),
-    msku: formatCell(row?.msku),
-    asin: formatCell(row?.asin),
-    product_barcode: formatCell(row?.product_barcode),
-    price: formatCell(row?.price),
-    currency: formatCell(row?.currency),
-    lost_units: formatCell(row?.lost_units),
-    damaged_units: formatCell(row?.damaged_units),
-    total_lost_units: formatCell(row?.total_lost_units),
-    compensation_units: formatCell(row?.compensation_units),
-    compensation_value: formatCell(row?.compensation_value),
-    compensation_reimbursement_amount: formatCell(row?.compensation_reimbursement_amount),
-    settlement_loss_event_units: formatCell(row?.settlement_loss_event_units),
-    settlement_loss_event_amount: formatCell(row?.settlement_loss_event_amount),
-    loss_value: formatCell(row?.loss_value),
-    net_units: formatCell(row?.net_units),
-    net_value: formatCell(row?.net_value),
-  }));
-}, [lostCompRows]);
+    void fetchRates();
+  }, [API_BASE, pageLoading, hasValidPeriod]);
 
 
-const lostCompTableColumns = useMemo<
-  DataTableColumnDef<Record<string, React.ReactNode>>[]
->(() => {
-  return [
-    { key: "__sno", header: "S. No.", width: "70px", cellClassName: "text-center" },
-    { key: "product_name", header: "Product Name", width: "220px", cellClassName: "text-left" },
-    { key: "msku", header: "SKU", width: "120px", cellClassName: "text-center" },
-    { key: "asin", header: "ASIN", width: "140px", cellClassName: "text-center" },
-    { key: "product_barcode", header: "Product Barcode", width: "160px", cellClassName: "text-center" },
-    { key: "price", header: "Price", width: "100px", cellClassName: "text-center" },
-    { key: "currency", header: "Currency", width: "90px", cellClassName: "text-center" },
-    { key: "lost_units", header: "Lost Units", width: "100px", cellClassName: "text-center" },
-    { key: "damaged_units", header: "Damaged Units", width: "120px", cellClassName: "text-center" },
-    { key: "total_lost_units", header: "Total Lost Units", width: "130px", cellClassName: "text-center" },
-    { key: "compensation_units", header: "Compensation Units", width: "150px", cellClassName: "text-center" },
-    { key: "compensation_value", header: "Compensation Value", width: "150px", cellClassName: "text-center" },
-    {
-      key: "compensation_reimbursement_amount",
-      header: "Compensation Reimbursement Amount",
-      width: "220px",
-      cellClassName: "text-center",
-    },
-    {
-      key: "settlement_loss_event_units",
-      header: "Settlement Loss Event Units",
-      width: "190px",
-      cellClassName: "text-center",
-    },
-    {
-      key: "settlement_loss_event_amount",
-      header: "Settlement Loss Event Amount",
-      width: "200px",
-      cellClassName: "text-center",
-    },
-    { key: "loss_value", header: "Loss Value", width: "120px", cellClassName: "text-center" },
-    { key: "net_units", header: "Net Units", width: "100px", cellClassName: "text-center" },
-    { key: "net_value", header: "Net Value", width: "120px", cellClassName: "text-center" },
-  ];
-}, []);
+
+  const lostCompTableColumns = useMemo<
+    DataTableColumnDef<Record<string, React.ReactNode>>[]
+  >(() => {
+    return [
+      { key: "__sno", header: "S. No.", width: "70px", cellClassName: "text-center" },
+      { key: "product_name", header: "Product Name", width: "220px", cellClassName: "text-left" },
+      { key: "msku", header: "SKU", width: "120px", cellClassName: "text-center" },
+      // { key: "asin", header: "ASIN", width: "140px", cellClassName: "text-center" },
+      // { key: "product_barcode", header: "Product Barcode", width: "160px", cellClassName: "text-center" },
+      {
+        key: "price",
+        header: `Price (${currencySymbolByCode(displayCurrencyCode)})`,
+        width: "120px",
+        cellClassName: "text-center",
+      },
+      // { key: "currency", header: "Currency", width: "90px", cellClassName: "text-center" },
+      { key: "lost_units", header: "Lost Units", width: "100px", cellClassName: "text-center" },
+      { key: "damaged_units", header: "Damaged Units", width: "120px", cellClassName: "text-center" },
+      { key: "total_lost_units", header: "Total Lost Units", width: "130px", cellClassName: "text-center" },
+      { key: "compensation_units", header: "Compensation Units", width: "150px", cellClassName: "text-center", headerClassName: "whitespace-normal break-words text-center", },
+      { key: "compensation_value", header: "Compensation Value", width: "150px", cellClassName: "text-center", headerClassName: "whitespace-normal break-words text-center", },
+      {
+        key: "compensation_reimbursement_amount",
+        header: "Compensation Reimbursement Amount",
+        width: "220px",
+        cellClassName: "text-center",
+        headerClassName: "whitespace-normal break-words text-center",
+      },
+      {
+        key: "settlement_loss_event_units",
+        header: "Settlement Loss Event Units",
+        width: "190px",
+        cellClassName: "text-center",
+        headerClassName: "whitespace-normal break-words text-center",
+      },
+      {
+        key: "settlement_loss_event_amount",
+        header: "Settlement Loss Event Amount",
+        width: "200px",
+        cellClassName: "text-center",
+        headerClassName: "whitespace-normal break-words text-center",
+      },
+      { key: "loss_value", header: "Loss Value", width: "120px", cellClassName: "text-center" },
+      { key: "net_units", header: "Net Units", width: "100px", cellClassName: "text-center" },
+      { key: "net_value", header: "Net Value", width: "120px", cellClassName: "text-center" },
+    ];
+  }, [displayCurrencyCode]);
 
 
 
@@ -617,48 +791,48 @@ const lostCompTableColumns = useMemo<
     }
   }
 
-    const INVENTORY_BREAKUP_API = `${API_BASE}/api/inventory_breakup`;
+  const INVENTORY_BREAKUP_API = `${API_BASE}/api/inventory_breakup`;
   const INVENTORY_AGEING_API = `${API_BASE}/api/inventory_ageing`;
 
-async function fetchInventoryBreakup() {
-  const mode =
-    range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
+  async function fetchInventoryBreakup() {
+    const mode =
+      range === "monthly" ? "month" : range === "quarterly" ? "quarter" : "year";
 
-  const q: Record<string, any> = {
-    mode,
-    year: selectedYear,
-    marketplace_id: marketplaceId,
-  };
+    const q: Record<string, any> = {
+      mode,
+      year: selectedYear,
+      marketplace_id: marketplaceId,
+    };
 
-  if (mode === "month") q.month = titleCase(selectedMonth);
-  if (mode === "quarter") q.quarter = String(selectedQuarter || "Q1").toLowerCase();
+    if (mode === "month") q.month = titleCase(selectedMonth);
+    if (mode === "quarter") q.quarter = String(selectedQuarter || "Q1").toLowerCase();
 
-  const url = `${INVENTORY_BREAKUP_API}?${buildQuery(q)}`;
-  const res = await fetch(url, { headers: authHeaders() });
-  const json = await res.json();
+    const url = `${INVENTORY_BREAKUP_API}?${buildQuery(q)}`;
+    const res = await fetch(url, { headers: authHeaders() });
+    const json = await res.json();
 
-  if (!res.ok || json?.success === false) {
-    throw new Error(json?.error || "Failed to fetch inventory breakup");
+    if (!res.ok || json?.success === false) {
+      throw new Error(json?.error || "Failed to fetch inventory breakup");
+    }
+
+    const t = json?.totals || {};
+
+    // ✅ show ALL keys from totals (even if 0 you can keep or drop)
+    const mapped = [
+      { name: "Sellable", value: toInt(t.sellable) },
+      { name: "Expired", value: toInt(t.expired) },
+      { name: "Defective", value: toInt(t.defective) },
+      { name: "Customer Damaged", value: toInt(t.customer_damaged) },
+      { name: "Warehouse Damaged", value: toInt(t.warehouse_damaged) },
+      { name: "Distributor Damaged", value: toInt(t.distributor_damaged) },
+    ];
+
+    // If you DON'T want 0 slices in chart, keep this filter:
+    setBreakupPie(mapped.filter((d) => d.value > 0));
+
+    // If you DO want to show zeros in legend too, use:
+    // setBreakupPie(mapped);
   }
-
-  const t = json?.totals || {};
-
-  // ✅ show ALL keys from totals (even if 0 you can keep or drop)
-  const mapped = [
-    { name: "Sellable", value: toInt(t.sellable) },
-    { name: "Expired", value: toInt(t.expired) },
-    { name: "Defective", value: toInt(t.defective) },
-    { name: "Customer Damaged", value: toInt(t.customer_damaged) },
-    { name: "Warehouse Damaged", value: toInt(t.warehouse_damaged) },
-    { name: "Distributor Damaged", value: toInt(t.distributor_damaged) },
-  ];
-
-  // If you DON'T want 0 slices in chart, keep this filter:
-  setBreakupPie(mapped.filter((d) => d.value > 0));
-
-  // If you DO want to show zeros in legend too, use:
-  // setBreakupPie(mapped);
-}
 
   async function fetchInventoryAgeing() {
     const url = `${INVENTORY_AGEING_API}?${buildQuery({
@@ -685,13 +859,13 @@ async function fetchInventoryBreakup() {
   /* ================= 2) FETCH FROM DB (store-month/quarter/year) ================= */
 
   const viewOptions = useMemo(
-  () => [
-    { value: "charts" as const, label: "Inventory Ageing Split" },
-    { value: "table" as const, label: "Recon Table" },
-    { value: "extra" as const, label: "Inventory Cost for Ageing" },
-  ],
-  []
-);
+    () => [
+      { value: "charts" as const, label: "Inventory Ageing Split" },
+      { value: "table" as const, label: "Recon Table" },
+      { value: "extra" as const, label: "Inventory Cost for Ageing" },
+    ],
+    []
+  );
 
 
   async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
@@ -747,10 +921,10 @@ async function fetchInventoryBreakup() {
 
 
 
-const toInt = (v: any) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : 0;
-};
+  const toInt = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.trunc(n) : 0;
+  };
 
 
   const runDBFetchForFilters = async () => {
@@ -1172,23 +1346,23 @@ const toInt = (v: any) => {
     []
   );
 
- const singleCols: LeafCol<AnyRow>[] = useMemo(
-  () => [
-    {
-      key: "inventory_coverage_ratio",
-      label: "Inventory Coverage Ratio",
-      width: 140,
-      align: "center",
-    },
-    {
-      key: "difference_total",
-      label: "Difference",
-      width: 90,
-      align: "center",
-    },
-  ],
-  []
-);
+  const singleCols: LeafCol<AnyRow>[] = useMemo(
+    () => [
+      {
+        key: "inventory_coverage_ratio",
+        label: "Inventory Coverage Ratio",
+        width: 140,
+        align: "center",
+      },
+      {
+        key: "difference_total",
+        label: "Difference",
+        width: 90,
+        align: "center",
+      },
+    ],
+    []
+  );
 
 
 
@@ -1381,11 +1555,11 @@ const toInt = (v: any) => {
       return formatCell(row?.difference_total);
     }
 
-if (colKey === "inventory_coverage_ratio") {
-  const n = Math.abs(toNum(row?.inventory_coverage_ratio)); // ✅ force positive
-  if (!n) return "-";
-  return n.toFixed(1); // ✅ no "x"
-}
+    if (colKey === "inventory_coverage_ratio") {
+      const n = Math.abs(toNum(row?.inventory_coverage_ratio)); // ✅ force positive
+      if (!n) return "-";
+      return n.toFixed(1); // ✅ no "x"
+    }
 
 
     return formatCell(row?.[colKey]);
@@ -1567,39 +1741,39 @@ if (colKey === "inventory_coverage_ratio") {
   }, [rows, getExpandedExportCols, getValue]);
 
   const handleDownloadXLSX = async () => {
-  const dataRows = buildReconExportDataRows();
-  if (!dataRows.length) return;
+    const dataRows = buildReconExportDataRows();
+    if (!dataRows.length) return;
 
-  const periodLabel =
-    range === "monthly"
-      ? formatPeriodLabel(selectedMonth, selectedYear)
-      : range === "quarterly"
-      ? formatQuarterLabel(selectedQuarter, selectedYear)
-      : selectedYear;
+    const periodLabel =
+      range === "monthly"
+        ? formatPeriodLabel(selectedMonth, selectedYear)
+        : range === "quarterly"
+          ? formatQuarterLabel(selectedQuarter, selectedYear)
+          : selectedYear;
 
-  const breakupChartBase64 = breakupPieRef.current?.getExportImage() || null;
-  const ageingChartBase64 = ageingPieRef.current?.getExportImage() || null;
+    const breakupChartBase64 = breakupPieRef.current?.getExportImage() || null;
+    const ageingChartBase64 = ageingPieRef.current?.getExportImage() || null;
 
-  const filenameBase = buildReconFilename(range, {
-    month: selectedMonth,
-    quarter: selectedQuarter,
-    year: selectedYear,
-  });
+    const filenameBase = buildReconFilename(range, {
+      month: selectedMonth,
+      quarter: selectedQuarter,
+      year: selectedYear,
+    });
 
-  await exportInventoryReconExcel({
-    filename: `${filenameBase}.xlsx`,
-    titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
-    countryName,
-    titleCountry: countryName?.toUpperCase(),
-    platformLabel: "Amazon",
-    periodLabel,
-    companyName,
-    brandName,
-    dataRows,
-    breakupChartBase64,
-    ageingChartBase64,
-  });
-};
+    await exportInventoryReconExcel({
+      filename: `${filenameBase}.xlsx`,
+      titleLine: `Amazon ${countryName?.toUpperCase()} - Inventory Recon - ${periodLabel}`,
+      countryName,
+      titleCountry: countryName?.toUpperCase(),
+      platformLabel: "Amazon",
+      periodLabel,
+      companyName,
+      brandName,
+      dataRows,
+      breakupChartBase64,
+      ageingChartBase64,
+    });
+  };
 
   if (pageLoading) {
     return (
@@ -1611,200 +1785,147 @@ if (colKey === "inventory_coverage_ratio") {
 
   return (
     <div className="w-full">
-      {/* <div className="w-full">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <PageBreadcrumb
-            variant="page"
-            align="left"
-            textSize="2xl"
-            pageTitle={
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-[#414042] font-bold">Inventory Reconciliation -</span>
-                <span className="text-[#60a68e] font-bold">{countryName?.toUpperCase()}</span>
-              </div>
-            }
-          />
 
-          <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:justify-end">
-            <PeriodFiltersTable
-              range={range}
-              selectedMonth={selectedMonth}
-              selectedQuarter={selectedQuarter}
-              selectedYear={selectedYear}
-              yearOptions={yearOptions}
-              onRangeChange={(v) => setRange(v)}
-              onMonthChange={(v) => {
-                const raw = String(v ?? "").trim();
-                // PeriodFiltersTable may emit values like "Jan" or "Jan 2026".
-                const parts = raw.split(/\s+/).filter(Boolean);
-                const monthPart = parts[0] ?? raw;
-                const yearPart = parts.find((p) => /^\d{4}$/.test(p));
+      <div className="sticky top-0 z-40 w-full border-b border-gray-200 bg-[#F7F7F7] ">
+        <div className="flex flex-col gap-4">
+          {/* Row 1: title left, filters right */}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            {/* Left title block */}
+            <div className="flex flex-col">
+              <PageBreadcrumb
+                variant="page"
+                align="left"
+                textSize="2xl"
+                pageTitle={
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-[#414042] font-bold">
+                      Inventory Reconciliation -
+                    </span>
+                    <span className="text-[#60a68e] font-bold">
+                      {countryName?.toUpperCase()}
+                    </span>
+                  </div>
+                }
+              />
 
-                setSelectedMonth(normalizeMonth(monthPart));
-                if (yearPart) setSelectedYear(normalizeYear(yearPart));
-              }}
-              onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
-              onYearChange={(v) => setSelectedYear(String(v))}
-              allowedRanges={['monthly', 'quarterly', 'yearly']}
-            />
-
-            <DownloadIconButton onClick={handleDownloadXLSX} size="md" />
-          </div>
-
-        </div>
-      </div> */}
-
-<div className="sticky top-0 z-40 w-full border-b border-gray-200 bg-[#F7F7F7] px-4 py-4">
-  <div className="flex flex-col gap-4">
-    {/* Row 1: title left, filters right */}
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      {/* Left title block */}
-      <div className="flex flex-col">
-        <PageBreadcrumb
-          variant="page"
-          align="left"
-          textSize="2xl"
-          pageTitle={
-            <div className="flex flex-wrap items-baseline gap-2">
-              <span className="text-[#414042] font-bold">
-                Inventory Reconciliation -
-              </span>
-              <span className="text-[#60a68e] font-bold">
-                {countryName?.toUpperCase()}
-              </span>
-            </div>
-          }
-        />
-
-        {/* optional subtitle spacing like second screenshot */}
-        {/* <p className="mt-1 text-sm text-neutral-600">
+              {/* optional subtitle spacing like second screenshot */}
+              {/* <p className="mt-1 text-sm text-neutral-600">
           Add your subtitle here if needed
         </p> */}
+            </div>
+
+            {/* Right filters */}
+            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+              <PeriodFiltersTable
+                range={range}
+                selectedMonth={selectedMonth}
+                selectedQuarter={selectedQuarter}
+                selectedYear={selectedYear}
+                yearOptions={yearOptions}
+                onRangeChange={(v) => setRange(v)}
+                onMonthChange={(v) => {
+                  const raw = String(v ?? "").trim();
+                  const parts = raw.split(/\s+/).filter(Boolean);
+                  const monthPart = parts[0] ?? raw;
+                  const yearPart = parts.find((p) => /^\d{4}$/.test(p));
+
+                  setSelectedMonth(normalizeMonth(monthPart));
+                  if (yearPart) setSelectedYear(normalizeYear(yearPart));
+                }}
+                onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
+                onYearChange={(v) => setSelectedYear(String(v))}
+                allowedRanges={["monthly", "quarterly", "yearly"]}
+              />
+
+              <DownloadIconButton onClick={handleDownloadXLSX} size="md" />
+            </div>
+          </div>
+
+          {/* Row 2: toggle only */}
+          <div className="flex items-center">
+            <SegmentedToggle
+              value={activeView}
+              options={viewOptions}
+              onChange={(val) => setActiveView(val as InventoryViewTab)}
+              compact
+              textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Right filters */}
-      <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-        <PeriodFiltersTable
-          range={range}
-          selectedMonth={selectedMonth}
-          selectedQuarter={selectedQuarter}
-          selectedYear={selectedYear}
-          yearOptions={yearOptions}
-          onRangeChange={(v) => setRange(v)}
-          onMonthChange={(v) => {
-            const raw = String(v ?? "").trim();
-            const parts = raw.split(/\s+/).filter(Boolean);
-            const monthPart = parts[0] ?? raw;
-            const yearPart = parts.find((p) => /^\d{4}$/.test(p));
+      {/* ✅ Pie charts row */}
+      {activeView === "charts" && (
+        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <InventoryPieCard
+            ref={breakupPieRef}
+            title="Inventory Breakup"
+            data={breakupPie}
+            loading={pieLoading}
+            height={320}
+          />
 
-            setSelectedMonth(normalizeMonth(monthPart));
-            if (yearPart) setSelectedYear(normalizeYear(yearPart));
-          }}
-          onQuarterChange={(v) => setSelectedQuarter(String(v).toUpperCase())}
-          onYearChange={(v) => setSelectedYear(String(v))}
-          allowedRanges={["monthly", "quarterly", "yearly"]}
-        />
-
-        <DownloadIconButton onClick={handleDownloadXLSX} size="md" />
-      </div>
-    </div>
-
-    {/* Row 2: toggle only */}
-    <div className="flex items-center">
-      <SegmentedToggle
-        value={activeView}
-        options={viewOptions}
-        onChange={(val) => setActiveView(val as InventoryViewTab)}
-        compact
-        textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-      />
-    </div>
-  </div>
-</div>
-
-            {/* ✅ Pie charts row */}
-    {activeView === "charts" && (
-  <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-    <InventoryPieCard
-      ref={breakupPieRef}
-      title="Inventory Breakup"
-      data={breakupPie}
-      loading={pieLoading}
-      height={320}
-    />
-
-    <InventoryPieCard
-      ref={ageingPieRef}
-      title="Inventory Ageing"
-      data={ageingPie}
-      loading={pieLoading}
-      height={320}
-    />
-  </div>
-)}
+          <InventoryPieCard
+            ref={ageingPieRef}
+            title="Inventory Ageing"
+            data={ageingPie}
+            loading={pieLoading}
+            height={320}
+          />
+        </div>
+      )}
 
       {/* Table */}
-     {activeView === "table" && (
-  <div
-    className={[
-      "mt-5 w-full rounded-lg border border-gray-200 bg-white",
-      "overflow-x-auto",
-      "[-webkit-overflow-scrolling:touch]",
-    ].join(" ")}
-  >
-    {effectiveRows.length === 0 ? (
-      <div className="p-6 text-sm text-neutral-600">No rows returned.</div>
-    ) : (
-      <GroupedCollapsibleTable
-        rows={effectiveRows}
-        getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
-        leftCols={leftCols}
-        groups={groups}
-        singleCols={singleCols}
-        getValue={getValue}
-        getRowClassName={getRowClassName}
-        onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
-        tableClassName={
-          anyExpanded
-            ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-            : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-        }
-        headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-        headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
-        showSignRowInBody
-        getSignForCol={getSignForCol}
-      />
-    )}
-  </div>
-)}
+      {activeView === "table" && (
+        <div
+          className={[
+            "mt-5 w-full rounded-lg border border-gray-200 bg-white",
+            "overflow-x-auto",
+            "[-webkit-overflow-scrolling:touch]",
+          ].join(" ")}
+        >
+          {effectiveRows.length === 0 ? (
+            <div className="p-6 text-sm text-neutral-600">No rows returned.</div>
+          ) : (
+            <GroupedCollapsibleTable
+              rows={effectiveRows}
+              getRowKey={(r, idx) => r?.id ?? r?.msku ?? idx}
+              leftCols={leftCols}
+              groups={groups}
+              singleCols={singleCols}
+              getValue={getValue}
+              getRowClassName={getRowClassName}
+              onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
+              tableClassName={
+                anyExpanded
+                  ? "min-w-[900px] w-full table-auto border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                  : "w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+              }
+              headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+              headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+              showSignRowInBody
+              getSignForCol={getSignForCol}
+            />
+          )}
+        </div>
+      )}
 
-      {/* <div className="mt-4" id="inventory-pie-export">
-
-        <InventoryTopProductsPie
-          key={`${countryName}-${selectedYear}-${selectedMonth}-${range}-${selectedQuarter}`}
-          rows={pieRows}
-          title="Inventory Breakup"
-          exportTick={exportTick} // ✅ NEW
-          onExportBase64Ready={(b64) => setPieBase64(b64)}
-        />
-      </div> */}
-
-{activeView === "extra" && (
-  <div className="mt-5">
-    <DataTable<Record<string, React.ReactNode>>
-      columns={lostCompTableColumns}
-      data={lostCompTableData}
-      loading={lostCompLoading}
-      paginate={false}
-      stickyHeader
-      scrollY={false}
-      maxHeight="auto"
-      emptyMessage="No rows returned."
-      tableClassName="text-xs 2xl:text-sm"
-      className="rounded-lg"
-    />
-  </div>
-)}
+      {activeView === "extra" && (
+        <div className="mt-5">
+          <DataTable<Record<string, React.ReactNode>>
+            columns={lostCompTableColumns}
+            data={lostCompTableData}
+            loading={lostCompLoading || ratesLoading}
+            paginate={false}
+            stickyHeader
+            scrollY={false}
+            maxHeight="auto"
+            emptyMessage="No rows returned."
+            tableClassName="text-xs 2xl:text-sm"
+            rowClassName={lostCompRowClassName}
+          />
+        </div>
+      )}
 
       {/* Multi-country modal (kept) */}
       {showMultiuseCountry && (

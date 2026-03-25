@@ -1,10 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { CheckCircle } from 'lucide-react';
-import { API_BASE } from '@/config/env';
 
 import DisplayInventoryForecast from '@/components/inventory/DisplayInventoryForecast';
 import Loading from '@/components/inventory/Loading';
@@ -14,9 +12,9 @@ import InventoryFlowTabs, { InventoryFlowTab } from '@/components/inventory/Inve
 import DispatchPage from '@/app/(admin)/dispatch/[countryName]/[month]/[year]/DispatchClient';
 import PurchaseOrderPage from '@/app/(admin)/purchase-order/[countryName]/[month]/[year]/PurchaseOrderClient';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
-import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable'
+import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable';
 import DownloadIconButton from '@/components/ui/button/DownloadButton';
-import { IoMdLock } from "react-icons/io";
+import { IoMdLock } from 'react-icons/io';
 
 type UploadItem = {
   filename?: string;
@@ -31,7 +29,7 @@ type ForecastRow = Record<string, any>;
 
 const HASH_TO_TAB: Record<string, InventoryFlowTab> = {
   'inventory-forecast': 'inventory',
-  'dispatch': 'dispatch',
+  dispatch: 'dispatch',
   'purchase-order': 'purchaseOrder',
 };
 
@@ -81,6 +79,7 @@ export default function InventoryFlowPage() {
     year?: string;
   };
 
+  const router = useRouter();
   const countryName = (params?.countryName ?? '').toLowerCase();
 
   const today = new Date();
@@ -127,41 +126,20 @@ export default function InventoryFlowPage() {
     params.year?.toUpperCase() === 'NA';
 
   const [activeTab, setActiveTab] = useState<InventoryFlowTab>('inventory');
-  const [forecastEnabled, setForecastEnabled] = useState(false);
-
-  const [profileCompleted, setProfileCompleted] = useState(false);
-  const [isPopupOpen, setIsPopupOpen] = useState(false);
-
-  const [country, setCountry] = useState<'uk' | 'us'>(() =>
-    countryName === 'us' ? 'us' : 'uk'
-  );
-  const [transitTime, setTransitTime] = useState('');
-  const [stockUnit, setStockUnit] = useState('');
-
-  const MARKETPLACE_BY_COUNTRY: Record<'uk' | 'us', string> = {
-    us: 'ATVPDKIKX0DER',
-    uk: 'A1F83G8C2ARO7P',
-  };
-
-  const marketplace = MARKETPLACE_BY_COUNTRY[country];
-
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const [apiError, setApiError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [filteredUploads, setFilteredUploads] = useState<UploadItem[]>([]);
   const [missingMonths, setMissingMonths] = useState<string[]>([]);
   const [excelData, setExcelData] = useState<ForecastRow[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
-  const [poTriggered, setPoTriggered] = useState(false);
   const [sharedMonth, setSharedMonth] = useState<string>(effectiveMonth);
   const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
-  const router = useRouter();
+  const [poTriggered, setPoTriggered] = useState(false);
 
-  const countryProfileKeyBase = countryName || 'global';
+  const uploadHistoryInFlightRef = useRef<string | null>(null);
+  const forecastInFlightRef = useRef<string | null>(null);
+  const latestForecastRequestRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -194,33 +172,15 @@ export default function InventoryFlowPage() {
   };
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const key = `countryProfileCompleted-${countryProfileKeyBase}`;
-    const hasProfile = localStorage.getItem(key) === 'true';
-    setProfileCompleted(hasProfile);
-  }, [countryProfileKeyBase]);
-
-  useEffect(() => {
-    if (!profileCompleted) return;
-    const savedMethod = typeof window !== 'undefined'
-      ? localStorage.getItem(`forecastMethod-${countryName}-${effectiveMonth}-${effectiveYear}`)
-      : null;
-
-    if (savedMethod === 'automation') {
-      setForecastEnabled(true);
-    }
-  }, [profileCompleted, countryName, effectiveMonth, effectiveYear]);
+    setSharedMonth(effectiveMonth);
+    setSharedYear(effectiveYear);
+  }, [effectiveMonth, effectiveYear]);
 
   const tokenOrFail = () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
     if (!token) throw new Error('Authorization token is missing');
     return token;
   };
-
-  useEffect(() => {
-    setSharedMonth(effectiveMonth);
-    setSharedYear(effectiveYear);
-  }, [effectiveMonth, effectiveYear]);
 
   const getLatestUploadDate = (list: UploadItem[]) => {
     if (list.length === 0) return 0;
@@ -233,6 +193,13 @@ export default function InventoryFlowPage() {
   };
 
   async function fetchUploadHistory() {
+    if (!countryName || !effectiveMonth || !effectiveYear) return;
+
+    const requestKey = `${countryName}-${effectiveMonth}-${effectiveYear}`;
+
+    if (uploadHistoryInFlightRef.current === requestKey) return;
+    uploadHistoryInFlightRef.current = requestKey;
+
     setLoading(true);
     setError(null);
 
@@ -294,45 +261,38 @@ export default function InventoryFlowPage() {
           return d.toLocaleString('default', { month: 'long', year: 'numeric' });
         });
         setMissingMonths(formatted);
-      } else {
-        setMissingMonths([]);
+        setLoading(false);
+        return;
       }
+
+      setMissingMonths([]);
 
       if (filtered.length < 5) {
         setLoading(false);
         return;
       }
 
-      checkLocalCacheAndFetch(filtered);
+      await fetchForecastData();
     } catch (e: any) {
       setError(e?.message ?? 'Failed to fetch upload history');
       setLoading(false);
-    }
-  }
-
-  function checkLocalCacheAndFetch(filtered: UploadItem[]) {
-    try {
-      const cachedData = localStorage.getItem(`forecast-${countryName}`);
-      const cachedTime = localStorage.getItem(`forecast-time-${countryName}`);
-      const latestUploadTs = getLatestUploadDate(filtered);
-
-      if (cachedData && cachedTime) {
-        const ts = parseInt(cachedTime, 10);
-        if (latestUploadTs > ts) {
-          void fetchForecastData();
-        } else {
-          setExcelData(JSON.parse(cachedData));
-          setLoading(false);
-        }
-      } else {
-        void fetchForecastData();
+    } finally {
+      if (uploadHistoryInFlightRef.current === requestKey) {
+        uploadHistoryInFlightRef.current = null;
       }
-    } catch {
-      void fetchForecastData();
     }
   }
 
   async function fetchForecastData() {
+    if (!countryName || !effectiveMonth || !effectiveYear) return;
+
+    const requestKey = `${countryName}-${effectiveMonth}-${effectiveYear}`;
+
+    if (forecastInFlightRef.current === requestKey) return;
+
+    forecastInFlightRef.current = requestKey;
+    latestForecastRequestRef.current = requestKey;
+
     try {
       const token = tokenOrFail();
 
@@ -353,11 +313,14 @@ export default function InventoryFlowPage() {
         },
       });
 
+      if (latestForecastRequestRef.current !== requestKey) return;
+
       const ctype = res.headers.get('Content-Type') || '';
 
       if (!res.ok) {
         let serverMsg = '';
         let zeroMonths: string[] = [];
+
         try {
           const errJson = await res.json();
           serverMsg = errJson?.error || errJson?.message || errJson?.warning || '';
@@ -365,16 +328,6 @@ export default function InventoryFlowPage() {
         } catch { }
 
         setError(serverMsg || `Server error (${res.status})`);
-
-        if (zeroMonths.length) {
-          const formatted = zeroMonths.map((s) => {
-            const [y, m] = s.split('-').map(Number);
-            const d = new Date(y, m - 1, 1);
-            return d.toLocaleString('default', { month: 'long', year: 'numeric' });
-          });
-          setMissingMonths(formatted);
-        }
-
         setLoading(false);
         return;
       }
@@ -417,8 +370,7 @@ export default function InventoryFlowPage() {
           });
 
         setExcelData(jsonRows);
-        localStorage.setItem(`forecast-${countryName}`, JSON.stringify(jsonRows));
-        localStorage.setItem(`forecast-time-${countryName}`, Date.now().toString());
+        setError(null);
         setLoading(false);
         return;
       }
@@ -427,8 +379,7 @@ export default function InventoryFlowPage() {
 
       if (Array.isArray(data?.forecast)) {
         setExcelData(data.forecast);
-        localStorage.setItem(`forecast-${countryName}`, JSON.stringify(data.forecast));
-        localStorage.setItem(`forecast-time-${countryName}`, Date.now().toString());
+        setError(null);
         setLoading(false);
         return;
       }
@@ -438,90 +389,12 @@ export default function InventoryFlowPage() {
     } catch (e: any) {
       setError(e?.message || 'Failed to fetch forecast');
       setLoading(false);
+    } finally {
+      if (forecastInFlightRef.current === requestKey) {
+        forecastInFlightRef.current = null;
+      }
     }
   }
-
-  useEffect(() => {
-    if (!forecastEnabled) return;
-
-    if (isDemoMode) {
-      setExcelData(DUMMY_INVENTORY_FORECAST);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    void fetchUploadHistory();
-  }, [forecastEnabled, countryName, effectiveMonth, effectiveYear, isDemoMode]);
-
-  const PreviewLockedSection = ({
-    enabled,
-    children,
-    title,
-    description,
-    buttonText,
-    onAction,
-  }: {
-    enabled: boolean;
-    children: React.ReactNode;
-    title?: string;
-    description?: string;
-    buttonText?: string;
-    onAction?: () => void;
-  }) => {
-    return (
-      <div className="relative w-full">
-        <div
-          className={
-            enabled
-              ? "pointer-events-none select-none opacity-45 transition-all duration-300"
-              : "opacity-100 transition-all duration-300"
-          }
-        >
-          {children}
-        </div>
-
-        {enabled && (
-          <>
-            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
-
-            <div className="absolute inset-0 z-20 pointer-events-none">
-              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
-                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-                  <div className="mb-4 flex justify-center">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
-                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                    </div>
-                  </div>
-
-                  <h3 className="text-lg font-semibold text-[#414042]">
-                    {title}
-                  </h3>
-
-                  <p className="mt-2 text-sm text-gray-600 leading-6">
-                    {description}
-                  </p>
-
-                  <button
-                    onClick={onAction}
-                    className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
-                  >
-                    {buttonText}
-                  </button>
-
-                  <p className="mt-3 text-xs text-gray-500">
-                    Demo data is shown for preview only.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    );
-  };
-
-
 
   const triggerPurchaseOrderApi = async (country: string, month: string, year: string) => {
     const jwtToken =
@@ -558,141 +431,92 @@ export default function InventoryFlowPage() {
   };
 
   useEffect(() => {
-    if (activeTab === 'purchaseOrder' && !poTriggered) {
+    if (activeTab === 'purchaseOrder' && !poTriggered && !isDemoMode) {
       setPoTriggered(true);
       triggerPurchaseOrderApi(countryName, effectiveMonth, effectiveYear).catch((err) => {
         console.error('PO API error:', err);
       });
     }
-  }, [activeTab, poTriggered, countryName, effectiveMonth, effectiveYear]);
+  }, [activeTab, poTriggered, countryName, effectiveMonth, effectiveYear, isDemoMode]);
 
-  const handleAutomation = () => {
-    if (!profileCompleted) {
-      setIsPopupOpen(true);
+  useEffect(() => {
+    if (isDemoMode) {
+      setExcelData(DUMMY_INVENTORY_FORECAST);
+      setLoading(false);
+      setError(null);
       return;
     }
 
-    localStorage.setItem(
-      `forecastMethod-${countryName}-${effectiveMonth}-${effectiveYear}`,
-      'automation'
+    if (!countryName || !effectiveMonth || !effectiveYear) return;
+
+    void fetchUploadHistory();
+  }, [countryName, effectiveMonth, effectiveYear, isDemoMode]);
+
+  const PreviewLockedSection = ({
+    enabled,
+    children,
+    title,
+    description,
+    buttonText,
+    onAction,
+  }: {
+    enabled: boolean;
+    children: React.ReactNode;
+    title?: string;
+    description?: string;
+    buttonText?: string;
+    onAction?: () => void;
+  }) => {
+    return (
+      < >
+        <div
+        >
+          {children}
+        </div>
+
+        {enabled && (
+          <>
+            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+            <div className="absolute inset-0 z-20 pointer-events-none">
+              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                  <div className="mb-4 flex justify-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#37455F]">
+                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                    </div>
+                  </div>
+
+                  <h3 className="text-lg font-semibold text-[#414042]">{title}</h3>
+                  <p className="mt-2 text-sm text-gray-600 leading-6">{description}</p>
+
+                  <button
+                    onClick={onAction}
+                    className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                  >
+                    {buttonText}
+                  </button>
+
+                  <p className="mt-3 text-xs text-gray-500">
+                    Demo data is shown for preview only.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </>
     );
-
-    setForecastEnabled(true);
-  };
-
-  const handleDispatchAccess = () => {
-    if (!profileCompleted) {
-      setActiveTab('dispatch');
-      setIsPopupOpen(true);
-      return;
-    }
-    setActiveTab('dispatch');
-  };
-
-  const handlePurchaseOrderAccess = () => {
-    if (!profileCompleted) {
-      setActiveTab('purchaseOrder');
-      setIsPopupOpen(true);
-      return;
-    }
-    setActiveTab('purchaseOrder');
-  };
-
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setApiError('');
-    setErrors({});
-
-    const validationErrors: { [key: string]: string } = {};
-
-    if (!country) {
-      validationErrors.country = 'Country is required';
-    }
-
-    if (!transitTime) {
-      validationErrors.transit_time = 'Transit time is required';
-    } else if (!Number.isInteger(Number(transitTime)) || Number(transitTime) <= 0) {
-      validationErrors.transit_time = 'Transit time must be a positive integer';
-    }
-
-    if (stockUnit === '') {
-      validationErrors.stock_unit = 'Stock unit is required';
-    } else if (!Number.isInteger(Number(stockUnit)) || Number(stockUnit) < 0) {
-      validationErrors.stock_unit = 'Stock unit must be a non-negative integer';
-    }
-
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-
-      const token = localStorage.getItem('jwtToken');
-      if (!token) {
-        setApiError('User not authenticated. Token missing.');
-        return;
-      }
-
-      const res = await fetch(`${API_BASE}/country-profile`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          country,
-          marketplace,
-          transit_time: Number(transitTime),
-          stock_unit: Number(stockUnit),
-        }),
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        if (data?.errors) {
-          setErrors((prev) => ({ ...prev, ...data.errors }));
-          setApiError('Please fix the highlighted fields.');
-        } else if (data?.error) {
-          setApiError(data.error);
-        } else {
-          setApiError('Failed to save country profile.');
-        }
-        return;
-      }
-
-      const key = `countryProfileCompleted-${countryProfileKeyBase}`;
-      localStorage.setItem(key, 'true');
-      setProfileCompleted(true);
-      setIsPopupOpen(false);
-
-      localStorage.setItem(
-        `forecastMethod-${countryName}-${effectiveMonth}-${effectiveYear}`,
-        'automation'
-      );
-
-      setForecastEnabled(true);
-    } catch (err) {
-      console.error(err);
-      setApiError('Something went wrong while saving country profile.');
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const handleConnectAmazonPreview = () => {
-    const connectCountry = countryName === "global" ? "uk" : countryName;
+    const connectCountry = countryName === 'global' ? 'uk' : countryName;
     router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
   };
-
-
 
   return (
     <>
       <style jsx>{`
-     .fetch-button {
+        .fetch-button {
           font-family: 'Lato', sans-serif;
           font-size: clamp(12px, 0.729vw, 16px) !important;
           background-color: #2c3e50;
@@ -731,7 +555,52 @@ export default function InventoryFlowPage() {
           padding: 9px 18px;
           margin-left: auto;
         }
-     `}</style>
+
+        .alert-container {
+          display: flex;
+          align-items: center;
+          background-color: #f2f2f2;
+          border-top: 4px solid #ff5c5c;
+          padding: 12px 16px;
+          border-radius: 6px;
+          font-family: 'Lato', sans-serif;
+          width: 100%;
+          justify-content: space-between;
+          box-sizing: border-box;
+          margin-top: 20px;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .alert-message {
+          display: flex;
+          align-items: center;
+          color: #414042;
+          font-size: 12px;
+        }
+
+        .alert-icon {
+          color: #ff5c5c;
+          font-size: 18px;
+          margin-right: 10px;
+        }
+
+        .alert-button {
+          background: none;
+          border: none;
+          color: #414042;
+          font-weight: 600;
+          cursor: pointer;
+          font-size: 14px;
+          text-decoration: underline;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 0;
+          white-space: nowrap;
+        }
+      `}</style>
+
       <div className="font-lato">
         <div className="flex flex-col justify-start">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
@@ -749,8 +618,7 @@ export default function InventoryFlowPage() {
                 textSize="2xl"
               />
               <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                Amazon{" "}
-                {countryName?.toLowerCase() === "global" ? "Global" : countryName?.toUpperCase()}
+                Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
               </span>
             </div>
 
@@ -825,162 +693,45 @@ export default function InventoryFlowPage() {
             buttonText="Connect Amazon"
             onAction={handleConnectAmazonPreview}
           >
-            {isPopupOpen && (
-              <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40">
-                <div className="bg-white rounded-2xl shadow-lg w-full max-w-md p-6">
-                  <h2 className="text-xl font-semibold text-charcoal-500 mb-1 text-center">
-                    Country Profile
-                  </h2>
-                  <p className="text-sm text-gray-600 mb-4 text-center">
-                    Please fill these details once to continue.
-                  </p>
+            <div >
+              {loading ? (
+                <Loading />
+              ) : activeTab === 'inventory' ? (
+                missingMonths.length > 0 ? (
+                  <div id="inventory-forecast" className="scroll-mt-[80px] rounded-xl shadow-sm border border-gray-100">
+                    <p className="text-sm sm:text-base mb-4 text-[#414042]">
+                      The following monthly files are needed to upload:{' '}
+                      <strong className="text-[#60a68e]">{missingMonths.join(', ')}</strong>
+                    </p>
 
-                  <form onSubmit={handleSaveProfile} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Country <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        value={country}
-                        onChange={(e) => setCountry(e.target.value as 'uk' | 'us')}
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                    <div className="alert-container">
+                      <div className="alert-message">
+                        <span>Please upload at least 4 months&apos; files to see the next two months.</span>
+                      </div>
+                      <button
+                        className="alert-button"
+                        onClick={() => setShowUpload(true)}
                       >
-                        <option value="uk">UK</option>
-                        <option value="us">US</option>
-                      </select>
-                      {errors.country && <p className="text-xs text-red-500 mt-1">{errors.country}</p>}
+                        Upload Now
+                      </button>
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Marketplace
-                      </label>
-                      <input
-                        type="text"
-                        value={marketplace}
-                        disabled
-                        className="w-full border rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Transit Time (months) <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={transitTime}
-                        onChange={(e) => setTransitTime(e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                        placeholder="e.g. 7"
-                      />
-                      {errors.transit_time && (
-                        <p className="text-xs text-red-500 mt-1">{errors.transit_time}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Stock Unit <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={stockUnit}
-                        onChange={(e) => setStockUnit(e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                        placeholder="e.g. 2"
-                      />
-                      {errors.stock_unit && (
-                        <p className="text-xs text-red-500 mt-1">{errors.stock_unit}</p>
-                      )}
-                    </div>
-
-                    {apiError && (
-                      <p className="text-xs text-red-500 mt-1 text-center">{apiError}</p>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="mt-2 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold"
-                    >
-                      {isSubmitting ? 'Saving...' : 'Save & Continue'}
-                    </button>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-gray-100 ">
-              {activeTab === 'inventory' && (
-                <div className="w-full ">
-
-
-                  {!forecastEnabled ? (
-                    <div className='max-w-xl'>
-                      <div className="flex justify-start items-start gap-2  ">
-                        <div>
-                          <h3 className="text-base sm:text-lg font-semibold text-charcoal-500">
-                            Automation
-                          </h3>
-                          <p className="text-xs sm:text-sm text-green-500 mt-1">
-                            Setup in 30 seconds
-                          </p>
-                        </div>
+                  </div>
+                ) : error ? (
+                  <div id="inventory-forecast" className="scroll-mt-[80px]">
+                    <div className="alert-container">
+                      <div className="alert-message">
+                        <span>{error}</span>
                       </div>
-
-                      <ul className="space-y-2 text-[#414042] text-sm sm:text-sm md:text-base mt-4">
-                        <li className="flex items-center gap-2">
-                          <CheckCircle size={16} className="text-green-500 shrink-0" />
-                          <span>AI-powered prediction</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <CheckCircle size={16} className="text-green-500 shrink-0" />
-                          <span>Historical data analysis</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <CheckCircle size={16} className="text-green-500 shrink-0" />
-                          <span>Always up-to-date insights</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <CheckCircle size={16} className="text-green-500 shrink-0" />
-                          <span>No manual work required</span>
-                        </li>
-                      </ul>
-
-                      <div className="flex justify-start mt-5">
-                        <button
-                          onClick={handleAutomation}
-                          className="bg-green-500 text-yellow-200 px-6 py-2 rounded-lg font-semibold text-sm sm:text-base hover:bg-[#4e937b] transition"
-                        >
-                          Enable Automation
-                        </button>
-                      </div>
+                      <button
+                        className="alert-button"
+                        onClick={() => setShowUpload(true)}
+                      >
+                        Upload Now
+                      </button>
                     </div>
-                  ) : loading ? (
-                    <Loading />
-                  ) : missingMonths.length > 0 ? (
-                    <div className="max-w-3xl">
-                      <p className="text-sm sm:text-base mb-4 text-[#414042]">
-                        The following monthly files are needed to upload:{' '}
-                        <strong className="text-[#60a68e]">{missingMonths.join(', ')}</strong>
-                      </p>
-
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-md border-t-4 border-red-400 bg-gray-100 p-4">
-                        <div className="text-sm text-[#414042]">
-                          Please fetch at least 4 months&apos; files to see the next two months.
-                        </div>
-                      </div>
-                    </div>
-                  ) : error ? (
-                    <div className="max-w-3xl">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-md border-t-4 border-red-400 bg-gray-100 p-4">
-                        <div className="text-sm text-[#414042]">{error}</div>
-                      </div>
-                    </div>
-                  ) : (
+                  </div>
+                ) : (
+                  <div id="inventory-forecast" className="scroll-mt-[80px]">
                     <DisplayInventoryForecast
                       countryName={countryName}
                       month={effectiveMonth}
@@ -988,66 +739,47 @@ export default function InventoryFlowPage() {
                       data={excelData ?? []}
                       isDemoMode={isDemoMode}
                     />
-                  )}
+                  </div>
+                )
+              ) : activeTab === 'dispatch' ? (
+                <div id="dispatch" className="scroll-mt-[80px]">
+                  <DispatchPage
+                    embedded
+                    countryNameProp={countryName}
+                    selectedMonthProp={sharedMonth}
+                    selectedYearProp={sharedYear}
+                  />
                 </div>
-              )}
-
-              {activeTab === 'dispatch' && (
-                <>
-
-                  {!profileCompleted ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
-                      <p className="mt-2 text-sm text-slate-600">
-                        Complete inventory setup first, then continue to dispatch planning.
-                      </p>
-                      <button
-                        onClick={handleDispatchAccess}
-                        className="mt-5 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold"
-                      >
-                        Continue to Dispatch
-                      </button>
-                    </div>
-                  ) : (
-                    <DispatchPage
-                      embedded
-                      countryNameProp={countryName}
-                      selectedMonthProp={sharedMonth}
-                      selectedYearProp={sharedYear}
-                    />
-                  )}
-                </>
-              )}
-
-              {activeTab === 'purchaseOrder' && (
-                <>
-
-                  {!profileCompleted ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
-                      <p className="mt-2 text-sm text-slate-600">
-                        Complete inventory setup first, then continue to purchase order planning.
-                      </p>
-                      <button
-                        onClick={handlePurchaseOrderAccess}
-                        className="mt-5 w-full bg-green-500 text-yellow-200 py-2.5 rounded-lg font-bold"
-                      >
-                        Continue to Purchase Order
-                      </button>
-                    </div>
-                  ) : (
-                    <PurchaseOrderPage
-                      embedded
-                      countryNameProp={countryName}
-                      selectedMonthProp={sharedMonth}
-                      selectedYearProp={sharedYear}
-                    />
-                  )}
-                </>
+              ) : (
+                <div id="purchase-order" className="scroll-mt-[80px]">
+                  <PurchaseOrderPage
+                    embedded
+                    countryNameProp={countryName}
+                    selectedMonthProp={sharedMonth}
+                    selectedYearProp={sharedYear}
+                  />
+                </div>
               )}
             </div>
           </PreviewLockedSection>
         </div>
+
+        <Modal
+          isOpen={showUpload}
+          onClose={() => setShowUpload(false)}
+          showCloseButton
+          className="max-w-4xl w-full mx-auto p-0"
+        >
+          <FileUploadForm
+            initialCountry={countryName}
+            onClose={() => setShowUpload(false)}
+            onComplete={() => {
+              setShowUpload(false);
+              void fetchUploadHistory();
+            }}
+          />
+        </Modal>
       </div>
     </>
-
   );
 }
