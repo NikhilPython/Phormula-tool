@@ -52,7 +52,10 @@ def fetch_skuwise_monthly(phormula_engine, user_id, country, month_name, year, m
     }
     reverse_month_map = {v: k for k, v in month_map.items()}
 
-    current_month_num = month_map[month_name.lower()]
+    country = country.lower().strip()
+    month_name = month_name.lower().strip()
+
+    current_month_num = month_map[month_name]
     current_date = datetime(year, current_month_num, 1)
 
     all_data = []
@@ -72,7 +75,12 @@ def fetch_skuwise_monthly(phormula_engine, user_id, country, month_name, year, m
             m = current_date.month
             m_name = reverse_month_map[m]
 
-            table_name = f"skuwisemonthly_{user_id}_{country}_{m_name}{y}"
+            if country == "global":
+                table_name = f"skuwisemonthly_{user_id}_{country}_{m_name}{y}_table"
+            else:
+                table_name = f"skuwisemonthly_{user_id}_{country}_{m_name}{y}"
+
+            
 
             table_exists = connection.execute(
                 check_query,

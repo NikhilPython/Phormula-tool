@@ -63,7 +63,8 @@ def generate_business_journey_route():
         # =========================================================
         currency_map = {
             "uk": "£",
-            "us": "$"
+            "us": "$",
+            "global": "$"
         }
         currency_symbol = currency_map.get(country, "£")
 
