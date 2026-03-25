@@ -317,7 +317,7 @@ export default function EditMemberModal({
               type="button"
               onClick={handleSave}
               disabled={!canSubmit}
-              className="rounded-lg px-4 py-2 text-sm bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
+              className="rounded-lg px-4 py-2 text-sm hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
             >
               {loading ? "Saving..." : "Save Changes"}
             </button>

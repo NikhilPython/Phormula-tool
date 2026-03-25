@@ -10,11 +10,11 @@ import { useAppDispatch } from "@/lib/hooks";
 import { logout, setUser } from "@/lib/features/auth/authSlice";
 import { useAppSelector } from "@/lib/store";
 import { useGetUserQuery } from "@/lib/api/userApi";
-import AddMemberModal from "@/components/header/AddMemberModal";
+
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
-  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+ 
 
   const dispatch = useAppDispatch();
   const router = useRouter();
@@ -146,10 +146,10 @@ export default function UserDropdown() {
             <li>
               <DropdownItem
                 onItemClick={() => {
-                  if (isNAMonthYear) return;
-                  closeDropdown();
-                  setIsAddMemberOpen(true);
-                }}
+  if (isNAMonthYear) return;
+  closeDropdown();
+  router.push(`/profile/${currentCountryName}/${month || "NA"}/${year || "NA"}?addMember=true`);
+}}
                 tag="button"
                 className={`flex items-center gap-3 px-3 py-2 font-medium rounded-lg group text-theme-sm w-full text-left ${isNAMonthYear
                   ? "cursor-not-allowed text-gray-400 opacity-50 "
@@ -196,13 +196,7 @@ export default function UserDropdown() {
         </button>
       </Dropdown>
 
-      {!isMember && (
-        <AddMemberModal
-          isOpen={isAddMemberOpen}
-          onClose={() => setIsAddMemberOpen(false)}
-          token={token}
-        />
-      )}
+      
     </div>
   );
 }
