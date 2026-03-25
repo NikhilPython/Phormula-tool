@@ -38,6 +38,7 @@ export default function ProfileClient() {
   const [isViewOpen, setIsViewOpen] = React.useState(false);
   const [isEditOpen, setIsEditOpen] = React.useState(false);
   const [actionLoading, setActionLoading] = React.useState(false);
+  const [ownerName, setOwnerName] = React.useState("");
 
   const params = useParams();
   const router = useRouter();
@@ -67,7 +68,7 @@ const shouldOpenAddMember = searchParams.get("addMember") === "true";
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Failed to load user data");
-
+      setOwnerName(String(data?.name || ""));
       setIsMember(!!data?.is_member);
       setMembers(Array.isArray(data?.members) ? data.members : []);
     } catch (e: any) {
@@ -416,11 +417,12 @@ const shouldOpenAddMember = searchParams.get("addMember") === "true";
     router.replace(`/profile/${countryName}/${month || "NA"}/${year || "NA"}`);
   }}
 />
-            <ViewMemberDrawer
-              isOpen={isViewOpen}
-              onClose={() => setIsViewOpen(false)}
-              member={selectedMember}
-            />
+<ViewMemberDrawer
+  isOpen={isViewOpen}
+  onClose={() => setIsViewOpen(false)}
+  member={selectedMember}
+  addedBy={ownerName}
+/>
 
             <EditMemberModal
               isOpen={isEditOpen}
