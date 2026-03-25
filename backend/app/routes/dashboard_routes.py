@@ -21,6 +21,7 @@ from io import BytesIO
 
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
+db_url1 = os.getenv('DATABASE_ADMIN_URL')
 
 
 
@@ -1820,11 +1821,6 @@ def target_summary():
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
 
-    # ---------------------------
-    # Request input handling
-    # POST  -> only country + target_sales required
-    # GET   -> month + year + country required
-    # ---------------------------
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
         country_param = data.get('country', '')
@@ -1857,14 +1853,131 @@ def target_summary():
             return jsonify({'error': 'Invalid month format. Use full month name like January'}), 400
 
     country = resolve_country(country_param, currency_param)
-
     if not country:
         return jsonify({'error': 'country is required'}), 400
+
+    country = str(country).strip().lower()
 
     engine = create_engine(db_url)
     SessionLocal = sessionmaker(bind=engine)
     db_session = SessionLocal()
     inspector = inspect(engine)
+
+    def get_global_gbp_to_usd_rate(month_name: str, year: int) -> float:
+        try:
+            conv_engine = create_engine(db_url1)
+            with conv_engine.connect() as conn:
+                q = text("""
+                    SELECT conversion_rate
+                    FROM currency_conversion
+                    WHERE lower(user_currency) = 'gbp'
+                      AND lower(country) = 'us'
+                      AND lower(selected_currency) = 'usd'
+                      AND lower(month) = :month
+                      AND year = :year
+                    ORDER BY id DESC
+                    LIMIT 1
+                """)
+                row = conn.execute(q, {
+                    'month': month_name.lower(),
+                    'year': int(year)
+                }).fetchone()
+
+                if row and row[0] is not None:
+                    rate = float(row[0])
+                    return rate
+
+                return 1.0
+        except Exception as e:
+            print(f"❌ Error fetching global GBP -> USD rate: {str(e)}")
+            return 1.0
+
+    def find_existing_monthly_table(user_id: int, record_country: str, month_name: str, year: int):
+        month_clean = month_name.lower()
+
+        if record_country.lower() == "global":
+            candidates = [
+                f"skuwisemonthly_{user_id}_{record_country.lower()}_{month_clean}{year}_table",
+                f"skuwisemonthly_{user_id}_{record_country.lower()}_{month_clean}_{year}_table",
+            ]
+        else:
+            candidates = [
+                f"skuwisemonthly_{user_id}_{record_country.lower()}_{month_clean}{year}",
+                f"skuwisemonthly_{user_id}_{record_country.lower()}_{month_clean}_{year}",
+                f"skuwisemonthly_{user_id}_{record_country.lower()}_{month_clean}{year}_table",
+                f"skuwisemonthly_{user_id}_{record_country.lower()}_{month_clean}_{year}_table",
+            ]
+
+        for table_name in candidates:
+            if inspector.has_table(table_name):
+                return table_name
+
+        return None
+
+    def find_total_row(df):
+        if 'product_name' in df.columns:
+            for variation in ['TOTAL', 'Total', 'total', 'TOTALS', 'Totals', 'totals']:
+                total_row = df[df['product_name'].astype(str).str.strip() == variation]
+                if not total_row.empty:
+                    return total_row.tail(1)
+
+            contains_total = df[df['product_name'].astype(str).str.contains('total', case=False, na=False)]
+            if not contains_total.empty:
+                return contains_total.tail(1)
+
+        if 'sku' in df.columns:
+            exact_total = df[df['sku'].astype(str).str.strip().str.lower() == 'total']
+            if not exact_total.empty:
+                return exact_total.tail(1)
+
+            contains_total = df[df['sku'].astype(str).str.contains('total', case=False, na=False)]
+            if not contains_total.empty:
+                return contains_total.tail(1)
+
+        return None
+
+    def get_countries_for_summary(user_id: int, month_name: str, year: int, country: str):
+        """
+        For non-global: return only that country.
+        For global: return countries that actually have upload_history or tables, typically uk/us.
+        """
+        if country != 'global':
+            return [country]
+
+        countries = set()
+
+        # 1) From upload_history for same month/year, collect actual country rows except global
+        q = text("""
+            SELECT DISTINCT LOWER(country) AS country
+            FROM upload_history
+            WHERE user_id = :user_id
+              AND LOWER(month) = LOWER(:month)
+              AND year = :year
+              AND LOWER(country) IN ('uk', 'us')
+        """)
+        rows = db_session.execute(q, {
+            'user_id': user_id,
+            'month': month_name,
+            'year': year
+        }).fetchall()
+
+        for row in rows:
+            if row[0]:
+                countries.add(str(row[0]).strip().lower())
+
+        # 2) Fallback: infer from tables if upload_history missing
+        for c in ['uk', 'us']:
+            table_name = find_existing_monthly_table(user_id, c, month_name, year)
+            if table_name:
+                countries.add(c)
+
+        # 3) Last fallback: if a real global table exists, use global
+        if not countries:
+            global_table = find_existing_monthly_table(user_id, 'global', month_name, year)
+            if global_table:
+                countries.add('global')
+
+        return list(countries)
 
     def compute_monthly_cashflow_summary(user_id: int, year: int, country: str, month_name: str):
         combined_totals = {
@@ -1884,32 +1997,8 @@ def target_summary():
             'promotional_rebates': 0
         }
 
-        countries_with_data = set()
-
-        upload_query = text("""
-            SELECT DISTINCT country
-            FROM upload_history
-            WHERE user_id = :user_id
-              AND LOWER(month) = LOWER(:month)
-              AND year = :year
-              AND LOWER(country) = LOWER(:country)
-        """)
-        upload_results = db_session.execute(upload_query, {
-            'user_id': user_id,
-            'month': month_name,
-            'year': year,
-            'country': country
-        }).fetchall()
-
-        for result in upload_results:
-            if result[0]:
-                countries_with_data.add(result[0])
-
-        # If no upload_history row exists, still try direct table lookup
-        if not countries_with_data:
-            countries_with_data.add(country)
-
         all_cashflow_data = []
+        countries_with_data = get_countries_for_summary(user_id, month_name, year, country)
 
         for record_country in countries_with_data:
             total_otherwplatform = 0
@@ -1937,24 +2026,17 @@ def target_summary():
                 if upload_values_result[1] is not None:
                     total_taxncredit_from_upload += float(upload_values_result[1])
 
-            # Table format: skuwisemonthly_1_uk_march_2026
-            suffix = f"{month_name.lower()}_{year}"
+            table_name = find_existing_monthly_table(user_id, record_country, month_name, year)
 
-            table_name = (
-                f"skuwisemonthly_{user_id}_{record_country.lower()}_{suffix}_table"
-                if record_country.lower().startswith("global")
-                else f"skuwisemonthly_{user_id}_{record_country.lower()}_{suffix}"
-            )
-
-            if not inspector.has_table(table_name):
+            if not table_name:
                 continue
 
             try:
-                cashflow_df = pd.read_sql_table(table_name, engine)
+                cashflow_df = pd.read_sql(text(f'SELECT * FROM "{table_name}"'), engine)
                 if cashflow_df.empty:
                     continue
 
-                # Map alternate column names
+                # Alternate mappings
                 if 'cost_of_unit_sold' not in cashflow_df.columns and 'cogs' in cashflow_df.columns:
                     cashflow_df['cost_of_unit_sold'] = cashflow_df['cogs']
 
@@ -1971,24 +2053,6 @@ def target_summary():
                     if col in cashflow_df.columns:
                         cashflow_df[col] = pd.to_numeric(cashflow_df[col], errors='coerce').fillna(0)
 
-                def find_total_row(df):
-                    if 'product_name' in df.columns:
-                        for variation in ['TOTAL', 'Total', 'total', 'TOTALS', 'Totals', 'totals']:
-                            total_row = df[df['product_name'] == variation]
-                            if not total_row.empty:
-                                return total_row
-
-                        contains_total = df[df['product_name'].astype(str).str.contains('total', case=False, na=False)]
-                        if not contains_total.empty:
-                            return contains_total.tail(1)
-
-                    if 'sku' in df.columns:
-                        contains_total = df[df['sku'].astype(str).str.contains('total', case=False, na=False)]
-                        if not contains_total.empty:
-                            return contains_total.tail(1)
-
-                    return None
-
                 total_row = find_total_row(cashflow_df)
 
                 if total_row is not None and not total_row.empty:
@@ -1996,7 +2060,6 @@ def target_summary():
                     cm2_profit_total = float(total_row['cm2_profit'].iloc[0]) if 'cm2_profit' in total_row.columns else 0
                     cost_of_unit_sold_total = float(total_row['cost_of_unit_sold'].iloc[0]) if 'cost_of_unit_sold' in total_row.columns else 0
                 else:
-                    # If no TOTAL row found, use full sum
                     net_sales_total = float(cashflow_df['net_sales'].sum()) if 'net_sales' in cashflow_df.columns else 0
                     cm2_profit_total = float(cashflow_df['cm2_profit'].sum()) if 'cm2_profit' in cashflow_df.columns else 0
                     cost_of_unit_sold_total = float(cashflow_df['cost_of_unit_sold'].sum()) if 'cost_of_unit_sold' in cashflow_df.columns else 0
@@ -2018,7 +2081,7 @@ def target_summary():
                 })
 
             except Exception as e:
-                print(f"Error reading table {table_name}: {e}")
+                print(f"❌ Error reading table {table_name}: {e}")
                 continue
 
         for k in combined_totals:
@@ -2048,11 +2111,6 @@ def target_summary():
         db_session.execute(create_table_sql)
         db_session.commit()
 
-        # ---------------------------
-        # POST
-        # Current month row updates many times
-        # Next month inserts a new row automatically
-        # ---------------------------
         if request.method == 'POST':
             if target_sales is None:
                 return jsonify({'error': 'target_sales is required for POST'}), 400
@@ -2069,8 +2127,19 @@ def target_summary():
                 month_name=month_name
             )
 
-            net_sales_total = round(summary_totals.get('net_sales', 0), 2)
-            cashflow_total = round(summary_totals.get('cashflow', 0), 2)
+            raw_net_sales_total = float(summary_totals.get('net_sales', 0) or 0)
+            raw_cashflow_total = float(summary_totals.get('cashflow', 0) or 0)
+
+            if country == 'global':
+                conversion_rate = get_global_gbp_to_usd_rate(month_name, year)
+
+                target_sales = round(target_sales * conversion_rate, 2)
+                net_sales_total = round(raw_net_sales_total * conversion_rate, 2)
+                cashflow_total = round(raw_cashflow_total * conversion_rate, 2)
+            else:
+                net_sales_total = round(raw_net_sales_total, 2)
+                cashflow_total = round(raw_cashflow_total, 2)
+
             shortfall_total = round(target_sales - net_sales_total, 2)
 
             upsert_sql = text(f"""
@@ -2130,10 +2199,6 @@ def target_summary():
                 }
             }), 200
 
-        # ---------------------------
-        # GET
-        # Fetch saved target row, recalculate totals from sku table
-        # ---------------------------
         get_sql = text(f"""
             SELECT id, month, year, country, target_sales, cashflow_total,
                    net_sales_total, shortfall_total, created_at, updated_at
@@ -2149,18 +2214,6 @@ def target_summary():
             'country': country
         }).fetchone()
 
-        if not row:
-            return jsonify({
-                'error': 'No saved target summary found',
-                'searched_for': {
-                    'user_id': user_id,
-                    'month': month_name,
-                    'year': year,
-                    'country': country
-                },
-                'table_name': target_table_name
-            }), 404
-
         summary_totals, details = compute_monthly_cashflow_summary(
             user_id=user_id,
             year=year,
@@ -2168,8 +2221,37 @@ def target_summary():
             month_name=month_name
         )
 
-        fresh_net_sales_total = round(summary_totals.get('net_sales', 0), 2)
-        fresh_cashflow_total = round(summary_totals.get('cashflow', 0), 2)
+        raw_fresh_net_sales_total = float(summary_totals.get('net_sales', 0) or 0)
+        raw_fresh_cashflow_total = float(summary_totals.get('cashflow', 0) or 0)
+
+        if country == 'global':
+            conversion_rate = get_global_gbp_to_usd_rate(month_name, year)
+            fresh_net_sales_total = round(raw_fresh_net_sales_total * conversion_rate, 2)
+            fresh_cashflow_total = round(raw_fresh_cashflow_total * conversion_rate, 2)
+        else:
+            fresh_net_sales_total = round(raw_fresh_net_sales_total, 2)
+            fresh_cashflow_total = round(raw_fresh_cashflow_total, 2)
+
+        if not row:
+            return jsonify({
+                'message': 'No saved target summary found, returning computed totals only',
+                'data': {
+                    'id': None,
+                    'month': month_name,
+                    'year': year,
+                    'country': country,
+                    'target_sales': None,
+                    'cashflow_total': fresh_cashflow_total,
+                    'net_sales_total': fresh_net_sales_total,
+                    'shortfall_total': None,
+                    'created_at': None,
+                    'updated_at': None,
+                    'table_name': target_table_name,
+                    'source_details': details,
+                    'is_saved': False
+                }
+            }), 200
+
         target_sales_value = float(row[4])
         fresh_shortfall_total = round(target_sales_value - fresh_net_sales_total, 2)
 
@@ -2180,14 +2262,15 @@ def target_summary():
                 'month': row[1],
                 'year': row[2],
                 'country': row[3],
-                'target_sales': target_sales_value,
+                'target_sales': round(target_sales_value, 2),
                 'cashflow_total': fresh_cashflow_total,
                 'net_sales_total': fresh_net_sales_total,
                 'shortfall_total': fresh_shortfall_total,
                 'created_at': row[8].isoformat() if row[8] else None,
                 'updated_at': row[9].isoformat() if row[9] else None,
                 'table_name': target_table_name,
-                'source_details': details
+                'source_details': details,
+                'is_saved': True
             }
         }), 200
 
@@ -2197,4 +2280,5 @@ def target_summary():
 
     finally:
         db_session.close()
+
 
