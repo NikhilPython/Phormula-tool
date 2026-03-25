@@ -1444,7 +1444,6 @@ def Pnlforecasts():
 
                     if result and result[0] is not None:
                         rate = float(result[0])
-                        print(f"✅ GBP -> USD conversion rate used for {month} {year}: {rate}")
                         return rate
 
                     print(f"⚠ No GBP -> USD conversion rate found for {month} {year}. Using 1.0")
