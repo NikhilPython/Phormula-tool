@@ -1,30 +1,3 @@
-// import ObjectivesPageClient from "@/components/user-profile/ObjectivesPageClient";
-
-// export default async function Page({
-//   params,
-// }: {
-//   params: Promise<{
-//     countryName: string;
-//     year: string;
-//     month: string;
-//   }>;
-// }) {
-//   const { countryName, year, month } = await params;
-
-//   return (
-//     <ObjectivesPageClient
-//       country={countryName}
-//       year={year}
-//       month={month}
-//     />
-//   );
-// }
-
-
-
-
-
-
 import ObjectivesPageClient from "@/components/user-profile/ObjectivesPageClient";
 import { Metadata } from "next";
 
@@ -58,20 +31,20 @@ const formatCountry = (c: string) => {
 export async function generateMetadata({
   params,
 }: {
-  params: {
+  params: Promise<{
     countryName: string;
     year: string;
     month: string;
-  };
+  }>;
 }): Promise<Metadata> {
-  const { countryName, year, month } = params;
+  const { countryName, year, month } = await params;
 
-  const country = formatCountry(params.countryName);
-  const monthFormatted = monthName(params.month);
+  const country = formatCountry(countryName);
+  const monthFormatted = monthName(month);
 
   return {
     title: `Business Overview | Amazon ${country}`,
-    description: `Objectives for ${country} for ${monthFormatted}`,
+    description: `Objectives for ${country} for ${monthFormatted} ${year}`,
   };
 }
 

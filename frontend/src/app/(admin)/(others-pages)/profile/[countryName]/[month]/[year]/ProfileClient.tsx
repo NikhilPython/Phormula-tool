@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import UserInfoCard from "@/components/user-profile/UserInfoCard";
 import UserAddressCard from "@/components/user-profile/UserAddressCard";
 import Button from "@/components/ui/button/Button";
@@ -40,11 +40,14 @@ export default function ProfileClient() {
   const [actionLoading, setActionLoading] = React.useState(false);
 
   const params = useParams();
+  const router = useRouter();
 
   const countryName = (params?.countryName as string) || "global";
 const month = (params?.month as string) || "NA";
 const year = (params?.year as string) || "NA";
   const isPreviewMode = month === "NA" && year === "NA";
+  const searchParams = useSearchParams();
+const shouldOpenAddMember = searchParams.get("addMember") === "true";
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("jwtToken") || "" : "";
@@ -79,6 +82,13 @@ const year = (params?.year as string) || "NA";
   React.useEffect(() => {
     fetchMembers();
   }, [fetchMembers]);
+
+  React.useEffect(() => {
+  if (shouldOpenAddMember && isMember === false && !isPreviewMode) {
+    setTab("teamMembers");
+    setIsAddMemberOpen(true);
+  }
+}, [shouldOpenAddMember, isMember, isPreviewMode]);
 
   const filteredMembers = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -389,16 +399,23 @@ const year = (params?.year as string) || "NA";
                 stickyHeader={false}
                 emptyMessage="No members found."
                 className="rounded-xl"
-                tableClassName="min-w-[900px]"
+                tableClassName="max-w-full"
               />
             )}
 
-            <AddMemberModal
-              isOpen={isAddMemberOpen}
-              onClose={() => setIsAddMemberOpen(false)}
-              token={token}
-              onSuccess={fetchMembers}
-            />
+           <AddMemberModal
+  isOpen={isAddMemberOpen}
+  onClose={() => {
+    setIsAddMemberOpen(false);
+    router.replace(`/profile/${countryName}/${month || "NA"}/${year || "NA"}`);
+  }}
+  token={token}
+  onSuccess={() => {
+    fetchMembers();
+    setIsAddMemberOpen(false);
+    router.replace(`/profile/${countryName}/${month || "NA"}/${year || "NA"}`);
+  }}
+/>
             <ViewMemberDrawer
               isOpen={isViewOpen}
               onClose={() => setIsViewOpen(false)}
