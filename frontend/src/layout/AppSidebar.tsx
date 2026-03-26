@@ -564,36 +564,43 @@ const AppSidebar: React.FC = () => {
     if (!newPath) {
       switch (segments[0]) {
         case "inventory-forecast":
-          newPath = `/inventory-forecast/${newCountryName}/${month}/${year}`;
+          newPath = `/inventory-forecast/${ newCountryName }/${month}/${ year }`;
           break;
         case "pnlforecast":
-          newPath = `/pnlforecast/${newCountryName}/${month}/${year}`;
+          newPath = `/pnlforecast/${ newCountryName }/${month}/${ year }`;
           break;
         case "inventory-reconciliation":
-          newPath = `/inventory-reconciliation/${newCountryName}/${month}/${year}`;
+          newPath = `/inventory-reconciliation/${ newCountryName }/${month}/${ year }`;
           break;
         case "currentInventory":
-          newPath = `/currentInventory/${newCountryName}/${month}/${year}`;
+          newPath = `/currentInventory/${ newCountryName }/${month}/${ year }`;
           break;
-        case "dispatch":
+        case "dispatch": {
           const { month: currentMonth, year: currentYear } = getCurrentMonthYear();
-          newPath = `/dispatch/${newCountryName}/${currentMonth}/${currentYear}`;
+          newPath = `/dispatch/${ newCountryName }/${currentMonth}/${ currentYear }`;
           break;
+        }
         case "purchase-order":
-          newPath = `/purchase-order/${newCountryName}/${month}/${year}`;
+          newPath = `/purchase-order/${ newCountryName }/${month}/${ year }`;
           break;
         case "cashflow":
-          newPath = `/cashflow/${newCountryName}/${month}/${year}`;
+          newPath = `/cashflow/${ newCountryName }/${month}/${ year }`;
           break;
         case "expense-reconciliation":
-          newPath = `/expense-reconciliation/${newCountryName}/${month}/${year}`;
+          newPath = `/expense-reconciliation/${ newCountryName }/${month}/${ year }`;
           break;
         case "fba":
-          newPath = `/fba/${newCountryName}/${month}/${year}`;
+          newPath = `/fba/${ newCountryName }/${month}/${ year }`;
+          break;
+        case "inputCost":
+          newPath = `/inputCost/${ newCountryName }/${month}/${ year }`;
+          break;
+        case "objectives-targets":
+          newPath = `/objectives-targets/${ newCountryName }/${month}/${ year }`;
           break;
         case "skuwiseprofit": {
           const productname = segments[1] ?? "Classic";
-          newPath = `/skuwiseprofit/${productname}/${newCountryName}/${month}/${year}`;
+          newPath = `/skuwiseprofit/${ productname }/${newCountryName}/${ month }/${year}`;
           break;
         }
       }
