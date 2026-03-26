@@ -346,6 +346,8 @@ const AppSidebar: React.FC = () => {
     };
   };
 
+  const currentMonthYear = getCurrentMonthYear();
+
   const ensureSpReportSeedOnce = async (
     baseUrl: string,
     jwtToken: string,
@@ -574,7 +576,8 @@ const AppSidebar: React.FC = () => {
           newPath = `/currentInventory/${newCountryName}/${month}/${year}`;
           break;
         case "dispatch":
-          newPath = `/dispatch/${newCountryName}/${month}/${year}`;
+          const { month: currentMonth, year: currentYear } = getCurrentMonthYear();
+          newPath = `/dispatch/${newCountryName}/${currentMonth}/${currentYear}`;
           break;
         case "purchase-order":
           newPath = `/purchase-order/${newCountryName}/${month}/${year}`;
@@ -718,13 +721,17 @@ const AppSidebar: React.FC = () => {
         },
         {
           name: "Purchase Order (PO) Planning",
-          path: ({ countryName, month, year }) =>
-            `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`,
+          path: ({ countryName }) => {
+            const { month, year } = getCurrentMonthYear();
+            return `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`;
+          },
           onClick: async () => {
+            const { month, year } = getCurrentMonthYear();
+
             await triggerPurchaseOrderApi(
               currentParams.countryName,
-              currentParams.month,
-              currentParams.year
+              month,
+              year
             );
           },
         },
@@ -755,7 +762,7 @@ const AppSidebar: React.FC = () => {
         },
         {
           name: "Inventory Reconcilliation",
-          path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+          path: `/inventory-reconciliation/${currentParams.countryName}/${currentMonthYear.month}/${currentMonthYear.year}`,
         },
 
         {

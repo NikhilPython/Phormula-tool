@@ -77,7 +77,7 @@ export default function Loading() {
         </p>
 
         {/* Buttons */}
-        <div className="flex justify-center gap-4 mt-5">
+        {/* <div className="flex justify-center gap-4 mt-5">
           <button
             onClick={() => alert('You will be notified.')}
             className="bg-[#37455F] text-[#f8edcf] px-4 py-2 rounded-md text-sm font-semibold hover:bg-[#34495e] shadow-[0px_4px_4px_0px_#00000040]"
@@ -91,7 +91,7 @@ export default function Loading() {
           >
             Till then explore tab
           </button>
-        </div>
+        </div> */}
 
         {/* 🔥 Dot animation CSS (safe to keep here or move to globals.css) */}
         <style jsx>{`

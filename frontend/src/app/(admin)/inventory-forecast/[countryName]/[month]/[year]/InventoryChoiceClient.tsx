@@ -21,7 +21,7 @@ type UploadItem = {
   month?: string | number;
   year?: string | number;
   country?: string;
-  [k: string]: any;
+  [key: string]: any;
 };
 
 type UploadHistoryRes = { uploads: UploadItem[] };
@@ -85,7 +85,7 @@ export default function InventoryFlowPage() {
   const today = new Date();
   const currentMonthIndex = today.getMonth();
   const thisYear = today.getFullYear();
-  
+
   const monthNames = [
     'january',
     'february',
@@ -102,23 +102,25 @@ export default function InventoryFlowPage() {
   ] as const;
 
   const urlMonth = (params.month ?? '').toLowerCase().trim();
-
   const effectiveYear =
     /^\d{4}$/.test(params.year ?? '') ? String(params.year) : String(thisYear);
-
 
   const effectiveMonth: string = useMemo(() => {
     if (!urlMonth) return monthNames[currentMonthIndex];
 
-    const mnum = urlMonth.match(/\b(1[0-2]|0?[1-9])\b/);
-    if (mnum) return monthNames[parseInt(mnum[0], 10) - 1];
+    const numericMonthMatch = urlMonth.match(/\b(1[0-2]|0?[1-9])\b/);
+    if (numericMonthMatch) {
+      return monthNames[parseInt(numericMonthMatch[0], 10) - 1];
+    }
 
-    const short = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-    const si = short.indexOf(urlMonth.slice(0, 3));
-    if (si !== -1) return monthNames[si];
+    const shortMonths = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const shortMonthIndex = shortMonths.indexOf(urlMonth.slice(0, 3));
+    if (shortMonthIndex !== -1) {
+      return monthNames[shortMonthIndex];
+    }
 
-    const li = monthNames.indexOf(urlMonth as any);
-    return li !== -1 ? monthNames[li] : monthNames[currentMonthIndex];
+    const fullMonthIndex = monthNames.indexOf(urlMonth as any);
+    return fullMonthIndex !== -1 ? monthNames[fullMonthIndex] : monthNames[currentMonthIndex];
   }, [urlMonth, currentMonthIndex]);
 
   const isDemoMode =
@@ -126,36 +128,37 @@ export default function InventoryFlowPage() {
     params.year?.toUpperCase() === 'NA';
 
   const [activeTab, setActiveTab] = useState<InventoryFlowTab>('inventory');
-  const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [, setUploads] = useState<UploadItem[]>([]);
   const [filteredUploads, setFilteredUploads] = useState<UploadItem[]>([]);
   const [missingMonths, setMissingMonths] = useState<string[]>([]);
   const [excelData, setExcelData] = useState<ForecastRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
-  // const currentMonthName = monthNames[currentMonthIndex];
-  // const currentYearString = String(thisYear);
 
   const [sharedMonth, setSharedMonth] = useState<string>(effectiveMonth);
   const [sharedYear, setSharedYear] = useState<string>(effectiveYear);
-  const [poTriggered, setPoTriggered] = useState(false);
 
   const uploadHistoryInFlightRef = useRef<string | null>(null);
   const forecastInFlightRef = useRef<string | null>(null);
   const latestForecastRequestRef = useRef<string | null>(null);
+  const lastPoTriggerRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const applyHash = (rawHash?: string) => {
       const hash = (rawHash ?? window.location.hash).replace('#', '');
+
       if (!hash) {
         setActiveTab('inventory');
         return;
       }
 
       const tab = HASH_TO_TAB[hash];
-      if (tab) setActiveTab(tab);
+      if (tab) {
+        setActiveTab(tab);
+      }
     };
 
     applyHash(window.location.hash);
@@ -169,6 +172,7 @@ export default function InventoryFlowPage() {
   const handleTabChange = (tab: InventoryFlowTab) => {
     setActiveTab(tab);
     const hash = TAB_TO_HASH[tab];
+
     if (typeof window !== 'undefined') {
       window.history.pushState(null, '', `#${hash}`);
     }
@@ -180,19 +184,14 @@ export default function InventoryFlowPage() {
   }, [effectiveMonth, effectiveYear]);
 
   const tokenOrFail = () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
-    if (!token) throw new Error('Authorization token is missing');
-    return token;
-  };
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
 
-  const getLatestUploadDate = (list: UploadItem[]) => {
-    if (list.length === 0) return 0;
-    return list.reduce((latest, u) => {
-      const y = Number(u.year);
-      const m = typeof u.month === 'number' ? u.month : Number(u.month);
-      const ts = new Date(`${y}-${String(m).padStart(2, '0')}-01`).getTime();
-      return ts > latest ? ts : latest;
-    }, 0);
+    if (!token) {
+      throw new Error('Authorization token is missing');
+    }
+
+    return token;
   };
 
   async function fetchUploadHistory() {
@@ -215,55 +214,62 @@ export default function InventoryFlowPage() {
       });
 
       if (!res.ok) {
-        let msg = 'An error occurred';
+        let message = 'An error occurred';
+
         try {
-          const j = await res.json();
-          msg = j?.error || j?.message || msg;
+          const json = await res.json();
+          message = json?.error || json?.message || message;
         } catch { }
-        throw new Error(msg);
+
+        throw new Error(message);
       }
 
       const data = (await res.json()) as UploadHistoryRes;
 
       const filtered = countryName
         ? data.uploads.filter(
-          (u) => (u.country ?? '').toString().toLowerCase() === countryName
+          (upload) => (upload.country ?? '').toString().toLowerCase() === countryName
         )
         : data.uploads;
 
       setUploads(data.uploads);
       setFilteredUploads(filtered);
 
-      const months = filtered.map((u) => {
-        const m = new Date(`${u.month} 1, ${u.year}`).getMonth();
-        return `${u.year}-${String(m + 1).padStart(2, '0')}`;
+      const months = filtered.map((upload) => {
+        const monthIndex = new Date(`${upload.month} 1, ${upload.year}`).getMonth();
+        return `${upload.year}-${String(monthIndex + 1).padStart(2, '0')}`;
       });
 
-      const unique = new Set(months);
+      const uniqueMonths = new Set(months);
 
       const currentDate = new Date();
-      const curM = currentDate.getMonth();
-      const curY = currentDate.getFullYear();
-      const prev5: string[] = [];
+      const currentMonth = currentDate.getMonth();
+      const currentYear = currentDate.getFullYear();
 
-      for (let i = 1; i <= 5; i++) {
-        let m = curM - i;
-        let y = curY;
-        if (m < 0) {
-          m += 12;
-          y -= 1;
+      const previousFiveMonths: string[] = [];
+
+      for (let i = 1; i <= 5; i += 1) {
+        let month = currentMonth - i;
+        let year = currentYear;
+
+        if (month < 0) {
+          month += 12;
+          year -= 1;
         }
-        prev5.push(`${y}-${String(m + 1).padStart(2, '0')}`);
+
+        previousFiveMonths.push(`${year}-${String(month + 1).padStart(2, '0')}`);
       }
 
-      const missing = prev5.filter((m) => !unique.has(m));
-      if (missing.length) {
-        const formatted = missing.map((s) => {
-          const [y, mon] = s.split('-').map(Number);
-          const d = new Date(y, mon - 1, 1);
-          return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+      const missing = previousFiveMonths.filter((value) => !uniqueMonths.has(value));
+
+      if (missing.length > 0) {
+        const formattedMissing = missing.map((value) => {
+          const [year, month] = value.split('-').map(Number);
+          const date = new Date(year, month - 1, 1);
+          return date.toLocaleString('default', { month: 'long', year: 'numeric' });
         });
-        setMissingMonths(formatted);
+
+        setMissingMonths(formattedMissing);
         setLoading(false);
         return;
       }
@@ -276,8 +282,8 @@ export default function InventoryFlowPage() {
       }
 
       await fetchForecastData();
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to fetch upload history');
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to fetch upload history');
       setLoading(false);
     } finally {
       if (uploadHistoryInFlightRef.current === requestKey) {
@@ -306,7 +312,9 @@ export default function InventoryFlowPage() {
           )}&year=${encodeURIComponent(effectiveYear)}`
           : `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/forecast?country=${encodeURIComponent(
             countryName
-          )}&month=${encodeURIComponent(effectiveMonth)}&year=${encodeURIComponent(effectiveYear)}`;
+          )}&month=${encodeURIComponent(effectiveMonth)}&year=${encodeURIComponent(
+            effectiveYear
+          )}`;
 
       const res = await fetch(endpoint, {
         method: 'GET',
@@ -318,26 +326,24 @@ export default function InventoryFlowPage() {
 
       if (latestForecastRequestRef.current !== requestKey) return;
 
-      const ctype = res.headers.get('Content-Type') || '';
+      const contentType = res.headers.get('Content-Type') || '';
 
       if (!res.ok) {
-        let serverMsg = '';
-        let zeroMonths: string[] = [];
+        let serverMessage = '';
 
         try {
           const errJson = await res.json();
-          serverMsg = errJson?.error || errJson?.message || errJson?.warning || '';
-          zeroMonths = Array.isArray(errJson?.zero_months) ? errJson.zero_months : [];
+          serverMessage = errJson?.error || errJson?.message || errJson?.warning || '';
         } catch { }
 
-        setError(serverMsg || `Server error (${res.status})`);
+        setError(serverMessage || `Server error (${res.status})`);
         setLoading(false);
         return;
       }
 
       if (
-        ctype.includes('spreadsheetml') ||
-        ctype.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        contentType.includes('spreadsheetml') ||
+        contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       ) {
         const blob = await res.blob();
         const buffer = await blob.arrayBuffer();
@@ -356,18 +362,20 @@ export default function InventoryFlowPage() {
         }
 
         const headerRowIndex = 6;
-        const rawHeaders = (rows[headerRowIndex] || []).map((h) =>
-          String(h ?? '').trim().replace(/\s+Sold$/i, '')
+        const rawHeaders = (rows[headerRowIndex] || []).map((header) =>
+          String(header ?? '').trim().replace(/\s+Sold$/i, '')
         );
 
         const dataRows = rows.slice(headerRowIndex + 1);
 
         const jsonRows: ForecastRow[] = dataRows
-          .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''))
+          .filter(
+            (row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== '')
+          )
           .map((row) => {
             const obj: ForecastRow = {};
-            rawHeaders.forEach((header, idx) => {
-              if (header) obj[header] = row[idx] ?? '';
+            rawHeaders.forEach((header, index) => {
+              if (header) obj[header] = row[index] ?? '';
             });
             return obj;
           });
@@ -389,8 +397,8 @@ export default function InventoryFlowPage() {
 
       setError(data?.warning || data?.message || 'Forecast generated, but no file was returned.');
       setLoading(false);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to fetch forecast');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to fetch forecast');
       setLoading(false);
     } finally {
       if (forecastInFlightRef.current === requestKey) {
@@ -403,10 +411,14 @@ export default function InventoryFlowPage() {
     const jwtToken =
       typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
 
-    if (!jwtToken) throw new Error('Missing jwt token');
+    if (!jwtToken) {
+      throw new Error('Missing jwt token');
+    }
 
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-    if (!baseUrl) throw new Error('Missing NEXT_PUBLIC_API_BASE_URL');
+    if (!baseUrl) {
+      throw new Error('Missing NEXT_PUBLIC_API_BASE_URL');
+    }
 
     const safeMonth = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
 
@@ -434,13 +446,17 @@ export default function InventoryFlowPage() {
   };
 
   useEffect(() => {
-    if (activeTab === 'purchaseOrder' && !poTriggered && !isDemoMode) {
-      setPoTriggered(true);
-      triggerPurchaseOrderApi(countryName, effectiveMonth, effectiveYear).catch((err) => {
-        console.error('PO API error:', err);
-      });
-    }
-  }, [activeTab, poTriggered, countryName, effectiveMonth, effectiveYear, isDemoMode]);
+    if (activeTab !== 'purchaseOrder' || isDemoMode) return;
+
+    const key = `${countryName}-${sharedMonth}-${sharedYear}`;
+    if (lastPoTriggerRef.current === key) return;
+
+    lastPoTriggerRef.current = key;
+
+    triggerPurchaseOrderApi(countryName, sharedMonth, sharedYear).catch((err) => {
+      console.error('PO API error:', err);
+    });
+  }, [activeTab, countryName, sharedMonth, sharedYear, isDemoMode]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -471,43 +487,41 @@ export default function InventoryFlowPage() {
     onAction?: () => void;
   }) => {
     return (
-      < >
-        <div
-        >
-          {children}
-        </div>
+      <div className="relative">
+        <div className={enabled ? 'opacity-70' : ''}>{children}</div>
 
         {enabled && (
           <>
-            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
-            <div className="absolute inset-0 z-20 pointer-events-none">
-              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
-                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-                  <div className="mb-4 flex justify-center">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#37455F]">
-                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                    </div>
+            {/* Blur only the preview section */}
+            <div className="absolute inset-0 z-[60] rounded-xl bg-white/45"/>
+
+            {/* Keep popup fixed on screen */}
+            <div className="fixed inset-0 z-[70] pointer-events-none flex items-center justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl border border-gray-200 bg-white/95 shadow-2xl p-6 text-center">
+                <div className="mb-4 flex justify-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#37455F]">
+                    <IoMdLock className="text-3xl text-[#F8EDCE]" />
                   </div>
-
-                  <h3 className="text-lg font-semibold text-[#414042]">{title}</h3>
-                  <p className="mt-2 text-sm text-gray-600 leading-6">{description}</p>
-
-                  <button
-                    onClick={onAction}
-                    className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
-                  >
-                    {buttonText}
-                  </button>
-
-                  <p className="mt-3 text-xs text-gray-500">
-                    Demo data is shown for preview only.
-                  </p>
                 </div>
+
+                <h3 className="text-lg font-semibold text-[#414042]">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-gray-600">{description}</p>
+
+                <button
+                  onClick={onAction}
+                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] transition hover:opacity-90"
+                >
+                  {buttonText}
+                </button>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Demo data is shown for preview only.
+                </p>
               </div>
             </div>
           </>
         )}
-      </>
+      </div>
     );
   };
 
@@ -631,8 +645,8 @@ export default function InventoryFlowPage() {
                   month={sharedMonth}
                   year={sharedYear}
                   yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
-                  onMonthChange={(v) => setSharedMonth(v)}
-                  onYearChange={(v) => setSharedYear(v)}
+                  onMonthChange={(value) => setSharedMonth(value)}
+                  onYearChange={(value) => setSharedYear(value)}
                   valueMode="lower"
                 />
 
@@ -696,12 +710,15 @@ export default function InventoryFlowPage() {
             buttonText="Connect Amazon"
             onAction={handleConnectAmazonPreview}
           >
-            <div >
+            <div>
               {loading ? (
                 <Loading />
               ) : activeTab === 'inventory' ? (
                 missingMonths.length > 0 ? (
-                  <div id="inventory-forecast" className="scroll-mt-[80px] rounded-xl shadow-sm border border-gray-100">
+                  <div
+                    id="inventory-forecast"
+                    className="scroll-mt-[80px] rounded-xl shadow-sm border border-gray-100"
+                  >
                     <p className="text-sm sm:text-base mb-4 text-[#414042]">
                       The following monthly files are needed to upload:{' '}
                       <strong className="text-[#60a68e]">{missingMonths.join(', ')}</strong>
@@ -711,10 +728,7 @@ export default function InventoryFlowPage() {
                       <div className="alert-message">
                         <span>Please upload at least 4 months&apos; files to see the next two months.</span>
                       </div>
-                      <button
-                        className="alert-button"
-                        onClick={() => setShowUpload(true)}
-                      >
+                      <button className="alert-button" onClick={() => setShowUpload(true)}>
                         Upload Now
                       </button>
                     </div>
@@ -725,10 +739,7 @@ export default function InventoryFlowPage() {
                       <div className="alert-message">
                         <span>{error}</span>
                       </div>
-                      <button
-                        className="alert-button"
-                        onClick={() => setShowUpload(true)}
-                      >
+                      <button className="alert-button" onClick={() => setShowUpload(true)}>
                         Upload Now
                       </button>
                     </div>

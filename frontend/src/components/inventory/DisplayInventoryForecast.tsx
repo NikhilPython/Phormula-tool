@@ -98,7 +98,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     top3: true,
     top4: true,
     top5: true,
-    total: true,
+    // total: true,
   });
   const [showToggleModal, setShowToggleModal] = useState(false);
   const chartRef = useRef<any>(null);
@@ -307,45 +307,28 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   const forecastStartIndex = soldLabels.length;
 
   const datasets = useMemo(() => {
-    const skuDatasets = top5Rows.map((t, i) => ({
-      key: `top${i + 1}`,
-      label:
-        (t.row["Product Name"] as string) ||
-        (t.row["sku"] as string) ||
-        `Product ${i + 1}`,
-      data: t.vals,
-      borderColor: palette[i % palette.length],
-      backgroundColor: palette[i % palette.length],
-      borderWidth: 2,
-      tension: 0.3,
-      fill: false,
-      segment: {
-        borderDash: (ctx: any) => {
-          const idx = ctx?.p0DataIndex ?? 0;
-          return idx >= forecastStartIndex ? [6, 6] : undefined;
+    return top5Rows
+      .map((t, i) => ({
+        key: `top${i + 1}`,
+        label:
+          (t.row["Product Name"] as string) ||
+          (t.row["sku"] as string) ||
+          `Product ${i + 1}`,
+        data: t.vals,
+        borderColor: palette[i % palette.length],
+        backgroundColor: palette[i % palette.length],
+        borderWidth: 2,
+        tension: 0.3,
+        fill: false,
+        segment: {
+          borderDash: (ctx: any) => {
+            const idx = ctx?.p0DataIndex ?? 0;
+            return idx >= forecastStartIndex ? [6, 6] : undefined;
+          },
         },
-      },
-    }));
-
-    const totalDs = {
-      key: "total",
-      label: "Total",
-      data: grandTotalSeries,
-      borderColor: "#C49466",
-      backgroundColor: "#C49466",
-      borderWidth: 3,
-      tension: 0.3,
-      fill: false,
-      segment: {
-        borderDash: (ctx: any) => {
-          const idx = ctx?.p0DataIndex ?? 0;
-          return idx >= forecastStartIndex ? [6, 6] : undefined;
-        },
-      },
-    };
-
-    return [...skuDatasets, totalDs].filter((ds) => selectedSeries[ds.key] !== false);
-  }, [top5Rows, grandTotalSeries, selectedSeries, forecastStartIndex]);
+      }))
+      .filter((ds) => selectedSeries[ds.key] !== false);
+  }, [top5Rows, selectedSeries, forecastStartIndex]);
 
   const chartData = useMemo(() => ({ labels: chartLabels, datasets }), [chartLabels, datasets]);
 
@@ -549,17 +532,14 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           </div>
 
           <div className="shrink-0 mt-4 md:mt-2 flex flex-wrap items-center justify-center gap-4 w-full transition-opacity duration-300">
-            {[
-              ...top5Rows.map((t, i) => ({
-                name: `top${i + 1}`,
-                label:
-                  (t.row["Product Name"] as string) ||
-                  (t.row["sku"] as string) ||
-                  `Product ${i + 1}`,
-                color: palette[i % palette.length],
-              })),
-              { name: "total", label: "Total", color: "#C49466" },
-            ].map(({ name, label, color }) => {
+            {top5Rows.map((t, i) => ({
+              name: `top${i + 1}`,
+              label:
+                (t.row["Product Name"] as string) ||
+                (t.row["sku"] as string) ||
+                `Product ${i + 1}`,
+              color: palette[i % palette.length],
+            })).map(({ name, label, color }) => {
               const isChecked = !!selectedSeries[name];
 
               return (
