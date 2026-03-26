@@ -3835,14 +3835,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         />
 
                         <CMchartofsku
-                          range="monthly"
-                          month={selectedMonth}
-                          selectedQuarter={undefined}
-                          year={selectedYear}
-                          countryName={initialCountryName}
-                          homeCurrency={globalHomeCurrency}
-                          onExportBase64Ready={setProductWiseCm1PieBase64}
-                        />
+  range="monthly"
+  month={isDemoMode ? "NA" : selectedMonth}
+  selectedQuarter={undefined}
+  year={isDemoMode ? "NA" : selectedYear}
+  countryName={isDemoMode ? "global" : initialCountryName}
+  homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+  onExportBase64Ready={setProductWiseCm1PieBase64}
+/>
                       </div>
                     </div>
                   )}
@@ -3965,15 +3965,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           onExportBase64Ready={setExpenseBreakdownPieBase64}
                         />
 
-                        <CMchartofsku
-                          range="quarterly"
-                          month={undefined}
-                          selectedQuarter={selectedQuarter}
-                          year={selectedYear}
-                          countryName={initialCountryName}
-                          homeCurrency={globalHomeCurrency}
-                          onExportBase64Ready={setProductWiseCm1PieBase64}
-                        />
+<CMchartofsku
+  range="quarterly"
+  month={undefined}
+  selectedQuarter={isDemoMode ? undefined : selectedQuarter}
+  year={isDemoMode ? "NA" : selectedYear}
+  countryName={isDemoMode ? "global" : initialCountryName}
+  homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+  onExportBase64Ready={setProductWiseCm1PieBase64}
+/>
                       </div>
                     </div>
                   )}
@@ -4095,14 +4095,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       />
 
                       <CMchartofsku
-                        range="yearly"
-                        month={undefined}
-                        selectedQuarter={undefined}
-                        year={selectedYear}
-                        countryName={initialCountryName}
-                        homeCurrency={globalHomeCurrency}
-                        onExportBase64Ready={setProductWiseCm1PieBase64}
-                      />
+  range="yearly"
+  month={undefined}
+  selectedQuarter={undefined}
+  year={isDemoMode ? "NA" : selectedYear}
+  countryName={isDemoMode ? "global" : initialCountryName}
+  homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+  onExportBase64Ready={setProductWiseCm1PieBase64}
+  disableInternalFade={isDemoMode}
+/>
                     </div>
                   </div>
                 </>

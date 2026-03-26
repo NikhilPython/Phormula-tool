@@ -27,6 +27,7 @@ type CmChartOfSkuProps = {
   countryName: string;
   homeCurrency?: string;
   onExportBase64Ready?: (base64: string | null) => void;
+  disableInternalFade?: boolean;
 };
 
 type CompareTop5Item = {
@@ -121,9 +122,22 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   countryName,
   homeCurrency,
   onExportBase64Ready,
+  disableInternalFade = false,
 }) => {
   const normalizedHomeCurrency = (homeCurrency || "usd").toLowerCase();
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
+
+  const isDemoMode =
+  String(month ?? "").toUpperCase() === "NA" ||
+  String(year ?? "").toUpperCase() === "NA";
+
+  const DEMO_SLICES: CmPieSlice[] = [
+  { name: "Product A", value: 4200, prevValue: 3600, pct: 35, deltaPct: 16.67 },
+  { name: "Product B", value: 3100, prevValue: 2800, pct: 25.83, deltaPct: 10.71 },
+  { name: "Product C", value: 2200, prevValue: 1900, pct: 18.33, deltaPct: 15.79 },
+  { name: "Product D", value: 1400, prevValue: 1200, pct: 11.67, deltaPct: 16.67 },
+  { name: "Others", value: 1100, prevValue: 900, pct: 9.17, deltaPct: 22.22 },
+];
 
   const currencySymbol = isGlobalPage
     ? getCurrencySymbol(homeCurrency || "usd")
@@ -186,6 +200,13 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   const [slices, setSlices] = useState<CmPieSlice[]>([]);
 
   useEffect(() => {
+    if (isDemoMode) {
+    setSlices(DEMO_SLICES);
+    setLoading(false);
+    setError(null);
+    setNoDataFound(false);
+    return;
+  }
     async function fetchData() {
       setLoading(true);
       setError(null);
@@ -310,6 +331,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
     fetchData();
   }, [
+    isDemoMode,
     range,
     month,
     year,
@@ -403,7 +425,10 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   }, [chartData, loading, error, onExportBase64Ready]);
 
   return (
-    <div className="relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col">
+    <div className={[
+        "relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col transition-opacity duration-300",
+        disableInternalFade ? "pointer-events-none select-none opacity-45" : "opacity-100",
+      ].join(" ")}>
       <div className="mb-2 2xl:mb-1 w-fit mx-left md:mx-0">
         <PageBreadcrumb
           pageTitle="CM1 Profit Breakdown"

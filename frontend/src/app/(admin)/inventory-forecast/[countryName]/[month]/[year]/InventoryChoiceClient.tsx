@@ -72,6 +72,63 @@ const DUMMY_INVENTORY_FORECAST = [
   },
 ];
 
+const DUMMY_DISPATCH_DATA = [
+  {
+    sku: 'DSP-DEMO-1',
+    productName: 'Demo Product A',
+    dispatchQty: 120,
+    warehouse: 'Amazon FC',
+    dispatchDate: '2026-03-05',
+    status: 'Dispatched',
+  },
+  {
+    sku: 'DSP-DEMO-2',
+    productName: 'Demo Product B',
+    dispatchQty: 80,
+    warehouse: 'Amazon FC',
+    dispatchDate: '2026-03-08',
+    status: 'In Transit',
+  },
+  {
+    sku: 'DSP-DEMO-3',
+    productName: 'Demo Product C',
+    dispatchQty: 150,
+    warehouse: 'Amazon FC',
+    dispatchDate: '2026-03-10',
+    status: 'Delivered',
+  },
+];
+
+const DUMMY_PO_DATA = [
+  {
+    poNumber: 'PO-DEMO-1001',
+    supplier: 'Demo Supplier A',
+    sku: 'PO-DEMO-1',
+    productName: 'Demo Product A',
+    orderQty: 500,
+    eta: '2026-03-20',
+    status: 'Open',
+  },
+  {
+    poNumber: 'PO-DEMO-1002',
+    supplier: 'Demo Supplier B',
+    sku: 'PO-DEMO-2',
+    productName: 'Demo Product B',
+    orderQty: 320,
+    eta: '2026-03-24',
+    status: 'In Progress',
+  },
+  {
+    poNumber: 'PO-DEMO-1003',
+    supplier: 'Demo Supplier C',
+    sku: 'PO-DEMO-3',
+    productName: 'Demo Product C',
+    orderQty: 210,
+    eta: '2026-03-28',
+    status: 'Confirmed',
+  },
+];
+
 export default function InventoryFlowPage() {
   const params = useParams() as {
     countryName?: string;
@@ -471,6 +528,88 @@ export default function InventoryFlowPage() {
     void fetchUploadHistory();
   }, [countryName, effectiveMonth, effectiveYear, isDemoMode]);
 
+  const DemoDispatchPreview = () => {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+        <h3 className="text-base font-semibold text-[#414042]">Dispatch Report Preview</h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Demo data shown because month/year is NA.
+        </p>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="bg-green-500 text-[#F8EDCE]">
+            <tr>
+              <th className="px-4 py-3 text-left">SKU</th>
+              <th className="px-4 py-3 text-left">Product</th>
+              <th className="px-4 py-3 text-left">Dispatch Qty</th>
+              <th className="px-4 py-3 text-left">Warehouse</th>
+              <th className="px-4 py-3 text-left">Dispatch Date</th>
+              <th className="px-4 py-3 text-left">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DUMMY_DISPATCH_DATA.map((row, idx) => (
+              <tr key={idx} className="border-b border-slate-100">
+                <td className="px-4 py-3">{row.sku}</td>
+                <td className="px-4 py-3">{row.productName}</td>
+                <td className="px-4 py-3">{row.dispatchQty}</td>
+                <td className="px-4 py-3">{row.warehouse}</td>
+                <td className="px-4 py-3">{row.dispatchDate}</td>
+                <td className="px-4 py-3">{row.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const DemoPurchaseOrderPreview = () => {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+        <h3 className="text-base font-semibold text-[#414042]">PO Report Preview</h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Demo data shown because month/year is NA.
+        </p>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="bg-green-500 text-[#F8EDCE]">
+            <tr>
+              <th className="px-4 py-3 text-left">PO Number</th>
+              <th className="px-4 py-3 text-left">Supplier</th>
+              <th className="px-4 py-3 text-left">SKU</th>
+              <th className="px-4 py-3 text-left">Product</th>
+              <th className="px-4 py-3 text-left">Order Qty</th>
+              <th className="px-4 py-3 text-left">ETA</th>
+              <th className="px-4 py-3 text-left">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DUMMY_PO_DATA.map((row, idx) => (
+              <tr key={idx} className="border-b border-slate-100">
+                <td className="px-4 py-3">{row.poNumber}</td>
+                <td className="px-4 py-3">{row.supplier}</td>
+                <td className="px-4 py-3">{row.sku}</td>
+                <td className="px-4 py-3">{row.productName}</td>
+                <td className="px-4 py-3">{row.orderQty}</td>
+                <td className="px-4 py-3">{row.eta}</td>
+                <td className="px-4 py-3">{row.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
   const PreviewLockedSection = ({
     enabled,
     children,
@@ -487,36 +626,49 @@ export default function InventoryFlowPage() {
     onAction?: () => void;
   }) => {
     return (
-      <div className="relative">
-        <div className={enabled ? 'opacity-70' : ''}>{children}</div>
-
+      <div className="relative w-full">
+        <div
+          className={
+            enabled
+              ? "pointer-events-none select-none opacity-45  transition-all duration-300"
+              : "opacity-100 transition-all duration-300"
+          }
+        >
+          {children}
+        </div>
+  
         {enabled && (
           <>
-            {/* Blur only the preview section */}
-            <div className="absolute inset-0 z-[60] rounded-xl bg-white/45"/>
-
-            {/* Keep popup fixed on screen */}
-            <div className="fixed inset-0 z-[70] pointer-events-none flex items-center justify-center px-4">
-              <div className="pointer-events-auto w-full max-w-md rounded-2xl border border-gray-200 bg-white/95 shadow-2xl p-6 text-center">
-                <div className="mb-4 flex justify-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#37455F]">
-                    <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                  </div>
+            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+  
+            <div className="absolute inset-0 z-20 pointer-events-none">
+              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                  <div className="mb-4 flex justify-center">
+                                  <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                                                     <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                                                   </div>
+                                </div>
+  
+                  <h3 className="text-lg font-semibold text-[#414042]">
+                    {title}
+                  </h3>
+  
+                  <p className="mt-2 text-sm text-gray-600 leading-6">
+                    {description}
+                  </p>
+  
+                  <button
+                    onClick={onAction}
+                    className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                  >
+                    {buttonText}
+                  </button>
+  
+                  <p className="mt-3 text-xs text-gray-500">
+                    Demo data is shown for preview only.
+                  </p>
                 </div>
-
-                <h3 className="text-lg font-semibold text-[#414042]">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-gray-600">{description}</p>
-
-                <button
-                  onClick={onAction}
-                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] transition hover:opacity-90"
-                >
-                  {buttonText}
-                </button>
-
-                <p className="mt-3 text-xs text-gray-500">
-                  Demo data is shown for preview only.
-                </p>
               </div>
             </div>
           </>
@@ -654,6 +806,7 @@ export default function InventoryFlowPage() {
                   <>
                     <button
                       className="fetch-button"
+                      disabled={isDemoMode}
                       onClick={() => {
                         window.dispatchEvent(
                           new CustomEvent('dispatch-report-refresh', {
@@ -670,12 +823,14 @@ export default function InventoryFlowPage() {
                       onClick={() => {
                         window.dispatchEvent(new CustomEvent('dispatch-report-download'));
                       }}
+                      disabled={isDemoMode}
                     />
                   </>
                 ) : (
                   <>
                     <button
                       className="fetch-button"
+                      disabled={isDemoMode}
                       onClick={() => {
                         window.dispatchEvent(
                           new CustomEvent('po-report-refresh', {
@@ -692,6 +847,7 @@ export default function InventoryFlowPage() {
                       onClick={() => {
                         window.dispatchEvent(new CustomEvent('po-report-download'));
                       }}
+                      disabled={isDemoMode}
                     />
                   </>
                 )}
@@ -755,25 +911,33 @@ export default function InventoryFlowPage() {
                     />
                   </div>
                 )
-              ) : activeTab === 'dispatch' ? (
-                <div id="dispatch" className="scroll-mt-[80px]">
-                  <DispatchPage
-                    embedded
-                    countryNameProp={countryName}
-                    selectedMonthProp={sharedMonth}
-                    selectedYearProp={sharedYear}
-                  />
-                </div>
-              ) : (
-                <div id="purchase-order" className="scroll-mt-[80px]">
-                  <PurchaseOrderPage
-                    embedded
-                    countryNameProp={countryName}
-                    selectedMonthProp={sharedMonth}
-                    selectedYearProp={sharedYear}
-                  />
-                </div>
-              )}
+) : activeTab === 'dispatch' ? (
+  <div id="dispatch" className="scroll-mt-[80px]">
+    {isDemoMode ? (
+      <DemoDispatchPreview />
+    ) : (
+      <DispatchPage
+        embedded
+        countryNameProp={countryName}
+        selectedMonthProp={sharedMonth}
+        selectedYearProp={sharedYear}
+      />
+    )}
+  </div>
+) : (
+  <div id="purchase-order" className="scroll-mt-[80px]">
+    {isDemoMode ? (
+      <DemoPurchaseOrderPreview />
+    ) : (
+      <PurchaseOrderPage
+        embedded
+        countryNameProp={countryName}
+        selectedMonthProp={sharedMonth}
+        selectedYearProp={sharedYear}
+      />
+    )}
+  </div>
+)}
             </div>
           </PreviewLockedSection>
         </div>
