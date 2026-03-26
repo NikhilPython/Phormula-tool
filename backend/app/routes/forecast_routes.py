@@ -363,8 +363,6 @@ def forecast_monthrange():
         # normalize columns
         df.columns = [str(c).replace(" Sold", "").strip() for c in df.columns]
 
-        print("Columns detected:", df.columns.tolist())
-
         month_pattern = re.compile(r"^[A-Za-z]{3}'\d{2}")
 
         month_columns = [
