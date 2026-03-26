@@ -130,7 +130,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     const yr = parseInt(String(year), 10);
     if (!Number.isFinite(yr)) return null;
 
-    const nextMonth = fullMonthIndex + 1;
+    const nextMonth = fullMonthIndex;
 
     if (nextMonth <= 11) {
       return { y: yr, m: nextMonth };
