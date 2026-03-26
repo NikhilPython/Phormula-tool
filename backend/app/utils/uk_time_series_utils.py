@@ -86,7 +86,7 @@ def fetch_precalc_table(user_id: int, country: str, period: str, timeline: str, 
     try:
         return pd.read_sql(query, phormula_engine)
     except Exception as e:
-        print(f"[WARN] Could not read table {table}: {e}")
+        
         return pd.DataFrame()
     
 
