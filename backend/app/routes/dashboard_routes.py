@@ -602,11 +602,6 @@ def merge_dispatch_files(file_uk, file_us):
 
 @dashboard_bp.route('/purchase_order', methods=['POST'])
 def PO_generated():
-    from io import BytesIO
-    import pandas as pd
-    from sqlalchemy import create_engine, text
-    from datetime import datetime
-
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token missing'}), 401
@@ -631,13 +626,10 @@ def PO_generated():
         month_clean = month.strip().title()
         month_name = datetime.strptime(month_clean, "%B").strftime("%B")
         month_db = month_name.lower()
-        year_int = int(year)
-        year_db = str(year_int)
+        year_db = str(int(year))
         country_db = country.strip().lower()
     except Exception:
         return jsonify({'error': 'Invalid month/year'}), 400
-
-    engine = create_engine(db_url)
 
     forecast_query = text("""
         SELECT filename, data
@@ -835,11 +827,9 @@ def PO_generated():
             :data,
             NOW()
         )
-        ON CONFLICT (user_id, country, filename)
+        ON CONFLICT ON CONSTRAINT uq_stored_files_period
         DO UPDATE SET
-            kind = EXCLUDED.kind,
-            month = EXCLUDED.month,
-            year = EXCLUDED.year,
+            filename = EXCLUDED.filename,
             content_type = EXCLUDED.content_type,
             data = EXCLUDED.data,
             created_at = NOW()
@@ -863,11 +853,6 @@ def PO_generated():
 
 @dashboard_bp.route('/global_purchase_order', methods=['GET'])
 def global_PO_generated():
-    from io import BytesIO
-    import pandas as pd
-    from sqlalchemy import create_engine, text
-    from datetime import datetime
-
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
@@ -894,11 +879,7 @@ def global_PO_generated():
     except Exception:
         return jsonify({'error': 'Invalid month or year format'}), 400
 
-    engine = create_engine(db_url)
-
     def fetch_latest_po(country_code: str):
-        filename = f"purchase_order_{user_id}_{country_code}_{month_db}_{year_db}.xlsx"
-
         q = text("""
             SELECT filename, content_type, data
             FROM public.stored_files
@@ -907,7 +888,6 @@ def global_PO_generated():
               AND kind = 'purchase_order'
               AND LOWER(month) = LOWER(:month)
               AND year = :year
-              AND LOWER(filename) = LOWER(:filename)
             ORDER BY id DESC
             LIMIT 1
         """)
@@ -917,8 +897,7 @@ def global_PO_generated():
                 "user_id": user_id,
                 "country": country_code,
                 "month": month_db,
-                "year": year_db,
-                "filename": filename
+                "year": year_db
             }).fetchone()
 
         if not row:
@@ -1105,21 +1084,14 @@ def global_PO_generated():
     output.seek(0)
     file_bytes = output.read()
 
-    if len(country_files_found) == 1:
-        file_suffix = country_files_found[0]
-        file_type = f"{country_files_found[0].upper()} Purchase Order"
-    else:
-        file_suffix = 'global'
-        file_type = 'Global Purchase Order'
-
-    filename = f"purchase_order_{user_id}_{file_suffix}_{month_db}_{year_db}.xlsx"
+    filename = f"purchase_order_{user_id}_global_{month_db}_{year_db}.xlsx"
 
     upsert_query = text("""
         INSERT INTO public.stored_files
         (user_id, country, kind, month, year, filename, content_type, data, created_at)
         VALUES (
             :user_id,
-            :country,
+            'global',
             'purchase_order',
             :month,
             :year,
@@ -1128,11 +1100,9 @@ def global_PO_generated():
             :data,
             NOW()
         )
-        ON CONFLICT (user_id, country, filename)
+        ON CONFLICT ON CONSTRAINT uq_stored_files_period
         DO UPDATE SET
-            kind = EXCLUDED.kind,
-            month = EXCLUDED.month,
-            year = EXCLUDED.year,
+            filename = EXCLUDED.filename,
             content_type = EXCLUDED.content_type,
             data = EXCLUDED.data,
             created_at = NOW()
@@ -1141,7 +1111,6 @@ def global_PO_generated():
     with engine.begin() as conn:
         conn.execute(upsert_query, {
             "user_id": user_id,
-            "country": file_suffix,
             "month": month_db,
             "year": year_db,
             "filename": filename,
@@ -1149,11 +1118,11 @@ def global_PO_generated():
         })
 
     return jsonify({
-        'message': f'{file_type} generated successfully',
+        'message': 'Global Purchase Order generated successfully',
         'filename': filename,
         'records_count': len(final_df) - 1,
         'countries_processed': country_files_found,
-        'file_type': file_type.lower().replace(' ', '_'),
+        'file_type': 'global_purchase_order',
         'source': 'stored_files'
     }), 200
 
