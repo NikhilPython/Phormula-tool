@@ -14,6 +14,7 @@ import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import { IoMdLock } from 'react-icons/io';
+import Loader from '@/components/loader/Loader';
 
 type RowData = {
   sku?: string;
@@ -164,65 +165,65 @@ const Pnlforecast: React.FC = () => {
   const [LosSalesUnits, setLosSalesUnits] = useState<boolean>(false);
 
   const DUMMY_PNL_ROWS: RowData[] = [
-  {
-    sku: "SKU-DEMO-1",
-    product_name: "Demo Product A",
-    units_1st: 0,
-    units_2nd: 0,
-    units_3rd: 0,
-    units_sum: 0,
-    Total_Sales_1st: 0,
-    profit_1st: 0,
-    profit_percentage_1st: 0,
-    Total_Sales_2nd: 0,
-    profit_2nd: 0,
-    profit_percentage_2nd: 0,
-    Total_Sales_3rd: 0,
-    profit_3rd: 0,
-    profit_percentage_3rd: 0,
-    Total_Sales_sum: 0,
-    profit_sum: 0,
-  },
-  {
-    sku: "SKU-DEMO-2",
-    product_name: "Demo Product B",
-    units_1st: 0,
-    units_2nd: 0,
-    units_3rd: 0,
-    units_sum: 0,
-    Total_Sales_1st: 0,
-    profit_1st: 0,
-    profit_percentage_1st: 0,
-    Total_Sales_2nd: 0,
-    profit_2nd: 0,
-    profit_percentage_2nd: 0,
-    Total_Sales_3rd: 0,
-    profit_3rd: 0,
-    profit_percentage_3rd: 0,
-    Total_Sales_sum: 0,
-    profit_sum: 0,
-  },
-  {
-    sku: "Total",
-    product_name: "Total",
-    units_1st: 0,
-    units_2nd: 0,
-    units_3rd: 0,
-    units_sum: 0,
-    Total_Sales_1st: 0,
-    profit_1st: 0,
-    profit_percentage_1st: 0,
-    Total_Sales_2nd: 0,
-    profit_2nd: 0,
-    profit_percentage_2nd: 0,
-    Total_Sales_3rd: 0,
-    profit_3rd: 0,
-    profit_percentage_3rd: 0,
-    Total_Sales_sum: 0,
-    profit_sum: 0,
-    profit_percentage_sum: 0,
-  },
-];
+    {
+      sku: "SKU-DEMO-1",
+      product_name: "Demo Product A",
+      units_1st: 0,
+      units_2nd: 0,
+      units_3rd: 0,
+      units_sum: 0,
+      Total_Sales_1st: 0,
+      profit_1st: 0,
+      profit_percentage_1st: 0,
+      Total_Sales_2nd: 0,
+      profit_2nd: 0,
+      profit_percentage_2nd: 0,
+      Total_Sales_3rd: 0,
+      profit_3rd: 0,
+      profit_percentage_3rd: 0,
+      Total_Sales_sum: 0,
+      profit_sum: 0,
+    },
+    {
+      sku: "SKU-DEMO-2",
+      product_name: "Demo Product B",
+      units_1st: 0,
+      units_2nd: 0,
+      units_3rd: 0,
+      units_sum: 0,
+      Total_Sales_1st: 0,
+      profit_1st: 0,
+      profit_percentage_1st: 0,
+      Total_Sales_2nd: 0,
+      profit_2nd: 0,
+      profit_percentage_2nd: 0,
+      Total_Sales_3rd: 0,
+      profit_3rd: 0,
+      profit_percentage_3rd: 0,
+      Total_Sales_sum: 0,
+      profit_sum: 0,
+    },
+    {
+      sku: "Total",
+      product_name: "Total",
+      units_1st: 0,
+      units_2nd: 0,
+      units_3rd: 0,
+      units_sum: 0,
+      Total_Sales_1st: 0,
+      profit_1st: 0,
+      profit_percentage_1st: 0,
+      Total_Sales_2nd: 0,
+      profit_2nd: 0,
+      profit_percentage_2nd: 0,
+      Total_Sales_3rd: 0,
+      profit_3rd: 0,
+      profit_percentage_3rd: 0,
+      Total_Sales_sum: 0,
+      profit_sum: 0,
+      profit_percentage_sum: 0,
+    },
+  ];
 
   const DUMMY_PNL_CHART: ChartDataItem[] = [
     {
@@ -380,7 +381,7 @@ const Pnlforecast: React.FC = () => {
               });
             }
           }
-        } catch {}
+        } catch { }
 
         base.setMonth(base.getMonth() + 1);
       }
@@ -515,7 +516,7 @@ const Pnlforecast: React.FC = () => {
             const errJson = await response.json().catch(() => ({}));
             setError(
               errJson?.error ||
-                'Unable to load Global P&L Forecast. Generate UK/US inventory and P&L data first.'
+              'Unable to load Global P&L Forecast. Generate UK/US inventory and P&L data first.'
             );
             setLoading(false);
             return;
@@ -567,7 +568,7 @@ const Pnlforecast: React.FC = () => {
           const errJson = await response.json().catch(() => ({}));
           setError(
             errJson?.error ||
-              'You need to load Inventory forecast first to load P&L forecast'
+            'You need to load Inventory forecast first to load P&L forecast'
           );
           setLoading(false);
           return;
@@ -637,67 +638,67 @@ const Pnlforecast: React.FC = () => {
         headers: { Authorization: `Bearer ${localStorage.getItem('jwtToken')}` },
         body: formData,
       });
-    } catch {}
+    } catch { }
   };
 
   const handleDownload = async () => {
     const dataUrl = getChartPngWithWhiteBg();
 
-  await exportPnLForecastExcel({
-    filename: "PNL_Forecast_With_Chart.xlsx",
-    titleLine: `P&L Forecast - ${effectiveCountry.toUpperCase()} (${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)})`,
-    titleCountry: effectiveCountry.toUpperCase(),
-    platformLabel: "Amazon",
-    periodLabel: `${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
-    companyName,
-    brandName,
-    productRows: productRows || [],
-    summaryRows: summaryAsRows || [],
-    chartImageBase64: dataUrl,
-  });
-};
+    await exportPnLForecastExcel({
+      filename: "PNL_Forecast_With_Chart.xlsx",
+      titleLine: `P&L Forecast - ${effectiveCountry.toUpperCase()} (${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)})`,
+      titleCountry: effectiveCountry.toUpperCase(),
+      platformLabel: "Amazon",
+      periodLabel: `${formatMonthYear(currentMonth, currentYear)} to ${formatMonthYear(nextToNextMonth, nextToNextMonthYear)}`,
+      companyName,
+      brandName,
+      productRows: productRows || [],
+      summaryRows: summaryAsRows || [],
+      chartImageBase64: dataUrl,
+    });
+  };
 
 
 
-const PreviewLockedSection = ({
-  enabled,
-  children,
-  title,
-  description,
-  buttonText,
-  onAction,
-}: {
-  enabled: boolean;
-  children: React.ReactNode;
-  title?: string;
-  description?: string;
-  buttonText?: string;
-  onAction?: () => void;
-}) => {
-  return (
-    <div className="relative w-full">
-      <div
-        className={
-          enabled
-            ? "pointer-events-none select-none opacity-45  transition-all duration-300"
-            : "opacity-100 transition-all duration-300"
-        }
-      >
-        {children}
-      </div>
+  const PreviewLockedSection = ({
+    enabled,
+    children,
+    title,
+    description,
+    buttonText,
+    onAction,
+  }: {
+    enabled: boolean;
+    children: React.ReactNode;
+    title?: string;
+    description?: string;
+    buttonText?: string;
+    onAction?: () => void;
+  }) => {
+    return (
+      <div className="relative w-full">
+        <div
+          className={
+            enabled
+              ? "pointer-events-none select-none opacity-45  transition-all duration-300"
+              : "opacity-100 transition-all duration-300"
+          }
+        >
+          {children}
+        </div>
 
-      {enabled && (
-        <>
-          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+        {enabled && (
+          <>
+            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
 
-          <div className="absolute inset-0 z-20 pointer-events-none">
-            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
-              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-               <div className="mb-4 flex justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
-                                   <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                                 </div>
-              </div>
+            <div className="absolute inset-0 z-20 pointer-events-none">
+              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                  <div className="mb-4 flex justify-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                      <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                    </div>
+                  </div>
 
                   <h3 className="text-lg font-semibold text-[#414042]">
                     {title}
@@ -726,11 +727,11 @@ const PreviewLockedSection = ({
     );
   };
 
-const handleConnectAmazonPreview = () => {
-  const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
-  router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
-};
-  
+  const handleConnectAmazonPreview = () => {
+    const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
+    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+  };
+
   const monthGroup = (
     id: string,
     label: string,
@@ -810,68 +811,68 @@ const handleConnectAmazonPreview = () => {
   ];
 
   const DUMMY_SUMMARY_ROWS = [
-  { label: "Cost of Advertisement", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "Platform Fees", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "Other Expenses", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "CM2 Profit/Loss", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "Net Reimbursement (Projected)", m1: 0, m2: 0, m3: 0, sum: 0 },
-  { label: "Reimbursement vs CM2 Margins", m1: 0, m2: 0, m3: 0, sum: 0 },
-];
+    { label: "Cost of Advertisement", m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: "Platform Fees", m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: "Other Expenses", m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: "CM2 Profit/Loss", m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: "Net Reimbursement (Projected)", m1: 0, m2: 0, m3: 0, sum: 0 },
+    { label: "Reimbursement vs CM2 Margins", m1: 0, m2: 0, m3: 0, sum: 0 },
+  ];
 
   const summaryRows = isDemoMode
     ? DUMMY_SUMMARY_ROWS
     : [
-        {
-          label: 'Cost of Advertisement',
-          m1: data?.find(r => r.sku === 'advertising_total1')?.value,
-          m2: data?.find(r => r.sku === 'advertising_total2')?.value,
-          m3: data?.find(r => r.sku === 'advertising_total3')?.value,
-          sum: data?.find(r => r.sku === 'advertising_total')?.value,
-        },
-        {
-          label: 'Platform Fees',
-          m1: data?.find(r => r.sku === 'Platform_Fees1')?.value,
-          m2: data?.find(r => r.sku === 'Platform_Fees2')?.value,
-          m3: data?.find(r => r.sku === 'Platform_Fees3')?.value,
-          sum: data?.find(r => r.sku === 'platform_fees_total')?.value,
-        },
-        {
-          label: 'Other Expenses',
-          m1:
-            (data?.find(r => r.sku === 'Platform_Fees1')?.value || 0) +
-            (data?.find(r => r.sku === 'advertising_total1')?.value || 0),
-          m2:
-            (data?.find(r => r.sku === 'Platform_Fees2')?.value || 0) +
-            (data?.find(r => r.sku === 'advertising_total2')?.value || 0),
-          m3:
-            (data?.find(r => r.sku === 'Platform_Fees3')?.value || 0) +
-            (data?.find(r => r.sku === 'advertising_total3')?.value || 0),
-          sum:
-            (data?.find(r => r.sku === 'platform_fees_total')?.value || 0) +
-            (data?.find(r => r.sku === 'advertising_total')?.value || 0),
-        },
-        {
-          label: 'CM2 Profit/Loss',
-          m1: data?.find(r => r.sku === 'cm2profit1')?.value,
-          m2: data?.find(r => r.sku === 'cm2profit2')?.value,
-          m3: data?.find(r => r.sku === 'cm2profit3')?.value,
-          sum: data?.find(r => r.sku === 'cm2profit_total')?.value,
-        },
-        {
-          label: 'Net Reimbursement (Projected)',
-          m1: data?.find(r => r.sku === 'NetReimbursement1')?.value,
-          m2: data?.find(r => r.sku === 'NetReimbursement2')?.value,
-          m3: data?.find(r => r.sku === 'NetReimbursement3')?.value,
-          sum: data?.find(r => r.sku === 'NetReimbursement_total')?.value,
-        },
-        {
-          label: 'Reimbursement vs CM2 Margins',
-          m1: data?.find(r => r.sku === 'ReimbursementvsCM2Margins1')?.value,
-          m2: data?.find(r => r.sku === 'ReimbursementvsCM2Margins2')?.value,
-          m3: data?.find(r => r.sku === 'ReimbursementvsCM2Margins3')?.value,
-          sum: data?.find(r => r.sku === 'ReimbursementvsCM2Margins_total')?.value,
-        },
-      ];
+      {
+        label: 'Cost of Advertisement',
+        m1: data?.find(r => r.sku === 'advertising_total1')?.value,
+        m2: data?.find(r => r.sku === 'advertising_total2')?.value,
+        m3: data?.find(r => r.sku === 'advertising_total3')?.value,
+        sum: data?.find(r => r.sku === 'advertising_total')?.value,
+      },
+      {
+        label: 'Platform Fees',
+        m1: data?.find(r => r.sku === 'Platform_Fees1')?.value,
+        m2: data?.find(r => r.sku === 'Platform_Fees2')?.value,
+        m3: data?.find(r => r.sku === 'Platform_Fees3')?.value,
+        sum: data?.find(r => r.sku === 'platform_fees_total')?.value,
+      },
+      {
+        label: 'Other Expenses',
+        m1:
+          (data?.find(r => r.sku === 'Platform_Fees1')?.value || 0) +
+          (data?.find(r => r.sku === 'advertising_total1')?.value || 0),
+        m2:
+          (data?.find(r => r.sku === 'Platform_Fees2')?.value || 0) +
+          (data?.find(r => r.sku === 'advertising_total2')?.value || 0),
+        m3:
+          (data?.find(r => r.sku === 'Platform_Fees3')?.value || 0) +
+          (data?.find(r => r.sku === 'advertising_total3')?.value || 0),
+        sum:
+          (data?.find(r => r.sku === 'platform_fees_total')?.value || 0) +
+          (data?.find(r => r.sku === 'advertising_total')?.value || 0),
+      },
+      {
+        label: 'CM2 Profit/Loss',
+        m1: data?.find(r => r.sku === 'cm2profit1')?.value,
+        m2: data?.find(r => r.sku === 'cm2profit2')?.value,
+        m3: data?.find(r => r.sku === 'cm2profit3')?.value,
+        sum: data?.find(r => r.sku === 'cm2profit_total')?.value,
+      },
+      {
+        label: 'Net Reimbursement (Projected)',
+        m1: data?.find(r => r.sku === 'NetReimbursement1')?.value,
+        m2: data?.find(r => r.sku === 'NetReimbursement2')?.value,
+        m3: data?.find(r => r.sku === 'NetReimbursement3')?.value,
+        sum: data?.find(r => r.sku === 'NetReimbursement_total')?.value,
+      },
+      {
+        label: 'Reimbursement vs CM2 Margins',
+        m1: data?.find(r => r.sku === 'ReimbursementvsCM2Margins1')?.value,
+        m2: data?.find(r => r.sku === 'ReimbursementvsCM2Margins2')?.value,
+        m3: data?.find(r => r.sku === 'ReimbursementvsCM2Margins3')?.value,
+        sum: data?.find(r => r.sku === 'ReimbursementvsCM2Margins_total')?.value,
+      },
+    ];
 
   const productRows = data?.filter(
     (row) =>
@@ -961,8 +962,8 @@ const handleConnectAmazonPreview = () => {
       </div>
 
       {loading && (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 text-sm text-gray-500">
-          Loading...
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <Loader fullscreen transparent />
         </div>
       )}
 
@@ -971,31 +972,31 @@ const handleConnectAmazonPreview = () => {
           {error}
         </div>
       )}
-<PreviewLockedSection
-  enabled={isDemoMode}
-  title="Preview mode"
-  description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
-  buttonText="Connect Amazon"
-  onAction={handleConnectAmazonPreview}
->
-      {data && chartData.length > 0 && (
-       
-  <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between w-full gap-3">
-        <div className="flex flex-col leading-tight">
-          <div className="flex items-baseline gap-2">
-            <PageBreadcrumb
-              pageTitle="P&L Forecast Trend"
-              variant="page"
-              align="left"
-              textSize="2xl"
-            />
-          </div>
-          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-            Historical data vs forecasted trends
-          </p>
-        </div>
+      <PreviewLockedSection
+        enabled={isDemoMode}
+        title="Preview mode"
+        description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+        buttonText="Connect Amazon"
+        onAction={handleConnectAmazonPreview}
+      >
+        {data && chartData.length > 0 && (
+
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between w-full gap-3">
+                <div className="flex flex-col leading-tight">
+                  <div className="flex items-baseline gap-2">
+                    <PageBreadcrumb
+                      pageTitle="P&L Forecast Trend"
+                      variant="page"
+                      align="left"
+                      textSize="2xl"
+                    />
+                  </div>
+                  <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
+                    Historical data vs forecasted trends
+                  </p>
+                </div>
 
                 <div className="flex items-center gap-3">
                   <DownloadIconButton
@@ -1005,80 +1006,80 @@ const handleConnectAmazonPreview = () => {
                 </div>
               </div>
 
-      <div className="mt-2">
-        <PnlForecastChart
-          ref={chartRef}
-          chartData={chartData}
-          currencySymbol={currencySymbol}
-          selectedGraphs={selectedGraphs}
-          handleCheckboxChange={handleCheckboxChange}
-        />
-      </div>
-    </div>
-  </div>
-  
-)}
+              <div className="mt-2">
+                <PnlForecastChart
+                  ref={chartRef}
+                  chartData={chartData}
+                  currencySymbol={currencySymbol}
+                  selectedGraphs={selectedGraphs}
+                  handleCheckboxChange={handleCheckboxChange}
+                />
+              </div>
+            </div>
+          </div>
 
-      {data && (
-         
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3">
-          <PageBreadcrumb
-            pageTitle="Detailed P&L Forecast Data"
-            variant="page"
-            align="left"
-            textSize="2xl"
-          />
+        )}
 
-          <div className="mt-4 w-full overflow-x-auto">
-            <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
-              <div className="w-full text-xs 2xl:text-sm text-[#414042]">
-                <GroupedCollapsibleTables<RowData>
-                  rows={[
-                    ...(normalizedProductRows || []),
-                    ...summaryAsRows,
-                  ]}
-                  getRowKey={(r, idx) =>
-                    r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
-                  }
-                  leftCols={leftCols}
-                  groups={groups}
-                  singleCols={[]}
-                  getValue={(row, key, rowIndex) => {
-                    if (key === "sr_no") {
-                      if (
-                        row.product_name === "Total" ||
-                        summaryRows.some(s => s.label === row.product_name)
-                      ) {
-                        return "";
-                      }
+        {data && (
+
+          <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-3 mt-2 2xl:mt-4">
+            <PageBreadcrumb
+              pageTitle="Detailed P&L Forecast Data"
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+
+            <div className="mt-4 w-full overflow-x-auto">
+              <div className="rounded-xl border border-gray-300 overflow-auto min-w-[1100px]">
+                <div className="w-full text-xs 2xl:text-sm text-[#414042]">
+                  <GroupedCollapsibleTables<RowData>
+                    rows={[
+                      ...(normalizedProductRows || []),
+                      ...summaryAsRows,
+                    ]}
+                    getRowKey={(r, idx) =>
+                      r.sku && r.sku !== "" ? r.sku : `summary-${idx}-${r.product_name}`
+                    }
+                    leftCols={leftCols}
+                    groups={groups}
+                    singleCols={[]}
+                    getValue={(row, key, rowIndex) => {
+                      if (key === "sr_no") {
+                        if (
+                          row.product_name === "Total" ||
+                          summaryRows.some(s => s.label === row.product_name)
+                        ) {
+                          return "";
+                        }
 
                         const productIndex = normalizedProductRows?.findIndex(
                           r => r === row
                         );
 
-                      return productIndex !== undefined && productIndex >= 0
-                        ? productIndex + 1
-                        : "";
-                    }
+                        return productIndex !== undefined && productIndex >= 0
+                          ? productIndex + 1
+                          : "";
+                      }
 
-                    return formatCellValue(key, row[key]);
-                  }}
-                  getRowClassName={(row) => {
-                    if (row.product_name === "Total") {
-                      return "bg-[#EFEFEF] font-semibold";
-                    }
-                    if (summaryRows.some(s => s.label === row.product_name)) {
+                      return formatCellValue(key, row[key]);
+                    }}
+                    getRowClassName={(row) => {
+                      if (row.product_name === "Total") {
+                        return "bg-[#EFEFEF] font-semibold";
+                      }
+                      if (summaryRows.some(s => s.label === row.product_name)) {
+                        return "bg-white";
+                      }
                       return "bg-white";
-                    }
-                    return "bg-white";
-                  }}
-                />
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        
-      )}
+
+        )}
       </PreviewLockedSection>
     </div>
   );
