@@ -27,6 +27,25 @@ db_url1 = os.getenv('DATABASE_ADMIN_URL')
 
 dashboard_bp = Blueprint('dashboard_bp', __name__)
 
+
+engine = create_engine(
+    db_url,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    pool_recycle=1800
+)
+
+conv_engine = create_engine(
+    db_url1,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800
+)
+
+SessionLocal = sessionmaker(bind=engine)
+
 def encode_file_to_base64(file_path):
     with open(file_path, "rb") as file:
         return base64.b64encode(file.read()).decode('utf-8')
@@ -1858,14 +1877,11 @@ def target_summary():
 
     country = str(country).strip().lower()
 
-    engine = create_engine(db_url)
-    SessionLocal = sessionmaker(bind=engine)
     db_session = SessionLocal()
     inspector = inspect(engine)
 
     def get_global_gbp_to_usd_rate(month_name: str, year: int) -> float:
         try:
-            conv_engine = create_engine(db_url1)
             with conv_engine.connect() as conn:
                 q = text("""
                     SELECT conversion_rate
