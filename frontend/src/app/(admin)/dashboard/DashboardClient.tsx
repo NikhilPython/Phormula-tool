@@ -5374,7 +5374,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     biSourceCurrency
                                                                 )
                                                                 : 0)
-                                                            : globalCurrAdsDisp
+                                                            : adsSpendTotal
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
@@ -5386,7 +5386,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     biSourceCurrency
                                                                 )
                                                                 : 0)
-                                                            : globalPrevAdsDisp
+                                                            : amazonPrevAdsDisp
                                                 }
                                                 deltaPct={
                                                     shouldShowDummyUi
@@ -5404,7 +5404,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     )
                                                                 )
                                                                 : null)
-                                                            : globalAdsDeltaPct
+                                                            : amazonAdsDeltaPct
                                                 }
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
                                                 formatter={formatDisplayAmount}
@@ -5426,7 +5426,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     return sales > 0 ? (ads / sales) * 100 : 0;
                                                                 })()
                                                                 : 0)
-                                                            : globalCurrRoasPct
+                                                            : (() => {
+                                                                const sales = toNumber(plSummaryTotals.net_sales);
+                                                                return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                                                            })()
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
@@ -5439,7 +5442,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     return sales > 0 ? (ads / sales) * 100 : 0;
                                                                 })()
                                                                 : 0)
-                                                            : globalPrevRoasPct
+                                                            : amazonPrevRoasPct
                                                 }
                                                 deltaPct={
                                                     shouldShowDummyUi
@@ -5459,7 +5462,17 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     })()
                                                                 )
                                                                 : null)
-                                                            : deltaPctAbs(globalCurrRoasPct, globalPrevRoasPct)
+                                                            : deltaPctAbs(
+                                                                (() => {
+                                                                    const sales = toNumberSafe(data?.previous_period?.totals?.net_sales ?? 0);
+                                                                    const ads = toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0);
+                                                                    return sales > 0 ? (ads / sales) * 100 : 0;
+                                                                })(),
+                                                                (() => {
+                                                                    const sales = toNumber(plSummaryTotals.net_sales);
+                                                                    return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                                                                })()
+                                                            )
                                                 }
                                                 inverseDelta
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
@@ -5480,7 +5493,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     biSourceCurrency
                                                                 )
                                                                 : 0)
-                                                            : globalCurrCm2Disp
+                                                            : cm2Profit
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
@@ -5488,11 +5501,11 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                         : globalUseBi
                                                             ? (globalCm2Ready
                                                                 ? convertToDisplayCurrency(
-                                                                    biAlignedTotals?.previous_cm2_profit ?? 0,
+                                                                    biAlignedTotals?.total_previous_profit_cm2 ?? 0,
                                                                     biSourceCurrency
                                                                 )
                                                                 : 0)
-                                                            : globalPrevCm2Disp
+                                                            : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
                                                 }
                                                 deltaPct={
                                                     shouldShowDummyUi
@@ -5501,10 +5514,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                             ? (globalCm2Ready
                                                                 ? safeDeltaPct(
                                                                     biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                                                                    biAlignedTotals?.previous_cm2_profit ?? 0
+                                                                    biAlignedTotals?.total_previous_profit_cm2 ?? 0
                                                                 )
                                                                 : null)
-                                                            : safeDeltaPct(globalCurrCm2Disp, globalPrevCm2Disp)
+                                                            : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0)
                                                 }
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
                                                 formatter={formatDisplayAmount}
@@ -5519,14 +5532,14 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                         ? dummyStatData.cm2ProfitPct.current
                                                         : globalUseBi
                                                             ? (globalCm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
-                                                            : curr.profitPct
+                                                            : cm2MarginPctForSummary
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2ProfitPct.previous
                                                         : globalUseBi
                                                             ? (globalCm2Ready ? (biAlignedTotals?.total_previous_profit_percentage ?? 0) : 0)
-                                                            : prev.profitPct
+                                                            : (prev.profitPct ?? 0)
                                                 }
                                                 deltaPct={
                                                     shouldShowDummyUi
@@ -5538,7 +5551,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     biAlignedTotals?.total_previous_profit_percentage ?? 0
                                                                 )
                                                                 : null)
-                                                            : deltaPctPoints(curr.profitPct ?? 0, prev.profitPct ?? 0)
+                                                            : deltaPctPoints(cm2MarginPctForSummary ?? 0, prev.profitPct ?? 0)
                                                 }
                                                 loading={!shouldShowDummyUi && (loading || shopifyLoading || (globalUseBi ? biLoading : false))}
                                                 formatter={fmtPct}
@@ -5759,7 +5772,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
                                                                 })()
                                                                 : 0)
-                                                            : amazonCurrRoasPct
+                                                            : (() => {
+                                                                const sales = toNumber(plSummaryTotals.net_sales);
+                                                                return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                                                            })()
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
@@ -5792,7 +5808,13 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     })()
                                                                 )
                                                                 : null)
-                                                            : deltaPctAbs(amazonCurrRoasPct, amazonPrevRoasPct)
+                                                            : deltaPctAbs(
+                                                                (() => {
+                                                                    const sales = toNumber(plSummaryTotals.net_sales);
+                                                                    return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                                                                })(),
+                                                                amazonPrevRoasPct
+                                                            )
                                                 }
                                                 inverseDelta
                                                 loading={!shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false))}
@@ -6424,7 +6446,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                         </div>
 
                                         <div className="flex items-center gap-3">
-                                          
+
                                             {/* {!isCountryMode && (
                                                 <>
                                                     <SegmentedToggle<RegionKey>

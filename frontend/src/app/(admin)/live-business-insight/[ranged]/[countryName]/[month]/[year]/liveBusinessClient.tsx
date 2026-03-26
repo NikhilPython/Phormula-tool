@@ -229,9 +229,97 @@ export default function LiveBusinessClient({
 }: MonthsforBIProps) {
   const { data: userData } = useGetUserDataQuery();
 
+
   const [gbpToUsd, setGbpToUsd] = useState(GBP_TO_USD_ENV);
   const [inrToUsd, setInrToUsd] = useState(INR_TO_USD_ENV);
   const [cadToUsd, setCadToUsd] = useState(CAD_TO_USD_ENV);
+
+  type CurrencyRateRow = {
+    conversion_rate: number;
+    country: string;
+    month: string;
+    selected_currency: string;
+    user_currency: string;
+    year: number;
+  };
+
+  const FX_RATES_GET_ENDPOINT = `${API_BASE}/currency-rates`;
+
+  const normalizeCurrency = (v: string) => String(v || "").trim().toLowerCase();
+  const normalizeMonth = (v: string) => String(v || "").trim().toLowerCase();
+  const normalizeYear = (v: string | number) => Number(v);
+
+  const fetchFxRates = async () => {
+    try {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+      const headers: HeadersInit = { Accept: "application/json" };
+      if (token) (headers as any).Authorization = `Bearer ${token}`;
+
+      const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
+      if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
+
+      const data = await res.json();
+      const rows: CurrencyRateRow[] = Array.isArray(data) ? data : data?.data || [];
+
+      const currentMonth = normalizeMonth(month);
+      const currentYear = normalizeYear(year);
+
+      const currentRows = rows.filter(
+        (r) =>
+          normalizeMonth(r.month) === currentMonth &&
+          normalizeYear(r.year) === currentYear
+      );
+
+      const getDirectRate = (from: string, to: string) => {
+        const fromCur = normalizeCurrency(from);
+        const toCur = normalizeCurrency(to);
+
+        const row = currentRows.find(
+          (r) =>
+            normalizeCurrency(r.user_currency) === fromCur &&
+            normalizeCurrency(r.selected_currency) === toCur
+        );
+
+        const rate = Number(row?.conversion_rate);
+        return Number.isFinite(rate) && rate > 0 ? rate : null;
+      };
+
+      const getInverseRate = (from: string, to: string) => {
+        const inverse = getDirectRate(to, from);
+        if (!inverse || inverse <= 0) return null;
+        return 1 / inverse;
+      };
+
+      const getRate = (from: string, to: string) => {
+        return getDirectRate(from, to) ?? getInverseRate(from, to);
+      };
+
+      const gbpUsd = getRate("gbp", "usd");
+      const inrUsd = getRate("inr", "usd");
+      const cadUsd = getRate("cad", "usd");
+
+      console.log("FX month/year lookup", {
+        month: currentMonth,
+        year: currentYear,
+        gbpUsd,
+        inrUsd,
+        cadUsd,
+        matchedRows: currentRows,
+      });
+
+      if (gbpUsd != null) setGbpToUsd(gbpUsd);
+      if (inrUsd != null) setInrToUsd(inrUsd);
+      if (cadUsd != null) setCadToUsd(cadUsd);
+    } catch (err) {
+      console.error("Failed to fetch FX from DB, keeping env defaults", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchFxRates();
+  }, [month, year]);
 
   const profileHomeCurrency = ((userData?.homeCurrency || "USD").toUpperCase() as CurrencyCode);
 
@@ -291,16 +379,27 @@ export default function LiveBusinessClient({
     };
   }, [displayCurrency]);
 
+  const detectCurrencyFromMetric = (raw: string): CurrencyCode => {
+    const v = String(raw || "").trim().toUpperCase();
+
+    if (v.startsWith("C$") || v.startsWith("CAD")) return "CAD";
+    if (v.startsWith("£") || v.startsWith("GBP")) return "GBP";
+    if (v.startsWith("₹") || v.startsWith("INR")) return "INR";
+    if (v.startsWith("$") || v.startsWith("USD")) return "USD";
+
+    return sourceCurrency; // fallback
+  };
+
   const convertMetricValueString = useMemo(() => {
     return (rawValue: string, label: string) => {
       const value = String(rawValue || "").trim();
       if (!value) return value;
 
-      // Units should not be currency-converted
       if (label.toLowerCase() === "units") return value;
 
-      // Match: "£10.32 (+8.19%)" or "$433.54 (-9.67%)" or "10.32 (+8.19%)"
-      const match = value.match(/^([£$₹€A-Z$C]*\s*[-+]?[0-9,]*\.?[0-9]+)\s*(\(.+\))?$/i);
+      const match = value.match(
+        /^((?:C\$|£|\$|₹|USD|GBP|CAD|INR)?\s*[-+]?[0-9,]*\.?[0-9]+)\s*(\(.+\))?$/i
+      );
       if (!match) return value;
 
       const mainPart = match[1] || "";
@@ -309,7 +408,8 @@ export default function LiveBusinessClient({
       const numeric = Number(mainPart.replace(/[^\d.-]/g, ""));
       if (!Number.isFinite(numeric)) return value;
 
-      const converted = convertToDisplayCurrency(numeric, sourceCurrency);
+      const fromCurrency = detectCurrencyFromMetric(mainPart);
+      const converted = convertToDisplayCurrency(numeric, fromCurrency);
       const formatted = formatDisplayAmount(converted);
 
       return `${formatted}${percentPart ? ` ${percentPart}` : ""}`;
@@ -328,64 +428,8 @@ export default function LiveBusinessClient({
     }
   );
 
-  type CurrencyRateRow = {
-    conversion_rate: number;
-    country: string;
-    month: string;
-    selected_currency: string;
-    user_currency: string;
-    year: number;
-  };
 
-  const FX_RATES_GET_ENDPOINT = `${API_BASE}/currency-rates`;
 
-  const fetchFxRates = async () => {
-    try {
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
-
-      const headers: HeadersInit = { Accept: "application/json" };
-      if (token) (headers as any).Authorization = `Bearer ${token}`;
-
-      const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
-      if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
-
-      const rows: CurrencyRateRow[] = await res.json();
-
-      const currentMonth = String(month || "").toLowerCase();
-      const currentYear = Number(year);
-
-      const cur = (rows || []).filter(
-        (r) =>
-          String(r.month || "").toLowerCase() === currentMonth &&
-          Number(r.year) === currentYear
-      );
-
-      const getRate = (from: string, to: string) => {
-        const row = cur.find(
-          (r) =>
-            String(r.user_currency).toLowerCase() === from &&
-            String(r.selected_currency).toLowerCase() === to
-        );
-        const rate = Number(row?.conversion_rate);
-        return Number.isFinite(rate) && rate > 0 ? rate : null;
-      };
-
-      const gbpUsd = getRate("gbp", "usd");
-      const inrUsd = getRate("inr", "usd");
-      const cadUsd = getRate("cad", "usd");
-
-      if (gbpUsd != null) setGbpToUsd(gbpUsd);
-      if (inrUsd != null) setInrToUsd(inrUsd);
-      if (cadUsd != null) setCadToUsd(cadUsd);
-    } catch (err) {
-      console.error("Failed to fetch FX from DB, keeping env defaults", err);
-    }
-  };
-
-  useEffect(() => {
-    fetchFxRates();
-  }, [month, year]);
 
   const getCurrencySymbolForExcel = () => {
     return currencyCodeToSymbol(displayCurrency);
