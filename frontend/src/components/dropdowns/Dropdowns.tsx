@@ -657,7 +657,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
 
               <div className="flex-1 space-y-6 overflow-y-auto px-3">
                 <div>
-                  <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg">
+                  <div className="mb-2 text-xs font-semibold text-charcoal-700 sm:text-sm 2xl:text-lg text-charcoal-700">
                     Metrics
                   </div>
 

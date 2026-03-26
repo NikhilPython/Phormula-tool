@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { FaCogs, FaChartLine, FaCalculator } from 'react-icons/fa';
-import Loader from './Loader';
+import Loader from "@/components/loader/Loader";
 
 export default function Loading() {
   const [progress, setProgress] = useState(0);
@@ -29,7 +29,7 @@ export default function Loading() {
       <div className="bg-white rounded-2xl shadow-[0px_8px_24px_rgba(0,0,0,0.10)] p-6 w-full max-w-md text-center font-[Lato]">
 
         {/* Animated Logo */}
-                    <Loader  transparent />
+                   <Loader transparent size={120} />
 
         {/* Animated Dots */}
         <div className="flex justify-center my-3">

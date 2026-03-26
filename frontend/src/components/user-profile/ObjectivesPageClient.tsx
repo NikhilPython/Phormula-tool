@@ -709,6 +709,7 @@ export default function ObjectivesPageClient({
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isFetchingBusinessSummary, setIsFetchingBusinessSummary] = useState(false);
   const [isFetchingObjective, setIsFetchingObjective] = useState(false);
+  const [hasObjectiveForCurrentCountry, setHasObjectiveForCurrentCountry] = useState(false);
 
   const toggleChartExpand = (chart: "targetSales" | "objectiveMoM") => {
     setExpandedChart((prev) => (prev === chart ? null : chart));
@@ -791,6 +792,14 @@ export default function ObjectivesPageClient({
     ];
 
 
+  const resolvedTargetCountry = useMemo(() => {
+    if (isPreviewMode) return "global";
+    if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
+    if (objective.country) return objective.country.toLowerCase();
+    if (country) return country.toLowerCase();
+    return "uk";
+  }, [isPreviewMode, objectiveDraft.country, objective.country, country]);
+
   const fetchBusinessJourney = async ({
     countryName,
     month,
@@ -842,27 +851,22 @@ export default function ObjectivesPageClient({
   useEffect(() => {
     if (isPreviewMode) return;
     if (!token) return;
-    if (!objective.business_context?.trim()) return;
+    if (!hasObjectiveForCurrentCountry) return;
 
     const now = new Date();
     const monthName = now.toLocaleString("en-US", { month: "long" }).toLowerCase();
     const currentYear = now.getFullYear();
 
-    const countryToFetch =
-      (country || objective.country || integratedCountries[0] || "uk").toLowerCase();
-
     fetchBusinessJourney({
-      countryName: countryToFetch,
+      countryName: resolvedTargetCountry,
       month: monthName,
       year: currentYear,
     });
   }, [
     token,
     isPreviewMode,
-    objective.business_context,
-    objective.country,
-    country,
-    integratedCountries,
+    hasObjectiveForCurrentCountry,
+    resolvedTargetCountry,
   ]);
 
   useEffect(() => {
@@ -945,13 +949,7 @@ export default function ObjectivesPageClient({
 
   const router = useRouter();
 
-  const resolvedTargetCountry = useMemo(() => {
-    if (isPreviewMode) return "global";
-    if (objectiveDraft.country) return objectiveDraft.country.toLowerCase();
-    if (objective.country) return objective.country.toLowerCase();
-    if (country) return country.toLowerCase();
-    return "uk";
-  }, [isPreviewMode, objectiveDraft.country, objective.country, country]);
+
 
   const isGlobalPage = resolvedTargetCountry === "global";
 
@@ -1187,6 +1185,9 @@ export default function ObjectivesPageClient({
 
         const formData = new FormData();
 
+        formData.append("country", resolvedTargetCountry);
+        formData.append("month", getObjectiveMonth());
+
         if (website) {
           formData.append("website", website);
         }
@@ -1220,7 +1221,7 @@ export default function ObjectivesPageClient({
       }
 
       const objectivePayload = {
-        country: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
+        country: resolvedTargetCountry,
         month: getObjectiveMonth(),
         business_context: nextBusinessContext || "",
         website_url: website || null,
@@ -1248,16 +1249,28 @@ export default function ObjectivesPageClient({
       const finalObjective = {
         ...objective,
         ...objectiveDraft,
+        country: resolvedTargetCountry,
         business_context: nextBusinessContext,
+        website: website || "",
+        uploaded_files: pptFile
+          ? [
+            {
+              ...pptFile,
+              uploadStatus: "ready" as const,
+            },
+          ]
+          : [],
       };
 
       setObjective(finalObjective);
       setObjectiveDraft(finalObjective);
+      setHasObjectiveForCurrentCountry(true);
+      setBusinessJourneyError(null);
       setIsBusinessSummaryEditMode(false);
 
       const now = new Date();
       await fetchBusinessJourney({
-        countryName: (objectiveDraft.country || resolvedTargetCountry).toLowerCase(),
+        countryName: resolvedTargetCountry,
         month: now.toLocaleString("en-US", { month: "long" }).toLowerCase(),
         year: now.getFullYear(),
       });
@@ -1268,6 +1281,7 @@ export default function ObjectivesPageClient({
       setIsGeneratingSummary(false);
     }
   };
+
   const handleStrategicObjectivesSave = async () => {
     try {
       const nextTarget = Number(objectiveTargetDraft);
@@ -1277,7 +1291,9 @@ export default function ObjectivesPageClient({
         return;
       }
 
-      const countryToSave = (objectiveDraft.country || resolvedTargetCountry).toLowerCase();
+      // const countryToSave = (objectiveDraft.country || resolvedTargetCountry).toLowerCase();
+
+      const countryToSave = resolvedTargetCountry;
 
       const objectivePayload = {
         country: countryToSave,
@@ -1367,14 +1383,19 @@ export default function ObjectivesPageClient({
   }, []);
 
   useEffect(() => {
-    if (!objective.country) {
-      if (country) {
-        setObjective((prev) => ({ ...prev, country: country.toLowerCase() }));
-      } else if (integratedCountries.length) {
-        setObjective((prev) => ({ ...prev, country: integratedCountries[0] }));
-      }
-    }
-  }, [country, integratedCountries, objective.country]);
+    const nextCountry =
+      (country || integratedCountries[0] || "uk").toLowerCase();
+
+    setObjective((prev) => ({
+      ...prev,
+      country: nextCountry,
+    }));
+
+    setObjectiveDraft((prev) => ({
+      ...prev,
+      country: nextCountry,
+    }));
+  }, [country, integratedCountries]);
 
   const monthlyTargetData: TargetRow[] = useMemo(() => {
     if (isPreviewMode) return dummyMonthlyTargetData;
@@ -1550,8 +1571,13 @@ export default function ObjectivesPageClient({
       try {
         setIsFetchingBusinessSummary(true);
 
+        const params = new URLSearchParams({
+          country: resolvedTargetCountry,
+          month: getObjectiveMonth(),
+        });
+
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website`,
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/analyze-website?${params.toString()}`,
           {
             method: "GET",
             headers: {
@@ -1566,6 +1592,21 @@ export default function ObjectivesPageClient({
           if (res.status !== 404) {
             throw new Error(json?.error || "Failed to fetch business summary");
           }
+
+          setObjective((prev) => ({
+            ...prev,
+            business_context: "",
+            website: "",
+            uploaded_files: [],
+          }));
+
+          setObjectiveDraft((prev) => ({
+            ...prev,
+            business_context: "",
+            website: "",
+            uploaded_files: [],
+          }));
+
           return;
         }
 
@@ -1603,11 +1644,11 @@ export default function ObjectivesPageClient({
     };
 
     fetchBusinessSummary();
-  }, [token]);
+  }, [token, isPreviewMode, resolvedTargetCountry]);
 
   useEffect(() => {
     const fetchObjective = async () => {
-      if (!token) return;
+      if (!token || isPreviewMode) return;
 
       const countryToFetch =
         (country || objective.country || integratedCountries[0] || "").toLowerCase();
@@ -1638,21 +1679,39 @@ export default function ObjectivesPageClient({
             throw new Error(json?.error || "Failed to fetch objective");
           }
 
+          setHasObjectiveForCurrentCountry(false);
+          setBusinessJourney(null);
+          setBusinessJourneyError(null);
+
           setObjective((prev) => ({
             ...prev,
             country: countryToFetch,
+            growth_intent: "balanced",
+            profit_priority: "protect_growth",
+            inventory_clearance_priority: false,
+            business_context: "",
           }));
 
           setObjectiveDraft((prev) => ({
             ...prev,
             country: countryToFetch,
+            growth_intent: "balanced",
+            profit_priority: "protect_growth",
+            inventory_clearance_priority: false,
+            business_context: "",
           }));
 
           return;
         }
 
         const serverObjective = json?.objective;
-        if (!serverObjective) return;
+
+        if (!serverObjective) {
+          setHasObjectiveForCurrentCountry(false);
+          return;
+        }
+
+        setHasObjectiveForCurrentCountry(true);
 
         setObjective((prev) => ({
           ...prev,
@@ -1681,7 +1740,7 @@ export default function ObjectivesPageClient({
     };
 
     fetchObjective();
-  }, [token, country, integratedCountries]);
+  }, [token, isPreviewMode, country, integratedCountries]);
 
   const handleConnectAmazonPreview = () => {
     const connectCountry = country === "global" ? "uk" : country;
