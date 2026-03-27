@@ -310,6 +310,8 @@ const formatPositive2Decimal = (value: any) => {
     return Math.abs(n).toFixed(2);
 };
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const toVariant = (t?: string): UiAlert["variant"] => {
     const x = (t || "").toLowerCase();
 
@@ -1420,7 +1422,7 @@ export default function DashboardPage() {
     const [cadToUsd, setCadToUsd] = useState(CAD_TO_USD_ENV);
     const [fxLoading, setFxLoading] = useState(false);
 
-    const biUiLoading = biStatus === "loading" || biStatus === "processing";
+    const biUiLoading = biLoading;
 
     const pageLoading =
         loading ||
@@ -2297,128 +2299,105 @@ export default function DashboardPage() {
     const lastBiKeyRef = useRef<string>("");
     const aiRequestedRef = useRef<boolean>(false);
 
-    const fetchBiSeries = useCallback(
-        async (startDay?: number | null, endDay?: number | null) => {
-            if (isMonthYearNA) {
-                setBiError(null);
-                setBiLoading(false);
-                setBiStatus("ready");
-                setBiDailySeries(null);
-                setBiPeriods(null);
-                setBiAlignedTotals(null);
-                setLiveBiPayload(null);
-                return;
-            }
-            if (!showLiveBI) return;
-            const normalized = (biCountryName || "").toLowerCase();
-            if (!normalized || normalized === "global") return;
-            const rangeActive = startDay != null && endDay != null;
-            const key = JSON.stringify({
-                country: normalized,
-                ranged: "MTD",
-                month: currMonthName.toLowerCase(),
-                year: currYear,
-                startDay: rangeActive ? startDay : null,
-                endDay: rangeActive ? endDay : null,
-                ai: aiRequestedRef.current,
-            });
-            setBiError(null);
-            setBiLoading(true);
-            try {
-                const token =
-                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+const fetchBiSeries = useCallback(
+  async (startDay?: number | null, endDay?: number | null) => {
+    if (isMonthYearNA) {
+      setBiError(null);
+      setBiLoading(false);
+      setBiStatus("ready");
+      setBiDailySeries(null);
+      setBiPeriods(null);
+      setBiAlignedTotals(null);
+      setLiveBiPayload(null);
+      return;
+    }
 
-                const params = new URLSearchParams({
-                    countryName: normalized,
-                    ranged: "MTD",
-                    month: currMonthName.toLowerCase(),
-                    year: String(currYear),
-                    generate_ai_insights: aiRequestedRef.current ? "true" : "false",
-                });
+    if (!showLiveBI) return;
 
-                if (rangeActive) {
-                    params.set("start_day", String(startDay));
-                    params.set("end_day", String(endDay));
-                }
+    const normalized = (biCountryName || "").toLowerCase();
+    if (!normalized || normalized === "global") return;
 
-                const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
-                    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-                });
+    setBiError(null);
+    setBiLoading(true);
+    setBiStatus("loading");
 
-                if (res.status === 202) {
-                    setBiStatus("processing");
-                    return;
-                }
+    try {
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-                if (!res.ok) {
-                    throw new Error(`BI failed: ${res.status}`);
-                }
+      const params = new URLSearchParams({
+        countryName: normalized,
+        ranged: "MTD",
+        month: currMonthName.toLowerCase(),
+        year: String(currYear),
+        generate_ai_insights: aiRequestedRef.current ? "true" : "false",
+      });
 
-                const json: BiApiResponse = await res.json();
+      const rangeActive = startDay != null && endDay != null;
+      if (rangeActive) {
+        params.set("start_day", String(startDay));
+        params.set("end_day", String(endDay));
+      }
 
-                lastBiKeyRef.current = key;
-                setLiveBiPayload(json);
-                setBiPeriods(json?.periods || null);
-                setBiDailySeries(json?.daily_series || null);
-                setBiAlignedTotals(json?.aligned_totals || null);
+      let attempts = 0;
+      const maxAttempts = 10;
 
-                setBiStatus("idle");      // 🔥 reset first
-                setTimeout(() => {
-                    setBiStatus("ready");   // 🔥 force render
-                }, 0);
-                const alignedFromNested = (json as any)?.aligned_totals;
+      while (attempts < maxAttempts) {
+        const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
 
-                const alignedFromTopLevel: BiAlignedTotals = {
-                    total_current_advertising: (json as any)?.total_current_advertising,
-                    total_previous_advertising: (json as any)?.total_previous_advertising,
-
-                    total_current_net_sales: (json as any)?.total_current_net_sales,
-                    total_previous_net_sales: (json as any)?.total_previous_net_sales,
-                    total_previous_net_sales_full_month: (json as any)?.total_previous_net_sales_full_month,
-
-                    total_current_platform_fees: (json as any)?.total_current_platform_fees,
-                    total_previous_platform_fees: (json as any)?.total_previous_platform_fees,
-
-                    total_current_profit: (json as any)?.total_current_profit,
-                    total_previous_profit: (json as any)?.total_previous_profit,
-
-                    total_current_rembursement_fee: (json as any)?.total_current_rembursement_fee,
-                    total_previous_rembursement_fee: (json as any)?.total_previous_rembursement_fee,
-                };
-
-                setBiAlignedTotals(alignedFromNested ?? alignedFromTopLevel ?? null);
-
-            } catch (e: any) {
-                setBiPeriods(null);
-                setBiDailySeries(null);
-                setBiAlignedTotals(null);
-                setBiError(e?.message || "Failed to load BI series");
-            } finally {
-                setBiLoading(false);
-            }
-        },
-        [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA]
-
-    );
-
-    useEffect(() => {
-        if (biStatus !== "processing") {
-            retryRef.current = 0;
-            return;
+        if (res.status === 202) {
+          setBiStatus("processing");
+          attempts += 1;
+          await sleep(3000);
+          continue;
         }
 
-        if (retryRef.current >= 10) {
-            setBiStatus("error");
-            return;
+        if (!res.ok) {
+          throw new Error(`BI failed: ${res.status}`);
         }
 
-        retryRef.current += 1;
+        const json: BiApiResponse = await res.json();
 
-        const timer = setTimeout(() => {
-            fetchBiSeries(selectedStartDay, selectedEndDay);
-        }, 3000);
-        return () => clearTimeout(timer);
-    }, [biStatus, fetchBiSeries, selectedStartDay, selectedEndDay]);
+        setLiveBiPayload(json);
+        setBiPeriods(json?.periods || null);
+        setBiDailySeries(json?.daily_series || null);
+
+        const alignedFromNested = json?.aligned_totals;
+        const alignedFromTopLevel: BiAlignedTotals = {
+          total_current_advertising: (json as any)?.total_current_advertising,
+          total_previous_advertising: (json as any)?.total_previous_advertising,
+          total_current_net_sales: (json as any)?.total_current_net_sales,
+          total_previous_net_sales: (json as any)?.total_previous_net_sales,
+          total_previous_net_sales_full_month:
+            (json as any)?.total_previous_net_sales_full_month,
+          total_current_platform_fees: (json as any)?.total_current_platform_fees,
+          total_previous_platform_fees: (json as any)?.total_previous_platform_fees,
+          total_current_profit: (json as any)?.total_current_profit,
+          total_previous_profit: (json as any)?.total_previous_profit,
+          total_current_rembursement_fee: (json as any)?.total_current_rembursement_fee,
+          total_previous_rembursement_fee: (json as any)?.total_previous_rembursement_fee,
+        };
+
+        setBiAlignedTotals(alignedFromNested ?? alignedFromTopLevel ?? null);
+        setBiStatus("ready");
+        return;
+      }
+
+      throw new Error("Live BI is still processing. Max retry limit reached.");
+    } catch (e: any) {
+      setBiPeriods(null);
+      setBiDailySeries(null);
+      setBiAlignedTotals(null);
+      setBiStatus("error");
+      setBiError(e?.message || "Failed to load BI series");
+    } finally {
+      setBiLoading(false);
+    }
+  },
+  [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA]
+);
 
     const fetchLiveBiPayload = useCallback(
         async ({
@@ -2434,10 +2413,9 @@ export default function DashboardPage() {
     );
 
     useEffect(() => {
-        if (!showLiveBI) return;
-        if (biStatus === "processing") return; // 🔥 ADD THIS
-        fetchBiSeries(selectedStartDay, selectedEndDay);
-    }, [showLiveBI, biStatus, fetchBiSeries, selectedStartDay, selectedEndDay]);
+    if (!showLiveBI) return;
+    fetchBiSeries(selectedStartDay, selectedEndDay);
+}, [showLiveBI, fetchBiSeries, selectedStartDay, selectedEndDay]);
 
     /* ===================== REFRESH ALL ===================== */
     const refreshAll = useCallback(async () => {
