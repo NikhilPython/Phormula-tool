@@ -4,7 +4,8 @@ from app.utils.token_utils import (
     decode_token, generate_reset_token, confirm_verification_token,
     generate_token, generate_verification_token, get_effective_user_id_from_token
 )
-import os  
+import os 
+from datetime import datetime, timezone 
 import pandas as pd
 from sqlalchemy import inspect
 from sqlalchemy import and_, or_
@@ -72,65 +73,6 @@ def compute_marketplace_ids_from_country(country_value: str) -> str:
     return ",".join(ids)
 
 
-
-
-# @user_bp.route('/register', methods=['POST'])
-# def register():
-#     try:
-#         data = request.get_json()
-#         name = data.get('name')
-#         email = data['email']
-#         password = data['password']
-#         phone_number = data['phone_number']
-
-#         hashed_password = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
-
-#         # Check if user already exists
-#         existing_user = User.query.filter_by(email=email).first()
-#         if existing_user:
-#             return jsonify({'success': False, 'message': 'Email already exists. Please choose a different email. Please Login.'})
-
-#         # Generate token_name for new user
-#         token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
-#         token_name = f"user_{token}"
-
-#         # Register new user with token_name
-#         new_user = User(
-#             name=name,
-#             email=email, 
-#             password=hashed_password, 
-#             phone_number=phone_number,
-#             token_name=token_name
-#         )
-#         db.session.add(new_user)
-#         db.session.commit()
-
-#         # Generate token and verification link
-#         token = generate_token(new_user.id)
-#         verification_token = generate_verification_token(email)
-#         verification_link = f'http://localhost:3000/verify-email/{verification_token}'
-
-#         # Send welcome and verification emails
-#         try:
-#             # test_send_email()
-#             send_welcome_and_verification_emails(email, name, verification_link)
-#         except Exception as e:
-#             return jsonify({'success': False, 'message': 'Failed to send verification or welcome email', 'error': str(e)})
-
-#         # ✅ Return success and instruct frontend to show country selection UI
-#         return jsonify({
-#             'success': True,
-#             'message': 'User registered successfully. Please check your email to verify your account.',
-#             'show_country_selection': True,
-#             'user_id': new_user.id,  # optional: can be used to store in frontend state
-#             'token_name': token_name  # Include token_name in response
-#         })
-
-#     except Exception as e:
-#         db.session.rollback()
-#         print(f"Registration error: {str(e)}")
-#         return jsonify({'success': False, 'message': 'Server error during registration', 'error': str(e)}), 500
-
 @user_bp.route('/register', methods=['POST'])
 def register():
     try:
@@ -166,7 +108,8 @@ def register():
             password=hashed_password,
             phone_number=phone_number,
             token_name=token_name,
-            is_verified=False  # ✅ ensure default false
+            is_verified=False,  # ✅ ensure default false
+            created_at=datetime.now(timezone.utc)
         )
         db.session.add(new_user)
         db.session.commit()
@@ -667,32 +610,6 @@ def add_sales():
     }), 201
 
 
-
-
-# @user_bp.route('/verify-email/<token>', methods=['GET'])
-# def verify_email(token):
-#     try:
-#         email = confirm_verification_token(token)
-#         user = User.query.filter_by(email=email).first()
-#         if not user:
-#             return jsonify({'success': False, 'message': 'Invalid verification token.'})
-
-#         # Update user's email verification status
-#         user.is_verified = True
-#         db.session.commit()
-
-#         # Create user-specific database after successful email verification
-        
-#         create_user_session(db_url)
-
-#         # Store user session after verification
-#         session['user_id'] = user.id
-
-#         return redirect('http://localhost:3000/verify-email?status=success')
-#     except Exception as e:
-#         print(f"Email verification error: {str(e)}")
-#         return jsonify({'success': False, 'message': 'Invalid or expired verification token.', 'error': str(e)})
-    
 @user_bp.route('/verify-email/<token>', methods=['GET'])
 def verify_email(token):
     try:
