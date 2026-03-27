@@ -3070,6 +3070,10 @@ const fetchBiSeries = useCallback(
         "platform_fee_inventory_storage",
         "lost_total",
         "other",
+        "product_spend",
+        "brand_spend",
+        "dealsvouchar_ads",
+        "platformfeenew",
     ];
 
     type ProductwiseMoneyKey =
@@ -3089,7 +3093,11 @@ const fetchBiSeries = useCallback(
         | "platform_fee"
         | "platform_fee_inventory_storage"
         | "lost_total"
-        | "other";
+        | "other"
+        | "product_spend"
+        | "brand_spend"
+        | "dealsvouchar_ads"
+        | "platformfeenew";
 
     const convertProductwiseRowToDisplay = useCallback(
         (row: MonthlySkuwiseRow): MonthlySkuwiseRow => {
@@ -4765,193 +4773,367 @@ Keep enough stock for validation but avoid over-committing too early.`,
         );
     }, [shouldShowDummyUi]);
 
+    const isStickyGlobal = platform === "global";
+
     const stickyKpiItems = [
         {
             label: "Units",
             current: shouldShowDummyUi
                 ? dummyStatData.units.current
-                : (useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0)),
+                : isStickyGlobal
+                    ? (globalUseBi ? biCardKpis.curr.units : globalCurrUnits)
+                    : (useBiForAmazonCards ? biCardKpis.curr.units : (totals?.quantity ?? 0)),
             previous: shouldShowDummyUi
                 ? dummyStatData.units.previous
-                : (useBiForAmazonCards ? biCardKpis.prev.units : prev.quantity),
+                : isStickyGlobal
+                    ? (globalUseBi ? biCardKpis.prev.units : globalPrevUnits)
+                    : (useBiForAmazonCards ? biCardKpis.prev.units : prev.quantity),
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.units.deltaPct
-                : (useBiForAmazonCards ? biCardKpis.deltas.units : deltas.quantityPct),
-            loading: !shouldShowDummyUi && (loading || biLoading),
+                : isStickyGlobal
+                    ? (globalUseBi ? biCardKpis.deltas.units : globalDeltas.units)
+                    : (useBiForAmazonCards ? biCardKpis.deltas.units : deltas.quantityPct),
+            loading: !shouldShowDummyUi && (
+                isStickyGlobal
+                    ? (loading || shopifyLoading || biLoading)
+                    : (loading || biLoading)
+            ),
             formatter: fmtInt,
             bottomLabel: prevLabel,
             className: "bg-white border-[#FDD36F] border-t-4 border-t-[#FDD36F]",
         },
+
         {
             label: "Net Sales",
             current: shouldShowDummyUi
                 ? dummyStatData.netSales.current
-                : (showLiveBI && rangeActive
-                    ? biCardKpis.curr.netSales
-                    : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)),
+                : isStickyGlobal
+                    ? (globalUseBi ? biCardKpis.curr.netSales : globalCurrNetSalesDisp)
+                    : (showLiveBI && rangeActive
+                        ? biCardKpis.curr.netSales
+                        : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)),
             previous: shouldShowDummyUi
                 ? dummyStatData.netSales.previous
-                : (showLiveBI && rangeActive
-                    ? biCardKpis.prev.netSales
-                    : convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency)),
+                : isStickyGlobal
+                    ? (globalUseBi ? biCardKpis.prev.netSales : globalPrevNetSalesDisp)
+                    : (showLiveBI && rangeActive
+                        ? biCardKpis.prev.netSales
+                        : convertToDisplayCurrency(prev.netSales ?? 0, amazonDataCurrency)),
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.netSales.deltaPct
-                : (useBiForAmazonCards ? biCardKpis.deltas.netSales : deltas.netSalesPct),
-            loading: !shouldShowDummyUi && (loading || biLoading),
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? biCardKpis.deltas.netSales
+                        : safeDeltaPct(globalCurrNetSalesDisp, globalPrevNetSalesDisp))
+                    : (useBiForAmazonCards
+                        ? biCardKpis.deltas.netSales
+                        : deltas.netSalesPct),
+            loading: !shouldShowDummyUi && (
+                isStickyGlobal
+                    ? (loading || shopifyLoading || biLoading)
+                    : (loading || biLoading)
+            ),
             formatter: moneyPerUnitFormatter,
             previousFormatter: formatDisplayAmount,
             bottomLabel: prevLabel,
             className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
         },
+
         {
             label: "ASP",
             current: shouldShowDummyUi
                 ? dummyStatData.asp.current
-                : (showLiveBI && rangeActive
-                    ? biCardKpis.curr.asp
-                    : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)),
+                : isStickyGlobal
+                    ? (globalUseBi ? biCardKpis.curr.asp : globalCurrAspDisp)
+                    : (showLiveBI && rangeActive
+                        ? biCardKpis.curr.asp
+                        : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)),
             previous: shouldShowDummyUi
                 ? dummyStatData.asp.previous
-                : (showLiveBI && rangeActive
-                    ? biCardKpis.prev.asp
-                    : convertToDisplayCurrency(prev.asp ?? 0, amazonDataCurrency)),
+                : isStickyGlobal
+                    ? (globalUseBi ? biCardKpis.prev.asp : globalPrevAspDisp)
+                    : (showLiveBI && rangeActive
+                        ? biCardKpis.prev.asp
+                        : convertToDisplayCurrency(prev.asp ?? 0, amazonDataCurrency)),
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.asp.deltaPct
-                : (useBiForAmazonCards ? biCardKpis.deltas.asp : deltas.aspPct),
-            loading: !shouldShowDummyUi && (loading || biLoading),
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? biCardKpis.deltas.asp
+                        : safeDeltaPct(globalCurrAspDisp, globalPrevAspDisp))
+                    : (useBiForAmazonCards
+                        ? biCardKpis.deltas.asp
+                        : deltas.aspPct),
+            loading: !shouldShowDummyUi && (
+                isStickyGlobal
+                    ? (loading || shopifyLoading || biLoading)
+                    : (loading || biLoading)
+            ),
             formatter: formatDisplayAmount,
             bottomLabel: prevLabel,
             className: "bg-white border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
         },
+
         {
             label: "Cost of Ads",
             current: shouldShowDummyUi
                 ? dummyStatData.costOfAds.current
-                : (useBiForAmazonCards
-                    ? (cm2Ready
-                        ? convertToDisplayCurrency(
-                            biAlignedTotals?.total_current_advertising ?? 0,
-                            biSourceCurrency
-                        )
-                        : 0)
-                    : adsSpendTotal),
-            previous: shouldShowDummyUi
-                ? dummyStatData.costOfAds.previous
-                : (useBiForAmazonCards
-                    ? (cm2Ready
-                        ? convertToDisplayCurrency(
-                            biAlignedTotals?.total_previous_advertising ?? 0,
-                            biSourceCurrency
-                        )
-                        : 0)
-                    : amazonPrevAdsDisp),
-            deltaPct: shouldShowDummyUi
-                ? dummyStatData.costOfAds.deltaPct
-                : (useBiForAmazonCards
-                    ? (cm2Ready
-                        ? safeDeltaPct(
-                            convertToDisplayCurrency(
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? (globalCm2Ready
+                            ? convertToDisplayCurrency(
                                 biAlignedTotals?.total_current_advertising ?? 0,
                                 biSourceCurrency
-                            ),
-                            convertToDisplayCurrency(
+                            )
+                            : 0)
+                        : adsSpendTotal)
+                    : (useBiForAmazonCards
+                        ? (cm2Ready
+                            ? convertToDisplayCurrency(
+                                biAlignedTotals?.total_current_advertising ?? 0,
+                                biSourceCurrency
+                            )
+                            : 0)
+                        : adsSpendTotal),
+            previous: shouldShowDummyUi
+                ? dummyStatData.costOfAds.previous
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? (globalCm2Ready
+                            ? convertToDisplayCurrency(
                                 biAlignedTotals?.total_previous_advertising ?? 0,
                                 biSourceCurrency
                             )
-                        )
-                        : null)
-                    : amazonAdsDeltaPct),
-            loading: !shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false)),
-            formatter: (v: any) =>
-                renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
+                            : 0)
+                        : amazonPrevAdsDisp)
+                    : (useBiForAmazonCards
+                        ? (cm2Ready
+                            ? convertToDisplayCurrency(
+                                biAlignedTotals?.total_previous_advertising ?? 0,
+                                biSourceCurrency
+                            )
+                            : 0)
+                        : amazonPrevAdsDisp),
+            deltaPct: shouldShowDummyUi
+                ? dummyStatData.costOfAds.deltaPct
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? (globalCm2Ready
+                            ? safeDeltaPct(
+                                convertToDisplayCurrency(
+                                    biAlignedTotals?.total_current_advertising ?? 0,
+                                    biSourceCurrency
+                                ),
+                                convertToDisplayCurrency(
+                                    biAlignedTotals?.total_previous_advertising ?? 0,
+                                    biSourceCurrency
+                                )
+                            )
+                            : null)
+                        : amazonAdsDeltaPct)
+                    : (useBiForAmazonCards
+                        ? (cm2Ready
+                            ? safeDeltaPct(
+                                convertToDisplayCurrency(
+                                    biAlignedTotals?.total_current_advertising ?? 0,
+                                    biSourceCurrency
+                                ),
+                                convertToDisplayCurrency(
+                                    biAlignedTotals?.total_previous_advertising ?? 0,
+                                    biSourceCurrency
+                                )
+                            )
+                            : null)
+                        : amazonAdsDeltaPct),
+            loading: !shouldShowDummyUi && (
+                isStickyGlobal
+                    ? (loading || shopifyLoading || (globalUseBi ? biLoading : false))
+                    : (loading || (useBiForAmazonCards ? biLoading : false))
+            ),
+            formatter: isStickyGlobal
+                ? formatDisplayAmount
+                : (v: any) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
             previousFormatter: formatDisplayAmount,
             bottomLabel: prevLabel,
             className: "bg-white border-[#C49466] border-t-4 border-t-[#C49466]",
         },
+
         {
             label: "TACoS",
             current: shouldShowDummyUi
                 ? dummyStatData.tacos.current
-                : useBiForAmazonCards
-                    ? cm2Ready
-                        ? (() => {
-                            const ads = biAlignedTotals?.total_current_advertising ?? 0;
-                            const sales = biAlignedTotals?.total_current_net_sales ?? 0;
-                            return sales > 0 ? (ads / sales) * 100 : 0;
-                        })()
-                        : 0
-                    : amazonCurrRoasPct,
-            previous: shouldShowDummyUi
-                ? dummyStatData.tacos.previous
-                : useBiForAmazonCards
-                    ? cm2Ready
-                        ? (() => {
-                            const ads = biAlignedTotals?.total_previous_advertising ?? 0;
-                            const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
-                            return sales > 0 ? (ads / sales) * 100 : 0;
-                        })()
-                        : 0
-                    : amazonPrevRoasPct,
-            deltaPct: shouldShowDummyUi
-                ? dummyStatData.tacos.deltaPct
-                : useBiForAmazonCards
-                    ? cm2Ready
-                        ? deltaPctAbs(
-                            (() => {
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? (globalCm2Ready
+                            ? (() => {
                                 const ads = biAlignedTotals?.total_current_advertising ?? 0;
                                 const sales = biAlignedTotals?.total_current_net_sales ?? 0;
                                 return sales > 0 ? (ads / sales) * 100 : 0;
-                            })(),
-                            (() => {
+                            })()
+                            : 0)
+                        : (() => {
+                            const sales = toNumber(plSummaryTotals.net_sales);
+                            return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                        })())
+                    : (useBiForAmazonCards
+                        ? (cm2Ready
+                            ? (() => {
+                                const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                                return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                            })()
+                            : 0)
+                        : (() => {
+                            const sales = toNumber(plSummaryTotals.net_sales);
+                            return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                        })()),
+            previous: shouldShowDummyUi
+                ? dummyStatData.tacos.previous
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? (globalCm2Ready
+                            ? (() => {
                                 const ads = biAlignedTotals?.total_previous_advertising ?? 0;
                                 const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
                                 return sales > 0 ? (ads / sales) * 100 : 0;
                             })()
-                        )
-                        : null
-                    : deltaPctAbs(amazonCurrRoasPct, amazonPrevRoasPct),
+                            : 0)
+                        : amazonPrevRoasPct)
+                    : (useBiForAmazonCards
+                        ? (cm2Ready
+                            ? (() => {
+                                const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                                const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                                return sales > 0 ? (ads / sales) * 100 : 0;
+                            })()
+                            : 0)
+                        : amazonPrevRoasPct),
+            deltaPct: shouldShowDummyUi
+                ? dummyStatData.tacos.deltaPct
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? (globalCm2Ready
+                            ? deltaPctAbs(
+                                (() => {
+                                    const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                                    const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                                    return sales > 0 ? (ads / sales) * 100 : 0;
+                                })(),
+                                (() => {
+                                    const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                                    const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                                    return sales > 0 ? (ads / sales) * 100 : 0;
+                                })()
+                            )
+                            : null)
+                        : deltaPctAbs(
+                            (() => {
+                                const sales = toNumberSafe(data?.previous_period?.totals?.net_sales ?? 0);
+                                const ads = toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0);
+                                return sales > 0 ? (ads / sales) * 100 : 0;
+                            })(),
+                            (() => {
+                                const sales = toNumber(plSummaryTotals.net_sales);
+                                return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                            })()
+                        ))
+                    : (useBiForAmazonCards
+                        ? (cm2Ready
+                            ? deltaPctAbs(
+                                (() => {
+                                    const ads = biAlignedTotals?.total_current_advertising ?? 0;
+                                    const sales = biAlignedTotals?.total_current_net_sales ?? 0;
+                                    return sales > 0 ? (ads / sales) * 100 : 0;
+                                })(),
+                                (() => {
+                                    const ads = biAlignedTotals?.total_previous_advertising ?? 0;
+                                    const sales = biAlignedTotals?.total_previous_net_sales ?? 0;
+                                    return sales > 0 ? (ads / sales) * 100 : 0;
+                                })()
+                            )
+                            : null)
+                        : deltaPctAbs(
+                            (() => {
+                                const sales = toNumber(plSummaryTotals.net_sales);
+                                return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
+                            })(),
+                            amazonPrevRoasPct
+                        )),
             inverseDelta: true,
-            loading: !shouldShowDummyUi && (loading || (useBiForAmazonCards ? biLoading : false)),
+            loading: !shouldShowDummyUi && (
+                isStickyGlobal
+                    ? (loading || shopifyLoading || (globalUseBi ? biLoading : false))
+                    : (loading || (useBiForAmazonCards ? biLoading : false))
+            ),
             formatter: fmtPct2,
             bottomLabel: prevLabel,
             className: "bg-white border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
         },
+
         {
             label: "CM2 Profit",
             current: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.current
-                : useBiCm2
-                    ? cm2Ready
-                        ? convertToDisplayCurrency(
-                            biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                            rangeCurrency
-                        )
-                        : 0
-                    : cm2Profit,
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? (globalCm2Ready
+                            ? convertToDisplayCurrency(
+                                biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                                biSourceCurrency
+                            )
+                            : 0)
+                        : cm2Profit)
+                    : (useBiCm2
+                        ? (cm2Ready
+                            ? convertToDisplayCurrency(
+                                biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                                rangeCurrency
+                            )
+                            : 0)
+                        : cm2Profit),
             previous: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.previous
-                : useBiCm2
-                    ? cm2Ready
-                        ? convertToDisplayCurrency(
-                            biAlignedTotals?.total_previous_profit_cm2 ?? 0,
-                            rangeCurrency
-                        )
-                        : 0
-                    : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency),
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? (globalCm2Ready
+                            ? convertToDisplayCurrency(
+                                biAlignedTotals?.total_previous_profit_cm2 ?? 0,
+                                biSourceCurrency
+                            )
+                            : 0)
+                        : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency))
+                    : (useBiCm2
+                        ? (cm2Ready
+                            ? convertToDisplayCurrency(
+                                biAlignedTotals?.total_previous_profit_cm2 ?? 0,
+                                rangeCurrency
+                            )
+                            : 0)
+                        : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)),
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.deltaPct
-                : useBiCm2
-                    ? cm2Ready
-                        ? safeDeltaPct(
-                            biAlignedTotals?.total_current_profit_cm2 ?? 0,
-                            biAlignedTotals?.total_previous_profit_cm2 ?? 0
-                        )
-                        : null
-                    : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0),
-            loading: !shouldShowDummyUi && (loading || (useBiCm2 ? biLoading : false)),
-            formatter: (v: any) =>
-                renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
-            previousFormatter: formatDisplayAmount,
+                : isStickyGlobal
+                    ? (globalUseBi
+                        ? (globalCm2Ready
+                            ? safeDeltaPct(
+                                biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                                biAlignedTotals?.total_previous_profit_cm2 ?? 0
+                            )
+                            : null)
+                        : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0))
+                    : (useBiCm2
+                        ? (cm2Ready
+                            ? safeDeltaPct(
+                                biAlignedTotals?.total_current_profit_cm2 ?? 0,
+                                biAlignedTotals?.total_previous_profit_cm2 ?? 0
+                            )
+                            : null)
+                        : safeDeltaPct(uk.cm2ProfitGBP ?? 0, prev.cm2Profit ?? 0)),
+            loading: !shouldShowDummyUi && (
+                isStickyGlobal
+                    ? (loading || shopifyLoading || (globalUseBi ? biLoading : false))
+                    : (loading || (useBiCm2 ? biLoading : false))
+            ),
+            formatter: formatDisplayAmount,
             bottomLabel: prevLabel,
             className: "bg-white border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
         },
