@@ -115,6 +115,65 @@ def get_superadmin_dashboard():
         related_profiles = CountryProfile.query.filter_by(user_id=user_id).all()
         related_objectives = UserObjective.query.filter_by(user_id=user_id).order_by(UserObjective.id.asc()).all()
 
+        month_order = {
+            "january": 1,
+            "february": 2,
+            "march": 3,
+            "april": 4,
+            "may": 5,
+            "june": 6,
+            "july": 7,
+            "august": 8,
+            "september": 9,
+            "october": 10,
+            "november": 11,
+            "december": 12,
+        }
+
+        # Count only real monthly uploaded rows, not derived global/currency rows
+        base_month_rows = [
+            row for row in related_upload_history
+            if (row.country or "").lower() == (getattr(selected_user, "country", "") or "").lower()
+        ]
+
+        # fallback: if no exact country rows found, use all non-global/non-converted rows
+        if not base_month_rows:
+            excluded_countries = {"global", "global_inr", "global_cad", "global_gbp", "uk_usd"}
+            base_month_rows = [
+                row for row in related_upload_history
+                if (row.country or "").lower() not in excluded_countries
+            ]
+
+        # unique month-year pairs
+        unique_months = {}
+        for row in base_month_rows:
+            month_name = (row.month or "").strip().lower()
+            year_val = row.year
+            if month_name in month_order and year_val:
+                unique_months[(year_val, month_order[month_name])] = {
+                    "month": month_name,
+                    "year": year_val
+                }
+
+        sorted_months = sorted(unique_months.items(), key=lambda x: x[0])
+
+        months_count = len(sorted_months)
+        first_month_data = sorted_months[0][1] if sorted_months else None
+        last_month_data = sorted_months[-1][1] if sorted_months else None
+
+        first_month_label = (
+            f'{first_month_data["month"]} {first_month_data["year"]}'
+            if first_month_data else None
+        )
+        last_month_label = (
+            f'{last_month_data["month"]} {last_month_data["year"]}'
+            if last_month_data else None
+        )
+        months_range = (
+            f"{first_month_label} to {last_month_label}"
+            if first_month_label and last_month_label else None
+        )
+
         quarter_months = {
             "quarter1": ["january", "february", "march"],
             "quarter2": ["april", "may", "june"],
@@ -199,6 +258,14 @@ def get_superadmin_dashboard():
             "annual_sales_range": getattr(selected_user, "annual_sales_range", None),
             "target_sales": float(selected_user.target_sales) if getattr(selected_user, "target_sales", None) is not None else None,
             "address": getattr(selected_user, "address", None),
+            # ✅ ADD THIS
+            "created_at": selected_user.created_at.isoformat() if getattr(selected_user, "created_at", None) else None,
+            "months_of_data_count": months_count,
+            "data_from_month": first_month_label,
+            "data_to_month": last_month_label,
+            "data_month_range": months_range,
+
+
             "related_country_profiles": [
                 {
                     "user_id": cp.user_id,
@@ -243,6 +310,7 @@ def get_superadmin_dashboard():
             "sku_table_name": sku_table_name,
             "sku_table_exists": sku_table_exists,
             "sku_count": sku_table_count,
+
             # "skuwise_tables": skuwise_data,
         }), 200
 
