@@ -40,9 +40,9 @@ import {
   type CompanyInfoFormErrors,
   type PersonalInfoFormErrors,
 } from "@/lib/validations/authValidation";
+import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 import { Steps } from "intro.js-react";
 import "intro.js/introjs.css";
-import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 
 type ProfileTab = "personal" | "objectives" | "integrations";
 
@@ -172,9 +172,17 @@ function InfoCard({
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
+function InfoItem({
+  id,
+  label,
+  value,
+}: {
+  id?: string;
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
-    <div>
+    <div id={id}>
       <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">{label}</p>
       <div className="text-sm font-medium text-gray-800 dark:text-white/90">{value}</div>
     </div>
@@ -207,21 +215,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const [objectiveDraft, setObjectiveDraft] = useState<UserObjectiveForm>(objective);
 
   const searchParams = useSearchParams();
-
-  const [tourEnabled, setTourEnabled] = useState(false);
-
-  const introSteps = [
-    {
-      element: "#personal-info-card",
-      intro: "You can view and edit your entered information here.",
-      position: "bottom",
-    },
-    {
-      element: "#company-info-edit-btn",
-      intro: "Click the edit icon here to fill in your company details.",
-      position: "left",
-    },
-  ];
 
   const countryName = searchParams.get("countryName") || "global";
   const month = searchParams.get("month") || "NA";
@@ -268,8 +261,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const [memberPasswordLoading, setMemberPasswordLoading] = useState(false);
   const [memberPasswordMessage, setMemberPasswordMessage] = useState("");
   const [memberPasswordError, setMemberPasswordError] = useState("");
-
-
 
   const handleMemberChangePassword = async () => {
     setMemberPasswordError("");
@@ -424,6 +415,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   ];
 
   const [activeSection, setActiveSection] = useState<Section>("personal");
+  const [tourKey, setTourKey] = useState(0);
+  const [tourEnabled, setTourEnabled] = useState(false);
+  const [tourPhase, setTourPhase] = useState<"overview" | "company-form">("overview");
 
   const homeCurrencyCode = ((data as any)?.homeCurrency || form.homeCurrency || pageCurrency || "USD").toUpperCase();
 
@@ -452,7 +446,90 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }
   };
 
-  const startCompanyEdit = () => setIsCompanyEditMode(true);
+  useEffect(() => {
+    if (!data || activeTab !== "personal") return;
+
+    const timer = setTimeout(() => {
+      const personalEl = document.querySelector("#tour-personal-info");
+      const companyEl = document.querySelector("#tour-company-info");
+      const productEl = document.querySelector("#tour-product-controls");
+
+      if (!personalEl || !companyEl || !productEl) return;
+
+      setTourEnabled(false);
+      setTourPhase("overview");
+      setTourKey((k) => k + 1);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTourEnabled(true);
+        });
+      });
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [data, activeTab]);
+
+  const startCompanyEdit = () => {
+    setIsCompanyEditMode(true);
+
+    setTourEnabled(false);
+    setTourPhase("company-form");
+    setTourKey((k) => k + 1);
+
+    setTimeout(() => {
+      setTourEnabled(true);
+    }, 150);
+  };
+
+  const introSteps = useMemo(() => {
+    if (tourPhase === "overview") {
+      return [
+        {
+          element: "#tour-personal-info",
+          intro: "You can view and edit your personal details here in Personal Info.",
+          position: "bottom",
+        },
+        {
+          element: "#tour-company-info",
+          intro: "This is your Company Info section. You need to complete these details before moving to the next setup steps.",
+          position: "bottom",
+        },
+        {
+          element: "#tour-company-edit",
+          intro: "Click this edit icon to start filling in your company details.",
+          position: "left",
+        },
+        {
+          element: "#tour-product-controls",
+          intro: "This is Product & Inventory Controls. You should upload your SKU sheet here before starting platform integration.",
+          position: "top",
+        },
+      ];
+    }
+
+    if (tourPhase === "company-form") {
+      return [
+        {
+          element: "#tour-company-name",
+          intro: "Enter your company name here.",
+          position: "bottom",
+        },
+        {
+          element: "#tour-brand-name",
+          intro: "Enter your brand name here.",
+          position: "bottom",
+        },
+        {
+          element: "#tour-home-currency",
+          intro: "Select your home currency here.",
+          position: "bottom",
+        },
+      ];
+    }
+
+    return [];
+  }, [tourPhase]);
 
   const cancelCompanyEdit = () => {
     setIsCompanyEditMode(false);
@@ -910,42 +987,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }
   };
 
-  useEffect(() => {
-    if (activeTab !== "personal") return;
-    if (isLoading) return;
 
-    const hasSeenTour = localStorage.getItem("account_settings_intro_seen");
-    if (!hasSeenTour) {
-      const timer = setTimeout(() => {
-        setTourEnabled(true);
-      }, 500);
 
-      return () => clearTimeout(timer);
-    }
-  }, [activeTab, isLoading]);
-
-  useEffect(() => {
-    if (!data) return;
-
-    if (!isPersonalComplete) {
-      setIsOnboarding(true);
-      setOnboardingStep("personal");
-      setIsPersonalEditMode(true);
-      setIsCompanyEditMode(false);
-      return;
-    }
-
-    if (!isCompanyComplete) {
-      setIsOnboarding(true);
-      setOnboardingStep("company");
-      setIsPersonalEditMode(false);
-      setIsCompanyEditMode(false);
-      return;
-    }
-
-    setIsOnboarding(false);
-    setOnboardingStep("done");
-  }, [data, isPersonalComplete, isCompanyComplete]);
 
   useEffect(() => {
     if (!token) return;
@@ -1124,21 +1167,20 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   return (
     <div className="">
       <Steps
+        key={`${tourPhase}-${tourKey}`}
         enabled={tourEnabled}
         steps={introSteps}
         initialStep={0}
-        onExit={() => {
-          setTourEnabled(false);
-          localStorage.setItem("account_settings_intro_seen", "true");
-        }}
+        onExit={() => setTourEnabled(false)}
+        onComplete={() => setTourEnabled(false)}
         options={{
-          doneLabel: "Finish",
+          showProgress: true,
+          showBullets: false,
+          exitOnOverlayClick: false,
+          exitOnEsc: false,
           nextLabel: "Next",
           prevLabel: "Back",
-          skipLabel: "Skip",
-          showProgress: true,
-          exitOnOverlayClick: false,
-          scrollToElement: true,
+          doneLabel: "Done",
         }}
       />
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -1149,8 +1191,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
             {activeTab === "personal" && (
               <>
-                <div id="personal-info-card">
+                <div >
                   <InfoCard
+                    id="tour-personal-info"
                     title={<PageBreadcrumb pageTitle="Personal Info" variant="table" align="left" />}
                     action={
                       isMemberUser ? null : !isPersonalEditMode ? (
@@ -1341,79 +1384,82 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                   </InfoCard>
                 </div>
 
-                <InfoCard
-                  title={<PageBreadcrumb pageTitle="Company Info" variant="table" align="left" />}
-                  action={
-                    isMemberUser ? null : !isCompanyEditMode ? (
-                      <button id="company-info-edit-btn" onClick={startCompanyEdit} className="h-9 w-9 text-gray-700" type="button">
-                        <FiEdit className="text-lg" />
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Button size="icon" onClick={handleSaveCompany}>
-                          <FiCheck />
-                        </Button>
-                        <Button size="icon" variant="outline" onClick={cancelCompanyEdit}>
-                          <FiX />
-                        </Button>
-                      </div>
-                    )
-                  }
-                >
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <InfoItem
-                      label="Company Name"
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <Input
-                              type="text"
-                              value={form.company_name}
-                              onChange={handleCompanyChange("company_name")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, company_name: true }));
-                                validateCompanyField("company_name");
-                              }}
-                              maxLength={80}
-                              error={!!(companyTouched.company_name && companyErrors.company_name)}
-                            />
-                            {companyTouched.company_name && companyErrors.company_name && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.company_name}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.company_name)
-                        )
-                      }
-                    />
+                <div id="tour-company-info">
+                  <InfoCard
+                    title={<PageBreadcrumb pageTitle="Company Info" variant="table" align="left" />}
+                    action={
+                      isMemberUser ? null : !isCompanyEditMode ? (
+                        <button id="tour-company-edit" onClick={startCompanyEdit} className="h-9 w-9 text-gray-700" type="button">
+                          <FiEdit className="text-lg" />
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Button size="icon" onClick={handleSaveCompany}>
+                            <FiCheck />
+                          </Button>
+                          <Button size="icon" variant="outline" onClick={cancelCompanyEdit}>
+                            <FiX />
+                          </Button>
+                        </div>
+                      )
+                    }
+                  >
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <InfoItem
+                        id="tour-company-name"
+                        label="Company Name"
+                        value={
+                          isCompanyEditMode ? (
+                            <div>
+                              <Input
+                                type="text"
+                                value={form.company_name}
+                                onChange={handleCompanyChange("company_name")}
+                                onBlur={() => {
+                                  setCompanyTouched((prev) => ({ ...prev, company_name: true }));
+                                  validateCompanyField("company_name");
+                                }}
+                                maxLength={80}
+                                error={!!(companyTouched.company_name && companyErrors.company_name)}
+                              />
+                              {companyTouched.company_name && companyErrors.company_name && (
+                                <p className="mt-1.5 text-xs text-red-500">{companyErrors.company_name}</p>
+                              )}
+                            </div>
+                          ) : (
+                            show(form.company_name)
+                          )
+                        }
+                      />
 
-                    <InfoItem
-                      label="Brand Name"
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <Input
-                              type="text"
-                              value={form.brand_name}
-                              onChange={handleCompanyChange("brand_name")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, brand_name: true }));
-                                validateCompanyField("brand_name");
-                              }}
-                              maxLength={80}
-                              error={!!(companyTouched.brand_name && companyErrors.brand_name)}
-                            />
-                            {companyTouched.brand_name && companyErrors.brand_name && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.brand_name}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.brand_name)
-                        )
-                      }
-                    />
+                      <InfoItem
+                        id="tour-brand-name"
+                        label="Brand Name"
+                        value={
+                          isCompanyEditMode ? (
+                            <div>
+                              <Input
+                                type="text"
+                                value={form.brand_name}
+                                onChange={handleCompanyChange("brand_name")}
+                                onBlur={() => {
+                                  setCompanyTouched((prev) => ({ ...prev, brand_name: true }));
+                                  validateCompanyField("brand_name");
+                                }}
+                                maxLength={80}
+                                error={!!(companyTouched.brand_name && companyErrors.brand_name)}
+                              />
+                              {companyTouched.brand_name && companyErrors.brand_name && (
+                                <p className="mt-1.5 text-xs text-red-500">{companyErrors.brand_name}</p>
+                              )}
+                            </div>
+                          ) : (
+                            show(form.brand_name)
+                          )
+                        }
+                      />
 
-                    {/* <InfoItem
+                      {/* <InfoItem
                       label="Revenue"
                       value={
                         isCompanyEditMode ? (
@@ -1447,222 +1493,224 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       }
                     /> */}
 
-                    <InfoItem
-                      label="Home Currency"
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <select
-                              value={form.homeCurrency}
-                              onChange={handleCompanyChange("homeCurrency")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, homeCurrency: true }));
-                                validateCompanyField("homeCurrency");
-                              }}
-                              className={`h-11 w-full rounded-md border bg-white px-3 pr-10 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200 ${companyTouched.homeCurrency && companyErrors.homeCurrency
-                                ? "border-red-500"
-                                : "border-gray-300"
-                                }`}
-                            >
-                              <option value="">Select Currency</option>
-                              {CURRENCY_OPTIONS.map((cur) => (
-                                <option key={cur} value={cur}>
-                                  {cur}
-                                </option>
-                              ))}
-                            </select>
-                            {companyTouched.homeCurrency && companyErrors.homeCurrency && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.homeCurrency}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.homeCurrency)
-                        )
-                      }
-                    />
-
-                    <InfoItem
-                      label="GST No."
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <Input
-                              type="text"
-                              value={form.gst_no}
-                              onChange={handleCompanyChange("gst_no")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, gst_no: true }));
-                                validateCompanyField("gst_no");
-                              }}
-                              maxLength={15}
-                              error={!!(companyTouched.gst_no && companyErrors.gst_no)}
-                            />
-                            {companyTouched.gst_no && companyErrors.gst_no && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.gst_no}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.gst_no)
-                        )
-                      }
-                    />
-
-                    <InfoItem
-                      label="PAN No."
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <Input
-                              type="text"
-                              value={form.pan_no}
-                              onChange={handleCompanyChange("pan_no")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, pan_no: true }));
-                                validateCompanyField("pan_no");
-                              }}
-                              maxLength={10}
-                              error={!!(companyTouched.pan_no && companyErrors.pan_no)}
-                            />
-                            {companyTouched.pan_no && companyErrors.pan_no && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.pan_no}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.pan_no)
-                        )
-                      }
-                    />
-
-                    <div className="sm:col-span-2 lg:col-span-3">
                       <InfoItem
-                        label="Address"
+                        id="tour-home-currency"
+                        label="Home Currency"
                         value={
                           isCompanyEditMode ? (
-                            <div className="grid grid-cols-1 gap-3">
-                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="Building No."
-                                    value={form.address_building}
-                                    onChange={handleCompanyChange("address_building")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_building: true }));
-                                      validateCompanyField("address_building");
-                                    }}
-                                    maxLength={120}
-                                    error={!!(
-                                      companyTouched.address_building && companyErrors.address_building
-                                    )}
-                                  />
-                                  {companyTouched.address_building && companyErrors.address_building && (
-                                    <p className="mt-1.5 text-xs text-red-500">
-                                      {companyErrors.address_building}
-                                    </p>
-                                  )}
-                                </div>
-
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="City"
-                                    value={form.address_city}
-                                    onChange={handleCompanyChange("address_city")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_city: true }));
-                                      validateCompanyField("address_city");
-                                    }}
-                                    maxLength={60}
-                                    error={!!(companyTouched.address_city && companyErrors.address_city)}
-                                  />
-                                  {companyTouched.address_city && companyErrors.address_city && (
-                                    <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_city}</p>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="State"
-                                    value={form.address_state}
-                                    onChange={handleCompanyChange("address_state")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_state: true }));
-                                      validateCompanyField("address_state");
-                                    }}
-                                    maxLength={60}
-                                    error={!!(companyTouched.address_state && companyErrors.address_state)}
-                                  />
-                                  {companyTouched.address_state && companyErrors.address_state && (
-                                    <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_state}</p>
-                                  )}
-                                </div>
-
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="Zipcode"
-                                    value={form.address_zipcode}
-                                    onChange={handleCompanyChange("address_zipcode")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_zipcode: true }));
-                                      validateCompanyField("address_zipcode");
-                                    }}
-                                    maxLength={12}
-                                    error={!!(companyTouched.address_zipcode && companyErrors.address_zipcode)}
-                                  />
-                                  {companyTouched.address_zipcode && companyErrors.address_zipcode && (
-                                    <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_zipcode}</p>
-                                  )}
-                                </div>
-
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="Country/Region"
-                                    value={form.address_country}
-                                    onChange={handleCompanyChange("address_country")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_country: true }));
-                                      validateCompanyField("address_country");
-                                    }}
-                                    maxLength={60}
-                                    error={!!(companyTouched.address_country && companyErrors.address_country)}
-                                  />
-                                  {companyTouched.address_country && companyErrors.address_country && (
-                                    <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_country}</p>
-                                  )}
-                                </div>
-                              </div>
+                            <div>
+                              <select
+                                value={form.homeCurrency}
+                                onChange={handleCompanyChange("homeCurrency")}
+                                onBlur={() => {
+                                  setCompanyTouched((prev) => ({ ...prev, homeCurrency: true }));
+                                  validateCompanyField("homeCurrency");
+                                }}
+                                className={`h-11 w-full rounded-md border bg-white px-3 pr-10 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200 ${companyTouched.homeCurrency && companyErrors.homeCurrency
+                                  ? "border-red-500"
+                                  : "border-gray-300"
+                                  }`}
+                              >
+                                <option value="">Select Currency</option>
+                                {CURRENCY_OPTIONS.map((cur) => (
+                                  <option key={cur} value={cur}>
+                                    {cur}
+                                  </option>
+                                ))}
+                              </select>
+                              {companyTouched.homeCurrency && companyErrors.homeCurrency && (
+                                <p className="mt-1.5 text-xs text-red-500">{companyErrors.homeCurrency}</p>
+                              )}
                             </div>
                           ) : (
-                            <div className="text-sm font-medium text-gray-800 dark:text-white/90">
-                              {[
-                                form.address_building,
-                                form.address_city,
-                                form.address_state,
-                                form.address_country,
-                                form.address_zipcode,
-                              ]
-                                .map((x) => (x ?? "").trim())
-                                .filter(Boolean)
-                                .join(", ") || "-"}
-                            </div>
+                            show(form.homeCurrency)
                           )
                         }
                       />
+
+                      <InfoItem
+                        label="GST No."
+                        value={
+                          isCompanyEditMode ? (
+                            <div>
+                              <Input
+                                type="text"
+                                value={form.gst_no}
+                                onChange={handleCompanyChange("gst_no")}
+                                onBlur={() => {
+                                  setCompanyTouched((prev) => ({ ...prev, gst_no: true }));
+                                  validateCompanyField("gst_no");
+                                }}
+                                maxLength={15}
+                                error={!!(companyTouched.gst_no && companyErrors.gst_no)}
+                              />
+                              {companyTouched.gst_no && companyErrors.gst_no && (
+                                <p className="mt-1.5 text-xs text-red-500">{companyErrors.gst_no}</p>
+                              )}
+                            </div>
+                          ) : (
+                            show(form.gst_no)
+                          )
+                        }
+                      />
+
+                      <InfoItem
+                        label="PAN No."
+                        value={
+                          isCompanyEditMode ? (
+                            <div>
+                              <Input
+                                type="text"
+                                value={form.pan_no}
+                                onChange={handleCompanyChange("pan_no")}
+                                onBlur={() => {
+                                  setCompanyTouched((prev) => ({ ...prev, pan_no: true }));
+                                  validateCompanyField("pan_no");
+                                }}
+                                maxLength={10}
+                                error={!!(companyTouched.pan_no && companyErrors.pan_no)}
+                              />
+                              {companyTouched.pan_no && companyErrors.pan_no && (
+                                <p className="mt-1.5 text-xs text-red-500">{companyErrors.pan_no}</p>
+                              )}
+                            </div>
+                          ) : (
+                            show(form.pan_no)
+                          )
+                        }
+                      />
+
+                      <div className="sm:col-span-2 lg:col-span-3">
+                        <InfoItem
+                          label="Address"
+                          value={
+                            isCompanyEditMode ? (
+                              <div className="grid grid-cols-1 gap-3">
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                  <div>
+                                    <Input
+                                      type="text"
+                                      placeholder="Building No."
+                                      value={form.address_building}
+                                      onChange={handleCompanyChange("address_building")}
+                                      onBlur={() => {
+                                        setCompanyTouched((prev) => ({ ...prev, address_building: true }));
+                                        validateCompanyField("address_building");
+                                      }}
+                                      maxLength={120}
+                                      error={!!(
+                                        companyTouched.address_building && companyErrors.address_building
+                                      )}
+                                    />
+                                    {companyTouched.address_building && companyErrors.address_building && (
+                                      <p className="mt-1.5 text-xs text-red-500">
+                                        {companyErrors.address_building}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <Input
+                                      type="text"
+                                      placeholder="City"
+                                      value={form.address_city}
+                                      onChange={handleCompanyChange("address_city")}
+                                      onBlur={() => {
+                                        setCompanyTouched((prev) => ({ ...prev, address_city: true }));
+                                        validateCompanyField("address_city");
+                                      }}
+                                      maxLength={60}
+                                      error={!!(companyTouched.address_city && companyErrors.address_city)}
+                                    />
+                                    {companyTouched.address_city && companyErrors.address_city && (
+                                      <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_city}</p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                  <div>
+                                    <Input
+                                      type="text"
+                                      placeholder="State"
+                                      value={form.address_state}
+                                      onChange={handleCompanyChange("address_state")}
+                                      onBlur={() => {
+                                        setCompanyTouched((prev) => ({ ...prev, address_state: true }));
+                                        validateCompanyField("address_state");
+                                      }}
+                                      maxLength={60}
+                                      error={!!(companyTouched.address_state && companyErrors.address_state)}
+                                    />
+                                    {companyTouched.address_state && companyErrors.address_state && (
+                                      <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_state}</p>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <Input
+                                      type="text"
+                                      placeholder="Zipcode"
+                                      value={form.address_zipcode}
+                                      onChange={handleCompanyChange("address_zipcode")}
+                                      onBlur={() => {
+                                        setCompanyTouched((prev) => ({ ...prev, address_zipcode: true }));
+                                        validateCompanyField("address_zipcode");
+                                      }}
+                                      maxLength={12}
+                                      error={!!(companyTouched.address_zipcode && companyErrors.address_zipcode)}
+                                    />
+                                    {companyTouched.address_zipcode && companyErrors.address_zipcode && (
+                                      <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_zipcode}</p>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <Input
+                                      type="text"
+                                      placeholder="Country/Region"
+                                      value={form.address_country}
+                                      onChange={handleCompanyChange("address_country")}
+                                      onBlur={() => {
+                                        setCompanyTouched((prev) => ({ ...prev, address_country: true }));
+                                        validateCompanyField("address_country");
+                                      }}
+                                      maxLength={60}
+                                      error={!!(companyTouched.address_country && companyErrors.address_country)}
+                                    />
+                                    {companyTouched.address_country && companyErrors.address_country && (
+                                      <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_country}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-sm font-medium text-gray-800 dark:text-white/90">
+                                {[
+                                  form.address_building,
+                                  form.address_city,
+                                  form.address_state,
+                                  form.address_country,
+                                  form.address_zipcode,
+                                ]
+                                  .map((x) => (x ?? "").trim())
+                                  .filter(Boolean)
+                                  .join(", ") || "-"}
+                              </div>
+                            )
+                          }
+                        />
+                      </div>
                     </div>
-                  </div>
-                </InfoCard>
+                  </InfoCard>
+                </div>
               </>
             )}
 
             {activeTab === "personal" && (
               <>
 
-                <div className="lg:col-span-1 h-full">
+                <div id="tour-product-controls" className="lg:col-span-1 h-full">
                   <InfoCard
                     title={
                       <PageBreadcrumb
@@ -1856,7 +1904,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
                   {activeSection === "company" && (
                     <>
-                      <div className="col-span-2 lg:col-span-1">
+                      <div id="tour-brand-name" className="col-span-2 lg:col-span-1">
                         <Label>Brand Name</Label>
                         <Input
                           type="text"
@@ -1874,7 +1922,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                         )}
                       </div>
 
-                      <div className="col-span-2 lg:col-span-1">
+                      <div id="tour-company-name" className="col-span-2 lg:col-span-1">
                         <Label>Company Name</Label>
                         <Input
                           type="text"
@@ -1918,7 +1966,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                         )}
                       </div> */}
 
-                      <div className="col-span-2 lg:col-span-1">
+                      <div id="tour-home-currency" className="col-span-2 lg:col-span-1">
                         <Label>Home Currency</Label>
                         <select
                           value={form.homeCurrency}
