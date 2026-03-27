@@ -81,44 +81,44 @@ export default function SignInForm() {
   }, []);
 
   const checkUserCountryTableExists = async (
-  userId: string | number,
-  country: string
-) => {
-  try {
-    const res = await fetch(`${API_BASE}/check-user-country-table`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        country,
-      }),
-    });
+    userId: string | number,
+    country: string
+  ) => {
+    try {
+      const res = await fetch(`${API_BASE}/check-user-country-table`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          country,
+        }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok || !data?.success) {
-      throw new Error(data?.message || "Failed to check user country table");
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Failed to check user country table");
+      }
+
+      return data?.exists === true;
+    } catch (error) {
+      console.error("checkUserCountryTableExists error:", error);
+      return false;
     }
+  };
 
-    return data?.exists === true;
-  } catch (error) {
-    console.error("checkUserCountryTableExists error:", error);
-    return false;
-  }
-};
+  const routeToDashboard = (country: string) => {
+    const now = new Date();
+    const currentMonth = now.toLocaleString("en-US", { month: "long" });
+    const currentYear = String(now.getFullYear());
+    router.replace(`/live-dashboard/${country}/${currentMonth}/${currentYear}`);
+  };
 
- const routeToDashboard = (country: string) => {
-  const now = new Date();
-  const currentMonth = now.toLocaleString("en-US", { month: "long" });
-  const currentYear = String(now.getFullYear());
-  router.replace(`/live-dashboard/${country}/${currentMonth}/${currentYear}`);
-};
-
-const routeToIntegrationDashboard = (country: string) => {
-  router.replace(`/integration-dashboard/${country}/NA/NA`);
-};
+  const routeToProfile = (country: string) => {
+    router.replace(`/profile/${country}/NA/NA`);
+  };
 
   const validateForm = (values: SignInFormValues = form) => {
     const result = signInSchema.safeParse(values);
@@ -184,40 +184,40 @@ const routeToIntegrationDashboard = (country: string) => {
   };
 
   const getCurrentMonthYear = () => {
-  const now = new Date();
-  const month = now.toLocaleString("en-US", { month: "long" }).toLowerCase();
-  const year = String(now.getFullYear());
-  return { month, year };
-};
+    const now = new Date();
+    const month = now.toLocaleString("en-US", { month: "long" }).toLowerCase();
+    const year = String(now.getFullYear());
+    return { month, year };
+  };
 
-const routeMemberByModule = (country: string, modules: string[] = []) => {
-  const normalizedCountry = (country || "global").toLowerCase();
-  const { month, year } = getCurrentMonthYear();
+  const routeMemberByModule = (country: string, modules: string[] = []) => {
+    const normalizedCountry = (country || "global").toLowerCase();
+    const { month, year } = getCurrentMonthYear();
 
-  for (const mod of modules) {
-    if (mod === "LIVE_DASHBOARD") {
-      router.replace(`/live-dashboard/${normalizedCountry}/${month}/${year}`);
-      return;
+    for (const mod of modules) {
+      if (mod === "LIVE_DASHBOARD") {
+        router.replace(`/live-dashboard/${normalizedCountry}/${month}/${year}`);
+        return;
+      }
+
+      if (mod === "FINANCE_DASHBOARDS") {
+        router.replace(`/pnl-dashboard/MTD/${normalizedCountry}/${month}/${year}`);
+        return;
+      }
+
+      if (mod === "BUSINESS_INTELLIGENCE") {
+        router.replace(`/ai-insight/MTD/${normalizedCountry}/${month}/${year}`);
+        return;
+      }
+
+      if (mod === "INVENTORY_PLANNING") {
+        router.replace(`/inventory-reconciliation/${normalizedCountry}/${month}/${year}`);
+        return;
+      }
     }
 
-    if (mod === "FINANCE_DASHBOARDS") {
-      router.replace(`/pnl-dashboard/MTD/${normalizedCountry}/${month}/${year}`);
-      return;
-    }
-
-    if (mod === "BUSINESS_INTELLIGENCE") {
-      router.replace(`/ai-insight/MTD/${normalizedCountry}/${month}/${year}`);
-      return;
-    }
-
-    if (mod === "INVENTORY_PLANNING") {
-      router.replace(`/inventory-reconciliation/${normalizedCountry}/${month}/${year}`);
-      return;
-    }
-  }
-
-  router.replace("/signin");
-};
+    router.replace("/signin");
+  };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -276,49 +276,54 @@ const routeMemberByModule = (country: string, modules: string[] = []) => {
       }
 
       if (loginType === "client") {
-  const me = await fetch(`${API_BASE}/get_user_data`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${result.token}` },
-  })
-    .then((r) => r.json())
-    .catch(() => null);
+        const me = await fetch(`${API_BASE}/get_user_data`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${result.token}` },
+        })
+          .then((r) => r.json())
+          .catch(() => null);
 
-  if (me) dispatch(setUser({ ...me, is_member: false }));
+        if (me) dispatch(setUser({ ...me, is_member: false }));
 
-  const hasMarketplace =
-    typeof me?.marketplace_id === "string" &&
-    me.marketplace_id.trim().length > 0;
+        const hasMarketplace =
+          typeof me?.marketplace_id === "string" &&
+          me.marketplace_id.trim().length > 0;
 
-  if (!hasMarketplace) {
-    router.replace("/choose-country?onboard=1");
-    return;
-  }
+        if (!hasMarketplace) {
+          const countryFromBackend =
+            typeof me?.country === "string" && me.country.trim().length > 0
+              ? me.country.split(",")[0].trim().toLowerCase()
+              : "global";
 
-  const countryFromBackend =
-    typeof me?.country === "string" && me.country.trim().length > 0
-      ? me.country.split(",")[0].trim().toLowerCase()
-      : "global";
+          routeToProfile(countryFromBackend);
+          return;
+        }
 
-  const userId = me?.id || me?.user_id;
+        const countryFromBackend =
+          typeof me?.country === "string" && me.country.trim().length > 0
+            ? me.country.split(",")[0].trim().toLowerCase()
+            : "global";
 
-  if (!userId) {
-    routeToIntegrationDashboard(countryFromBackend);
-    return;
-  }
+        const userId = me?.id || me?.user_id;
 
-  const tableExists = await checkUserCountryTableExists(
-    userId,
-    countryFromBackend
-  );
+        if (!userId) {
+          routeToProfile(countryFromBackend);
+          return;
+        }
 
-  if (!tableExists) {
-    routeToIntegrationDashboard(countryFromBackend);
-    return;
-  }
+        const tableExists = await checkUserCountryTableExists(
+          userId,
+          countryFromBackend
+        );
 
-  routeToDashboard(countryFromBackend);
-  return;
-}
+        if (!tableExists) {
+          routeToProfile(countryFromBackend);
+          return;
+        }
+
+        routeToDashboard(countryFromBackend);
+        return;
+      }
 
       dispatch(
         setUser({
@@ -333,13 +338,13 @@ const routeMemberByModule = (country: string, modules: string[] = []) => {
       );
 
       const memberCountry =
-  Array.isArray(result?.countries) && result.countries.length > 0
-    ? String(result.countries[0]).trim().toLowerCase()
-    : "global";
+        Array.isArray(result?.countries) && result.countries.length > 0
+          ? String(result.countries[0]).trim().toLowerCase()
+          : "global";
 
-const memberModules = Array.isArray(result?.modules) ? result.modules : [];
+      const memberModules = Array.isArray(result?.modules) ? result.modules : [];
 
-routeMemberByModule(memberCountry, memberModules);
+      routeMemberByModule(memberCountry, memberModules);
     } catch (err: any) {
       const msg =
         err?.status === 403
@@ -381,38 +386,38 @@ routeMemberByModule(memberCountry, memberModules);
 
       if (me) dispatch(setUser({ ...me, is_member: false }));
 
-const hasMarketplace =
-  typeof me?.marketplace_id === "string" &&
-  me.marketplace_id.trim().length > 0;
+      const hasMarketplace =
+        typeof me?.marketplace_id === "string" &&
+        me.marketplace_id.trim().length > 0;
 
-if (!hasMarketplace) {
-  router.replace("/choose-country?onboard=1");
-  return;
-}
+      if (!hasMarketplace) {
+        router.replace("/choose-country?onboard=1");
+        return;
+      }
 
-const countryFromBackend =
-  typeof me?.country === "string" && me.country.trim().length > 0
-    ? me.country.split(",")[0].trim().toLowerCase()
-    : "global";
+      const countryFromBackend =
+        typeof me?.country === "string" && me.country.trim().length > 0
+          ? me.country.split(",")[0].trim().toLowerCase()
+          : "global";
 
-const userId = me?.id || me?.user_id;
+      const userId = me?.id || me?.user_id;
 
-if (!userId) {
-  routeToIntegrationDashboard(countryFromBackend);
-  return;
-}
+      if (!userId) {
+        routeToProfile(countryFromBackend);
+        return;
+      }
 
-const tableExists = await checkUserCountryTableExists(
-  userId,
-  countryFromBackend
-);
+      const tableExists = await checkUserCountryTableExists(
+        userId,
+        countryFromBackend
+      );
 
-if (!tableExists) {
-  routeToIntegrationDashboard(countryFromBackend);
-  return;
-}
+      if (!tableExists) {
+        routeToProfile(countryFromBackend);
+        return;
+      }
 
-routeToDashboard(countryFromBackend);
+      routeToDashboard(countryFromBackend);
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||

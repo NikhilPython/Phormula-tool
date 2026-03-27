@@ -40,6 +40,8 @@ import {
   type CompanyInfoFormErrors,
   type PersonalInfoFormErrors,
 } from "@/lib/validations/authValidation";
+import { Steps } from "intro.js-react";
+import "intro.js/introjs.css";
 
 type ProfileTab = "personal" | "objectives" | "integrations";
 
@@ -47,7 +49,7 @@ type FormState = {
   name: string;
   brand_name: string;
   company_name: string;
-  annual_sales_range: string;
+  // annual_sales_range: string;
   email: string;
   phone_number: string;
   homeCurrency: string;
@@ -81,7 +83,7 @@ type CurrencyRateRow = {
   year: number;
 };
 
-const REVENUE_OPTIONS = ["", "$0 - $50K", "$50K - $100K", "$100K - $500K", "$500K - $1M", "$1M+"];
+// const REVENUE_OPTIONS = ["", "$0 - $50K", "$50K - $100K", "$100K - $500K", "$500K - $1M", "$1M+"];
 const CURRENCY_OPTIONS = ["USD", "GBP", "INR", "CAD"];
 
 function platformIsConnected(
@@ -180,6 +182,8 @@ function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: ProfileTab }) {
   const dispatch = useAppDispatch();
+  const [isOnboarding, setIsOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState<"personal" | "company" | "done">("personal");
   const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
   const [ratesLoading, setRatesLoading] = useState(false);
   const { isOpen, openModal, closeModal } = useModal();
@@ -203,6 +207,21 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   const searchParams = useSearchParams();
 
+  const [tourEnabled, setTourEnabled] = useState(false);
+
+  const introSteps = [
+    {
+      element: "#personal-info-card",
+      intro: "You can view and edit your entered information here.",
+      position: "bottom",
+    },
+    {
+      element: "#company-info-edit-btn",
+      intro: "Click the edit icon here to fill in your company details.",
+      position: "left",
+    },
+  ];
+
   const countryName = searchParams.get("countryName") || "global";
   const month = searchParams.get("month") || "NA";
   const year = searchParams.get("year") || "NA";
@@ -225,7 +244,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const [companyTouched, setCompanyTouched] = useState({
     brand_name: false,
     company_name: false,
-    annual_sales_range: false,
+    // annual_sales_range: false,
     homeCurrency: false,
     gst_no: false,
     pan_no: false,
@@ -240,77 +259,79 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const [companyErrors, setCompanyErrors] = useState<CompanyInfoFormErrors>({});
   const [showMemberPasswordForm, setShowMemberPasswordForm] = useState(false);
   const [memberPasswordForm, setMemberPasswordForm] = useState({
-  old_password: "",
-  new_password: "",
-  confirm_password: "",
-});
+    old_password: "",
+    new_password: "",
+    confirm_password: "",
+  });
 
-const [memberPasswordLoading, setMemberPasswordLoading] = useState(false);
-const [memberPasswordMessage, setMemberPasswordMessage] = useState("");
-const [memberPasswordError, setMemberPasswordError] = useState("");
+  const [memberPasswordLoading, setMemberPasswordLoading] = useState(false);
+  const [memberPasswordMessage, setMemberPasswordMessage] = useState("");
+  const [memberPasswordError, setMemberPasswordError] = useState("");
 
-const handleMemberChangePassword = async () => {
-  setMemberPasswordError("");
-  setMemberPasswordMessage("");
 
-  const oldPassword = memberPasswordForm.old_password.trim();
-  const newPassword = memberPasswordForm.new_password.trim();
-  const confirmPassword = memberPasswordForm.confirm_password.trim();
 
-  if (!oldPassword || !newPassword || !confirmPassword) {
-    setMemberPasswordError("All password fields are required.");
-    return;
-  }
+  const handleMemberChangePassword = async () => {
+    setMemberPasswordError("");
+    setMemberPasswordMessage("");
 
-  if (newPassword.length < 6) {
-    setMemberPasswordError("New password must be at least 6 characters.");
-    return;
-  }
+    const oldPassword = memberPasswordForm.old_password.trim();
+    const newPassword = memberPasswordForm.new_password.trim();
+    const confirmPassword = memberPasswordForm.confirm_password.trim();
 
-  if (newPassword !== confirmPassword) {
-    setMemberPasswordError("New password and confirm password do not match.");
-    return;
-  }
-
-  try {
-    setMemberPasswordLoading(true);
-
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/member_change_password`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          old_password: oldPassword,
-          new_password: newPassword,
-        }),
-      }
-    );
-
-    const result = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      setMemberPasswordError(
-        result?.error || result?.message || "Failed to change password."
-      );
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      setMemberPasswordError("All password fields are required.");
       return;
     }
 
-    setMemberPasswordMessage(result?.message || "Password changed successfully.");
-    setMemberPasswordForm({
-      old_password: "",
-      new_password: "",
-      confirm_password: "",
-    });
-  } catch (error: any) {
-    setMemberPasswordError(error?.message || "Something went wrong.");
-  } finally {
-    setMemberPasswordLoading(false);
-  }
-};
+    if (newPassword.length < 6) {
+      setMemberPasswordError("New password must be at least 6 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setMemberPasswordError("New password and confirm password do not match.");
+      return;
+    }
+
+    try {
+      setMemberPasswordLoading(true);
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/member_change_password`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            old_password: oldPassword,
+            new_password: newPassword,
+          }),
+        }
+      );
+
+      const result = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setMemberPasswordError(
+          result?.error || result?.message || "Failed to change password."
+        );
+        return;
+      }
+
+      setMemberPasswordMessage(result?.message || "Password changed successfully.");
+      setMemberPasswordForm({
+        old_password: "",
+        new_password: "",
+        confirm_password: "",
+      });
+    } catch (error: any) {
+      setMemberPasswordError(error?.message || "Something went wrong.");
+    } finally {
+      setMemberPasswordLoading(false);
+    }
+  };
 
   const integratedCountries = useMemo(() => {
     const countries: string[] = [];
@@ -347,6 +368,22 @@ const handleMemberChangePassword = async () => {
   const pageCurrency = useMemo(() => platformToCurrencyCode(pagePlatform), [pagePlatform]);
 
   const { data, isLoading, isError } = useGetUserDataQuery();
+
+  const isPersonalComplete =
+    !!String((data as any)?.name || "").trim() &&
+    !!String((data as any)?.phone_number || "").trim();
+
+  const addr = (data as any)?.address ?? {};
+  const isCompanyComplete =
+    !!String((data as any)?.company_name || "").trim() &&
+    !!String((data as any)?.brand_name || "").trim() &&
+    !!String((data as any)?.homeCurrency || "").trim() &&
+    !!String(addr.building || "").trim() &&
+    !!String(addr.city || "").trim() &&
+    !!String(addr.state || "").trim() &&
+    !!String(addr.country || "").trim() &&
+    !!String(addr.zipcode || "").trim();
+
   const isMemberUser = Boolean((data as any)?.is_member);
   const token = useSelector((state: any) => state.auth?.token);
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
@@ -363,7 +400,7 @@ const handleMemberChangePassword = async () => {
     name: "",
     brand_name: "",
     company_name: "",
-    annual_sales_range: "",
+    // annual_sales_range: "",
     email: "",
     phone_number: "",
     homeCurrency: "",
@@ -422,7 +459,7 @@ const handleMemberChangePassword = async () => {
     setCompanyTouched({
       brand_name: false,
       company_name: false,
-      annual_sales_range: false,
+      // annual_sales_range: false,
       homeCurrency: false,
       gst_no: false,
       pan_no: false,
@@ -441,7 +478,7 @@ const handleMemberChangePassword = async () => {
         ...prev,
         brand_name: (data as any)?.brand_name ?? "",
         company_name: (data as any)?.company_name ?? "",
-        annual_sales_range: (data as any)?.annual_sales_range ?? "",
+        // annual_sales_range: (data as any)?.annual_sales_range ?? "",
         homeCurrency: (data as any)?.homeCurrency ?? "",
         gst_no: tax.gst_no ?? "",
         pan_no: tax.pan_no ?? "",
@@ -495,11 +532,11 @@ const handleMemberChangePassword = async () => {
     feeModal.closeModal();
   };
 
-const openSection = (s: Section) => {
-  if (isMemberUser) return;
-  setActiveSection(s);
-  openModal();
-};
+  const openSection = (s: Section) => {
+    if (isMemberUser) return;
+    setActiveSection(s);
+    openModal();
+  };
 
   const handleInput =
     (key: keyof FormState) =>
@@ -534,7 +571,7 @@ const openSection = (s: Section) => {
         | "address_country"
         | "address_state"
         | "address_zipcode"
-        | "annual_sales_range"
+        // | "annual_sales_range"
         | "homeCurrency"
     ) =>
       (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -606,7 +643,7 @@ const openSection = (s: Section) => {
     values = {
       brand_name: form.brand_name,
       company_name: form.company_name,
-      annual_sales_range: form.annual_sales_range,
+      // annual_sales_range: form.annual_sales_range,
       homeCurrency: form.homeCurrency,
       gst_no: form.gst_no,
       pan_no: form.pan_no,
@@ -634,7 +671,7 @@ const openSection = (s: Section) => {
     nextValues?: Partial<{
       brand_name: string;
       company_name: string;
-      annual_sales_range: string;
+      // annual_sales_range: string;
       homeCurrency: string;
       gst_no: string;
       pan_no: string;
@@ -648,7 +685,7 @@ const openSection = (s: Section) => {
     const merged = {
       brand_name: form.brand_name,
       company_name: form.company_name,
-      annual_sales_range: form.annual_sales_range,
+      // annual_sales_range: form.annual_sales_range,
       homeCurrency: form.homeCurrency,
       gst_no: form.gst_no,
       pan_no: form.pan_no,
@@ -680,7 +717,7 @@ const openSection = (s: Section) => {
       return {
         brand_name: form.brand_name,
         company_name: form.company_name,
-        annual_sales_range: form.annual_sales_range,
+        // annual_sales_range: form.annual_sales_range,
         homeCurrency: form.homeCurrency,
         tax_id: { gst_no: form.gst_no, pan_no: form.pan_no },
         address: {
@@ -731,6 +768,11 @@ const openSection = (s: Section) => {
       );
 
       setIsPersonalEditMode(false);
+
+      if (isOnboarding) {
+        setOnboardingStep("company");
+        setIsCompanyEditMode(true);
+      }
     } catch (err: any) {
       console.error(err);
       alert("Failed to update personal info");
@@ -741,7 +783,6 @@ const openSection = (s: Section) => {
     setCompanyTouched({
       brand_name: true,
       company_name: true,
-      annual_sales_range: true,
       homeCurrency: true,
       gst_no: true,
       pan_no: true,
@@ -759,7 +800,6 @@ const openSection = (s: Section) => {
       const payload = {
         brand_name: form.brand_name.trim(),
         company_name: form.company_name.trim(),
-        annual_sales_range: form.annual_sales_range,
         homeCurrency: form.homeCurrency,
         tax_id: {
           gst_no: form.gst_no.trim(),
@@ -778,6 +818,12 @@ const openSection = (s: Section) => {
       dispatch(setUser(payload as any));
 
       setIsCompanyEditMode(false);
+
+      if (isOnboarding) {
+        setIsOnboarding(false);
+        setOnboardingStep("done");
+        localStorage.setItem("profile_onboarding_complete", "true");
+      }
     } catch (err: any) {
       console.error(err);
       alert("Failed to update company info");
@@ -802,32 +848,6 @@ const openSection = (s: Section) => {
     } catch (err: any) {
       console.error(err);
       alert(err?.data?.message ?? "Failed to update target.");
-    }
-  };
-
-  const handleInlineObjectiveSave = async () => {
-    try {
-      const payload = {
-        ...objectiveDraft,
-        country: objectiveDraft.country.toLowerCase(),
-      };
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/objective`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error("Failed to save objective");
-
-      setObjective(objectiveDraft);
-      setIsObjectiveEditMode(false);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to save objective");
     }
   };
 
@@ -888,6 +908,43 @@ const openSection = (s: Section) => {
       alert(err?.data?.message || "Failed to send reset email.");
     }
   };
+
+  useEffect(() => {
+    if (activeTab !== "personal") return;
+    if (isLoading) return;
+
+    const hasSeenTour = localStorage.getItem("account_settings_intro_seen");
+    if (!hasSeenTour) {
+      const timer = setTimeout(() => {
+        setTourEnabled(true);
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, isLoading]);
+
+  useEffect(() => {
+    if (!data) return;
+
+    if (!isPersonalComplete) {
+      setIsOnboarding(true);
+      setOnboardingStep("personal");
+      setIsPersonalEditMode(true);
+      setIsCompanyEditMode(false);
+      return;
+    }
+
+    if (!isCompanyComplete) {
+      setIsOnboarding(true);
+      setOnboardingStep("company");
+      setIsPersonalEditMode(false);
+      setIsCompanyEditMode(true);
+      return;
+    }
+
+    setIsOnboarding(false);
+    setOnboardingStep("done");
+  }, [data, isPersonalComplete, isCompanyComplete]);
 
   useEffect(() => {
     if (!token) return;
@@ -980,60 +1037,6 @@ const openSection = (s: Section) => {
     return rows;
   }, [connectedPlatformsForTargets, baseNativeTarget, homeCurrencyCode, rateMap]);
 
-  const monthlyTargetColumns: ColumnDef<TargetRow>[] = useMemo(
-    () => [
-      { key: "sno", header: "S.No.", width: "60px" },
-      { key: "marketplace", header: "Marketplace", width: "180px" },
-      {
-        key: "targetNative",
-        header: "Target (Native Currency)",
-        width: "220px",
-        render: (row: any) => {
-          if (row.__isTotal) return row.targetNative;
-
-          const pid = row.__pid as PlatformId;
-          const isEditing = editingPid === pid;
-
-          if (!isEditing) {
-            if (!isTargetEditMode) {
-              return <span className="block w-full text-center">{row.targetNative}</span>;
-            }
-
-            return (
-              <button
-                type="button"
-                onClick={() => startEditTarget(pid)}
-                className="w-full cursor-text rounded-md text-center hover:bg-gray-50"
-                title="Click to edit"
-              >
-                {row.targetNative}
-              </button>
-            );
-          }
-
-          return (
-            <input
-              autoFocus
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step={1}
-              value={draftTarget}
-              onChange={(e) => setDraftTarget(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") saveInlineTarget();
-                if (e.key === "Escape") cancelEditTarget();
-              }}
-              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-center text-sm outline-none focus:border-gray-400"
-            />
-          );
-        },
-      },
-      { key: "conversion", header: `Conversion Rate (${homeCurrencyCode})`, width: "210px" },
-      { key: "targetHome", header: `Target (${homeCurrencyCode})`, width: "200px" },
-    ],
-    [homeCurrencyCode, editingPid, draftTarget, isTargetEditMode]
-  );
 
   useEffect(() => {
     if (!data) return;
@@ -1045,7 +1048,7 @@ const openSection = (s: Section) => {
       name: (data as any)?.name ?? "",
       brand_name: (data as any)?.brand_name ?? "",
       company_name: (data as any)?.company_name ?? "",
-      annual_sales_range: (data as any)?.annual_sales_range ?? "",
+      // annual_sales_range: (data as any)?.annual_sales_range ?? "",
       email: (data as any)?.email ?? "",
       phone_number: (data as any)?.phone_number ?? "",
       homeCurrency: (data as any)?.homeCurrency ?? "",
@@ -1067,14 +1070,14 @@ const openSection = (s: Section) => {
   }, [pageCurrency, form.homeCurrency]);
 
   useEffect(() => {
-  if (isMemberUser) {
-    setIsPersonalEditMode(false);
-    setIsCompanyEditMode(false);
-    setIsTargetEditMode(false);
-    setIsObjectiveEditMode(false);
-    setEditingPid(null);
-  }
-}, [isMemberUser]);
+    if (isMemberUser) {
+      setIsPersonalEditMode(false);
+      setIsCompanyEditMode(false);
+      setIsTargetEditMode(false);
+      setIsObjectiveEditMode(false);
+      setEditingPid(null);
+    }
+  }, [isMemberUser]);
 
   useEffect(() => {
     const saved = localStorage.getItem("user_objective");
@@ -1119,6 +1122,24 @@ const openSection = (s: Section) => {
 
   return (
     <div className="">
+      <Steps
+        enabled={tourEnabled}
+        steps={introSteps}
+        initialStep={0}
+        onExit={() => {
+          setTourEnabled(false);
+          localStorage.setItem("account_settings_intro_seen", "true");
+        }}
+        options={{
+          doneLabel: "Finish",
+          nextLabel: "Next",
+          prevLabel: "Back",
+          skipLabel: "Skip",
+          showProgress: true,
+          exitOnOverlayClick: false,
+          scrollToElement: true,
+        }}
+      />
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="w-full">
           {isLoading && <div className="text-sm text-gray-500 dark:text-gray-400">Loading…</div>}
@@ -1127,24 +1148,25 @@ const openSection = (s: Section) => {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
             {activeTab === "personal" && (
               <>
+                <div id="personal-info-card">
                 <InfoCard
                   title={<PageBreadcrumb pageTitle="Personal Info" variant="table" align="left" />}
                   action={
-  isMemberUser ? null : !isPersonalEditMode ? (
-    <button onClick={startPersonalEdit} className="h-9 w-9 text-gray-700" type="button">
-      <FiEdit className="text-lg" />
-    </button>
-  ) : (
-    <div className="flex items-center gap-2">
-      <Button size="icon" onClick={handleSavePersonal}>
-        <FiCheck />
-      </Button>
-      <Button size="icon" variant="outline" onClick={cancelPersonalEdit}>
-        <FiX />
-      </Button>
-    </div>
-  )
-}
+                    isMemberUser ? null : !isPersonalEditMode ? (
+                      <button onClick={startPersonalEdit} className="h-9 w-9 text-gray-700" type="button">
+                        <FiEdit className="text-lg" />
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Button size="icon" onClick={handleSavePersonal}>
+                          <FiCheck />
+                        </Button>
+                        <Button size="icon" variant="outline" onClick={cancelPersonalEdit}>
+                          <FiX />
+                        </Button>
+                      </div>
+                    )
+                  }
                 >
                   <div className="grid grid-cols-2 gap-4">
                     <InfoItem
@@ -1202,195 +1224,195 @@ const openSection = (s: Section) => {
                       }
                     />
 
-                   <div className="">
-  <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-    {isMemberUser ? "Change Password" : "Reset Password"}
-  </p>
+                    <div className="">
+                      <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+                        {isMemberUser ? "Change Password" : "Reset Password"}
+                      </p>
 
-  {!isMemberUser ? (
-    <button
-      type="button"
-      onClick={handleForgotPassword}
-      disabled={isSending}
-      className={`text-sm font-medium ${
-        isSuccess
-          ? "text-green-600 dark:text-green-400"
-          : "text-blue-600 hover:underline dark:text-blue-400"
-      } ${isSending ? "cursor-not-allowed opacity-60" : ""}`}
-    >
-      {isSending
-        ? "Sending..."
-        : isSuccess
-          ? "Email sent for password reset"
-          : "Click here to change password"}
-    </button>
-  ) : !showMemberPasswordForm ? (
-    <button
-      type="button"
-      onClick={() => {
-        setShowMemberPasswordForm(true);
-        setMemberPasswordError("");
-        setMemberPasswordMessage("");
-      }}
-      className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-    >
-      Click here to change password
-    </button>
-  ) : (
-    <div className="mt-2 space-y-3">
-      <Input
-        type="password"
-        placeholder="Old Password"
-        value={memberPasswordForm.old_password}
-        onChange={(e) =>
-          setMemberPasswordForm((prev) => ({
-            ...prev,
-            old_password: e.target.value,
-          }))
-        }
-      />
+                      {!isMemberUser ? (
+                        <button
+                          type="button"
+                          onClick={handleForgotPassword}
+                          disabled={isSending}
+                          className={`text-sm font-medium ${isSuccess
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-blue-600 hover:underline dark:text-blue-400"
+                            } ${isSending ? "cursor-not-allowed opacity-60" : ""}`}
+                        >
+                          {isSending
+                            ? "Sending..."
+                            : isSuccess
+                              ? "Email sent for password reset"
+                              : "Click here to change password"}
+                        </button>
+                      ) : !showMemberPasswordForm ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMemberPasswordForm(true);
+                            setMemberPasswordError("");
+                            setMemberPasswordMessage("");
+                          }}
+                          className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+                        >
+                          Click here to change password
+                        </button>
+                      ) : (
+                        <div className="mt-2 space-y-3">
+                          <Input
+                            type="password"
+                            placeholder="Old Password"
+                            value={memberPasswordForm.old_password}
+                            onChange={(e) =>
+                              setMemberPasswordForm((prev) => ({
+                                ...prev,
+                                old_password: e.target.value,
+                              }))
+                            }
+                          />
 
-      <Input
-        type="password"
-        placeholder="New Password"
-        value={memberPasswordForm.new_password}
-        onChange={(e) =>
-          setMemberPasswordForm((prev) => ({
-            ...prev,
-            new_password: e.target.value,
-          }))
-        }
-      />
+                          <Input
+                            type="password"
+                            placeholder="New Password"
+                            value={memberPasswordForm.new_password}
+                            onChange={(e) =>
+                              setMemberPasswordForm((prev) => ({
+                                ...prev,
+                                new_password: e.target.value,
+                              }))
+                            }
+                          />
 
-      <Input
-        type="password"
-        placeholder="Confirm New Password"
-        value={memberPasswordForm.confirm_password}
-        onChange={(e) =>
-          setMemberPasswordForm((prev) => ({
-            ...prev,
-            confirm_password: e.target.value,
-          }))
-        }
-      />
+                          <Input
+                            type="password"
+                            placeholder="Confirm New Password"
+                            value={memberPasswordForm.confirm_password}
+                            onChange={(e) =>
+                              setMemberPasswordForm((prev) => ({
+                                ...prev,
+                                confirm_password: e.target.value,
+                              }))
+                            }
+                          />
 
-      {memberPasswordError && (
-        <p className="text-xs text-red-500">{memberPasswordError}</p>
-      )}
+                          {memberPasswordError && (
+                            <p className="text-xs text-red-500">{memberPasswordError}</p>
+                          )}
 
-      {memberPasswordMessage && (
-        <p className="text-xs text-green-600 dark:text-green-400">
-          {memberPasswordMessage}
-        </p>
-      )}
+                          {memberPasswordMessage && (
+                            <p className="text-xs text-green-600 dark:text-green-400">
+                              {memberPasswordMessage}
+                            </p>
+                          )}
 
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          onClick={handleMemberChangePassword}
-          disabled={memberPasswordLoading}
-        >
-          {memberPasswordLoading ? "Updating..." : "Update Password"}
-        </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={handleMemberChangePassword}
+                              disabled={memberPasswordLoading}
+                            >
+                              {memberPasswordLoading ? "Updating..." : "Update Password"}
+                            </Button>
 
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            setShowMemberPasswordForm(false);
-            setMemberPasswordError("");
-            setMemberPasswordMessage("");
-            setMemberPasswordForm({
-              old_password: "",
-              new_password: "",
-              confirm_password: "",
-            });
-          }}
-        >
-          Cancel
-        </Button>
-      </div>
-    </div>
-  )}
-</div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setShowMemberPasswordForm(false);
+                                setMemberPasswordError("");
+                                setMemberPasswordMessage("");
+                                setMemberPasswordForm({
+                                  old_password: "",
+                                  new_password: "",
+                                  confirm_password: "",
+                                });
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </InfoCard>
+              </div>
 
-                <InfoCard
-                  title={<PageBreadcrumb pageTitle="Company Info" variant="table" align="left" />}
-                  action={
-  isMemberUser ? null : !isCompanyEditMode ? (
-    <button onClick={startCompanyEdit} className="h-9 w-9 text-gray-700" type="button">
-      <FiEdit className="text-lg" />
-    </button>
-  ) : (
-    <div className="flex items-center gap-2">
-      <Button size="icon" onClick={handleSaveCompany}>
-        <FiCheck />
-      </Button>
-      <Button size="icon" variant="outline" onClick={cancelCompanyEdit}>
-        <FiX />
-      </Button>
-    </div>
-  )
-}
-                >
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <InfoItem
-                      label="Company Name"
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <Input
-                              type="text"
-                              value={form.company_name}
-                              onChange={handleCompanyChange("company_name")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, company_name: true }));
-                                validateCompanyField("company_name");
-                              }}
-                              maxLength={80}
-                              error={!!(companyTouched.company_name && companyErrors.company_name)}
-                            />
-                            {companyTouched.company_name && companyErrors.company_name && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.company_name}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.company_name)
-                        )
-                      }
-                    />
+          <InfoCard
+            title={<PageBreadcrumb pageTitle="Company Info" variant="table" align="left" />}
+            action={
+              isMemberUser ? null : !isCompanyEditMode ? (
+                <button id="company-info-edit-btn" onClick={startCompanyEdit} className="h-9 w-9 text-gray-700" type="button">
+                  <FiEdit className="text-lg" />
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button size="icon" onClick={handleSaveCompany}>
+                    <FiCheck />
+                  </Button>
+                  <Button size="icon" variant="outline" onClick={cancelCompanyEdit}>
+                    <FiX />
+                  </Button>
+                </div>
+              )
+            }
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <InfoItem
+                label="Company Name"
+                value={
+                  isCompanyEditMode ? (
+                    <div>
+                      <Input
+                        type="text"
+                        value={form.company_name}
+                        onChange={handleCompanyChange("company_name")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, company_name: true }));
+                          validateCompanyField("company_name");
+                        }}
+                        maxLength={80}
+                        error={!!(companyTouched.company_name && companyErrors.company_name)}
+                      />
+                      {companyTouched.company_name && companyErrors.company_name && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.company_name}</p>
+                      )}
+                    </div>
+                  ) : (
+                    show(form.company_name)
+                  )
+                }
+              />
 
-                    <InfoItem
-                      label="Brand Name"
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <Input
-                              type="text"
-                              value={form.brand_name}
-                              onChange={handleCompanyChange("brand_name")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, brand_name: true }));
-                                validateCompanyField("brand_name");
-                              }}
-                              maxLength={80}
-                              error={!!(companyTouched.brand_name && companyErrors.brand_name)}
-                            />
-                            {companyTouched.brand_name && companyErrors.brand_name && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.brand_name}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.brand_name)
-                        )
-                      }
-                    />
+              <InfoItem
+                label="Brand Name"
+                value={
+                  isCompanyEditMode ? (
+                    <div>
+                      <Input
+                        type="text"
+                        value={form.brand_name}
+                        onChange={handleCompanyChange("brand_name")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, brand_name: true }));
+                          validateCompanyField("brand_name");
+                        }}
+                        maxLength={80}
+                        error={!!(companyTouched.brand_name && companyErrors.brand_name)}
+                      />
+                      {companyTouched.brand_name && companyErrors.brand_name && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.brand_name}</p>
+                      )}
+                    </div>
+                  ) : (
+                    show(form.brand_name)
+                  )
+                }
+              />
 
-                    <InfoItem
+              {/* <InfoItem
                       label="Revenue"
                       value={
                         isCompanyEditMode ? (
@@ -1422,450 +1444,453 @@ const openSection = (s: Section) => {
                           show(form.annual_sales_range)
                         )
                       }
-                    />
+                    /> */}
 
-                    <InfoItem
-                      label="Home Currency"
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <select
-                              value={form.homeCurrency}
-                              onChange={handleCompanyChange("homeCurrency")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, homeCurrency: true }));
-                                validateCompanyField("homeCurrency");
-                              }}
-                              className={`h-11 w-full rounded-md border bg-white px-3 pr-10 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200 ${companyTouched.homeCurrency && companyErrors.homeCurrency
-                                ? "border-red-500"
-                                : "border-gray-300"
-                                }`}
-                            >
-                              <option value="">Select Currency</option>
-                              {CURRENCY_OPTIONS.map((cur) => (
-                                <option key={cur} value={cur}>
-                                  {cur}
-                                </option>
-                              ))}
-                            </select>
-                            {companyTouched.homeCurrency && companyErrors.homeCurrency && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.homeCurrency}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.homeCurrency)
-                        )
-                      }
-                    />
-
-                    <InfoItem
-                      label="GST No."
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <Input
-                              type="text"
-                              value={form.gst_no}
-                              onChange={handleCompanyChange("gst_no")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, gst_no: true }));
-                                validateCompanyField("gst_no");
-                              }}
-                              maxLength={15}
-                              error={!!(companyTouched.gst_no && companyErrors.gst_no)}
-                            />
-                            {companyTouched.gst_no && companyErrors.gst_no && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.gst_no}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.gst_no)
-                        )
-                      }
-                    />
-
-                    <InfoItem
-                      label="PAN No."
-                      value={
-                        isCompanyEditMode ? (
-                          <div>
-                            <Input
-                              type="text"
-                              value={form.pan_no}
-                              onChange={handleCompanyChange("pan_no")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, pan_no: true }));
-                                validateCompanyField("pan_no");
-                              }}
-                              maxLength={10}
-                              error={!!(companyTouched.pan_no && companyErrors.pan_no)}
-                            />
-                            {companyTouched.pan_no && companyErrors.pan_no && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.pan_no}</p>
-                            )}
-                          </div>
-                        ) : (
-                          show(form.pan_no)
-                        )
-                      }
-                    />
-
-                    <div className="sm:col-span-2 lg:col-span-3">
-                      <InfoItem
-                        label="Address"
-                        value={
-                          isCompanyEditMode ? (
-                            <div className="grid grid-cols-1 gap-3">
-                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="Building No."
-                                    value={form.address_building}
-                                    onChange={handleCompanyChange("address_building")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_building: true }));
-                                      validateCompanyField("address_building");
-                                    }}
-                                    maxLength={120}
-                                    error={!!(
-                                      companyTouched.address_building && companyErrors.address_building
-                                    )}
-                                  />
-                                  {companyTouched.address_building && companyErrors.address_building && (
-                                    <p className="mt-1.5 text-xs text-red-500">
-                                      {companyErrors.address_building}
-                                    </p>
-                                  )}
-                                </div>
-
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="City"
-                                    value={form.address_city}
-                                    onChange={handleCompanyChange("address_city")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_city: true }));
-                                      validateCompanyField("address_city");
-                                    }}
-                                    maxLength={60}
-                                    error={!!(companyTouched.address_city && companyErrors.address_city)}
-                                  />
-                                  {companyTouched.address_city && companyErrors.address_city && (
-                                    <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_city}</p>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="State"
-                                    value={form.address_state}
-                                    onChange={handleCompanyChange("address_state")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_state: true }));
-                                      validateCompanyField("address_state");
-                                    }}
-                                    maxLength={60}
-                                    error={!!(companyTouched.address_state && companyErrors.address_state)}
-                                  />
-                                  {companyTouched.address_state && companyErrors.address_state && (
-                                    <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_state}</p>
-                                  )}
-                                </div>
-
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="Zipcode"
-                                    value={form.address_zipcode}
-                                    onChange={handleCompanyChange("address_zipcode")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_zipcode: true }));
-                                      validateCompanyField("address_zipcode");
-                                    }}
-                                    maxLength={12}
-                                    error={!!(companyTouched.address_zipcode && companyErrors.address_zipcode)}
-                                  />
-                                  {companyTouched.address_zipcode && companyErrors.address_zipcode && (
-                                    <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_zipcode}</p>
-                                  )}
-                                </div>
-
-                                <div>
-                                  <Input
-                                    type="text"
-                                    placeholder="Country/Region"
-                                    value={form.address_country}
-                                    onChange={handleCompanyChange("address_country")}
-                                    onBlur={() => {
-                                      setCompanyTouched((prev) => ({ ...prev, address_country: true }));
-                                      validateCompanyField("address_country");
-                                    }}
-                                    maxLength={60}
-                                    error={!!(companyTouched.address_country && companyErrors.address_country)}
-                                  />
-                                  {companyTouched.address_country && companyErrors.address_country && (
-                                    <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_country}</p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-sm font-medium text-gray-800 dark:text-white/90">
-                              {[
-                                form.address_building,
-                                form.address_city,
-                                form.address_state,
-                                form.address_country,
-                                form.address_zipcode,
-                              ]
-                                .map((x) => (x ?? "").trim())
-                                .filter(Boolean)
-                                .join(", ") || "-"}
-                            </div>
-                          )
-                        }
-                      />
+              <InfoItem
+                label="Home Currency"
+                value={
+                  isCompanyEditMode ? (
+                    <div>
+                      <select
+                        value={form.homeCurrency}
+                        onChange={handleCompanyChange("homeCurrency")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, homeCurrency: true }));
+                          validateCompanyField("homeCurrency");
+                        }}
+                        className={`h-11 w-full rounded-md border bg-white px-3 pr-10 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200 ${companyTouched.homeCurrency && companyErrors.homeCurrency
+                          ? "border-red-500"
+                          : "border-gray-300"
+                          }`}
+                      >
+                        <option value="">Select Currency</option>
+                        {CURRENCY_OPTIONS.map((cur) => (
+                          <option key={cur} value={cur}>
+                            {cur}
+                          </option>
+                        ))}
+                      </select>
+                      {companyTouched.homeCurrency && companyErrors.homeCurrency && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.homeCurrency}</p>
+                      )}
                     </div>
-                  </div>
-                </InfoCard>
-              </>
-            )}
+                  ) : (
+                    show(form.homeCurrency)
+                  )
+                }
+              />
 
-            {activeTab === "personal" && (
-              <>
-                <div className="lg:col-span-1 h-full">
-                  <InfoCard
-                    title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
-                  >
-                    {(() => {
-                      const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
-                        platformIsConnected(p.id, connected)
-                      );
+              <InfoItem
+                label="GST No."
+                value={
+                  isCompanyEditMode ? (
+                    <div>
+                      <Input
+                        type="text"
+                        value={form.gst_no}
+                        onChange={handleCompanyChange("gst_no")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, gst_no: true }));
+                          validateCompanyField("gst_no");
+                        }}
+                        maxLength={15}
+                        error={!!(companyTouched.gst_no && companyErrors.gst_no)}
+                      />
+                      {companyTouched.gst_no && companyErrors.gst_no && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.gst_no}</p>
+                      )}
+                    </div>
+                  ) : (
+                    show(form.gst_no)
+                  )
+                }
+              />
 
-                      if (connectedPlatforms.length === 0) {
-                        return (
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            No platforms connected yet.
-                          </p>
-                        );
-                      }
+              <InfoItem
+                label="PAN No."
+                value={
+                  isCompanyEditMode ? (
+                    <div>
+                      <Input
+                        type="text"
+                        value={form.pan_no}
+                        onChange={handleCompanyChange("pan_no")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, pan_no: true }));
+                          validateCompanyField("pan_no");
+                        }}
+                        maxLength={10}
+                        error={!!(companyTouched.pan_no && companyErrors.pan_no)}
+                      />
+                      {companyTouched.pan_no && companyErrors.pan_no && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.pan_no}</p>
+                      )}
+                    </div>
+                  ) : (
+                    show(form.pan_no)
+                  )
+                }
+              />
 
-                      return (
-                        <div className="flex flex-wrap items-center justify-between gap-4">
-                          <div className="flex flex-wrap items-center gap-4">
-                            {connectedPlatforms.map((p) => {
-                              const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
-
-                              return (
-                                <div key={p.id} className="flex items-center gap-3">
-                                  {meta.countryCode && (
-                                    <ReactCountryFlag
-                                      svg
-                                      countryCode={meta.countryCode as any}
-                                      className="text-[22px] leading-none"
-                                      aria-label={meta.label}
-                                    />
-                                  )}
-
-                                  <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                                    {meta.label}
-                                  </span>
-                                </div>
-                              );
-                            })}
+              <div className="sm:col-span-2 lg:col-span-3">
+                <InfoItem
+                  label="Address"
+                  value={
+                    isCompanyEditMode ? (
+                      <div className="grid grid-cols-1 gap-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <Input
+                              type="text"
+                              placeholder="Building No."
+                              value={form.address_building}
+                              onChange={handleCompanyChange("address_building")}
+                              onBlur={() => {
+                                setCompanyTouched((prev) => ({ ...prev, address_building: true }));
+                                validateCompanyField("address_building");
+                              }}
+                              maxLength={120}
+                              error={!!(
+                                companyTouched.address_building && companyErrors.address_building
+                              )}
+                            />
+                            {companyTouched.address_building && companyErrors.address_building && (
+                              <p className="mt-1.5 text-xs text-red-500">
+                                {companyErrors.address_building}
+                              </p>
+                            )}
                           </div>
 
-                          <Link
-                            href=""
-                            className="inline-flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-green-500 hover:underline dark:text-emerald-400"
-                          >
-                            <FaPlus size={12} />
-                            <span>Integrate more marketplaces</span>
-                          </Link>
+                          <div>
+                            <Input
+                              type="text"
+                              placeholder="City"
+                              value={form.address_city}
+                              onChange={handleCompanyChange("address_city")}
+                              onBlur={() => {
+                                setCompanyTouched((prev) => ({ ...prev, address_city: true }));
+                                validateCompanyField("address_city");
+                              }}
+                              maxLength={60}
+                              error={!!(companyTouched.address_city && companyErrors.address_city)}
+                            />
+                            {companyTouched.address_city && companyErrors.address_city && (
+                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_city}</p>
+                            )}
+                          </div>
                         </div>
-                      );
-                    })()}
-                  </InfoCard>
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <div>
+                            <Input
+                              type="text"
+                              placeholder="State"
+                              value={form.address_state}
+                              onChange={handleCompanyChange("address_state")}
+                              onBlur={() => {
+                                setCompanyTouched((prev) => ({ ...prev, address_state: true }));
+                                validateCompanyField("address_state");
+                              }}
+                              maxLength={60}
+                              error={!!(companyTouched.address_state && companyErrors.address_state)}
+                            />
+                            {companyTouched.address_state && companyErrors.address_state && (
+                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_state}</p>
+                            )}
+                          </div>
+
+                          <div>
+                            <Input
+                              type="text"
+                              placeholder="Zipcode"
+                              value={form.address_zipcode}
+                              onChange={handleCompanyChange("address_zipcode")}
+                              onBlur={() => {
+                                setCompanyTouched((prev) => ({ ...prev, address_zipcode: true }));
+                                validateCompanyField("address_zipcode");
+                              }}
+                              maxLength={12}
+                              error={!!(companyTouched.address_zipcode && companyErrors.address_zipcode)}
+                            />
+                            {companyTouched.address_zipcode && companyErrors.address_zipcode && (
+                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_zipcode}</p>
+                            )}
+                          </div>
+
+                          <div>
+                            <Input
+                              type="text"
+                              placeholder="Country/Region"
+                              value={form.address_country}
+                              onChange={handleCompanyChange("address_country")}
+                              onBlur={() => {
+                                setCompanyTouched((prev) => ({ ...prev, address_country: true }));
+                                validateCompanyField("address_country");
+                              }}
+                              maxLength={60}
+                              error={!!(companyTouched.address_country && companyErrors.address_country)}
+                            />
+                            {companyTouched.address_country && companyErrors.address_country && (
+                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_country}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm font-medium text-gray-800 dark:text-white/90">
+                        {[
+                          form.address_building,
+                          form.address_city,
+                          form.address_state,
+                          form.address_country,
+                          form.address_zipcode,
+                        ]
+                          .map((x) => (x ?? "").trim())
+                          .filter(Boolean)
+                          .join(", ") || "-"}
+                      </div>
+                    )
+                  }
+                />
+              </div>
+            </div>
+          </InfoCard>
+        </>
+            )}
+
+        {activeTab === "personal" && (
+          <>
+
+            <div className="lg:col-span-1 h-full">
+              <InfoCard
+                title={
+                  <PageBreadcrumb
+                    pageTitle="Product & Inventory Controls"
+                    variant="table"
+                    align="left"
+                  />
+                }
+              >
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="flex items-center justify-start gap-2">
+                    <p className="text-sm font-semibold text-charcoal-500">SKU Information</p>
+
+                    <button
+                      onClick={skuModal.openModal}
+                      className="inline-flex items-center rounded-md p-1 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                      aria-label="Upload SKU"
+                      title="Upload SKU"
+                      type="button"
+                    >
+                      <TiUpload size={16} />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="lg:col-span-1 h-full">
-                  <InfoCard
-                    title={
-                      <PageBreadcrumb
-                        pageTitle="Product & Inventory Controls"
-                        variant="table"
-                        align="left"
-                      />
-                    }
-                  >
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className="flex items-center justify-start gap-2">
-                        <p className="text-sm font-semibold text-charcoal-500">SKU Information</p>
+                <Modal
+                  isOpen={feeModal.isOpen}
+                  onClose={closeFeePreview}
+                  className="m-4 max-w-[800px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
+                >
+                  <div className="relative w-full rounded-3xl bg-white p-4 no-scrollbar dark:bg-gray-900 lg:p-11">
+                    {selectedCountry ? (
+                      <FeepreviewUpload country={selectedCountry} onClose={closeFeePreview} />
+                    ) : (
+                      <p className="text-center text-gray-500 dark:text-gray-400">
+                        No country selected
+                      </p>
+                    )}
+                  </div>
+                </Modal>
 
-                        <button
-                          onClick={skuModal.openModal}
-                          className="inline-flex items-center rounded-md p-1 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-                          aria-label="Upload SKU"
-                          title="Upload SKU"
-                          type="button"
-                        >
-                          <TiUpload size={16} />
-                        </button>
+                <Modal
+                  isOpen={skuModal.isOpen}
+                  onClose={skuModal.closeModal}
+                  className="m-4 max-w-[500px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
+                >
+                  <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar dark:bg-gray-900 lg:p-9">
+                    <SkuMultiCountryUpload
+                      onClose={skuModal.closeModal}
+                      onComplete={() => skuModal.closeModal()}
+                    />
+                  </div>
+                </Modal>
+              </InfoCard>
+            </div>
+
+            <div className="lg:col-span-1 h-full">
+              <InfoCard
+                title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
+              >
+                {(() => {
+                  const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
+                    platformIsConnected(p.id, connected)
+                  );
+
+                  if (connectedPlatforms.length === 0) {
+                    return (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        No platforms connected yet.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex flex-wrap items-center gap-4">
+                        {connectedPlatforms.map((p) => {
+                          const meta = PLATFORM_FLAG_META[p.id] ?? { label: p.label };
+
+                          return (
+                            <div key={p.id} className="flex items-center gap-3">
+                              {meta.countryCode && (
+                                <ReactCountryFlag
+                                  svg
+                                  countryCode={meta.countryCode as any}
+                                  className="text-[22px] leading-none"
+                                  aria-label={meta.label}
+                                />
+                              )}
+
+                              <span className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                                {meta.label}
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
+
+                      <Link
+                        href=""
+                        className="inline-flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-green-500 hover:underline dark:text-emerald-400"
+                      >
+                        <FaPlus size={12} />
+                        <span>Integrate more marketplaces</span>
+                      </Link>
+                    </div>
+                  );
+                })()}
+              </InfoCard>
+            </div>
+
+
+          </>
+        )}
+      </div>
+    </div>
+      </div >
+
+    <Modal isOpen={isOpen} onClose={closeModal} className="m-4 max-w-[700px]">
+      <div className="no-scrollbar relative w-full max-w-[700px] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 dark:bg-gray-900 lg:p-11">
+        <div className="px-2 pr-14">
+          <PageBreadcrumb pageTitle={modalTitle} variant="table" align="left" textSize="2xl" />
+          <p className="text-sm text-charcoal-500">{modalSubtitle}</p>
+        </div>
+
+        <form className="flex flex-col" onSubmit={(e) => e.preventDefault()}>
+          <div className="custom-scrollbar h-full overflow-y-auto px-2 pb-3">
+            <div className="mt-2">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
+                {activeSection === "personal" && (
+                  <>
+                    <div className="col-span-2 lg:col-span-1">
+                      <Label>Name</Label>
+                      <Input
+                        type="text"
+                        value={form.name}
+                        onChange={handlePersonalChange("name")}
+                        onBlur={() => {
+                          setPersonalTouched((prev) => ({ ...prev, name: true }));
+                          validatePersonalField("name");
+                        }}
+                        maxLength={50}
+                        error={!!(personalTouched.name && personalErrors.name)}
+                      />
+                      {personalTouched.name && personalErrors.name && (
+                        <p className="mt-1.5 text-xs text-red-500">{personalErrors.name}</p>
+                      )}
                     </div>
 
-                    <Modal
-                      isOpen={feeModal.isOpen}
-                      onClose={closeFeePreview}
-                      className="m-4 max-w-[800px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
-                    >
-                      <div className="relative w-full rounded-3xl bg-white p-4 no-scrollbar dark:bg-gray-900 lg:p-11">
-                        {selectedCountry ? (
-                          <FeepreviewUpload country={selectedCountry} onClose={closeFeePreview} />
-                        ) : (
-                          <p className="text-center text-gray-500 dark:text-gray-400">
-                            No country selected
-                          </p>
-                        )}
-                      </div>
-                    </Modal>
+                    <div className="col-span-2 lg:col-span-1">
+                      <Label>Email (read-only)</Label>
+                      <Input type="text" value={form.email} disabled />
+                    </div>
 
-                    <Modal
-                      isOpen={skuModal.isOpen}
-                      onClose={skuModal.closeModal}
-                      className="m-4 max-w-[500px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
-                    >
-                      <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar dark:bg-gray-900 lg:p-9">
-                        <SkuMultiCountryUpload
-                          onClose={skuModal.closeModal}
-                          onComplete={() => skuModal.closeModal()}
-                        />
-                      </div>
-                    </Modal>
-                  </InfoCard>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+                    <div className="col-span-2 lg:col-span-1">
+                      <Label>Phone</Label>
+                      <Input
+                        type="text"
+                        value={form.phone_number}
+                        onChange={handlePersonalChange("phone_number")}
+                        onBlur={() => {
+                          setPersonalTouched((prev) => ({ ...prev, phone_number: true }));
+                          validatePersonalField("phone_number");
+                        }}
+                        maxLength={20}
+                        inputMode="tel"
+                        error={!!(personalTouched.phone_number && personalErrors.phone_number)}
+                      />
+                      {personalTouched.phone_number && personalErrors.phone_number && (
+                        <p className="mt-1.5 text-xs text-red-500">{personalErrors.phone_number}</p>
+                      )}
+                    </div>
 
-      <Modal isOpen={isOpen} onClose={closeModal} className="m-4 max-w-[700px]">
-        <div className="no-scrollbar relative w-full max-w-[700px] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-4 dark:bg-gray-900 lg:p-11">
-          <div className="px-2 pr-14">
-            <PageBreadcrumb pageTitle={modalTitle} variant="table" align="left" textSize="2xl" />
-            <p className="text-sm text-charcoal-500">{modalSubtitle}</p>
-          </div>
+                    <div className="col-span-2">
+                      <Label>Reset Password</Label>
+                      <p
+                        onClick={handleForgotPassword}
+                        className={`cursor-pointer text-sm font-medium ${isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-600 hover:underline"
+                          }`}
+                      >
+                        {isSending
+                          ? "Sending..."
+                          : isSuccess
+                            ? "Email sent for password reset"
+                            : "Click here to change password"}
+                      </p>
+                    </div>
+                  </>
+                )}
 
-          <form className="flex flex-col" onSubmit={(e) => e.preventDefault()}>
-            <div className="custom-scrollbar h-full overflow-y-auto px-2 pb-3">
-              <div className="mt-2">
-                <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
-                  {activeSection === "personal" && (
-                    <>
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>Name</Label>
-                        <Input
-                          type="text"
-                          value={form.name}
-                          onChange={handlePersonalChange("name")}
-                          onBlur={() => {
-                            setPersonalTouched((prev) => ({ ...prev, name: true }));
-                            validatePersonalField("name");
-                          }}
-                          maxLength={50}
-                          error={!!(personalTouched.name && personalErrors.name)}
-                        />
-                        {personalTouched.name && personalErrors.name && (
-                          <p className="mt-1.5 text-xs text-red-500">{personalErrors.name}</p>
-                        )}
-                      </div>
+                {activeSection === "company" && (
+                  <>
+                    <div className="col-span-2 lg:col-span-1">
+                      <Label>Brand Name</Label>
+                      <Input
+                        type="text"
+                        value={form.brand_name}
+                        onChange={handleCompanyChange("brand_name")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, brand_name: true }));
+                          validateCompanyField("brand_name");
+                        }}
+                        maxLength={80}
+                        error={!!(companyTouched.brand_name && companyErrors.brand_name)}
+                      />
+                      {companyTouched.brand_name && companyErrors.brand_name && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.brand_name}</p>
+                      )}
+                    </div>
 
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>Email (read-only)</Label>
-                        <Input type="text" value={form.email} disabled />
-                      </div>
+                    <div className="col-span-2 lg:col-span-1">
+                      <Label>Company Name</Label>
+                      <Input
+                        type="text"
+                        value={form.company_name}
+                        onChange={handleCompanyChange("company_name")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, company_name: true }));
+                          validateCompanyField("company_name");
+                        }}
+                        maxLength={80}
+                        error={!!(companyTouched.company_name && companyErrors.company_name)}
+                      />
+                      {companyTouched.company_name && companyErrors.company_name && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.company_name}</p>
+                      )}
+                    </div>
 
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>Phone</Label>
-                        <Input
-                          type="text"
-                          value={form.phone_number}
-                          onChange={handlePersonalChange("phone_number")}
-                          onBlur={() => {
-                            setPersonalTouched((prev) => ({ ...prev, phone_number: true }));
-                            validatePersonalField("phone_number");
-                          }}
-                          maxLength={20}
-                          inputMode="tel"
-                          error={!!(personalTouched.phone_number && personalErrors.phone_number)}
-                        />
-                        {personalTouched.phone_number && personalErrors.phone_number && (
-                          <p className="mt-1.5 text-xs text-red-500">{personalErrors.phone_number}</p>
-                        )}
-                      </div>
-
-                      <div className="col-span-2">
-                        <Label>Reset Password</Label>
-                        <p
-                          onClick={handleForgotPassword}
-                          className={`cursor-pointer text-sm font-medium ${isSuccess ? "text-green-600 dark:text-green-400" : "text-blue-600 hover:underline"
-                            }`}
-                        >
-                          {isSending
-                            ? "Sending..."
-                            : isSuccess
-                              ? "Email sent for password reset"
-                              : "Click here to change password"}
-                        </p>
-                      </div>
-                    </>
-                  )}
-
-                  {activeSection === "company" && (
-                    <>
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>Brand Name</Label>
-                        <Input
-                          type="text"
-                          value={form.brand_name}
-                          onChange={handleCompanyChange("brand_name")}
-                          onBlur={() => {
-                            setCompanyTouched((prev) => ({ ...prev, brand_name: true }));
-                            validateCompanyField("brand_name");
-                          }}
-                          maxLength={80}
-                          error={!!(companyTouched.brand_name && companyErrors.brand_name)}
-                        />
-                        {companyTouched.brand_name && companyErrors.brand_name && (
-                          <p className="mt-1.5 text-xs text-red-500">{companyErrors.brand_name}</p>
-                        )}
-                      </div>
-
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>Company Name</Label>
-                        <Input
-                          type="text"
-                          value={form.company_name}
-                          onChange={handleCompanyChange("company_name")}
-                          onBlur={() => {
-                            setCompanyTouched((prev) => ({ ...prev, company_name: true }));
-                            validateCompanyField("company_name");
-                          }}
-                          maxLength={80}
-                          error={!!(companyTouched.company_name && companyErrors.company_name)}
-                        />
-                        {companyTouched.company_name && companyErrors.company_name && (
-                          <p className="mt-1.5 text-xs text-red-500">{companyErrors.company_name}</p>
-                        )}
-                      </div>
-
-                      <div className="col-span-2 lg:col-span-1">
+                    {/* <div className="col-span-2 lg:col-span-1">
                         <Label>Revenue</Label>
                         <select
                           value={form.annual_sales_range}
@@ -1889,304 +1914,304 @@ const openSection = (s: Section) => {
                         {companyTouched.annual_sales_range && companyErrors.annual_sales_range && (
                           <p className="mt-1.5 text-xs text-red-500">{companyErrors.annual_sales_range}</p>
                         )}
-                      </div>
+                      </div> */}
 
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>Home Currency</Label>
-                        <select
-                          value={form.homeCurrency}
-                          onChange={handleCompanyChange("homeCurrency")}
-                          onBlur={() => {
-                            setCompanyTouched((prev) => ({ ...prev, homeCurrency: true }));
-                            validateCompanyField("homeCurrency");
-                          }}
-                          className={`h-11 w-full rounded-md border bg-white px-3 pr-10 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200 ${companyTouched.homeCurrency && companyErrors.homeCurrency
-                            ? "border-red-500"
-                            : "border-gray-300"
-                            }`}
-                        >
-                          <option value="">Select Currency</option>
-                          {CURRENCY_OPTIONS.map((cur) => (
-                            <option key={cur} value={cur}>
-                              {cur}
-                            </option>
-                          ))}
-                        </select>
-                        {companyTouched.homeCurrency && companyErrors.homeCurrency && (
-                          <p className="mt-1.5 text-xs text-red-500">{companyErrors.homeCurrency}</p>
-                        )}
-                      </div>
+                    <div className="col-span-2 lg:col-span-1">
+                      <Label>Home Currency</Label>
+                      <select
+                        value={form.homeCurrency}
+                        onChange={handleCompanyChange("homeCurrency")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, homeCurrency: true }));
+                          validateCompanyField("homeCurrency");
+                        }}
+                        className={`h-11 w-full rounded-md border bg-white px-3 pr-10 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-200 ${companyTouched.homeCurrency && companyErrors.homeCurrency
+                          ? "border-red-500"
+                          : "border-gray-300"
+                          }`}
+                      >
+                        <option value="">Select Currency</option>
+                        {CURRENCY_OPTIONS.map((cur) => (
+                          <option key={cur} value={cur}>
+                            {cur}
+                          </option>
+                        ))}
+                      </select>
+                      {companyTouched.homeCurrency && companyErrors.homeCurrency && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.homeCurrency}</p>
+                      )}
+                    </div>
 
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>GST No.</Label>
-                        <Input
-                          type="text"
-                          value={form.gst_no}
-                          onChange={handleCompanyChange("gst_no")}
-                          onBlur={() => {
-                            setCompanyTouched((prev) => ({ ...prev, gst_no: true }));
-                            validateCompanyField("gst_no");
-                          }}
-                          maxLength={15}
-                          error={!!(companyTouched.gst_no && companyErrors.gst_no)}
-                        />
-                        {companyTouched.gst_no && companyErrors.gst_no && (
-                          <p className="mt-1.5 text-xs text-red-500">{companyErrors.gst_no}</p>
-                        )}
-                      </div>
+                    <div className="col-span-2 lg:col-span-1">
+                      <Label>GST No.</Label>
+                      <Input
+                        type="text"
+                        value={form.gst_no}
+                        onChange={handleCompanyChange("gst_no")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, gst_no: true }));
+                          validateCompanyField("gst_no");
+                        }}
+                        maxLength={15}
+                        error={!!(companyTouched.gst_no && companyErrors.gst_no)}
+                      />
+                      {companyTouched.gst_no && companyErrors.gst_no && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.gst_no}</p>
+                      )}
+                    </div>
 
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>PAN No.</Label>
-                        <Input
-                          type="text"
-                          value={form.pan_no}
-                          onChange={handleCompanyChange("pan_no")}
-                          onBlur={() => {
-                            setCompanyTouched((prev) => ({ ...prev, pan_no: true }));
-                            validateCompanyField("pan_no");
-                          }}
-                          maxLength={10}
-                          error={!!(companyTouched.pan_no && companyErrors.pan_no)}
-                        />
-                        {companyTouched.pan_no && companyErrors.pan_no && (
-                          <p className="mt-1.5 text-xs text-red-500">{companyErrors.pan_no}</p>
-                        )}
-                      </div>
+                    <div className="col-span-2 lg:col-span-1">
+                      <Label>PAN No.</Label>
+                      <Input
+                        type="text"
+                        value={form.pan_no}
+                        onChange={handleCompanyChange("pan_no")}
+                        onBlur={() => {
+                          setCompanyTouched((prev) => ({ ...prev, pan_no: true }));
+                          validateCompanyField("pan_no");
+                        }}
+                        maxLength={10}
+                        error={!!(companyTouched.pan_no && companyErrors.pan_no)}
+                      />
+                      {companyTouched.pan_no && companyErrors.pan_no && (
+                        <p className="mt-1.5 text-xs text-red-500">{companyErrors.pan_no}</p>
+                      )}
+                    </div>
 
-                      <div className="col-span-2">
-                        <Label>Address</Label>
-                        <div className="grid grid-cols-1 gap-4">
+                    <div className="col-span-2">
+                      <Label>Address</Label>
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <Input
+                            type="text"
+                            placeholder="Building No."
+                            value={form.address_building}
+                            onChange={handleCompanyChange("address_building")}
+                            onBlur={() => {
+                              setCompanyTouched((prev) => ({ ...prev, address_building: true }));
+                              validateCompanyField("address_building");
+                            }}
+                            maxLength={120}
+                            error={!!(companyTouched.address_building && companyErrors.address_building)}
+                          />
+                          {companyTouched.address_building && companyErrors.address_building && (
+                            <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_building}</p>
+                          )}
+                        </div>
+
+                        <div>
+                          <Input
+                            type="text"
+                            placeholder="City"
+                            value={form.address_city}
+                            onChange={handleCompanyChange("address_city")}
+                            onBlur={() => {
+                              setCompanyTouched((prev) => ({ ...prev, address_city: true }));
+                              validateCompanyField("address_city");
+                            }}
+                            maxLength={60}
+                            error={!!(companyTouched.address_city && companyErrors.address_city)}
+                          />
+                          {companyTouched.address_city && companyErrors.address_city && (
+                            <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_city}</p>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                           <div>
                             <Input
                               type="text"
-                              placeholder="Building No."
-                              value={form.address_building}
-                              onChange={handleCompanyChange("address_building")}
+                              placeholder="Country/Region"
+                              value={form.address_country}
+                              onChange={handleCompanyChange("address_country")}
                               onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, address_building: true }));
-                                validateCompanyField("address_building");
-                              }}
-                              maxLength={120}
-                              error={!!(companyTouched.address_building && companyErrors.address_building)}
-                            />
-                            {companyTouched.address_building && companyErrors.address_building && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_building}</p>
-                            )}
-                          </div>
-
-                          <div>
-                            <Input
-                              type="text"
-                              placeholder="City"
-                              value={form.address_city}
-                              onChange={handleCompanyChange("address_city")}
-                              onBlur={() => {
-                                setCompanyTouched((prev) => ({ ...prev, address_city: true }));
-                                validateCompanyField("address_city");
+                                setCompanyTouched((prev) => ({ ...prev, address_country: true }));
+                                validateCompanyField("address_country");
                               }}
                               maxLength={60}
-                              error={!!(companyTouched.address_city && companyErrors.address_city)}
+                              error={!!(companyTouched.address_country && companyErrors.address_country)}
                             />
-                            {companyTouched.address_city && companyErrors.address_city && (
-                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_city}</p>
+                            {companyTouched.address_country && companyErrors.address_country && (
+                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_country}</p>
                             )}
                           </div>
 
-                          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                            <div>
-                              <Input
-                                type="text"
-                                placeholder="Country/Region"
-                                value={form.address_country}
-                                onChange={handleCompanyChange("address_country")}
-                                onBlur={() => {
-                                  setCompanyTouched((prev) => ({ ...prev, address_country: true }));
-                                  validateCompanyField("address_country");
-                                }}
-                                maxLength={60}
-                                error={!!(companyTouched.address_country && companyErrors.address_country)}
-                              />
-                              {companyTouched.address_country && companyErrors.address_country && (
-                                <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_country}</p>
-                              )}
-                            </div>
+                          <div>
+                            <Input
+                              type="text"
+                              placeholder="State"
+                              value={form.address_state}
+                              onChange={handleCompanyChange("address_state")}
+                              onBlur={() => {
+                                setCompanyTouched((prev) => ({ ...prev, address_state: true }));
+                                validateCompanyField("address_state");
+                              }}
+                              maxLength={60}
+                              error={!!(companyTouched.address_state && companyErrors.address_state)}
+                            />
+                            {companyTouched.address_state && companyErrors.address_state && (
+                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_state}</p>
+                            )}
+                          </div>
 
-                            <div>
-                              <Input
-                                type="text"
-                                placeholder="State"
-                                value={form.address_state}
-                                onChange={handleCompanyChange("address_state")}
-                                onBlur={() => {
-                                  setCompanyTouched((prev) => ({ ...prev, address_state: true }));
-                                  validateCompanyField("address_state");
-                                }}
-                                maxLength={60}
-                                error={!!(companyTouched.address_state && companyErrors.address_state)}
-                              />
-                              {companyTouched.address_state && companyErrors.address_state && (
-                                <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_state}</p>
-                              )}
-                            </div>
-
-                            <div>
-                              <Input
-                                type="text"
-                                placeholder="Zipcode"
-                                value={form.address_zipcode}
-                                onChange={handleCompanyChange("address_zipcode")}
-                                onBlur={() => {
-                                  setCompanyTouched((prev) => ({ ...prev, address_zipcode: true }));
-                                  validateCompanyField("address_zipcode");
-                                }}
-                                maxLength={12}
-                                error={!!(companyTouched.address_zipcode && companyErrors.address_zipcode)}
-                              />
-                              {companyTouched.address_zipcode && companyErrors.address_zipcode && (
-                                <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_zipcode}</p>
-                              )}
-                            </div>
+                          <div>
+                            <Input
+                              type="text"
+                              placeholder="Zipcode"
+                              value={form.address_zipcode}
+                              onChange={handleCompanyChange("address_zipcode")}
+                              onBlur={() => {
+                                setCompanyTouched((prev) => ({ ...prev, address_zipcode: true }));
+                                validateCompanyField("address_zipcode");
+                              }}
+                              maxLength={12}
+                              error={!!(companyTouched.address_zipcode && companyErrors.address_zipcode)}
+                            />
+                            {companyTouched.address_zipcode && companyErrors.address_zipcode && (
+                              <p className="mt-1.5 text-xs text-red-500">{companyErrors.address_zipcode}</p>
+                            )}
                           </div>
                         </div>
                       </div>
-                    </>
-                  )}
+                    </div>
+                  </>
+                )}
 
-                  {activeSection === "targets" && (
+                {activeSection === "targets" && (
+                  <div className="col-span-2 lg:col-span-1">
+                    <Label>Monthly Target ({homeCurrencyCode})</Label>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      step={1}
+                      min="0"
+                      value={form.target_sales}
+                      onChange={handleInput("target_sales")}
+                    />
+                  </div>
+                )}
+
+                {activeSection === "objective" && (
+                  <>
+                    <div className="col-span-2">
+                      <Label>Country</Label>
+                      <select
+                        value={objective.country}
+                        onChange={(e) => setObjective((prev) => ({ ...prev, country: e.target.value }))}
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        required
+                      >
+                        <option value="" disabled>
+                          Select Country
+                        </option>
+                        {integratedCountries.map((c) => (
+                          <option key={c} value={c}>
+                            {c.toUpperCase()}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="col-span-2 lg:col-span-1">
-                      <Label>Monthly Target ({homeCurrencyCode})</Label>
+                      <Label>Growth</Label>
+                      <select
+                        value={objective.growth_intent}
+                        onChange={(e) =>
+                          setObjective((prev) => ({
+                            ...prev,
+                            growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
+                          }))
+                        }
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        required
+                      >
+                        {GROWTH_OPTIONS.map((v) => (
+                          <option key={v} value={v}>
+                            {v.charAt(0).toUpperCase() + v.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="col-span-2 lg:col-span-1">
+                      <Label>Inventory Dilution</Label>
+                      <select
+                        value={objective.inventory_clearance_priority ? "yes" : "no"}
+                        onChange={(e) =>
+                          setObjective((prev) => ({
+                            ...prev,
+                            inventory_clearance_priority: e.target.value === "yes",
+                          }))
+                        }
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        required
+                      >
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </div>
+
+                    <div className="col-span-2">
+                      <Label>Profit</Label>
+                      <select
+                        value={objective.profit_priority}
+                        onChange={(e) =>
+                          setObjective((prev) => ({
+                            ...prev,
+                            profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
+                          }))
+                        }
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                        required
+                      >
+                        {PROFIT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="col-span-2">
+                      <Label>Business Overview</Label>
                       <Input
-                        type="number"
-                        inputMode="numeric"
-                        step={1}
-                        min="0"
-                        value={form.target_sales}
-                        onChange={handleInput("target_sales")}
+                        type="text"
+                        value={objective.business_context}
+                        onChange={(e) =>
+                          setObjective((prev) => ({ ...prev, business_context: e.target.value }))
+                        }
+                        required
                       />
                     </div>
-                  )}
-
-                  {activeSection === "objective" && (
-                    <>
-                      <div className="col-span-2">
-                        <Label>Country</Label>
-                        <select
-                          value={objective.country}
-                          onChange={(e) => setObjective((prev) => ({ ...prev, country: e.target.value }))}
-                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          required
-                        >
-                          <option value="" disabled>
-                            Select Country
-                          </option>
-                          {integratedCountries.map((c) => (
-                            <option key={c} value={c}>
-                              {c.toUpperCase()}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>Growth</Label>
-                        <select
-                          value={objective.growth_intent}
-                          onChange={(e) =>
-                            setObjective((prev) => ({
-                              ...prev,
-                              growth_intent: e.target.value as UserObjectiveForm["growth_intent"],
-                            }))
-                          }
-                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          required
-                        >
-                          {GROWTH_OPTIONS.map((v) => (
-                            <option key={v} value={v}>
-                              {v.charAt(0).toUpperCase() + v.slice(1)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="col-span-2 lg:col-span-1">
-                        <Label>Inventory Dilution</Label>
-                        <select
-                          value={objective.inventory_clearance_priority ? "yes" : "no"}
-                          onChange={(e) =>
-                            setObjective((prev) => ({
-                              ...prev,
-                              inventory_clearance_priority: e.target.value === "yes",
-                            }))
-                          }
-                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          required
-                        >
-                          <option value="yes">Yes</option>
-                          <option value="no">No</option>
-                        </select>
-                      </div>
-
-                      <div className="col-span-2">
-                        <Label>Profit</Label>
-                        <select
-                          value={objective.profit_priority}
-                          onChange={(e) =>
-                            setObjective((prev) => ({
-                              ...prev,
-                              profit_priority: e.target.value as UserObjectiveForm["profit_priority"],
-                            }))
-                          }
-                          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          required
-                        >
-                          {PROFIT_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="col-span-2">
-                        <Label>Business Overview</Label>
-                        <Input
-                          type="text"
-                          value={objective.business_context}
-                          onChange={(e) =>
-                            setObjective((prev) => ({ ...prev, business_context: e.target.value }))
-                          }
-                          required
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
             </div>
+          </div>
 
-            <div className="mt-6 flex items-center gap-3 px-2 lg:justify-end">
-              <Button size="sm" variant="outline" onClick={closeModal} disabled={isSaving}>
-                Close
-              </Button>
-              <Button
-                size="sm"
-                onClick={
-                  activeSection === "objective"
-                    ? handleSaveObjective
-                    : activeSection === "personal"
-                      ? handleSavePersonal
-                      : activeSection === "company"
-                        ? handleSaveCompany
-                        : handleSave
-                }
-                disabled={isSaving}
-              >
-                {isSaving ? "Saving…" : "Save Changes"}
-              </Button>
-            </div>
-          </form>
-        </div>
-      </Modal>
-    </div>
+          <div className="mt-6 flex items-center gap-3 px-2 lg:justify-end">
+            <Button size="sm" variant="outline" onClick={closeModal} disabled={isSaving}>
+              Close
+            </Button>
+            <Button
+              size="sm"
+              onClick={
+                activeSection === "objective"
+                  ? handleSaveObjective
+                  : activeSection === "personal"
+                    ? handleSavePersonal
+                    : activeSection === "company"
+                      ? handleSaveCompany
+                      : handleSave
+              }
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving…" : "Save Changes"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </Modal>
+    </div >
   );
 }

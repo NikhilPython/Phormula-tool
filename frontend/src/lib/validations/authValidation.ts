@@ -271,9 +271,10 @@ export const companyInfoSchema = z.object({
     .min(2, "Company name must be at least 2 characters"),
 
   annual_sales_range: z
-    .string()
-    .trim()
-    .min(1, "Revenue is required"),
+  .string()
+  .trim()
+  .optional()
+  .or(z.literal("")),
 
   homeCurrency: z
     .string()
@@ -338,7 +339,7 @@ export const getCompanyInfoFieldErrors = (
   return {
     brand_name: fieldErrors.brand_name?.[0],
     company_name: fieldErrors.company_name?.[0],
-    annual_sales_range: fieldErrors.annual_sales_range?.[0],
+    // annual_sales_range: fieldErrors.annual_sales_range?.[0],
     homeCurrency: fieldErrors.homeCurrency?.[0],
     gst_no: fieldErrors.gst_no?.[0],
     pan_no: fieldErrors.pan_no?.[0],
