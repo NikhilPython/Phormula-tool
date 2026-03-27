@@ -7,7 +7,7 @@ import io
 import pandas as pd
 from sqlalchemy import inspect
 from app import db
-from app.models.user_models import CurrencyConversion, Category, UserAdmin , User, UploadHistory, CountryProfile, Member
+from app.models.user_models import CurrencyConversion, Category, UserAdmin , User, UploadHistory, CountryProfile, Member, UserObjective
 from sqlalchemy.exc import IntegrityError
 from flask import current_app
 import os,jwt
@@ -66,6 +66,9 @@ def _safe_user_dict(u: User):
         "country": getattr(u, "country", None),
         "marketplace_id": getattr(u, "marketplace_id", None),
         "annual_sales_range": getattr(u, "annual_sales_range", None),
+        "target_sales": float(u.target_sales) if getattr(u, "target_sales", None) is not None else None,
+        "address": getattr(u, "address", None),
+
     }
 
 
@@ -102,12 +105,15 @@ def get_superadmin_dashboard():
         if not user and not user_admin:
             return jsonify({"message": "No user found with that email"}), 404
 
+        selected_user = user if user else user_admin
         user_id = user.id if user else getattr(user_admin, "user_id", None)
+
         if not user_id:
             return jsonify({"message": "User ID not found for this email"}), 404
 
         related_upload_history = UploadHistory.query.filter_by(user_id=user_id).all()
         related_profiles = CountryProfile.query.filter_by(user_id=user_id).all()
+        related_objectives = UserObjective.query.filter_by(user_id=user_id).order_by(UserObjective.id.asc()).all()
 
         quarter_months = {
             "quarter1": ["january", "february", "march"],
@@ -119,15 +125,21 @@ def get_superadmin_dashboard():
         skuwise_data = []
         engine = db.get_engine()
         inspector = inspect(engine)
+        sku_table_name = f"sku_{user_id}_data_table"
+        sku_table_count = 0
+        sku_table_exists = False
 
         with engine.connect() as conn:
             for c in related_upload_history:
-                if c.country and c.country.lower() == "global":
-                    base_table = f"skuwisemonthly_{user_id}_{c.country.lower()}_{c.month.lower()}{c.year}_table"
-                else:
-                    base_table = f"skuwisemonthly_{user_id}_{c.country.lower()}_{c.month.lower()}{c.year}"
+                country_lower = (c.country or "").lower()
+                month_lower = (c.month or "").lower()
 
-                yearly_base_table = f"skuwiseyearly_{user_id}_{c.country.lower()}_{c.year}_table"
+                if country_lower == "global":
+                    base_table = f"skuwisemonthly_{user_id}_{country_lower}_{month_lower}{c.year}_table"
+                else:
+                    base_table = f"skuwisemonthly_{user_id}_{country_lower}_{month_lower}{c.year}"
+
+                yearly_base_table = f"skuwiseyearly_{user_id}_{country_lower}_{c.year}_table"
 
                 for table_name in [base_table, yearly_base_table]:
                     if inspector.has_table(table_name):
@@ -139,13 +151,14 @@ def get_superadmin_dashboard():
                         except Exception as e:
                             skuwise_data.append({"table": table_name, "error": str(e)})
                     else:
-                        skuwise_data.append({"table": table_name, "error": f"Table '{table_name}' does not exist"})
+                        skuwise_data.append({
+                            "table": table_name,
+                            "error": f"Table '{table_name}' does not exist"
+                        })
 
-                # quarterly
-                month_lower = (c.month or "").lower()
                 for quarter, months in quarter_months.items():
                     if month_lower in months:
-                        quarter_table = f"{quarter}_{user_id}_{c.country.lower()}_{c.year}_table"
+                        quarter_table = f"{quarter}_{user_id}_{country_lower}_{c.year}_table"
                         if inspector.has_table(quarter_table):
                             try:
                                 result = conn.execute(text(f'SELECT * FROM "{quarter_table}" LIMIT 15'))
@@ -155,28 +168,37 @@ def get_superadmin_dashboard():
                             except Exception as e:
                                 skuwise_data.append({"table": quarter_table, "error": str(e)})
                         else:
-                            skuwise_data.append({"table": quarter_table, "error": f"Table '{quarter_table}' does not exist"})
+                            skuwise_data.append({
+                                "table": quarter_table,
+                                "error": f"Table '{quarter_table}' does not exist"
+                            })
                         break
+            # NEW: count rows from sku_{user_id}_data_table
+            if inspector.has_table(sku_table_name):
+                sku_table_exists = True
+                count_result = conn.execute(
+                    text(f'SELECT COUNT(*) AS total FROM "{sku_table_name}"')
+                )
+                sku_table_count = count_result.scalar() or 0
+
+        latest_objective = (
+            UserObjective.query
+            .filter_by(user_id=user_id)
+            .order_by(UserObjective.id.desc())
+            .first()
+        )
 
         return jsonify({
             "email": email_to_search,
             "user_id": user_id,
-            "name": (user.name if user else getattr(user_admin, "name", None)),  # ✅ ADD THIS
-            "brand_name": (user.brand_name if user else getattr(user_admin, "brand_name", None)),
-            "annual_sales_range": (user.annual_sales_range if user else getattr(user_admin, "annual_sales_range", None)),
-            "related_upload_history": [
-                {
-                    "id": c.id,
-                    "user_id": c.user_id,
-                    "country": c.country,
-                    "month": c.month,
-                    "year": c.year,
-                    "total_sales": c.total_sales,
-                    "total_profit": c.total_profit,
-                    "total_expense": c.total_expense,
-                }
-                for c in related_upload_history
-            ],
+            "name": getattr(selected_user, "name", None),
+            "company_name": getattr(selected_user, "company_name", None),
+            "brand_name": getattr(selected_user, "brand_name", None),
+            "country": getattr(selected_user, "country", None),
+            "marketplace_id": getattr(selected_user, "marketplace_id", None),
+            "annual_sales_range": getattr(selected_user, "annual_sales_range", None),
+            "target_sales": float(selected_user.target_sales) if getattr(selected_user, "target_sales", None) is not None else None,
+            "address": getattr(selected_user, "address", None),
             "related_country_profiles": [
                 {
                     "user_id": cp.user_id,
@@ -186,7 +208,42 @@ def get_superadmin_dashboard():
                 }
                 for cp in related_profiles
             ],
-            "skuwise_tables": skuwise_data,
+            # "related_upload_history": [
+            #     {
+            #         "id": c.id,
+            #         "user_id": c.user_id,
+            #         "country": c.country,
+            #         "month": c.month,
+            #         "year": c.year,
+            #         "total_sales": c.total_sales,
+            #         "total_profit": c.total_profit,
+            #         "total_expense": c.total_expense,
+            #     }
+            #     for c in related_upload_history
+            # ],
+            # "user_objectives": [
+            #     {
+            #         "id": obj.id,
+            #         "user_id": obj.user_id,
+            #         "country": obj.country,
+            #         "growth_intent": obj.growth_intent,
+            #         "profit_priority": obj.profit_priority,
+            #         "inventory_clearance_priority": obj.inventory_clearance_priority,
+            #         "business_context": obj.business_context,
+            #         "ai_business_journey": obj.ai_business_journey,
+            #         "website_url": obj.website_url,
+            #         "ppt_file_name": obj.ppt_file_name,
+            #         "objective_month": obj.objective_month.isoformat() if obj.objective_month else None,
+            #         "created_at": obj.created_at.isoformat() if obj.created_at else None,
+            #         "updated_at": obj.updated_at.isoformat() if obj.updated_at else None,
+            #     }
+            #     for obj in related_objectives
+            # ],
+            "ai_business_journey": latest_objective.ai_business_journey if latest_objective else None,
+            "sku_table_name": sku_table_name,
+            "sku_table_exists": sku_table_exists,
+            "sku_count": sku_table_count,
+            # "skuwise_tables": skuwise_data,
         }), 200
 
     # ✅ CASE 2: No email -> return USERS + ADMINS with requested fields
@@ -201,110 +258,6 @@ def get_superadmin_dashboard():
 
     except Exception as e:
         return jsonify({"message": f"Error fetching data: {str(e)}"}), 500
-
-
-# --------------------------- existing file listing route (unchanged except upload_dir fix) ---------------------------
-
-# @superadmin_dashboard_bp.route("/superadmin/Filesofuploadfolder", methods=["GET"])
-# def list_uploaded_files():
-#     email_to_search = request.args.get("email")
-#     if not email_to_search:
-#         return jsonify({"error": "Email parameter is required"}), 400
-
-#     user = User.query.filter_by(email=email_to_search).first()
-#     user_admin = UserAdmin.query.filter_by(email=email_to_search).first()
-
-#     if not user and not user_admin:
-#         return jsonify({"message": "No user found with that email"}), 404
-
-#     user_id = user.id if user else getattr(user_admin, "user_id", None)
-#     if not user_id:
-#         return jsonify({"message": "User ID not found for this email"}), 404
-
-#     related_upload_history = UploadHistory.query.filter_by(user_id=user_id).all()
-#     related_profiles = CountryProfile.query.filter_by(user_id=user_id).all()
-
-#     user_filenames = set()
-#     for upload in related_upload_history:
-#         if hasattr(upload, "filename") and upload.filename:
-#             user_filenames.add(upload.filename)
-#         if hasattr(upload, "file_path") and upload.file_path:
-#             user_filenames.add(os.path.basename(upload.file_path))
-
-#     for profile in related_profiles:
-#         if hasattr(profile, "filename") and profile.filename:
-#             user_filenames.add(profile.filename)
-#         if hasattr(profile, "file_path") and profile.file_path:
-#             user_filenames.add(os.path.basename(profile.file_path))
-
-#     def is_user_file(filename, user_id):
-#         if filename in user_filenames:
-#             return True
-
-#         import re
-#         patterns = [
-#             rf"^error_file_{user_id}.*\.xlsx$",
-#             rf"^user_{user_id}_.*\.xlsx$",
-#             rf"^purchase_order_{user_id}.*\.xlsx$",
-#             rf"^forecastpnl_{user_id}.*\.xlsx$",
-#             rf"^inventory_{user_id}.*\.xlsx$",
-#             rf"^forecasts_{user_id}.*\.xlsx$",
-#             rf"^currentinventory_{user_id}.*\.xlsx$",
-#             rf"^inventory_forecast_{user_id}_.*\.xlsx$",
-#         ]
-#         return any(re.match(p, filename) for p in patterns)
-
-#     # ✅ FIX: your old code had current_app.config.get() without key
-#     upload_dir = current_app.config.get("")
-#     if not upload_dir or not os.path.isdir(upload_dir):
-#         return jsonify({"error": "Uploads directory not found", "upload_dir": upload_dir}), 404
-
-#     files_info = []
-#     for filename in os.listdir(upload_dir):
-#         if not is_user_file(filename, user_id):
-#             continue
-
-#         file_path = os.path.join(upload_dir, filename)
-#         if not os.path.isfile(file_path):
-#             continue
-
-#         stat = os.stat(file_path)
-#         file_info = {
-#             "filename": filename,
-#             "size": stat.st_size,
-#             "last_modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-#         }
-
-#         try:
-#             ext = os.path.splitext(filename)[1].lower()
-#             if ext in [".xls", ".xlsx"]:
-#                 df = pd.read_excel(file_path).head(20)
-#                 file_info["headers"] = list(df.columns)
-#                 file_info["rows"] = json.loads(df.to_json(orient="values"))
-#             elif ext == ".csv":
-#                 df = pd.read_csv(file_path).head(20)
-#                 file_info["headers"] = list(df.columns)
-#                 file_info["rows"] = json.loads(df.to_json(orient="values"))
-#             elif ext == ".json":
-#                 with open(file_path, "r", encoding="utf-8") as f:
-#                     data = json.load(f)
-#                 file_info["json_preview"] = data if isinstance(data, (dict, list)) else str(data)
-#             elif ext == ".txt":
-#                 with open(file_path, "r", encoding="utf-8") as f:
-#                     file_info["text_preview"] = f.readlines()[:20]
-#             else:
-#                 file_info["note"] = "Unsupported file type or not previewable"
-#         except Exception as e:
-#             file_info["error"] = f"Failed to read file: {str(e)}"
-
-#         files_info.append(file_info)
-
-#     return jsonify({
-#         "user_id": user_id,
-#         "total_files": len(files_info),
-#         "files": files_info,
-#     }), 200
-
 
 
 @superadmin_dashboard_bp.route('/superadmin/dashboard/upload_currency_file', methods=['POST'])
