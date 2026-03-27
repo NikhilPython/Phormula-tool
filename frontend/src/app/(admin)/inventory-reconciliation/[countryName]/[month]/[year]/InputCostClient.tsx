@@ -1,6 +1,7 @@
 'use client';
 
 import React, { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import PageBreadcrumb from '@/components/common/PageBreadCrumb';
 import DownloadIconButton from '@/components/ui/button/DownloadIconButton';
 import Modalmsg from '@/components/ui/modal/Modalmsg';
@@ -25,6 +26,7 @@ import {
 import DataTable, { ColumnDef as DataTableColumnDef } from "@/components/ui/table/DataTable";
 import InventoryPieCard, { InventoryPieCardHandle } from "@/components/inventory/InventoryPieCard";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
+import { IoMdLock } from "react-icons/io";
 /* ================= TYPES ================= */
 interface Params {
   params: Promise<{
@@ -189,39 +191,111 @@ const DUMMY_ROWS: AnyRow[] = [
     id: "dummy-1",
     product_name: "Sample Product A",
     msku: "SKU-001",
-    sellable_sum_first: 120,
-    expired_sum_first: 5,
-    beginning_total: 125,
-    sum_receipts: 40,
-    transit_total: 40,
-    sum_disposed: 2,
-    sum_damaged: 1,
+    sellable_sum_first: 0,
+    expired_sum_first: 0,
+    beginning_total: 0,
+    sum_receipts: 0,
+    transit_total: 0,
+    sum_disposed: 0,
+    sum_damaged: 0,
     sum_lost: 0,
     sum_found: 0,
-    sold_total: 60,
-    ending_total: 104,
+    sold_total: 0,
+    ending_total: 0,
     difference_total: 0,
+    sellable_sum_last: 0,
+    expired_sum_last: 0,
+    inventory_coverage_ratio: 0,
   },
   {
     id: "__TOTAL__",
     product_name: "GRAND TOTAL",
     msku: "GRAND TOTAL",
-    sellable_sum_first: 120,
-    expired_sum_first: 5,
-    beginning_total: 125,
-    sum_receipts: 40,
-    transit_total: 40,
-    sum_disposed: 2,
-    sum_damaged: 1,
+    sellable_sum_first: 0,
+    expired_sum_first: 0,
+    beginning_total: 0,
+    sum_receipts: 0,
+    transit_total: 0,
+    sum_disposed: 0,
+    sum_damaged: 0,
     sum_lost: 0,
     sum_found: 0,
-    sold_total: 60,
-    ending_total: 104,
+    sold_total: 0,
+    ending_total: 0,
     difference_total: 0,
+    sellable_sum_last: 0,
+    expired_sum_last: 0,
+    inventory_coverage_ratio: 0,
     __isTotal: true,
   },
 ];
 
+const PreviewLockedSection = ({
+  enabled,
+  children,
+  title,
+  description,
+  buttonText,
+  onAction,
+}: {
+  enabled: boolean;
+  children: React.ReactNode;
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onAction?: () => void;
+}) => {
+  return (
+    <div className="relative w-full">
+      <div
+        className={
+          enabled
+            ? "pointer-events-none select-none opacity-45 transition-all duration-300"
+            : "opacity-100 transition-all duration-300"
+        }
+      >
+        {children}
+      </div>
+
+      {enabled && (
+        <>
+          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                <div className="mb-4 flex justify-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#37455F]">
+                    <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-semibold text-[#414042]">
+                  {title}
+                </h3>
+
+                <p className="mt-2 text-sm text-gray-600 leading-6">
+                  {description}
+                </p>
+
+                <button
+                  onClick={onAction}
+                  className="mt-4 rounded-md bg-[#37455F] px-4 py-2 text-sm text-[#F8EDCE] hover:opacity-90 transition"
+                >
+                  {buttonText}
+                </button>
+
+                <p className="mt-3 text-xs text-gray-500">
+                  Demo data is shown for preview only.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 const monthToShort = (m: string) => {
   const mm = (m || "").toLowerCase().trim();
@@ -341,6 +415,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const [lostCompRows, setLostCompRows] = useState<AnyRow[]>([]);
   const [lostCompLoading, setLostCompLoading] = useState(false);
   const [lostCompLoaded, setLostCompLoaded] = useState(false);
+  const router = useRouter();
 
   const isNA =
     monthParam?.toLowerCase() === "na" ||
@@ -541,12 +616,16 @@ export default function InventoryReconciliationPage({ params }: Params) {
     }
   }
 
-  useEffect(() => {
-    if (pageLoading) return;
-    if (activeView !== "extra") return;
+ useEffect(() => {
+  if (pageLoading) return;
+  if (isNA) {
+    setLostCompRows([]);
+    return;
+  }
+  if (activeView !== "extra") return;
 
-    void fetchInventoryLostCompensation();
-  }, [activeView, range, selectedMonth, selectedQuarter, selectedYear, countryName, pageLoading]);
+  void fetchInventoryLostCompensation();
+}, [activeView, range, selectedMonth, selectedQuarter, selectedYear, countryName, pageLoading, isNA]);
 
 
   const getCurrencySymbol = (currency: string) => {
@@ -1799,6 +1878,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
     });
   };
 
+   const handleConnectAmazonPreview = () => {
+    const connectCountry = countryName === "global" ? "uk" : countryName;
+    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+  };
+
   if (pageLoading) {
     return (
       <div className="w-full px-4 py-6">
@@ -1856,7 +1940,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
                 allowedRanges={["monthly", "quarterly", "yearly"]}
               />
 
-              <DownloadIconButton onClick={handleDownloadXLSX} size="md" />
+              <DownloadIconButton onClick={handleDownloadXLSX} size="md" disabled={isNA} />
             </div>
           </div>
 
@@ -1875,6 +1959,13 @@ export default function InventoryReconciliationPage({ params }: Params) {
         </div>
       </div>
 
+<PreviewLockedSection
+         enabled={isNA}
+          title="Preview mode"
+          description="You're not seeing your real data yet.Connect your Amazon account now to unlock complete visibility into your business performance."
+          buttonText="Connect Amazon"
+          onAction={handleConnectAmazonPreview}
+        >
       {/* ✅ Pie charts row */}
       {activeView === "charts" && (
         <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1961,6 +2052,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
           />
         </div>
       )}
+      </PreviewLockedSection>
 
       {/* Multi-country modal (kept) */}
       {showMultiuseCountry && (

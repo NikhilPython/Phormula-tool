@@ -5,8 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { Settings, Mail, Building2, BarChart3, Users, UserCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
+import SummaryMetricCardLarge from "../SummaryMetricCardLarge";
 
 type AnyRecord = Record<string, any>;
+
+
 
 type UploadHistoryRow = {
   id: number | string;
@@ -18,25 +22,34 @@ type UploadHistoryRow = {
   total_expense: number;
 };
 
-type CountryProfileRow = {
-  id: number | string;
-  country: string;
-  stock_unit: string | number;
-  transit_time: string | number;
-};
-
 type SkuWiseTable = {
   table?: string;
   rows?: AnyRecord[];
   error?: string;
 };
 
+type CountryProfileRow = {
+  id: number | string;
+  country: string;
+  stock_unit: string | number;
+  transit_time: string | number;
+  target_sales?: string | number | null;
+};
+
 type ViewUserData = {
   user_id?: number | string;
   brand_name?: string;
+  company_name?: string;
   name?: string;
   email?: string;
   annual_sales_range?: string;
+  marketplace_id?: string;
+  months_of_data_count?: number;
+  created_at?: string;
+  ai_business_journey?: string | null;
+  target_sales?: string | number | null;
+  sku_count?: number;
+  country?: string;
   related_upload_history?: UploadHistoryRow[];
   related_country_profiles?: CountryProfileRow[];
   skuwise_tables?: SkuWiseTable[];
@@ -75,6 +88,7 @@ export default function ViewUserPage() {
   const [openTables, setOpenTables] = useState<Record<string, boolean>>({});
   const [openSubsections, setOpenSubsections] = useState<Record<string, boolean>>({});
   const [showSettings, setShowSettings] = useState<boolean>(false);
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
   const router = useRouter();
 
@@ -337,15 +351,102 @@ export default function ViewUserPage() {
     );
   };
 
-  const displayName = useMemo(() => data?.name || "Admin Profile", [data?.name]);
-  const displayEmail = useMemo(() => data?.email || email || "-", [data?.email, email]);
+  const fullSummary = data?.ai_business_journey?.trim() || "No business journey available yet.";
+const shortSummary =
+  fullSummary.length > 320 ? `${fullSummary.slice(0, 320)}...` : fullSummary;
 
-  const initials = useMemo(() => {
-    const source = data?.name || email || "A";
-    const parts = source.trim().split(" ").filter(Boolean);
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
-  }, [data?.name, email]);
+
+  const onboardSince = useMemo(() => {
+  if (!data?.created_at) return "-";
+  const parsed = new Date(data.created_at);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+}, [data?.created_at]);
+
+const dataFetchLabel = useMemo(() => {
+  const count = Number(data?.months_of_data_count || 0);
+  if (!count) return "0 months";
+  return `${count} month${count > 1 ? "s" : ""}`;
+}, [data?.months_of_data_count]);
+
+const profitabilityLabel = useMemo(() => {
+  const rows = data?.skuwise_tables?.flatMap((t) => t.rows || []) || [];
+  const lastRow = rows[rows.length - 1];
+  const val = Number(lastRow?.cm2_margins);
+  if (Number.isNaN(val)) return "Not available";
+  return `${val.toFixed(2)}%`;
+}, [data?.skuwise_tables]);
+
+const savingsLabel = useMemo(() => {
+  const rows = data?.skuwise_tables?.flatMap((t) => t.rows || []) || [];
+  const lastRow = rows[rows.length - 1];
+  const val = Number(lastRow?.rembursement_fee);
+  if (Number.isNaN(val)) return "Not available";
+  return val.toLocaleString("en-US", {
+    style: "currency",
+    currency: "GBP",
+    maximumFractionDigits: 0,
+  });
+}, [data?.skuwise_tables]);
+
+const businessJourneyText = useMemo(() => {
+  if (data?.ai_business_journey?.trim()) return data.ai_business_journey;
+  return "No business journey available yet.";
+}, [data?.ai_business_journey]);
+
+const infoCards = [
+  {
+    key: "brandName",
+    title: "Brand Name",
+    value: data?.brand_name || "-",
+    className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]",
+  },
+  {
+    key: "companyName",
+    title: "Company Name",
+    value: data?.company_name || "-",
+    className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
+  },
+  {
+    key: "totalSku",
+    title: "Total SKU",
+    value: data?.sku_count ?? "-",
+    className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
+  },
+  {
+    key: "marketplaceId",
+    title: "Marketplace ID",
+    value: data?.marketplace_id || "-",
+    className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
+  },
+  {
+    key: "dataFetch",
+    title: "Data Fetch",
+    value: dataFetchLabel,
+    className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
+  },
+  {
+    key: "onboardSince",
+    title: "Onboard Since",
+    value: onboardSince,
+    className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
+  },
+  {
+    key: "profitability",
+    title: "Profitability",
+    value: profitabilityLabel,
+    className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
+  },
+  {
+    key: "savings",
+    title: "Savings",
+    value: savingsLabel,
+    className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+  },
+];
 
   if (loading) {
     return (
@@ -438,112 +539,104 @@ export default function ViewUserPage() {
   </button>
 </div>
         {/* Admin profile card */}
-        <section className="rounded-3xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-[#1f5274] via-[#2d6a8d] to-[#5EA68E] px-6 sm:px-8 py-8">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex items-center gap-4 sm:gap-5">
-                <div className="h-20 w-20  rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-lg">
-                  {initials}
-                </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+  {infoCards.map((card) => (
+    <SummaryMetricCardLarge
+      key={card.key}
+      title={card.title}
+      value={card.value}
+      className={card.className}
+    />
+  ))}
+</div>
 
-                <div className="min-w-0">
-                  <p className="text-white/80 text-sm  font-medium">
-                    Admin Profile
-                  </p>
-                  <h1 className="text-white text-2xl  font-bold break-words">
-                    {displayName}
-                  </h1>
-                  <p className="text-white/90 text-sm  break-all mt-1">
-                    {displayEmail}
-                  </p>
-                </div>
+<section className="rounded-3xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
+  <div className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
+    <h2 className="text-lg sm:text-xl font-bold text-[#1f5274]">
+      Business Journey
+    </h2>
+    <p className="text-sm text-slate-500 mt-1">
+      AI-generated summary of the admin's business journey
+    </p>
+  </div>
+
+  <div className="p-6 sm:p-8">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-sm leading-7 text-slate-600 whitespace-pre-line">
+        {isSummaryExpanded ? fullSummary : shortSummary}
+      </p>
+
+      {fullSummary.length > 320 && (
+        <button
+          type="button"
+          onClick={() => setIsSummaryExpanded((prev) => !prev)}
+          className="mt-4 inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-[#1f5274] hover:bg-slate-50"
+        >
+          {isSummaryExpanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  </div>
+</section>
+
+        {data?.related_country_profiles?.length ? (
+          <section className="space-y-3">
+            <div className="rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
+              <div className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
+               <h3 className="text-lg sm:text-xl font-bold text-[#1f5274]">
+  Stock, Transit & Targets
+</h3>
+<p className="text-sm text-slate-500 mt-1">
+  Operational settings for this admin
+</p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto">
-                <div className="rounded-2xl bg-white/10 backdrop-blur-sm border border-white/15 px-4 py-4 min-w-[180px]">
-                  <p className="text-white/75 text-xs uppercase tracking-wide">Brand Name</p>
-                  <p className="text-white text-sm sm:text-base font-semibold mt-1 break-words">
-                    {data?.brand_name || "-"}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-white/10 backdrop-blur-sm border border-white/15 px-4 py-4 min-w-[180px]">
-                  <p className="text-white/75 text-xs uppercase tracking-wide">Annual Sales</p>
-                  <p className="text-white text-sm sm:text-base font-semibold mt-1 break-words">
-                    {data?.annual_sales_range || "-"}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-white/10 backdrop-blur-sm border border-white/15 px-4 py-4 min-w-[180px]">
-                  <p className="text-white/75 text-xs uppercase tracking-wide">Members Added</p>
-                  <p className="text-white text-sm sm:text-base font-semibold mt-1">
-                    {members.length}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* <div className="px-6 sm:px-8 py-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-[#1f5274]/10 p-3 text-[#1f5274]">
-                    <UserCircle2 size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium">Admin Name</p>
-                    <p className="text-sm font-semibold text-slate-800 break-words">
-                      {displayName}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-[#5EA68E]/10 p-3 text-[#5EA68E]">
-                    <Mail size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium">Email</p>
-                    <p className="text-sm font-semibold text-slate-800 break-all">
-                      {displayEmail}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-emerald-100 p-3 text-emerald-700">
-                    <Building2 size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium">Brand</p>
-                    <p className="text-sm font-semibold text-slate-800 break-words">
-                      {data?.brand_name || "-"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="rounded-xl bg-blue-100 p-3 text-blue-700">
-                    <BarChart3 size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium">Annual Sales Range</p>
-                    <p className="text-sm font-semibold text-slate-800 break-words">
-                      {data?.annual_sales_range || "-"}
-                    </p>
-                  </div>
+              <div className="p-6 sm:p-8">
+                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="w-full table-auto">
+                   <thead className="bg-slate-100">
+  <tr>
+    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
+      Country
+    </th>
+    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
+      Stock Unit
+    </th>
+    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
+      Transit Time
+    </th>
+    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
+      Target
+    </th>
+  </tr>
+</thead>
+<tbody>
+  {data.related_country_profiles?.map((p, index) => (
+    <tr
+      key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
+      className="border-t"
+    >
+      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700 font-medium">
+        {p.country?.toUpperCase() || "-"}
+      </td>
+      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
+        {p.stock_unit ?? "-"}
+      </td>
+      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
+        {p.transit_time ?? "-"}
+      </td>
+      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
+        {p.target_sales ?? data?.target_sales ?? "-"}
+      </td>
+    </tr>
+  ))}
+</tbody>
+                  </table>
                 </div>
               </div>
             </div>
-          </div> */}
-        </section>
+          </section>
+        ) : null}
 
         {/* Members section */}
         <section className="rounded-3xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
@@ -672,198 +765,7 @@ export default function ViewUserPage() {
           </div>
         </section>
 
-        {data?.related_country_profiles?.length ? (
-          <section className="space-y-3">
-            <div className="rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
-              <div className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
-                <h3 className="text-lg sm:text-xl font-bold text-[#1f5274]">
-                  Country Profiles
-                </h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Region-specific settings for this admin
-                </p>
-              </div>
 
-              <div className="p-6 sm:p-8">
-                <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                  <table className="w-full table-auto">
-                    <thead className="bg-slate-100">
-                      <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-                          Country
-                        </th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-                          Stock Unit
-                        </th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-                          Transit Time
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-  {data.related_country_profiles?.map((p, index) => (
-    <tr
-      key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
-      className="border-t"
-    >
-      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700 font-medium">
-        {p.country?.toUpperCase() || "-"}
-      </td>
-      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-        {p.stock_unit}
-      </td>
-      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-        {p.transit_time}
-      </td>
-    </tr>
-  ))}
-</tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        {Array.isArray(data?.skuwise_tables) && data.skuwise_tables.length > 0 && (
-          <section className="space-y-6">
-            <div className="rounded-3xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
-              <div className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
-                <h3 className="text-lg sm:text-xl font-bold text-[#1f5274]">
-                  Performance & Region Wise Data
-                </h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Detailed region wise MTD, QTD and YTD tables
-                </p>
-              </div>
-
-              <div className="p-4 sm:p-6 space-y-6">
-                {Object.entries(groupedTables).map(([region, tables]) => (
-                  <div key={region} className="space-y-3">
-                    <button
-                      onClick={() => toggleRegion(region)}
-                      className="w-full text-left px-4 py-4 rounded-2xl bg-gradient-to-r from-slate-50 to-slate-100 hover:from-slate-100 hover:to-slate-200 text-[#1f5274] font-semibold border border-slate-200 flex items-center gap-2 transition-all"
-                    >
-                      <i
-                        className={`fa-solid ${
-                          openRegions[region] ? "fa-chevron-down" : "fa-chevron-right"
-                        } text-slate-500`}
-                      />
-                      {region} REGION
-                    </button>
-
-                    {openRegions[region] && (
-                      <div className="space-y-3 pl-0 sm:pl-4">
-                        {(["MTDs", "QTDs", "YTDs"] as const).map((type) =>
-                          tables[type].length > 0 ? (
-                            <div key={type} className="space-y-2">
-                              <button
-                                onClick={() => toggleSubsection(region, type)}
-                                className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 text-[#5EA68E] font-semibold border border-slate-200 flex items-center gap-2 shadow-sm"
-                              >
-                                <i
-                                  className={`fa-solid ${
-                                    openSubsections[`${region}-${type}`]
-                                      ? "fa-chevron-down"
-                                      : "fa-chevron-right"
-                                  } text-slate-500`}
-                                />
-                                {type}
-                              </button>
-
-                              {openSubsections[`${region}-${type}`] &&
-                                tables[type].map((table, index) => {
-                                  const key = `${region}-${type}-${index}`;
-                                  const allColumns =
-                                    Array.isArray(table.rows) && table.rows.length > 0
-                                      ? Object.keys(table.rows[0])
-                                      : [];
-
-                                  const columnOrder = [
-                                    ...preferredColumns,
-                                    ...allColumns.filter((c) => !preferredColumns.includes(c)),
-                                  ];
-
-                                  const summaryData = extractSummaryData(table.rows);
-
-                                  return (
-                                    <div key={key} className="space-y-2 pl-0 sm:pl-6">
-                                      <button
-                                        onClick={() => toggleTable(key)}
-                                        className="w-full text-left px-4 py-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-medium border border-slate-200 flex items-center gap-2 shadow-sm"
-                                      >
-                                        <i
-                                          className={`fa-solid ${
-                                            openTables[key]
-                                              ? "fa-chevron-down"
-                                              : "fa-chevron-right"
-                                          } text-slate-500`}
-                                        />
-                                        {String(table.table || "")
-                                          .replaceAll("_", " ")
-                                          .toUpperCase()}
-                                      </button>
-
-                                      {openTables[key] &&
-                                        (table.error ? (
-                                          <p className="text-amber-600 text-sm px-3">
-                                            ⚠️ {table.error}
-                                          </p>
-                                        ) : (
-                                          <div className="overflow-x-auto rounded-2xl bg-white shadow ring-1 ring-slate-200">
-                                            <table className="w-full table-auto">
-                                              <thead className="bg-slate-50">
-                                                <tr>
-                                                  {columnOrder.map((col) => (
-                                                    <th
-                                                      key={col}
-                                                      className="px-3 sm:px-4 py-3 text-left text-[11px] sm:text-xs md:text-sm font-semibold text-slate-600 whitespace-nowrap"
-                                                    >
-                                                      {col.replaceAll("_", " ").toUpperCase()}
-                                                    </th>
-                                                  ))}
-                                                </tr>
-                                              </thead>
-
-                                              <tbody>
-                                                {table.rows?.map((row, i) => (
-                                                  <tr
-                                                    key={i}
-                                                    className="border-t hover:bg-slate-50/60"
-                                                  >
-                                                    {columnOrder.map((col) => (
-                                                      <td
-                                                        key={col}
-                                                        className="px-3 sm:px-4 py-3 text-[11px] sm:text-xs md:text-sm text-slate-700"
-                                                      >
-                                                        {row?.[col]}
-                                                      </td>
-                                                    ))}
-                                                  </tr>
-                                                ))}
-                                              </tbody>
-
-                                              {renderSummarySection(
-                                                summaryData,
-                                                columnOrder.length
-                                              )}
-                                            </table>
-                                          </div>
-                                        ))}
-                                    </div>
-                                  );
-                                })}
-                            </div>
-                          ) : null
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
       </div>
     </div>
   );

@@ -93,6 +93,9 @@ export default function UserDropdown() {
 
   const currentCountryName = (routeParams?.countryName as string) || "global";
 
+  const showIntegrationButton =
+  !!month && !!year && month !== "NA" && year !== "NA" && !isMember;
+
   // console.log(currentCountryName)
 
   return (
@@ -111,7 +114,7 @@ export default function UserDropdown() {
             </div>
 
             {/* <IntegrationToggleButton /> */}
-            {!isNAMonthYear && <IntegrationToggleButton />}
+            {showIntegrationButton && <IntegrationToggleButton />}
           </span>
         </span>
       </div>

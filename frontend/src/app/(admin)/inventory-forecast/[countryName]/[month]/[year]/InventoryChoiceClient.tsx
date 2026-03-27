@@ -876,17 +876,15 @@ const DemoPurchaseOrderPreview = () => {
                     className="scroll-mt-[80px] rounded-xl shadow-sm border border-gray-100"
                   >
                     <p className="text-sm sm:text-base mb-4 text-[#414042]">
-                      The following monthly files are needed to upload:{' '}
+                      The following monthly files are needed to fetch:{' '}
                       <strong className="text-[#60a68e]">{missingMonths.join(', ')}</strong>
                     </p>
 
                     <div className="alert-container">
                       <div className="alert-message">
-                        <span>Please upload at least 4 months&apos; files to see the next two months.</span>
+                        <span>Please fetch at least 4 months&apos; files to see the next two months.</span>
                       </div>
-                      <button className="alert-button" onClick={() => setShowUpload(true)}>
-                        Upload Now
-                      </button>
+                     
                     </div>
                   </div>
                 ) : error ? (
@@ -895,9 +893,9 @@ const DemoPurchaseOrderPreview = () => {
                       <div className="alert-message">
                         <span>{error}</span>
                       </div>
-                      <button className="alert-button" onClick={() => setShowUpload(true)}>
+                      {/* <button className="alert-button" onClick={() => setShowUpload(true)}>
                         Upload Now
-                      </button>
+                      </button> */}
                     </div>
                   </div>
                 ) : (

@@ -180,25 +180,25 @@ const MonthsforBI: React.FC = () => {
       product_name: "Demo Product A",
       sku: "DEMO-A",
 
-      total_quantity_month1: 120,
-      total_quantity_month2: 150,
+      total_quantity_month1: 0,
+      total_quantity_month2: 0,
 
-      net_sales_month1: 32000,
-      net_sales_month2: 41000,
+      net_sales_month1: 0,
+      net_sales_month2: 0,
 
-      asp_month1: 267,
-      asp_month2: 273,
+      asp_month1: 0,
+      asp_month2: 0,
 
-      profit_month1: 8200,
-      profit_month2: 10400,
+      profit_month1: 0,
+      profit_month2: 0,
 
-      "Sales Mix (Month2)": 45,
+      "Sales Mix (Month2)": 0,
 
-      "Unit Growth": { category: "High Growth", value: 25 },
-      "ASP Growth": { category: "Low Growth", value: 2.2 },
-      "Net Sales Growth": { category: "High Growth", value: 28 },
-      "CM1 Profit Impact": { category: "High Growth", value: 27 },
-      "Profit Per Unit": { category: "High Growth", value: 18 },
+      "Unit Growth": { category: "High Growth", value: 0 },
+      "ASP Growth": { category: "Low Growth", value: 0 },
+      "Net Sales Growth": { category: "High Growth", value: 0 },
+      "CM1 Profit Impact": { category: "High Growth", value: 0 },
+      "Profit Per Unit": { category: "High Growth", value: 0 },
     },
   ];
 
@@ -207,25 +207,25 @@ const MonthsforBI: React.FC = () => {
       product_name: "Demo Product B",
       sku: "DEMO-B",
 
-      total_quantity_month1: 40,
-      total_quantity_month2: 80,
+      total_quantity_month1: 0,
+      total_quantity_month2: 0,
 
-      net_sales_month1: 9000,
-      net_sales_month2: 18000,
+      net_sales_month1: 0,
+      net_sales_month2: 0,
 
-      asp_month1: 225,
-      asp_month2: 225,
+      asp_month1: 0,
+      asp_month2: 0,
 
-      profit_month1: 1800,
-      profit_month2: 3900,
+      profit_month1: 0,
+      profit_month2: 0,
 
-      "Sales Mix (Month2)": 25,
+      "Sales Mix (Month2)": 0,
 
-      "Unit Growth": { category: "High Growth", value: 100 },
+      "Unit Growth": { category: "High Growth", value: 0 },
       "ASP Growth": { category: "Low Growth", value: 0 },
-      "Net Sales Growth": { category: "High Growth", value: 100 },
-      "CM1 Profit Impact": { category: "High Growth", value: 116 },
-      "Profit Per Unit": { category: "High Growth", value: 30 },
+      "Net Sales Growth": { category: "High Growth", value: 0 },
+      "CM1 Profit Impact": { category: "High Growth", value: 0 },
+      "Profit Per Unit": { category: "High Growth", value: 0 },
     },
   ];
 
@@ -234,25 +234,25 @@ const MonthsforBI: React.FC = () => {
       product_name: "Demo Product C",
       sku: "DEMO-C",
 
-      total_quantity_month1: 200,
-      total_quantity_month2: 180,
+      total_quantity_month1: 0,
+      total_quantity_month2: 0,
 
-      net_sales_month1: 26000,
-      net_sales_month2: 24000,
+      net_sales_month1: 0,
+      net_sales_month2: 0,
 
-      asp_month1: 130,
-      asp_month2: 133,
+      asp_month1: 0,
+      asp_month2: 0,
 
-      profit_month1: 6000,
-      profit_month2: 5400,
+      profit_month1: 0,
+      profit_month2: 0,
 
-      "Sales Mix (Month2)": 30,
+      "Sales Mix (Month2)": 0,
 
-      "Unit Growth": { category: "Negative Growth", value: -10 },
-      "ASP Growth": { category: "Low Growth", value: 2.3 },
-      "Net Sales Growth": { category: "Negative Growth", value: -8 },
-      "CM1 Profit Impact": { category: "Negative Growth", value: -10 },
-      "Profit Per Unit": { category: "Negative Growth", value: -5 },
+      "Unit Growth": { category: "Negative Growth", value: 0 },
+      "ASP Growth": { category: "Low Growth", value: 0 },
+      "Net Sales Growth": { category: "Negative Growth", value: 0 },
+      "CM1 Profit Impact": { category: "Negative Growth", value: 0 },
+      "Profit Per Unit": { category: "Negative Growth", value: 0 },
     },
   ];
 
