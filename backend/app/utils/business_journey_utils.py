@@ -6,6 +6,7 @@ from openai import OpenAI, OpenAIError
 import os
 import json
 import pandas as pd
+from datetime import datetime
 
 load_dotenv()
 SECRET_KEY = Config.SECRET_KEY
@@ -43,7 +44,7 @@ def get_previous_month_year(month_name, year):
 
 
 def fetch_skuwise_monthly(phormula_engine, user_id, country, month_name, year, months_back=24):
-    from datetime import datetime
+    
 
     month_map = {
         "january": 1, "february": 2, "march": 3, "april": 4,
