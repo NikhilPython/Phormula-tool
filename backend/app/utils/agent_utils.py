@@ -14,6 +14,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 from sqlalchemy import create_engine, text
 import io
+import numpy as np
 
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -228,13 +229,19 @@ def filter_scope(df, level, value):
 
 
 def aggregate_monthly(df):
+    agg_dict = {
+        "quantity": ("quantity", "sum"),
+        "net_sales": ("net_sales", "sum"),
+        "asp": ("asp", "mean"),
+    }
+
+    # 🔥 IMPORTANT: include profit if available
+    if "profit" in df.columns:
+        agg_dict["profit"] = ("profit", "sum")
+
     return (
         df.groupby(["year", "month"], as_index=False)
-        .agg(
-            quantity=("quantity", "sum"),
-            net_sales=("net_sales", "sum"),
-            asp=("asp", "mean")
-        )
+        .agg(**agg_dict)
         .sort_values(["year", "month"])
     )
 
@@ -428,6 +435,170 @@ def summarize_categories(df: pd.DataFrame, top_n: int = 8) -> List[Dict[str, Any
 
     return top.to_dict(orient="records")
 
+def generate_price_candidates(monthly_df):
+    asps = monthly_df["asp"].dropna().unique()
+
+    if len(asps) == 0:
+        return []
+
+    min_asp = float(min(asps))
+    max_asp = float(max(asps))
+
+    return np.linspace(min_asp, max_asp, 8)
+
+def estimate_units_at_price(monthly_df, target_price):
+    df = monthly_df.dropna(subset=["asp", "quantity"]).copy()
+
+    if len(df) < 2:
+        return float(df["quantity"].mean())
+
+    df = df[df["asp"] > 0]
+
+    x = np.log(df["asp"])
+    y = np.log(df["quantity"])
+
+    slope, intercept = np.polyfit(x, y, 1)
+
+    predicted_units = np.exp(intercept + slope * np.log(target_price))
+    return float(max(predicted_units, 0))
+
+def estimate_profit(units, price, margin_pct):
+    return float(units * price * margin_pct)
+
+def get_bau_profit(monthly_df):
+    if "profit" not in monthly_df.columns:
+        return None
+
+    recent = monthly_df.sort_values(["year","month"]).tail(3)
+    return float(recent["profit"].mean())
+
+
+def pick_scenarios(results):
+    results = sorted(results, key=lambda x: x["price"])
+
+    high_price = max(results, key=lambda x: x["price"])
+    volume_push = min(results, key=lambda x: x["price"])
+
+    def score(r):
+        return 0.5*r["profit"] + 0.3*r["sales"] + 0.2*r["units"]
+
+    balanced = max(results, key=score)
+
+    return {
+        "high_price": high_price,
+        "balanced": balanced,
+        "volume_push": volume_push
+    }
+
+def optimize_price_with_constraint(monthly_df, margin_pct):
+
+    # 🔥 Safety check: basic data required
+    if monthly_df.empty or "asp" not in monthly_df.columns:
+        print("WARNING: optimization skipped due to missing data")
+        return {
+            "scenarios": {},
+            "bau_profit": None,
+            "all": []
+        }
+
+    # 🔥 Ensure numeric safety
+    monthly_df = monthly_df.copy()
+    monthly_df["asp"] = pd.to_numeric(monthly_df["asp"], errors="coerce")
+    monthly_df["quantity"] = pd.to_numeric(monthly_df.get("quantity", 0), errors="coerce")
+
+    monthly_df = monthly_df.dropna(subset=["asp", "quantity"])
+
+    if monthly_df.empty:
+        print("WARNING: no valid asp/quantity data after cleaning")
+        return {
+            "scenarios": {},
+            "bau_profit": None,
+            "all": []
+        }
+
+    # 🔥 Generate candidate prices
+    candidates = generate_price_candidates(monthly_df)
+
+    if len(candidates) == 0:
+        print("WARNING: no price candidates generated")
+        return {
+            "scenarios": {},
+            "bau_profit": None,
+            "all": []
+        }
+
+    # 🔥 BAU profit
+    bau_profit = get_bau_profit(monthly_df)
+
+    print("DEBUG: BAU profit:", bau_profit)
+
+    results = []
+
+    for price in candidates:
+        try:
+            units = estimate_units_at_price(monthly_df, price)
+
+            # safety
+            if units is None or np.isnan(units):
+                units = 0.0
+
+            sales = units * price
+            profit = estimate_profit(units, price, margin_pct)
+
+            # safety
+            if np.isnan(sales):
+                sales = 0.0
+            if np.isnan(profit):
+                profit = 0.0
+
+            is_valid = True
+            if bau_profit is not None:
+                is_valid = profit >= 0.9 * bau_profit
+
+            results.append({
+                "price": round(float(price), 2),
+                "units": round(float(units), 2),
+                "sales": round(float(sales), 2),
+                "profit": round(float(profit), 2),
+                "is_valid": is_valid
+            })
+
+        except Exception as e:
+            print(f"ERROR in candidate price {price}: {str(e)}")
+            continue
+
+    if not results:
+        print("WARNING: no results generated in optimization")
+        return {
+            "scenarios": {},
+            "bau_profit": round(bau_profit, 2) if bau_profit else None,
+            "all": []
+        }
+
+    # 🔥 Filter valid scenarios
+    valid_results = [r for r in results if r["is_valid"]]
+
+    if not valid_results:
+        print("WARNING: no valid results under BAU constraint → using all results")
+        valid_results = results
+
+    # 🔥 Pick scenarios
+    try:
+        scenarios = pick_scenarios(valid_results)
+    except Exception as e:
+        print("ERROR in pick_scenarios:", str(e))
+        scenarios = {}
+
+    print("DEBUG: total candidates:", len(results))
+    print("DEBUG: valid candidates:", len(valid_results))
+    print("DEBUG: scenarios selected:", scenarios)
+
+    return {
+        "scenarios": scenarios,
+        "bau_profit": round(bau_profit, 2) if bau_profit else None,
+        "all": results
+    }
+
 
 def load_context_node(state: AgentState) -> AgentState:
     scope = state.get("scope") or {"level": "sku", "value": None}
@@ -491,6 +662,9 @@ def analyze_scope_node(state: AgentState) -> AgentState:
         raise ValueError("No sales data found for requested scope")
 
     monthly_df = aggregate_monthly(sales_df)
+    print("DEBUG: analyze_scope_node")
+    print("monthly_df shape:", monthly_df.shape)
+    print(monthly_df.tail(3))
     top_skus = summarize_top_skus(sales_df, top_n=10)
     category_summary = summarize_categories(sales_df, top_n=8)
     history = build_history_snapshot(monthly_df)
@@ -672,6 +846,62 @@ def compute_forecast_node(state: AgentState) -> AgentState:
         "pricing": pricing_output,
     }
 
+def optimize_pricing_node(state: AgentState) -> AgentState:
+
+    print("DEBUG: optimize_pricing_node START")
+
+    # ✅ Safe load
+    monthly_df = pd.DataFrame(state.get("monthly_df", []))
+
+    print("monthly_df received shape:", monthly_df.shape)
+    if not monthly_df.empty:
+        print(monthly_df.tail(3))
+    else:
+        print("WARNING: monthly_df is EMPTY")
+
+    # 🚨 If no data, skip optimization
+    if monthly_df.empty:
+        return {
+            "optimization": {}
+        }
+
+    # ✅ Top SKUs for margin calculation
+    top_skus = state.get("top_skus", [])
+
+    if top_skus:
+        total_sales = sum(x.get("net_sales", 0) for x in top_skus)
+        total_profit = sum(x.get("profit", 0) for x in top_skus)
+
+        margin_pct = (total_profit / total_sales) if total_sales > 0 else 0.3
+    else:
+        margin_pct = 0.3
+
+    print("margin_pct:", round(margin_pct, 4))
+
+    # 🚨 Safety: if asp missing → skip
+    if "asp" not in monthly_df.columns:
+        print("WARNING: 'asp' column missing in monthly_df")
+        return {
+            "optimization": {}
+        }
+
+    try:
+        optimization = optimize_price_with_constraint(monthly_df, margin_pct)
+
+        print("optimization output:", optimization)
+
+        # 🚨 Extra safety: ensure scenarios exist
+        if not optimization.get("scenarios"):
+            print("WARNING: scenarios missing in optimization output")
+
+    except Exception as e:
+        print("ERROR in optimization:", str(e))
+        optimization = {}
+
+    return {
+        "optimization": optimization
+    }
+
 
 def detect_risks_node(state: AgentState) -> AgentState:
     forecast = state["forecast"]
@@ -690,6 +920,27 @@ def detect_risks_node(state: AgentState) -> AgentState:
 
     high_value_skus = [x.get("sku") for x in top_skus[:5] if x.get("sku")]
 
+    # 🔥 NEW: SKU contribution logic
+    total_sales_all = sum(x.get("net_sales", 0) for x in top_skus)
+    current_sku = state["scope"].get("value")
+
+    sku_sales = next(
+        (x.get("net_sales", 0) for x in top_skus if x.get("sku") == current_sku),
+        0
+    )
+
+    contribution_pct = (
+        (sku_sales / total_sales_all * 100)
+        if total_sales_all > 0 else 0
+    )
+
+    # 🔥 DEBUG (optional but useful)
+    print("DEBUG: detect_risks_node")
+    print("total_sales_all:", total_sales_all)
+    print("sku_sales:", sku_sales)
+    print("contribution_pct:", round(contribution_pct, 2))
+    print("optimization present:", bool(state.get("optimization")))
+
     risk_signals = {
         "risk_type": risk_type,
         "stock_gap_units": round(stock_gap, 2),
@@ -699,18 +950,25 @@ def detect_risks_node(state: AgentState) -> AgentState:
     }
 
     analytics = {
-    "scope": state["scope"],
-    "last_event": state["last_event"],
-    "future_event": state["future_event"],
-    "uplift": state["uplift"],
-    "forecast": state["forecast"],
-    "risk_signals": risk_signals,
-    "pricing": state.get("pricing", {}),
-    "history": state.get("history", {}),
-    "target_sales": state.get("target_sales"),
-    "currency_symbol": get_currency_symbol(state.get("country", "us")),
-    "top_skus": state.get("top_skus", []),
-    "category_summary": state.get("category_summary", []),
+        "scope": state["scope"],
+        "last_event": state["last_event"],
+        "future_event": state["future_event"],
+        "uplift": state["uplift"],
+        "forecast": state["forecast"],
+        "risk_signals": risk_signals,
+        "pricing": state.get("pricing", {}),
+        "history": state.get("history", {}),
+        "target_sales": state.get("target_sales"),
+        "currency_symbol": get_currency_symbol(state.get("country", "us")),
+        "top_skus": top_skus,
+
+        # 🔥 IMPORTANT: optimization must be passed
+        "optimization": state.get("optimization", {}),
+
+        # 🔥 NEW: contribution for target logic
+        "sku_contribution_pct": round(contribution_pct, 2),
+
+        "category_summary": state.get("category_summary", []),
     }
 
     return {
@@ -749,8 +1007,20 @@ You are given:
 - forecast
 - inventory
 - pricing data
+- optimization scenarios (high price, balanced, volume push)
 - optional target sales
 - currency symbol
+
+IMPORTANT:
+Optimization data is available in:
+analytics.optimization.scenarios
+
+Each scenario contains:
+- price
+- units
+- sales
+- profit
+- is_valid (whether it passes profit guardrail)
 
 Your job is to produce a strong business explanation for each SKU.
 
@@ -764,9 +1034,16 @@ Rules:
 - Mention target sales clearly if provided
 - Use the currency symbol given in the input
 - Never recommend a price below lowest historical ASP
-- Explain why the price range makes sense
-- Explain clearly whether to order more, stop ordering, or reduce price
+- Always explain trade-offs between price, units, sales, and profit
+- Clearly explain whether profit is increasing or getting diluted
 - Priority must be only: HIGH, MEDIUM, or LOW
+
+CRITICAL RULES:
+- You MUST use optimization data
+- Do NOT generate or guess numbers
+- ALL scenario values MUST come from analytics.optimization.scenarios
+- If optimization is empty → explicitly say: "Scenario data not available"
+- If any scenario has is_valid = false → clearly say it violates profit guardrail
 
 Output format:
 
@@ -787,32 +1064,76 @@ Output format:
 - demand direction
 - whether this SKU is understocked, overstocked, or okay
 
-4. actions
+4. scenario_comparison
+
+High Price Scenario (use analytics.optimization.scenarios.high_price):
+- ASP: £X
+- expected units: Y
+- expected sales: £Z
+- expected profit: £P
+- explain impact on margin and demand
+
+Balanced Scenario (Recommended) (use analytics.optimization.scenarios.balanced):
+- ASP: £X
+- expected units: Y
+- expected sales: £Z
+- expected profit: £P
+- clearly explain why this gives best mix of units + sales + profit
+
+Volume Push Scenario (use analytics.optimization.scenarios.volume_push):
+- ASP: £X
+- expected units: Y
+- expected sales: £Z
+- expected profit: £P
+- clearly explain risk if profit drops below normal level
+
+5. profitability_guardrail
+- mention BAU profit from analytics.optimization.bau_profit
+- explain minimum safe profit level (~90% of BAU)
+- clearly state if any scenario goes below this level
+
+6. actions
 - bullet points with direct actions
 - examples:
-- order 2300 units now
+- order more units
 - do not order more
 - reduce price slightly
 - keep price stable
+- push volume with controlled discount
 
-5. pricing_decision
-- bullet points explaining:
+7. pricing_decision
 - current ASP
 - lowest ASP
-- recommended price range
-- why this range makes sense
+- recommended ASP (exact, not just range)
+- explain clearly why this price works
 
-6. target_sales_note
-- if target_sales exists:
-  - mention target sales
-  - mention target_price
-  - explain whether target_price fits inside recommended range
-  - mention final recommended selling price
-- if target_sales does not exist:
-  - say clearly that no target sales was given
-  - say pricing is based on history, ASP, inventory, and demand only
+8. target_sales_note
 
-7. priority
+- If target_sales exists:
+  - clearly mention that this is overall business target, NOT per SKU
+  - explain current contribution of this SKU
+  - use analytics.sku_contribution_pct to estimate contribution
+  - classify contribution:
+    - major: >25%
+    - medium: 10%–25%
+    - minor: <10%
+  - estimate how much this SKU can contribute after optimization
+  - explain whether this SKU can significantly help reach overall target
+  - DO NOT assume this SKU must hit full target_sales
+  - mention target_price only if provided in pricing data
+
+- If target_sales does not exist:
+  - clearly state that no target was given
+  - pricing is based on demand, inventory, ASP trends, and profitability
+
+9. final_recommendation
+- exact ASP to use
+- exact units to aim for
+- expected sales
+- expected profit
+- explain why this is the best decision
+
+10. priority
 - only one value: HIGH / MEDIUM / LOW
 
 {retry_note}
@@ -891,6 +1212,10 @@ def build_event_planner_graph(phormula_engine, amazon_engine):
     graph.add_node("load_sales_inventory", make_load_sales_inventory_node(phormula_engine, amazon_engine))
     graph.add_node("analyze_scope", analyze_scope_node)
     graph.add_node("compute_forecast", compute_forecast_node)
+
+    # 🔥 NEW NODE ADDED
+    graph.add_node("optimize_pricing", optimize_pricing_node)
+
     graph.add_node("detect_risks", detect_risks_node)
     graph.add_node("generate_execution_plan", generate_execution_plan_node)
     graph.add_node("validate_plan", validate_plan_node)
@@ -899,8 +1224,12 @@ def build_event_planner_graph(phormula_engine, amazon_engine):
     graph.add_edge(START, "load_context")
     graph.add_edge("load_context", "load_sales_inventory")
     graph.add_edge("load_sales_inventory", "analyze_scope")
+
+    # 🔥 UPDATED FLOW
     graph.add_edge("analyze_scope", "compute_forecast")
-    graph.add_edge("compute_forecast", "detect_risks")
+    graph.add_edge("compute_forecast", "optimize_pricing")   # NEW
+    graph.add_edge("optimize_pricing", "detect_risks")       # NEW
+
     graph.add_edge("detect_risks", "generate_execution_plan")
     graph.add_edge("generate_execution_plan", "validate_plan")
 
