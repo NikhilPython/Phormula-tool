@@ -8,7 +8,7 @@ import { ChevronLeftIcon } from "@/icons";
 import { useLazyGetUserDataQuery } from "@/lib/api/profileApi";
 import { useLazyGetUploadHistoryQuery } from "@/lib/api/uploadsApi";
 import { useSubmitSelectFormMutation } from "@/lib/api/onboardingApi";
-import Button from "../ui/button/Button";
+
 
 
 

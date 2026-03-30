@@ -14,7 +14,7 @@ import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataT
 import { IoEyeOutline } from "react-icons/io5";
 import { FiEdit, FiCheck, FiX } from "react-icons/fi";
 import { MdOutlineDeleteOutline } from "react-icons/md";
-import { useSubmitSelectFormMutation } from "@/lib/api/onboardingApi";
+
 
 type TeamMemberRow = Row & {
   sno: number;
@@ -26,8 +26,6 @@ type TeamMemberRow = Row & {
   addedOn: React.ReactNode;
   actions: React.ReactNode;
 };
-
-const COUNTRY_OPTIONS = ["United States", "Canada", "United Kingdom"] as const;
 
 export default function ProfileClient() {
   const [tab, setTab] = React.useState<"personal" | "objectives" | "teamMembers">("personal");
@@ -42,29 +40,6 @@ export default function ProfileClient() {
   const [isEditOpen, setIsEditOpen] = React.useState(false);
   const [actionLoading, setActionLoading] = React.useState(false);
   const [ownerName, setOwnerName] = React.useState("");
-  const [selectedCountries, setSelectedCountries] = React.useState<string[]>([]);
-const [countryLoading, setCountryLoading] = React.useState(false);
-const [countryError, setCountryError] = React.useState<string | null>(null);
-
-const [submitSelectForm] = useSubmitSelectFormMutation();
-
-const countryMap = React.useMemo(
-  () => ({
-    "United States": "us",
-    "United Kingdom": "uk",
-    Canada: "canada",
-  }),
-  []
-);
-
-const reverseCountryMap = React.useMemo(
-  () => ({
-    us: "United States",
-    uk: "United Kingdom",
-    canada: "Canada",
-  }),
-  []
-);
 
   const params = useParams();
   const router = useRouter();
@@ -79,57 +54,32 @@ const shouldOpenAddMember = searchParams.get("addMember") === "true";
   const token =
     typeof window !== "undefined" ? localStorage.getItem("jwtToken") || "" : "";
 
-    const toggleCountry = (label: string) => {
-  setSelectedCountries((prev) =>
-    prev.includes(label)
-      ? prev.filter((v) => v !== label)
-      : [...prev, label]
-  );
-};
-
   const fetchMembers = React.useCallback(async () => {
-  try {
-    setMembersLoading(true);
-    setMembersError(null);
+    try {
+      setMembersLoading(true);
+      setMembersError(null);
 
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/get_user_data`,
-      {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        cache: "no-store",
-      }
-    );
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/get_user_data`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: "no-store",
+        }
+      );
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Failed to load user data");
-
-    setOwnerName(String(data?.name || ""));
-    setIsMember(!!data?.is_member);
-
-    const savedCountries = Array.isArray(data?.country)
-      ? data.country
-      : typeof data?.country === "string"
-      ? data.country.split(",").map((c: string) => c.trim()).filter(Boolean)
-      : [];
-
-    const normalizedCountries = savedCountries
-      .map(
-        (c: string) =>
-          reverseCountryMap[c as keyof typeof reverseCountryMap] || c
-      )
-      .filter(Boolean);
-
-    setSelectedCountries(normalizedCountries);
-
-    setMembers(Array.isArray(data?.members) ? data.members : []);
-  } catch (e: any) {
-    setMembersError(e?.message || "Failed to load members");
-    setIsMember(true);
-    setMembers([]);
-  } finally {
-    setMembersLoading(false);
-  }
-}, [token, reverseCountryMap]);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to load user data");
+      setOwnerName(String(data?.name || ""));
+      setIsMember(!!data?.is_member);
+      setMembers(Array.isArray(data?.members) ? data.members : []);
+    } catch (e: any) {
+      setMembersError(e?.message || "Failed to load members");
+      setIsMember(true); // safe default: tab hide
+      setMembers([]);
+    } finally {
+      setMembersLoading(false);
+    }
+  }, [token]);
 
   React.useEffect(() => {
     fetchMembers();
@@ -182,53 +132,6 @@ const shouldOpenAddMember = searchParams.get("addMember") === "true";
       setActionLoading(false);
     }
   };
-
-  const handleSaveCountries = async () => {
-  if (selectedCountries.length === 0) {
-    setCountryError("Please select at least one country.");
-    return;
-  }
-
-  try {
-    setCountryError(null);
-    setCountryLoading(true);
-
-    const mapped = selectedCountries.map(
-      (name) => countryMap[name as keyof typeof countryMap]
-    );
-
-    localStorage.setItem("selectedCountries", JSON.stringify(mapped));
-
-    const companyName =
-      typeof window !== "undefined"
-        ? localStorage.getItem("companyName") || ""
-        : "";
-
-    const brandName =
-      typeof window !== "undefined"
-        ? localStorage.getItem("brandName") || ""
-        : "";
-
-    const homeCurrency =
-      typeof window !== "undefined"
-        ? localStorage.getItem("homeCurrency") || ""
-        : "";
-
-    await submitSelectForm({
-      country: mapped.join(", "),
-      company_name: companyName,
-      brand_name: brandName,
-      homeCurrency,
-    }).unwrap();
-
-    await fetchMembers();
-  } catch (err) {
-    console.error("country update error:", err);
-    setCountryError("Failed to update country.");
-  } finally {
-    setCountryLoading(false);
-  }
-};
 
   React.useEffect(() => {
     if (isMember !== false && tab === "teamMembers") {
@@ -447,80 +350,12 @@ const shouldOpenAddMember = searchParams.get("addMember") === "true";
 
         <div className="mt-4 space-y-4 ">
           {tab === "personal" && (
-  <>
-    <UserInfoCard activeTab="personal" />
-
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-slate-800">
-          Marketplace Country
-        </h3>
-        <p className="text-sm text-gray-500 mt-1">
-          Select country to update marketplace mapping.
-        </p>
-      </div>
-
-      <div className="space-y-3">
-        {COUNTRY_OPTIONS.map((label) => {
-          const checked = selectedCountries.includes(label);
-
-          return (
-            <label
-              key={label}
-              className={`flex items-center justify-between rounded-lg border px-4 py-3 cursor-pointer transition ${
-                checked
-                  ? "border-[#48A887] bg-[#f5faff]"
-                  : "border-gray-300 bg-white"
-              }`}
-            >
-              <span className="text-base text-[#414042]">{label}</span>
-
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => toggleCountry(label)}
-                className="hidden"
+            <>
+              <UserInfoCard
+                activeTab="personal"
               />
-
-              <span className="h-5 w-5 flex items-center justify-center rounded border border-gray-400">
-                {checked && (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#48A887"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-4 w-4"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                )}
-              </span>
-            </label>
-          );
-        })}
-      </div>
-
-      {countryError && (
-        <p className="mt-3 text-sm text-red-500">{countryError}</p>
-      )}
-
-      <div className="mt-5 flex justify-end">
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleSaveCountries}
-          disabled={countryLoading}
-        >
-          {countryLoading ? "Saving..." : "Save Country"}
-        </Button>
-      </div>
-    </div>
-  </>
-)}
-          
+            </>
+          )}
 
           {tab === "objectives" && (
             <UserInfoCard
