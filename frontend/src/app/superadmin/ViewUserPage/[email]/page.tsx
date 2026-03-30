@@ -193,17 +193,17 @@ export default function ViewUserPage() {
 
         try {
           setMembersLoading(true);
-         const membersRes = await fetch(
-  `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard/members?email=${encodeURIComponent(
-    email
-  )}`,
-  {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${authToken}`,
-    },
-  }
-);
+          const membersRes = await fetch(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard/members?email=${encodeURIComponent(
+              email
+            )}`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+            }
+          );
 
           const membersJson = await membersRes.json();
 
@@ -352,101 +352,101 @@ export default function ViewUserPage() {
   };
 
   const fullSummary = data?.ai_business_journey?.trim() || "No business journey available yet.";
-const shortSummary =
-  fullSummary.length > 320 ? `${fullSummary.slice(0, 320)}...` : fullSummary;
+  const shortSummary =
+    fullSummary.length > 320 ? `${fullSummary.slice(0, 320)}...` : fullSummary;
 
 
   const onboardSince = useMemo(() => {
-  if (!data?.created_at) return "-";
-  const parsed = new Date(data.created_at);
-  if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleString("en-US", {
-    month: "short",
-    year: "numeric",
-  });
-}, [data?.created_at]);
+    if (!data?.created_at) return "-";
+    const parsed = new Date(data.created_at);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    return parsed.toLocaleString("en-US", {
+      month: "short",
+      year: "numeric",
+    });
+  }, [data?.created_at]);
 
-const dataFetchLabel = useMemo(() => {
-  const count = Number(data?.months_of_data_count || 0);
-  if (!count) return "0 months";
-  return `${count} month${count > 1 ? "s" : ""}`;
-}, [data?.months_of_data_count]);
+  const dataFetchLabel = useMemo(() => {
+    const count = Number(data?.months_of_data_count || 0);
+    if (!count) return "0 months";
+    return `${count} month${count > 1 ? "s" : ""}`;
+  }, [data?.months_of_data_count]);
 
-const profitabilityLabel = useMemo(() => {
-  const rows = data?.skuwise_tables?.flatMap((t) => t.rows || []) || [];
-  const lastRow = rows[rows.length - 1];
-  const val = Number(lastRow?.cm2_margins);
-  if (Number.isNaN(val)) return "Not available";
-  return `${val.toFixed(2)}%`;
-}, [data?.skuwise_tables]);
+  const profitabilityLabel = useMemo(() => {
+    const rows = data?.skuwise_tables?.flatMap((t) => t.rows || []) || [];
+    const lastRow = rows[rows.length - 1];
+    const val = Number(lastRow?.cm2_margins);
+    if (Number.isNaN(val)) return "Not available";
+    return `${val.toFixed(2)}%`;
+  }, [data?.skuwise_tables]);
 
-const savingsLabel = useMemo(() => {
-  const rows = data?.skuwise_tables?.flatMap((t) => t.rows || []) || [];
-  const lastRow = rows[rows.length - 1];
-  const val = Number(lastRow?.rembursement_fee);
-  if (Number.isNaN(val)) return "Not available";
-  return val.toLocaleString("en-US", {
-    style: "currency",
-    currency: "GBP",
-    maximumFractionDigits: 0,
-  });
-}, [data?.skuwise_tables]);
+  const savingsLabel = useMemo(() => {
+    const rows = data?.skuwise_tables?.flatMap((t) => t.rows || []) || [];
+    const lastRow = rows[rows.length - 1];
+    const val = Number(lastRow?.rembursement_fee);
+    if (Number.isNaN(val)) return "Not available";
+    return val.toLocaleString("en-US", {
+      style: "currency",
+      currency: "GBP",
+      maximumFractionDigits: 0,
+    });
+  }, [data?.skuwise_tables]);
 
-const businessJourneyText = useMemo(() => {
-  if (data?.ai_business_journey?.trim()) return data.ai_business_journey;
-  return "No business journey available yet.";
-}, [data?.ai_business_journey]);
+  const businessJourneyText = useMemo(() => {
+    if (data?.ai_business_journey?.trim()) return data.ai_business_journey;
+    return "No business journey available yet.";
+  }, [data?.ai_business_journey]);
 
-const infoCards = [
-  {
-    key: "brandName",
-    title: "Brand Name",
-    value: data?.brand_name || "-",
-    className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]",
-  },
-  {
-    key: "companyName",
-    title: "Company Name",
-    value: data?.company_name || "-",
-    className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
-  },
-  {
-    key: "totalSku",
-    title: "Total SKU",
-    value: data?.sku_count ?? "-",
-    className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
-  },
-  {
-    key: "marketplaceId",
-    title: "Marketplace ID",
-    value: data?.marketplace_id || "-",
-    className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
-  },
-  {
-    key: "dataFetch",
-    title: "Data Fetch",
-    value: dataFetchLabel,
-    className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
-  },
-  {
-    key: "onboardSince",
-    title: "Onboard Since",
-    value: onboardSince,
-    className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
-  },
-  {
-    key: "profitability",
-    title: "Profitability",
-    value: profitabilityLabel,
-    className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-  },
-  {
-    key: "savings",
-    title: "Savings",
-    value: savingsLabel,
-    className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
-  },
-];
+  const infoCards = [
+    {
+      key: "brandName",
+      title: "Brand Name",
+      value: data?.brand_name || "-",
+      className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]",
+    },
+    {
+      key: "companyName",
+      title: "Company Name",
+      value: data?.company_name || "-",
+      className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
+    },
+    {
+      key: "totalSku",
+      title: "Total SKU",
+      value: data?.sku_count ?? "-",
+      className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
+    },
+    {
+      key: "marketplaceId",
+      title: "Marketplace ID",
+      value: data?.marketplace_id || "-",
+      className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
+    },
+    {
+      key: "dataFetch",
+      title: "Data Fetch",
+      value: dataFetchLabel,
+      className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
+    },
+    {
+      key: "onboardSince",
+      title: "Onboard Since",
+      value: onboardSince,
+      className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
+    },
+    {
+      key: "profitability",
+      title: "Profitability",
+      value: profitabilityLabel,
+      className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
+    },
+    {
+      key: "savings",
+      title: "Savings",
+      value: savingsLabel,
+      className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+    },
+  ];
 
   if (loading) {
     return (
@@ -525,112 +525,112 @@ const infoCards = [
 
       <div className="mt-6 space-y-8">
         <div className="flex items-center my-2">
-  <button
-    onClick={() => {
-      if (window.history.length > 1) {
-        router.back();
-      } else {
-        router.push("/superadmin/CDPAdminConsole");
-      }
-    }}
-    className="inline-flex items-center gap-2 text-sm font-medium text-[#1f5274] hover:text-[#5EA68E] transition"
-  >
-    ← Back to Admins
-  </button>
-</div>
+          <button
+            onClick={() => {
+              if (window.history.length > 1) {
+                router.back();
+              } else {
+                router.push("/superadmin/CDPAdminConsole");
+              }
+            }}
+            className="inline-flex items-center gap-2 text-sm font-medium text-[#1f5274] hover:text-[#5EA68E] transition"
+          >
+            ← Back to Admins
+          </button>
+        </div>
         {/* Admin profile card */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-  {infoCards.map((card) => (
-    <SummaryMetricCardLarge
-      key={card.key}
-      title={card.title}
-      value={card.value}
-      className={card.className}
-    />
-  ))}
-</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {infoCards.map((card) => (
+            <SummaryMetricCardLarge
+              key={card.key}
+              title={card.title}
+              value={card.value}
+              className={card.className}
+            />
+          ))}
+        </div>
 
-<section className="rounded-3xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
-  <div className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
-    <h2 className="text-lg sm:text-xl font-bold text-[#1f5274]">
-      Business Journey
-    </h2>
-    <p className="text-sm text-slate-500 mt-1">
-      AI-generated summary of the admin's business journey
-    </p>
-  </div>
+        <section className="rounded-3xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
+          <div className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
+            <h2 className="text-lg sm:text-xl font-bold text-[#1f5274]">
+              Business Journey
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              AI-generated summary of the Admin's business journey
+            </p>
+          </div>
 
-  <div className="p-6 sm:p-8">
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm leading-7 text-slate-600 whitespace-pre-line">
-        {isSummaryExpanded ? fullSummary : shortSummary}
-      </p>
+          <div className="">
+            <div className="rounded-2xl  bg-white p-5 shadow-sm">
+              <p className="text-sm leading-5 text-slate-600 whitespace-pre-line">
+                {isSummaryExpanded ? fullSummary : shortSummary}
+              </p>
 
-      {fullSummary.length > 320 && (
-        <button
-          type="button"
-          onClick={() => setIsSummaryExpanded((prev) => !prev)}
-          className="mt-4 inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-[#1f5274] hover:bg-slate-50"
-        >
-          {isSummaryExpanded ? "Show less" : "Show more"}
-        </button>
-      )}
-    </div>
-  </div>
-</section>
+              {fullSummary.length > 320 && (
+                <button
+                  type="button"
+                  onClick={() => setIsSummaryExpanded((prev) => !prev)}
+                  className="mt-4 inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-[#1f5274] hover:bg-slate-50"
+                >
+                  {isSummaryExpanded ? "Show less" : "Show more"}
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
 
         {data?.related_country_profiles?.length ? (
           <section className="space-y-3">
             <div className="rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
               <div className="px-6 sm:px-8 py-5 border-b border-slate-200 bg-slate-50">
-               <h3 className="text-lg sm:text-xl font-bold text-[#1f5274]">
-  Stock, Transit & Targets
-</h3>
-<p className="text-sm text-slate-500 mt-1">
-  Operational settings for this admin
-</p>
+                <h3 className="text-lg sm:text-xl font-bold text-[#1f5274]">
+                  Stock, Transit & Targets
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Operational settings for this admin
+                </p>
               </div>
 
               <div className="p-6 sm:p-8">
                 <div className="overflow-x-auto rounded-2xl border border-slate-200">
                   <table className="w-full table-auto">
-                   <thead className="bg-slate-100">
-  <tr>
-    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-      Country
-    </th>
-    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-      Stock Unit
-    </th>
-    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-      Transit Time
-    </th>
-    <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
-      Target
-    </th>
-  </tr>
-</thead>
-<tbody>
-  {data.related_country_profiles?.map((p, index) => (
-    <tr
-      key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
-      className="border-t"
-    >
-      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700 font-medium">
-        {p.country?.toUpperCase() || "-"}
-      </td>
-      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-        {p.stock_unit ?? "-"}
-      </td>
-      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-        {p.transit_time ?? "-"}
-      </td>
-      <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
-        {p.target_sales ?? data?.target_sales ?? "-"}
-      </td>
-    </tr>
-  ))}
-</tbody>
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
+                          Country
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
+                          Stock Unit
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
+                          Transit Time
+                        </th>
+                        <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-semibold text-slate-600">
+                          Target
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.related_country_profiles?.map((p, index) => (
+                        <tr
+                          key={`${p.id ?? "country-profile"}-${p.country ?? "unknown"}-${index}`}
+                          className="border-t"
+                        >
+                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700 font-medium">
+                            {p.country?.toUpperCase() || "-"}
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
+                            {p.stock_unit ?? "-"}
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
+                            {p.transit_time ?? "-"}
+                          </td>
+                          <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm text-slate-700">
+                            {p.target_sales ?? data?.target_sales ?? "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
                   </table>
                 </div>
               </div>
@@ -696,7 +696,7 @@ const infoCards = [
                         <td className="px-4 py-4 text-sm text-slate-800 font-semibold whitespace-nowrap">
                           {member.member_name || "-"}
                         </td>
-                        <td className="px-4 py-4 text-sm text-slate-700 break-all">
+                        <td className="px-4 py-4 text-sm text-slate-700 break-all ">
                           {member.email || "-"}
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-700 whitespace-nowrap">
