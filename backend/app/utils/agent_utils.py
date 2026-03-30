@@ -385,6 +385,7 @@ class AgentState(TypedDict, total=False):
     category_summary: List[Dict[str, Any]]
     risk_signals: Dict[str, Any]
     analytics: Dict[str, Any]
+    optimization: Dict[str, Any]
 
     # plan
     execution_plan: Dict[str, Any]
@@ -474,13 +475,22 @@ def get_bau_profit(monthly_df):
 
 
 def pick_scenarios(results):
+    if not results:
+        return {}
+
     results = sorted(results, key=lambda x: x["price"])
 
+    # High price → max price
     high_price = max(results, key=lambda x: x["price"])
-    volume_push = min(results, key=lambda x: x["price"])
 
+    # Volume push → max units (NOT min price)
+    volume_push = max(results, key=lambda x: (x["units"], -x["price"]))
+
+    # Balanced → better mix of profit + sales + units
     def score(r):
-        return 0.5*r["profit"] + 0.3*r["sales"] + 0.2*r["units"]
+        return (0.4 * r["profit"] +
+                0.4 * r["sales"] +
+                0.2 * r["units"])
 
     balanced = max(results, key=score)
 
@@ -534,18 +544,23 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
 
     results = []
 
+    # 🔥 ADD: current ASP for price guardrail
+    current_asp = float(monthly_df["asp"].mean())
+
     for price in candidates:
         try:
+            # 🔥 PRICE FLOOR GUARD (prevents always lowest ASP)
+            if price < current_asp * 0.8:
+                continue
+
             units = estimate_units_at_price(monthly_df, price)
 
-            # safety
             if units is None or np.isnan(units):
                 units = 0.0
 
             sales = units * price
             profit = estimate_profit(units, price, margin_pct)
 
-            # safety
             if np.isnan(sales):
                 sales = 0.0
             if np.isnan(profit):
@@ -553,7 +568,8 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
 
             is_valid = True
             if bau_profit is not None:
-                is_valid = profit >= 0.9 * bau_profit
+                # 🔥 STRONGER GUARDRAIL (prevents profit dilution)
+                is_valid = profit >= 1.05 * bau_profit
 
             results.append({
                 "price": round(float(price), 2),
@@ -603,6 +619,7 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
 def load_context_node(state: AgentState) -> AgentState:
     scope = state.get("scope") or {"level": "sku", "value": None}
     return {
+        **state,
         "scope": {
             "level": scope.get("level", "overall"),
             "value": scope.get("value"),
@@ -859,13 +876,13 @@ def optimize_pricing_node(state: AgentState) -> AgentState:
     else:
         print("WARNING: monthly_df is EMPTY")
 
-    # 🚨 If no data, skip optimization
+    # 🚨 If no data, skip optimization but still preserve state
     if monthly_df.empty:
         return {
-            "optimization": {}
+            "optimization": {},
         }
 
-    # ✅ Top SKUs for margin calculation
+    # ✅ Margin calculation
     top_skus = state.get("top_skus", [])
 
     if top_skus:
@@ -882,7 +899,7 @@ def optimize_pricing_node(state: AgentState) -> AgentState:
     if "asp" not in monthly_df.columns:
         print("WARNING: 'asp' column missing in monthly_df")
         return {
-            "optimization": {}
+            "optimization": {},
         }
 
     try:
@@ -890,7 +907,6 @@ def optimize_pricing_node(state: AgentState) -> AgentState:
 
         print("optimization output:", optimization)
 
-        # 🚨 Extra safety: ensure scenarios exist
         if not optimization.get("scenarios"):
             print("WARNING: scenarios missing in optimization output")
 
@@ -898,7 +914,9 @@ def optimize_pricing_node(state: AgentState) -> AgentState:
         print("ERROR in optimization:", str(e))
         optimization = {}
 
+    # ✅ IMPORTANT: ensure optimization survives to next nodes
     return {
+        **state,
         "optimization": optimization
     }
 
@@ -920,7 +938,7 @@ def detect_risks_node(state: AgentState) -> AgentState:
 
     high_value_skus = [x.get("sku") for x in top_skus[:5] if x.get("sku")]
 
-    # 🔥 NEW: SKU contribution logic
+    # 🔥 SKU contribution (FIXED)
     total_sales_all = sum(x.get("net_sales", 0) for x in top_skus)
     current_sku = state["scope"].get("value")
 
@@ -934,12 +952,18 @@ def detect_risks_node(state: AgentState) -> AgentState:
         if total_sales_all > 0 else 0
     )
 
-    # 🔥 DEBUG (optional but useful)
+    # 🔥 FIX: robust optimization fetch
+    optimization_data = (
+        state.get("optimization")
+        or state.get("analytics", {}).get("optimization", {})
+    )
+
+    # 🔥 DEBUG (VERY IMPORTANT)
     print("DEBUG: detect_risks_node")
     print("total_sales_all:", total_sales_all)
     print("sku_sales:", sku_sales)
     print("contribution_pct:", round(contribution_pct, 2))
-    print("optimization present:", bool(state.get("optimization")))
+    print("optimization present:", bool(optimization_data))
 
     risk_signals = {
         "risk_type": risk_type,
@@ -962,16 +986,15 @@ def detect_risks_node(state: AgentState) -> AgentState:
         "currency_symbol": get_currency_symbol(state.get("country", "us")),
         "top_skus": top_skus,
 
-        # 🔥 IMPORTANT: optimization must be passed
-        "optimization": state.get("optimization", {}),
+        # 🔥 FIXED: always pass correct optimization
+        "optimization": optimization_data,
 
-        # 🔥 NEW: contribution for target logic
         "sku_contribution_pct": round(contribution_pct, 2),
-
         "category_summary": state.get("category_summary", []),
     }
 
     return {
+        **state,
         "risk_signals": risk_signals,
         "analytics": analytics,
     }
