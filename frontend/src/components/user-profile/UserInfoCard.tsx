@@ -43,6 +43,7 @@ import {
 import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 import { Steps } from "intro.js-react";
 import "intro.js/introjs.css";
+import { IoMdLock } from "react-icons/io";
 
 type ProfileTab = "personal" | "objectives" | "integrations";
 
@@ -184,7 +185,12 @@ function InfoCard({
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/45 dark:bg-black/30">
           {disabledMessage ? (
             <div className="flex items-center gap-2 rounded-md bg-white/90 px-3 py-2 text-sm font-medium text-gray-700 shadow-sm dark:bg-gray-800/90 dark:text-gray-200">
-              <FiLock className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+              {/* <FiLock className="h-4 w-4 text-gray-600 dark:text-gray-300" /> */}
+              <div className="flex justify-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full  bg-[#37455F]">
+                  <IoMdLock className="h-4 w-4 text-[#F8EDCE]" />
+                </div>
+              </div>
               <span>{disabledMessage}</span>
             </div>
           ) : null}
@@ -226,6 +232,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const [isCompanyEditMode, setIsCompanyEditMode] = useState(false);
   const [isSkuUploaded, setIsSkuUploaded] = useState(false);
   const [tourEnabled, setTourEnabled] = useState(false);
+  const [tourStarted, setTourStarted] = useState(false);
+
+  const PROFILE_TOUR_SEEN_KEY = "profile_intro_seen";
 
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "aggressive",
@@ -443,7 +452,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   const [activeSection, setActiveSection] = useState<Section>("personal");
   const [tourKey, setTourKey] = useState(0);
-  // const [tourEnabled, setTourEnabled] = useState(false);
+
   const [tourPhase, setTourPhase] = useState<"overview" | "company-form">("overview");
 
   const homeCurrencyCode = ((data as any)?.homeCurrency || form.homeCurrency || pageCurrency || "USD").toUpperCase();
@@ -481,6 +490,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   useEffect(() => {
     if (!data || activeTab !== "personal") return;
 
+    const alreadySeen = localStorage.getItem(PROFILE_TOUR_SEEN_KEY) === "true";
+    if (alreadySeen) return;
+
     const timer = setTimeout(() => {
       const personalEl = document.querySelector("#tour-personal-info");
       const companyEl = document.querySelector("#tour-company-info");
@@ -506,6 +518,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          setTourStarted(true);   // ✅ mark as started
           setTourEnabled(true);
         });
       });
@@ -513,8 +526,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
     return () => clearTimeout(timer);
   }, [data, activeTab]);
-
-
 
   const startCompanyEdit = () => {
     setIsCompanyEditMode(true);
@@ -579,25 +590,25 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       ];
     }
 
-    if (tourPhase === "company-form") {
-      return [
-        {
-          element: "#tour-company-name",
-          intro: "Enter your company name here.",
-          position: "bottom",
-        },
-        {
-          element: "#tour-brand-name",
-          intro: "Enter your brand name here.",
-          position: "bottom",
-        },
-        {
-          element: "#tour-home-currency",
-          intro: "Select your home currency here.",
-          position: "bottom",
-        },
-      ];
-    }
+    // if (tourPhase === "company-form") {
+    //   return [
+    //     {
+    //       element: "#tour-company-name",
+    //       intro: "Enter your company name here.",
+    //       position: "bottom",
+    //     },
+    //     {
+    //       element: "#tour-brand-name",
+    //       intro: "Enter your brand name here.",
+    //       position: "bottom",
+    //     },
+    //     {
+    //       element: "#tour-home-currency",
+    //       intro: "Select your home currency here.",
+    //       position: "bottom",
+    //     },
+    //   ];
+    // }
 
     return [];
   }, [tourPhase]);
@@ -1058,9 +1069,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }
   };
 
-
-
-
   useEffect(() => {
     if (!token) return;
 
@@ -1242,8 +1250,20 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         enabled={tourEnabled}
         steps={introSteps}
         initialStep={0}
-        onExit={() => setTourEnabled(false)}
-        onComplete={() => setTourEnabled(false)}
+        onExit={() => {
+          setTourEnabled(false);
+
+          if (tourStarted) {
+            localStorage.setItem(PROFILE_TOUR_SEEN_KEY, "true");
+          }
+        }}
+        onComplete={() => {
+          setTourEnabled(false);
+
+          if (tourStarted) {
+            localStorage.setItem(PROFILE_TOUR_SEEN_KEY, "true");
+          }
+        }}
         options={{
           showProgress: true,
           showBullets: false,
@@ -1272,7 +1292,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           id="tour-personal-edit"
                           onClick={startPersonalEdit}
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-md  text-gray-700 hover:bg-gray-100 "
+                          disabled={tourEnabled}   // ✅ ADD THIS
+                          className={`flex h-9 w-9 items-center justify-center rounded-md 
+    ${tourEnabled ? "opacity-50 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"}`}
                         >
                           <FiEdit className="h-4 w-4" />
                         </button>
@@ -1469,7 +1491,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           id="tour-company-edit"
                           onClick={startCompanyEdit}
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-md  text-gray-700 hover:bg-gray-100 "
+                          disabled={tourEnabled}   // ✅ ADD THIS
+                          className={`flex h-9 w-9 items-center justify-center rounded-md 
+    ${tourEnabled ? "opacity-50 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"}`}
                         >
                           <FiEdit className="h-4 w-4" />
                         </button>
@@ -1487,7 +1511,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                   >
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       <InfoItem
-                        id="tour-company-name"
+                        // id="tour-company-name"
                         label="Company Name"
                         value={
                           isCompanyEditMode ? (
@@ -1514,7 +1538,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       />
 
                       <InfoItem
-                        id="tour-brand-name"
+                        // id="tour-brand-name"
                         label="Brand Name"
                         value={
                           isCompanyEditMode ? (
