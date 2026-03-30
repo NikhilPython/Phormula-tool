@@ -679,7 +679,7 @@ const DemoPurchaseOrderPreview = () => {
 
   const handleConnectAmazonPreview = () => {
     const connectCountry = countryName === 'global' ? 'uk' : countryName;
-    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+    router.push(`/profile/${connectCountry}/NA/NA`);
   };
 
   return (
