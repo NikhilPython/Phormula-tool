@@ -3151,7 +3151,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const handleConnectAmazonPreview = () => {
     const connectCountry = effectiveCountryName === "global" ? "uk" : effectiveCountryName;
-    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+    router.push(`/profile/${connectCountry}/NA/NA`);
   };
 
   return (

@@ -556,7 +556,7 @@ export default function ViewUserPage() {
               Business Journey
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              AI-generated summary of the Admin's business journey
+              AI-generated summary of the Admin&apos;s business journey
             </p>
           </div>
 

@@ -1744,7 +1744,7 @@ export default function ObjectivesPageClient({
 
   const handleConnectAmazonPreview = () => {
     const connectCountry = country === "global" ? "uk" : country;
-    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+    router.push(`/profile/${connectCountry}/NA/NA`);
   };
 
   return (

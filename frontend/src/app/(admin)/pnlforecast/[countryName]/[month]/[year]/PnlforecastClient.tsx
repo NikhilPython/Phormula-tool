@@ -729,7 +729,7 @@ const Pnlforecast: React.FC = () => {
 
   const handleConnectAmazonPreview = () => {
     const connectCountry = effectiveCountry === "global" ? "uk" : effectiveCountry;
-    router.push(`/integration-dashboard/${connectCountry}/NA/NA`);
+    router.push(`/profile/${connectCountry}/NA/NA`);
   };
 
   const monthGroup = (
