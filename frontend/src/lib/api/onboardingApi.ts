@@ -9,6 +9,7 @@ export type SelectFormReq = {
   homeCurrency?: string;
   /** added to support Revenue step */
   annual_sales_range?: string; // e.g. "$0 - $50K"
+  marketplace_id?: string;
 };
 
 export type SelectFormRes = {

@@ -13,7 +13,7 @@ import {
   useUpdateProfileMutation,
   useGetCountriesQuery,
 } from "@/lib/api/profileApi";
-import { FiEdit, FiCheck, FiX } from "react-icons/fi";
+import { FiEdit, FiCheck, FiX, FiLock } from "react-icons/fi";
 import Link from "next/link";
 import { platformToCurrencyCode } from "@/lib/utils/currency";
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
@@ -43,6 +43,7 @@ import {
 import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 import { Steps } from "intro.js-react";
 import "intro.js/introjs.css";
+import { IoMdLock } from "react-icons/io";
 
 type ProfileTab = "personal" | "objectives" | "integrations";
 
@@ -152,22 +153,49 @@ const platformToCountry = (pid: PlatformId) => {
 };
 
 function InfoCard({
+  id,
   title,
   children,
   action,
+  disabled = false,
+  disabledMessage,
+  hideDisabledOverlay = false,
 }: {
+  id?: string;
   title: React.ReactNode;
   children: React.ReactNode;
   action?: React.ReactNode;
+  disabled?: boolean;
+  disabledMessage?: string;
+  hideDisabledOverlay?: boolean;
 }) {
   return (
-    <div className="h-full rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+    <div
+      id={id}
+      className="relative h-full overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
+    >
       <div className="flex items-center justify-between px-4 py-3">
         <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">{title}</h3>
         {action}
       </div>
       <div className="h-px w-full bg-gray-200 dark:bg-gray-800" />
       <div className="p-4">{children}</div>
+
+      {disabled && !hideDisabledOverlay && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/45 dark:bg-black/30">
+          {disabledMessage ? (
+            <div className="flex items-center gap-2 rounded-md bg-white/90 px-3 py-2 text-sm font-medium text-gray-700 shadow-sm dark:bg-gray-800/90 dark:text-gray-200">
+              {/* <FiLock className="h-4 w-4 text-gray-600 dark:text-gray-300" /> */}
+              <div className="flex justify-center">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full  bg-[#37455F]">
+                  <IoMdLock className="h-4 w-4 text-[#F8EDCE]" />
+                </div>
+              </div>
+              <span>{disabledMessage}</span>
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -202,6 +230,11 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const [isObjectiveEditMode, setIsObjectiveEditMode] = useState(false);
   const [isPersonalEditMode, setIsPersonalEditMode] = useState(false);
   const [isCompanyEditMode, setIsCompanyEditMode] = useState(false);
+  const [isSkuUploaded, setIsSkuUploaded] = useState(false);
+  const [tourEnabled, setTourEnabled] = useState(false);
+  const [tourStarted, setTourStarted] = useState(false);
+
+  const PROFILE_TOUR_SEEN_KEY = "profile_intro_seen";
 
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "aggressive",
@@ -376,6 +409,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     !!String(addr.country || "").trim() &&
     !!String(addr.zipcode || "").trim();
 
+  const canAccessProductControls = isCompanyComplete;
+  const canAccessIntegrations = isCompanyComplete && isSkuUploaded;
+
   const isMemberUser = Boolean((data as any)?.is_member);
   const token = useSelector((state: any) => state.auth?.token);
   const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
@@ -416,7 +452,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   const [activeSection, setActiveSection] = useState<Section>("personal");
   const [tourKey, setTourKey] = useState(0);
-  const [tourEnabled, setTourEnabled] = useState(false);
+
   const [tourPhase, setTourPhase] = useState<"overview" | "company-form">("overview");
 
   const homeCurrencyCode = ((data as any)?.homeCurrency || form.homeCurrency || pageCurrency || "USD").toUpperCase();
@@ -447,14 +483,34 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   };
 
   useEffect(() => {
+    const savedSkuStatus = localStorage.getItem("profile_sku_uploaded") === "true";
+    setIsSkuUploaded(savedSkuStatus);
+  }, []);
+
+  useEffect(() => {
     if (!data || activeTab !== "personal") return;
+
+    const alreadySeen = localStorage.getItem(PROFILE_TOUR_SEEN_KEY) === "true";
+    if (alreadySeen) return;
 
     const timer = setTimeout(() => {
       const personalEl = document.querySelector("#tour-personal-info");
       const companyEl = document.querySelector("#tour-company-info");
       const productEl = document.querySelector("#tour-product-controls");
+      const skuUploadEl = document.querySelector("#tour-sku-upload-icon");
+      const integrationsEl = document.querySelector("#tour-integrations");
+      const integrationIconEl = document.querySelector("#tour-integration-icon");
 
-      if (!personalEl || !companyEl || !productEl) return;
+      if (
+        !personalEl ||
+        !companyEl ||
+        !productEl ||
+        !skuUploadEl ||
+        !integrationsEl ||
+        !integrationIconEl
+      ) {
+        return;
+      }
 
       setTourEnabled(false);
       setTourPhase("overview");
@@ -462,6 +518,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          setTourStarted(true);   // ✅ mark as started
           setTourEnabled(true);
         });
       });
@@ -486,9 +543,19 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     if (tourPhase === "overview") {
       return [
         {
+          element: "#tour-personal-edit",
+          intro: "Click here if you want to update your personal details.",
+          position: "left",
+        },
+        {
           element: "#tour-personal-info",
           intro: "You can view and edit your personal details here in Personal Info.",
           position: "bottom",
+        },
+        {
+          element: "#tour-personal-edit",
+          intro: "Click here if you want to update your personal details.",
+          position: "left",
         },
         {
           element: "#tour-company-info",
@@ -502,31 +569,46 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         },
         {
           element: "#tour-product-controls",
-          intro: "This is Product & Inventory Controls. You should upload your SKU sheet here before starting platform integration.",
+          intro: "This is Product & Inventory Controls.",
           position: "top",
+        },
+        {
+          element: "#tour-sku-upload-icon",
+          intro: "Click on this icon to upload your SKU sheet.",
+          position: "bottom",
+        },
+        {
+          element: "#tour-integrations",
+          intro: "Integrations: here you can see your integrated platforms.",
+          position: "top",
+        },
+        {
+          element: "#tour-integration-icon",
+          intro: "Click on the integration icon to connect your platform to our tool.",
+          position: "left",
         },
       ];
     }
 
-    if (tourPhase === "company-form") {
-      return [
-        {
-          element: "#tour-company-name",
-          intro: "Enter your company name here.",
-          position: "bottom",
-        },
-        {
-          element: "#tour-brand-name",
-          intro: "Enter your brand name here.",
-          position: "bottom",
-        },
-        {
-          element: "#tour-home-currency",
-          intro: "Select your home currency here.",
-          position: "bottom",
-        },
-      ];
-    }
+    // if (tourPhase === "company-form") {
+    //   return [
+    //     {
+    //       element: "#tour-company-name",
+    //       intro: "Enter your company name here.",
+    //       position: "bottom",
+    //     },
+    //     {
+    //       element: "#tour-brand-name",
+    //       intro: "Enter your brand name here.",
+    //       position: "bottom",
+    //     },
+    //     {
+    //       element: "#tour-home-currency",
+    //       intro: "Select your home currency here.",
+    //       position: "bottom",
+    //     },
+    //   ];
+    // }
 
     return [];
   }, [tourPhase]);
@@ -987,9 +1069,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }
   };
 
-
-
-
   useEffect(() => {
     if (!token) return;
 
@@ -1171,8 +1250,20 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         enabled={tourEnabled}
         steps={introSteps}
         initialStep={0}
-        onExit={() => setTourEnabled(false)}
-        onComplete={() => setTourEnabled(false)}
+        onExit={() => {
+          setTourEnabled(false);
+
+          if (tourStarted) {
+            localStorage.setItem(PROFILE_TOUR_SEEN_KEY, "true");
+          }
+        }}
+        onComplete={() => {
+          setTourEnabled(false);
+
+          if (tourStarted) {
+            localStorage.setItem(PROFILE_TOUR_SEEN_KEY, "true");
+          }
+        }}
         options={{
           showProgress: true,
           showBullets: false,
@@ -1197,8 +1288,15 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                     title={<PageBreadcrumb pageTitle="Personal Info" variant="table" align="left" />}
                     action={
                       isMemberUser ? null : !isPersonalEditMode ? (
-                        <button onClick={startPersonalEdit} className="h-9 w-9 text-gray-700" type="button">
-                          <FiEdit className="text-lg" />
+                        <button
+                          id="tour-personal-edit"
+                          onClick={startPersonalEdit}
+                          type="button"
+                          disabled={tourEnabled}   // ✅ ADD THIS
+                          className={`flex h-9 w-9 items-center justify-center rounded-md 
+    ${tourEnabled ? "opacity-50 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"}`}
+                        >
+                          <FiEdit className="h-4 w-4" />
                         </button>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -1389,8 +1487,15 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                     title={<PageBreadcrumb pageTitle="Company Info" variant="table" align="left" />}
                     action={
                       isMemberUser ? null : !isCompanyEditMode ? (
-                        <button id="tour-company-edit" onClick={startCompanyEdit} className="h-9 w-9 text-gray-700" type="button">
-                          <FiEdit className="text-lg" />
+                        <button
+                          id="tour-company-edit"
+                          onClick={startCompanyEdit}
+                          type="button"
+                          disabled={tourEnabled}   // ✅ ADD THIS
+                          className={`flex h-9 w-9 items-center justify-center rounded-md 
+    ${tourEnabled ? "opacity-50 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"}`}
+                        >
+                          <FiEdit className="h-4 w-4" />
                         </button>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -1406,7 +1511,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                   >
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       <InfoItem
-                        id="tour-company-name"
+                        // id="tour-company-name"
                         label="Company Name"
                         value={
                           isCompanyEditMode ? (
@@ -1433,7 +1538,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       />
 
                       <InfoItem
-                        id="tour-brand-name"
+                        // id="tour-brand-name"
                         label="Brand Name"
                         value={
                           isCompanyEditMode ? (
@@ -1709,7 +1814,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
             {activeTab === "personal" && (
               <>
-
                 <div id="tour-product-controls" className="lg:col-span-1 h-full">
                   <InfoCard
                     title={
@@ -1719,14 +1823,19 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                         align="left"
                       />
                     }
+                    disabled={!canAccessProductControls}
+                    disabledMessage="Complete Company Info to unlock this section"
+                    hideDisabledOverlay={tourEnabled}
                   >
                     <div className="grid grid-cols-1 gap-4">
                       <div className="flex items-center justify-start gap-2">
                         <p className="text-sm font-semibold text-charcoal-500">SKU Information</p>
 
                         <button
-                          onClick={skuModal.openModal}
-                          className="inline-flex items-center rounded-md p-1 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                          id="tour-sku-upload-icon"
+                          onClick={canAccessProductControls ? skuModal.openModal : undefined}
+                          disabled={!canAccessProductControls}
+                          className="inline-flex items-center rounded-md p-1 text-gray-700 dark:text-gray-200"
                           aria-label="Upload SKU"
                           title="Upload SKU"
                           type="button"
@@ -1760,7 +1869,11 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar dark:bg-gray-900 lg:p-9">
                         <SkuMultiCountryUpload
                           onClose={skuModal.closeModal}
-                          onComplete={() => skuModal.closeModal()}
+                          onComplete={() => {
+                            setIsSkuUploaded(true);
+                            localStorage.setItem("profile_sku_uploaded", "true");
+                            skuModal.closeModal();
+                          }}
                         />
                       </div>
                     </Modal>
@@ -1769,8 +1882,19 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
                 <div className="lg:col-span-1 h-full">
                   <InfoCard
+                    id="tour-integrations"
                     title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
-                    action={<IntegrationToggleButton />}
+                    action={
+                      <div
+                        id="tour-integration-icon"
+                        className={!canAccessIntegrations ? "pointer-events-none opacity-60" : ""}
+                      >
+                        <IntegrationToggleButton />
+                      </div>
+                    }
+                    disabled={!canAccessIntegrations}
+                    disabledMessage="Upload your SKU sheet to unlock this section"
+                    hideDisabledOverlay={tourEnabled}
                   >
                     {(() => {
                       const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
