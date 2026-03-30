@@ -152,16 +152,21 @@ const platformToCountry = (pid: PlatformId) => {
 };
 
 function InfoCard({
+  id,
   title,
   children,
   action,
 }: {
+  id?: string;
   title: React.ReactNode;
   children: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (
-    <div className="h-full rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+    <div
+      id={id}
+      className="h-full rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
+    >
       <div className="flex items-center justify-between px-4 py-3">
         <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">{title}</h3>
         {action}
@@ -453,8 +458,20 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       const personalEl = document.querySelector("#tour-personal-info");
       const companyEl = document.querySelector("#tour-company-info");
       const productEl = document.querySelector("#tour-product-controls");
+      const skuUploadEl = document.querySelector("#tour-sku-upload-icon");
+      const integrationsEl = document.querySelector("#tour-integrations");
+      const integrationIconEl = document.querySelector("#tour-integration-icon");
 
-      if (!personalEl || !companyEl || !productEl) return;
+      if (
+        !personalEl ||
+        !companyEl ||
+        !productEl ||
+        !skuUploadEl ||
+        !integrationsEl ||
+        !integrationIconEl
+      ) {
+        return;
+      }
 
       setTourEnabled(false);
       setTourPhase("overview");
@@ -470,6 +487,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     return () => clearTimeout(timer);
   }, [data, activeTab]);
 
+
+  
   const startCompanyEdit = () => {
     setIsCompanyEditMode(true);
 
@@ -486,9 +505,19 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     if (tourPhase === "overview") {
       return [
         {
+          element: "#tour-personal-edit",
+          intro: "Click here if you want to update your personal details.",
+          position: "left",
+        },
+        {
           element: "#tour-personal-info",
           intro: "You can view and edit your personal details here in Personal Info.",
           position: "bottom",
+        },
+        {
+          element: "#tour-personal-edit",
+          intro: "Click here if you want to update your personal details.",
+          position: "left",
         },
         {
           element: "#tour-company-info",
@@ -502,8 +531,23 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         },
         {
           element: "#tour-product-controls",
-          intro: "This is Product & Inventory Controls. You should upload your SKU sheet here before starting platform integration.",
+          intro: "This is Product & Inventory Controls.",
           position: "top",
+        },
+        {
+          element: "#tour-sku-upload-icon",
+          intro: "Click on this icon to upload your SKU sheet.",
+          position: "bottom",
+        },
+        {
+          element: "#tour-integrations",
+          intro: "Integrations: here you can see your integrated platforms.",
+          position: "top",
+        },
+        {
+          element: "#tour-integration-icon",
+          intro: "Click on the integration icon to connect your platform to our tool.",
+          position: "left",
         },
       ];
     }
@@ -1197,8 +1241,13 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                     title={<PageBreadcrumb pageTitle="Personal Info" variant="table" align="left" />}
                     action={
                       isMemberUser ? null : !isPersonalEditMode ? (
-                        <button onClick={startPersonalEdit} className="h-9 w-9 text-gray-700" type="button">
-                          <FiEdit className="text-lg" />
+                        <button
+                          id="tour-personal-edit"
+                          onClick={startPersonalEdit}
+                          type="button"
+                          className="flex h-9 w-9 items-center justify-center rounded-md  text-gray-700 hover:bg-gray-100 "
+                        >
+                          <FiEdit className="h-4 w-4" />
                         </button>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -1389,8 +1438,13 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                     title={<PageBreadcrumb pageTitle="Company Info" variant="table" align="left" />}
                     action={
                       isMemberUser ? null : !isCompanyEditMode ? (
-                        <button id="tour-company-edit" onClick={startCompanyEdit} className="h-9 w-9 text-gray-700" type="button">
-                          <FiEdit className="text-lg" />
+                        <button
+                          id="tour-company-edit"
+                          onClick={startCompanyEdit}
+                          type="button"
+                          className="flex h-9 w-9 items-center justify-center rounded-md  text-gray-700 hover:bg-gray-100 "
+                        >
+                          <FiEdit className="h-4 w-4" />
                         </button>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -1709,7 +1763,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
             {activeTab === "personal" && (
               <>
-
                 <div id="tour-product-controls" className="lg:col-span-1 h-full">
                   <InfoCard
                     title={
@@ -1725,6 +1778,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                         <p className="text-sm font-semibold text-charcoal-500">SKU Information</p>
 
                         <button
+                          id="tour-sku-upload-icon"
                           onClick={skuModal.openModal}
                           className="inline-flex items-center rounded-md p-1 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
                           aria-label="Upload SKU"
@@ -1769,8 +1823,13 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
                 <div className="lg:col-span-1 h-full">
                   <InfoCard
+                    id="tour-integrations"
                     title={<PageBreadcrumb pageTitle="Integrations" variant="table" align="left" />}
-                    action={<IntegrationToggleButton />}
+                    action={
+                      <div id="tour-integration-icon">
+                        <IntegrationToggleButton />
+                      </div>
+                    }
                   >
                     {(() => {
                       const connectedPlatforms = ALL_PLATFORM_DEFS.filter((p) =>
