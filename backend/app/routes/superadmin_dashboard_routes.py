@@ -801,4 +801,45 @@ def get_members():
             "error": str(e)
         }), 500
 
-        
+
+@superadmin_dashboard_bp.route('/superadmin/dashboard/update_user_status', methods=['POST'])
+def update_user_status():
+    ok, err = _is_superadmin_authenticated()
+    if not ok:
+        payload, code = err
+        return jsonify(payload), code
+
+    try:
+        data = request.get_json()
+
+        user_id = data.get("user_id")
+        status = data.get("status")
+
+        if user_id is None:
+            return jsonify({"message": "user_id is required"}), 400
+
+        if status is None:
+            return jsonify({"message": "status is required"}), 400
+
+        user = User.query.filter_by(id=user_id).first()
+
+        if not user:
+            return jsonify({"message": "User not found"}), 404
+
+        user.status = bool(status)
+        db.session.commit()
+
+        return jsonify({
+            "message": "User status updated successfully",
+            "user_id": user.id,
+            "status": user.status
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "message": "Error updating user status",
+            "error": str(e)
+        }), 500
+    
+    

@@ -25,7 +25,7 @@ type UserRow = {
   company_name: string;
   country?: string;
   marketplace_id?: string;
-  status?: string;
+  status?: string | boolean;
   address?: {
     building?: string;
     city?: string;
@@ -72,11 +72,18 @@ export default function SuperAdminDashboardPage() {
     { value: "inactive" as const, label: "Inactive" },
   ];
 
-  const normalizeStatus = (status?: string) => {
-    const s = String(status || "").trim().toLowerCase();
-    if (s === "inactive" || s === "disabled") return "inactive";
-    return "active";
-  };
+ const normalizeStatus = (status?: string | boolean) => {
+  if (status === true) return "active";
+  if (status === false) return "inactive";
+
+  const s = String(status ?? "").trim().toLowerCase();
+
+  if (s === "inactive" || s === "disabled" || s === "false") {
+    return "inactive";
+  }
+
+  return "active";
+};
 
   useEffect(() => {
     const fetchDefaultData = async () => {
@@ -303,69 +310,90 @@ const summaryCards = [
   },
 ];
 
-  const handleToggleStatus = async (user: UserRow) => {
-    const emailKey = user.email;
-    const currentStatus = normalizeStatus(user.status);
-    const nextStatus = currentStatus === "active" ? "inactive" : "active";
+ const handleToggleStatus = async (user: UserRow) => {
+  const emailKey = user.email;
+  const currentStatus = normalizeStatus(user.status);
+  const nextStatus = currentStatus === "active" ? false : true;
 
-    try {
-      setActionLoading((prev) => ({ ...prev, [emailKey]: true }));
+  try {
+    setActionLoading((prev) => ({ ...prev, [emailKey]: true }));
 
-      const token = localStorage.getItem("superadmin_token");
-      if (!token) {
-        toast.error("No authentication token found");
-        router.push("/superadmin/CDPAdminConsole");
-        return;
-      }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/toggle_admin_status`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            email: user.email,
-            status: nextStatus,
-          }),
-        }
-      );
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data?.message || "Failed to update status");
-      }
-
-      setUsersData((prev) =>
-        prev.map((u) =>
-          u.email === user.email ? { ...u, status: nextStatus } : u
-        )
-      );
-
-      setSearchResult((prev) => {
-        if (!prev?.users) return prev;
-        return {
-          ...prev,
-          users: prev.users.map((u) =>
-            u.email === user.email ? { ...u, status: nextStatus } : u
-          ),
-        };
-      });
-
-      toast.success(
-        `Admin ${nextStatus === "active" ? "enabled" : "disabled"} successfully`
-      );
-    } catch (error) {
-      const msg =
-        error instanceof Error ? error.message : "Failed to update status";
-      toast.error(msg);
-    } finally {
-      setActionLoading((prev) => ({ ...prev, [emailKey]: false }));
+    const token = localStorage.getItem("superadmin_token");
+    if (!token) {
+      toast.error("No authentication token found");
+      router.push("/superadmin/CDPAdminConsole");
+      return;
     }
-  };
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/superadmin/dashboard/update_user_status`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          status: nextStatus,
+        }),
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data?.message || "Failed to update status");
+    }
+
+    const updatedStatus =
+      data?.status === true || String(data?.status).toLowerCase() === "true"
+        ? "active"
+        : "inactive";
+
+    setUsersData((prev) =>
+      prev.map((u) =>
+        String(u.id) === String(user.id)
+          ? { ...u, status: updatedStatus }
+          : u
+      )
+    );
+
+    setDefaultData((prev) => {
+      if (!prev?.users) return prev;
+      return {
+        ...prev,
+        users: prev.users.map((u) =>
+          String(u.id) === String(user.id)
+            ? { ...u, status: updatedStatus }
+            : u
+        ),
+      };
+    });
+
+    setSearchResult((prev) => {
+      if (!prev?.users) return prev;
+      return {
+        ...prev,
+        users: prev.users.map((u) =>
+          String(u.id) === String(user.id)
+            ? { ...u, status: updatedStatus }
+            : u
+        ),
+      };
+    });
+
+    toast.success(
+      `User ${updatedStatus === "active" ? "enabled" : "disabled"} successfully`
+    );
+  } catch (error) {
+    const msg =
+      error instanceof Error ? error.message : "Failed to update status";
+    toast.error(msg);
+  } finally {
+    setActionLoading((prev) => ({ ...prev, [emailKey]: false }));
+  }
+};
 
   const handleDeleteAdmin = async (email: string) => {
     const confirmed = window.confirm(

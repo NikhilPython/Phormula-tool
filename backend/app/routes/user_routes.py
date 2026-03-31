@@ -468,6 +468,7 @@ def get_user_data():
         # identity
         "is_member": is_member,
         "user_id": int(user_id),
+        "status": user.status,
         "owner_user_id": int(user_id),
         "member_id": int(member_id) if member_id else None,
 
