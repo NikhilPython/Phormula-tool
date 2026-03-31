@@ -15,6 +15,7 @@ from langchain_openai import ChatOpenAI
 from sqlalchemy import create_engine, text
 import io
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -498,7 +499,7 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
 
     # 🔥 Safety check: basic data required
     if monthly_df.empty or "asp" not in monthly_df.columns:
-        print("WARNING: optimization skipped due to missing data")
+        # print("WARNING: optimization skipped due to missing data")
         return {
             "price_points": [],
             "bau_profit": None,
@@ -513,7 +514,7 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
     monthly_df = monthly_df.dropna(subset=["asp", "quantity"])
 
     if monthly_df.empty:
-        print("WARNING: no valid asp/quantity data after cleaning")
+        # print("WARNING: no valid asp/quantity data after cleaning")
         return {
             "price_points": [],
             "bau_profit": None,
@@ -524,7 +525,7 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
     candidates = generate_price_candidates(monthly_df)
 
     if len(candidates) == 0:
-        print("WARNING: no price candidates generated")
+        # print("WARNING: no price candidates generated")
         return {
             "price_points": [],
             "bau_profit": None,
@@ -533,7 +534,7 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
 
     # 🔥 BAU profit
     bau_profit = get_bau_profit(monthly_df)
-    print("DEBUG: BAU profit:", bau_profit)
+    # print("DEBUG: BAU profit:", bau_profit)
 
     results = []
 
@@ -574,11 +575,11 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
             })
 
         except Exception as e:
-            print(f"ERROR in candidate price {price}: {str(e)}")
+            # print(f"ERROR in candidate price {price}: {str(e)}")
             continue
 
     if not results:
-        print("WARNING: no results generated in optimization")
+        # print("WARNING: no results generated in optimization")
         return {
             "price_points": [],
             "bau_profit": round(bau_profit, 2) if bau_profit else None,
@@ -589,7 +590,7 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
     valid_results = [r for r in results if r["is_valid"]]
 
     if not valid_results:
-        print("WARNING: no valid results under BAU constraint → using all results")
+        # print("WARNING: no valid results under BAU constraint → using all results")
         valid_results = results
 
     # 🔥 SORT for better interpretation
@@ -605,9 +606,9 @@ def optimize_price_with_constraint(monthly_df, margin_pct):
     else:
         mid_point = valid_results[0]
 
-    print("DEBUG: total candidates:", len(results))
-    print("DEBUG: valid candidates:", len(valid_results))
-    print("DEBUG: price range:", min_price, "to", max_price)
+    # print("DEBUG: total candidates:", len(results))
+    # print("DEBUG: valid candidates:", len(valid_results))
+    # print("DEBUG: price range:", min_price, "to", max_price)
 
     return {
         "price_points": valid_results,   # 🔥 full landscape
@@ -683,9 +684,9 @@ def analyze_scope_node(state: AgentState) -> AgentState:
 
     monthly_df = aggregate_monthly(sales_df)
 
-    print("DEBUG: analyze_scope_node")
-    print("monthly_df shape:", monthly_df.shape)
-    print(monthly_df.tail(3))
+    # print("DEBUG: analyze_scope_node")
+    # print("monthly_df shape:", monthly_df.shape)
+    # print(monthly_df.tail(3))
 
     top_skus = summarize_top_skus(sales_df, top_n=10)
     category_summary = summarize_categories(sales_df, top_n=8)
@@ -705,8 +706,8 @@ def analyze_scope_node(state: AgentState) -> AgentState:
     sales_mix_pct = max(0.0, min(100.0, sales_mix_pct))
     profit_mix_pct = max(0.0, min(100.0, profit_mix_pct))
 
-    print("sales_mix_pct:", round(sales_mix_pct, 2))
-    print("profit_mix_pct:", round(profit_mix_pct, 2))
+    # print("sales_mix_pct:", round(sales_mix_pct, 2))
+    # print("profit_mix_pct:", round(profit_mix_pct, 2))
 
     return {
         "scoped_sales_df": sales_df.to_dict("records"),
@@ -891,16 +892,16 @@ def compute_forecast_node(state: AgentState) -> AgentState:
 
 def optimize_pricing_node(state: AgentState) -> AgentState:
 
-    print("DEBUG: optimize_pricing_node START")
+    # print("DEBUG: optimize_pricing_node START")
 
     # ✅ Safe load
     monthly_df = pd.DataFrame(state.get("monthly_df", []))
 
-    print("monthly_df received shape:", monthly_df.shape)
-    if not monthly_df.empty:
-        print(monthly_df.tail(3))
-    else:
-        print("WARNING: monthly_df is EMPTY")
+    # print("monthly_df received shape:", monthly_df.shape)
+    # if not monthly_df.empty:
+    #     print(monthly_df.tail(3))
+    # else:
+    #     print("WARNING: monthly_df is EMPTY")
 
     # 🚨 If no data, skip optimization but still preserve state
     if monthly_df.empty:
@@ -919,11 +920,11 @@ def optimize_pricing_node(state: AgentState) -> AgentState:
     else:
         margin_pct = 0.3
 
-    print("margin_pct:", round(margin_pct, 4))
+    # print("margin_pct:", round(margin_pct, 4))
 
     # 🚨 Safety: if asp missing → skip
     if "asp" not in monthly_df.columns:
-        print("WARNING: 'asp' column missing in monthly_df")
+        # print("WARNING: 'asp' column missing in monthly_df")
         return {
             "optimization": {},
         }
@@ -931,13 +932,13 @@ def optimize_pricing_node(state: AgentState) -> AgentState:
     try:
         optimization = optimize_price_with_constraint(monthly_df, margin_pct)
 
-        print("optimization output:", optimization)
+        # print("optimization output:", optimization)
 
-        if not optimization.get("price_points"):
-            print("WARNING: price_points missing in optimization output")
+        # if not optimization.get("price_points"):
+        #     print("WARNING: price_points missing in optimization output")
 
     except Exception as e:
-        print("ERROR in optimization:", str(e))
+        # print("ERROR in optimization:", str(e))
         optimization = {}
 
     # ✅ IMPORTANT: ensure optimization survives to next nodes
@@ -975,10 +976,10 @@ def detect_risks_node(state: AgentState) -> AgentState:
     )
 
     # 🔥 DEBUG
-    print("DEBUG: detect_risks_node")
-    print("sales_mix_pct:", round(sales_mix_pct, 2))
-    print("profit_mix_pct:", round(profit_mix_pct, 2))
-    print("optimization present:", bool(optimization_data))
+    # print("DEBUG: detect_risks_node")
+    # print("sales_mix_pct:", round(sales_mix_pct, 2))
+    # print("profit_mix_pct:", round(profit_mix_pct, 2))
+    # print("optimization present:", bool(optimization_data))
 
     risk_signals = {
         "risk_type": risk_type,
@@ -1370,7 +1371,95 @@ def build_event_planner_graph(phormula_engine, amazon_engine):
     checkpointer = MemorySaver()
     return graph.compile(checkpointer=checkpointer)
 
+def run_sku(sku, payload):
+    try:
+        # 🔥 create graph per thread
+        local_graph = build_event_planner_graph(phormula_engine, amazon_engine)
+
+        initial_state = {
+            "user_id": int(payload["user_id"]),
+            "country": str(payload["country"]).lower(),
+            "last_event": payload["last_event"],
+            "future_event": payload["future_event"],
+            "target_sales": payload.get("target_sales"),
+            "scope": {"level": "sku", "value": sku},
+            "retry_count": 0,
+        }
+
+        result = local_graph.invoke(
+            initial_state,
+            config={
+                "configurable": {
+                    "thread_id": f"user-{payload['user_id']}-sku-{sku}"
+                }
+            }
+        )
+
+        return {
+            "sku": sku,
+            "analytics": result.get("analytics", {}),
+            "plan": result.get("execution_plan", {}),
+        }
+
+    except Exception as e:
+        return {"sku": sku, "error": str(e)}
+
+
 graph = build_event_planner_graph(phormula_engine, amazon_engine)
+
+# def build_plan_langgraph(payload, phormula_engine, amazon_engine):
+
+#     # Step 1: Load full sales data once
+#     sales_df = load_sales_data(
+#         phormula_engine,
+#         payload["user_id"],
+#         payload["country"],
+#         payload["future_event"]["year"],
+#         payload["future_event"]["month"],
+#     )
+
+#     # 🚨 Remove TOTAL rows
+#     sales_df = sales_df[~sales_df["sku"].str.contains("total", case=False, na=False)]
+
+#     # Get all unique SKUs
+#     unique_skus = sales_df["sku"].dropna().unique()
+
+#     results = []
+
+#     for sku in unique_skus:
+#         try:
+#             initial_state = {
+#                 "user_id": int(payload["user_id"]),
+#                 "country": str(payload["country"]).lower(),
+#                 "last_event": payload["last_event"],
+#                 "future_event": payload["future_event"],
+#                 "target_sales": payload.get("target_sales"),
+#                 "scope": {"level": "sku", "value": sku},  # ✅ FORCE SKU MODE
+#                 "retry_count": 0,
+#             }
+
+#             result = graph.invoke(
+#                 initial_state,
+#                 config={
+#                     "configurable": {
+#                         "thread_id": f"user-{payload['user_id']}-sku-{sku}"
+#                     }
+#                 }
+#             )
+
+#             results.append({
+#                 "sku": sku,
+#                 "analytics": result.get("analytics", {}),
+#                 "plan": result.get("execution_plan", {}),
+#             })
+
+#         except Exception as e:
+#             results.append({
+#                 "sku": sku,
+#                 "error": str(e)
+#             })
+
+#     return build_ui_output(results)
 
 def build_plan_langgraph(payload, phormula_engine, amazon_engine):
 
@@ -1389,21 +1478,23 @@ def build_plan_langgraph(payload, phormula_engine, amazon_engine):
     # Get all unique SKUs
     unique_skus = sales_df["sku"].dropna().unique()
 
-    results = []
-
-    for sku in unique_skus:
+    # 🔥 Worker function (parallel-safe)
+    def run_sku(sku, payload):
         try:
+            # ✅ Create graph per thread (avoids memory collision)
+            local_graph = build_event_planner_graph(phormula_engine, amazon_engine)
+
             initial_state = {
                 "user_id": int(payload["user_id"]),
                 "country": str(payload["country"]).lower(),
                 "last_event": payload["last_event"],
                 "future_event": payload["future_event"],
                 "target_sales": payload.get("target_sales"),
-                "scope": {"level": "sku", "value": sku},  # ✅ FORCE SKU MODE
+                "scope": {"level": "sku", "value": sku},
                 "retry_count": 0,
             }
 
-            result = graph.invoke(
+            result = local_graph.invoke(
                 initial_state,
                 config={
                     "configurable": {
@@ -1412,17 +1503,26 @@ def build_plan_langgraph(payload, phormula_engine, amazon_engine):
                 }
             )
 
-            results.append({
+            return {
                 "sku": sku,
                 "analytics": result.get("analytics", {}),
                 "plan": result.get("execution_plan", {}),
-            })
+            }
 
         except Exception as e:
-            results.append({
+            return {
                 "sku": sku,
                 "error": str(e)
-            })
+            }
+
+    results = []
+
+    # 🔥 Parallel execution
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(run_sku, sku, payload) for sku in unique_skus]
+
+        for future in as_completed(futures):
+            results.append(future.result())
 
     return build_ui_output(results)
 
