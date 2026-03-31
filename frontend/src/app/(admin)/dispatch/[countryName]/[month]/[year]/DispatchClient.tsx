@@ -10,6 +10,7 @@ import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable'
 import DataTable, { ColumnDef } from '@/components/ui/table/DataTable'
 import DownloadIconButton from '@/components/ui/button/DownloadButton'
 import PageBreadcrumb from '@/components/common/PageBreadCrumb'
+import Loader from '@/components/loader/Loader'
 
 interface SkuRow {
   [key: string]: string | number | undefined
@@ -848,9 +849,9 @@ export default function DispatchPage({
       )}
 
       {loading ? (
-        <div className="loading-wrapper">
-          <p>Loading...</p>
-        </div>
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Loader fullscreen transparent />
+                </div>
       ) : error ? (
         <div className="alert-container">
           <div className="alert-message">

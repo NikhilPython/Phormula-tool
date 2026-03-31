@@ -90,7 +90,7 @@ const CURRENCY_OPTIONS = ["USD", "GBP", "INR", "CAD"];
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
-  
+
 function platformIsConnected(
   platform: PlatformId,
   connected: {
@@ -415,7 +415,12 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const pageCurrency = useMemo(() => platformToCurrencyCode(pagePlatform), [pagePlatform]);
 
   // const { data, isLoading, isError } = useGetUserDataQuery();
-  const { data, isLoading, isError, refetch } = useGetUserDataQuery();
+  // const { data, isLoading, isError, refetch } = useGetUserDataQuery();
+
+  const [data, setData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isError, setIsError] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const isPersonalComplete =
     !!String((data as any)?.name || "").trim() &&
@@ -441,15 +446,99 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   const isMemberUser = Boolean((data as any)?.is_member);
   const token = useSelector((state: any) => state.auth?.token);
-  const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
+  // const [updateProfile, { isLoading: isSaving }] = useUpdateProfileMutation();
+  // const [forgotPassword, { isLoading: isSending, isSuccess }] = useForgotPasswordMutation();
+
+  // const feeModal = useModal();
+  // const skuModal = useModal();
+  // const [selectedCountry, setSelectedCountry] = React.useState<string | null>(null);
+
+  // const { data: countriesRes } = useGetCountriesQuery();
+  // const countries: string[] = countriesRes?.countries ?? [];
+
+  const fetchUserData = async () => {
+    if (!token) return;
+
+    try {
+      setIsLoading(true);
+      setIsError(false);
+
+      const res = await fetch(`${API_BASE}/get_user_data`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const result = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(result?.error || result?.message || "Failed to load profile");
+      }
+
+      setData(result);
+
+      const tax = result?.tax_id ?? {};
+      const addr = result?.address ?? {};
+
+      setForm((prev) => ({
+        ...prev,
+        name: result?.name ?? "",
+        brand_name: result?.brand_name ?? "",
+        company_name: result?.company_name ?? "",
+        email: result?.email ?? "",
+        phone_number: result?.phone_number ?? "",
+        homeCurrency: result?.homeCurrency ?? "",
+        target_sales:
+          result?.target_sales != null ? String(result.target_sales) : "",
+        gst_no: tax?.gst_no ?? "",
+        pan_no: tax?.pan_no ?? "",
+        address_building: addr?.building ?? "",
+        address_city: addr?.city ?? "",
+        address_country: addr?.country ?? "",
+        address_state: addr?.state ?? "",
+        address_zipcode: addr?.zipcode ?? "",
+      }));
+    } catch (error) {
+      console.error(error);
+      setIsError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const postProfileUpdate = async (payload: any) => {
+    if (!token) {
+      throw new Error("Token missing. Please login again.");
+    }
+
+    const res = await fetch(`${API_BASE}/profileupdate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(result?.error || result?.message || "Failed to update profile");
+    }
+
+    return result;
+  };
+
+  useEffect(() => {
+    fetchUserData();
+  }, [token]);
+
   const [forgotPassword, { isLoading: isSending, isSuccess }] = useForgotPasswordMutation();
 
   const feeModal = useModal();
   const skuModal = useModal();
   const [selectedCountry, setSelectedCountry] = React.useState<string | null>(null);
-
-  const { data: countriesRes } = useGetCountriesQuery();
-  const countries: string[] = countriesRes?.countries ?? [];
 
   const [form, setForm] = useState<FormState>({
     name: "",
@@ -503,8 +592,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     if (data) {
       setForm((prev) => ({
         ...prev,
-        name: (data as any)?.name ?? "",
-        phone_number: (data as any)?.phone_number ?? "",
+        name: data?.name ?? "",
+        phone_number: data?.phone_number ?? "",
       }));
     }
   };
@@ -646,7 +735,6 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     setCompanyTouched({
       brand_name: false,
       company_name: false,
-      // annual_sales_range: false,
       homeCurrency: false,
       gst_no: false,
       pan_no: false,
@@ -658,22 +746,21 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     });
 
     if (data) {
-      const tax = (data as any)?.tax_id ?? {};
-      const addr = (data as any)?.address ?? {};
+      const tax = data?.tax_id ?? {};
+      const addr = data?.address ?? {};
 
       setForm((prev) => ({
         ...prev,
-        brand_name: (data as any)?.brand_name ?? "",
-        company_name: (data as any)?.company_name ?? "",
-        // annual_sales_range: (data as any)?.annual_sales_range ?? "",
-        homeCurrency: (data as any)?.homeCurrency ?? "",
-        gst_no: tax.gst_no ?? "",
-        pan_no: tax.pan_no ?? "",
-        address_building: addr.building ?? "",
-        address_city: addr.city ?? "",
-        address_country: addr.country ?? "",
-        address_state: addr.state ?? "",
-        address_zipcode: addr.zipcode ?? "",
+        brand_name: data?.brand_name ?? "",
+        company_name: data?.company_name ?? "",
+        homeCurrency: data?.homeCurrency ?? "",
+        gst_no: tax?.gst_no ?? "",
+        pan_no: tax?.pan_no ?? "",
+        address_building: addr?.building ?? "",
+        address_city: addr?.city ?? "",
+        address_country: addr?.country ?? "",
+        address_state: addr?.state ?? "",
+        address_zipcode: addr?.zipcode ?? "",
       }));
     }
   };
@@ -920,46 +1007,61 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     return { target_sales: form.target_sales === "" ? null : Number(form.target_sales) };
   };
 
+  // const handleSave = async () => {
+  //   try {
+  //     const payload = buildPayloadBySection();
+  //     await updateProfile(payload as any).unwrap();
+  //     await refetch();
+  //     closeModal();
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     alert(err?.data?.message ?? "Failed to update profile.");
+  //   }
+  // };
+
   const handleSave = async () => {
     try {
+      setIsSaving(true);
       const payload = buildPayloadBySection();
-      await updateProfile(payload as any).unwrap();
-      await refetch();
+      await postProfileUpdate(payload);
+      await fetchUserData();
       closeModal();
     } catch (err: any) {
       console.error(err);
-      alert(err?.data?.message ?? "Failed to update profile.");
+      alert(err?.message || "Failed to update profile.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleSavePersonal = async () => {
-    setPersonalTouched({
-      name: true,
-      phone_number: true,
-    });
+  // const handleSavePersonal = async () => {
+  //   setPersonalTouched({
+  //     name: true,
+  //     phone_number: true,
+  //   });
 
-    const result = validatePersonal();
-    if (!result.success) return;
+  //   const result = validatePersonal();
+  //   if (!result.success) return;
 
-    try {
-      await updateProfile({
-        name: form.name.trim(),
-        phone_number: form.phone_number.trim(),
-      }).unwrap();
+  //   try {
+  //     await updateProfile({
+  //       name: form.name.trim(),
+  //       phone_number: form.phone_number.trim(),
+  //     }).unwrap();
 
-      await refetch();
+  //     await refetch();
 
-      setIsPersonalEditMode(false);
+  //     setIsPersonalEditMode(false);
 
-      if (isOnboarding) {
-        setOnboardingStep("company");
-        setIsCompanyEditMode(true);
-      }
-    } catch (err: any) {
-      console.error(err);
-      alert(err?.data?.error || err?.data?.message || "Failed to update personal info");
-    }
-  };
+  //     if (isOnboarding) {
+  //       setOnboardingStep("company");
+  //       setIsCompanyEditMode(true);
+  //     }
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     alert(err?.data?.error || err?.data?.message || "Failed to update personal info");
+  //   }
+  // };
 
   // const handleSaveCompany = async () => {
   //   setCompanyTouched({
@@ -1012,6 +1114,85 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   //   }
   // };
 
+  const handleSavePersonal = async () => {
+    setPersonalTouched({
+      name: true,
+      phone_number: true,
+    });
+
+    const result = validatePersonal();
+    if (!result.success) return;
+
+    try {
+      setIsSaving(true);
+
+      await postProfileUpdate({
+        name: form.name.trim(),
+        phone_number: form.phone_number.trim(),
+      });
+
+      await fetchUserData();
+      setIsPersonalEditMode(false);
+
+      if (isOnboarding) {
+        setOnboardingStep("company");
+        setIsCompanyEditMode(true);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Failed to update personal info");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // const handleSaveCompany = async () => {
+  //   setCompanyTouched({
+  //     brand_name: true,
+  //     company_name: true,
+  //     homeCurrency: true,
+  //     gst_no: true,
+  //     pan_no: true,
+  //     address_building: true,
+  //     address_city: true,
+  //     address_country: true,
+  //     address_state: true,
+  //     address_zipcode: true,
+  //   });
+
+  //   const result = validateCompany();
+  //   if (!result.success) return;
+
+  //   try {
+  //     const payload = {
+  //       brand_name: form.brand_name.trim(),
+  //       company_name: form.company_name.trim(),
+  //       homeCurrency: form.homeCurrency,
+  //       tax_id: {
+  //         gst_no: form.gst_no.trim(),
+  //         pan_no: form.pan_no.trim(),
+  //       },
+  //       address: {
+  //         building: form.address_building.trim(),
+  //         city: form.address_city.trim(),
+  //         country: form.address_country.trim(),
+  //         state: form.address_state.trim(),
+  //         zipcode: form.address_zipcode.trim(),
+  //       },
+  //     };
+
+  //     const res = await updateProfile(payload).unwrap();
+  //     console.log("Profile update response:", res);
+
+  //     await refetch();
+
+  //     setIsCompanyEditMode(false);
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     alert(err?.data?.error || err?.data?.message || "Failed to update company info");
+  //   }
+  // };
+
   const handleSaveCompany = async () => {
     setCompanyTouched({
       brand_name: true,
@@ -1030,6 +1211,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     if (!result.success) return;
 
     try {
+      setIsSaving(true);
+
       const payload = {
         brand_name: form.brand_name.trim(),
         company_name: form.company_name.trim(),
@@ -1047,17 +1230,43 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         },
       };
 
-      const res = await updateProfile(payload).unwrap();
-      console.log("Profile update response:", res);
-
-      await refetch();
-
+      await postProfileUpdate(payload);
+      await fetchUserData();
       setIsCompanyEditMode(false);
+
+      if (isOnboarding) {
+        setIsOnboarding(false);
+        setOnboardingStep("done");
+        localStorage.setItem("profile_onboarding_complete", "true");
+      }
     } catch (err: any) {
       console.error(err);
-      alert(err?.data?.error || err?.data?.message || "Failed to update company info");
+      alert(err?.message || "Failed to update company info");
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  // const saveInlineTarget = async () => {
+  //   const next = Number(draftTarget);
+
+  //   if (!Number.isFinite(next) || next < 0) {
+  //     alert("Please enter a valid number.");
+  //     return;
+  //   }
+
+  //   try {
+  //     setForm((prev) => ({ ...prev, target_sales: String(next) }));
+  //     await updateProfile({ target_sales: next } as any).unwrap();
+  //     await refetch();
+  //     setIsTargetEditMode(false);
+  //     setEditingPid(null);
+  //     setDraftTarget("");
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     alert(err?.data?.message ?? "Failed to update target.");
+  //   }
+  // };
 
   const saveInlineTarget = async () => {
     const next = Number(draftTarget);
@@ -1068,15 +1277,18 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }
 
     try {
+      setIsSaving(true);
       setForm((prev) => ({ ...prev, target_sales: String(next) }));
-      await updateProfile({ target_sales: next } as any).unwrap();
-      await refetch();
+      await postProfileUpdate({ target_sales: next });
+      await fetchUserData();
       setIsTargetEditMode(false);
       setEditingPid(null);
       setDraftTarget("");
     } catch (err: any) {
       console.error(err);
-      alert(err?.data?.message ?? "Failed to update target.");
+      alert(err?.message || "Failed to update target.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1230,30 +1442,30 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   }, [connectedPlatformsForTargets, baseNativeTarget, homeCurrencyCode, rateMap]);
 
 
-  useEffect(() => {
-    if (!data) return;
+  // useEffect(() => {
+  //   if (!data) return;
 
-    const tax = (data as any)?.tax_id ?? {};
-    const addr = (data as any)?.address ?? {};
+  //   const tax = (data as any)?.tax_id ?? {};
+  //   const addr = (data as any)?.address ?? {};
 
-    setForm({
-      name: (data as any)?.name ?? "",
-      brand_name: (data as any)?.brand_name ?? "",
-      company_name: (data as any)?.company_name ?? "",
-      // annual_sales_range: (data as any)?.annual_sales_range ?? "",
-      email: (data as any)?.email ?? "",
-      phone_number: (data as any)?.phone_number ?? "",
-      homeCurrency: (data as any)?.homeCurrency ?? "",
-      target_sales: (data as any)?.target_sales != null ? String((data as any)?.target_sales) : "",
-      gst_no: tax.gst_no ?? "",
-      pan_no: tax.pan_no ?? "",
-      address_building: addr.building ?? "",
-      address_city: addr.city ?? "",
-      address_country: addr.country ?? "",
-      address_state: addr.state ?? "",
-      address_zipcode: addr.zipcode ?? "",
-    });
-  }, [data]);
+  //   setForm({
+  //     name: (data as any)?.name ?? "",
+  //     brand_name: (data as any)?.brand_name ?? "",
+  //     company_name: (data as any)?.company_name ?? "",
+  //     // annual_sales_range: (data as any)?.annual_sales_range ?? "",
+  //     email: (data as any)?.email ?? "",
+  //     phone_number: (data as any)?.phone_number ?? "",
+  //     homeCurrency: (data as any)?.homeCurrency ?? "",
+  //     target_sales: (data as any)?.target_sales != null ? String((data as any)?.target_sales) : "",
+  //     gst_no: tax.gst_no ?? "",
+  //     pan_no: tax.pan_no ?? "",
+  //     address_building: addr.building ?? "",
+  //     address_city: addr.city ?? "",
+  //     address_country: addr.country ?? "",
+  //     address_state: addr.state ?? "",
+  //     address_zipcode: addr.zipcode ?? "",
+  //   });
+  // }, [data]);
 
   useEffect(() => {
     if (pageCurrency && !form.homeCurrency) {

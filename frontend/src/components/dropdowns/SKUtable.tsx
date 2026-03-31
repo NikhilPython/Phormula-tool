@@ -14,6 +14,7 @@ import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet"
 import { downloadWorkbookAsXlsx } from "@/lib/utils/excel/downloadExcel";
 import InfoTip from "@/components/ui/InfoTip";
 import type { TopBottomData } from "@/lib/pnl/topBottom";
+import Loader from "../loader/Loader";
 
 const TERM_DEFINITIONS: Record<string, string> = {
   asp: "ASP (Average Selling Price) = Net Sales ÷ Net Units Sold.",
@@ -568,7 +569,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       // info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
       collapsedCols: [{ key: "promotional_rebates", label: "", align: "center" }],
       expandedCols: [
-       { key: "promotional_rebates", label: "Promotions", align: "center" },
+        { key: "promotional_rebates", label: "Promotions", align: "center" },
         {
           key: "promotional_rebates_percentage",
           label: "Promotions %",
@@ -902,71 +903,71 @@ const SKUtable: React.FC<SKUtableProps> = ({
         : `SKU-wise Profitability-Year'${yearShort}`;
 
   // Dummy table data
- const dummyTableData: TableRow[] = useMemo(
-  () => [
-    {
-      product_name: "Sample Product A",
-      sku: "SKU-A",
-      units_sold: 0,
-      return_units: 0,
-      net_units_sold: 0,
-      asp: 0,
-      product_sales: 0,
-      refund_sales: 0,
-      net_sales: 0,
-      cost_of_unit_sold: 0,
-      selling_fees: 0,
-      fba_fees: 0,
-      amazon_fee: 0,
-      net_credits: 0,
-      net_taxes: 0,
-      profit: 0,
-      profit_percentage: 0,
-      unit_wise_profitability: 0,
-    },
-    {
-      product_name: "Sample Product B",
-      sku: "SKU-B",
-      units_sold: 0,
-      return_units: 0,
-      net_units_sold: 0,
-      asp: 0,
-      product_sales: 0,
-      refund_sales: 0,
-      net_sales: 0,
-      cost_of_unit_sold: 0,
-      selling_fees: 0,
-      fba_fees: 0,
-      amazon_fee: 0,
-      net_credits: 0,
-      net_taxes: 0,
-      profit: 0,
-      profit_percentage: 0,
-      unit_wise_profitability: 0,
-    },
-    {
-      product_name: "Total",
-      sku: "-",
-      units_sold: 0,
-      return_units: 0,
-      net_units_sold: 0,
-      asp: 0,
-      product_sales: 0,
-      refund_sales: 0,
-      net_sales: 0,
-      cost_of_unit_sold: 0,
-      selling_fees: 0,
-      fba_fees: 0,
-      amazon_fee: 0,
-      net_credits: 0,
-      net_taxes: 0,
-      profit: 0,
-      profit_percentage: 0,
-      unit_wise_profitability: 0,
-    },
-  ],
-  []
-);
+  const dummyTableData: TableRow[] = useMemo(
+    () => [
+      {
+        product_name: "Sample Product A",
+        sku: "SKU-A",
+        units_sold: 0,
+        return_units: 0,
+        net_units_sold: 0,
+        asp: 0,
+        product_sales: 0,
+        refund_sales: 0,
+        net_sales: 0,
+        cost_of_unit_sold: 0,
+        selling_fees: 0,
+        fba_fees: 0,
+        amazon_fee: 0,
+        net_credits: 0,
+        net_taxes: 0,
+        profit: 0,
+        profit_percentage: 0,
+        unit_wise_profitability: 0,
+      },
+      {
+        product_name: "Sample Product B",
+        sku: "SKU-B",
+        units_sold: 0,
+        return_units: 0,
+        net_units_sold: 0,
+        asp: 0,
+        product_sales: 0,
+        refund_sales: 0,
+        net_sales: 0,
+        cost_of_unit_sold: 0,
+        selling_fees: 0,
+        fba_fees: 0,
+        amazon_fee: 0,
+        net_credits: 0,
+        net_taxes: 0,
+        profit: 0,
+        profit_percentage: 0,
+        unit_wise_profitability: 0,
+      },
+      {
+        product_name: "Total",
+        sku: "-",
+        units_sold: 0,
+        return_units: 0,
+        net_units_sold: 0,
+        asp: 0,
+        product_sales: 0,
+        refund_sales: 0,
+        net_sales: 0,
+        cost_of_unit_sold: 0,
+        selling_fees: 0,
+        fba_fees: 0,
+        amazon_fee: 0,
+        net_credits: 0,
+        net_taxes: 0,
+        profit: 0,
+        profit_percentage: 0,
+        unit_wise_profitability: 0,
+      },
+    ],
+    []
+  );
 
   const CustomModal: React.FC<React.PropsWithChildren<{ onClose: () => void }>> = ({ onClose, children }) => {
     return (
@@ -1226,7 +1227,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
 
   /* --------- Render guards --------- */
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="flex flex-col items-center justify-center py-12 text-center">
+    <Loader fullscreen transparent />
+  </div>;
   if (error) return <div className="text-red-600">Error: {error}</div>;
 
   return (
@@ -1244,10 +1247,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         </div>
 
         <div
-  className={`transition-opacity ${
-    !disableInternalFade && noDataFound ? "opacity-30" : "opacity-100"
-  }`}
->
+          className={`transition-opacity ${!disableInternalFade && noDataFound ? "opacity-30" : "opacity-100"
+            }`}
+        >
           {showModal2 && (
             <CustomModal onClose={() => setShowModal2(false)}>
               <SkuMultiCountryUpload onClose={() => setShowModal2(false)} onComplete={() => setShowModal2(false)} />

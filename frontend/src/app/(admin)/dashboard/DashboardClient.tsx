@@ -2299,105 +2299,105 @@ export default function DashboardPage() {
     const lastBiKeyRef = useRef<string>("");
     const aiRequestedRef = useRef<boolean>(false);
 
-const fetchBiSeries = useCallback(
-  async (startDay?: number | null, endDay?: number | null) => {
-    if (isMonthYearNA) {
-      setBiError(null);
-      setBiLoading(false);
-      setBiStatus("ready");
-      setBiDailySeries(null);
-      setBiPeriods(null);
-      setBiAlignedTotals(null);
-      setLiveBiPayload(null);
-      return;
-    }
+    const fetchBiSeries = useCallback(
+        async (startDay?: number | null, endDay?: number | null) => {
+            if (isMonthYearNA) {
+                setBiError(null);
+                setBiLoading(false);
+                setBiStatus("ready");
+                setBiDailySeries(null);
+                setBiPeriods(null);
+                setBiAlignedTotals(null);
+                setLiveBiPayload(null);
+                return;
+            }
 
-    if (!showLiveBI) return;
+            if (!showLiveBI) return;
 
-    const normalized = (biCountryName || "").toLowerCase();
-    if (!normalized || normalized === "global") return;
+            const normalized = (biCountryName || "").toLowerCase();
+            if (!normalized || normalized === "global") return;
 
-    setBiError(null);
-    setBiLoading(true);
-    setBiStatus("loading");
+            setBiError(null);
+            setBiLoading(true);
+            setBiStatus("loading");
 
-    try {
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+            try {
+                const token =
+                    typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-      const params = new URLSearchParams({
-        countryName: normalized,
-        ranged: "MTD",
-        month: currMonthName.toLowerCase(),
-        year: String(currYear),
-        generate_ai_insights: aiRequestedRef.current ? "true" : "false",
-      });
+                const params = new URLSearchParams({
+                    countryName: normalized,
+                    ranged: "MTD",
+                    month: currMonthName.toLowerCase(),
+                    year: String(currYear),
+                    generate_ai_insights: aiRequestedRef.current ? "true" : "false",
+                });
 
-      const rangeActive = startDay != null && endDay != null;
-      if (rangeActive) {
-        params.set("start_day", String(startDay));
-        params.set("end_day", String(endDay));
-      }
+                const rangeActive = startDay != null && endDay != null;
+                if (rangeActive) {
+                    params.set("start_day", String(startDay));
+                    params.set("end_day", String(endDay));
+                }
 
-      let attempts = 0;
-      const maxAttempts = 10;
+                let attempts = 0;
+                const maxAttempts = 10;
 
-      while (attempts < maxAttempts) {
-        const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
+                while (attempts < maxAttempts) {
+                    const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                    });
 
-        if (res.status === 202) {
-          setBiStatus("processing");
-          attempts += 1;
-          await sleep(3000);
-          continue;
-        }
+                    if (res.status === 202) {
+                        setBiStatus("processing");
+                        attempts += 1;
+                        await sleep(3000);
+                        continue;
+                    }
 
-        if (!res.ok) {
-          throw new Error(`BI failed: ${res.status}`);
-        }
+                    if (!res.ok) {
+                        throw new Error(`BI failed: ${res.status}`);
+                    }
 
-        const json: BiApiResponse = await res.json();
+                    const json: BiApiResponse = await res.json();
 
-        setLiveBiPayload(json);
-        setBiPeriods(json?.periods || null);
-        setBiDailySeries(json?.daily_series || null);
+                    setLiveBiPayload(json);
+                    setBiPeriods(json?.periods || null);
+                    setBiDailySeries(json?.daily_series || null);
 
-        const alignedFromNested = json?.aligned_totals;
-        const alignedFromTopLevel: BiAlignedTotals = {
-          total_current_advertising: (json as any)?.total_current_advertising,
-          total_previous_advertising: (json as any)?.total_previous_advertising,
-          total_current_net_sales: (json as any)?.total_current_net_sales,
-          total_previous_net_sales: (json as any)?.total_previous_net_sales,
-          total_previous_net_sales_full_month:
-            (json as any)?.total_previous_net_sales_full_month,
-          total_current_platform_fees: (json as any)?.total_current_platform_fees,
-          total_previous_platform_fees: (json as any)?.total_previous_platform_fees,
-          total_current_profit: (json as any)?.total_current_profit,
-          total_previous_profit: (json as any)?.total_previous_profit,
-          total_current_rembursement_fee: (json as any)?.total_current_rembursement_fee,
-          total_previous_rembursement_fee: (json as any)?.total_previous_rembursement_fee,
-        };
+                    const alignedFromNested = json?.aligned_totals;
+                    const alignedFromTopLevel: BiAlignedTotals = {
+                        total_current_advertising: (json as any)?.total_current_advertising,
+                        total_previous_advertising: (json as any)?.total_previous_advertising,
+                        total_current_net_sales: (json as any)?.total_current_net_sales,
+                        total_previous_net_sales: (json as any)?.total_previous_net_sales,
+                        total_previous_net_sales_full_month:
+                            (json as any)?.total_previous_net_sales_full_month,
+                        total_current_platform_fees: (json as any)?.total_current_platform_fees,
+                        total_previous_platform_fees: (json as any)?.total_previous_platform_fees,
+                        total_current_profit: (json as any)?.total_current_profit,
+                        total_previous_profit: (json as any)?.total_previous_profit,
+                        total_current_rembursement_fee: (json as any)?.total_current_rembursement_fee,
+                        total_previous_rembursement_fee: (json as any)?.total_previous_rembursement_fee,
+                    };
 
-        setBiAlignedTotals(alignedFromNested ?? alignedFromTopLevel ?? null);
-        setBiStatus("ready");
-        return;
-      }
+                    setBiAlignedTotals(alignedFromNested ?? alignedFromTopLevel ?? null);
+                    setBiStatus("ready");
+                    return;
+                }
 
-      throw new Error("Live BI is still processing. Max retry limit reached.");
-    } catch (e: any) {
-      setBiPeriods(null);
-      setBiDailySeries(null);
-      setBiAlignedTotals(null);
-      setBiStatus("error");
-      setBiError(e?.message || "Failed to load BI series");
-    } finally {
-      setBiLoading(false);
-    }
-  },
-  [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA]
-);
+                throw new Error("Live BI is still processing. Max retry limit reached.");
+            } catch (e: any) {
+                setBiPeriods(null);
+                setBiDailySeries(null);
+                setBiAlignedTotals(null);
+                setBiStatus("error");
+                setBiError(e?.message || "Failed to load BI series");
+            } finally {
+                setBiLoading(false);
+            }
+        },
+        [showLiveBI, biCountryName, currMonthName, currYear, isMonthYearNA]
+    );
 
     const fetchLiveBiPayload = useCallback(
         async ({
@@ -2413,9 +2413,9 @@ const fetchBiSeries = useCallback(
     );
 
     useEffect(() => {
-    if (!showLiveBI) return;
-    fetchBiSeries(selectedStartDay, selectedEndDay);
-}, [showLiveBI, fetchBiSeries, selectedStartDay, selectedEndDay]);
+        if (!showLiveBI) return;
+        fetchBiSeries(selectedStartDay, selectedEndDay);
+    }, [showLiveBI, fetchBiSeries, selectedStartDay, selectedEndDay]);
 
     /* ===================== REFRESH ALL ===================== */
     const refreshAll = useCallback(async () => {
@@ -2963,7 +2963,7 @@ const fetchBiSeries = useCallback(
     const plItems = useMemo(() => {
         const ukPl = () => {
             const sales = convertToDisplayCurrency(uk.netSalesGBP ?? 0, "GBP");
-            const fees = convertToDisplayCurrency(uk.amazonFeesGBP ?? 0, "GBP");
+            const fees = marketplaceFeesFromTable;
             const cogs = convertToDisplayCurrency(uk.cogsGBP ?? 0, "GBP");
             const adv = convertToDisplayCurrency(uk.advertisingGBP ?? 0, "GBP");
 
@@ -3037,6 +3037,7 @@ const fetchBiSeries = useCallback(
         uk.platformFeeGBP,
         uk.profitGBP,
         shopifyDeriv?.netSales,
+        marketplaceFeesFromTable,
         convertToDisplayCurrency,
         formatDisplayAmount,
     ]);
@@ -3123,36 +3124,6 @@ const fetchBiSeries = useCallback(
 
         const body = items.filter((r: any) => r?.sku && r.sku !== "GRAND_TOTAL");
         const total = items.find((r: any) => r?.sku === "GRAND_TOTAL");
-
-        // const mapRow = (r: any, idx?: number, isTotal = false): MonthlySkuwiseRow => ({
-        //     sno: isTotal ? undefined : (idx ?? 0) + 1,
-        //     sku: String(r.sku ?? ""),
-        //     product_name: String(r.product_name ?? ""),
-        //     ad_type: String(
-        //         r.ad_type ?? r.adType ?? r.ad_types ?? r.adTypes ?? ""
-        //     ),
-        //     quantity: Number(r.quantity ?? 0),
-        //     asp: Number(r.asp ?? 0),
-        //     net_sales: Number(r.net_sales ?? 0),
-        //     cogs: Number(r.cogs ?? 0),
-        //     fba_fees: Number(r.fba_fees ?? 0),
-        //     selling_fees: Number(r.selling_fees ?? 0),
-        //     ads_spend: Number(r.ads_spend ?? 0),
-        //     cm2_profit: Number(r.cm2_profit ?? 0),
-        //     tax: Number(r.tax ?? 0),
-        //     credits: Number(r.credits ?? 0),
-        //     tax_and_credits: Number(r.tax_and_credits ?? 0),
-        //     cm1_profit_per: Number(r.cm1_profit_per ?? 0),
-        //     cm1_profit_per_unit: Number(r.cm1_profit_per_unit ?? 0),
-        //     cm2_profit_per: Number(r.cm2_profit_per ?? 0),
-        //     cm2_profit_per_unit: Number(r.cm2_profit_per_unit ?? 0),
-        //     profit: Number(r.profit ?? 0),
-        //     isTotal,
-        //     platform_fee: Number(r.platform_fee ?? 0),
-        //     platform_fee_inventory_storage: Number(r.platform_fee_inventory_storage ?? 0),
-        //     lost_total: Number(r.lost_total ?? 0),
-        //     other: Number(r.other ?? 0),
-        // });
 
         const mapRow = (r: any, idx?: number, isTotal = false): MonthlySkuwiseRow => ({
             sno: isTotal ? undefined : (idx ?? 0) + 1,
@@ -3865,6 +3836,65 @@ const fetchBiSeries = useCallback(
                 item.product_name === "Grand Total" || item.sku === "GRAND_TOTAL"
         );
     }, [monthlySkuwiseRowsDisplay]);
+
+    const marketplaceFeesFromTable = useMemo(() => {
+        const fba = Number(grandTotalRowDisplay?.fba_fees ?? 0);
+        const selling = Number(grandTotalRowDisplay?.selling_fees ?? 0);
+        return fba + selling;
+    }, [grandTotalRowDisplay]);
+
+    const grandTotalRowRaw = useMemo(() => {
+        return monthlySkuwiseRows.find(
+            (item: any) =>
+                item.product_name === "Grand Total" || item.sku === "GRAND_TOTAL"
+        );
+    }, [monthlySkuwiseRows]);
+
+    const globalBottomCards = useMemo(() => {
+        const row = grandTotalRowRaw;
+
+        const rawAdsSpend = toNumber(row?.ads_spend ?? 0);
+        const rawBrandSpend = toNumber(row?.brand_spend ?? 0);
+        const rawDealVouchers = toNumber(row?.dealsvouchar_ads ?? 0);
+        const rawPlatformFee = toNumber(row?.platform_fee ?? 0);
+        const rawProfit = toNumber(row?.profit ?? 0);
+
+        const rawCostOfAds = Math.abs(rawBrandSpend - rawDealVouchers);
+        const rawAdsSpendTotal = Math.abs(rawAdsSpend + rawCostOfAds);
+        const rawCm2Profit = rawProfit - rawAdsSpendTotal - Math.abs(rawPlatformFee);
+
+        const currentCostOfAds =
+            platform === "global"
+                ? convertToDisplayCurrency(rawAdsSpendTotal, amazonDataCurrency)
+                : rawAdsSpendTotal;
+
+        const currentCm2Profit =
+            platform === "global"
+                ? convertToDisplayCurrency(rawCm2Profit, amazonDataCurrency)
+                : rawCm2Profit;
+
+        const salesBase =
+            platform === "global"
+                ? globalCurrNetSalesDisp
+                : convertToDisplayCurrency(uk.netSalesGBP ?? 0, "GBP");
+
+        const currentTacos = salesBase > 0 ? (currentCostOfAds / salesBase) * 100 : 0;
+        const currentCm2Pct = salesBase > 0 ? (currentCm2Profit / salesBase) * 100 : 0;
+
+        return {
+            currentCostOfAds,
+            currentTacos,
+            currentCm2Profit,
+            currentCm2Pct,
+        };
+    }, [
+        grandTotalRowRaw,
+        platform,
+        amazonDataCurrency,
+        convertToDisplayCurrency,
+        globalCurrNetSalesDisp,
+        uk.netSalesGBP,
+    ]);
 
     const ads_spend = grandTotalRowDisplay?.ads_spend ?? 0;
     const sponsoredProductsSpend = grandTotalRowDisplay?.product_spend ?? 0;
@@ -5534,7 +5564,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     biSourceCurrency
                                                                 )
                                                                 : 0)
-                                                            : adsSpendTotal
+                                                            : globalBottomCards.currentCostOfAds
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
@@ -5586,10 +5616,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     return sales > 0 ? (ads / sales) * 100 : 0;
                                                                 })()
                                                                 : 0)
-                                                            : (() => {
-                                                                const sales = toNumber(plSummaryTotals.net_sales);
-                                                                return sales > 0 ? (adsSpendTotal / sales) * 100 : 0;
-                                                            })()
+                                                            : globalBottomCards.currentTacos
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
@@ -5653,7 +5680,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                                     biSourceCurrency
                                                                 )
                                                                 : 0)
-                                                            : cm2Profit
+                                                            : globalBottomCards.currentCm2Profit
                                                 }
                                                 previous={
                                                     shouldShowDummyUi
@@ -5691,8 +5718,10 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                     shouldShowDummyUi
                                                         ? dummyStatData.cm2ProfitPct.current
                                                         : globalUseBi
-                                                            ? (globalCm2Ready ? (biAlignedTotals?.total_current_profit_percentage ?? 0) : 0)
-                                                            : cm2MarginPctForSummary
+                                                            ? (globalCm2Ready
+                                                                ? (biAlignedTotals?.total_current_profit_percentage ?? 0)
+                                                                : 0)
+                                                            : globalBottomCards.currentCm2Pct
                                                 }
                                                 previous={
                                                     shouldShowDummyUi

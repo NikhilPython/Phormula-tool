@@ -249,6 +249,7 @@ import {
 } from "chart.js";
 import "@/lib/chartSetup";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import Loader from "../loader/Loader";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -428,8 +429,11 @@ const InventoryPieCard = forwardRef<
       <PageBreadcrumb variant="page" align="left" textSize="2xl" pageTitle={title} />
 
       {loading ? (
-        <div className="h-[260px] flex items-center justify-center text-xs text-neutral-500">
-          Loading...
+        // <div className="h-[260px] flex items-center justify-center text-xs text-neutral-500">
+        //   Loading...
+        // </div>
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <Loader fullscreen transparent />
         </div>
       ) : !chartData || total <= 0 ? (
         <div className="h-[260px] flex items-center justify-center text-xs text-neutral-500">

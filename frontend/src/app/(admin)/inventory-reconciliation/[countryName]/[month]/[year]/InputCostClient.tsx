@@ -27,6 +27,7 @@ import DataTable, { ColumnDef as DataTableColumnDef } from "@/components/ui/tabl
 import InventoryPieCard, { InventoryPieCardHandle } from "@/components/inventory/InventoryPieCard";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import { IoMdLock } from "react-icons/io";
+import Loader from '@/components/loader/Loader';
 /* ================= TYPES ================= */
 interface Params {
   params: Promise<{
@@ -1885,9 +1886,9 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
   if (pageLoading) {
     return (
-      <div className="w-full px-4 py-6">
-        <div className="animate-pulse text-sm text-neutral-500">Loading...</div>
-      </div>
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Loader fullscreen transparent />
+              </div>
     );
   }
 
