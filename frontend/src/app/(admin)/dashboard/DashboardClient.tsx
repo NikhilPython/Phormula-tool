@@ -2959,6 +2959,96 @@ export default function DashboardPage() {
     const onlyAmazon = amazonIntegrated && !shopifyIntegrated;
     const onlyShopify = shopifyIntegrated && !amazonIntegrated;
 
+    const monthlySkuwiseRows = useMemo<MonthlySkuwiseRow[]>(() => {
+        const items = (data as any)?.skuwise_items ?? [];
+        if (!Array.isArray(items)) return [];
+
+        const body = items.filter((r: any) => r?.sku && r.sku !== "GRAND_TOTAL");
+        const total = items.find((r: any) => r?.sku === "GRAND_TOTAL");
+
+        const mapRow = (r: any, idx?: number, isTotal = false): MonthlySkuwiseRow => ({
+            sno: isTotal ? undefined : (idx ?? 0) + 1,
+            sku: String(r.sku ?? ""),
+            product_name: String(r.product_name ?? ""),
+            ad_type: String(r.ad_type ?? r.adType ?? r.ad_types ?? r.adTypes ?? ""),
+            quantity: Number(r.quantity ?? 0),
+            asp: Number(r.asp ?? 0),
+            net_sales: Number(r.net_sales ?? 0),
+            cogs: Number(r.cogs ?? 0),
+            fba_fees: Number(r.fba_fees ?? 0),
+            selling_fees: Number(r.selling_fees ?? 0),
+            ads_spend: Number(r.ads_spend ?? 0),
+            cm2_profit: Number(r.cm2_profit ?? 0),
+            tax: Number(r.tax ?? 0),
+            credits: Number(r.credits ?? 0),
+            tax_and_credits: Number(r.tax_and_credits ?? 0),
+            cm1_profit_per: Number(r.cm1_profit_per ?? 0),
+            cm1_profit_per_unit: Number(r.cm1_profit_per_unit ?? 0),
+            cm2_profit_per: Number(r.cm2_profit_per ?? 0),
+            cm2_profit_per_unit: Number(r.cm2_profit_per_unit ?? 0),
+            profit: Number(r.profit ?? 0),
+
+            platform_fee: Number(r.platform_fee ?? 0),
+            platform_fee_inventory_storage: Number(r.platform_fee_inventory_storage ?? 0),
+            lost_total: Number(r.lost_total ?? 0),
+            other: Number(r.other ?? 0),
+
+            product_spend: Number(r.product_spend ?? 0),
+            brand_spend: Number(r.brand_spend ?? 0),
+            dealsvouchar_ads: Number(r.dealsvouchar_ads ?? 0),
+            platformfeenew: Number(r.platformfeenew ?? 0),
+
+            isTotal,
+        });
+
+        const mapped = body.map((r: any, idx: number) => mapRow(r, idx, false));
+        if (total) mapped.push(mapRow(total, undefined, true));
+        return mapped;
+    }, [data]);
+
+    const convertProductwiseRowToDisplay = useCallback(
+        (row: MonthlySkuwiseRow): MonthlySkuwiseRow => {
+            if (platform !== "global") return row;
+
+            const next: MonthlySkuwiseRow = { ...row };
+
+            PRODUCTWISE_MONEY_KEYS.forEach((key) => {
+                next[key] = convertToDisplayCurrency(
+                    Number(row[key] ?? 0),
+                    amazonDataCurrency
+                );
+            });
+
+            return next;
+        },
+        [platform, convertToDisplayCurrency, amazonDataCurrency]
+    );
+
+
+    const monthlySkuwiseRowsDisplay = useMemo<MonthlySkuwiseRow[]>(() => {
+        return (monthlySkuwiseRows || []).map(convertProductwiseRowToDisplay);
+    }, [monthlySkuwiseRows, convertProductwiseRowToDisplay]);
+
+    const grandTotalRowDisplay = useMemo(() => {
+        return monthlySkuwiseRowsDisplay.find(
+            (item: any) =>
+                item.product_name === "Grand Total" || item.sku === "GRAND_TOTAL"
+        );
+    }, [monthlySkuwiseRowsDisplay]);
+
+    const marketplaceFeesFromTable = useMemo(() => {
+        const fba = Number(grandTotalRowDisplay?.fba_fees ?? 0);
+        const selling = Number(grandTotalRowDisplay?.selling_fees ?? 0);
+        return Math.abs(fba + selling);
+    }, [grandTotalRowDisplay]);
+
+    const grandTotalRowRaw = useMemo(() => {
+        return monthlySkuwiseRows.find(
+            (item: any) =>
+                item.product_name === "Grand Total" || item.sku === "GRAND_TOTAL"
+        );
+    }, [monthlySkuwiseRows]);
+
     /* ===================== P&L ITEMS (DISPLAY CURRENCY OUTPUT) ===================== */
     const plItems = useMemo(() => {
         const ukPl = () => {
@@ -2978,7 +3068,7 @@ export default function DashboardPage() {
             return [
                 { label: "Net Sales", raw: sales, display: formatDisplayAmount(sales) },
                 { label: "COGS", raw: cogs, display: formatDisplayAmount(cogs) },
-                { label: "Marketplace Fees", raw: fees, display: formatDisplayAmount(fees) },
+                { label: "Marketplace Fees", raw: fees, display: formatDisplayAmount(Math.abs(fees))  },
                 { label: "Tax & Credits", raw: taxCredits, display: formatDisplayAmount(taxCredits) },
                 { label: "CM1 Profit", raw: cm1, display: formatDisplayAmount(cm1) },
                 { label: "Advertisements", raw: adv, display: formatDisplayAmount(adv) },
@@ -3100,75 +3190,8 @@ export default function DashboardPage() {
         | "dealsvouchar_ads"
         | "platformfeenew";
 
-    const convertProductwiseRowToDisplay = useCallback(
-        (row: MonthlySkuwiseRow): MonthlySkuwiseRow => {
-            if (platform !== "global") return row;
-
-            const next: MonthlySkuwiseRow = { ...row };
-
-            PRODUCTWISE_MONEY_KEYS.forEach((key) => {
-                next[key] = convertToDisplayCurrency(
-                    Number(row[key] ?? 0),
-                    amazonDataCurrency
-                );
-            });
-
-            return next;
-        },
-        [platform, convertToDisplayCurrency, amazonDataCurrency]
-    );
-
-    const monthlySkuwiseRows = useMemo<MonthlySkuwiseRow[]>(() => {
-        const items = (data as any)?.skuwise_items ?? [];
-        if (!Array.isArray(items)) return [];
-
-        const body = items.filter((r: any) => r?.sku && r.sku !== "GRAND_TOTAL");
-        const total = items.find((r: any) => r?.sku === "GRAND_TOTAL");
-
-        const mapRow = (r: any, idx?: number, isTotal = false): MonthlySkuwiseRow => ({
-            sno: isTotal ? undefined : (idx ?? 0) + 1,
-            sku: String(r.sku ?? ""),
-            product_name: String(r.product_name ?? ""),
-            ad_type: String(r.ad_type ?? r.adType ?? r.ad_types ?? r.adTypes ?? ""),
-            quantity: Number(r.quantity ?? 0),
-            asp: Number(r.asp ?? 0),
-            net_sales: Number(r.net_sales ?? 0),
-            cogs: Number(r.cogs ?? 0),
-            fba_fees: Number(r.fba_fees ?? 0),
-            selling_fees: Number(r.selling_fees ?? 0),
-            ads_spend: Number(r.ads_spend ?? 0),
-            cm2_profit: Number(r.cm2_profit ?? 0),
-            tax: Number(r.tax ?? 0),
-            credits: Number(r.credits ?? 0),
-            tax_and_credits: Number(r.tax_and_credits ?? 0),
-            cm1_profit_per: Number(r.cm1_profit_per ?? 0),
-            cm1_profit_per_unit: Number(r.cm1_profit_per_unit ?? 0),
-            cm2_profit_per: Number(r.cm2_profit_per ?? 0),
-            cm2_profit_per_unit: Number(r.cm2_profit_per_unit ?? 0),
-            profit: Number(r.profit ?? 0),
-
-            platform_fee: Number(r.platform_fee ?? 0),
-            platform_fee_inventory_storage: Number(r.platform_fee_inventory_storage ?? 0),
-            lost_total: Number(r.lost_total ?? 0),
-            other: Number(r.other ?? 0),
-
-            product_spend: Number(r.product_spend ?? 0),
-            brand_spend: Number(r.brand_spend ?? 0),
-            dealsvouchar_ads: Number(r.dealsvouchar_ads ?? 0),
-            platformfeenew: Number(r.platformfeenew ?? 0),
-
-            isTotal,
-        });
-
-        const mapped = body.map((r: any, idx: number) => mapRow(r, idx, false));
-        if (total) mapped.push(mapRow(total, undefined, true));
-        return mapped;
-    }, [data]);
 
 
-    const monthlySkuwiseRowsDisplay = useMemo<MonthlySkuwiseRow[]>(() => {
-        return (monthlySkuwiseRows || []).map(convertProductwiseRowToDisplay);
-    }, [monthlySkuwiseRows, convertProductwiseRowToDisplay]);
 
     const formatAdType = (adType?: string | null) => {
         if (!adType) return "-";
@@ -3830,25 +3853,6 @@ export default function DashboardPage() {
     // const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
 
 
-    const grandTotalRowDisplay = useMemo(() => {
-        return monthlySkuwiseRowsDisplay.find(
-            (item: any) =>
-                item.product_name === "Grand Total" || item.sku === "GRAND_TOTAL"
-        );
-    }, [monthlySkuwiseRowsDisplay]);
-
-    const marketplaceFeesFromTable = useMemo(() => {
-        const fba = Number(grandTotalRowDisplay?.fba_fees ?? 0);
-        const selling = Number(grandTotalRowDisplay?.selling_fees ?? 0);
-        return fba + selling;
-    }, [grandTotalRowDisplay]);
-
-    const grandTotalRowRaw = useMemo(() => {
-        return monthlySkuwiseRows.find(
-            (item: any) =>
-                item.product_name === "Grand Total" || item.sku === "GRAND_TOTAL"
-        );
-    }, [monthlySkuwiseRows]);
 
     const globalBottomCards = useMemo(() => {
         const row = grandTotalRowRaw;

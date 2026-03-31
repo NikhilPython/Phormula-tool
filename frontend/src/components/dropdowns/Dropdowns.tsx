@@ -839,10 +839,10 @@ const PreviewLockedSection = ({
             <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
               <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
                 <div className="mb-4 flex justify-center">
-                                <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
-                                                   <IoMdLock className="text-3xl text-[#F8EDCE]" />
-                                                 </div>
-                              </div>
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-[#37455F]">
+                    <IoMdLock className="text-3xl text-[#F8EDCE]" />
+                  </div>
+                </div>
 
                 <h3 className="text-lg font-semibold text-[#414042]">
                   {title}
@@ -3058,13 +3058,27 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     isDemoMode,
   ]);
 
-
   // if (month === "NA" || year === "NA") {
   //   return <IntegrationDashboard />;
   // }
 
+  const marketplaceFeesFromTable = useMemo(() => {
+    if (!skuRows?.length) return 0;
 
+    const totalRow = skuRows.find(
+      (row) => String(row.product_name || "").trim().toLowerCase() === "total"
+    );
 
+    if (totalRow) {
+      return Number(totalRow.amazon_fee || 0);
+    }
+
+    return skuRows.reduce((sum, row) => {
+      const isTotal = String(row.product_name || "").trim().toLowerCase() === "total";
+      if (isTotal) return sum;
+      return sum + Number(row.amazon_fee || 0);
+    }, 0);
+  }, [skuRows]);
 
   const hasAnyContent = !!uploadsData?.summary;
   const initialLoading = loading && !hasAnyContent;
@@ -3153,6 +3167,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const connectCountry = effectiveCountryName === "global" ? "uk" : effectiveCountryName;
     router.push(`/profile/${connectCountry}/NA/NA`);
   };
+
+
 
   return (
     <div ref={layoutRef} className="space-y-3 relative">
@@ -3642,28 +3658,23 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     key: "netSales",
                     title: "Net Sales",
                     value: renderMoneyWithPerUnit(netSales, summary.unit_sold),
-                    // className: "border border-[#75BBDA] bg-[#75BBDA4D]",
                     className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
                     comparisons: buildComparisonsRows("total_sales", formatMoney),
                   },
-
                   {
                     key: "expenses",
                     title: "Marketplace Fees",
-                    value: renderMoneyWithPerUnit(summary.total_expense, summary.unit_sold),
-                    // className: "border border-[#B75A5A] bg-[#B75A5A4D]",
+                    value: renderMoneyWithPerUnit(marketplaceFeesFromTable, summary.unit_sold),
                     className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
-                    comparisons: buildComparisonsRows("total_expense", formatMoney),
+                    comparisons: buildComparisonsRows("total_amazon_fee", formatMoney),
                   },
                   {
                     key: "ads",
                     title: "Cost of Advertisement",
                     value: renderMoneyWithPerUnit(costOfAds, summary.unit_sold),
-                    // className: "border border-[#C49466] bg-[#C494664D]",
                     className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
                     comparisons: buildComparisonsRows("advertising_total", formatMoney),
                   },
-
                   {
                     key: "tacos",
                     title: "TACoS",
@@ -3835,14 +3846,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         />
 
                         <CMchartofsku
-  range="monthly"
-  month={isDemoMode ? "NA" : selectedMonth}
-  selectedQuarter={undefined}
-  year={isDemoMode ? "NA" : selectedYear}
-  countryName={isDemoMode ? "global" : initialCountryName}
-  homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-  onExportBase64Ready={setProductWiseCm1PieBase64}
-/>
+                          range="monthly"
+                          month={isDemoMode ? "NA" : selectedMonth}
+                          selectedQuarter={undefined}
+                          year={isDemoMode ? "NA" : selectedYear}
+                          countryName={isDemoMode ? "global" : initialCountryName}
+                          homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                          onExportBase64Ready={setProductWiseCm1PieBase64}
+                        />
                       </div>
                     </div>
                   )}
@@ -3965,15 +3976,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           onExportBase64Ready={setExpenseBreakdownPieBase64}
                         />
 
-<CMchartofsku
-  range="quarterly"
-  month={undefined}
-  selectedQuarter={isDemoMode ? undefined : selectedQuarter}
-  year={isDemoMode ? "NA" : selectedYear}
-  countryName={isDemoMode ? "global" : initialCountryName}
-  homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-  onExportBase64Ready={setProductWiseCm1PieBase64}
-/>
+                        <CMchartofsku
+                          range="quarterly"
+                          month={undefined}
+                          selectedQuarter={isDemoMode ? undefined : selectedQuarter}
+                          year={isDemoMode ? "NA" : selectedYear}
+                          countryName={isDemoMode ? "global" : initialCountryName}
+                          homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                          onExportBase64Ready={setProductWiseCm1PieBase64}
+                        />
                       </div>
                     </div>
                   )}
@@ -4095,15 +4106,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       />
 
                       <CMchartofsku
-  range="yearly"
-  month={undefined}
-  selectedQuarter={undefined}
-  year={isDemoMode ? "NA" : selectedYear}
-  countryName={isDemoMode ? "global" : initialCountryName}
-  homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
-  onExportBase64Ready={setProductWiseCm1PieBase64}
-  disableInternalFade={isDemoMode}
-/>
+                        range="yearly"
+                        month={undefined}
+                        selectedQuarter={undefined}
+                        year={isDemoMode ? "NA" : selectedYear}
+                        countryName={isDemoMode ? "global" : initialCountryName}
+                        homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                        onExportBase64Ready={setProductWiseCm1PieBase64}
+                        disableInternalFade={isDemoMode}
+                      />
                     </div>
                   </div>
                 </>
