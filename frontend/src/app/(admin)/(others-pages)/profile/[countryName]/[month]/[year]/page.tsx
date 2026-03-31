@@ -3,14 +3,14 @@ import type { Metadata } from "next";
 import ProfileClient from "./ProfileClient";
 
 export const metadata: Metadata = {
-  title: "User Profile",
+  title: "Account Settings",
   description:
     "Manage your Phormula account profile. View and update personal information, address details, and account metadata securely.",
   robots: { index: false, follow: false },
   openGraph: {
-    title: "User Profile",
+    title: "Account Settings",
     description:
-      "Access and manage your personal profile, address, and account settings in Phormula.",
+      "Manage your Phormula account profile. View and update personal information, address details, and account metadata securely.",
     type: "website",
   },
 };

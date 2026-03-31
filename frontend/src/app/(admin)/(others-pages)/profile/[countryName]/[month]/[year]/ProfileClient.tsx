@@ -45,11 +45,11 @@ export default function ProfileClient() {
   const router = useRouter();
 
   const countryName = (params?.countryName as string) || "global";
-const month = (params?.month as string) || "NA";
-const year = (params?.year as string) || "NA";
+  const month = (params?.month as string) || "NA";
+  const year = (params?.year as string) || "NA";
   const isPreviewMode = month === "NA" && year === "NA";
   const searchParams = useSearchParams();
-const shouldOpenAddMember = searchParams.get("addMember") === "true";
+  const shouldOpenAddMember = searchParams.get("addMember") === "true";
 
   const token =
     typeof window !== "undefined" ? localStorage.getItem("jwtToken") || "" : "";
@@ -86,11 +86,11 @@ const shouldOpenAddMember = searchParams.get("addMember") === "true";
   }, [fetchMembers]);
 
   React.useEffect(() => {
-  if (shouldOpenAddMember && isMember === false && !isPreviewMode) {
-    setTab("teamMembers");
-    setIsAddMemberOpen(true);
-  }
-}, [shouldOpenAddMember, isMember, isPreviewMode]);
+    if (shouldOpenAddMember && isMember === false && !isPreviewMode) {
+      setTab("teamMembers");
+      setIsAddMemberOpen(true);
+    }
+  }, [shouldOpenAddMember, isMember, isPreviewMode]);
 
   const filteredMembers = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -140,10 +140,10 @@ const shouldOpenAddMember = searchParams.get("addMember") === "true";
   }, [isMember, tab]);
 
   React.useEffect(() => {
-  if (isPreviewMode && tab === "teamMembers") {
-    setTab("personal");
-  }
-}, [isPreviewMode, tab]);
+    if (isPreviewMode && tab === "teamMembers") {
+      setTab("personal");
+    }
+  }, [isPreviewMode, tab]);
 
   const memberColumns = React.useMemo<ColumnDef<TeamMemberRow>[]>(
     () => [
@@ -331,21 +331,21 @@ const shouldOpenAddMember = searchParams.get("addMember") === "true";
         </div>
 
         <div className="mt-3">
-         <SegmentedToggle<"personal" | "objectives" | "teamMembers">
-  value={tab}
-  options={[
-    { value: "personal", label: "User Details" },
-    ...(isMember === false
-      ? [{ value: "teamMembers" as const, label: "Team Members" }]
-      : []),
-  ]}
-  onChange={(val) => {
-    if (isPreviewMode && val === "teamMembers") return;
-    setTab(val);
-  }}
-  className="max-w-full sm:max-w-[520px]"
-  compact
-/>
+          <SegmentedToggle<"personal" | "objectives" | "teamMembers">
+            value={tab}
+            options={[
+              { value: "personal", label: "User Details" },
+              ...(isMember === false && !isPreviewMode
+                ? [{ value: "teamMembers" as const, label: "Team Members" }]
+                : []),
+            ]}
+            onChange={(val) => {
+              if (isPreviewMode && val === "teamMembers") return;
+              setTab(val);
+            }}
+            className="max-w-full sm:max-w-[520px]"
+            compact
+          />
         </div>
 
         <div className="mt-4 space-y-4 ">
@@ -405,25 +405,25 @@ const shouldOpenAddMember = searchParams.get("addMember") === "true";
               />
             )}
 
-           <AddMemberModal
-  isOpen={isAddMemberOpen}
-  onClose={() => {
-    setIsAddMemberOpen(false);
-    router.replace(`/profile/${countryName}/${month || "NA"}/${year || "NA"}`);
-  }}
-  token={token}
-  onSuccess={() => {
-    fetchMembers();
-    setIsAddMemberOpen(false);
-    router.replace(`/profile/${countryName}/${month || "NA"}/${year || "NA"}`);
-  }}
-/>
-<ViewMemberDrawer
-  isOpen={isViewOpen}
-  onClose={() => setIsViewOpen(false)}
-  member={selectedMember}
-  addedBy={ownerName}
-/>
+            <AddMemberModal
+              isOpen={isAddMemberOpen}
+              onClose={() => {
+                setIsAddMemberOpen(false);
+                router.replace(`/profile/${countryName}/${month || "NA"}/${year || "NA"}`);
+              }}
+              token={token}
+              onSuccess={() => {
+                fetchMembers();
+                setIsAddMemberOpen(false);
+                router.replace(`/profile/${countryName}/${month || "NA"}/${year || "NA"}`);
+              }}
+            />
+            <ViewMemberDrawer
+              isOpen={isViewOpen}
+              onClose={() => setIsViewOpen(false)}
+              member={selectedMember}
+              addedBy={ownerName}
+            />
 
             <EditMemberModal
               isOpen={isEditOpen}

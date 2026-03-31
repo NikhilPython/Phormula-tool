@@ -88,6 +88,9 @@ type CurrencyRateRow = {
 // const REVENUE_OPTIONS = ["", "$0 - $50K", "$50K - $100K", "$100K - $500K", "$500K - $1M", "$1M+"];
 const CURRENCY_OPTIONS = ["USD", "GBP", "INR", "CAD"];
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
+  
 function platformIsConnected(
   platform: PlatformId,
   connected: {
@@ -200,18 +203,37 @@ function InfoCard({
   );
 }
 
-function InfoItem({
-  id,
-  label,
-  value,
-}: {
+// function InfoItem({
+//   id,
+//   label,
+//   value,
+// }: {
+//   id?: string;
+//   label: string;
+//   value: React.ReactNode;
+// }) {
+//   return (
+//     <div id={id}>
+//       <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">{label}</p>
+//       <div className="text-sm font-medium text-gray-800 dark:text-white/90">{value}</div>
+//     </div>
+//   );
+// }
+
+interface InfoItemProps {
   id?: string;
   label: string;
   value: React.ReactNode;
-}) {
+  required?: boolean;
+}
+
+function InfoItem({ id, label, value, required }: InfoItemProps) {
   return (
     <div id={id}>
-      <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+        {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
+      </p>
       <div className="text-sm font-medium text-gray-800 dark:text-white/90">{value}</div>
     </div>
   );
@@ -392,7 +414,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   const pageCurrency = useMemo(() => platformToCurrencyCode(pagePlatform), [pagePlatform]);
 
-  const { data, isLoading, isError } = useGetUserDataQuery();
+  // const { data, isLoading, isError } = useGetUserDataQuery();
+  const { data, isLoading, isError, refetch } = useGetUserDataQuery();
 
   const isPersonalComplete =
     !!String((data as any)?.name || "").trim() &&
@@ -409,8 +432,12 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     !!String(addr.country || "").trim() &&
     !!String(addr.zipcode || "").trim();
 
-  const canAccessProductControls = isCompanyComplete;
-  const canAccessIntegrations = isCompanyComplete && isSkuUploaded;
+  const isAmazonConnected =
+    connected.amazonUk || connected.amazonUs || connected.amazonCa;
+
+  // once Amazon is connected, unlock both sections
+  const canAccessProductControls = isAmazonConnected;
+  const canAccessIntegrations = isAmazonConnected;
 
   const isMemberUser = Boolean((data as any)?.is_member);
   const token = useSelector((state: any) => state.auth?.token);
@@ -897,7 +924,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     try {
       const payload = buildPayloadBySection();
       await updateProfile(payload as any).unwrap();
-      dispatch(setUser(payload as any));
+      await refetch();
       closeModal();
     } catch (err: any) {
       console.error(err);
@@ -920,12 +947,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         phone_number: form.phone_number.trim(),
       }).unwrap();
 
-      dispatch(
-        setUser({
-          name: form.name.trim(),
-          phone_number: form.phone_number.trim(),
-        })
-      );
+      await refetch();
 
       setIsPersonalEditMode(false);
 
@@ -935,9 +957,60 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       }
     } catch (err: any) {
       console.error(err);
-      alert("Failed to update personal info");
+      alert(err?.data?.error || err?.data?.message || "Failed to update personal info");
     }
   };
+
+  // const handleSaveCompany = async () => {
+  //   setCompanyTouched({
+  //     brand_name: true,
+  //     company_name: true,
+  //     homeCurrency: true,
+  //     gst_no: true,
+  //     pan_no: true,
+  //     address_building: true,
+  //     address_city: true,
+  //     address_country: true,
+  //     address_state: true,
+  //     address_zipcode: true,
+  //   });
+
+  //   const result = validateCompany();
+  //   if (!result.success) return;
+
+  //   try {
+  //     const payload = {
+  //       brand_name: form.brand_name.trim(),
+  //       company_name: form.company_name.trim(),
+  //       homeCurrency: form.homeCurrency,
+  //       tax_id: {
+  //         gst_no: form.gst_no.trim(),
+  //         pan_no: form.pan_no.trim(),
+  //       },
+  //       address: {
+  //         building: form.address_building.trim(),
+  //         city: form.address_city.trim(),
+  //         country: form.address_country.trim(),
+  //         state: form.address_state.trim(),
+  //         zipcode: form.address_zipcode.trim(),
+  //       },
+  //     };
+
+  //     await updateProfile(payload as any).unwrap();
+  //     dispatch(setUser(payload as any));
+
+  //     setIsCompanyEditMode(false);
+
+  //     if (isOnboarding) {
+  //       setIsOnboarding(false);
+  //       setOnboardingStep("done");
+  //       localStorage.setItem("profile_onboarding_complete", "true");
+  //     }
+  //   } catch (err: any) {
+  //     console.error(err);
+  //     alert("Failed to update company info");
+  //   }
+  // };
 
   const handleSaveCompany = async () => {
     setCompanyTouched({
@@ -974,19 +1047,15 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         },
       };
 
-      await updateProfile(payload as any).unwrap();
-      dispatch(setUser(payload as any));
+      const res = await updateProfile(payload).unwrap();
+      console.log("Profile update response:", res);
+
+      await refetch();
 
       setIsCompanyEditMode(false);
-
-      if (isOnboarding) {
-        setIsOnboarding(false);
-        setOnboardingStep("done");
-        localStorage.setItem("profile_onboarding_complete", "true");
-      }
     } catch (err: any) {
       console.error(err);
-      alert("Failed to update company info");
+      alert(err?.data?.error || err?.data?.message || "Failed to update company info");
     }
   };
 
@@ -1001,7 +1070,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     try {
       setForm((prev) => ({ ...prev, target_sales: String(next) }));
       await updateProfile({ target_sales: next } as any).unwrap();
-      dispatch(setUser({ target_sales: next } as any));
+      await refetch();
       setIsTargetEditMode(false);
       setEditingPid(null);
       setDraftTarget("");
@@ -1313,6 +1382,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                     <div className="grid grid-cols-2 gap-4">
                       <InfoItem
                         label="Name"
+                        required
                         value={
                           isPersonalEditMode ? (
                             <div>
@@ -1341,6 +1411,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
                       <InfoItem
                         label="Phone"
+                        required
                         value={
                           isPersonalEditMode ? (
                             <div>
@@ -1511,7 +1582,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                   >
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       <InfoItem
-                        // id="tour-company-name"
+                        required
                         label="Company Name"
                         value={
                           isCompanyEditMode ? (
@@ -1538,7 +1609,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       />
 
                       <InfoItem
-                        // id="tour-brand-name"
+                        required
                         label="Brand Name"
                         value={
                           isCompanyEditMode ? (
@@ -1687,6 +1758,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
                       <div className="sm:col-span-2 lg:col-span-3">
                         <InfoItem
+                          required
                           label="Address"
                           value={
                             isCompanyEditMode ? (
@@ -1968,7 +2040,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                   {activeSection === "personal" && (
                     <>
                       <div className="col-span-2 lg:col-span-1">
-                        <Label>Name</Label>
+                        <Label >Name</Label>
                         <Input
                           type="text"
                           value={form.name}
@@ -1991,7 +2063,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       </div>
 
                       <div className="col-span-2 lg:col-span-1">
-                        <Label>Phone</Label>
+                        <Label >Phone</Label>
                         <Input
                           type="text"
                           value={form.phone_number}
@@ -2029,7 +2101,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                   {activeSection === "company" && (
                     <>
                       <div id="tour-brand-name" className="col-span-2 lg:col-span-1">
-                        <Label>Brand Name</Label>
+                        <Label >Brand Name</Label>
                         <Input
                           type="text"
                           value={form.brand_name}
@@ -2047,7 +2119,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       </div>
 
                       <div id="tour-company-name" className="col-span-2 lg:col-span-1">
-                        <Label>Company Name</Label>
+                        <Label >Company Name</Label>
                         <Input
                           type="text"
                           value={form.company_name}
@@ -2091,7 +2163,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       </div> */}
 
                       <div id="tour-home-currency" className="col-span-2 lg:col-span-1">
-                        <Label>Home Currency</Label>
+                        <Label >Home Currency</Label>
                         <select
                           value={form.homeCurrency}
                           onChange={handleCompanyChange("homeCurrency")}
@@ -2153,7 +2225,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       </div>
 
                       <div className="col-span-2">
-                        <Label>Address</Label>
+                        <Label >Address</Label>
                         <div className="grid grid-cols-1 gap-4">
                           <div>
                             <Input
