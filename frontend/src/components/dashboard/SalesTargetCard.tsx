@@ -353,9 +353,37 @@ export default function SalesTargetCard({
       ? (biAlignedTotals.total_previous_rembursement_fee ?? 0)
       : (previousReimbursement ?? 0);
 
-  const reimbMax = Math.max(reimbNow, reimbPrev, 1);
-  const reimbNowPct = (reimbNow / reimbMax) * 100;
-  const reimbPrevPct = (reimbPrev / reimbMax) * 100;
+  // const reimbMax = Math.max(reimbNow, reimbPrev, 1);
+  // const reimbNowPct = (reimbNow / reimbMax) * 100;
+  // const reimbPrevPct = (reimbPrev / reimbMax) * 100;
+
+  const reimbScaleMax = Math.max(Math.abs(reimbNow), Math.abs(reimbPrev), 1);
+
+  const getBiFill = (value: number, otherValue: number) => {
+    // if both are zero, show nothing
+    if (value === 0 && otherValue === 0) {
+      return { leftPct: 0, rightPct: 0 };
+    }
+
+    // if only this value exists, fill its whole side
+    if (value !== 0 && otherValue === 0) {
+      return {
+        leftPct: value < 0 ? 50 : 0,
+        rightPct: value > 0 ? 50 : 0,
+      };
+    }
+
+    // normal comparison mode: scale by largest absolute value
+    const pct = (Math.abs(value) / reimbScaleMax) * 50;
+
+    return {
+      leftPct: value < 0 ? pct : 0,
+      rightPct: value > 0 ? pct : 0,
+    };
+  };
+
+  const reimbNowFill = getBiFill(reimbNow, reimbPrev);
+  const reimbPrevFill = getBiFill(reimbPrev, reimbNow);
 
   const homeCurrencySymbol = currencySymbolMap[homeCurrency];
 
@@ -390,6 +418,10 @@ export default function SalesTargetCard({
     }
 
     return `${sign}${homeCurrencySymbol}${rest}`;
+  };
+
+  const formatAbsWithCurrencySpace = (value: number) => {
+    return formatWithCurrencySpace(Math.abs(value)).replace(/^[-+]/, "");
   };
 
   const showReimbDelta =
@@ -598,8 +630,8 @@ export default function SalesTargetCard({
           {showReimbDelta && (
             <div
               className={`text-[10px] 2xl:text-xs font-medium px-2 py-0.5 rounded ${reimbursementDeltaPct! >= 0
-                  ? "bg-green-50 text-green-700"
-                  : "bg-rose-50 text-rose-700"
+                ? "bg-green-50 text-green-700"
+                : "bg-rose-50 text-rose-700"
                 }`}
               title="Current vs previous reimbursement (in home currency)"
             >
@@ -621,15 +653,44 @@ export default function SalesTargetCard({
               </span>
             </span>
           </div>
-          <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+          {/* <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
             <div
               className="h-full rounded-full"
               style={{ width: `${reimbNowPct}%`, backgroundColor: "#ED9F50" }}
             />
+          </div> */}
+          <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+            <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
+
+            {reimbNowFill.leftPct > 0 && (
+              <div
+                className="absolute right-1/2 top-0 h-full rounded-l-full"
+                style={{
+                  width: `${reimbNowFill.leftPct}%`,
+                  backgroundColor: "#ED9F50",
+                }}
+              />
+            )}
+
+            {reimbNowFill.rightPct > 0 && (
+              <div
+                className="absolute left-1/2 top-0 h-full rounded-r-full"
+                style={{
+                  width: `${reimbNowFill.rightPct}%`,
+                  backgroundColor: "#ED9F50",
+                }}
+              />
+            )}
           </div>
         </div>
 
-        <div className="mt-2">
+        <div className="relative h-3">
+          <span className="absolute left-1/2 -translate-x-1/2 text-[10px] 2xl:text-xs text-gray-400">
+            0
+          </span>
+        </div>
+
+        <div className="">
           <div className="flex items-center justify-between text-[10px] 2xl:text-xs">
             <span className="text-charcoal-500">
               {toApostropheLabel(reimbPrevLabel)}{" "}
@@ -641,11 +702,34 @@ export default function SalesTargetCard({
               </span>
             </span>
           </div>
-          <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+          {/* <div className="mt-1 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
             <div
               className="h-full rounded-full"
               style={{ width: `${reimbPrevPct}%`, backgroundColor: "#9CA3AF" }}
             />
+          </div> */}
+          <div className="mt-1 relative h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+            <div className="absolute left-1/2 top-0 h-full w-px bg-gray-300 -translate-x-1/2 z-10" />
+
+            {reimbPrevFill.leftPct > 0 && (
+              <div
+                className="absolute right-1/2 top-0 h-full rounded-l-full"
+                style={{
+                  width: `${reimbPrevFill.leftPct}%`,
+                  backgroundColor: "#9CA3AF",
+                }}
+              />
+            )}
+
+            {reimbPrevFill.rightPct > 0 && (
+              <div
+                className="absolute left-1/2 top-0 h-full rounded-r-full"
+                style={{
+                  width: `${reimbPrevFill.rightPct}%`,
+                  backgroundColor: "#9CA3AF",
+                }}
+              />
+            )}
           </div>
         </div>
       </div>

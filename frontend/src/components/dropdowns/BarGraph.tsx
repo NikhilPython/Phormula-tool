@@ -350,7 +350,7 @@ const Bargraph: React.FC<BargraphProps> = ({
 
       let computedValues = computedMetricsToShow.map((label) => {
         const field = metricMapping[label];
-        return monthData ? Math.abs(Number(monthData?.[field] ?? 0)) : 0;
+        return monthData ? Number(monthData?.[field] ?? 0) : 0;
       });
 
       const zero = computedValues.every((v) => v === 0);
@@ -394,11 +394,17 @@ const Bargraph: React.FC<BargraphProps> = ({
                     ? Number((chartData.datasets[0].data as number[])[salesIndex] ?? 1)
                     : 1;
 
-                const percentage = (value / (salesValue || 1)) * 100;
+                const percentage = salesValue !== 0 ? (value / salesValue) * 100 : 0;
                 const metricLabel = fullLabels[i] ?? "";
 
-                const formattedValue = Number(value.toFixed(2)).toLocaleString();
-                return `${metricLabel}: ${currencySymbol}${formattedValue} (${percentage.toFixed(1)}%)`;
+                const formattedValue = Math.abs(value).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                });
+
+                const signedValue = `${value < 0 ? "-" : ""}${currencySymbol}${formattedValue}`;
+
+                return `${metricLabel}: ${signedValue} (${percentage.toFixed(1)}%)`;
               },
             },
           },

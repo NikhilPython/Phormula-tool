@@ -850,7 +850,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit || 0), __bold: 1 },
         { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: 1 },
         { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0), __bold: 1 },
-        { product_name: "Net Reimbursement", profit: Math.abs(Number(totals.net_reimbursement || 0)), __bold: 1 },
+        { product_name: "Net Reimbursement", profit: Number(totals.net_reimbursement || 0), __bold: 1 },
         { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0), __bold: 1 },
         { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0), __bold: 1 },
       ];
@@ -1439,7 +1439,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     {
                       id: "net_reimb",
                       label: "Net Reimbursement",
-                      endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+                      endValue: formatValue(totals.net_reimbursement, "net_reimbursement"),
                     },
                     {
                       id: "rv_cm2",
