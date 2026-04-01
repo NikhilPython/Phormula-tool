@@ -259,6 +259,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   // const PROFILE_TOUR_SEEN_KEY = "profile_intro_seen";
 
+
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "aggressive",
     profit_priority: "protect_growth",
@@ -390,6 +391,35 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     return countries;
   }, [connected]);
 
+  const COUNTRY_DIAL_CODE: Record<string, string> = {
+    india: "+91",
+    in: "+91",
+    united_states: "+1",
+    us: "+1",
+    usa: "+1",
+    united_kingdom: "+44",
+    uk: "+44",
+    gb: "+44",
+    canada: "+1",
+    ca: "+1",
+  };
+
+  const normalizeCountryKey = (value?: string | null) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+
+  const getSelectedDialCode = (country?: string | null) => {
+    const key = normalizeCountryKey(country);
+    return COUNTRY_DIAL_CODE[key] || "";
+  };
+
+  const stripDialCode = (phone?: string) =>
+    String(phone || "")
+      .replace(/^\+\d+\s*/, "")
+      .trim();
+
   const pagePlatform: PlatformId = useMemo(() => {
     const c = countryName.toLowerCase();
 
@@ -514,6 +544,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }
   };
 
+
+
   const postProfileUpdate = async (payload: any) => {
     if (!token) {
       throw new Error("Token missing. Please login again.");
@@ -564,6 +596,17 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     address_state: "",
     address_zipcode: "",
   });
+
+  const selectedCountryForPhone =
+    form.address_country || data?.address?.country || "";
+
+  const selectedDialCode = getSelectedDialCode(selectedCountryForPhone);
+
+  const displayedPhone = form.phone_number
+    ? selectedDialCode
+      ? `${selectedDialCode} ${stripDialCode(form.phone_number)}`
+      : form.phone_number
+    : "";
 
   const GROWTH_OPTIONS = ["conservative", "balanced", "aggressive"] as const;
 
@@ -791,10 +834,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       return baseOverviewSteps.map((step, index) => ({
         ...step,
         intro: `
-        <div class="mb-2 text-xs font-semibold text-gray-500">
-          Step ${index} of ${total - 1}
+        <div style="font-size:14px; line-height:1.4;">
+          ${step.intro}
         </div>
-        <div>${step.intro}</div>
       `,
       }));
     }
@@ -1620,7 +1662,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   return (
     <div className="">
-      <Steps
+      {/* <Steps
         key={`${tourPhase}-${tourKey}`}
         enabled={tourEnabled}
         steps={introSteps}
@@ -1636,6 +1678,47 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
           setTourEnabled(false);
           if (tourStarted) {
             await markStepsSeen();
+          }
+        }}
+        options={{
+          showProgress: true,
+          showBullets: false,
+          exitOnOverlayClick: false,
+          exitOnEsc: false,
+          nextLabel: "Next",
+          prevLabel: "Back",
+          doneLabel: "Done",
+          progress: "Step {{current}} of {{total}}",
+        }}
+      /> */}
+      <Steps
+        key={`${tourPhase}-${tourKey}`}
+        enabled={tourEnabled}
+        steps={introSteps}
+        initialStep={0}
+        onExit={async () => {
+          setTourEnabled(false);
+          if (tourStarted) {
+            await markStepsSeen();
+          }
+        }}
+        onComplete={async () => {
+          setTourEnabled(false);
+          if (tourStarted) {
+            await markStepsSeen();
+          }
+        }}
+        onAfterChange={(element, index) => {
+          const header = document.querySelector(".introjs-tooltip-header");
+
+          if (header && typeof index === "number") {
+            header.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+          <span style="font-size:14px; font-weight:600; color:#414042;">
+            Step ${index + 1} of ${introSteps.length}
+          </span>
+        </div>
+      `;
           }
         }}
         options={{
@@ -1721,8 +1804,17 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                             <div>
                               <Input
                                 type="text"
-                                value={form.phone_number}
-                                onChange={handlePersonalChange("phone_number")}
+                                value={displayedPhone}
+                                onChange={(e) => {
+                                  const rawValue = e.target.value;
+                                  const localNumber = selectedDialCode
+                                    ? rawValue.replace(selectedDialCode, "").trim()
+                                    : rawValue;
+
+                                  handlePersonalChange("phone_number")({
+                                    target: { value: localNumber },
+                                  } as React.ChangeEvent<HTMLInputElement>);
+                                }}
                                 onBlur={() => {
                                   setPersonalTouched((prev) => ({ ...prev, phone_number: true }));
                                   validatePersonalField("phone_number");
@@ -1736,7 +1828,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                               )}
                             </div>
                           ) : (
-                            show(form.phone_number)
+                            show(displayedPhone)
                           )
                         }
                       />
@@ -2368,11 +2460,20 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       </div>
 
                       <div className="col-span-2 lg:col-span-1">
-                        <Label >Phone</Label>
+                        <Label>Phone</Label>
                         <Input
                           type="text"
-                          value={form.phone_number}
-                          onChange={handlePersonalChange("phone_number")}
+                          value={displayedPhone}
+                          onChange={(e) => {
+                            const rawValue = e.target.value;
+                            const localNumber = selectedDialCode
+                              ? rawValue.replace(selectedDialCode, "").trim()
+                              : rawValue;
+
+                            handlePersonalChange("phone_number")({
+                              target: { value: localNumber },
+                            } as React.ChangeEvent<HTMLInputElement>);
+                          }}
                           onBlur={() => {
                             setPersonalTouched((prev) => ({ ...prev, phone_number: true }));
                             validatePersonalField("phone_number");
