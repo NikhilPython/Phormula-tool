@@ -255,8 +255,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const [isSkuUploaded, setIsSkuUploaded] = useState(false);
   const [tourEnabled, setTourEnabled] = useState(false);
   const [tourStarted, setTourStarted] = useState(false);
+  const [isMarkingStepsSeen, setIsMarkingStepsSeen] = useState(false);
 
-  const PROFILE_TOUR_SEEN_KEY = "profile_intro_seen";
+  // const PROFILE_TOUR_SEEN_KEY = "profile_intro_seen";
 
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "aggressive",
@@ -442,7 +443,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   // Correct onboarding locks
   const canAccessProductControls = isCompanyComplete;
-  const canAccessIntegrations = isCompanyComplete && isSkuUploaded;
+  const hasSkuSheet = Boolean(data?.sku_sheet_exists);
+  const canAccessIntegrations = isCompanyComplete && hasSkuSheet;
 
   const isMemberUser = Boolean((data as any)?.is_member);
   const token = useSelector((state: any) => state.auth?.token);
@@ -481,6 +483,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       }
 
       setData(result);
+      setIsSkuUploaded(Boolean(result?.sku_sheet_exists));
 
       const tax = result?.tax_id ?? {};
       const addr = result?.address ?? {};
@@ -602,15 +605,15 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }
   };
 
-  useEffect(() => {
-    const savedSkuStatus = localStorage.getItem("profile_sku_uploaded") === "true";
-    setIsSkuUploaded(savedSkuStatus);
-  }, []);
+  // useEffect(() => {
+  //   const savedSkuStatus = localStorage.getItem("profile_sku_uploaded") === "true";
+  //   setIsSkuUploaded(savedSkuStatus);
+  // }, []);
 
   useEffect(() => {
     if (!data || activeTab !== "personal") return;
 
-    const alreadySeen = localStorage.getItem(PROFILE_TOUR_SEEN_KEY) === "true";
+    const alreadySeen = data?.steps_exists === true;
     if (alreadySeen) return;
 
     const timer = setTimeout(() => {
@@ -1594,6 +1597,27 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
           ? "Update your marketplace targets."
           : "For AI to help and create insights for you, we require you to answer a few questions.";
 
+  const markStepsSeen = async () => {
+    if (isMarkingStepsSeen || data?.steps_exists) return;
+
+    try {
+      setIsMarkingStepsSeen(true);
+
+      await postProfileUpdate({ steps_exists: true });
+
+      setData((prev: any) => ({
+        ...prev,
+        steps_exists: true,
+      }));
+
+      setTourStarted(false);
+    } catch (e) {
+      console.error("Failed to update steps_exists", e);
+    } finally {
+      setIsMarkingStepsSeen(false);
+    }
+  };
+
   return (
     <div className="">
       <Steps
@@ -1601,18 +1625,17 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         enabled={tourEnabled}
         steps={introSteps}
         initialStep={0}
-        onExit={() => {
+        onExit={async () => {
           setTourEnabled(false);
-
           if (tourStarted) {
-            localStorage.setItem(PROFILE_TOUR_SEEN_KEY, "true");
+            await markStepsSeen();
           }
         }}
-        onComplete={() => {
-          setTourEnabled(false);
 
+        onComplete={async () => {
+          setTourEnabled(false);
           if (tourStarted) {
-            localStorage.setItem(PROFILE_TOUR_SEEN_KEY, "true");
+            await markStepsSeen();
           }
         }}
         options={{
@@ -2222,7 +2245,10 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           onClose={skuModal.closeModal}
                           onComplete={() => {
                             setIsSkuUploaded(true);
-                            localStorage.setItem("profile_sku_uploaded", "true");
+                            setData((prev: any) => ({
+                              ...prev,
+                              sku_sheet_exists: true,
+                            }));
                             skuModal.closeModal();
                           }}
                         />

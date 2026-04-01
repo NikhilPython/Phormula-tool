@@ -703,6 +703,11 @@ def profileupdate():
             user.target_sales = float(target_sales)
         except (TypeError, ValueError):
             return jsonify({'error': 'target_sales must be a number'}), 400
+        
+    # ---------- STEPS EXISTS ----------
+    if 'steps_exists' in data:
+        user.steps_exists = bool(data.get('steps_exists'))
+
 
     # ---------- COMMIT ----------
     try:
