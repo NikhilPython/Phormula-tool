@@ -26,9 +26,8 @@ export default function VerifyEmail() {
     useResendVerificationMutation();
 
   // If success → briefly show the success UI then send to Sign In
-  useEffect(() => {
+ useEffect(() => {
   if (isSuccess) {
-    // 🔥 CLEAR previous user onboarding state
     localStorage.removeItem("onboardDone");
     localStorage.removeItem("selectedCountries");
     localStorage.removeItem("brandName");
@@ -38,12 +37,12 @@ export default function VerifyEmail() {
     localStorage.removeItem("firstProfitPath");
 
     const t = setTimeout(() => {
-      router.push("/signin");
+      router.push(`/signin?email=${encodeURIComponent(email)}`);
     }, 3000);
 
     return () => clearTimeout(t);
   }
-}, [isSuccess, router]);
+}, [isSuccess, router, email]);
 
   const message = useMemo(() => {
     if (isSuccess) {
@@ -116,11 +115,11 @@ export default function VerifyEmail() {
                   Redirecting you to Sign In…
                 </p>
                 <Link
-                  href="/signin"
-                  className="inline-flex items-center rounded-lg bg-[#2c3854] px-4 py-2 text-sm font-semibold text-[#f8edcf] hover:opacity-95"
-                >
-                  Go to Sign In now
-                </Link>
+  href={`/signin?email=${encodeURIComponent(email)}`}
+  className="inline-flex items-center rounded-lg bg-[#2c3854] px-4 py-2 text-sm font-semibold text-[#f8edcf] hover:opacity-95"
+>
+  Go to Sign In now
+</Link>
               </div>
             </div>
           )}
