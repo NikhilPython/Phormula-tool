@@ -705,144 +705,144 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }, 150);
   };
 
-  // const introSteps = useMemo(() => {
-  //   if (tourPhase === "overview") {
-  //     return [
-  //       {
-  //         element: "#tour-personal-edit",
-  //         intro: "Click here if you want to update your personal details.",
-  //         position: "left",
-  //       },
-  //       {
-  //         element: "#tour-personal-info",
-  //         intro: "You can view and edit your personal details here in Personal Info.",
-  //         position: "bottom",
-  //       },
-  //       {
-  //         element: "#tour-personal-edit",
-  //         intro: "Click here if you want to update your personal details.",
-  //         position: "left",
-  //       },
-  //       {
-  //         element: "#tour-company-info",
-  //         intro: "This is your Company Info section. You need to complete these details before moving to the next setup steps.",
-  //         position: "bottom",
-  //       },
-  //       {
-  //         element: "#tour-company-edit",
-  //         intro: "Click this edit icon to start filling in your company details.",
-  //         position: "left",
-  //       },
-  //       {
-  //         element: "#tour-product-controls",
-  //         intro: "This is Product & Inventory Controls.",
-  //         position: "top",
-  //       },
-  //       {
-  //         element: "#tour-sku-upload-icon",
-  //         intro: "Click on this icon to upload your SKU sheet.",
-  //         position: "bottom",
-  //       },
-  //       {
-  //         element: "#tour-integrations",
-  //         intro: "Integrations: here you can see your integrated platforms.",
-  //         position: "top",
-  //       },
-  //       {
-  //         element: "#tour-integration-icon",
-  //         intro: "Click on the integration icon to connect your platform to our tool.",
-  //         position: "left",
-  //       },
-  //     ];
-  //   }
-
-  //   // if (tourPhase === "company-form") {
-  //   //   return [
-  //   //     {
-  //   //       element: "#tour-company-name",
-  //   //       intro: "Enter your company name here.",
-  //   //       position: "bottom",
-  //   //     },
-  //   //     {
-  //   //       element: "#tour-brand-name",
-  //   //       intro: "Enter your brand name here.",
-  //   //       position: "bottom",
-  //   //     },
-  //   //     {
-  //   //       element: "#tour-home-currency",
-  //   //       intro: "Select your home currency here.",
-  //   //       position: "bottom",
-  //   //     },
-  //   //   ];
-  //   // }
-
-  //   return [];
-  // }, [tourPhase]);
-
-  const baseOverviewSteps = [
-    {
-      element: "#tour-personal-edit",
-      intro: "Click here if you want to update your personal details.",
-      position: "left",
-    },
-    {
-      element: "#tour-personal-info",
-      intro: "You can view and edit your personal details here in Personal Info.",
-      position: "bottom",
-    },
-    // {
-    //   element: "#tour-personal-edit",
-    //   intro: "Click here if you want to update your personal details.",
-    //   position: "left",
-    // },
-    {
-      element: "#tour-company-info",
-      intro: "This is your Company Info section. You need to complete these details before moving to the next setup steps.",
-      position: "bottom",
-    },
-    // {
-    //   element: "#tour-company-edit",
-    //   intro: "Click this edit icon to start filling in your company details.",
-    //   position: "left",
-    // },
-    {
-      element: "#tour-product-controls",
-      intro: "This is Product & Inventory Controls.",
-      position: "top",
-    },
-    // {
-    //   element: "#tour-sku-upload-icon",
-    //   intro: "Click on this icon to upload your SKU sheet.",
-    //   position: "bottom",
-    // },
-    {
-      element: "#tour-integrations",
-      intro: "Integrations: here you can see your integrated platforms.",
-      position: "top",
-    },
-    // {
-    //   element: "#tour-integration-icon",
-    //   intro: "Click on the integration icon to connect your platform to our tool.",
-    //   position: "left",
-    // },
-  ];
-
   const introSteps = useMemo(() => {
     if (tourPhase === "overview") {
-      const total = baseOverviewSteps.length;
-
-      return baseOverviewSteps.map((step, index) => ({
-        ...step,
-        intro: `
-        <div style="font-size:14px; line-height:1.4;">
-          ${step.intro}
-        </div>
-      `,
-      }));
+      return [
+        {
+          element: "#tour-personal-edit",
+          intro: "Click here if you want to update your personal details.",
+          position: "left",
+        },
+        {
+          element: "#tour-personal-info",
+          intro: "You can view and edit your personal details here in Personal Info.",
+          position: "bottom",
+        },
+        {
+          element: "#tour-personal-edit",
+          intro: "Click here if you want to update your personal details.",
+          position: "left",
+        },
+        {
+          element: "#tour-company-info",
+          intro: "This is your Company Info section. You need to complete these details before moving to the next setup steps.",
+          position: "bottom",
+        },
+        {
+          element: "#tour-company-edit",
+          intro: "Click this edit icon to start filling in your company details.",
+          position: "left",
+        },
+        {
+          element: "#tour-product-controls",
+          intro: "This is Product & Inventory Controls.",
+          position: "top",
+        },
+        {
+          element: "#tour-sku-upload-icon",
+          intro: "Click on this icon to upload your SKU sheet.",
+          position: "bottom",
+        },
+        {
+          element: "#tour-integrations",
+          intro: "Integrations: here you can see your integrated platforms.",
+          position: "top",
+        },
+        {
+          element: "#tour-integration-icon",
+          intro: "Click on the integration icon to connect your platform to our tool.",
+          position: "left",
+        },
+      ];
     }
+
+    // if (tourPhase === "company-form") {
+    //   return [
+    //     {
+    //       element: "#tour-company-name",
+    //       intro: "Enter your company name here.",
+    //       position: "bottom",
+    //     },
+    //     {
+    //       element: "#tour-brand-name",
+    //       intro: "Enter your brand name here.",
+    //       position: "bottom",
+    //     },
+    //     {
+    //       element: "#tour-home-currency",
+    //       intro: "Select your home currency here.",
+    //       position: "bottom",
+    //     },
+    //   ];
+    // }
 
     return [];
   }, [tourPhase]);
+
+  // const baseOverviewSteps = [
+  //   {
+  //     element: "#tour-personal-edit",
+  //     intro: "Click here if you want to update your personal details.",
+  //     position: "left",
+  //   },
+  //   {
+  //     element: "#tour-personal-info",
+  //     intro: "You can view and edit your personal details here in Personal Info.",
+  //     position: "bottom",
+  //   },
+  //   // {
+  //   //   element: "#tour-personal-edit",
+  //   //   intro: "Click here if you want to update your personal details.",
+  //   //   position: "left",
+  //   // },
+  //   {
+  //     element: "#tour-company-info",
+  //     intro: "This is your Company Info section. You need to complete these details before moving to the next setup steps.",
+  //     position: "bottom",
+  //   },
+  //   // {
+  //   //   element: "#tour-company-edit",
+  //   //   intro: "Click this edit icon to start filling in your company details.",
+  //   //   position: "left",
+  //   // },
+  //   {
+  //     element: "#tour-product-controls",
+  //     intro: "This is Product & Inventory Controls.",
+  //     position: "top",
+  //   },
+  //   // {
+  //   //   element: "#tour-sku-upload-icon",
+  //   //   intro: "Click on this icon to upload your SKU sheet.",
+  //   //   position: "bottom",
+  //   // },
+  //   {
+  //     element: "#tour-integrations",
+  //     intro: "Integrations: here you can see your integrated platforms.",
+  //     position: "top",
+  //   },
+  //   // {
+  //   //   element: "#tour-integration-icon",
+  //   //   intro: "Click on the integration icon to connect your platform to our tool.",
+  //   //   position: "left",
+  //   // },
+  // ];
+
+  // const introSteps = useMemo(() => {
+  //   if (tourPhase === "overview") {
+  //     const total = baseOverviewSteps.length;
+
+  //     return baseOverviewSteps.map((step, index) => ({
+  //       ...step,
+  //       intro: `
+  //       <div style="font-size:14px; line-height:1.4;">
+  //         ${step.intro}
+  //       </div>
+  //     `,
+  //     }));
+  //   }
+
+  //   return [];
+  // }, [tourPhase]);
 
   const cancelCompanyEdit = () => {
     setIsCompanyEditMode(false);
@@ -1662,7 +1662,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
   return (
     <div className="">
-      {/* <Steps
+      <Steps
         key={`${tourPhase}-${tourKey}`}
         enabled={tourEnabled}
         steps={introSteps}
@@ -1690,8 +1690,8 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
           doneLabel: "Done",
           progress: "Step {{current}} of {{total}}",
         }}
-      /> */}
-      <Steps
+      />
+      {/* <Steps
         key={`${tourPhase}-${tourKey}`}
         enabled={tourEnabled}
         steps={introSteps}
@@ -1731,7 +1731,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
           doneLabel: "Done",
           progress: "Step {{current}} of {{total}}",
         }}
-      />
+      /> */}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="w-full">
           {isLoading && <div className="text-sm text-gray-500 dark:text-gray-400">Loading…</div>}
