@@ -68,6 +68,8 @@ def _safe_user_dict(u: User):
         "annual_sales_range": getattr(u, "annual_sales_range", None),
         "target_sales": float(u.target_sales) if getattr(u, "target_sales", None) is not None else None,
         "address": getattr(u, "address", None),
+        # ✅ ADD THIS LINE
+        "status": u.status
 
     }
 

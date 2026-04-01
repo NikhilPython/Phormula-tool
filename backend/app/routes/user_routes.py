@@ -337,67 +337,6 @@ def resend_verification_email():
 def _has_token(val):
     return bool(val and str(val).strip())
 
-# @user_bp.route('/get_user_data', methods=['GET'])
-# def get_user_data():
-#     auth_header = request.headers.get('Authorization')
-#     if not auth_header or not auth_header.startswith('Bearer '):
-#         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
-
-#     token = auth_header.split(' ')[1]
-#     try:
-#         payload, user_id, member_id = get_effective_user_id_from_token(token)
-#     except jwt.ExpiredSignatureError:
-#         return jsonify({'error': 'Token has expired'}), 401
-#     except jwt.InvalidTokenError:
-#         return jsonify({'error': 'Invalid token'}), 401
-
-#     user = User.query.filter_by(id=user_id).first()
-#     if not user:
-#         return jsonify({'error': 'User not found'}), 404
-
-#     # ✅ Fetch amazon tokens row (can be None if not connected)
-#     arow = amazon_user.query.filter_by(user_id=user_id).first()
-
-#     spapi_connected = False
-#     ads_connected = False
-
-#     if arow:
-#         spapi_connected = _has_token(arow.refresh_token)
-#         ads_connected = _has_token(arow.amazon_ads_refresh_token)
-
-#     # ✅ Your rule: amazon_user_exists True only if BOTH tokens exist
-#     amazon_user_exists = bool(spapi_connected and ads_connected)
-
-#     # ✅ Save in User table (optional but you asked “add column in User class and fill it”)
-#     user.amazon_user_exists = amazon_user_exists
-#     user.amazon_ads_exists = ads_connected
-
-#     try:
-#         db.session.commit()
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({'error': 'Failed to update amazon flags', 'details': str(e)}), 500
-
-#     return jsonify({
-#         'name': user.name,
-#         'company_name': user.company_name,
-#         'brand_name': user.brand_name,
-#         'email': user.email,
-#         'phone_number': user.phone_number,
-#         'annual_sales_range': user.annual_sales_range,
-#         'password': user.password,
-#         'marketplace_id': user.marketplace_id,
-#         'country': user.country,
-#         'homeCurrency': user.homeCurrency,
-#         'target_sales': float(user.target_sales) if user.target_sales is not None else None,
-#         'tax_id': user.tax_id,
-#         'address': user.address,
-
-#         # ✅ NEW FIELDS returned to frontend
-#         'amazon_user_exists': user.amazon_user_exists,   # both tokens
-#         'amazon_ads_exists': user.amazon_ads_exists,     # ads token only
-#     }), 200
-
 
 @user_bp.route('/get_user_data', methods=['GET'])
 def get_user_data():
@@ -408,13 +347,12 @@ def get_user_data():
     token = auth_header.split(' ')[1]
 
     try:
-        payload, user_id, member_id = get_effective_user_id_from_token(token) 
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
 
-    # ✅ Identify if member login
     is_member = payload.get("is_member") is True
     member_id = payload.get("member_id")
     marketplace_ids = payload.get("marketplace_ids")
@@ -425,19 +363,16 @@ def get_user_data():
     member_name = None
     member_role = None
 
-    # ✅ Owner scoped user record
     user = User.query.filter_by(id=int(user_id)).first()
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    # ✅ If member token, load member record (optional but useful)
     if is_member and member_id:
         m = Member.query.filter_by(id=int(member_id), owner_user_id=int(user_id)).first()
         if m:
             member_name = getattr(m, "member_name", None)
             member_role = getattr(m, "role", None)
 
-    # ✅ Fetch amazon tokens row (can be None if not connected)
     arow = amazon_user.query.filter_by(user_id=int(user_id)).first()
 
     spapi_connected = False
@@ -449,49 +384,55 @@ def get_user_data():
 
     amazon_user_exists = bool(spapi_connected and ads_connected)
 
-    # ✅ Save flags
     user.amazon_user_exists = amazon_user_exists
     user.amazon_ads_exists = ads_connected
+
+    # ✅ Check if SKU table exists
+    sku_table_name = f"sku_{user_id}_data_table"
+    sku_sheet_exists = False
+
+    try:
+        user_engine = create_engine(db_url)
+        inspector = inspect(user_engine)
+        sku_sheet_exists = sku_table_name in inspector.get_table_names()
+    except Exception:
+        sku_sheet_exists = False
+
+    user.sku_sheet_exists = sku_sheet_exists
 
     try:
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': 'Failed to update amazon flags', 'details': str(e)}), 500
+        return jsonify({'error': 'Failed to update flags', 'details': str(e)}), 500
 
-    # ✅ pick the correct email for FE display
     effective_name = member_name if is_member else user.name
     effective_email = token_email if is_member else user.email
 
-    # ✅ Base response (safe for both member + owner)
-    # ✅ Base response (safe for both member + owner)
     response = {
-        # identity
         "is_member": is_member,
         "user_id": int(user_id),
         "status": user.status,
+        "steps_exists" : user.steps_exists,
         "owner_user_id": int(user_id),
         "member_id": int(member_id) if member_id else None,
 
         "member_name": member_name,
         "member_role": member_role,
 
-        # emails
         "name": effective_name,
         "email": effective_email,
         "owner_email": user.email,
         "member_email": token_email if is_member else None,
 
-        # token scoped permissions
         "marketplace_ids": marketplace_ids,
         "modules": modules,
         "countries": countries,
 
-        # amazon flags
         "amazon_user_exists": user.amazon_user_exists,
         "amazon_ads_exists": user.amazon_ads_exists,
+        "sku_sheet_exists": user.sku_sheet_exists,
 
-        # ✅ ALWAYS return business/profile fields
         "company_name": user.company_name,
         "brand_name": user.brand_name,
         "phone_number": user.phone_number,
@@ -504,7 +445,6 @@ def get_user_data():
         "address": user.address,
     }
 
-    # ✅ OWNER LOGIN: include all members list
     if not is_member:
         response["name"] = user.name
 
@@ -526,6 +466,7 @@ def get_user_data():
         ]
 
     return jsonify(response), 200
+
 
 
 @user_bp.route('/passcountry', methods=['GET'])
