@@ -440,9 +440,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const isAmazonConnected =
     connected.amazonUk || connected.amazonUs || connected.amazonCa;
 
-  // once Amazon is connected, unlock both sections
-  const canAccessProductControls = isAmazonConnected;
-  const canAccessIntegrations = isAmazonConnected;
+  // Correct onboarding locks
+  const canAccessProductControls = isCompanyComplete;
+  const canAccessIntegrations = isCompanyComplete && isSkuUploaded;
 
   const isMemberUser = Boolean((data as any)?.is_member);
   const token = useSelector((state: any) => state.auth?.token);
@@ -1553,6 +1553,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
           nextLabel: "Next",
           prevLabel: "Back",
           doneLabel: "Done",
+          progress: "Step {{current}} of {{total}}",
         }}
       />
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -1573,9 +1574,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           id="tour-personal-edit"
                           onClick={startPersonalEdit}
                           type="button"
-                          disabled={tourEnabled}   // ✅ ADD THIS
-                          className={`flex h-9 w-9 items-center justify-center rounded-md 
-    ${tourEnabled ? "opacity-50 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"}`}
+                          className="flex h-9 w-9 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100"
                         >
                           <FiEdit className="h-4 w-4" />
                         </button>
@@ -1774,9 +1773,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           id="tour-company-edit"
                           onClick={startCompanyEdit}
                           type="button"
-                          disabled={tourEnabled}   // ✅ ADD THIS
-                          className={`flex h-9 w-9 items-center justify-center rounded-md 
-    ${tourEnabled ? "opacity-50 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"}`}
+                          className="flex h-9 w-9 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100"
                         >
                           <FiEdit className="h-4 w-4" />
                         </button>

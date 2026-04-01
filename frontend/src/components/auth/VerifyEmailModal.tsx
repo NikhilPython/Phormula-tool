@@ -2,11 +2,12 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useResendVerificationMutation } from "@/lib/api/userApi";
 import './style.css'
 
 type VerifyEmailModalProps = {
-  status: string; // "success" | "failed" | invalid
+  status: string;
   email?: string;
   onClose: () => void;
 };
@@ -16,6 +17,7 @@ export default function VerifyEmailModal({
   email = "",
   onClose,
 }: VerifyEmailModalProps) {
+  const router = useRouter();
   const [flash, setFlash] = useState("");
   const [resendVerification, { isLoading: resendLoading }] =
     useResendVerificationMutation();
@@ -31,22 +33,21 @@ export default function VerifyEmailModal({
     return "The verification link seems invalid or has expired.";
   }, [isFailed]);
 
-  /* =====================================================
-     ✅ SUCCESS → AUTO CLOSE AFTER 5s
-  ===================================================== */
   useEffect(() => {
     if (isSuccess) {
       const timer = setTimeout(() => {
         onClose();
+        router.push(
+          email
+            ? `/signin?email=${encodeURIComponent(email)}`
+            : "/signin"
+        );
       }, 5000);
 
       return () => clearTimeout(timer);
     }
-  }, [isSuccess, onClose]);
+  }, [isSuccess, onClose, router, email]);
 
-  /* =====================================================
-     🔁 RESEND HANDLER
-  ===================================================== */
   const handleResend = async () => {
     if (!email) {
       setFlash("Email not found in the link.");
@@ -70,9 +71,6 @@ export default function VerifyEmailModal({
     }
   };
 
-  /* =====================================================
-     ✅ SUCCESS MODAL (NO BUTTON)
-  ===================================================== */
   if (isSuccess) {
     return (
       <div
@@ -83,7 +81,6 @@ export default function VerifyEmailModal({
           onClick={(e) => e.stopPropagation()}
           className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-2xl p-8 flex flex-col items-center text-center"
         >
-          {/* Animated Tick */}
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-500">
             <svg className="h-7 w-7 text-white" viewBox="0 0 24 24" fill="none">
               <path
@@ -108,9 +105,6 @@ export default function VerifyEmailModal({
     );
   }
 
-  /* =====================================================
-     ❌ FAILED / INVALID MODAL
-  ===================================================== */
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
@@ -121,7 +115,6 @@ export default function VerifyEmailModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-col items-center text-center space-y-5">
-          {/* Icon */}
           <div className="flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-red-100">
             <svg
               viewBox="0 0 24 24"
@@ -170,7 +163,7 @@ export default function VerifyEmailModal({
             </button>
 
             <Link
-              href="/signin"
+              href={email ? `/signin?email=${encodeURIComponent(email)}` : "/signin"}
               className="text-sm text-emerald-600 hover:text-emerald-700"
             >
               Back to Sign In

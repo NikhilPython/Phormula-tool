@@ -80,6 +80,17 @@ export default function SignInForm() {
     }
   }, []);
 
+  useEffect(() => {
+  const emailFromQuery = search.get("email") || "";
+
+  if (emailFromQuery) {
+    setForm((prev) => ({
+      ...prev,
+      email: emailFromQuery,
+    }));
+  }
+}, [search]);
+
   const checkUserCountryTableExists = async (
     userId: string | number,
     country: string
