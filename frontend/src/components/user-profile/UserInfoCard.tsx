@@ -440,9 +440,9 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const isAmazonConnected =
     connected.amazonUk || connected.amazonUs || connected.amazonCa;
 
-  // once Amazon is connected, unlock both sections
-  const canAccessProductControls = isAmazonConnected;
-  const canAccessIntegrations = isAmazonConnected;
+  // Correct onboarding locks
+  const canAccessProductControls = isCompanyComplete;
+  const canAccessIntegrations = isCompanyComplete && isSkuUploaded;
 
   const isMemberUser = Boolean((data as any)?.is_member);
   const token = useSelector((state: any) => state.auth?.token);
@@ -655,76 +655,142 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     }, 150);
   };
 
+  // const introSteps = useMemo(() => {
+  //   if (tourPhase === "overview") {
+  //     return [
+  //       {
+  //         element: "#tour-personal-edit",
+  //         intro: "Click here if you want to update your personal details.",
+  //         position: "left",
+  //       },
+  //       {
+  //         element: "#tour-personal-info",
+  //         intro: "You can view and edit your personal details here in Personal Info.",
+  //         position: "bottom",
+  //       },
+  //       {
+  //         element: "#tour-personal-edit",
+  //         intro: "Click here if you want to update your personal details.",
+  //         position: "left",
+  //       },
+  //       {
+  //         element: "#tour-company-info",
+  //         intro: "This is your Company Info section. You need to complete these details before moving to the next setup steps.",
+  //         position: "bottom",
+  //       },
+  //       {
+  //         element: "#tour-company-edit",
+  //         intro: "Click this edit icon to start filling in your company details.",
+  //         position: "left",
+  //       },
+  //       {
+  //         element: "#tour-product-controls",
+  //         intro: "This is Product & Inventory Controls.",
+  //         position: "top",
+  //       },
+  //       {
+  //         element: "#tour-sku-upload-icon",
+  //         intro: "Click on this icon to upload your SKU sheet.",
+  //         position: "bottom",
+  //       },
+  //       {
+  //         element: "#tour-integrations",
+  //         intro: "Integrations: here you can see your integrated platforms.",
+  //         position: "top",
+  //       },
+  //       {
+  //         element: "#tour-integration-icon",
+  //         intro: "Click on the integration icon to connect your platform to our tool.",
+  //         position: "left",
+  //       },
+  //     ];
+  //   }
+
+  //   // if (tourPhase === "company-form") {
+  //   //   return [
+  //   //     {
+  //   //       element: "#tour-company-name",
+  //   //       intro: "Enter your company name here.",
+  //   //       position: "bottom",
+  //   //     },
+  //   //     {
+  //   //       element: "#tour-brand-name",
+  //   //       intro: "Enter your brand name here.",
+  //   //       position: "bottom",
+  //   //     },
+  //   //     {
+  //   //       element: "#tour-home-currency",
+  //   //       intro: "Select your home currency here.",
+  //   //       position: "bottom",
+  //   //     },
+  //   //   ];
+  //   // }
+
+  //   return [];
+  // }, [tourPhase]);
+
+  const baseOverviewSteps = [
+    {
+      element: "#tour-personal-edit",
+      intro: "Click here if you want to update your personal details.",
+      position: "left",
+    },
+    {
+      element: "#tour-personal-info",
+      intro: "You can view and edit your personal details here in Personal Info.",
+      position: "bottom",
+    },
+    {
+      element: "#tour-personal-edit",
+      intro: "Click here if you want to update your personal details.",
+      position: "left",
+    },
+    {
+      element: "#tour-company-info",
+      intro: "This is your Company Info section. You need to complete these details before moving to the next setup steps.",
+      position: "bottom",
+    },
+    {
+      element: "#tour-company-edit",
+      intro: "Click this edit icon to start filling in your company details.",
+      position: "left",
+    },
+    {
+      element: "#tour-product-controls",
+      intro: "This is Product & Inventory Controls.",
+      position: "top",
+    },
+    {
+      element: "#tour-sku-upload-icon",
+      intro: "Click on this icon to upload your SKU sheet.",
+      position: "bottom",
+    },
+    {
+      element: "#tour-integrations",
+      intro: "Integrations: here you can see your integrated platforms.",
+      position: "top",
+    },
+    {
+      element: "#tour-integration-icon",
+      intro: "Click on the integration icon to connect your platform to our tool.",
+      position: "left",
+    },
+  ];
+
   const introSteps = useMemo(() => {
     if (tourPhase === "overview") {
-      return [
-        {
-          element: "#tour-personal-edit",
-          intro: "Click here if you want to update your personal details.",
-          position: "left",
-        },
-        {
-          element: "#tour-personal-info",
-          intro: "You can view and edit your personal details here in Personal Info.",
-          position: "bottom",
-        },
-        {
-          element: "#tour-personal-edit",
-          intro: "Click here if you want to update your personal details.",
-          position: "left",
-        },
-        {
-          element: "#tour-company-info",
-          intro: "This is your Company Info section. You need to complete these details before moving to the next setup steps.",
-          position: "bottom",
-        },
-        {
-          element: "#tour-company-edit",
-          intro: "Click this edit icon to start filling in your company details.",
-          position: "left",
-        },
-        {
-          element: "#tour-product-controls",
-          intro: "This is Product & Inventory Controls.",
-          position: "top",
-        },
-        {
-          element: "#tour-sku-upload-icon",
-          intro: "Click on this icon to upload your SKU sheet.",
-          position: "bottom",
-        },
-        {
-          element: "#tour-integrations",
-          intro: "Integrations: here you can see your integrated platforms.",
-          position: "top",
-        },
-        {
-          element: "#tour-integration-icon",
-          intro: "Click on the integration icon to connect your platform to our tool.",
-          position: "left",
-        },
-      ];
-    }
+      const total = baseOverviewSteps.length;
 
-    // if (tourPhase === "company-form") {
-    //   return [
-    //     {
-    //       element: "#tour-company-name",
-    //       intro: "Enter your company name here.",
-    //       position: "bottom",
-    //     },
-    //     {
-    //       element: "#tour-brand-name",
-    //       intro: "Enter your brand name here.",
-    //       position: "bottom",
-    //     },
-    //     {
-    //       element: "#tour-home-currency",
-    //       intro: "Select your home currency here.",
-    //       position: "bottom",
-    //     },
-    //   ];
-    // }
+      return baseOverviewSteps.map((step, index) => ({
+        ...step,
+        intro: `
+        <div class="mb-2 text-xs font-semibold text-gray-500">
+          Step ${index } of ${total - 1 }
+        </div>
+        <div>${step.intro}</div>
+      `,
+      }));
+    }
 
     return [];
   }, [tourPhase]);
@@ -1553,6 +1619,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
           nextLabel: "Next",
           prevLabel: "Back",
           doneLabel: "Done",
+          progress: "Step {{current}} of {{total}}",
         }}
       />
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -1573,9 +1640,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           id="tour-personal-edit"
                           onClick={startPersonalEdit}
                           type="button"
-                          disabled={tourEnabled}   // ✅ ADD THIS
-                          className={`flex h-9 w-9 items-center justify-center rounded-md 
-    ${tourEnabled ? "opacity-50 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"}`}
+                          className="flex h-9 w-9 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100"
                         >
                           <FiEdit className="h-4 w-4" />
                         </button>
@@ -1774,9 +1839,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           id="tour-company-edit"
                           onClick={startCompanyEdit}
                           type="button"
-                          disabled={tourEnabled}   // ✅ ADD THIS
-                          className={`flex h-9 w-9 items-center justify-center rounded-md 
-    ${tourEnabled ? "opacity-50 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"}`}
+                          className="flex h-9 w-9 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100"
                         >
                           <FiEdit className="h-4 w-4" />
                         </button>
