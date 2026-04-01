@@ -96,34 +96,6 @@ type MonthlyAdsSpentRow = {
     isOthers?: boolean;
 };
 
-// type MonthlySkuwiseRow = {
-//     sno?: number;
-//     sku: string;
-//     ad_type?: string;
-//     product_name: string;
-//     quantity: number;
-//     asp: number;
-//     net_sales: number;
-//     cogs: number;
-//     fba_fees: number;
-//     selling_fees: number;
-//     tax: number;
-//     credits: number;
-//     tax_and_credits: number;
-//     cm1_profit_per: number;
-//     cm1_profit_per_unit: number;
-//     cm2_profit_per: number;
-//     cm2_profit_per_unit: number;
-//     ads_spend: number;
-//     cm2_profit: number;
-//     profit: number;
-//     isTotal?: boolean;
-//     platform_fee?: number;
-//     platform_fee_inventory_storage?: number;
-//     lost_total?: number;
-//     other?: number;
-// };
-
 type MonthlySkuwiseRow = {
     sno?: number;
     sku: string;
@@ -169,14 +141,9 @@ type FetchLiveBiPayloadArgs = {
     generateInsights?: boolean;
 };
 
-
-
-
 /* ===================== ENV & ENDPOINTS ===================== */
 const baseURL =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
-
-// const API_URL = `${baseURL}/amazon_api/orders`;
 const FIN_MTD_TX_ENDPOINT = `${baseURL}/amazon_api/finances/mtd_transactions`;
 const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
 // const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
@@ -216,7 +183,7 @@ type DailyPoint = {
     net_sales?: number;
     gross_sales?: number;
     profit?: number;
-    cm2_profit?: number; // ✅ add
+    cm2_profit?: number;
 };
 
 
@@ -263,7 +230,6 @@ type BiApiResponse = {
     overall_actions?: string[];
     cm1_profit_pie?: Cm1ProfitPieApi;
 };
-
 
 type BiAlignedTotals = {
     current_cm2_profit?: number;
@@ -540,6 +506,17 @@ async function withLocalStorageLock<T>(
     }
 }
 
+const REGION_TIMEZONE: Record<RegionKey, string> = {
+    Global: "Asia/Kolkata", // or keep a default of your choice
+    UK: "Europe/London",
+    US: "America/New_York",
+    CA: "America/Toronto",
+};
+
+const getTimezoneForRegion = (region: RegionKey) => {
+    return REGION_TIMEZONE[region] || "Asia/Kolkata";
+};
+
 // ===================== ADS REPORT SEED (SP + SD) - ONCE PER DAY =====================
 
 const decodeJwtUserId = (jwt: string): string | null => {
@@ -561,6 +538,60 @@ const decodeJwtUserId = (jwt: string): string | null => {
         return null;
     }
 };
+
+const getRegionNow = (region: RegionKey) => {
+    const tz = getTimezoneForRegion(region);
+    return new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+};
+
+const getRegionYearMonth = (region: RegionKey) => {
+    const now = getRegionNow(region);
+
+    const monthName = now.toLocaleString("en-US", {
+        month: "long",
+        timeZone: getTimezoneForRegion(region),
+    });
+
+    return {
+        monthName,
+        year: now.getFullYear(),
+    };
+};
+
+const getPrevRegionYearMonth = (region: RegionKey) => {
+    const now = getRegionNow(region);
+    now.setMonth(now.getMonth() - 1);
+
+    const monthName = now.toLocaleString("en-US", {
+        month: "long",
+        timeZone: getTimezoneForRegion(region),
+    });
+
+    return {
+        monthName,
+        year: now.getFullYear(),
+    };
+};
+
+const getDayOfMonthByRegion = (region: RegionKey) => {
+    return getRegionNow(region).getDate();
+};
+
+const getRegionDayInfo = (region: RegionKey) => {
+    const now = getRegionNow(region);
+    const todayDay = now.getDate();
+
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
+    const daysInPrevMonth = prevMonthDate.getDate();
+
+    return { todayDay, daysInPrevMonth };
+};
+
+const getDaysInMonthByRegion = (region: RegionKey) => {
+    const now = getRegionNow(region);
+    return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+};
+
 
 const getIstTodayISO = () => {
     const now = new Date();
@@ -1270,6 +1301,53 @@ export default function DashboardPage() {
             }));
     }, [inventoryAlerts, top5Skus]);
 
+
+    /* ===================== AMAZON / SHOPIFY STATE ===================== */
+    const [loading, setLoading] = useState(false);
+    const [unauthorized, setUnauthorized] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [data, setData] = useState<any>(null);
+    const { connections: amazonConnections } = useAmazonConnections();
+    const [shopifyLoading, setShopifyLoading] = useState(false);
+    const [shopifyError, setShopifyError] = useState<string | null>(null);
+    const [shopifyRows, setShopifyRows] = useState<any[]>([]);
+    const shopify = shopifyRows?.[0] || null;
+    const [shopifyPrevRows, setShopifyPrevRows] = useState<any[]>([]);
+    const [shopifyStore, setShopifyStore] = useState<any | null>(null);
+    const [amazonRegion, setAmazonRegion] = useState<RegionKey>("Global");
+    const [graphRegion, setGraphRegion] = useState<RegionKey>("Global");
+    const [biStatus, setBiStatus] = useState<
+        "idle" | "loading" | "processing" | "ready" | "error"
+    >("idle");
+    const [closedAlerts, setClosedAlerts] = useState<string[]>([]);
+    const chartRef = React.useRef<HTMLDivElement | null>(null);
+    const prevLabel = useMemo(() => getPrevMonthShortLabel(), []);
+    // const getDayOfMonthIST = () => {
+    //     const now = new Date();
+    //     const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    //     return ist.getDate(); // 1..31
+    // };
+
+    const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
+
+    const forcedRegion: RegionKey = useMemo(() => {
+        switch (platform) {
+            case "amazon-uk":
+                return "UK";
+            case "amazon-us":
+                return "US";
+            case "amazon-ca":
+                return "CA";
+            default:
+                return "Global";
+        }
+    }, [platform]);
+
+
+    const graphRegionToUse: RegionKey = isCountryMode ? forcedRegion : graphRegion;
+    const activeDateRegion = graphRegionToUse;
+
+
     const fetchMonthlySp = useCallback(async () => {
         if (isMonthYearNA) {
             setMonthlySpLoading(false);
@@ -1290,7 +1368,7 @@ export default function DashboardPage() {
             const country =
                 platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-            const { monthName, year } = getISTYearMonth();
+            const { monthName, year } = getRegionYearMonth(activeDateRegion);
 
             const res = await fetch(MONTHLY_SP_ENDPOINT, {
                 method: "POST",
@@ -1343,7 +1421,7 @@ export default function DashboardPage() {
         } finally {
             setMonthlySpLoading(false);
         }
-    }, [platform, isMonthYearNA]);
+    }, [platform, isMonthYearNA, activeDateRegion]);
 
 
     useEffect(() => {
@@ -1374,35 +1452,7 @@ export default function DashboardPage() {
         });
     };
 
-    /* ===================== AMAZON / SHOPIFY STATE ===================== */
-    const [loading, setLoading] = useState(false);
-    const [unauthorized, setUnauthorized] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [data, setData] = useState<any>(null);
-    const { connections: amazonConnections } = useAmazonConnections();
-    const [shopifyLoading, setShopifyLoading] = useState(false);
-    const [shopifyError, setShopifyError] = useState<string | null>(null);
-    const [shopifyRows, setShopifyRows] = useState<any[]>([]);
-    const shopify = shopifyRows?.[0] || null;
-    const [shopifyPrevRows, setShopifyPrevRows] = useState<any[]>([]);
-    const [shopifyStore, setShopifyStore] = useState<any | null>(null);
-    const [amazonRegion, setAmazonRegion] = useState<RegionKey>("Global");
-    const [graphRegion, setGraphRegion] = useState<RegionKey>("Global");
-    const [biStatus, setBiStatus] = useState<
-        "idle" | "loading" | "processing" | "ready" | "error"
-    >("idle");
-    const [closedAlerts, setClosedAlerts] = useState<string[]>([]);
 
-
-    const chartRef = React.useRef<HTMLDivElement | null>(null);
-    const prevLabel = useMemo(() => getPrevMonthShortLabel(), []);
-    const getDayOfMonthIST = () => {
-        const now = new Date();
-        const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-        return ist.getDate(); // 1..31
-    };
-
-    const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
 
     /* ===================== ✅ SHARED RANGE STATE (PARENT) ===================== */
     const [selectedStartDay, setSelectedStartDay] = useState<number | null>(null);
@@ -1460,7 +1510,7 @@ export default function DashboardPage() {
 
             const rows: CurrencyRateRow[] = await res.json();
 
-            const { monthName, year } = getISTYearMonth();
+            const { monthName, year } = getRegionYearMonth(activeDateRegion);
             const month = monthName.toLowerCase();
 
             const cur = (rows || []).filter(
@@ -1492,7 +1542,7 @@ export default function DashboardPage() {
         } finally {
             setFxLoading(false);
         }
-    }, []);
+    }, [activeDateRegion]);
 
 
     useEffect(() => {
@@ -1506,20 +1556,28 @@ export default function DashboardPage() {
         fetchFxRates();
     }, [fetchFxRates]);
 
-    const forcedRegion: RegionKey = useMemo(() => {
-        switch (platform) {
-            case "amazon-uk":
-                return "UK";
-            case "amazon-us":
-                return "US";
-            case "amazon-ca":
-                return "CA";
-            default:
-                return "Global";
-        }
-    }, [platform]);
 
-    const graphRegionToUse: RegionKey = isCountryMode ? forcedRegion : graphRegion;
+    console.log("Active Date Region:", activeDateRegion);
+
+    useEffect(() => {
+        const timezone = getTimezoneForRegion(activeDateRegion);
+        const now = new Date();
+
+        console.log({
+            activeDateRegion,
+            timezone,
+            regionDateTime: now.toLocaleString("en-GB", {
+                timeZone: timezone,
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: false,
+            }),
+        });
+    }, [activeDateRegion]);
 
     useEffect(() => {
         if (!isCountryMode) return;
@@ -1593,11 +1651,7 @@ export default function DashboardPage() {
         };
     }, [platform, baseURL]);
 
-
-
     const didMonthlyAdsSyncRef = useRef(false);
-
-
     useEffect(() => {
         if (!adsSeeded) return;
         if (platform === "shopify") return;
@@ -1613,7 +1667,7 @@ export default function DashboardPage() {
                 const country =
                     platform === "amazon-us" ? "US" : platform === "amazon-ca" ? "CA" : "UK";
 
-                const { monthName, year } = getISTYearMonth();
+                const { monthName, year } = getRegionYearMonth(activeDateRegion);
                 const month = monthToNumber(monthName.toLowerCase());
 
                 const include = country === "UK" || country === "US" ? ["SP", "SD"] : ["SP"];
@@ -1720,9 +1774,9 @@ export default function DashboardPage() {
     }, [graphRegionToUse]);
 
     const invMonthYear = useMemo(() => {
-        const { monthName, year } = getISTYearMonth();
+        const { monthName, year } = getRegionYearMonth(activeDateRegion);
         return { month: monthName.toLowerCase(), year: String(year) };
-    }, []);
+    }, [activeDateRegion]);
 
     const fetchInventory = useCallback(async () => {
         if (isMonthYearNA) {
@@ -2219,7 +2273,7 @@ export default function DashboardPage() {
                 throw new Error("Shopify store not connected.");
             }
 
-            const { monthName, year } = getISTYearMonth();
+            const { monthName, year } = getRegionYearMonth(activeDateRegion);
 
             const params = new URLSearchParams({
                 range: "monthly",
@@ -2250,7 +2304,7 @@ export default function DashboardPage() {
         } finally {
             setShopifyLoading(false);
         }
-    }, [shopifyStore]);
+    }, [shopifyStore, activeDateRegion]);
 
     /* ===================== SHOPIFY PREVIOUS MONTH ===================== */
     const fetchShopifyPrev = useCallback(async () => {
@@ -2263,7 +2317,7 @@ export default function DashboardPage() {
                 throw new Error("Shopify store not connected.");
             }
 
-            const { year, monthName } = getPrevISTYearMonth();
+            const { year, monthName } = getPrevRegionYearMonth(activeDateRegion);
 
             const params = new URLSearchParams({
                 range: "monthly",
@@ -2292,10 +2346,10 @@ export default function DashboardPage() {
             console.warn("Shopify prev-month fetch failed:", e?.message);
             setShopifyPrevRows([]);
         }
-    }, [shopifyStore]);
+    }, [shopifyStore, activeDateRegion]);
 
     /* ===================== ✅ SHARED BI FETCH (FOR CARDS + GRAPH) ===================== */
-    const { monthName: currMonthName, year: currYear } = getISTYearMonth();
+    const { monthName: currMonthName, year: currYear } = getRegionYearMonth(activeDateRegion);
     const lastBiKeyRef = useRef<string>("");
     const aiRequestedRef = useRef<boolean>(false);
 
@@ -2573,7 +2627,7 @@ export default function DashboardPage() {
         const pts = biDailySeriesHome?.current_mtd || [];
         if (!pts.length) return;
 
-        const todayDay = getDayOfMonthIST();
+        const todayDay = getDayOfMonthByRegion(activeDateRegion);
         const exact = pts.find((p) => Number(p.date?.slice(8, 10)) === todayDay);
         if (exact?.net_sales != null) {
             setTodaySalesRaw(Number(exact.net_sales) || 0);
@@ -2698,7 +2752,7 @@ export default function DashboardPage() {
     const prevAmazonUKTotalUSD = useMemo(() => {
         const prevTotalGBP = toNumberSafe(data?.previous_month_total_net_sales?.total);
         if (prevTotalGBP > 0) return prevTotalGBP * gbpToUsd;
-        const { todayDay, daysInPrevMonth } = getISTDayInfo();
+        const { todayDay, daysInPrevMonth } = getRegionDayInfo(activeDateRegion);
         if (!todayDay || !daysInPrevMonth) return 0;
         return (prevAmazonMtdSalesUSD * daysInPrevMonth) / todayDay;
     }, [data?.previous_month_total_net_sales?.total, gbpToUsd, prevAmazonMtdSalesUSD]);
@@ -2742,7 +2796,7 @@ export default function DashboardPage() {
         USE_MANUAL_LAST_MONTH && manualUSD > 0 ? manualUSD : computedUSD;
 
     const prorateToDate = (lastMonthTotalUSD: number) => {
-        const { todayDay, daysInPrevMonth } = getISTDayInfo();
+        const { todayDay, daysInPrevMonth } = getRegionDayInfo(activeDateRegion);
         return daysInPrevMonth > 0 ? (lastMonthTotalUSD * todayDay) / daysInPrevMonth : 0;
     };
 
@@ -3068,7 +3122,7 @@ export default function DashboardPage() {
             return [
                 { label: "Net Sales", raw: sales, display: formatDisplayAmount(sales) },
                 { label: "COGS", raw: cogs, display: formatDisplayAmount(cogs) },
-                { label: "Marketplace Fees", raw: fees, display: formatDisplayAmount(Math.abs(fees))  },
+                { label: "Marketplace Fees", raw: fees, display: formatDisplayAmount(Math.abs(fees)) },
                 { label: "Tax & Credits", raw: taxCredits, display: formatDisplayAmount(taxCredits) },
                 { label: "CM1 Profit", raw: cm1, display: formatDisplayAmount(cm1) },
                 { label: "Advertisements", raw: adv, display: formatDisplayAmount(adv) },
@@ -3190,9 +3244,6 @@ export default function DashboardPage() {
         | "dealsvouchar_ads"
         | "platformfeenew";
 
-
-
-
     const formatAdType = (adType?: string | null) => {
         if (!adType) return "-";
 
@@ -3204,9 +3255,6 @@ export default function DashboardPage() {
             .filter(Boolean)
             .join(", ");
     };
-
-
-
 
     const monthlySkuwiseRowsForTable = useMemo<MonthlySkuwiseTableRow[]>(() => {
         if (!monthlySkuwiseRowsDisplay || monthlySkuwiseRowsDisplay.length === 0) return [];
@@ -3280,10 +3328,8 @@ export default function DashboardPage() {
         if (platform === "global") {
             return computePlSummaryTotals(null, monthlySkuwiseRowsDisplay);
         }
-
         return computePlSummaryTotals(data, monthlySkuwiseRowsDisplay);
     }, [platform, data, monthlySkuwiseRowsDisplay]);
-
 
     const SKUWISE_LEFT_COLS = [
         { key: "sno", label: "S.No", align: "center" as const },
@@ -3552,11 +3598,38 @@ export default function DashboardPage() {
         return null;
     }, []);
 
+    // const shortMonForGraph = new Date(`${currMonthName} 1, ${currYear}`).toLocaleString("en-US", {
+    //     month: "short",
+    //     timeZone: "Asia/Kolkata",
+    // });
+
     const shortMonForGraph = new Date(`${currMonthName} 1, ${currYear}`).toLocaleString("en-US", {
         month: "short",
-        timeZone: "Asia/Kolkata",
+        timeZone: getTimezoneForRegion(activeDateRegion),
     });
-    const formattedMonthYear = `${shortMonForGraph}'${String(currYear).slice(-2)}`;
+
+    console.log("shortMonForGraph", shortMonForGraph, { currMonthName, currYear, activeDateRegion });
+
+    // const formattedMonthYear = `${shortMonForGraph}'${String(currYear).slice(-2)}`;
+
+    const getFormattedMonthYearByRegion = (region: RegionKey) => {
+        const tz = getTimezoneForRegion(region);
+
+        const now = new Date(
+            new Date().toLocaleString("en-US", { timeZone: tz })
+        );
+
+        const monthShort = now.toLocaleString("en-US", {
+            month: "short",
+            timeZone: tz,
+        });
+
+        const yearShort = String(now.getFullYear()).slice(-2);
+
+        return `${monthShort}'${yearShort}`;
+    };
+
+    const formattedMonthYear = getFormattedMonthYearByRegion(activeDateRegion);
 
     const countryNameForGraph =
         graphRegionToUse === "Global" ? "global" : graphRegionToUse.toLowerCase();
@@ -3833,27 +3906,6 @@ export default function DashboardPage() {
             item.sku === "GRAND_TOTAL"
     );
 
-    // const ads_spend = grandTotalRow?.ads_spend ?? 0;
-    // const sponsoredProductsSpend = grandTotalRow?.product_spend ?? 0;
-    // const sponsoredBrandSpend = grandTotalRow?.brand_spend ?? 0;
-    // const inventoryStorageFees = grandTotalRow?.platform_fee_inventory_storage ?? 0;
-    // const lost_inventory_total = grandTotalRow?.lost_total ?? 0;
-    // const otherPlatformFee = grandTotalRow?.platformfeenew ?? 0;
-    // const platformFee = grandTotalRow?.platform_fee ?? 0;
-    // const dealVouchers = grandTotalRow?.dealsvouchar_ads ?? 0;
-
-    // const costOfAds = Math.abs(
-    //     toNumber(sponsoredBrandSpend - dealVouchers)
-    // );
-
-    // const adsSpendTotal = Math.abs(
-    //     toNumber(ads_spend + costOfAds)
-    // );
-
-    // const cm2Profit = ((grandTotalRow?.profit) - adsSpendTotal - (Math.abs(grandTotalRow?.platform_fee)))
-
-
-
     const globalBottomCards = useMemo(() => {
         const row = grandTotalRowRaw;
 
@@ -3937,7 +3989,7 @@ export default function DashboardPage() {
         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
     }, [reimbursementForSummary, plSummaryTotals.net_sales, stats_mtdHome]);
 
-    const { todayDay: statsTodayDay } = getISTDayInfo();
+    const { todayDay: statsTodayDay } = getRegionDayInfo(activeDateRegion);
 
     const stats_todayHome =
         typeof todaySalesRaw === "number" && !Number.isNaN(todaySalesRaw)
@@ -3951,17 +4003,19 @@ export default function DashboardPage() {
             ? ((stats_mtdHome - stats_lastMtdHome) / stats_lastMtdHome) * 100
             : 0;
 
-    const getDaysInMonthIST = () => {
-        const now = new Date();
-        const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-        return new Date(ist.getFullYear(), ist.getMonth() + 1, 0).getDate(); // 28..31
+    const getDaysInMonthByRegion = (region: RegionKey) => {
+        const now = getRegionNow(region);
+        return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     };
 
-    const todayIST = getDayOfMonthIST();        // D
-    const daysInMonthIST = getDaysInMonthIST(); // N
+    // const todayIST = getDayOfMonthIST();        // D
+    // const daysInMonthIST = getDaysInMonthIST(); // N
 
-    const proratedTargetToDate = (daysInMonthIST > 0)
-        ? (todayIST / daysInMonthIST) * stats_targetHome  // x
+    const todayByRegion = getDayOfMonthByRegion(activeDateRegion);
+    const daysInMonthByRegion = getDaysInMonthByRegion(activeDateRegion);
+
+    const proratedTargetToDate = (daysInMonthByRegion > 0)
+        ? (todayByRegion / daysInMonthByRegion) * stats_targetHome  // x
         : 0;
 
     const stats_targetTrendPct =
@@ -4146,10 +4200,10 @@ export default function DashboardPage() {
 
     const rangeCompletedPct = useMemo(() => {
         if (!selectedStartDay || !selectedEndDay) return 0;
-        const daysInMonth = getDaysInMonthIST();
+        const daysInMonth = getDaysInMonthByRegion(activeDateRegion);
         const completedDays = selectedEndDay - selectedStartDay + 1;
         return (completedDays / daysInMonth) * 100;
-    }, [selectedStartDay, selectedEndDay]);
+    }, [selectedStartDay, selectedEndDay, activeDateRegion]);
 
     type TopTab =
         | "live"
@@ -6336,8 +6390,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
 
                 )
                 }
-
-
 
                 {activeTab === "summary" && (
 

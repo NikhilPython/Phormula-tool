@@ -128,7 +128,7 @@ export default function SignInForm() {
   };
 
   const routeToProfile = (country: string) => {
-    router.replace(`/profile/${country}/NA/NA`);
+    router.replace(`/live-dashboard/${country}/NA/NA`);
   };
 
   const validateForm = (values: SignInFormValues = form) => {

@@ -464,6 +464,7 @@ def get_user_data():
     effective_email = token_email if is_member else user.email
 
     # ✅ Base response (safe for both member + owner)
+    # ✅ Base response (safe for both member + owner)
     response = {
         # identity
         "is_member": is_member,
@@ -476,9 +477,9 @@ def get_user_data():
         "member_role": member_role,
 
         # emails
-        "name": effective_name,                 # FE should use this
-        "email": effective_email,                 # FE should use this
-        "owner_email": user.email,                # always owner email
+        "name": effective_name,
+        "email": effective_email,
+        "owner_email": user.email,
         "member_email": token_email if is_member else None,
 
         # token scoped permissions
@@ -489,29 +490,24 @@ def get_user_data():
         # amazon flags
         "amazon_user_exists": user.amazon_user_exists,
         "amazon_ads_exists": user.amazon_ads_exists,
+
+        # ✅ ALWAYS return business/profile fields
+        "company_name": user.company_name,
+        "brand_name": user.brand_name,
+        "phone_number": user.phone_number,
+        "annual_sales_range": user.annual_sales_range,
+        "marketplace_id": user.marketplace_id,
+        "country": user.country,
+        "homeCurrency": user.homeCurrency,
+        "target_sales": float(user.target_sales) if user.target_sales is not None else None,
+        "tax_id": user.tax_id,
+        "address": user.address,
     }
 
-    # ✅ OWNER LOGIN: show all user fields + all members list
+    # ✅ OWNER LOGIN: include all members list
     if not is_member:
-        response.update({
-            "name": user.name,
-            "company_name": user.company_name,
-            "brand_name": user.brand_name,
-            "phone_number": user.phone_number,
-            "annual_sales_range": user.annual_sales_range,
+        response["name"] = user.name
 
-            # 🚫 NEVER expose password in response
-            # "password": user.password,
-
-            "marketplace_id": user.marketplace_id,
-            "country": user.country,
-            "homeCurrency": user.homeCurrency,
-            "target_sales": float(user.target_sales) if user.target_sales is not None else None,
-            "tax_id": user.tax_id,
-            "address": user.address,
-        })
-
-        # ✅ Include all members under this owner
         members = Member.query.filter_by(owner_user_id=int(user_id)).all()
         response["members"] = [
             {
@@ -520,13 +516,9 @@ def get_user_data():
                 "email": getattr(m, "email", None),
                 "role": getattr(m, "role", None),
                 "is_active": getattr(m, "is_active", None),
-
-                # optional permissions/scope fields (only if exist on Member model)
                 "modules": getattr(m, "modules", None),
                 "countries": getattr(m, "countries", None),
                 "marketplace_ids": getattr(m, "marketplace_ids", None),
-
-                # optional timestamps
                 "created_at": getattr(m, "created_at", None),
                 "updated_at": getattr(m, "updated_at", None),
             }
@@ -695,36 +687,58 @@ def profileupdate():
 
     data = request.get_json(silent=True) or {}
 
+    def update_if_present(instance, field_name, data, key, strip=True, ignore_blank=True):
+        if key not in data:
+            return
+
+        value = data.get(key)
+
+        if isinstance(value, str) and strip:
+            value = value.strip()
+
+        if ignore_blank and value == "":
+            return
+
+        setattr(instance, field_name, value)
+
     # ---------- SAFE FIELD UPDATES ----------
-    user.name = data.get('name', user.name) 
-    user.email = data.get('email', user.email)
-    user.phone_number = data.get('phone_number', user.phone_number)
-    user.annual_sales_range = data.get('annual_sales_range', user.annual_sales_range)
-    user.company_name = data.get('company_name', user.company_name)
-    user.brand_name = data.get('brand_name', user.brand_name)
-    user.homeCurrency = data.get('homeCurrency', user.homeCurrency)
+    update_if_present(user, 'name', data, 'name')
+    update_if_present(user, 'email', data, 'email')
+    update_if_present(user, 'phone_number', data, 'phone_number')
+    update_if_present(user, 'annual_sales_range', data, 'annual_sales_range')
+    update_if_present(user, 'company_name', data, 'company_name')
+    update_if_present(user, 'brand_name', data, 'brand_name')
+    update_if_present(user, 'homeCurrency', data, 'homeCurrency')
 
-    # ---------- TAX ID (JSON SAFE) ----------
-    tax_val = data.get('tax_id', user.tax_id)
+    # ---------- TAX ID (JSON MERGE SAFE) ----------
+    if 'tax_id' in data:
+        tax_val = data.get('tax_id')
 
-    if isinstance(tax_val, str):
-        try:
-            tax_val = json.loads(tax_val)
-        except Exception:
-            return jsonify({'error': 'Invalid tax_id format'}), 400
+        if isinstance(tax_val, str):
+            try:
+                tax_val = json.loads(tax_val)
+            except Exception:
+                return jsonify({'error': 'Invalid tax_id format'}), 400
 
-    user.tax_id = tax_val
+        if isinstance(tax_val, dict):
+            existing_tax = user.tax_id or {}
+            existing_tax.update({k: v for k, v in tax_val.items() if v not in [None, ""]})
+            user.tax_id = existing_tax
 
-    # ---------- ADDRESS (JSON SAFE) ----------
-    addr_val = data.get('address', user.address)
+    # ---------- ADDRESS (JSON MERGE SAFE) ----------
+    if 'address' in data:
+        addr_val = data.get('address')
 
-    if isinstance(addr_val, str):
-        try:
-            addr_val = json.loads(addr_val)
-        except Exception:
-            return jsonify({'error': 'Invalid address format'}), 400
+        if isinstance(addr_val, str):
+            try:
+                addr_val = json.loads(addr_val)
+            except Exception:
+                return jsonify({'error': 'Invalid address format'}), 400
 
-    user.address = addr_val
+        if isinstance(addr_val, dict):
+            existing_addr = user.address or {}
+            existing_addr.update({k: v for k, v in addr_val.items() if v not in [None, ""]})
+            user.address = existing_addr
 
     # ---------- PASSWORD (HASHED) ----------
     new_password = data.get('password')
@@ -743,7 +757,7 @@ def profileupdate():
 
     # ---------- TARGET SALES (VALIDATED) ----------
     target_sales = data.get('target_sales')
-    if target_sales is not None:
+    if target_sales not in [None, ""]:
         try:
             user.target_sales = float(target_sales)
         except (TypeError, ValueError):

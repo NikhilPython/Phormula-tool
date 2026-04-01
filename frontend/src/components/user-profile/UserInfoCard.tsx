@@ -476,6 +476,10 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         throw new Error(result?.error || result?.message || "Failed to load profile");
       }
 
+      if (!result || typeof result !== "object") {
+        throw new Error("Invalid profile response");
+      }
+
       setData(result);
 
       const tax = result?.tax_id ?? {};
@@ -483,21 +487,21 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
 
       setForm((prev) => ({
         ...prev,
-        name: result?.name ?? "",
-        brand_name: result?.brand_name ?? "",
-        company_name: result?.company_name ?? "",
-        email: result?.email ?? "",
-        phone_number: result?.phone_number ?? "",
-        homeCurrency: result?.homeCurrency ?? "",
+        name: result?.name ?? prev.name,
+        brand_name: result?.brand_name ?? prev.brand_name,
+        company_name: result?.company_name ?? prev.company_name,
+        email: result?.email ?? prev.email,
+        phone_number: result?.phone_number ?? prev.phone_number,
+        homeCurrency: result?.homeCurrency ?? prev.homeCurrency,
         target_sales:
-          result?.target_sales != null ? String(result.target_sales) : "",
-        gst_no: tax?.gst_no ?? "",
-        pan_no: tax?.pan_no ?? "",
-        address_building: addr?.building ?? "",
-        address_city: addr?.city ?? "",
-        address_country: addr?.country ?? "",
-        address_state: addr?.state ?? "",
-        address_zipcode: addr?.zipcode ?? "",
+          result?.target_sales != null ? String(result.target_sales) : prev.target_sales,
+        gst_no: tax?.gst_no ?? prev.gst_no,
+        pan_no: tax?.pan_no ?? prev.pan_no,
+        address_building: addr?.building ?? prev.address_building,
+        address_city: addr?.city ?? prev.address_city,
+        address_country: addr?.country ?? prev.address_country,
+        address_state: addr?.state ?? prev.address_state,
+        address_zipcode: addr?.zipcode ?? prev.address_zipcode,
       }));
     } catch (error) {
       console.error(error);
@@ -740,41 +744,41 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
       intro: "You can view and edit your personal details here in Personal Info.",
       position: "bottom",
     },
-    {
-      element: "#tour-personal-edit",
-      intro: "Click here if you want to update your personal details.",
-      position: "left",
-    },
+    // {
+    //   element: "#tour-personal-edit",
+    //   intro: "Click here if you want to update your personal details.",
+    //   position: "left",
+    // },
     {
       element: "#tour-company-info",
       intro: "This is your Company Info section. You need to complete these details before moving to the next setup steps.",
       position: "bottom",
     },
-    {
-      element: "#tour-company-edit",
-      intro: "Click this edit icon to start filling in your company details.",
-      position: "left",
-    },
+    // {
+    //   element: "#tour-company-edit",
+    //   intro: "Click this edit icon to start filling in your company details.",
+    //   position: "left",
+    // },
     {
       element: "#tour-product-controls",
       intro: "This is Product & Inventory Controls.",
       position: "top",
     },
-    {
-      element: "#tour-sku-upload-icon",
-      intro: "Click on this icon to upload your SKU sheet.",
-      position: "bottom",
-    },
+    // {
+    //   element: "#tour-sku-upload-icon",
+    //   intro: "Click on this icon to upload your SKU sheet.",
+    //   position: "bottom",
+    // },
     {
       element: "#tour-integrations",
       intro: "Integrations: here you can see your integrated platforms.",
       position: "top",
     },
-    {
-      element: "#tour-integration-icon",
-      intro: "Click on the integration icon to connect your platform to our tool.",
-      position: "left",
-    },
+    // {
+    //   element: "#tour-integration-icon",
+    //   intro: "Click on the integration icon to connect your platform to our tool.",
+    //   position: "left",
+    // },
   ];
 
   const introSteps = useMemo(() => {
@@ -785,7 +789,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
         ...step,
         intro: `
         <div class="mb-2 text-xs font-semibold text-gray-500">
-          Step ${index } of ${total - 1 }
+          Step ${index} of ${total - 1}
         </div>
         <div>${step.intro}</div>
       `,
