@@ -1122,7 +1122,7 @@ def process_skuwise_data(user_id, country, month, year):
             - float(lost_total_total),
             2
         )
-        sum_row["rembursement_fee"] = abs(rembursement_fee) 
+        sum_row["rembursement_fee"] = -abs(rembursement_fee) 
         sum_row["advertising_total"]= abs(advertising_total)
         sum_row["reimbursement_vs_sales"]= abs(reimbursement_vs_sales)
         sum_row["cm2_profit"]= cm2_profit
@@ -1942,7 +1942,7 @@ def process_skuwise_data(user_id, country, month, year):
                 total_quantity = int(pd.to_numeric(sku_grouped["total_quantity"], errors="coerce").fillna(0).sum())
 
 
-        return (total_cous, total_amazon_fee, cm2_profit, abs(rembursement_fee), abs(platform_fee_fixed_total),
+        return (total_cous, total_amazon_fee, cm2_profit, -abs(rembursement_fee), abs(platform_fee_fixed_total),
                 total_expense, total_profit_final, total_fba_fees, total_advertising, sum_row["tex_and_credits"],
                 reimbursement_vs_sales, cm2_margins, acos, rembursment_vs_cm2_margins, total_sales, total_quantity, total_product_sales)
 
