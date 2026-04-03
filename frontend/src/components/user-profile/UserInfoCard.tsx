@@ -3442,10 +3442,16 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
   const isAmazonConnected =
     connected.amazonUk || connected.amazonUs || connected.amazonCa;
 
-  // Correct onboarding locks
-  const canAccessProductControls = isCompanyComplete;
   const hasSkuSheet = Boolean(data?.sku_sheet_exists);
-  const canAccessIntegrations = isCompanyComplete && hasSkuSheet;
+  const hasIntegration =
+    connected.amazonUk || connected.amazonUs || connected.amazonCa || connected.shopify;
+
+  const canAccessProductControls = isCompanyComplete || hasSkuSheet;
+  const canAccessIntegrations = hasSkuSheet || hasIntegration;
+
+  // const canAccessProductControls = isCompanyComplete;
+  // const hasSkuSheet = Boolean(data?.sku_sheet_exists);
+  // const canAccessIntegrations = isCompanyComplete && hasSkuSheet;
 
   const isMemberUser = Boolean((data as any)?.is_member);
   const token = useSelector((state: any) => state.auth?.token);
@@ -3566,17 +3572,43 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
     address_zipcode: "",
   });
 
-  const selectedCountryForPhone =
-    form.address_country || data?.address?.country || "";
+  // const selectedCountryForPhone =
+  //   form.address_country || data?.address?.country || "";
 
-  const selectedDialCode = getSelectedDialCode(selectedCountryForPhone);
+  // const selectedDialCode = getSelectedDialCode(selectedCountryForPhone);
 
-  const displayedPhone = form.phone_number
-    ? selectedDialCode
-      ? `${selectedDialCode} ${stripDialCode(form.phone_number)}`
-      : form.phone_number
-    : "";
+  // const displayedPhone = form.phone_number
+  //   ? selectedDialCode
+  //     ? `${selectedDialCode} ${stripDialCode(form.phone_number)}`
+  //     : form.phone_number
+  //   : "";
 
+  const getDialCodeFromPhone = (phone?: string | null) => {
+    const value = String(phone || "").trim();
+
+    if (value.startsWith("+1")) return "+1";
+    if (value.startsWith("+91")) return "+91";
+    if (value.startsWith("+44")) return "+44";
+    if (value.startsWith("+61")) return "+61";
+
+    return "";
+  };
+
+  const stripKnownDialCode = (phone?: string | null) => {
+    const value = String(phone || "").trim();
+
+    return value
+      .replace(/^\+(1|91|44|61)\s*/, "") // remove country code
+      .replace(/\s+/g, ""); // ❗ remove ALL spaces
+  };
+
+  const selectedDialCode = getDialCodeFromPhone(form.phone_number);
+
+const displayedPhone = form.phone_number
+  ? selectedDialCode
+    ? `${selectedDialCode} ${stripKnownDialCode(form.phone_number)}`
+    : form.phone_number.replace(/\s+/g, "")
+  : "";
 
   const GROWTH_OPTIONS = ["conservative", "balanced", "aggressive"] as const;
 
@@ -4736,13 +4768,17 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                                 type="text"
                                 value={displayedPhone}
                                 onChange={(e) => {
-                                  const rawValue = e.target.value;
-                                  const localNumber = selectedDialCode
-                                    ? rawValue.replace(selectedDialCode, "").trim()
-                                    : rawValue;
+                                  const rawValue = e.target.value.trim();
+
+                                  let nextValue = rawValue;
+
+                                  if (selectedDialCode && rawValue.startsWith(selectedDialCode)) {
+                                    const localNumber = rawValue.slice(selectedDialCode.length).trim();
+                                    nextValue = `${selectedDialCode}${localNumber}`;
+                                  }
 
                                   handlePersonalChange("phone_number")({
-                                    target: { value: localNumber },
+                                    target: { value: nextValue },
                                   } as React.ChangeEvent<HTMLInputElement>);
                                 }}
                                 onBlur={() => {
@@ -5395,13 +5431,17 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                           type="text"
                           value={displayedPhone}
                           onChange={(e) => {
-                            const rawValue = e.target.value;
-                            const localNumber = selectedDialCode
-                              ? rawValue.replace(selectedDialCode, "").trim()
-                              : rawValue;
+                            const rawValue = e.target.value.trim();
+
+                            let nextValue = rawValue;
+
+                            if (selectedDialCode && rawValue.startsWith(selectedDialCode)) {
+                              const localNumber = rawValue.slice(selectedDialCode.length).trim();
+                              nextValue = `${selectedDialCode}${localNumber}`;
+                            }
 
                             handlePersonalChange("phone_number")({
-                              target: { value: localNumber },
+                              target: { value: nextValue },
                             } as React.ChangeEvent<HTMLInputElement>);
                           }}
                           onBlur={() => {

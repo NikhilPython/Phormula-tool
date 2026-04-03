@@ -81,15 +81,15 @@ export default function SignInForm() {
   }, []);
 
   useEffect(() => {
-  const emailFromQuery = search.get("email") || "";
+    const emailFromQuery = search.get("email") || "";
 
-  if (emailFromQuery) {
-    setForm((prev) => ({
-      ...prev,
-      email: emailFromQuery,
-    }));
-  }
-}, [search]);
+    if (emailFromQuery) {
+      setForm((prev) => ({
+        ...prev,
+        email: emailFromQuery,
+      }));
+    }
+  }, [search]);
 
   const checkUserCountryTableExists = async (
     userId: string | number,
@@ -294,7 +294,20 @@ export default function SignInForm() {
           .then((r) => r.json())
           .catch(() => null);
 
-        if (me) dispatch(setUser({ ...me, is_member: false }));
+        if (!me) {
+          dispatch(setAuthError("Unable to fetch user data."));
+          return;
+        }
+
+        // ✅ block login when status is false
+        if (me?.status !== true) {
+          handleSuspendedAccount();
+          return;
+        }
+
+        dispatch(setUser({ ...me, is_member: false }));
+
+        dispatch(setUser({ ...me, is_member: false }));
 
         const hasMarketplace =
           typeof me?.marketplace_id === "string" &&
@@ -437,6 +450,15 @@ export default function SignInForm() {
       dispatch(setAuthError(msg));
     }
   };
+
+  const handleSuspendedAccount = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("email");
+    localStorage.removeItem("password");
+    dispatch(setCredentials({ token: "" }));
+    dispatch(setAuthError("Your account is suspended. Please contact Admin."));
+  };
+
 
   return (
     <div className="flex flex-col lg:w-1/2 w-full">
