@@ -334,6 +334,7 @@ def process_skuwise_data(user_id, country, month, year):
             "DealParticipationEvent",
             "DealPerformanceEvent",
         ])
+        advertising_total_all = abs(float(visible_ads_total)) + abs(float(dealsvouchar_ads_total))
 
         # platformfeenew = sum(total) where description contains "Subscription"
         platformfeenew_total = sum_total_where_desc_contains(["Subscription"])
@@ -915,13 +916,17 @@ def process_skuwise_data(user_id, country, month, year):
 
         if not advertising_by_sku.empty:
             sku_grouped = sku_grouped.merge(
-                advertising_by_sku[["sku", "__metric__"]].rename(columns={"__metric__": "advertising_total"}),
-                on="sku", how="left"
+                advertising_by_sku[["sku", "__metric__"]].rename(
+                    columns={"__metric__": "advertising_total"}
+                ),
+                on="sku",
+                how="left"
             )
-        else:
-            sku_grouped["advertising_total"] = pd.to_numeric(
-                sku_grouped.get("advertising_total", 0), errors="coerce"
-            ).fillna(0.0)
+
+        sku_grouped["advertising_total"] = pd.to_numeric(
+            sku_grouped.get("advertising_total", 0),
+            errors="coerce"
+        ).fillna(0.0)
 
         for _col in ["Net Sales", "net_credits", "amazon_fee",  "platform_fee", "advertising_total"]:
             if _col in sku_grouped.columns:
@@ -1061,7 +1066,7 @@ def process_skuwise_data(user_id, country, month, year):
         total_selling_fees = abs(sku_grouped["selling_fees"].sum())
         total_cost = abs(sku_grouped["cost_of_unit_sold"].sum())
         # use centralized totals
-        total_advertising = abs(advertising_total_all)
+        total_advertising = abs(float(visible_ads_total)) + abs(float(dealsvouchar_ads_total))
         total_platform = abs(platform_total)
 
         total_expense = round(
@@ -1072,7 +1077,7 @@ def process_skuwise_data(user_id, country, month, year):
         )
 
         # Additional Metrics (FIXED platform fee)
-        advertising_total = float(advertising_total_all)
+        advertising_total = abs(float(visible_ads_total)) + abs(float(dealsvouchar_ads_total))
 
         lost_total_amount = float(
             pd.to_numeric(sku_grouped["lost_total"], errors="coerce").fillna(0).sum()

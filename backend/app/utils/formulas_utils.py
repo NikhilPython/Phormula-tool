@@ -703,90 +703,94 @@ def uk_platform_fee(
 def uk_advertising(
     df: pd.DataFrame,
     *,
-    country: Optional[str] = None,
-    want_breakdown: Optional[bool] = None,
-    keywords: tuple[str, ...] = (
-        # original
-        "Cost of Advertising",
-        "Coupon Redemption Fee",
-        "Deals",
-        "Lightning Deal",
-
-        # NEW – deduplicated
-        "ProductAdsPayment",
-        "CouponPerformanceEvent",
-        "CouponParticipationEvent",
-        "SellerDealComplete",
-       "VineCharge", "DealParticipationEvent",
-       "DealPerformanceEvent",
-       "SellerPoweredCoupon",
-    ),
     desc_col: str = "description",
     amount_col: str = "total",
     explicit_col: str = "advertising_cost",
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
     """
-    Advertising logic (centralized):
+    Advertising logic:
 
-      total =
-        |sum(total) for rows with description containing any keyword (case-insensitive)|
-        + |sum(explicit advertising_cost column if present)|
+    visible_ads =
+        abs(sum(total) where description contains ProductAdsPayment)
 
-    Per-SKU breakdown mirrors uk_platform_fee().
+    dealsvouchar_ads =
+        abs(sum(total) where description contains any coupon/deal keyword)
+
+    advertising_total =
+        visible_ads + dealsvouchar_ads + abs(sum(advertising_cost)) if present
+
+    Returns:
+        total, per_sku_df, component_names
     """
     import re
 
     w = df.copy()
 
-    # ---------------------------
-    # Description-based component
-    # ---------------------------
-    from_desc = pd.Series(0.0, index=w.index)
+    visible_keywords = ("ProductAdsPayment",)
 
-    if desc_col in w.columns and amount_col in w.columns and keywords:
-        patt = "|".join(map(re.escape, keywords))
-        desc = w[desc_col].astype(str)
-        amt  = safe_num(w[amount_col])
+    deals_keywords = (
+        "Cost of Advertising",
+        "Coupon Redemption Fee",
+        "Deals",
+        "Lightning Deal",
+        "CouponPerformanceEvent",
+        "CouponParticipationEvent",
+        "SellerDealComplete",
+        "VineCharge",
+        "DealParticipationEvent",
+        "DealPerformanceEvent",
+        "SellerPoweredCoupon",
+    )
 
-        mask = desc.str.contains(patt, case=False, na=False)
-        from_desc = amt.where(mask, 0.0).abs()
-
-    # ---------------------------
-    # Explicit advertising column
-    # ---------------------------
-    from_col = safe_num(w.get(explicit_col, 0.0)).abs()
-
-    # ---------------------------
-    # TOTAL (all rows)
-    # ---------------------------
-    total = float((from_desc + from_col).sum())
-
-    # ---------------------------
-    # PER-SKU BREAKDOWN
-    # ---------------------------
-    if "sku" in w.columns:
-        w = w.loc[sku_mask(w)].copy()
-    else:
-        comps = ["from_description_abs", "from_column_abs"]
+    if desc_col not in w.columns or amount_col not in w.columns:
+        comps = ["visible_ads", "dealsvouchar_ads", "from_column_abs"]
         return 0.0, pd.DataFrame(columns=["sku", "__metric__", *comps]), comps
 
-    from_desc_sku = from_desc.loc[w.index] if len(from_desc) == len(df) else 0.0
-    from_col_sku  = from_col.loc[w.index]  if len(from_col)  == len(df) else 0.0
+    desc = w[desc_col].astype(str)
+    amt = pd.to_numeric(w[amount_col], errors="coerce").fillna(0.0)
+
+    visible_pattern = "|".join(map(re.escape, visible_keywords))
+    deals_pattern = "|".join(map(re.escape, deals_keywords))
+
+    visible_mask = desc.str.contains(visible_pattern, case=False, na=False, regex=True)
+    deals_mask = desc.str.contains(deals_pattern, case=False, na=False, regex=True)
+
+    visible_ads = amt.where(visible_mask, 0.0).abs()
+    dealsvouchar_ads = amt.where(deals_mask, 0.0).abs()
+    from_col = pd.to_numeric(w.get(explicit_col, 0.0), errors="coerce").fillna(0.0).abs()
+
+    total = float((visible_ads + dealsvouchar_ads + from_col).sum())
+
+    if "sku" not in w.columns:
+        comps = ["visible_ads", "dealsvouchar_ads", "from_column_abs"]
+        return total, pd.DataFrame(columns=["sku", "__metric__", *comps]), comps
+
+    w = w.copy()
+    w["sku"] = w["sku"].astype(str).str.strip()
+    w = w[(w["sku"] != "") & (w["sku"] != "0")]
+
+    per = pd.DataFrame({
+        "sku": w["sku"],
+        "visible_ads": visible_ads.loc[w.index],
+        "dealsvouchar_ads": dealsvouchar_ads.loc[w.index],
+        "from_column_abs": from_col.loc[w.index],
+    })
 
     per = (
-        pd.DataFrame({
-            "sku": w["sku"].astype(str).str.strip(),
-            "from_description_abs": from_desc_sku,
-            "from_column_abs": from_col_sku,
-        })
-        .groupby("sku", as_index=False)[["from_description_abs", "from_column_abs"]]
+        per.groupby("sku", as_index=False)[
+            ["visible_ads", "dealsvouchar_ads", "from_column_abs"]
+        ]
         .sum()
     )
 
-    per["__metric__"] = per["from_description_abs"] + per["from_column_abs"]
+    per["__metric__"] = (
+        per["visible_ads"]
+        + per["dealsvouchar_ads"]
+        + per["from_column_abs"]
+    )
 
-    comps = ["from_description_abs", "from_column_abs"]
+    comps = ["visible_ads", "dealsvouchar_ads", "from_column_abs"]
     return total, per[["sku", "__metric__", *comps]], comps
 
 
