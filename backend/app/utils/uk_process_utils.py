@@ -24,8 +24,8 @@ warnings.filterwarnings("ignore")
 
 
 load_dotenv()
-db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
-db_url1= os.getenv('DATABASE_ADMIN_URL', 'postgresql://postgres:password@localhost:5432/admin_db')
+db_url = os.getenv('DATABASE_URL')
+db_url1= os.getenv('DATABASE_ADMIN_URL')
 
 
 MONTHS_REVERSE_MAP = {
@@ -111,7 +111,15 @@ def sanitize_for_db(df_):
 
     return df_
 
-
+def remove_zero_rows(df):
+    numeric_cols = [
+        c for c in df.select_dtypes(include=[np.number]).columns
+        if c not in ["id", "user_id"]
+    ]
+    return df[
+        (df[numeric_cols].abs().sum(axis=1) != 0) |
+        (df["sku"].astype(str).str.strip().str.lower() == "total")
+    ]
 
 def get_previous_month_year(month, year):
     year = int(year)
@@ -131,11 +139,10 @@ def process_skuwise_data(user_id, country, month, year):
     target_table = f"nse_{user_id}_{country}_{month}{year}"
     target_table2 = f"skuwisemonthly_{user_id}_{country}"
     target_table3 = f"skuwisemonthly_{user_id}"
-    target_table_us   = f"skuwisemonthly_{user_id}"        # EXISTING US wala (same)
-    target_table_ind  = f"skuwisemonthlyind_{user_id}"     # NEW – India
-    target_table_can  = f"skuwisemonthlycan_{user_id}"     # NEW – Canada
+    target_table_us   = f"skuwisemonthly_{user_id}"        
+    target_table_ind  = f"skuwisemonthlyind_{user_id}"     
+    target_table_can  = f"skuwisemonthlycan_{user_id}"     
     target_table_gbp  = f"skuwisemonthlygbp_{user_id}" 
-        # NEW: per-country USD tables
     target_table_usd_month = f"skuwisemonthly_{user_id}_{country}_usd_{month}{year}"
     target_table_usd_roll  = f"skuwisemonthly_{user_id}_{country}_usd"
     target_table_nse = f"skuwisemonthly_{user_id}_{country}_{month}{year}"
@@ -445,12 +452,21 @@ def process_skuwise_data(user_id, country, month, year):
         desc_str_main = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
 
 
-        is_refund = type_str_main.str.contains("refund", case=False, na=False)  # type me refund likha ho
-        is_lost   = desc_str_main.isin(LOST_DESCRIPTIONS)
+        is_refund = type_str_main.str.contains("refund", case=False, na=False)
+        is_lost = desc_str_main.isin(LOST_DESCRIPTIONS)
+        is_debt_recovery = type_str_main.str.strip().eq("DebtRecovery")
 
-        df_base = df.loc[~is_refund & ~is_lost].copy()     # ✅ core metrics only
-        df_refund = df.loc[is_refund].copy()              # ✅ refund-only metrics
-        
+        # ✅ CLEAN FIRST (VERY IMPORTANT)
+        df["sku"] = df["sku"].astype(str).str.strip()
+
+        df = df[
+            (df["sku"] != "0") &
+            (df["sku"] != "") &
+            (df["sku"].notna())
+        ]
+
+        # ✅ THEN create df_base
+        df_base = df.loc[~is_refund & ~is_lost & ~is_debt_recovery].copy()
 
 
         
@@ -903,7 +919,9 @@ def process_skuwise_data(user_id, country, month, year):
                 on="sku", how="left"
             )
         else:
-            sku_grouped["advertising_total"] = 0.0
+            sku_grouped["advertising_total"] = pd.to_numeric(
+                sku_grouped.get("advertising_total", 0), errors="coerce"
+            ).fillna(0.0)
 
         for _col in ["Net Sales", "net_credits", "amazon_fee",  "platform_fee", "advertising_total"]:
             if _col in sku_grouped.columns:
@@ -931,7 +949,10 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped["platform_fee"] = sku_grouped.get("platform_fee", 0).fillna(0)
         sku_grouped["rembursement_fee"] = 0
         # advertising_total merged above; ensure present
-        sku_grouped["advertising_total"] = sku_grouped.get("advertising_total", 0).fillna(0)
+        if "advertising_total" in sku_grouped.columns:
+            sku_grouped["advertising_total"] = pd.to_numeric(
+                sku_grouped["advertising_total"], errors="coerce"
+            ).fillna(0.0)
         sku_grouped["reimbursement_vs_sales"] = 0
         sku_grouped["cm2_profit"] = 0
         sku_grouped["cm2_margins"] = 0
@@ -1664,12 +1685,18 @@ def process_skuwise_data(user_id, country, month, year):
             pass  # compatibility across SA versions
 
         # mapping: dest_country_value, dataframe, target_table
+        df_usd = remove_zero_rows(df_usd)
+        df_ind = remove_zero_rows(df_ind)
+        df_can = remove_zero_rows(df_can)
+        df_gbp = remove_zero_rows(df_gbp)
+
         conversion_sets = [
             ("us",    df_usd, target_table_us),
             ("india", df_ind, target_table_ind),
             ("canada",df_can, target_table_can),
             ("gbp",   df_gbp, target_table_gbp),
         ]
+        
 
         for dest_country, df_conv, tbl in conversion_sets:
             df_conv["country"] = dest_country
@@ -1719,7 +1746,8 @@ def process_skuwise_data(user_id, country, month, year):
             sanitize_for_db(df_conv)
 
         sanitize_for_db(sku_grouped)
-
+        
+        df_month = remove_zero_rows(df_month)
         safe_to_sql(df_month, target_table, conn, if_exists="append", index=False, method="multi", chunksize=100)
 
         # ✅ Only insert columns that exist in target_table_nse (skuwisemonthly_{user_id}_{country}_{month}{year})
@@ -1762,6 +1790,7 @@ def process_skuwise_data(user_id, country, month, year):
             sanitize_for_db(df_conv)
 
         sanitize_for_db(sku_grouped)
+        df_roll = remove_zero_rows(df_roll)
 
         safe_to_sql(df_roll, target_table2, conn, if_exists="append", index=False, method="multi", chunksize=100)
 
@@ -1783,6 +1812,7 @@ def process_skuwise_data(user_id, country, month, year):
             sanitize_for_db(df_conv)
 
         sanitize_for_db(sku_grouped)
+        df_month_usd = remove_zero_rows(df_month_usd)
 
         safe_to_sql(df_month_usd, target_table_usd_month, conn, if_exists="replace", index=False, method="multi", chunksize=100)
 
@@ -1810,6 +1840,7 @@ def process_skuwise_data(user_id, country, month, year):
             sanitize_for_db(df_conv)
 
         sanitize_for_db(sku_grouped)
+        df_roll_usd = remove_zero_rows(df_roll_usd)
 
 
         safe_to_sql(df_roll_usd, target_table_usd_roll, conn, if_exists="append", index=False, method="multi", chunksize=100)
