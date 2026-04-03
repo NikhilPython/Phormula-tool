@@ -176,6 +176,26 @@ class Email(db.Model):
         UniqueConstraint("user_id", "country", name="uq_email_user_country"),
     )
 
+
+
+class AgentEmailSchedule(db.Model):
+    __tablename__ = "agent_email_schedule"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    country = Column(String(16), nullable=False, index=True)
+    frequency = Column(String(16), nullable=False, default="daily")
+    enabled = Column(Boolean, nullable=False, default=True)
+    preferred_hour = Column(Integer, nullable=False, default=9)
+    preferred_minute = Column(Integer, nullable=False, default=0)
+    metric_name = Column(String(32), nullable=False, default="profit")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "country", "frequency", name="uq_agent_email_schedule"),
+    )
+
 class StoredFile(db.Model):
     __tablename__ = "stored_files"
 

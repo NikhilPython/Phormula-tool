@@ -85,6 +85,10 @@ class Config:
                 "task": "tasks.send_live_bi_email_daily",
                 "schedule": crontab(day_of_month="1,8,15,22,29", hour=11, minute=30),
             },
+            "run-agent-summary-every-hour": {
+                "task": "tasks.run_agent_schedules",
+                "schedule": 3600.0,
+            },
             # "generate-forecast-every-month-1st-11-30am": {
             #     "task": "tasks.generate_monthly_forecast_files",
             #     "schedule": crontab(hour=13, minute=23),

@@ -352,4 +352,71 @@ def generate_monthly_forecast_files():
 
         except Exception as e:
             print(f"[ERROR] generate_monthly_forecast_files crashed: {e}")
+
+
+#---------------------------------------------  Celery Beat scheduled tasks for AI Agent summaries ---------------------------------------------------------#
+
+def get_users_for_agent_schedules():
+    try:
+        from app.models.user_models import AgentEmailSchedule
+
+        schedules = (
+            db.session.query(
+                AgentEmailSchedule.user_id,
+                AgentEmailSchedule.country,
+                AgentEmailSchedule.metric_name,
+                AgentEmailSchedule.enabled,
+            )
+            .filter(AgentEmailSchedule.enabled.is_(True))
+            .all()
+        )
+
+        return [
+            {
+                "user_id": s.user_id,
+                "country": (s.country or "uk").strip().lower(),
+                "metric_name": s.metric_name or "profit",
+            }
+            for s in schedules
+        ]
+
+    except Exception as e:
+        print(f"[ERROR] get_users_for_agent_schedules failed: {e}")
+        return []
+
+
+@celery_app.task(name="tasks.run_agent_schedules")
+def run_agent_schedules():
+    with flask_app.app_context():
+        try:
+            from app.ai_agent.graph import run_agent_for_schedule
+
+            schedules = get_users_for_agent_schedules()
+
+            processed = set()
+
+            for schedule in schedules:
+                try:
+                    user_id = schedule["user_id"]
+                    country = schedule["country"]
+                    metric_name = schedule["metric_name"]
+
+                    dedupe_key = (user_id, country)
+                    if dedupe_key in processed:
+                        continue
+                    processed.add(dedupe_key)
+
+                    run_agent_for_schedule(
+                        user_id=user_id,
+                        country=country,
+                        metric_name=metric_name
+                    )
+
+                    print(f"[INFO] Agent schedule run for user_id={user_id}, country={country}")
+
+                except Exception as e:
+                    print(f"[ERROR] Agent schedule failed for user={schedule}: {e}")
+
+        except Exception as e:
+            print(f"[ERROR] run_agent_schedules crashed: {e}")            
         
