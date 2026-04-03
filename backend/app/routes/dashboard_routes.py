@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify , send_file
-from sqlalchemy import create_engine , MetaData , text, inspect
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, MetaData, text, inspect
+from sqlalchemy.orm import sessionmaker, scoped_session
 from zoneinfo import ZoneInfo
 from app.utils.token_utils import get_effective_user_id_from_token
 import jwt
@@ -44,7 +44,7 @@ conv_engine = create_engine(
     pool_recycle=1800
 )
 
-SessionLocal = sessionmaker(bind=engine)
+SessionLocal = scoped_session(sessionmaker(bind=engine))
 
 def encode_file_to_base64(file_path):
     with open(file_path, "rb") as file:
@@ -143,8 +143,6 @@ def getDispatchfile():
         # Existing naming behavior preserved
         effective_month = current_month if requested_year == current_year else requested_month
         short_month = effective_month[:3].lower()
-
-        engine = create_engine(db_url)
 
         def fetch_latest_stored_file(user_id: int, ctry: str, short_month: str):
             """
@@ -490,7 +488,6 @@ def getDispatchfile2():
         if not country or not month or not year:
             return jsonify({'error':'Missing parameters'}),400
 
-        engine=create_engine(db_url)
 
         query=text("""
         SELECT filename,content_type,data
@@ -1129,10 +1126,6 @@ def global_PO_generated():
 
 @dashboard_bp.route('/getGlobalDispatchfile', methods=['GET'])
 def get_global_dispatch_file():
-    from io import BytesIO
-    from sqlalchemy import create_engine, text
-    from datetime import datetime
-
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
@@ -1158,8 +1151,6 @@ def get_global_dispatch_file():
         year_db = str(int(year))
     except Exception:
         return jsonify({'error': 'Invalid month or year format'}), 400
-
-    engine = create_engine(db_url)
 
     def fetch_latest_file(country_code: str):
         filename = f"purchase_order_{user_id}_{country_code}_{month_db}_{year_db}.xlsx"
@@ -1232,6 +1223,7 @@ def get_global_dispatch_file():
 
 
 
+
 @dashboard_bp.route('/getForecastFile', methods=['GET'])
 def getForecastFile():
     auth_header = request.headers.get('Authorization')
@@ -1239,33 +1231,64 @@ def getForecastFile():
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     token = auth_header.split(' ')[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
+
         country = request.args.get('country')
-        month = request.args.get('month')  
-        short_month = month[:3].lower() if month else None
+        month = request.args.get('month')
         year = request.args.get('year')
 
         if not country or not month or not year:
             return jsonify({'error': 'Missing country, month, or year parameters'}), 400
 
-        engine = create_engine(db_url)
-        meta = MetaData()
-        meta.reflect(bind=engine)
+        try:
+            month_name = datetime.strptime(month.strip().title(), "%B").strftime("%B")
+            month_db = month_name.lower()
+            year_db = str(int(year))
+            country_db = country.strip().lower()
+        except Exception:
+            return jsonify({'error': 'Invalid month or year format'}), 400
 
-        pattern = re.compile(rf"inventory_forecast_{user_id}_{re.escape(country)}_{short_month}.*\.xlsx$")
+        query = text("""
+            SELECT filename, content_type, data
+            FROM public.stored_files
+            WHERE user_id = :user_id
+              AND LOWER(country) = LOWER(:country)
+              AND kind = 'inventory_forecast'
+              AND LOWER(month) = LOWER(:month)
+              AND year = :year
+            ORDER BY id DESC
+            LIMIT 1
+        """)
 
-        matched_files = [f for f in os.listdir() if pattern.match(f)]
+        with engine.connect() as conn:
+            row = conn.execute(query, {
+                "user_id": user_id,
+                "country": country_db,
+                "month": month_db,
+                "year": year_db
+            }).fetchone()
 
-        if not matched_files:
-            return jsonify({'error': 'Forecast file not found. Please generate inventory forecast first!'}), 404
+        if not row:
+            return jsonify({
+                'error': 'Forecast file not found. Please generate inventory forecast first!'
+            }), 404
 
-        # You can pick the latest file if multiple found
-        matched_files.sort(reverse=True)  # Sort newest first
-        selected_file = matched_files[0]
-        file_path = os.path.join( selected_file)
+        filename, content_type, data_bytes = row
 
-        return send_file(file_path, as_attachment=False)
+        if isinstance(data_bytes, memoryview):
+            data_bytes = data_bytes.tobytes()
+
+        if not data_bytes:
+            return jsonify({'error': 'Stored file is empty/corrupt'}), 500
+
+        return send_file(
+            BytesIO(data_bytes),
+            download_name=filename or f"inventory_forecast_{user_id}_{country_db}_{month_db}_{year_db}.xlsx",
+            mimetype=content_type or 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=False
+        )
 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
@@ -1273,7 +1296,9 @@ def getForecastFile():
         return jsonify({'error': 'Invalid token'}), 401
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
+    
+       
+    
 def resolve_country(country, currency):
     country = (country or "").lower()
     currency = (currency or "").lower()
@@ -1335,6 +1360,19 @@ def prev_quarter(q: str):
     return order[i-1], 0
 
 
+def table_exists(db_session, table_name: str, schema: str = "public") -> bool:
+    q = text("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = :schema
+              AND table_name = :table_name
+        )
+    """)
+    return bool(db_session.execute(q, {
+        "schema": schema,
+        "table_name": table_name
+    }).scalar())
 
 @dashboard_bp.route('/cashflow', methods=['GET'])
 def cashflow():
@@ -1355,15 +1393,15 @@ def cashflow():
     country_param = request.args.get('country', '')
     currency_param = (request.args.get('currency') or '').lower()
     country = resolve_country(country_param, currency_param)
-
     period_type = (request.args.get('period_type') or 'monthly').lower()
 
     if not year:
         return jsonify({'error': 'Year must be provided'}), 400
 
-    # --- Quarter map + helpers ---
-    MONTHS = ["January","February","March","April","May","June",
-              "July","August","September","October","November","December"]
+    months_master = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ]
 
     quarter_months = {
         "quarter1": ["january", "february", "march"],
@@ -1380,52 +1418,147 @@ def cashflow():
         return None
 
     def prev_month_year(month_str: str, y: int):
-        idx = MONTHS.index(month_str)  # 0-based
+        idx = months_master.index(month_str)
         if idx == 0:
             return "December", y - 1
-        return MONTHS[idx - 1], y
+        return months_master[idx - 1], y
 
     def prev_quarter(q: str):
         order = ["quarter1", "quarter2", "quarter3", "quarter4"]
         i = order.index(q)
         if i == 0:
-            return "quarter4", -1  # year-1
+            return "quarter4", -1
         return order[i - 1], 0
 
-    # --- Validation + parsing ---
     try:
         year = int(year)
     except ValueError:
         return jsonify({'error': 'Invalid year format. Provide year like 2025'}), 400
 
-    # Month is required only for monthly OR old quarterly mode ("quarterly")
     if period_type == 'monthly' and not month:
         return jsonify({'error': 'Month must be provided for monthly period type'}), 400
+
     if period_type == 'quarterly' and not month:
         return jsonify({'error': 'Month must be provided for quarterly period type'}), 400
 
     month_name = None
     if month:
         try:
-            month_name = datetime.strptime(month, "%B").strftime("%B")
+            month_name = datetime.strptime(month.strip(), "%B").strftime("%B")
         except ValueError:
             try:
-                month_name = datetime.strptime(month.capitalize(), "%B").strftime("%B")
+                month_name = datetime.strptime(month.strip().capitalize(), "%B").strftime("%B")
             except ValueError:
-                return jsonify({'error': 'Invalid month format. Use full month names like "January" or "january"'}), 400
+                return jsonify({
+                    'error': 'Invalid month format. Use full month names like "January" or "january"'
+                }), 400
 
-    engine = create_engine(db_url)
-    SessionLocal = sessionmaker(bind=engine)
     db_session = SessionLocal()
-    inspector = inspect(engine)
 
-    def compute_cashflow_summary(user_id: int, year: int, country: str, period_type: str, month_name: str = None):
-        """
-        Returns:
-          summary_totals: dict (combined_totals)
-          detailed_data: list (per country)
-          meta: dict (month / quarter_months / year_months)
-        """
+    def find_total_row(df: pd.DataFrame):
+        if 'product_name' not in df.columns:
+            return None
+
+        product_series = df['product_name'].astype(str).str.strip()
+        for variation in ['TOTAL', 'Total', 'total', 'TOTALS', 'Totals', 'totals']:
+            total_row = df[product_series == variation]
+            if not total_row.empty:
+                return total_row.tail(1)
+
+        contains_total = df[product_series.str.contains('total', case=False, na=False)]
+        if not contains_total.empty:
+            return contains_total.tail(1)
+
+        return None
+
+    def get_months_to_process(period_type_value: str, month_name_value: str = None):
+        if period_type_value == 'monthly':
+            return [month_name_value]
+
+        if period_type_value == 'quarterly':
+            q = quarter_for_month(month_name_value)
+            if not q:
+                return []
+            return [m.capitalize() for m in quarter_months[q]]
+
+        if period_type_value in quarter_months:
+            return [m.capitalize() for m in quarter_months[period_type_value]]
+
+        if period_type_value == 'yearly':
+            return months_master.copy()
+
+        return []
+
+    def build_table_name(user_id_value: int, record_country: str, period_type_value: str,
+                         year_value: int, month_name_value: str = None):
+        record_country = (record_country or '').lower().strip()
+
+        if period_type_value == 'monthly':
+            suffix = f"{month_name_value.lower()}{year_value}"
+            if record_country.startswith("global"):
+                return f"skuwisemonthly_{user_id_value}_{record_country}_{suffix}_table"
+            return f"skuwisemonthly_{user_id_value}_{record_country}_{suffix}"
+
+        if period_type_value == 'quarterly':
+            q = quarter_for_month(month_name_value)
+            if not q:
+                return None
+            return f"{q}_{user_id_value}_{record_country}_{year_value}_table"
+
+        if period_type_value in quarter_months:
+            return f"{period_type_value}_{user_id_value}_{record_country}_{year_value}_table"
+
+        if period_type_value == 'yearly':
+            return f"skuwiseyearly_{user_id_value}_{record_country}_{year_value}_table"
+
+        return None
+
+    def get_countries_with_data(user_id_value: int, year_value: int, country_value: str, months_to_process: list):
+        countries_with_data = set()
+
+        for process_month in months_to_process:
+            if country_value:
+                upload_query = text("""
+                    SELECT DISTINCT country
+                    FROM upload_history
+                    WHERE user_id = :user_id
+                      AND LOWER(month) = LOWER(:month)
+                      AND year = :year
+                      AND LOWER(country) = LOWER(:country)
+                """)
+                params = {
+                    'user_id': user_id_value,
+                    'month': process_month,
+                    'year': year_value,
+                    'country': country_value
+                }
+            else:
+                upload_query = text("""
+                    SELECT DISTINCT country
+                    FROM upload_history
+                    WHERE user_id = :user_id
+                      AND LOWER(month) = LOWER(:month)
+                      AND year = :year
+                """)
+                params = {
+                    'user_id': user_id_value,
+                    'month': process_month,
+                    'year': year_value
+                }
+
+            rows = db_session.execute(upload_query, params).fetchall()
+            for row in rows:
+                if row[0]:
+                    countries_with_data.add(str(row[0]).strip().lower())
+
+        return countries_with_data
+
+    def load_table_dataframe(table_name: str) -> pd.DataFrame:
+        with engine.connect() as conn:
+            return pd.read_sql(text(f'SELECT * FROM "{table_name}"'), conn)
+
+    def compute_cashflow_summary(user_id_value: int, year_value: int, country_value: str,
+                                 period_type_value: str, month_name_value: str = None):
         all_cashflow_data = []
         combined_totals = {
             'net_sales': 0,
@@ -1444,73 +1577,24 @@ def cashflow():
             'promotional_rebates': 0
         }
 
-        # --- months_to_process ---
-        months_to_process = []
-
-        if period_type == 'monthly':
-            months_to_process = [month_name]
-
-        elif period_type == 'quarterly':
-            q = quarter_for_month(month_name)
-            if not q:
-                return combined_totals, [], {}
-            months_to_process = [m.capitalize() for m in quarter_months[q]]
-
-        elif period_type in quarter_months:
-            months_to_process = [m.capitalize() for m in quarter_months[period_type]]
-
-        elif period_type == 'yearly':
-            months_to_process = MONTHS
-
-        else:
-            # Unknown period_type
+        months_to_process = get_months_to_process(period_type_value, month_name_value)
+        if not months_to_process:
             return combined_totals, [], {}
 
-        # --- find countries with data for given months ---
-        countries_with_data = set()
-        for process_month in months_to_process:
-            if country:
-                upload_query = text("""
-                    SELECT DISTINCT country 
-                    FROM upload_history
-                    WHERE user_id = :user_id
-                      AND LOWER(month) = LOWER(:month)
-                      AND year = :year
-                      AND LOWER(country) = LOWER(:country)
-                """)
-                query_params = {
-                    'user_id': user_id,
-                    'month': process_month,
-                    'year': year,
-                    'country': country
-                }
-            else:
-                upload_query = text("""
-                    SELECT DISTINCT country 
-                    FROM upload_history
-                    WHERE user_id = :user_id
-                      AND LOWER(month) = LOWER(:month)
-                      AND year = :year
-                """)
-                query_params = {
-                    'user_id': user_id,
-                    'month': process_month,
-                    'year': year
-                }
+        countries_with_data = get_countries_with_data(
+            user_id_value=user_id_value,
+            year_value=year_value,
+            country_value=country_value,
+            months_to_process=months_to_process
+        )
 
-            upload_results = db_session.execute(upload_query, query_params).fetchall()
-            for result in upload_results:
-                countries_with_data.add(result[0])
-
-        # --- per country compute totals from table(s) ---
         for record_country in countries_with_data:
             total_otherwplatform = 0
             total_taxncredit_from_upload = 0
 
-            # accumulate otherwplatform/taxncredit across months from upload_history
             for process_month in months_to_process:
                 upload_values_query = text("""
-                    SELECT otherwplatform, taxncredit 
+                    SELECT otherwplatform, taxncredit
                     FROM upload_history
                     WHERE user_id = :user_id
                       AND LOWER(month) = LOWER(:month)
@@ -1519,90 +1603,63 @@ def cashflow():
                     LIMIT 1
                 """)
                 upload_values_params = {
-                    'user_id': user_id,
+                    'user_id': user_id_value,
                     'month': process_month,
-                    'year': year,
+                    'year': year_value,
                     'country': record_country
                 }
-                upload_values_result = db_session.execute(upload_values_query, upload_values_params).fetchone()
+                upload_values_result = db_session.execute(
+                    upload_values_query, upload_values_params
+                ).fetchone()
+
                 if upload_values_result:
-                    if upload_values_result[0]:
+                    if upload_values_result[0] is not None:
                         total_otherwplatform += float(upload_values_result[0])
-                    if upload_values_result[1]:
+                    if upload_values_result[1] is not None:
                         total_taxncredit_from_upload += float(upload_values_result[1])
 
-            # table name
-            table_name = ""
-            if period_type == 'monthly':
-                suffix = f"{month_name.lower()}{year}"
-                table_name = (
-                    f"skuwisemonthly_{user_id}_{record_country.lower()}_{suffix}_table"
-                    if record_country.lower().startswith("global")
-                    else f"skuwisemonthly_{user_id}_{record_country.lower()}_{suffix}"
-                )
+            table_name = build_table_name(
+                user_id_value=user_id_value,
+                record_country=record_country,
+                period_type_value=period_type_value,
+                year_value=year_value,
+                month_name_value=month_name_value
+            )
 
-            elif period_type == 'quarterly':
-                q = quarter_for_month(month_name)
-                table_name = f"{q}_{user_id}_{record_country.lower()}_{year}_table" if q else ""
-
-            elif period_type in quarter_months:
-                table_name = f"{period_type}_{user_id}_{record_country.lower()}_{year}_table"
-
-            elif period_type == 'yearly':
-                table_name = f"skuwiseyearly_{user_id}_{record_country.lower()}_{year}_table"
-
-            if not table_name or not inspector.has_table(table_name):
+            if not table_name or not table_exists(db_session, table_name):
                 continue
 
             try:
-                cashflow_df = pd.read_sql_table(table_name, engine)
+                cashflow_df = load_table_dataframe(table_name)
                 if cashflow_df.empty:
                     continue
 
                 numeric_cols = [
-                    'net_sales', 'gross_sales',
-                    'advertising_total', 'amazon_fee', 'cm2_profit', 'cost_of_unit_sold',
-                    'taxncredit', 'rembursement_fee',
+                    'net_sales', 'gross_sales', 'advertising_total', 'amazon_fee',
+                    'cm2_profit', 'cost_of_unit_sold', 'taxncredit', 'rembursement_fee',
                     'total_quantity', 'selling_fees', 'fba_fees', 'promotional_rebates'
                 ]
+
                 for col in numeric_cols:
                     if col in cashflow_df.columns:
-                        cashflow_df[col] = pd.to_numeric(cashflow_df[col], errors='coerce').fillna(0)
+                        cashflow_df[col] = pd.to_numeric(
+                            cashflow_df[col], errors='coerce'
+                        ).fillna(0)
 
-                net_sales_total = advertising_total = amazon_fee_total = cm2_profit_total = rembursement_fee_total = cost_of_unit_sold_total = 0
-                quantity_total = 0
-                selling_fees_total = 0
-                fba_fees_total = 0
-                gross_sales_total = 0
-                promotional_rebates_total = 0
-                taxncredit_total = total_taxncredit_from_upload
-
-                def find_total_row(df):
-                    if 'product_name' not in df.columns:
-                        return None
-                    for variation in ['TOTAL', 'Total', 'total', 'TOTALS', 'Totals', 'totals']:
-                        total_row = df[df['product_name'] == variation]
-                        if not total_row.empty:
-                            return total_row
-                    return df[df['product_name'].str.contains('total', case=False, na=False)]
-
-                # totals from TOTAL row (preferred) else column sums
-                total_row = None
-                if 'product_name' in cashflow_df.columns:
-                    total_row = find_total_row(cashflow_df)
+                total_row = find_total_row(cashflow_df)
 
                 if total_row is not None and not total_row.empty:
-                    net_sales_total = float(total_row['net_sales'].iloc[0]) if 'net_sales' in total_row else 0
-                    gross_sales_total = float(total_row['gross_sales'].iloc[0]) if 'gross_sales' in total_row else 0
-                    promotional_rebates_total = float(total_row['promotional_rebates'].iloc[0]) if 'promotional_rebates' in total_row else 0
-                    quantity_total = float(total_row['total_quantity'].iloc[0]) if 'total_quantity' in total_row else 0
-                    advertising_total = float(total_row['advertising_total'].iloc[0]) if 'advertising_total' in total_row else 0
-                    selling_fees_total = float(total_row['selling_fees'].iloc[0]) if 'selling_fees' in total_row else 0
-                    fba_fees_total = float(total_row['fba_fees'].iloc[0]) if 'fba_fees' in total_row else 0
-                    amazon_fee_total = float(total_row['amazon_fee'].iloc[0]) if 'amazon_fee' in total_row else 0
-                    cm2_profit_total = float(total_row['cm2_profit'].iloc[0]) if 'cm2_profit' in total_row else 0
-                    cost_of_unit_sold_total = float(total_row['cost_of_unit_sold'].iloc[0]) if 'cost_of_unit_sold' in total_row else 0
-                    rembursement_fee_total = float(total_row['rembursement_fee'].iloc[0]) if 'rembursement_fee' in total_row else 0
+                    net_sales_total = float(total_row['net_sales'].iloc[0]) if 'net_sales' in total_row.columns else 0
+                    gross_sales_total = float(total_row['gross_sales'].iloc[0]) if 'gross_sales' in total_row.columns else 0
+                    promotional_rebates_total = float(total_row['promotional_rebates'].iloc[0]) if 'promotional_rebates' in total_row.columns else 0
+                    quantity_total = float(total_row['total_quantity'].iloc[0]) if 'total_quantity' in total_row.columns else 0
+                    advertising_total = float(total_row['advertising_total'].iloc[0]) if 'advertising_total' in total_row.columns else 0
+                    selling_fees_total = float(total_row['selling_fees'].iloc[0]) if 'selling_fees' in total_row.columns else 0
+                    fba_fees_total = float(total_row['fba_fees'].iloc[0]) if 'fba_fees' in total_row.columns else 0
+                    amazon_fee_total = float(total_row['amazon_fee'].iloc[0]) if 'amazon_fee' in total_row.columns else 0
+                    cm2_profit_total = float(total_row['cm2_profit'].iloc[0]) if 'cm2_profit' in total_row.columns else 0
+                    cost_of_unit_sold_total = float(total_row['cost_of_unit_sold'].iloc[0]) if 'cost_of_unit_sold' in total_row.columns else 0
+                    rembursement_fee_total = float(total_row['rembursement_fee'].iloc[0]) if 'rembursement_fee' in total_row.columns else 0
                 else:
                     net_sales_total = float(cashflow_df['net_sales'].sum()) if 'net_sales' in cashflow_df.columns else 0
                     gross_sales_total = float(cashflow_df['gross_sales'].sum()) if 'gross_sales' in cashflow_df.columns else 0
@@ -1616,10 +1673,9 @@ def cashflow():
                     cost_of_unit_sold_total = float(cashflow_df['cost_of_unit_sold'].sum()) if 'cost_of_unit_sold' in cashflow_df.columns else 0
                     rembursement_fee_total = float(cashflow_df['rembursement_fee'].sum()) if 'rembursement_fee' in cashflow_df.columns else 0
 
-                # cashflow_total = net_sales_total - advertising_total - amazon_fee_total - total_otherwplatform + taxncredit_total
+                taxncredit_total = total_taxncredit_from_upload
                 cashflow_total = cost_of_unit_sold_total + cm2_profit_total
 
-                # accumulate
                 combined_totals['net_sales'] += net_sales_total
                 combined_totals['gross_sales'] += gross_sales_total
                 combined_totals['promotional_rebates'] += promotional_rebates_total
@@ -1635,9 +1691,8 @@ def cashflow():
                 combined_totals['cashflow'] += cashflow_total
                 combined_totals['rembursement_fee'] += rembursement_fee_total
 
-                # clean df for payload
                 if 'date' in cashflow_df.columns:
-                    cashflow_df.drop('date', axis=1, inplace=True)
+                    cashflow_df = cashflow_df.drop(columns=['date'])
 
                 numeric_columns = cashflow_df.select_dtypes(include=['number']).columns
                 for col in numeric_columns:
@@ -1666,8 +1721,8 @@ def cashflow():
                 all_cashflow_data.append({
                     'country': record_country,
                     'table': table_name,
-                    'period_type': period_type,
-                    'month': month_name if period_type == 'monthly' else None,
+                    'period_type': period_type_value,
+                    'month': month_name_value if period_type_value == 'monthly' else None,
                     'net_sales': round(net_sales_total, 2),
                     'gross_sales': round(gross_sales_total, 2),
                     'promotional_rebates': round(promotional_rebates_total, 2),
@@ -1686,36 +1741,33 @@ def cashflow():
                 })
 
             except Exception:
-                # Skip problematic table but keep endpoint alive
                 continue
 
-        # round totals
         for k in combined_totals:
             combined_totals[k] = round(combined_totals[k], 2)
 
         meta = {}
-        if period_type == 'monthly':
-            meta['month'] = month_name
-        elif period_type == 'quarterly' or period_type in quarter_months:
+        if period_type_value == 'monthly':
+            meta['month'] = month_name_value
+        elif period_type_value == 'quarterly' or period_type_value in quarter_months:
             meta['quarter_months'] = months_to_process
-        elif period_type == 'yearly':
+        elif period_type_value == 'yearly':
             meta['year_months'] = months_to_process
 
         return combined_totals, all_cashflow_data, meta
 
     try:
-        # --- Current period ---
         combined_totals, all_cashflow_data, meta = compute_cashflow_summary(
-            user_id=user_id,
-            year=year,
-            country=country,
-            period_type=period_type,
-            month_name=month_name
+            user_id_value=user_id,
+            year_value=year,
+            country_value=country,
+            period_type_value=period_type,
+            month_name_value=month_name
         )
 
         if not all_cashflow_data:
             all_data_query = text("""
-                SELECT DISTINCT country, month, year 
+                SELECT DISTINCT country, month, year
                 FROM upload_history
                 WHERE user_id = :user_id
                 ORDER BY year DESC, month DESC
@@ -1735,7 +1787,6 @@ def cashflow():
                 'available_data': available_data[:10]
             }), 404
 
-        # --- Previous period params ---
         prev_year = year
         prev_period_type = period_type
         prev_month_name = month_name
@@ -1761,15 +1812,14 @@ def cashflow():
             prev_year = year - 1
             prev_month_name = None
 
-        # --- Previous summary (only) ---
         previous_summary = None
         try:
             prev_totals, _, _ = compute_cashflow_summary(
-                user_id=user_id,
-                year=prev_year,
-                country=country,
-                period_type=prev_period_type,
-                month_name=prev_month_name
+                user_id_value=user_id,
+                year_value=prev_year,
+                country_value=country,
+                period_type_value=prev_period_type,
+                month_name_value=prev_month_name
             )
             previous_summary = prev_totals
         except Exception:
@@ -1783,16 +1833,16 @@ def cashflow():
             'detailed_data': all_cashflow_data,
             'total_records': len(all_cashflow_data),
         }
-
-        # attach meta fields for current period
         response_data.update(meta)
 
         return jsonify(response_data), 200
 
     except Exception as e:
         return jsonify({'error': f"Database error: {str(e)}"}), 500
+
     finally:
         db_session.close()
+
 
 
 @dashboard_bp.route('/target-summary', methods=['GET', 'POST'])
