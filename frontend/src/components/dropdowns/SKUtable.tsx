@@ -476,6 +476,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   };
 
 
+
   const displayRows = useMemo(() => {
     if (!tableData?.length) return [];
 
@@ -689,6 +690,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
 
+  const PRESERVE_SIGN_KEYS = new Set([
+    "cm2_profit",
+    "net_reimbursement",
+    "cm2_margins",
+    "reimbursement_vs_sales",
+    "rembursment_vs_cm2_margins",
+  ]);
+
   const formatValue = useCallback(
     (value: unknown, key: string) => {
       if (value === undefined || value === null || value === "") return "-";
@@ -696,8 +705,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       const raw = toNumber(value);
       if (!Number.isFinite(raw)) return "-";
 
-      // ✅ keep negative for CM2 Profit/Loss
-      const n = key === "cm2_profit" ? raw : Math.abs(raw);
+      // keep actual sign for selected fields
+      const n = PRESERVE_SIGN_KEYS.has(key) ? raw : Math.abs(raw);
 
       if (INT_KEYS.has(key)) return n;
 
@@ -706,14 +715,48 @@ const SKUtable: React.FC<SKUtableProps> = ({
         maximumFractionDigits: 2,
       });
 
-      // ✅ add minus sign back only when needed
       const signedFormatted = n < 0 ? `-${formatted}` : formatted;
 
-      if (key === "profit_percentage") return `${signedFormatted}%`;
+      if (
+        key === "profit_percentage" ||
+        key === "cm2_margins" ||
+        key === "acos" ||
+        key === "reimbursement_vs_sales" ||
+        key === "rembursment_vs_cm2_margins"
+      ) {
+        return `${signedFormatted}%`;
+      }
+
       return signedFormatted;
     },
     [INT_KEYS]
   );
+
+  // const formatValue = useCallback(
+  //   (value: unknown, key: string) => {
+  //     if (value === undefined || value === null || value === "") return "-";
+
+  //     const raw = toNumber(value);
+  //     if (!Number.isFinite(raw)) return "-";
+
+  //     // ✅ keep negative for CM2 Profit/Loss
+  //     const n = key === "cm2_profit" ? raw : Math.abs(raw);
+
+  //     if (INT_KEYS.has(key)) return n;
+
+  //     const formatted = Math.abs(n).toLocaleString(undefined, {
+  //       minimumFractionDigits: 2,
+  //       maximumFractionDigits: 2,
+  //     });
+
+  //     // ✅ add minus sign back only when needed
+  //     const signedFormatted = n < 0 ? `-${formatted}` : formatted;
+
+  //     if (key === "profit_percentage") return `${signedFormatted}%`;
+  //     return signedFormatted;
+  //   },
+  //   [INT_KEYS]
+  // );
 
 
   // Sign row (stable sets)
@@ -829,7 +872,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
         return out;
       });
 
-      // ...keep your summaryRows + formats exactly as-is...
 
       type SummaryRow = Record<string, string | number> & { __bold?: number };
 
@@ -850,7 +892,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         { product_name: "CM2 Profit/Loss", profit: Number(totals.cm2_profit || 0), __bold: 1 },
         { product_name: "CM2 Margins", profit: Number(totals.cm2_margins || 0), __bold: 1 },
         { product_name: "TACoS (Total Advertising Cost of Sale)", profit: Number(totals.acos || 0), __bold: 1 },
-        { product_name: "Net Reimbursement", profit: Number(totals.net_reimbursement || 0), __bold: 1 },
+        { product_name: "Net Reimbursement", profit: toNumber(totals.net_reimbursement), __bold: 1 },
         { product_name: "Reimbursement vs CM2 Margins", profit: Number(totals.rembursment_vs_cm2_margins || 0), __bold: 1 },
         { product_name: "Reimbursement vs Sales", profit: Number(totals.reimbursement_vs_sales || 0), __bold: 1 },
       ];
@@ -1430,10 +1472,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       : []),
 
                     { id: "cm2_profit", label: "CM2 Profit/Loss", endValue: formatValue(totals.cm2_profit, "cm2_profit") },
-                    { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}%` },
+                    { id: "cm2_margins", label: "CM2 Margins", endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}` },
 
                     // ✅ TACoS first
-                    { id: "tacos", label: "TACoS (Total Advertising Cost of Sale)", endValue: `${formatValue(totals.acos, "acos")}%` },
+                    { id: "tacos", label: "TACoS (Total Advertising Cost of Sale)", endValue: `${formatValue(totals.acos, "acos")}` },
 
                     // ✅ then Net Reimbursement (below TACoS)
                     {
@@ -1444,12 +1486,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     {
                       id: "rv_cm2",
                       label: "Reimbursement vs CM2 Margins",
-                      endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}%`,
+                      endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}`,
                     },
                     {
                       id: "rv_sales",
                       label: "Reimbursement vs Sales",
-                      endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}%`,
+                      endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}`,
                     },
                   ],
 
