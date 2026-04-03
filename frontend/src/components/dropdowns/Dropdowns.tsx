@@ -2502,12 +2502,137 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
+  // const fetchTargetSummary = async () => {
+  //   if (isDemoMode) {
+  //     setTargetSummaryLoading(false);
+  //     setTargetSummary(DEMO_TARGET_SUMMARY);
+  //     return;
+  //   }
+  //   if (!selectedYear || !initialCountryName) return;
+
+  //   const ready =
+  //     (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+  //     (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+  //     (range === "yearly" && !!selectedYear);
+
+  //   if (!ready) {
+  //     setTargetSummary(null);
+  //     return;
+  //   }
+
+  //   let apiMonth = "";
+
+  //   if (range === "monthly" && selectedMonth) {
+  //     apiMonth =
+  //       selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1).toLowerCase();
+  //   } else {
+  //     const now = new Date();
+  //     apiMonth = now.toLocaleString("en-US", { month: "long" });
+  //   }
+
+  //   try {
+  //     setTargetSummaryLoading(true);
+
+  //     const token =
+  //       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+  //     const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`);
+  //     url.searchParams.set("month", apiMonth);
+  //     url.searchParams.set("year", selectedYear);
+  //     url.searchParams.set("country", initialCountryName.toLowerCase());
+
+  //     const res = await fetch(url.toString(), {
+  //       method: "GET",
+  //       headers: token ? { Authorization: `Bearer ${token}` } : {},
+  //       cache: "no-store",
+  //     });
+
+  //     if (!res.ok) {
+  //       setTargetSummary(null);
+  //       return;
+  //     }
+
+  //     const data = await res.json();
+
+  //     setTargetSummary({
+  //       target_sales: Number(data?.target_sales ?? 0),
+  //       shortfall_total: Number(data?.shortfall_total ?? 0),
+  //       cashflow_total: Number(data?.cashflow_total ?? 0),
+  //     });
+  //   } catch (error) {
+  //     console.error("Failed to fetch target summary:", error);
+  //     setTargetSummary(null);
+  //   } finally {
+  //     setTargetSummaryLoading(false);
+  //   }
+  // };
+
+  const quarterToMonths: Record<Quarter, string[]> = {
+    Q1: ["January", "February", "March"],
+    Q2: ["April", "May", "June"],
+    Q3: ["July", "August", "September"],
+    Q4: ["October", "November", "December"],
+  };
+
+  const allMonths = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+
+  const fetchSingleMonthTargetSummary = async (monthName: string) => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+    const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`);
+    url.searchParams.set("month", monthName);
+    url.searchParams.set("year", selectedYear);
+    url.searchParams.set("country", initialCountryName.toLowerCase());
+
+    if (initialCountryName.toLowerCase() === "global" && homeCurrency) {
+      url.searchParams.set("currency", homeCurrency.toLowerCase());
+    }
+
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      return {
+        target_sales: 0,
+        shortfall_total: 0,
+        cashflow_total: 0,
+      };
+    }
+
+    const responseJson = await res.json();
+    const payload = responseJson?.data ?? {};
+
+    return {
+      target_sales: Number(payload?.target_sales ?? 0),
+      shortfall_total: Number(payload?.shortfall_total ?? 0),
+      cashflow_total: Number(payload?.cashflow_total ?? 0),
+    };
+  };
+
   const fetchTargetSummary = async () => {
     if (isDemoMode) {
       setTargetSummaryLoading(false);
       setTargetSummary(DEMO_TARGET_SUMMARY);
       return;
     }
+
     if (!selectedYear || !initialCountryName) return;
 
     const ready =
@@ -2520,45 +2645,54 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    let apiMonth = "";
-
-    if (range === "monthly" && selectedMonth) {
-      apiMonth =
-        selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1).toLowerCase();
-    } else {
-      const now = new Date();
-      apiMonth = now.toLocaleString("en-US", { month: "long" });
-    }
-
     try {
       setTargetSummaryLoading(true);
 
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+      let monthsToFetch: string[] = [];
 
-      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`);
-      url.searchParams.set("month", apiMonth);
-      url.searchParams.set("year", selectedYear);
-      url.searchParams.set("country", initialCountryName.toLowerCase());
+      if (range === "monthly") {
+        monthsToFetch = [
+          selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1).toLowerCase(),
+        ];
+      } else if (range === "quarterly" && selectedQuarter) {
+        monthsToFetch = quarterToMonths[selectedQuarter];
+      } else if (range === "yearly") {
+        const fetchedPeriods = readFetchedPeriods();
+        const fetchedMonthsForYear = (fetchedPeriods[selectedYear] || []).map(
+          (m) => m.charAt(0).toUpperCase() + m.slice(1).toLowerCase()
+        );
 
-      const res = await fetch(url.toString(), {
-        method: "GET",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        cache: "no-store",
-      });
+        monthsToFetch = fetchedMonthsForYear;
+      }
 
-      if (!res.ok) {
-        setTargetSummary(null);
+      if (!monthsToFetch.length) {
+        setTargetSummary({
+          target_sales: 0,
+          shortfall_total: 0,
+          cashflow_total: 0,
+        });
         return;
       }
 
-      const data = await res.json();
+      const monthlyResults = await Promise.all(
+        monthsToFetch.map((monthName) => fetchSingleMonthTargetSummary(monthName))
+      );
 
-      setTargetSummary({
-        target_sales: Number(data?.target_sales ?? 0),
-        shortfall_total: Number(data?.shortfall_total ?? 0),
-        cashflow_total: Number(data?.cashflow_total ?? 0),
-      });
+      const totals = monthlyResults.reduce(
+        (acc, curr) => {
+          acc.target_sales += Number(curr.target_sales ?? 0);
+          acc.shortfall_total += Number(curr.shortfall_total ?? 0);
+          acc.cashflow_total += Number(curr.cashflow_total ?? 0);
+          return acc;
+        },
+        {
+          target_sales: 0,
+          shortfall_total: 0,
+          cashflow_total: 0,
+        }
+      );
+
+      setTargetSummary(totals);
     } catch (error) {
       console.error("Failed to fetch target summary:", error);
       setTargetSummary(null);
@@ -2566,6 +2700,33 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setTargetSummaryLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isDemoMode) {
+      setTargetSummary(DEMO_TARGET_SUMMARY);
+      return;
+    }
+
+    const ready =
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
+
+    if (!ready) {
+      setTargetSummary(null);
+      return;
+    }
+
+    fetchTargetSummary();
+  }, [
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    initialCountryName,
+    homeCurrency,
+    isDemoMode,
+  ]);
 
   const handleMonthChange = (v: string) => {
     setSelectedMonth(v);

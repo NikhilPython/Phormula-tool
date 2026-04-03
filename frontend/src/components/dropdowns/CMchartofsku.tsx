@@ -442,9 +442,9 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         <p className="text-center text-sm text-gray-500">Loading chart data...</p>
       )}
 
-      {error && !loading && (
+      {/* {error && !loading && (
         <p className="text-center text-sm text-red-600">Error: {error}</p>
-      )}
+      )} */}
 
       {!loading && !error && !chartData && (
         <p className="text-center text-sm text-gray-500">

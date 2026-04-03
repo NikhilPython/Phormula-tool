@@ -786,8 +786,8 @@ async function api(path: string, options: RequestInit = {}) {
   if (!res.ok) {
     throw new Error(
       (data as any)?.error ||
-        (data as any)?.message ||
-        `HTTP ${res.status}`
+      (data as any)?.message ||
+      `HTTP ${res.status}`
     );
   }
 
@@ -938,26 +938,46 @@ export default function AmazonConnectLegacy({
     return fallback?.marketplace?.id || "";
   };
 
+  // const saveMarketplaceSelection = async (
+  //   selectedCountry: string,
+  //   marketplaceId: string
+  // ) => {
+  //   if (!selectedCountry || !marketplaceId) return;
+
+  //   // const companyName = localStorage.getItem("companyName");
+  //   // const brandName = localStorage.getItem("brandName");
+  //   // const homeCurrency = localStorage.getItem("homeCurrency");
+
+  //   // const payload: any = {
+  //   //   country: selectedCountry,
+  //   //   marketplace_id: marketplaceId,
+  //   // };
+
+  //   // if (companyName?.trim()) payload.company_name = companyName.trim();
+  //   // if (brandName?.trim()) payload.brand_name = brandName.trim();
+  //   // if (homeCurrency?.trim()) payload.homeCurrency = homeCurrency.trim();
+
+  //   try {
+  //     await submitSelectForm(payload).unwrap();
+  //     console.log("Marketplace ID saved:", marketplaceId);
+  //   } catch (err) {
+  //     console.error("submitSelectForm marketplace save error:", err);
+  //   }
+  // };
+
   const saveMarketplaceSelection = async (
     selectedCountry: string,
     marketplaceId: string
   ) => {
     if (!selectedCountry || !marketplaceId) return;
 
-    const companyName = localStorage.getItem("companyName") || "";
-    const brandName = localStorage.getItem("brandName") || "";
-    const homeCurrency = localStorage.getItem("homeCurrency") || "";
-
     try {
       await submitSelectForm({
         country: selectedCountry,
-        company_name: companyName,
-        brand_name: brandName,
-        homeCurrency,
         marketplace_id: marketplaceId,
       }).unwrap();
 
-      console.log("Marketplace ID saved in get_user_data:", marketplaceId);
+      console.log("Marketplace ID saved:", marketplaceId);
     } catch (err) {
       console.error("submitSelectForm marketplace save error:", err);
     }
@@ -1099,8 +1119,8 @@ export default function AmazonConnectLegacy({
       if (!authUrl) {
         throw new Error(
           (data as any)?.error ||
-            (data as any)?.message ||
-            "Failed to get Amazon login URL"
+          (data as any)?.message ||
+          "Failed to get Amazon login URL"
         );
       }
 
@@ -1363,9 +1383,8 @@ export default function AmazonConnectLegacy({
                 size="sm"
                 onClick={handleAmazonLogin}
                 disabled={isConnecting}
-                className={`w-full ${
-                  isConnecting ? "bg-blue-700 cursor-not-allowed" : "bg-blue-700"
-                }`}
+                className={`w-full ${isConnecting ? "bg-blue-700 cursor-not-allowed" : "bg-blue-700"
+                  }`}
               >
                 <img
                   src={ICONS.link}
@@ -1427,11 +1446,10 @@ export default function AmazonConnectLegacy({
                   size="sm"
                   onClick={handleSaveCountryProfile}
                   disabled={isSavingProfile}
-                  className={`w-full ${
-                    isSavingProfile
-                      ? "bg-blue-700 cursor-not-allowed"
-                      : "bg-blue-700"
-                  }`}
+                  className={`w-full ${isSavingProfile
+                    ? "bg-blue-700 cursor-not-allowed"
+                    : "bg-blue-700"
+                    }`}
                 >
                   {isSavingProfile ? "Saving..." : "Submit"}
                 </Button>
