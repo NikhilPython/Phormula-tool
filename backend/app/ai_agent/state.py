@@ -25,6 +25,17 @@ class AgentState(TypedDict, total=False):
     period_mode: str
     filters: Dict[str, Any]
     thresholds: Dict[str, float]
+
+    months_back: Optional[int]
+    needs_sku: bool
+    needs_advice: bool
+    response_mode: str
+    chat_history: List[Dict[str, Any]]
+
+    custom_range: bool
+    period_1: Dict[str, Any]
+    period_2: Dict[str, Any]
+
     latest_completed_month: Dict[str, Any]
     current_df_json: str
     previous_df_json: str

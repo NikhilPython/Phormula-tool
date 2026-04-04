@@ -98,3 +98,21 @@ def fetch_range_df(
     if not df.empty:
         df["parsed_date_time"] = parse_date_series(df)
     return df
+
+
+def fetch_between_dates_df(
+    engine: Engine,
+    table_name: str,
+    start_date: str,
+    end_date: str,
+    limit: int = 200000,
+) -> pd.DataFrame:
+    # inclusive user end-date ko exclusive next-day boundary me turn karo
+    end_ts = pd.to_datetime(end_date, utc=True) + pd.Timedelta(days=1)
+    return fetch_range_df(
+        engine=engine,
+        table_name=table_name,
+        start_iso=f"{start_date}T00:00:00+00:00",
+        end_iso=end_ts.isoformat(),
+        limit=limit,
+    )
