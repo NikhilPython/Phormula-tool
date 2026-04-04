@@ -10,7 +10,7 @@ from app.ai_agent.service import run_agent
 from app.models.user_models import AgentEmailSchedule
 from app.utils.token_utils import get_effective_user_id_from_token
 
-planning_bp = Blueprint("planning_bp", __name__)
+agent_bp = Blueprint("agent_bp", __name__)
 
 
 def _get_auth_user_id():
@@ -22,7 +22,7 @@ def _get_auth_user_id():
     return payload, effective_user_id, member_id
 
 
-@planning_bp.route("/api/agent/chat", methods=["POST"])
+@agent_bp.route("/api/agent/chat", methods=["POST"])
 def agent_chat():
     try:
         payload, effective_user_id, member_id = _get_auth_user_id()
@@ -46,7 +46,7 @@ def agent_chat():
         return jsonify({"error": "Failed to process AI agent request", "details": str(e)}), 500
 
 
-@planning_bp.route("/api/agent/email-summary", methods=["POST"])
+@agent_bp.route("/api/agent/email-summary", methods=["POST"])
 def agent_email_summary():
     try:
         payload, effective_user_id, member_id = _get_auth_user_id()
@@ -67,7 +67,7 @@ def agent_email_summary():
         return jsonify({"error": "Failed to send AI summary email", "details": str(e)}), 500
 
 
-@planning_bp.route("/api/agent/history", methods=["GET"])
+@agent_bp.route("/api/agent/history", methods=["GET"])
 def agent_history():
     try:
         payload, effective_user_id, member_id = _get_auth_user_id()
@@ -79,7 +79,7 @@ def agent_history():
         return jsonify({"error": "Failed to fetch history", "details": str(e)}), 500
 
 
-@planning_bp.route("/api/agent/schedules", methods=["GET"])
+@agent_bp.route("/api/agent/schedules", methods=["GET"])
 def get_agent_schedules():
     try:
         payload, effective_user_id, member_id = _get_auth_user_id()
@@ -104,7 +104,7 @@ def get_agent_schedules():
         return jsonify({"error": "Failed to fetch schedules", "details": str(e)}), 500
 
 
-@planning_bp.route("/api/agent/schedules", methods=["POST"])
+@agent_bp.route("/api/agent/schedules", methods=["POST"])
 def upsert_agent_schedule():
     try:
         payload, effective_user_id, member_id = _get_auth_user_id()
