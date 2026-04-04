@@ -764,13 +764,13 @@ export default function InventoryReconciliationPage({ params }: Params) {
         cellClassName: "text-center",
       },
 
-      {
-        key: "price",
-        header: priceHeader,
-        width: "w-[100px]",
-        cellClassName: "text-center",
-        headerClassName: "break-words",
-      },
+      // {
+      //   key: "price",
+      //   header: priceHeader,
+      //   width: "w-[100px]",
+      //   cellClassName: "text-center",
+      //   headerClassName: "break-words",
+      // },
 
       {
         key: "lost_units",
@@ -789,14 +789,6 @@ export default function InventoryReconciliationPage({ params }: Params) {
       },
 
       {
-        key: "total_lost_units",
-        header: "Total Lost Units",
-        width: "w-[130px]",
-        cellClassName: "text-center",
-        headerClassName: "break-words",
-      },
-
-      {
         key: "compensation_units",
         header: "Compensation Units",
         width: "w-[150px]",
@@ -805,44 +797,61 @@ export default function InventoryReconciliationPage({ params }: Params) {
       },
 
       {
+        key: "net_units",
+        header: "Remaining Compensation Units",
+        width: "w-[100px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+
+
+      {
+        key: "total_lost_units",
+        header: "Total Lost Units",
+        width: "w-[130px]",
+        cellClassName: "text-center",
+        headerClassName: "break-words",
+      },
+
+      
+
+      {
         key: "compensation_value",
-        header: `Compensation Value${countryCurrencySuffix}`,
+        header: `Compensation Value Amount${countryCurrencySuffix}`,
         width: "w-[150px]",
         cellClassName: "text-center",
         headerClassName: "break-words",
       },
 
       {
-        key: "settlement_loss_event_units",
-        header: "Settlement Loss Event Units",
-        width: "w-[190px]",
-        cellClassName: "text-center",
-        headerClassName: "break-words",
-      },
-
-      {
         key: "settlement_loss_event_amount",
-        header: `Settlement Loss Event Amount${countryCurrencySuffix}`,
+        header: `Remaining Compensation Amount${countryCurrencySuffix}`,
         width: "w-[200px]",
         cellClassName: "text-center",
         headerClassName: "break-words",
       },
 
       {
-        key: "net_units",
-        header: "Net Units",
-        width: "w-[100px]",
-        cellClassName: "text-center",
-        headerClassName: "break-words",
-      },
-
-      {
         key: "net_value",
-        header: `Net Value${countryCurrencySuffix}`,
+        header: `Total Compensation Value ${countryCurrencySuffix}`,
         width: "w-[120px]",
         cellClassName: "text-center",
         headerClassName: "break-words",
       },
+
+      // {
+      //   key: "settlement_loss_event_units",
+      //   header: "Settlement Loss Event Units",
+      //   width: "w-[190px]",
+      //   cellClassName: "text-center",
+      //   headerClassName: "break-words",
+      // },
+
+      
+
+      
+
+      
     ];
   }, [lostCompRows, countryName]);
 
@@ -966,7 +975,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     () => [
       { value: "charts" as const, label: "Inventory Ageing Split" },
       { value: "table" as const, label: "Recon Table" },
-      { value: "extra" as const, label: "Inventory Cost for Ageing" },
+      { value: "extra" as const, label: "Lost vs Compensation" },
     ],
     []
   );
