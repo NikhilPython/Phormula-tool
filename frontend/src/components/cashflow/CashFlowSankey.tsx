@@ -41,6 +41,9 @@ type Props = {
   currency: string;
 };
 
+
+
+
 /* ================= COMPONENT ================= */
 
 const CashFlowSankey: React.FC<Props> = ({
@@ -54,6 +57,17 @@ const CashFlowSankey: React.FC<Props> = ({
   const [screenWidth, setScreenWidth] = React.useState(
     typeof window !== "undefined" ? window.innerWidth : 1920
   );
+
+  const formatCurrencyWithSign = (val?: number) => {
+    if (val === undefined || val === null) return "-";
+
+    const absVal = Math.abs(val).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    return val < 0 ? `-${currency}${absVal}` : `${currency}${absVal}`;
+  };
 
   const isPreviewSankey =
     !data ||
@@ -155,7 +169,7 @@ const CashFlowSankey: React.FC<Props> = ({
       value: data.gross_sales,
       prev: previous_summary?.gross_sales,
       icon: <FaMoneyBillTrendUp size={16} />,
-     bg: "bg-white",
+      bg: "bg-white",
       border: "border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
       isCurrency: true,
     },
@@ -173,7 +187,7 @@ const CashFlowSankey: React.FC<Props> = ({
       value: data.promotional_rebates,
       prev: previous_summary?.promotional_rebates,
       icon: <FaPercent size={16} />,
-    bg: "bg-white",
+      bg: "bg-white",
       border: "border-[#B8C78C] border-t-4 border-t-[#B8C78C]", // 🔴 red border
       isCurrency: true,
       isDiscount: true,
@@ -194,7 +208,7 @@ const CashFlowSankey: React.FC<Props> = ({
       value: data.otherwplatform,
       prev: previous_summary?.otherwplatform,
       icon: <FaLayerGroup size={16} />,
-       bg: "bg-white",
+      bg: "bg-white",
       border: "border-[#3A8EA4]  border-t-4 border-t-[#3A8EA4]",
       isCurrency: true,
     },
@@ -212,7 +226,7 @@ const CashFlowSankey: React.FC<Props> = ({
       value: data.rembursement_fee,
       prev: previous_summary?.rembursement_fee,
       icon: <FaArrowRotateRight size={16} />,
-       bg: "bg-white",
+      bg: "bg-white",
       border: "border-[#C49466] border-t-4 border-t-[#C49466]",
       isCurrency: true,
     },
@@ -253,7 +267,7 @@ const CashFlowSankey: React.FC<Props> = ({
     tooltip: {
       formatter: (p: any) => {
         if (p.name === "Summary") return "";
-        return `${p.name}<br/>${currency}${Number(p.value || 0).toLocaleString()}`;
+        return `${p.name}<br/>${formatCurrencyWithSign(Number(p.value || 0))}`;
       },
     },
     series: [
@@ -285,10 +299,12 @@ const CashFlowSankey: React.FC<Props> = ({
             const showSign = row.name !== "Cash Generated";
             const signKey = row.sign === "+" ? "signPlus" : "signMinus";
 
+            const formatted = formatCurrencyWithSign(row.value);
+
             return (
               `{label|${row.name}}` +
               (showSign ? `{${signKey}|(${row.sign})}` : `{signEmpty| }`) +
-              `{amount|${currency}${Number(n.value).toFixed(2)}}` +
+              `{amount|${formatted}}` +
               `${!isMobile ? `{pct|(${pct.toFixed(1)}%)}` : ""}`
             );
           },
@@ -367,78 +383,73 @@ const CashFlowSankey: React.FC<Props> = ({
   return (
     <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  {cards.map((c) => {
-    const p = getChangePercent(c.value, c.prev);
+        {cards.map((c) => {
+          const p = getChangePercent(c.value, c.prev);
 
-    const currentValue =
-      c.label === "Units" ? (
-        formatInteger(c.value)
-      ) : c.isDiscount ? (
-        <>
-          {currency}
-          {formatNumber(Math.abs(c.value || 0))}
-          <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-            (
-            {(((Math.abs(c.value || 0)) / (data.gross_sales || 1)) * 100).toFixed(2)}
-            %)
-          </span>
-        </>
-      ) : (
-        <>
-          {c.isCurrency ? currency : ""}
-          {formatNumber(c.value)}
-          {perUnitCards.includes(c.label) && (
-            <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
-              ({currency}
-              {getPerUnitValue(c.value, data.quantity_total)} / Unit)
-            </span>
-          )}
-        </>
-      );
+          const currentValue =
+            c.label === "Units" ? (
+              formatInteger(c.value)
+            ) : c.isDiscount ? (
+              <>
+                {formatCurrencyWithSign(-(Math.abs(c.value || 0)))}
+                <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
+                  (
+                  {(((Math.abs(c.value || 0)) / (data.gross_sales || 1)) * 100).toFixed(2)}
+                  %)
+                </span>
+              </>
+            ) : (
+              <>
+                {c.isCurrency ? formatCurrencyWithSign(c.value) : formatNumber(c.value)}
+                {perUnitCards.includes(c.label) && (
+                  <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
+                    ({formatCurrencyWithSign(Number(getPerUnitValue(c.value, data.quantity_total)))} / Unit)
+                  </span>
+                )}
+              </>
+            );
 
-    const previousValueText = !hasPrevious
-      ? c.label === "Units"
-        ? "-"
-        : `${currency}-`
-      : c.label === "Units"
-      ? formatInteger(c.prev)
-      : c.isDiscount
-      ? `${currency}${formatNumber(Math.abs(c.prev || 0))}`
-      : `${c.isCurrency ? currency : ""}${formatNumber(c.prev)}${
-          perUnitCards.includes(c.label)
-            ? ` (${currency}${getPerUnitValue(
-                c.prev,
-                previous_summary?.quantity_total
-              )} / Unit)`
-            : ""
-        }`;
+          const previousValueText = !hasPrevious
+            ? c.label === "Units"
+              ? "-"
+              : `${currency}-`
+            : c.label === "Units"
+              ? formatInteger(c.prev)
+              : c.isDiscount
+                ? formatCurrencyWithSign(-(Math.abs(c.prev || 0)))
+                : `${c.isCurrency ? formatCurrencyWithSign(c.prev) : formatNumber(c.prev)}${perUnitCards.includes(c.label)
+                  ? ` (${formatCurrencyWithSign(
+                    Number(getPerUnitValue(c.prev, previous_summary?.quantity_total))
+                  )} / Unit)`
+                  : ""
+                }`;
 
-    const comparisons = [
-      {
-        label: `${formatPrevLabel(previousLabel || "Previous")}`,
-        valueText: previousValueText,
-        deltaText: hasPrevious && p ? `${Number(p) < 0 ? "▼" : "▲"} ${Math.abs(Number(p))}%` : "-",
-        deltaClassName:
-          hasPrevious && p
-            ? Number(p) < 0
-              ? "text-red-600"
-              : "text-green-600"
-            : "text-gray-400",
-      },
-    ];
+          const comparisons = [
+            {
+              label: `${formatPrevLabel(previousLabel || "Previous")}`,
+              valueText: previousValueText,
+              deltaText: hasPrevious && p ? `${Number(p) < 0 ? "▼" : "▲"} ${Math.abs(Number(p))}%` : "-",
+              deltaClassName:
+                hasPrevious && p
+                  ? Number(p) < 0
+                    ? "text-red-600"
+                    : "text-green-600"
+                  : "text-gray-400",
+            },
+          ];
 
-    return (
-      <SummaryMetricCard
-        key={c.label}
-        title={c.label}
-        value={currentValue}
-        className={`border ${c.border} ${c.bg} xl:px-4 px-2 py-3`}
-        valueClassName="text-charcoal-700"
-        comparisons={comparisons}
-      />
-    );
-  })}
-</div>
+          return (
+            <SummaryMetricCard
+              key={c.label}
+              title={c.label}
+              value={currentValue}
+              className={`border ${c.border} ${c.bg} xl:px-4 px-2 py-3`}
+              valueClassName="text-charcoal-700"
+              comparisons={comparisons}
+            />
+          );
+        })}
+      </div>
       <div className="rounded-xl border shadow bg-white p-4">
 
 

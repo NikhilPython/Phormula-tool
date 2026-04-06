@@ -3246,7 +3246,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   if (initialLoading) {
     return (
-      <Loader fullscreen transparent />
+      // <Loader fullscreen transparent />
+      <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80">
+        <Loader backgroundClass="bg-transparent" />
+      </div>
     );
   }
 

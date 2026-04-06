@@ -144,6 +144,17 @@ const getCurrencySymbol = (country?: string) => {
 const capitalize = (str: string) =>
   str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : "";
 
+const formatCurrencyValue = (value: number, currencySymbol: string) => {
+  const absValue = Math.abs(Number(value || 0)).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  return Number(value) < 0
+    ? `-${currencySymbol}${absValue}`
+    : `${currencySymbol}${absValue}`;
+};
+
 // fixed columns expected
 const columnsToDisplay2 = [
   "net_sales",
@@ -673,7 +684,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
         const ds = sourceMonths.map((monthName) => {
           const md = quarterlyMonthlyData[monthName];
-          return Math.abs(Number(md?.[key] ?? 0));
+          return Number(md?.[key] ?? 0);
         });
 
         datasets.push({
@@ -699,7 +710,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         const ds = monthsList.map((m) => {
           const md = allYearlyData[m];
           const val = md?.[key] ?? 0;
-          return Math.abs(Number(val));
+          return Number(val);
         });
 
         const label = labelMap[key];
@@ -736,7 +747,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       datasets: [
         {
           label: "Amount",
-          data: filteredKeys.map((k) => Math.abs(Number(getSafeValue(k)))),
+          data: filteredKeys.map((k) => Number(getSafeValue(k))),
           backgroundColor: filteredKeys.map(
             (k) => colorMapping[labelMap[k]] || "#999"
           ),
@@ -761,10 +772,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         callbacks: {
           label: (tooltipItem: any) => {
             const label = tooltipItem.label || "";
-            return `${label}: ${currencySymbol} ${Number(tooltipItem.raw).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}`;
+            return `${label}: ${formatCurrencyValue(tooltipItem.raw, currencySymbol)}`;
           },
         },
       },
@@ -803,7 +811,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
           font: { size: yAxisFontSize },
           padding: 0,
           callback: (value: any) =>
-            `${currencySymbol}${Number(value).toLocaleString()}`,
+            formatCurrencyValue(Number(value), currencySymbol),
         },
         border: {
           display: false,
@@ -840,10 +848,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         callbacks: {
           label: (tooltipItem: any) => {
             const displayLabel = tooltipItem.dataset.label || "";
-            return `${displayLabel}: ${currencySymbol} ${Number(tooltipItem.raw).toLocaleString(undefined, {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}`;
+            return `${displayLabel}: ${formatCurrencyValue(Number(tooltipItem.raw), currencySymbol)}`;
           },
           labelColor: (context: any) => {
             const color = context.dataset.borderColor;
@@ -890,7 +895,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
           font: { size: yAxisFontSize },
           padding: 0,
           callback: (value: any) =>
-            `${currencySymbol}${Number(value).toLocaleString()}`,
+            formatCurrencyValue(Number(value), currencySymbol),
         },
         border: {
           display: false,
