@@ -9,7 +9,7 @@ import re
 from dotenv import load_dotenv
 
 load_dotenv()
-db_url = os.getenv('DATABASE_URL', 'postgresql://postgres:password@localhost:5432/phormula')
+db_url = os.getenv('DATABASE_URL')
 
 
 def process_global_monthly_skuwise_data(user_id, country, year, month):
@@ -25,9 +25,9 @@ def process_global_monthly_skuwise_data(user_id, country, year, month):
 
     config_list = [
         (f"skuwisemonthly_{user_id}",      "global"),
-        (f"skuwisemonthlyind_{user_id}",   "global_inr"),
-        (f"skuwisemonthlycan_{user_id}",   "global_cad"),
-        (f"skuwisemonthlygbp_{user_id}",   "global_gbp"),
+        # (f"skuwisemonthlyind_{user_id}",   "global_inr"),
+        # (f"skuwisemonthlycan_{user_id}",   "global_cad"),
+        # (f"skuwisemonthlygbp_{user_id}",   "global_gbp"),
     ]
 
     try:
@@ -278,38 +278,38 @@ def process_global_monthly_skuwise_data(user_id, country, year, month):
                 platform_fee_inventory_storage_total = 0.0
                 platformfeenew_total = 0.0
 
-                if logical_country == "global_gbp":
-                    try:
-                        raw_table = f"user_{user_id}_uk_{month}{year}_data"
-                        raw_df = pd.read_sql(
-                            text(f'SELECT "description","total" FROM {raw_table}'),
-                            conn
-                        )
+                # if logical_country == "global_gbp":
+                #     try:
+                #         raw_table = f"user_{user_id}_uk_{month}{year}_data"
+                #         raw_df = pd.read_sql(
+                #             text(f'SELECT "description","total" FROM {raw_table}'),
+                #             conn
+                #         )
 
-                        if not raw_df.empty:
-                            raw_df["description"] = raw_df["description"].fillna("").astype(str)
-                            raw_df["total"] = pd.to_numeric(raw_df["total"], errors="coerce").fillna(0.0)
-                            desc_all = raw_df["description"]
+                #         if not raw_df.empty:
+                #             raw_df["description"] = raw_df["description"].fillna("").astype(str)
+                #             raw_df["total"] = pd.to_numeric(raw_df["total"], errors="coerce").fillna(0.0)
+                #             desc_all = raw_df["description"]
 
-                            def sum_total_where_desc_contains(keywords):
-                                pattern = "|".join(re.escape(str(k)) for k in keywords if k)
-                                if not pattern:
-                                    return 0.0
-                                mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
-                                return float(raw_df.loc[mask, "total"].sum())
+                #             def sum_total_where_desc_contains(keywords):
+                #                 pattern = "|".join(re.escape(str(k)) for k in keywords if k)
+                #                 if not pattern:
+                #                     return 0.0
+                #                 mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
+                #                 return float(raw_df.loc[mask, "total"].sum())
 
-                            platformfeenew_total = sum_total_where_desc_contains(["Subscription"])
-                            platform_fee_inventory_storage_total = sum_total_where_desc_contains([
-                                "FBA Return Fee",
-                                "FBA Long-Term Storage Fee",
-                                "FBA storage fee",
-                                "FBADisposal",
-                                "FBAStorageBilling",
-                                "FBALongTermStorageBilling",
-                            ])
+                #             platformfeenew_total = sum_total_where_desc_contains(["Subscription"])
+                #             platform_fee_inventory_storage_total = sum_total_where_desc_contains([
+                #                 "FBA Return Fee",
+                #                 "FBA Long-Term Storage Fee",
+                #                 "FBA storage fee",
+                #                 "FBADisposal",
+                #                 "FBAStorageBilling",
+                #                 "FBALongTermStorageBilling",
+                #             ])
 
-                    except Exception as e:
-                        print(f"⚠️ Breakup calc skipped (raw settlement not found / missing cols): {e}")
+                #     except Exception as e:
+                #         print(f"⚠️ Breakup calc skipped (raw settlement not found / missing cols): {e}")
 
                 total_expense_val = round(
                     total_amazon_fee_val + abs(platformfeenew_total) + abs(platform_fee_inventory_storage_total),
@@ -410,9 +410,9 @@ def process_global_quarterly_skuwise_data(user_id, country, month, year, q, db_u
 
         config_list = [
             (f"skuwisemonthly_{user_id}",     "global"),
-            (f"skuwisemonthlyind_{user_id}",  "global_inr"),
-            (f"skuwisemonthlycan_{user_id}",  "global_cad"),
-            (f"skuwisemonthlygbp_{user_id}",  "global_gbp"),
+            # (f"skuwisemonthlyind_{user_id}",  "global_inr"),
+            # (f"skuwisemonthlycan_{user_id}",  "global_cad"),
+            # (f"skuwisemonthlygbp_{user_id}",  "global_gbp"),
         ]
 
         for source_table, logical_country in config_list:
@@ -647,9 +647,9 @@ def process_global_yearly_skuwise_data(user_id, country, year):
 
     config_list = [
         (f"skuwisemonthly_{user_id}",     "global"),
-        (f"skuwisemonthlyind_{user_id}",  "global_inr"),
-        (f"skuwisemonthlycan_{user_id}",  "global_cad"),
-        (f"skuwisemonthlygbp_{user_id}",  "global_gbp"),
+        # (f"skuwisemonthlyind_{user_id}",  "global_inr"),
+        # (f"skuwisemonthlycan_{user_id}",  "global_cad"),
+        # (f"skuwisemonthlygbp_{user_id}",  "global_gbp"),
     ]
 
     try:
