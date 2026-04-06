@@ -340,11 +340,11 @@ export default function AmazonAdsConnect({
                     <span>Your credentials are encrypted and stored securely</span>
                 </div>
 
-                {message && (
+                {/* {message && (
                     <div className="mt-3 sm:mt-4 text-center text-xs sm:text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md p-2">
                         {message}
                     </div>
-                )}
+                )} */}
                 {error && (
                     <div className="mt-3 sm:mt-4 text-center text-xs sm:text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-2">
                         {error}

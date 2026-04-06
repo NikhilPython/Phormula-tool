@@ -728,19 +728,20 @@ const AppSidebar: React.FC = () => {
         },
         {
           name: "Purchase Order (PO) Planning",
-          path: ({ countryName }) => {
-            const { month, year } = getCurrentMonthYear();
-            return `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`;
-          },
-          onClick: async () => {
-            const { month, year } = getCurrentMonthYear();
+          path: `/inventory-forecast/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#purchase-order`,
+          // path: ({ countryName }) => {
+          //   const { month, year } = getCurrentMonthYear();
+          //   return `/inventory-forecast/${countryName}/${month}/${year}#purchase-order`;
+          // },
+          // onClick: async () => {
+          //   const { month, year } = getCurrentMonthYear();
 
-            await triggerPurchaseOrderApi(
-              currentParams.countryName,
-              month,
-              year
-            );
-          },
+          //   await triggerPurchaseOrderApi(
+          //     currentParams.countryName,
+          //     month,
+          //     year
+          //   );
+          // },
         },
         {
           name: "P&L Forecast",
@@ -769,7 +770,7 @@ const AppSidebar: React.FC = () => {
         },
         {
           name: "Inventory Reconcilliation",
-          path: `/inventory-reconciliation/${currentParams.countryName}/${currentMonthYear.month}/${currentMonthYear.year}`,
+          path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
 
         {

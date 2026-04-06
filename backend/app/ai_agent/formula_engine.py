@@ -41,6 +41,18 @@ def compute_metric(df: pd.DataFrame, metric_name: str, country: str) -> Dict[str
     total, per_sku_df, components = fn(df, country=country)
     per_sku_df = per_sku_df.sort_values("__metric__", ascending=False).reset_index(drop=True)
 
+    # ✅ map product_name
+    if "sku" in df.columns and "product_name" in df.columns:
+        sku_map = (
+            df[["sku", "product_name"]]
+            .dropna()
+            .drop_duplicates()
+            .set_index("sku")["product_name"]
+            .to_dict()
+        )
+
+        per_sku_df["product_name"] = per_sku_df["sku"].map(sku_map)
+
     return {
         "metric": metric_name,
         "total": float(total),

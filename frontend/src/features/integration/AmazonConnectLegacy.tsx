@@ -744,7 +744,7 @@ import AmazonFinancialDashboard from "./AmazonFinancialDashboard";
 import Button from "@/components/ui/button/Button";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { useSubmitSelectFormMutation } from "@/lib/api/onboardingApi";
-
+import { FaLink, FaLock } from "react-icons/fa6";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
 const CALLBACK_ORIGIN = process.env.NEXT_PUBLIC_CALLBACK_ORIGIN || "";
@@ -1310,11 +1310,11 @@ export default function AmazonConnectLegacy({
             Link your Amazon Seller Central to sync your sales data
           </p>
 
-          {message && (
+          {/* {message && (
             <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs sm:text-sm text-green-600">
               {message}
             </div>
-          )}
+          )} */}
 
           {error && (
             <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs sm:text-sm text-red-700">
@@ -1324,15 +1324,17 @@ export default function AmazonConnectLegacy({
 
           <div className="mb-5 rounded-md border border-[#5EA68E] border-l-[5px] bg-[#D9D9D94D] px-3 py-3 sm:py-4">
             <div className="flex items-center gap-2">
-              <img
-                src={ICONS.shield}
-                alt="Secure"
-                className="h-4 w-4 sm:h-5 sm:w-5"
-              />
+
+              {/* Icon with green circular background */}
+              <div className="flex items-center justify-center w-4 h-4 rounded-full bg-[#5EA68E]">
+                <FaLock className="text-white text-[8px]" />
+              </div>
+
               <span className="text-xs sm:text-sm font-medium text-[#5EA68E]">
                 Secure Connection
               </span>
             </div>
+
             <p className="mt-1 ml-1 text-xs sm:text-sm text-[#414042]">
               Your Amazon credentials are encrypted and stored securely. We only
               access data necessary for analytics.
@@ -1371,9 +1373,9 @@ export default function AmazonConnectLegacy({
               </option>
             </select>
 
-            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+            {/* <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
               <img src={ICONS.caret} alt="" className="h-4 w-4 opacity-70" />
-            </div>
+            </div> */}
           </div>
 
           {!showProfileFields && (
@@ -1386,11 +1388,12 @@ export default function AmazonConnectLegacy({
                 className={`w-full ${isConnecting ? "bg-blue-700 cursor-not-allowed" : "bg-blue-700"
                   }`}
               >
-                <img
+                {/* <img
                   src={ICONS.link}
                   alt=""
                   className="h-5 w-5 sm:h-6 sm:w-6 opacity-90"
-                />
+                /> */}
+                <FaLink className="h-4 w-4 opacity-90" />
                 {isConnecting ? "Working..." : "Connect"}
               </Button>
             </div>
