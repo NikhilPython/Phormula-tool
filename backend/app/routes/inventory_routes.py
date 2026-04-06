@@ -252,47 +252,68 @@ def backfill_inventory_product_names(mp: str) -> int:
 # ---------------------------- Inventory health report ------------------------
 
 def _request_inventory_age_report(mp: str, retry_count: int = 0) -> Optional[str]:
-    """
-    Request FBA Manage Inventory Health Report via Reports API and return reportId.
-
-    Uses GET_FBA_INVENTORY_PLANNING_DATA, which is the modern FBA inventory
-    health/age report (replacement for the old GET_FBA_INVENTORY_AGED_DATA).
-    """
     body = {
         "reportType": "GET_FBA_INVENTORY_PLANNING_DATA",
         "marketplaceIds": [mp],
     }
 
-    res = amazon_client.make_api_call(
-        "/reports/2021-06-30/reports",
-        "POST",
-        {},
-        body,
-    )
-
-    if not res or "error" in res:
-        error_msg = res.get("error", {}) if isinstance(res, dict) else str(res)
-        logger.warning(
-            "Error creating inventory health report (attempt %d): %s",
-            retry_count + 1,
-            error_msg,
+    try:
+        res = amazon_client.make_api_call(
+            "/reports/2021-06-30/reports",
+            "POST",
+            {},
+            body,
         )
 
-        # Retry logic for transient errors
-        if retry_count < 2:  # Max 3 attempts total
-            time.sleep(5 * (retry_count + 1))  # Exponential backoff
-            return _request_inventory_age_report(mp, retry_count + 1)
+        if not res:
+            raise RuntimeError("Empty response from SP-API")
 
-        return None
+        if "error" in res:
+            error = res.get("error", {})
+            msg = str(error)
 
-    payload = res.get("payload") or res
-    report_id = payload.get("reportId")
+            # 🚨 1. HARD STOP ON 403
+            if "403" in msg or "Unauthorized" in msg or "forbidden" in msg.lower():
+                logger.error(
+                    "❌ SP-API AUTH ERROR (NO RETRY) | marketplace=%s | error=%s",
+                    mp, msg
+                )
+                raise RuntimeError(
+                    "SP-API 403 Unauthorized. Fix Seller Central permissions. DO NOT RETRY."
+                )
 
-    if report_id:
-        logger.info("Successfully created inventory health report: %s", report_id)
+            # 🔁 2. RETRY ONLY TRANSIENT ERRORS
+            transient = [
+                "429", "QuotaExceeded", "Too Many Requests",
+                "500", "502", "503", "504"
+            ]
 
-    return report_id
+            if any(t in msg for t in transient):
+                if retry_count < 2:
+                    wait = 2 ** retry_count
+                    logger.warning(
+                        "Retrying SP-API report (attempt=%s, wait=%ss)",
+                        retry_count + 1, wait
+                    )
+                    time.sleep(wait)
+                    return _request_inventory_age_report(mp, retry_count + 1)
 
+            # ❌ OTHER ERRORS → NO RETRY
+            logger.error("Non-retryable SP-API error: %s", msg)
+            raise RuntimeError(msg)
+
+        payload = res.get("payload") or res
+        report_id = payload.get("reportId")
+
+        if not report_id:
+            raise RuntimeError(f"No reportId returned: {res}")
+
+        logger.info("✅ Created inventory health report: %s", report_id)
+        return report_id
+
+    except Exception as e:
+        logger.exception("Inventory report creation failed")
+        raise
 
 def _wait_for_report(report_id: str, timeout_sec: int = 600, poll_interval: int = 20) -> Optional[str]:
     """
@@ -498,10 +519,14 @@ def _fetch_inventory_age_by_sku(mp: str) -> dict[str, int]:
     logger.info("Starting inventory health (age) report request for marketplace: %s", mp)
 
     try:
-        report_id = _request_inventory_age_report(mp)
-        if not report_id:
-            logger.warning("No report_id returned for GET_FBA_INVENTORY_PLANNING_DATA")
-            return {}
+        try:
+            report_id = _request_inventory_age_report(mp)
+        except RuntimeError as e:
+            return jsonify({
+                "success": False,
+                "error": str(e),
+                "action": "Reauthorize Amazon permissions OR disable aged inventory sync"
+            }), 403
 
         doc_id = _wait_for_report(report_id)
         if not doc_id:
@@ -965,12 +990,14 @@ def sync_inventory_aged():
     logger.info("Starting InventoryAged sync for marketplace %s (user_id=%s)", mp, user_id)
 
     # ---------------- REQUEST REPORT ----------------
-    report_id = _request_inventory_age_report(mp)
-    if not report_id:
+    try:
+        report_id = _request_inventory_age_report(mp)
+    except RuntimeError as e:
         return jsonify({
             "success": False,
-            "error": "Failed to create inventory health report",
-        }), 502
+            "error": str(e),
+            "action": "Reauthorize Amazon permissions OR disable aged inventory sync"
+        }), 403
 
     doc_id = _wait_for_report(report_id)
     if not doc_id:
