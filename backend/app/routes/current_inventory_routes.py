@@ -1,7 +1,5 @@
-# current_inventory_routes.py
-
 from flask import Blueprint, request, jsonify
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
 import jwt
 import os
@@ -13,13 +11,12 @@ from app.models.user_models import User, CountryProfile
 from app import db
 from io import BytesIO
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
 from calendar import monthrange
 from sqlalchemy.exc import ProgrammingError
 from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
 from app.utils.token_utils import get_effective_user_id_from_token
 
-# ===== Setup =====
 SECRET_KEY = Config.SECRET_KEY
 
 load_dotenv()
@@ -28,10 +25,18 @@ logger = logging.getLogger(__name__)
 
 current_inventory_bp = Blueprint("current_inventory_bp", __name__)
 
+# Create once, reuse
+primary_engine = create_engine(db_url, pool_pre_ping=True)
 
-def encode_file_to_base64(file_path: str) -> str:
-    with open(file_path, "rb") as f:
-        return base64.b64encode(f.read()).decode("utf-8")
+MARKETPLACE_ID_BY_COUNTRY = {
+    "us": "ATVPDKIKX0DER",
+    "uk": "A1F83G8C2ARO7P",
+}
+
+MARKETPLACE_NAME_BY_COUNTRY = {
+    "us": "Amazon.com",
+    "uk": "Amazon.co.uk",
+}
 
 
 def norm_sku(x) -> str:
@@ -40,17 +45,133 @@ def norm_sku(x) -> str:
     return str(x).strip().upper()
 
 
-# ✅ inventory table uses marketplace_id (SP-API ID)
-MARKETPLACE_ID_BY_COUNTRY = {
-    "us": "ATVPDKIKX0DER",
-    "uk": "A1F83G8C2ARO7P",
-}
+def safe_numeric(series_or_value, default=0):
+    return pd.to_numeric(series_or_value, errors="coerce").fillna(default)
 
-# ✅ liveorders table uses marketplace (NAME)
-MARKETPLACE_NAME_BY_COUNTRY = {
-    "us": "Amazon.com",
-    "uk": "Amazon.co.uk",
-}
+
+def table_exists(engine, table_name: str) -> bool:
+    try:
+        insp = inspect(engine)
+        return insp.has_table(table_name)
+    except Exception:
+        logger.exception("Failed checking existence of table %s", table_name)
+        return False
+
+
+def resolve_marketplace(db_session, user_id: int, country_key: str):
+    marketplace_id = None
+    profile = None
+
+    try:
+        profile = (
+            db_session.query(CountryProfile)
+            .filter_by(user_id=user_id, country=country_key)
+            .first()
+        )
+    except Exception:
+        logger.exception("Failed loading CountryProfile for user=%s country=%s", user_id, country_key)
+
+    if profile and getattr(profile, "marketplace_id", None):
+        marketplace_id = profile.marketplace_id
+
+    if not marketplace_id:
+        marketplace_id = MARKETPLACE_ID_BY_COUNTRY.get(country_key)
+
+    marketplace_name = MARKETPLACE_NAME_BY_COUNTRY.get(country_key)
+
+    return marketplace_id, marketplace_name, profile
+
+
+def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketplace_id: str) -> pd.DataFrame:
+    """
+    Tries multiple filter combinations depending on columns available in inventory_aged.
+    This prevents US/UK data mixing.
+    """
+    try:
+        probe_sql = text("""
+            SELECT *
+            FROM inventory_aged
+            WHERE 1=0
+        """)
+        empty_df = pd.read_sql_query(probe_sql, amazon_engine)
+        cols = set(empty_df.columns)
+    except Exception:
+        logger.exception("Failed probing inventory_aged schema")
+        return pd.DataFrame()
+
+    select_cols = [
+        "sku",
+        "available",
+        "inv-age-0-to-90-days",
+        "inv-age-91-to-180-days",
+        "inv-age-181-to-270-days",
+        "inv-age-271-to-365-days",
+        "inv-age-365-plus-days",
+        "sales-rank",
+        "estimated-storage-cost-next-month",
+    ]
+
+    if "snapshot_date" in cols:
+        select_cols.append("snapshot_date")
+    if "marketplace_id" in cols:
+        select_cols.append("marketplace_id")
+    if "country" in cols:
+        select_cols.append("country")
+    if "user_id" in cols:
+        select_cols.append("user_id")
+
+    where_clauses = []
+    params = {}
+
+    if "user_id" in cols:
+        where_clauses.append("user_id = :uid")
+        params["uid"] = user_id
+
+    if "marketplace_id" in cols:
+        where_clauses.append("marketplace_id = :mkt_id")
+        params["mkt_id"] = marketplace_id
+    elif "country" in cols:
+        where_clauses.append("LOWER(country) = :country")
+        params["country"] = country_key
+
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+    sql = text(f"""
+        SELECT {', '.join(f'"{c}"' if "-" in c else c for c in select_cols)}
+        FROM inventory_aged
+        WHERE {where_sql}
+    """)
+
+    try:
+        aged_df = pd.read_sql_query(sql, amazon_engine, params=params)
+        if aged_df.empty:
+            return aged_df
+
+        aged_df["sku"] = aged_df["sku"].apply(norm_sku)
+
+        # Keep latest snapshot if available
+        if "snapshot_date" in aged_df.columns:
+            aged_df["snapshot_date"] = pd.to_datetime(aged_df["snapshot_date"], errors="coerce")
+            latest_snapshot = aged_df["snapshot_date"].max()
+            if pd.notna(latest_snapshot):
+                aged_df = aged_df[aged_df["snapshot_date"] == latest_snapshot].copy()
+
+        # Deduplicate same SKU if multiple rows still exist
+        aged_df = aged_df.sort_values(
+            by=[c for c in ["snapshot_date"] if c in aged_df.columns]
+        ).drop_duplicates(subset=["sku"], keep="last")
+
+        return aged_df
+
+    except ProgrammingError:
+        logger.exception("ProgrammingError while reading inventory_aged")
+        return pd.DataFrame()
+    except Exception:
+        logger.exception(
+            "Failed loading inventory_aged for user=%s country=%s marketplace_id=%s",
+            user_id, country_key, marketplace_id
+        )
+        return pd.DataFrame()
 
 
 @current_inventory_bp.route("/current_inventory", methods=["POST", "OPTIONS"])
@@ -58,21 +179,19 @@ def current_inventory():
     if request.method == "OPTIONS":
         return jsonify({"message": "CORS Preflight OK"}), 200
 
-    # --- Auth ---
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify({"error": "Authorization token is missing or invalid"}), 401
 
     token = auth_header.split(" ")[1]
     try:
-        payload, user_id, member_id = get_effective_user_id_from_token(token)
+        payload, effective_user_id, member_id = get_effective_user_id_from_token(token)
         user_id = payload["user_id"]
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
         return jsonify({"error": "Invalid token"}), 401
 
-    # --- Inputs ---
     data = request.get_json() or {}
     month = (data.get("month") or "").strip()
     year = data.get("year")
@@ -87,48 +206,31 @@ def current_inventory():
     except ValueError:
         return jsonify({"error": "Invalid month or year format"}), 400
 
-    # --- DB session (primary) ---
+    country_key = country.lower().strip()
+
     SessionLocal = sessionmaker(bind=db.engine)
     db_session = SessionLocal()
+
+    warnings = []
 
     try:
         user = db_session.get(User, user_id)
         if user is None:
             return jsonify({"error": f"User not found for ID {user_id}"}), 404
 
-        country_key = country.lower().strip()
-
-        # =========================================================
-        # Resolve marketplace_name (for liveorders) and marketplace_id (for inventory)
-        # IMPORTANT: Do NOT use profile.marketplace for liveorders, because it might store IDs.
-        # =========================================================
-        marketplace_id = None
-        try:
-            profile = (
-                db_session.query(CountryProfile)
-                .filter_by(user_id=user_id, country=country_key)
-                .first()
-            )
-            if profile and getattr(profile, "marketplace_id", None):
-                marketplace_id = profile.marketplace_id
-        except Exception:
-            pass
-
-        if not marketplace_id:
-            marketplace_id = MARKETPLACE_ID_BY_COUNTRY.get(country_key)
-
-        marketplace_name = MARKETPLACE_NAME_BY_COUNTRY.get(country_key)
+        marketplace_id, marketplace_name, profile = resolve_marketplace(db_session, user_id, country_key)
 
         if not marketplace_id or not marketplace_name:
             return jsonify({"error": f'Unknown marketplace for country "{country}"'}), 400
 
-        # --- Load SKU master from per-user table (primary DB) ---
-        engine_primary = create_engine(db_url)
         sku_table_name = f"sku_{user_id}_data_table"
+        if not table_exists(primary_engine, sku_table_name):
+            return jsonify({"error": f'SKU table "{sku_table_name}" does not exist'}), 500
 
         try:
-            sku_df = pd.read_sql_table(sku_table_name, engine_primary)
+            sku_df = pd.read_sql_table(sku_table_name, primary_engine)
         except Exception as e:
+            logger.exception("Could not read SKU table %s", sku_table_name)
             return jsonify({"error": f'Could not read SKU table "{sku_table_name}": {e}'}), 500
 
         sku_column_name = f"sku_{country_key}"
@@ -138,22 +240,23 @@ def current_inventory():
         sku_df = sku_df[[sku_column_name, "product_name"]].copy()
         sku_df.rename(columns={sku_column_name: "sku"}, inplace=True)
         sku_df["sku"] = sku_df["sku"].apply(norm_sku)
+        sku_df = sku_df[sku_df["sku"] != ""].drop_duplicates(subset=["sku"])
 
-        # =========================
-        # Date range for selected month
-        # =========================
         month_number = datetime.strptime(month_name, "%B").month
-        month_start = datetime(year, month_number, 1)
-        month_end = datetime(year, month_number, monthrange(year, month_number)[1], 23, 59, 59)
+
+        # UTC-safe boundaries
+        month_start = datetime(year, month_number, 1, 0, 0, 0, tzinfo=timezone.utc)
+        month_end = datetime(
+            year,
+            month_number,
+            monthrange(year, month_number)[1],
+            23, 59, 59,
+            tzinfo=timezone.utc
+        )
 
         current_month_col = f"Current Month Units Sold ({month_name})"
-
-        # use the amazon engine bind
         amazon_engine = db.get_engine(bind="amazon")
 
-        # =========================================================
-        # SALES (liveorders.marketplace is NAME like Amazon.co.uk)
-        # =========================================================
         sales_sql = text(f"""
             SELECT
                 sku,
@@ -166,23 +269,25 @@ def current_inventory():
             GROUP BY sku
         """)
 
-        current_month_sales_df = pd.read_sql_query(
-            sales_sql,
-            amazon_engine,
-            params={
-                "uid": user_id,
-                "mkt_name": marketplace_name,
-                "start": month_start,
-                "end": month_end,
-            },
-        )
-        if not current_month_sales_df.empty:
-            current_month_sales_df["sku"] = current_month_sales_df["sku"].apply(norm_sku)
+        try:
+            current_month_sales_df = pd.read_sql_query(
+                sales_sql,
+                amazon_engine,
+                params={
+                    "uid": user_id,
+                    "mkt_name": marketplace_name,
+                    "start": month_start,
+                    "end": month_end,
+                },
+            )
+            if not current_month_sales_df.empty:
+                current_month_sales_df["sku"] = current_month_sales_df["sku"].apply(norm_sku)
+                current_month_sales_df = current_month_sales_df.groupby("sku", as_index=False)[current_month_col].sum()
+        except Exception:
+            logger.exception("Failed loading liveorders sales")
+            current_month_sales_df = pd.DataFrame(columns=["sku", current_month_col])
+            warnings.append("Sales data could not be loaded.")
 
-        # =========================================================
-        # INVENTORY (inventory table - optional, used for inbound/synced_at/etc.)
-        # inventory.marketplace_id is ID like A1F83...
-        # =========================================================
         inv_df = pd.DataFrame()
         try:
             inv_sql = text("""
@@ -204,49 +309,32 @@ def current_inventory():
             )
             if not inv_df.empty:
                 inv_df["seller_sku"] = inv_df["seller_sku"].apply(norm_sku)
+                inv_df = inv_df.sort_values(by=["synced_at"] if "synced_at" in inv_df.columns else ["seller_sku"])
+                inv_df = inv_df.drop_duplicates(subset=["seller_sku"], keep="last")
         except Exception:
+            logger.exception("Failed loading inventory table")
+            warnings.append("Inventory snapshot data could not be loaded.")
             inv_df = pd.DataFrame()
 
-        # =========================================================
-        # AGED INVENTORY (PRIMARY inventory source, joins on sku)
-        # inventory_aged has column "sku"
-        # =========================================================
-        aged_df = pd.DataFrame()
-        try:
-            aged_sql = text("""
-                SELECT
-                    sku,
-                    available,
-                    "inv-age-0-to-90-days",
-                    "inv-age-91-to-180-days",
-                    "inv-age-181-to-270-days",
-                    "inv-age-271-to-365-days",
-                    "inv-age-365-plus-days",
-                    "sales-rank",
-                    "estimated-storage-cost-next-month"
-                FROM inventory_aged
-                WHERE user_id = :uid
-            """)
-            aged_df = pd.read_sql_query(aged_sql, amazon_engine, params={"uid": user_id})
-            if not aged_df.empty:
-                aged_df["sku"] = aged_df["sku"].apply(norm_sku)
-        except ProgrammingError:
-            aged_df = pd.DataFrame()
-        except Exception:
-            aged_df = pd.DataFrame()
+        aged_df = load_aged_inventory(amazon_engine, user_id, country_key, marketplace_id)
+        if aged_df.empty:
+            warnings.append(
+                f"Aged inventory data is not available for {country_key.upper()}. "
+                f"This usually means the upstream SP-API aged inventory sync did not complete."
+            )
 
-        # =========================================================
-        # MERGE master + sales + aged inventory (JOIN KEY = sku)
-        # =========================================================
-        final_df = sku_df[["sku", "product_name"]].merge(
+        base_sales_df = (
             current_month_sales_df[["sku", current_month_col]]
             if not current_month_sales_df.empty
-            else pd.DataFrame({"sku": sku_df["sku"], current_month_col: 0}),
+            else pd.DataFrame({"sku": sku_df["sku"], current_month_col: 0})
+        )
+
+        final_df = sku_df[["sku", "product_name"]].merge(
+            base_sales_df,
             on="sku",
             how="left"
         )
 
-        # Join aged inventory ON sku
         if not aged_df.empty:
             final_df = final_df.merge(aged_df, on="sku", how="left")
         else:
@@ -262,7 +350,6 @@ def current_inventory():
             ]:
                 final_df[c] = pd.NA
 
-        # Join inventory table (optional) using sku -> seller_sku
         if not inv_df.empty:
             final_df = final_df.merge(inv_df, left_on="sku", right_on="seller_sku", how="left")
         else:
@@ -277,25 +364,14 @@ def current_inventory():
                 final_df[c] = pd.NA
             final_df["seller_sku"] = pd.NA
 
-        # =========================================================
-        # Business logic
-        # =========================================================
-        final_df[current_month_col] = pd.to_numeric(final_df[current_month_col], errors="coerce").fillna(0)
+        final_df[current_month_col] = safe_numeric(final_df[current_month_col], 0)
+        final_df["inbound_quantity"] = safe_numeric(final_df.get("inbound_quantity"), 0)
+        final_df["available"] = safe_numeric(final_df.get("available"), 0)
 
-        # inventory inwarded
-        final_df["inbound_quantity"] = pd.to_numeric(final_df.get("inbound_quantity"), errors="coerce").fillna(0)
         final_df["Inventory Inwarded"] = final_df["inbound_quantity"]
-
-        # End-of-month inventory: prefer aged inventory "available"
-        final_df["available"] = pd.to_numeric(final_df.get("available"), errors="coerce").fillna(0)
         final_df["Inventory at the end of the month"] = final_df["available"]
 
-        # =========================
-        # compute "Others" from previous-month user_{id}_{country}_{month}{year}_data
-        # =========================
-        today = datetime.now().date()
-        today_day = today.day
-
+        # Previous month window
         if month_number == 1:
             prev_month_number = 12
             prev_year = year - 1
@@ -306,37 +382,51 @@ def current_inventory():
         prev_month_name_full = datetime(prev_year, prev_month_number, 1).strftime("%B")
         prev_month_name_lower = prev_month_name_full.lower()
 
-        prev_last_day = monthrange(prev_year, prev_month_number)[1]
-        start_day = today_day + 1
-        if start_day > prev_last_day:
-            start_day = prev_last_day
-
-        prev_start = datetime(prev_year, prev_month_number, start_day, 0, 0, 0)
-        prev_end = datetime(prev_year, prev_month_number, prev_last_day, 23, 59, 59)
-
         prev_table_name = f"user_{user_id}_{country_key}_{prev_month_name_lower}{prev_year}_data"
-
         final_df["Others"] = 0
-        try:
-            prev_sql = text(f"""
-                SELECT sku,
-                       SUM(quantity) AS others_qty
-                FROM {prev_table_name}
-                WHERE date_time <> '0'
-                  AND replace(date_time, 'Z', '+00')::timestamptz >= :start
-                  AND replace(date_time, 'Z', '+00')::timestamptz <= :end
-                GROUP BY sku
-            """)
-            prev_df = pd.read_sql_query(prev_sql, engine_primary, params={"start": prev_start, "end": prev_end})
-            if not prev_df.empty:
-                prev_df["sku"] = prev_df["sku"].apply(norm_sku)
-                final_df = final_df.merge(prev_df[["sku", "others_qty"]], on="sku", how="left")
-                final_df["Others"] = pd.to_numeric(final_df["others_qty"], errors="coerce").fillna(0)
-                final_df.drop(columns=["others_qty"], inplace=True, errors="ignore")
-        except Exception:
-            pass
 
-        # Beginning inventory
+        if table_exists(primary_engine, prev_table_name):
+            # Use selected month context instead of server "today"
+            selected_day = min(
+                datetime.now(timezone.utc).day if (year == datetime.now(timezone.utc).year and month_number == datetime.now(timezone.utc).month)
+                else monthrange(prev_year, prev_month_number)[1],
+                monthrange(prev_year, prev_month_number)[1]
+            )
+
+            start_day = min(selected_day + 1, monthrange(prev_year, prev_month_number)[1])
+
+            prev_start = datetime(prev_year, prev_month_number, start_day, 0, 0, 0, tzinfo=timezone.utc)
+            prev_end = datetime(
+                prev_year, prev_month_number, monthrange(prev_year, prev_month_number)[1],
+                23, 59, 59, tzinfo=timezone.utc
+            )
+
+            try:
+                prev_sql = text(f"""
+                    SELECT sku,
+                           SUM(quantity) AS others_qty
+                    FROM {prev_table_name}
+                    WHERE date_time <> '0'
+                      AND replace(date_time, 'Z', '+00')::timestamptz >= :start
+                      AND replace(date_time, 'Z', '+00')::timestamptz <= :end
+                    GROUP BY sku
+                """)
+                prev_df = pd.read_sql_query(
+                    prev_sql,
+                    primary_engine,
+                    params={"start": prev_start, "end": prev_end}
+                )
+                if not prev_df.empty:
+                    prev_df["sku"] = prev_df["sku"].apply(norm_sku)
+                    final_df = final_df.merge(prev_df[["sku", "others_qty"]], on="sku", how="left")
+                    final_df["Others"] = safe_numeric(final_df["others_qty"], 0)
+                    final_df.drop(columns=["others_qty"], inplace=True, errors="ignore")
+            except Exception:
+                logger.exception("Failed calculating Others from %s", prev_table_name)
+                warnings.append("Previous month 'Others' calculation failed.")
+        else:
+            warnings.append(f"Previous month table {prev_table_name} not found; Others set to 0.")
+
         final_df["Inventory at the beginning of the month"] = (
             final_df["Inventory at the end of the month"]
             - final_df["Inventory Inwarded"]
@@ -344,7 +434,6 @@ def current_inventory():
             - final_df["Others"]
         ).fillna(0).clip(lower=0)
 
-        # --- Rename & tidy up for Excel / UI ---
         final_df.rename(columns={"sku": "SKU", "product_name": "Product Name"}, inplace=True)
 
         if "seller_sku" in final_df.columns:
@@ -356,14 +445,12 @@ def current_inventory():
             "Sno.",
             "SKU",
             "Product Name",
-
             "total_quantity",
             "inbound_quantity",
             "available_quantity",
             "reserved_quantity",
             "fulfillable_quantity",
             "synced_at",
-
             "available",
             "inv-age-0-to-90-days",
             "inv-age-91-to-180-days",
@@ -372,7 +459,6 @@ def current_inventory():
             "inv-age-365-plus-days",
             "sales-rank",
             "estimated-storage-cost-next-month",
-
             "Inventory at the beginning of the month",
             current_month_col,
             "Inventory Inwarded",
@@ -384,7 +470,6 @@ def current_inventory():
             + [c for c in final_df.columns if c not in desired_order]
         )
 
-        # --- Total row ---
         numeric_columns = final_df.select_dtypes(include=["number"]).columns
         total_row = {
             col: (final_df[col].sum() if col in numeric_columns and col != "Sno." else "")
@@ -393,7 +478,6 @@ def current_inventory():
         total_row["Product Name"] = "Total"
         final_df = pd.concat([final_df, pd.DataFrame([total_row])], ignore_index=True)
 
-        # ---------------- INVENTORY ALERTS ----------------
         try:
             inventory_alerts = generate_inventory_alerts_for_all_skus(
                 user_id=user_id,
@@ -402,16 +486,13 @@ def current_inventory():
         except Exception:
             logger.exception("Failed to generate inventory alerts in current_inventory")
             inventory_alerts = {}
+            warnings.append("Inventory alerts could not be generated.")
 
-        # =========================================================
-        # ✅ IN-MEMORY EXCEL (NO SAVING TO UPLOAD FOLDER)
-        # =========================================================
         filename = f"currentinventory_{user_id}_{country_key}_{month_name.lower()}{year}.xlsx"
 
         output = BytesIO()
         final_df.to_excel(output, index=False, engine="openpyxl")
         output.seek(0)
-
         excel_b64 = base64.b64encode(output.read()).decode("utf-8")
 
         return jsonify({
@@ -419,6 +500,18 @@ def current_inventory():
             "data": excel_b64,
             "filename": filename,
             "inventory_alerts": inventory_alerts,
+            "warnings": warnings,
+            "meta": {
+                "user_id": user_id,
+                "country": country_key,
+                "marketplace_id": marketplace_id,
+                "marketplace_name": marketplace_name,
+                "month": month_name,
+                "year": year,
+                "aged_inventory_rows": 0 if aged_df.empty else int(len(aged_df)),
+                "inventory_rows": 0 if inv_df.empty else int(len(inv_df)),
+                "sales_rows": 0 if current_month_sales_df.empty else int(len(current_month_sales_df)),
+            }
         }), 200
 
     finally:

@@ -1858,16 +1858,33 @@ export default function DashboardPage() {
         return convertToDisplayCurrency(Number(v) || 0, biSourceCurrency);
     }, [liveBiPayload, convertToDisplayCurrency, biSourceCurrency]);
 
-
     // const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
+    //     const toPieCurrency = (v: number) => {
+    //         const n = Number(v || 0);
+    //         if (!n) return 0;
+
+    //         // Global tab => convert source currency to user's home/display currency
+    //         if (platform === "global") {
+    //             return convertToDisplayCurrency(n, biSourceCurrency);
+    //         }
+
+    //         // Country tabs => keep native/source currency
+    //         return n;
+    //     };
+
     //     const apiSlices = liveBiPayload?.cm1_profit_pie?.slices;
+
     //     if (apiSlices?.length) {
-    //         const merged = new Map<string, { name: string; value: number; prevValue: number; deltaPct: number }>();
+    //         const merged = new Map<
+    //             string,
+    //             { name: string; value: number; prevValue: number; deltaPct: number }
+    //         >();
 
     //         for (const s of apiSlices) {
     //             const name = (s.name || "Others").trim();
-    //             const value = Number(s.profit_curr || 0);
-    //             const prevValue = Number(s.profit_prev || 0);
+
+    //             const value = toPieCurrency(Number(s.profit_curr || 0));
+    //             const prevValue = toPieCurrency(Number(s.profit_prev || 0));
 
     //             const existing = merged.get(name);
     //             if (existing) {
@@ -1884,7 +1901,8 @@ export default function DashboardPage() {
     //             }
     //         }
 
-    //         const total = Array.from(merged.values()).reduce((sum, r) => sum + r.value, 0) || 1;
+    //         const total =
+    //             Array.from(merged.values()).reduce((sum, r) => sum + r.value, 0) || 1;
 
     //         return Array.from(merged.values())
     //             .map((r) => ({
@@ -1902,11 +1920,16 @@ export default function DashboardPage() {
     //     if (!combined.length) return [];
 
     //     const sorted = combined
-    //         .map((r: any) => ({
-    //             name: String(r?.product_name ?? "Unknown"),
-    //             profit_curr: Number(r?.profit_curr ?? 0),
-    //             profit_prev: Number(r?.profit_prev ?? 0),
-    //         }))
+    //         .map((r: any) => {
+    //             const curr = toPieCurrency(Number(r?.profit_curr ?? 0));
+    //             const prev = toPieCurrency(Number(r?.profit_prev ?? 0));
+
+    //             return {
+    //                 name: String(r?.product_name ?? "Unknown"),
+    //                 profit_curr: curr,
+    //                 profit_prev: prev,
+    //             };
+    //         })
     //         .filter((x) => x.profit_curr !== 0 || x.profit_prev !== 0)
     //         .sort((a, b) => b.profit_curr - a.profit_curr);
 
@@ -1920,131 +1943,247 @@ export default function DashboardPage() {
     //         value: x.profit_curr,
     //         prevValue: x.profit_prev,
     //         pct: (x.profit_curr / total) * 100,
-    //         deltaPct: x.profit_prev ? ((x.profit_curr - x.profit_prev) / Math.abs(x.profit_prev)) * 100 : 0,
+    //         deltaPct: x.profit_prev
+    //             ? ((x.profit_curr - x.profit_prev) / Math.abs(x.profit_prev)) * 100
+    //             : 0,
     //     }));
 
     //     if (rest.length) {
     //         const restCurr = rest.reduce((s, x) => s + x.profit_curr, 0);
     //         const restPrev = rest.reduce((s, x) => s + x.profit_prev, 0);
+
     //         named.push({
     //             name: "Others",
     //             value: restCurr,
     //             prevValue: restPrev,
     //             pct: (restCurr / total) * 100,
-    //             deltaPct: restPrev ? ((restCurr - restPrev) / Math.abs(restPrev)) * 100 : 0,
+    //             deltaPct: restPrev
+    //                 ? ((restCurr - restPrev) / Math.abs(restPrev)) * 100
+    //                 : 0,
     //         });
     //     }
 
     //     return named.sort((a, b) => b.value - a.value);
-    // }, [liveBiPayload?.cm1_profit_pie, liveBiPayload?.categorized_growth]);
+    // }, [liveBiPayload?.cm1_profit_pie, liveBiPayload?.categorized_growth, platform, biSourceCurrency, convertToDisplayCurrency]);
 
     const cm1ProfitPieData = useMemo<Cm1PieSlice[]>(() => {
         const toPieCurrency = (v: number) => {
             const n = Number(v || 0);
             if (!n) return 0;
 
-            // Global tab => convert source currency to user's home/display currency
             if (platform === "global") {
                 return convertToDisplayCurrency(n, biSourceCurrency);
             }
 
-            // Country tabs => keep native/source currency
             return n;
+        };
+
+        const buildFinalRows = (
+            rows: Array<{
+                name: string;
+                value: number;
+                prevValue: number;
+                deltaPct?: number | null;
+            }>
+        ): Cm1PieSlice[] => {
+            const cleaned = rows
+                .map((r: {
+                    name: string;
+                    value: number;
+                    prevValue: number;
+                    deltaPct?: number | null;
+                }) => ({
+                    name: String(r.name || "Unknown").trim() || "Unknown",
+                    value: Number(r.value || 0),
+                    prevValue: Number(r.prevValue || 0),
+                    deltaPct:
+                        r.deltaPct == null
+                            ? Number(r.prevValue || 0) !== 0
+                                ? ((Number(r.value || 0) - Number(r.prevValue || 0)) /
+                                    Math.abs(Number(r.prevValue || 0))) * 100
+                                : null
+                            : r.deltaPct,
+                }))
+                .filter((r: {
+                    value: number;
+                    prevValue: number;
+                }) => r.value !== 0 || r.prevValue !== 0);
+
+            if (!cleaned.length) return [];
+
+            const merged = new Map<
+                string,
+                { name: string; value: number; prevValue: number; deltaPct: number | null }
+            >();
+
+            for (const row of cleaned) {
+                const key = row.name;
+                const existing = merged.get(key);
+
+                if (existing) {
+                    existing.value += row.value;
+                    existing.prevValue += row.prevValue;
+
+                    existing.deltaPct =
+                        existing.prevValue !== 0
+                            ? ((existing.value - existing.prevValue) /
+                                Math.abs(existing.prevValue)) * 100
+                            : null;
+                } else {
+                    merged.set(key, { ...row });
+                }
+            }
+
+            const mergedRows = Array.from(merged.values()).sort(
+                (a: { value: number }, b: { value: number }) => b.value - a.value
+            );
+
+            const total = mergedRows.reduce(
+                (sum: number, r: { value: number }) => sum + r.value,
+                0
+            ) || 1;
+
+            return mergedRows.map((r: {
+                name: string;
+                value: number;
+                prevValue: number;
+                deltaPct: number | null;
+            }) => ({
+                name: r.name,
+                value: r.value,
+                prevValue: r.prevValue,
+                pct: (r.value / total) * 100,
+                deltaPct: r.deltaPct,
+            }));
         };
 
         const apiSlices = liveBiPayload?.cm1_profit_pie?.slices;
 
-        if (apiSlices?.length) {
-            const merged = new Map<
-                string,
-                { name: string; value: number; prevValue: number; deltaPct: number }
-            >();
-
-            for (const s of apiSlices) {
-                const name = (s.name || "Others").trim();
-
-                const value = toPieCurrency(Number(s.profit_curr || 0));
-                const prevValue = toPieCurrency(Number(s.profit_prev || 0));
-
-                const existing = merged.get(name);
-                if (existing) {
-                    existing.value += value;
-                    existing.prevValue += prevValue;
-                    existing.deltaPct = Number(s.delta_pct ?? existing.deltaPct ?? 0);
-                } else {
-                    merged.set(name, {
-                        name,
-                        value,
-                        prevValue,
-                        deltaPct: Number(s.delta_pct ?? 0),
-                    });
-                }
-            }
-
-            const total =
-                Array.from(merged.values()).reduce((sum, r) => sum + r.value, 0) || 1;
-
-            return Array.from(merged.values())
-                .map((r) => ({
-                    ...r,
-                    pct: (r.value / total) * 100,
+        if (Array.isArray(apiSlices) && apiSlices.length) {
+            return buildFinalRows(
+                apiSlices.map((s: any) => ({
+                    name: String(s?.name || "Others").trim(),
+                    value: toPieCurrency(Number(s?.profit_curr || 0)),
+                    prevValue: toPieCurrency(Number(s?.profit_prev || 0)),
+                    deltaPct: s?.delta_pct == null ? null : Number(s.delta_pct),
                 }))
-                .sort((a, b) => b.value - a.value);
+            );
         }
 
         const cg = liveBiPayload?.categorized_growth;
-        const top80 = cg?.top_80_skus ?? [];
-        const other = cg?.other_skus ?? [];
-        const combined = [...top80, ...other];
+        const top80 = Array.isArray(cg?.top_80_skus) ? cg.top_80_skus : [];
+        const other = Array.isArray(cg?.other_skus) ? cg.other_skus : [];
+        const combinedGrowth = [...top80, ...other];
 
-        if (!combined.length) return [];
+        if (combinedGrowth.length) {
+            const sorted = combinedGrowth
+                .map((r: any) => ({
+                    name: String(r?.product_name ?? r?.name ?? "Unknown"),
+                    value: toPieCurrency(Number(r?.profit_curr ?? 0)),
+                    prevValue: toPieCurrency(Number(r?.profit_prev ?? 0)),
+                    deltaPct:
+                        Number(r?.profit_prev ?? 0) !== 0
+                            ? ((Number(r?.profit_curr ?? 0) - Number(r?.profit_prev ?? 0)) /
+                                Math.abs(Number(r?.profit_prev ?? 0))) * 100
+                            : null,
+                }))
+                .filter((x: {
+                    value: number;
+                    prevValue: number;
+                }) => x.value !== 0 || x.prevValue !== 0)
+                .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
 
-        const sorted = combined
-            .map((r: any) => {
-                const curr = toPieCurrency(Number(r?.profit_curr ?? 0));
-                const prev = toPieCurrency(Number(r?.profit_prev ?? 0));
+            const top = sorted.slice(0, 5);
+            const rest = sorted.slice(5);
 
-                return {
-                    name: String(r?.product_name ?? "Unknown"),
-                    profit_curr: curr,
-                    profit_prev: prev,
-                };
-            })
-            .filter((x) => x.profit_curr !== 0 || x.profit_prev !== 0)
-            .sort((a, b) => b.profit_curr - a.profit_curr);
+            const rows = [...top];
 
-        const total = sorted.reduce((s, x) => s + x.profit_curr, 0) || 1;
+            if (rest.length) {
+                const restCurr = rest.reduce(
+                    (s: number, x: { value: number }) => s + x.value,
+                    0
+                );
 
-        const top = sorted.slice(0, 5);
-        const rest = sorted.slice(5);
+                const restPrev = rest.reduce(
+                    (s: number, x: { prevValue: number }) => s + x.prevValue,
+                    0
+                );
 
-        const named: Cm1PieSlice[] = top.map((x) => ({
-            name: x.name,
-            value: x.profit_curr,
-            prevValue: x.profit_prev,
-            pct: (x.profit_curr / total) * 100,
-            deltaPct: x.profit_prev
-                ? ((x.profit_curr - x.profit_prev) / Math.abs(x.profit_prev)) * 100
-                : 0,
-        }));
+                rows.push({
+                    name: "Others",
+                    value: restCurr,
+                    prevValue: restPrev,
+                    deltaPct:
+                        restPrev !== 0
+                            ? ((restCurr - restPrev) / Math.abs(restPrev)) * 100
+                            : null,
+                });
+            }
 
-        if (rest.length) {
-            const restCurr = rest.reduce((s, x) => s + x.profit_curr, 0);
-            const restPrev = rest.reduce((s, x) => s + x.profit_prev, 0);
-
-            named.push({
-                name: "Others",
-                value: restCurr,
-                prevValue: restPrev,
-                pct: (restCurr / total) * 100,
-                deltaPct: restPrev
-                    ? ((restCurr - restPrev) / Math.abs(restPrev)) * 100
-                    : 0,
-            });
+            return buildFinalRows(rows);
         }
 
-        return named.sort((a, b) => b.value - a.value);
-    }, [liveBiPayload?.cm1_profit_pie, liveBiPayload?.categorized_growth, platform, biSourceCurrency, convertToDisplayCurrency]);
+        const skuwiseItems = Array.isArray((data as any)?.skuwise_items)
+            ? (data as any).skuwise_items
+            : [];
+
+        if (skuwiseItems.length) {
+            const bodyRows = skuwiseItems.filter((r: any) =>
+                r?.sku &&
+                r.sku !== "GRAND_TOTAL" &&
+                String(r?.product_name || "").trim() !== ""
+            );
+
+            if (!bodyRows.length) return [];
+
+            const mapped = bodyRows
+                .map((r: any) => ({
+                    name: String(r?.product_name || r?.sku || "Unknown"),
+                    value: toPieCurrency(Number(r?.profit ?? r?.cm1_profit ?? 0)),
+                    prevValue: toPieCurrency(
+                        Number(r?.profit_prev ?? r?.previous_profit ?? r?.prev_profit ?? 0)
+                    ),
+                    deltaPct: null,
+                }))
+                .filter((r: { value: number; prevValue: number }) =>
+                    r.value !== 0 || r.prevValue !== 0
+                )
+                .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
+
+            if (!mapped.length) return [];
+
+            const top = mapped.slice(0, 5);
+            const rest = mapped.slice(5);
+
+            const rows = [...top];
+
+            if (rest.length) {
+                rows.push({
+                    name: "Others",
+                    value: rest.reduce(
+                        (s: number, x: { value: number }) => s + x.value,
+                        0
+                    ),
+                    prevValue: rest.reduce(
+                        (s: number, x: { prevValue: number }) => s + x.prevValue,
+                        0
+                    ),
+                    deltaPct: null,
+                });
+            }
+
+            return buildFinalRows(rows);
+        }
+
+        return [];
+    }, [
+        liveBiPayload?.cm1_profit_pie,
+        liveBiPayload?.categorized_growth,
+        data,
+        platform,
+        biSourceCurrency,
+        convertToDisplayCurrency,
+    ]);
 
     /* ===================== INTEGRATION FLAGS ===================== */
     const shopifyDeriv = useMemo(() => {
@@ -4254,9 +4393,6 @@ export default function DashboardPage() {
     useEffect(() => {
         if (typeof window === "undefined") return;
 
-        // ✅ ADD THIS LINE
-        if (shouldShowDummyUi) return;
-
         const onHashChange = () => {
             handleHashNavigation(window.location.hash);
         };
@@ -4276,13 +4412,10 @@ export default function DashboardPage() {
             window.removeEventListener("hashchange", onHashChange);
             window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
         };
-    }, [handleHashNavigation, shouldShowDummyUi]);
+    }, [handleHashNavigation]);
 
     useEffect(() => {
         if (!pendingHash) return;
-
-        // ✅ ADD THIS LINE
-        if (shouldShowDummyUi) return;
 
         const timer = setTimeout(() => {
             const el = document.getElementById(pendingHash);
@@ -4296,7 +4429,7 @@ export default function DashboardPage() {
         }, 250);
 
         return () => clearTimeout(timer);
-    }, [activeTab, pendingHash, shouldShowDummyUi]);
+    }, [activeTab, pendingHash]);
 
     const dummyStatData = {
         units: { current: 0, previous: 0, deltaPct: 0 },
@@ -4845,9 +4978,6 @@ Keep enough stock for validation but avoid over-committing too early.`,
     const syncTabToHash = useCallback((tab: TopTab) => {
         if (typeof window === "undefined") return;
 
-        // ✅ ADD THIS LINE
-        if (shouldShowDummyUi) return;
-
         const hash = TAB_TO_HASH[tab];
         if (!hash) return;
 
@@ -4859,7 +4989,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                 detail: { hash },
             })
         );
-    }, [shouldShowDummyUi]);
+    }, []);
 
     const isStickyGlobal = platform === "global";
 
@@ -6650,7 +6780,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                     {
                                                         id: "net_reimb",
                                                         label: "Net Reimbursement",
-                                                        endValue: `${formatSummaryValue(reimbursementForSummary, "net_reimbursement")}`,
+                                                        endValue: Number(reimbursementForSummary.toFixed(2)),
                                                     },
                                                     {
                                                         id: "rv_cm2",
@@ -6795,6 +6925,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                                 colors={colors}
                                                 loading={!shouldShowDummyUi && loading}
                                                 allValuesZero={finalAllValuesZero}
+                                                previewMode={shouldShowDummyUi}
                                             />
 
                                         </div>
@@ -6813,6 +6944,7 @@ Keep enough stock for validation but avoid over-committing too early.`,
                                             title="CM1 Profit Breakdown"
                                             data={finalCm1ProfitPieData}
                                             currency={displayCurrency}
+                                            noDataFound={shouldShowDummyUi}
                                             height={320}
                                         />
                                     </div>

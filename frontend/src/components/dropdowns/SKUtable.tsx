@@ -1134,7 +1134,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
         if (!res.ok) {
           setNoDataFound(true);
-          setTableData(dummyTableData);
+          setTableData([]);
           return;
         }
 
@@ -1142,7 +1142,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
         if (!Array.isArray(data) || data.length === 0) {
           setNoDataFound(true);
-          setTableData(dummyTableData);
+          setTableData([]);
           return;
         }
 
@@ -1157,7 +1157,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         setNoDataFound(true);
-        setTableData(dummyTableData);
+        setTableData([]);
       } finally {
         setLoading(false);
       }
@@ -1289,7 +1289,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         </div>
 
         <div
-          className={`transition-opacity ${!disableInternalFade && noDataFound ? "opacity-30" : "opacity-100"
+          className={`transition-opacity opacity-100
             }`}
         >
           {showModal2 && (
@@ -1301,7 +1301,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           <div className="w-full overflow-x-auto rounded-xl border border-gray-300">
             <div className="min-w-full">
               <GroupedCollapsibleTable<TableRow>
-                rows={displayRows}
+                rows={noDataFound ? [] : displayRows}
                 leftCols={LEFT_COLS}
                 groups={groups}
                 singleCols={SINGLE_COLS}
@@ -1400,7 +1400,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   return formatValue((row as any)[colKey], colKey);
                 }}
                 summary={{
-                  enabled: mainColCount > 0,
+                  enabled: !noDataFound && mainColCount > 0,
 
                   sections: [
                     {
@@ -1498,7 +1498,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   valueCols: 2,
                 }}
               />
-
+              {noDataFound && (
+                <div className="w-full text-center py-6 text-sm text-gray-500 font-medium">
+                  No Data Available for selected period
+                </div>
+              )}
 
             </div>
           </div>

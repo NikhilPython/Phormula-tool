@@ -36,13 +36,11 @@ type SummaryShape = {
 type Props = {
   data: SummaryShape;
   previous_summary?: SummaryShape;
-  previousLabel?: string;   // 👈 NEW
+  previousLabel?: string;
   periodType?: "monthly" | "quarterly" | "yearly";
   currency: string;
+  isPreviewMode?: boolean;
 };
-
-
-
 
 /* ================= COMPONENT ================= */
 
@@ -52,6 +50,7 @@ const CashFlowSankey: React.FC<Props> = ({
   previousLabel,
   currency,
   periodType = "monthly",
+  isPreviewMode = false,
 }) => {
   /* ---------- helpers ---------- */
   const [screenWidth, setScreenWidth] = React.useState(
@@ -458,7 +457,7 @@ const CashFlowSankey: React.FC<Props> = ({
         <div className="sm:h-[520px] h-[350px]  overflow-x-auto">
           <ReactECharts option={option} style={{ height: "100%" }} />
         </div>
-        {isPreviewSankey && (
+        {isPreviewMode && (
           <div className="mt-2 text-center text-xs text-gray-400">
             Preview – connect Amazon and fetch data to see cash flow breakdown
           </div>

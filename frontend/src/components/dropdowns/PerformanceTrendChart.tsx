@@ -43,6 +43,7 @@ type PerformanceTrendChartProps = {
   onExportApiReady?: (api: TrendChartExportApi | null) => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  isPreviewMode?: boolean;
 };
 
 const MONTH_ABBR_TO_IDX: Record<string, number> = {
@@ -301,6 +302,8 @@ const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: strin
   return { xAxis, series: outSeries };
 };
 
+
+
 const LiveLineChart: React.FC<{
   xAxisData: string[];
   series: GenericSeries[];
@@ -536,7 +539,7 @@ const LiveLineChart: React.FC<{
       nameGap: 25,
       axisLine: {
         lineStyle: {
-          color: "#D1D5DB", 
+          color: "#D1D5DB",
           width: 1,
         },
       },
@@ -546,7 +549,7 @@ const LiveLineChart: React.FC<{
         },
       },
       axisLabel: {
-        color: "#6B7280", 
+        color: "#6B7280",
         formatter: (value: string) => {
           if (isPadX(value)) return "";
 
@@ -694,8 +697,61 @@ const LiveLineChart: React.FC<{
   );
 };
 
+const buildFallbackTrend = (
+  range?: "monthly" | "quarterly" | "yearly" | ""
+): { xAxis: string[]; series: GenericSeries[] } => {
+  if (range === "monthly") {
+    return {
+      xAxis: ["1"],
+      series: [
+        {
+          name: "Current",
+          kind: "daily" as const,
+          points: [{ x: "1", net_sales: 0, units: 0 }],
+          monthLen: 1,
+        },
+      ],
+    };
+  }
+
+  if (range === "quarterly") {
+    return {
+      xAxis: ["1", "2", "3"],
+      series: [
+        {
+          name: "Current",
+          kind: "monthly" as const,
+          points: [
+            { x: "1", net_sales: 0, units: 0, monthLabel: "M1" },
+            { x: "2", net_sales: 0, units: 0, monthLabel: "M2" },
+            { x: "3", net_sales: 0, units: 0, monthLabel: "M3" },
+          ],
+        },
+      ],
+    };
+  }
+
+  return {
+    xAxis: FULL_MONTHS,
+    series: [
+      {
+        name: "Current",
+        kind: "monthly" as const,
+        points: FULL_MONTHS.map((m) => ({
+          x: m,
+          net_sales: 0,
+          units: 0,
+        })),
+      },
+    ],
+  };
+};
+
+
 export default function PerformanceTrendChart(props: PerformanceTrendChartProps) {
   const [chartMetric, setChartMetric] = useState<ChartMetric>("net_sales");
+
+  const isPreviewMode = props.isPreviewMode ?? false;
 
   useEffect(() => {
     if (props.metric === "net_sales" || props.metric === "units") {
@@ -707,9 +763,40 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
   const error = props.error ?? null;
 
   const mapped = useMemo(() => {
-    if (!props.data?.series?.length) return { xAxis: [], series: [] as GenericSeries[] };
-    return mapBackendTrendToSeries(props.data);
-  }, [props.data]);
+    if (isPreviewMode) {
+      return buildFallbackTrend(props.range);
+    }
+
+    if (!props.data?.series?.length) {
+      return buildFallbackTrend(props.range);
+    }
+
+    const mappedData = mapBackendTrendToSeries(props.data);
+
+    const hasUsableXAxis = mappedData.xAxis.length > 0;
+    const hasUsableSeries = mappedData.series.length > 0;
+
+    if (!hasUsableXAxis || !hasUsableSeries) {
+      return buildFallbackTrend(props.range);
+    }
+
+    return mappedData;
+  }, [props.data, props.range, isPreviewMode]);
+
+  const hasChartStructure = useMemo(() => {
+    return mapped.xAxis.length > 0 && mapped.series.length > 0;
+  }, [mapped]);
+
+  // const hasRenderableTrendData = useMemo(() => {
+  //   if (isPreviewMode) return true;
+
+  //   return mapped.series.some((ser) =>
+  //     ser.points.some((pt) => {
+  //       const v = chartMetric === "units" ? pt.units : pt.net_sales;
+  //       return typeof v === "number" && Math.abs(v) > 0.01;
+  //     })
+  //   );
+  // }, [mapped, chartMetric, isPreviewMode]);
 
   return (
     <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
@@ -753,10 +840,19 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
       </div>
 
       <div className="mt-2 flex-1 min-h-0 overflow-hidden">
-        {loading && <div className="text-sm text-gray-500">Loading chart…</div>}
-        {error && <div className="text-sm text-red-500">{error}</div>}
+        {loading && (
+          <div className="flex-1 min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] flex items-center justify-center">
+            <div className="text-sm text-gray-500">Loading chart...</div>
+          </div>
+        )}
 
-        {!loading && !error && mapped.series.length > 0 && (
+        {error && !isPreviewMode && (
+          <div className="flex-1 min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] flex items-center justify-center">
+            <div className="text-sm text-red-500">{error}</div>
+          </div>
+        )}
+
+        {!loading && !error && hasChartStructure && (
           <LiveLineChart
             xAxisData={mapped.xAxis}
             series={mapped.series}
@@ -768,7 +864,11 @@ export default function PerformanceTrendChart(props: PerformanceTrendChartProps)
           />
         )}
 
-        {!loading && !error && mapped.series.length === 0 && <div className="text-sm text-gray-500">Loading...</div>}
+        {!loading && !error && !hasChartStructure && (
+          <div className="flex-1 min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] flex items-center justify-center">
+            <div className="text-sm text-gray-400">No data available</div>
+          </div>
+        )}
       </div>
     </div>
   );

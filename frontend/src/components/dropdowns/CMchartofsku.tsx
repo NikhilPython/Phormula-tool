@@ -128,16 +128,16 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
   const isDemoMode =
-  String(month ?? "").toUpperCase() === "NA" ||
-  String(year ?? "").toUpperCase() === "NA";
+    String(month ?? "").toUpperCase() === "NA" ||
+    String(year ?? "").toUpperCase() === "NA";
 
   const DEMO_SLICES: CmPieSlice[] = [
-  { name: "Product A", value: 4200, prevValue: 3600, pct: 35, deltaPct: 16.67 },
-  { name: "Product B", value: 3100, prevValue: 2800, pct: 25.83, deltaPct: 10.71 },
-  { name: "Product C", value: 2200, prevValue: 1900, pct: 18.33, deltaPct: 15.79 },
-  { name: "Product D", value: 1400, prevValue: 1200, pct: 11.67, deltaPct: 16.67 },
-  { name: "Others", value: 1100, prevValue: 900, pct: 9.17, deltaPct: 22.22 },
-];
+    { name: "Product A", value: 4200, prevValue: 3600, pct: 35, deltaPct: 16.67 },
+    { name: "Product B", value: 3100, prevValue: 2800, pct: 25.83, deltaPct: 10.71 },
+    { name: "Product C", value: 2200, prevValue: 1900, pct: 18.33, deltaPct: 15.79 },
+    { name: "Product D", value: 1400, prevValue: 1200, pct: 11.67, deltaPct: 16.67 },
+    { name: "Others", value: 1100, prevValue: 900, pct: 9.17, deltaPct: 22.22 },
+  ];
 
   const currencySymbol = isGlobalPage
     ? getCurrencySymbol(homeCurrency || "usd")
@@ -201,16 +201,17 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
   useEffect(() => {
     if (isDemoMode) {
-    setSlices(DEMO_SLICES);
-    setLoading(false);
-    setError(null);
-    setNoDataFound(false);
-    return;
-  }
+      setSlices(DEMO_SLICES);
+      setLoading(false);
+      setError(null);
+      setNoDataFound(false);
+      return;
+    }
     async function fetchData() {
       setLoading(true);
       setError(null);
       setNoDataFound(false);
+      setSlices([]);
 
       try {
         const token =
@@ -308,7 +309,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         }
 
         const isEmpty =
-          built.length === 0 || built.every((s) => (s.value || 0) === 0);
+          built.length === 0 ||
+          !built.some((s) => Number(s.value) > 0);
 
         if (isEmpty) {
           setSlices([]);
@@ -347,7 +349,11 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     const labels = slices.map((s) => s.name);
     const values = slices.map((s) => Math.abs(toNum(s.value)));
 
-    if (!labels.length || values.every((v) => v === 0)) return null;
+    const hasRenderableData =
+      labels.length > 0 &&
+      values.some((v) => Number.isFinite(v) && v > 0);
+
+    if (!hasRenderableData) return null;
 
     const bg = labels.map((_, i) => COLORS[i % COLORS.length]);
 
@@ -368,6 +374,11 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     };
 
   }, [slices]);
+
+  const showEmptyState =
+    !loading &&
+    !isDemoMode &&   // 🚀 THIS FIX
+    (noDataFound || !chartData);
 
   const options = useMemo<ChartOptions<"pie">>(() => {
     return {
@@ -426,9 +437,9 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
   return (
     <div className={[
-        "relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col transition-opacity duration-300",
-        disableInternalFade ? "pointer-events-none select-none opacity-45" : "opacity-100",
-      ].join(" ")}>
+      "relative w-full rounded-xl border border-slate-200 bg-white shadow-sm p-4 flex flex-col transition-opacity duration-300",
+      disableInternalFade ? "pointer-events-none select-none opacity-45" : "opacity-100",
+    ].join(" ")}>
       <div className="mb-2 2xl:mb-1 w-fit mx-left md:mx-0">
         <PageBreadcrumb
           pageTitle="CM1 Profit Breakdown"
@@ -439,23 +450,30 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       </div>
 
       {loading && (
-        <p className="text-center text-sm text-gray-500">Loading chart data...</p>
+        <div className="flex-1 w-full min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] flex items-center justify-center">
+          <p className="text-center text-sm text-gray-500">Loading chart data...</p>
+        </div>
       )}
 
       {/* {error && !loading && (
         <p className="text-center text-sm text-red-600">Error: {error}</p>
       )} */}
 
-      {!loading && !error && !chartData && (
-        <p className="text-center text-sm text-gray-500">
-          No CM1 data available for this selection.
-        </p>
+      {showEmptyState && (
+        <div className="flex-1 w-full min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px] flex items-center justify-center">
+          <p className="text-center text-sm text-gray-400">
+            No data available
+          </p>
+        </div>
       )}
 
-      {chartData && (
+      {isDemoMode && (
+        <div className="flex-1 w-full min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px]" />
+      )}
+
+      {!showEmptyState && !isDemoMode && chartData && (
         <div
-          className={`flex-1 min-h-0 w-full ${noDataFound ? "opacity-30" : "opacity-100"
-            } transition-opacity`}
+          className="flex-1 w-full min-h-[260px] md:min-h-[287px] xl:min-h-[300px] 2xl:min-h-[360px]"
         >
           <div className="relative w-full flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch xl:items-center">
             {/* LEFT: PIE */}
@@ -520,92 +538,92 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
                         />
 
                         <div className="min-w-0 flex flex-col items-start">
-  {/* Mobile: force 3 uniform lines */}
-  <div className="block sm:hidden w-full text-[10px]" style={{ color: "#414042" }}>
-    {/* line 1 */}
-    <div
-      className={`${isVisible ? "" : "line-through"} break-words leading-[1.2]`}
-      title={slice.name}
-    >
-      {slice.name}
-    </div>
+                          {/* Mobile: force 3 uniform lines */}
+                          <div className="block sm:hidden w-full text-[10px]" style={{ color: "#414042" }}>
+                            {/* line 1 */}
+                            <div
+                              className={`${isVisible ? "" : "line-through"} break-words leading-[1.2]`}
+                              title={slice.name}
+                            >
+                              {slice.name}
+                            </div>
 
-    {/* line 2 */}
-    <div className="leading-[1.2]">
-      {currencySymbol}
-      {value.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}
-    </div>
+                            {/* line 2 */}
+                            <div className="leading-[1.2]">
+                              {currencySymbol}
+                              {value.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </div>
 
-    {/* line 3 */}
-    <div className="leading-[1.2]">
-      <span>({pct.toFixed(2)}%) </span>
-      <span
-        className={deltaClass}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 1,
-        }}
-      >
-        (
-        {delta == null ? (
-          "—"
-        ) : delta >= 0 ? (
-          <DeltaUpIcon className="h-3 w-3" />
-        ) : (
-          <DeltaDownIcon className="h-3 w-3" />
-        )}
-        {delta == null ? "" : `${Math.abs(delta).toFixed(2)}%`}
-        )
-      </span>
-    </div>
-  </div>
+                            {/* line 3 */}
+                            <div className="leading-[1.2]">
+                              <span>({pct.toFixed(2)}%) </span>
+                              <span
+                                className={deltaClass}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 1,
+                                }}
+                              >
+                                (
+                                {delta == null ? (
+                                  "—"
+                                ) : delta >= 0 ? (
+                                  <DeltaUpIcon className="h-3 w-3" />
+                                ) : (
+                                  <DeltaDownIcon className="h-3 w-3" />
+                                )}
+                                {delta == null ? "" : `${Math.abs(delta).toFixed(2)}%`}
+                                )
+                              </span>
+                            </div>
+                          </div>
 
-  {/* Tablet/Desktop: keep existing 2-line layout */}
-  <div className="hidden sm:flex min-w-0 flex-col items-start">
-    <div
-      className={`truncate text-[10px] 2xl:text-xs ${isVisible ? "" : "line-through"}`}
-      style={{ color: "#414042" }}
-      title={slice.name}
-    >
-      {slice.name}
-    </div>
+                          {/* Tablet/Desktop: keep existing 2-line layout */}
+                          <div className="hidden sm:flex min-w-0 flex-col items-start">
+                            <div
+                              className={`truncate text-[10px] 2xl:text-xs ${isVisible ? "" : "line-through"}`}
+                              style={{ color: "#414042" }}
+                              title={slice.name}
+                            >
+                              {slice.name}
+                            </div>
 
-    <div
-      className="text-[10px] 2xl:text-xs break-words"
-      style={{ color: "#414042" }}
-    >
-      {currencySymbol}
-      {value.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}{" "}
-      ({pct.toFixed(2)}%){" "}
-      <span
-        className={deltaClass}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 1,
-        }}
-      >
-        (
-        {delta == null ? (
-          "—"
-        ) : delta >= 0 ? (
-          <DeltaUpIcon className="h-3 w-3" />
-        ) : (
-          <DeltaDownIcon className="h-3 w-3" />
-        )}
-        {delta == null ? "" : `${Math.abs(delta).toFixed(2)}%`}
-        )
-      </span>
-    </div>
-  </div>
-</div>
+                            <div
+                              className="text-[10px] 2xl:text-xs break-words"
+                              style={{ color: "#414042" }}
+                            >
+                              {currencySymbol}
+                              {value.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}{" "}
+                              ({pct.toFixed(2)}%){" "}
+                              <span
+                                className={deltaClass}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 1,
+                                }}
+                              >
+                                (
+                                {delta == null ? (
+                                  "—"
+                                ) : delta >= 0 ? (
+                                  <DeltaUpIcon className="h-3 w-3" />
+                                ) : (
+                                  <DeltaDownIcon className="h-3 w-3" />
+                                )}
+                                {delta == null ? "" : `${Math.abs(delta).toFixed(2)}%`}
+                                )
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </button>
                   );
